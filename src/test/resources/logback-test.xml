@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    测试环境 Logback 配置。
+
+    关键点：charset 使用 JDK 18+ 的 stdout.encoding 系统属性，
+    让 SLF4J/Logback 输出编码与 System.out 保持一致，避免中文在终端显示乱码。
+    Windows 中文版终端 stdout.encoding=GBK，Linux/Mac 通常为 UTF-8。
+-->
+<configuration>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <charset>${stdout.encoding:-UTF-8}</charset>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="DEBUG">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+</configuration>
+
