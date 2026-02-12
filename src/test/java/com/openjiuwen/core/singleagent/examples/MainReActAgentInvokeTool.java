@@ -123,7 +123,8 @@ public class MainReActAgentInvokeTool {
         // 5. 创建并注册工具
         LocalFunction tool = Utils.createTool();
         Runner.getResourceMgr().addTool(tool, null, null);
-        reactAgent.addAbility(tool.getCard());
+//        reactAgent.addAbility(tool.getCard());
+        reactAgent.getAbilityManager().add(tool.getCard());
 
         // 6. 调用方式一：Runner.runAgent(agent, inputs)
         //    对齐 Python: Runner.run_agent(agent=react_agent, inputs=...)

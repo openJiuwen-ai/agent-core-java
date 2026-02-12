@@ -32,7 +32,7 @@ public class MainReActAgentStreamTool {
     private static final String API_KEY = System.getenv().getOrDefault(
         "API_KEY", "sk-");
     private static final String MODEL_NAME = System.getenv().getOrDefault(
-        "MODEL_NAME", "Qwen/Qwen3-8B");
+        "MODEL_NAME", "deepseek-ai/DeepSeek-V3");
     private static final String MODEL_PROVIDER = System.getenv().getOrDefault(
         "MODEL_PROVIDER", "SiliconFlow");
 
@@ -123,7 +123,8 @@ public class MainReActAgentStreamTool {
         // 5. 创建并注册工具
         LocalFunction tool = Utils.createTool();
         Runner.getResourceMgr().addTool(tool, null, null);
-        reactAgent.addAbility(tool.getCard());
+//        reactAgent.addAbility(tool.getCard());
+        reactAgent.getAbilityManager().add(tool.getCard());
 
         // 6. 流式调用（对齐 Python: async for chunk in Runner.run_agent_streaming(agent=react_agent, inputs=...)）
         Map<String, Object> inputs = new HashMap<>();

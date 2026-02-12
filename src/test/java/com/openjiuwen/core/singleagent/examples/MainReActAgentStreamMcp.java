@@ -100,7 +100,8 @@ public class MainReActAgentStreamMcp {
 
         try {
             // 6. 添加 MCP Server 到 Agent ability
-            reactAgent.addAbility(mcpConfig);
+//            reactAgent.addAbility(mcpConfig);
+            reactAgent.getAbilityManager().add(mcpConfig);
 
             // 7. 流式调用（对齐 Python: async for chunk in Runner.run_agent_streaming(agent=react_agent, inputs=...)）
             Map<String, Object> inputs = new HashMap<>();
