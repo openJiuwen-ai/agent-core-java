@@ -26,7 +26,7 @@ import java.util.*;
  *
  * <p>对应 Python: agent-core/examples/test_examples_for_java/react_agent/test/main_react_agent_stream_mcp.py
  */
-public class MainReActAgentStreamMcp {
+public class MainReActAgentInvokeMcp {
 
     private static final String API_BASE = System.getenv().getOrDefault(
         "API_BASE", "https://api.siliconflow.cn/v1/chat/completions");
@@ -103,16 +103,13 @@ public class MainReActAgentStreamMcp {
 //            reactAgent.addAbility(mcpConfig);
             reactAgent.getAbilityManager().add(mcpConfig);
 
-            // 7. 流式调用（对齐 Python: async for chunk in Runner.run_agent_streaming(agent=react_agent, inputs=...)）
+            // 7. 调用
             Map<String, Object> inputs = new HashMap<>();
             inputs.put("query", "北京天气怎么样");
             inputs.put("conversation_id", "013");
 
-            Iterator<Object> chunkIterator = Runner.runAgentStreaming(reactAgent, inputs);
-            while (chunkIterator.hasNext()) {
-                Object chunk = chunkIterator.next();
-                System.out.println("ReActAgent chunk: " + chunk);
-            }
+            Object result = Runner.runAgent(reactAgent, inputs);
+            System.out.println("运行结果: " + result);
         } finally {
             // 清理：移除 MCP Server（skipIfNotExists=true 防止 server 未注册时抛异常）
             Runner.getResourceMgr().removeMcpServer(
