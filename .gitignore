@@ -42,6 +42,7 @@ out/
 .classpath
 .project
 .settings/
+.factorypath
 bin/
 
 # NetBeans

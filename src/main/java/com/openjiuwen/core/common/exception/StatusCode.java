@@ -135,6 +135,29 @@ public enum StatusCode {
 
     // Agent Group 132000-132999
     AGENT_GROUP_ADD_FAILED(132000, "failed to add agent, reason: {reason}"),
+
+    // ========================================
+    // Skills Module 133000-133999
+    // ========================================
+
+    // Skill Manager 133000-133099
+    SKILL_ALREADY_EXISTS(133000, "skill already exists: {skill_name}"),
+    SKILL_NOT_FOUND(133001, "skill not found: {skill_name}"),
+    SKILL_DESCRIPTION_NOT_FOUND(133002, "skill description not found in SKILL.md"),
+    SKILL_FILE_READ_ERROR(133003, "failed to read skill file: {file_path}, reason: {error_msg}"),
+    SKILL_DIRECTORY_LIST_ERROR(133004, "failed to list skill directory: {directory}, reason: {error_msg}"),
+    SKILL_REGISTER_ERROR(133005, "failed to register skill, reason: {error_msg}"),
+
+    // Skill ToolKit 133100-133199
+    SKILL_TOOL_CREATE_ERROR(133100, "failed to create skill tool: {tool_name}, reason: {error_msg}"),
+    SKILL_TOOL_EXECUTION_ERROR(133101, "skill tool execution error: {tool_name}, reason: {error_msg}"),
+    SKILL_SYS_OPERATION_NOT_AVAILABLE(133102, "sys_operation is not available"),
+
+    // Remote Skill 133200-133299
+    SKILL_GITHUB_API_ERROR(133200, "GitHub API error: {error_msg}"),
+    SKILL_GITHUB_DOWNLOAD_ERROR(133201, "failed to download from GitHub: {file_path}, status: {status_code}"),
+    SKILL_GITHUB_DIRECTORY_NOT_FOUND(133202, "GitHub directory not found: {directory}"),
+    SKILL_GITHUB_RESULTS_TRUNCATED(133203, "GitHub file results truncated, results may be incomplete"),
     
     // ========================================
     // Runner / Distributed 134000-134999

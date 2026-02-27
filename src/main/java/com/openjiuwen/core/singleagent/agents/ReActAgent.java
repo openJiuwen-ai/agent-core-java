@@ -179,14 +179,12 @@ public class ReActAgent extends BaseAgent {
     
     /**
      * Register a skill.
-     * 
+     *
      * @param skillPath the path to the skill directory to register
      * @return CompletableFuture that completes when registration is done
      */
     public CompletableFuture<Void> registerSkill(String skillPath) {
-        return CompletableFuture.runAsync(() -> {
-            skillUtil.registerSkills(skillPath, this);
-        });
+        return skillUtil.registerSkills(skillPath, false);
     }
     
     /**
