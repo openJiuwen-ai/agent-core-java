@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Dictionary utility methods for nested data structures.
@@ -42,8 +43,13 @@ public final class DictUtils {
      */
     @SuppressWarnings("unchecked")
     public static <T> Map<String, Object> createNestedDict(String path, T value, String separator) {
+        // 忠实于 Python: if not path: return value
         if (path == null || path.isEmpty()) {
-            throw new IllegalArgumentException("Path cannot be null or empty when using 3-argument version");
+            // 返回一个包含单个条目的 map，键为空字符串，值为 value
+            // 这样可以保持返回类型为 Map<String, Object>
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("", value);
+            return result;
         }
 
         String[] keys = path.split(java.util.regex.Pattern.quote(separator));
@@ -128,9 +134,23 @@ public final class DictUtils {
      *         strings; list indices are formatted as "[index]".
      */
     public static List<PathValuePair> extractLeafNodes(Object data, List<String> currentPath) {
+        // Python: if not data: return [] - 处理 null、空 dict、空 list、False、0 等
         if (data == null) {
             return new ArrayList<>();
         }
+        if (data instanceof Map<?, ?> && ((Map<?, ?>) data).isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (data instanceof List<?> && ((List<?>) data).isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (data instanceof Boolean && !(Boolean) data) {
+            return new ArrayList<>();
+        }
+        if (data instanceof Number && ((Number) data).intValue() == 0) {
+            return new ArrayList<>();
+        }
+
         if (currentPath == null) {
             currentPath = new ArrayList<>();
         }
@@ -233,64 +253,83 @@ public final class DictUtils {
      *                       strings; list indices must be formatted as "[index]".
      * @return The reconstructed nested structure (usually a dict).
      */
+    @SuppressWarnings("unchecked")
     public static Object rebuildDict(Iterable<PathValuePair> pathValuePairs) {
-        Map<String, Object> result = new LinkedHashMap<>();
+        // 使用一个特殊的包装器来跟踪当前对象及其父级引用
+        // 由于 Java 的类型限制，我们使用 Object 类型
+        Object result = new LinkedHashMap<String, Object>();
 
         for (PathValuePair pair : pathValuePairs) {
             List<String> path = pair.path();
             Object value = pair.value();
-            Object current = result;
+            List<Object> currentStack = new ArrayList<>();
+            currentStack.add(result);
 
-            for (int i = 0; i < path.size() - 1; i++) {
+            // 遍历路径，维护一个栈来跟踪当前对象
+            for (int i = 0; i < path.size(); i++) {
                 String key = path.get(i);
-                // Handle list index elements like "[0]"
+                boolean isLast = (i == path.size() - 1);
+                boolean nextIsList = !isLast && path.get(i + 1).startsWith("[");
+                Object current = currentStack.get(currentStack.size() - 1);
+
                 if (key.startsWith("[") && key.endsWith("]")) {
+                    // 处理 list 索引
                     int index = Integer.parseInt(key.substring(1, key.length() - 1));
-                    // Ensure current level is a list
+
+                    // 如果当前不是 list，需要转换
                     if (!(current instanceof List<?>)) {
-                        current = new ArrayList<>();
+                        List<Object> newList = new ArrayList<>();
+                        // 如果当前是 Map 且不是根节点，需要更新父级引用
+                        if (currentStack.size() > 1) {
+                            Object parent = currentStack.get(currentStack.size() - 2);
+                            String parentKey = path.get(i - 1);
+                            if (parentKey.startsWith("[") && parentKey.endsWith("]")) {
+                                // 父级也是 list
+                                int parentIndex = Integer.parseInt(parentKey.substring(1, parentKey.length() - 1));
+                                @SuppressWarnings("unchecked")
+                                List<Object> parentList = (List<Object>) parent;
+                                parentList.set(parentIndex, newList);
+                            } else {
+                                // 父级是 Map
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> parentMap = (Map<String, Object>) parent;
+                                parentMap.put(parentKey, newList);
+                            }
+                        } else {
+                            // 根节点
+                            result = newList;
+                        }
+                        current = newList;
                     }
+
                     @SuppressWarnings("unchecked")
                     List<Object> list = (List<Object>) current;
-                    // Expand list to required length
+
+                    // 扩展列表
                     while (list.size() <= index) {
-                        list.add(new LinkedHashMap<String, Object>());
+                        list.add(isLast ? null : (nextIsList ? new ArrayList<>() : new LinkedHashMap<String, Object>()));
                     }
-                    current = list.get(index);
+
+                    if (isLast) {
+                        list.set(index, value);
+                    } else {
+                        currentStack.add(list.get(index));
+                    }
                 } else {
-                    // Handle dictionary keys; if missing create dict or list
+                    // 处理 dict 键
                     @SuppressWarnings("unchecked")
                     Map<String, Object> map = (Map<String, Object>) current;
-                    if (!map.containsKey(key)) {
-                        String nextKey = path.get(i + 1);
-                        if (nextKey.startsWith("[") && nextKey.endsWith("]")) {
-                            map.put(key, new ArrayList<>());
-                        } else {
-                            map.put(key, new LinkedHashMap<String, Object>());
-                        }
-                    }
-                    current = map.get(key);
-                }
-            }
 
-            // Set the final value, handling possible list index
-            String lastKey = path.get(path.size() - 1);
-            if (lastKey.startsWith("[") && lastKey.endsWith("]")) {
-                int index = Integer.parseInt(lastKey.substring(1, lastKey.length() - 1));
-                if (!(current instanceof List<?>)) {
-                    current = new ArrayList<>();
+                    if (!map.containsKey(key)) {
+                        map.put(key, nextIsList ? new ArrayList<>() : new LinkedHashMap<String, Object>());
+                    }
+
+                    if (isLast) {
+                        map.put(key, value);
+                    } else {
+                        currentStack.add(map.get(key));
+                    }
                 }
-                @SuppressWarnings("unchecked")
-                List<Object> list = (List<Object>) current;
-                // Expand list to required length
-                while (list.size() <= index) {
-                    list.add(null);
-                }
-                list.set(index, value);
-            } else {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> map = (Map<String, Object>) current;
-                map.put(lastKey, value);
             }
         }
 
@@ -308,12 +347,12 @@ public final class DictUtils {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof PathValuePair that)) return false;
-            return path.equals(that.path) && value.equals(that.value);
+            return path.equals(that.path) && Objects.equals(value, that.value);
         }
 
         @Override
         public int hashCode() {
-            return 31 * path.hashCode() + value.hashCode();
+            return Objects.hash(path, value);
         }
     }
 }
