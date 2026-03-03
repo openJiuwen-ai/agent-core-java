@@ -105,19 +105,28 @@ public final class OperationRegistry {
      * @param mode running mode (OperationMode enum)
      */
     private static void lazyLoadOperation(String name, OperationMode mode) {
-        try {
-            // Convert name to class name (e.g., "fs" -> "Fs", "code" -> "Code")
-            String capitalizedName = name.substring(0, 1).toUpperCase() + name.substring(1);
-            String className = String.format(
-                "com.openjiuwen.core.sysoperation.%s.%sOperation",
-                mode.getValue(),
-                capitalizedName
-            );
-            
-            // Loading the class triggers its static initializer, which should call register()
-            Class.forName(className);
-        } catch (ClassNotFoundException | NoClassDefFoundError e) {
-            // Silently ignore - operation module doesn't exist
+        // Convert name to class name (e.g., "fs" -> "Fs", "code" -> "Code")
+        String capitalizedName = name.substring(0, 1).toUpperCase() + name.substring(1);
+
+        String modePkg = mode.getValue();
+        String modePrefix = switch (mode) {
+            case LOCAL -> "Local";
+            case SANDBOX -> "Sandbox";
+        };
+
+        // Try legacy/classic naming first, then the actual project naming.
+        String[] candidates = new String[]{
+            String.format("com.openjiuwen.core.sysoperation.%s.%sOperation", modePkg, capitalizedName),
+            String.format("com.openjiuwen.core.sysoperation.%s.%s%sOperation", modePkg, modePrefix, capitalizedName)
+        };
+
+        for (String className : candidates) {
+            try {
+                Class.forName(className);
+                return;
+            } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
+                // try next candidate
+            }
         }
     }
 

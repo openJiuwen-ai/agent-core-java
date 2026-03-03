@@ -3,6 +3,17 @@ package com.openjiuwen.core.skills;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcesmanager.Result;
+import com.openjiuwen.core.sysoperation.SysOperation;
+import com.openjiuwen.core.sysoperation.SysOperationCard;
+import com.openjiuwen.core.sysoperation.code.BaseCodeOperation;
+import com.openjiuwen.core.sysoperation.result.Language;
+import com.openjiuwen.core.sysoperation.result.code.ExecuteCodeData;
+import com.openjiuwen.core.sysoperation.result.code.ExecuteCodeResult;
+import com.openjiuwen.core.sysoperation.result.shell.ExecuteCmdData;
+import com.openjiuwen.core.sysoperation.result.shell.ExecuteCmdResult;
+import com.openjiuwen.core.sysoperation.shell.BaseShellOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -183,7 +194,7 @@ public class SkillToolKit {
     private CompletableFuture<String> executeCode(Map<String, Object> params) {
         return CompletableFuture.supplyAsync(() -> {
             String codeBlock = (String) params.get("code_block");
-            String language = (String) params.getOrDefault("language", "python");
+            String languageValue = (String) params.getOrDefault("language", "python");
 
             if (codeBlock == null || codeBlock.isEmpty()) {
                 throw BaseError.builder(StatusCode.SKILL_TOOL_EXECUTION_ERROR)
@@ -192,11 +203,51 @@ public class SkillToolKit {
                         .build();
             }
 
-            // TODO: Integrate with actual code execution system (SysOperation.code())
-            log.info("Executing {} code: {} chars", language, codeBlock.length());
-            return String.format("Code execution requested (%s, %d chars). " +
-                            "Implementation pending integration with SysOperation.code()",
-                    language, codeBlock.length());
+            Language language;
+            try {
+                language = Language.fromValue(languageValue);
+            } catch (Exception e) {
+                throw BaseError.builder(StatusCode.SKILL_TOOL_EXECUTION_ERROR)
+                        .param("tool_name", "execute_code")
+                        .param("error_msg", "language must be one of [python, javascript]")
+                        .cause(e)
+                        .build();
+            }
+
+            SysOperation sysOperation = getSysOperationOrThrow();
+            Object codeOperation = sysOperation.code();
+            if (!(codeOperation instanceof BaseCodeOperation baseCodeOperation)) {
+                throw BaseError.builder(StatusCode.SKILL_SYS_OPERATION_NOT_AVAILABLE)
+                        .build();
+            }
+
+            log.info("Executing {} code: {} chars", language.getValue(), codeBlock.length());
+            ExecuteCodeResult result = baseCodeOperation.executeCode(
+                    codeBlock,
+                    language,
+                    BaseCodeOperation.DEFAULT_TIMEOUT,
+                    null,
+                    null
+            ).join();
+
+            if (result == null) {
+                throw BaseError.builder(StatusCode.SKILL_TOOL_EXECUTION_ERROR)
+                        .param("tool_name", "execute_code")
+                        .param("error_msg", "empty result from sys_operation.code")
+                        .build();
+            }
+
+            ExecuteCodeData data = result.getData();
+            String stdout = data != null ? data.getStdout() : "";
+            String stderr = data != null ? data.getStderr() : "";
+            Integer exitCode = data != null ? data.getExitCode() : null;
+
+            if (result.isFailure()) {
+                return formatExecutionResult("execute_code", result.getCode(), result.getMessage(), exitCode, stdout, stderr);
+            }
+
+            String successMessage = String.format("Code execution requested (language=%s)", language.getValue());
+            return formatExecutionResult("execute_code", result.getCode(), successMessage, exitCode, stdout, stderr);
         }, java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
     }
 
@@ -220,12 +271,95 @@ public class SkillToolKit {
                         .build();
             }
 
-            // TODO: Integrate with actual shell execution system (SysOperation.shell())
+            SysOperation sysOperation = getSysOperationOrThrow();
+            Object shellOperation = sysOperation.shell();
+            if (!(shellOperation instanceof BaseShellOperation baseShellOperation)) {
+                throw BaseError.builder(StatusCode.SKILL_SYS_OPERATION_NOT_AVAILABLE)
+                        .build();
+            }
+
             log.info("Running command: {}", bashCommand);
-            return String.format("Command execution requested: %s. " +
-                            "Implementation pending integration with SysOperation.shell()",
-                    bashCommand);
+            ExecuteCmdResult result = baseShellOperation.executeCmd(
+                    bashCommand,
+                    null,
+                    BaseShellOperation.DEFAULT_TIMEOUT,
+                    null,
+                    Map.of("encoding", "UTF-8")
+            ).join();
+
+            if (result == null) {
+                throw BaseError.builder(StatusCode.SKILL_TOOL_EXECUTION_ERROR)
+                        .param("tool_name", "run_command")
+                        .param("error_msg", "empty result from sys_operation.shell")
+                        .build();
+            }
+
+            ExecuteCmdData data = result.getData();
+            String stdout = data != null ? data.getStdout() : "";
+            String stderr = data != null ? data.getStderr() : "";
+            Integer exitCode = data != null ? data.getExitCode() : null;
+
+            if (result.isFailure()) {
+                return formatExecutionResult("run_command", result.getCode(), result.getMessage(), exitCode, stdout, stderr);
+            }
+
+            String successMessage = String.format("Command execution requested: %s", bashCommand);
+            return formatExecutionResult("run_command", result.getCode(), successMessage, exitCode, stdout, stderr);
         }, java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    private SysOperation getSysOperationOrThrow() {
+        if (sysOperationId == null || sysOperationId.isBlank()) {
+            throw BaseError.builder(StatusCode.SKILL_SYS_OPERATION_NOT_AVAILABLE)
+                    .build();
+        }
+
+        Object sysOperationObj = Runner.getResourceMgr().getSysOperation(sysOperationId, null, null);
+        if (!(sysOperationObj instanceof SysOperation)) {
+            SysOperationCard fallbackCard = SysOperationCard.builder()
+                    .id(sysOperationId)
+                    .mode("local")
+                    .build();
+
+            Result<?> addResult = Runner.getResourceMgr().addSysOperation(fallbackCard, null);
+            if (addResult != null && addResult.isErr()) {
+                log.warn("Failed to auto-register sys_operation, id={}, reason={}", sysOperationId, addResult.msg());
+                throw BaseError.builder(StatusCode.SKILL_SYS_OPERATION_NOT_AVAILABLE)
+                        .param("error_msg", String.valueOf(addResult.msg()))
+                        .build();
+            }
+
+            sysOperationObj = Runner.getResourceMgr().getSysOperation(sysOperationId, null, null);
+        }
+
+        if (!(sysOperationObj instanceof SysOperation sysOperation)) {
+            throw BaseError.builder(StatusCode.SKILL_SYS_OPERATION_NOT_AVAILABLE)
+                    .build();
+        }
+
+        return sysOperation;
+    }
+
+    private String formatExecutionResult(String toolName,
+                                         int code,
+                                         String message,
+                                         Integer exitCode,
+                                         String stdout,
+                                         String stderr) {
+        String safeMessage = message == null ? "" : message;
+        String safeStdout = stdout == null ? "" : stdout;
+        String safeStderr = stderr == null ? "" : stderr;
+        String exitCodeText = exitCode == null ? "null" : String.valueOf(exitCode);
+
+        return String.format(
+                "tool=%s\nstatus_code=%d\nmessage=%s\nexit_code=%s\nstdout:\n%s\nstderr:\n%s",
+                toolName,
+                code,
+                safeMessage,
+                exitCodeText,
+                safeStdout,
+                safeStderr
+        );
     }
 
     /**
