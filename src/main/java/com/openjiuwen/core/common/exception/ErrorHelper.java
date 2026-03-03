@@ -26,6 +26,25 @@ public final class ErrorHelper {
     }
 
     /**
+     * Build exception with key-value parameter pairs for template substitution.
+     * <p>Example: {@code buildError(StatusCode.TOOL_CARD_INVALID, "card", card, "reason", "card is None")}
+     *
+     * @param status the status code
+     * @param kvPairs alternating key/value pairs (must be even number)
+     * @return a BaseError with the parameters applied to the message template
+     */
+    public static BaseError buildError(StatusCode status, String... kvPairs) {
+        if (kvPairs == null || kvPairs.length == 0) {
+            return buildError(status);
+        }
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        for (int i = 0; i + 1 < kvPairs.length; i += 2) {
+            params.put(kvPairs[i], kvPairs[i + 1]);
+        }
+        return createWithDetails(status, null, null, null, params);
+    }
+
+    /**
      * Build exception with custom message and details.
      */
     public static BaseError buildError(StatusCode status, String msg, Object details,

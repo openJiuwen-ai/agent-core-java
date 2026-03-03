@@ -1,0 +1,97 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
+package com.openjiuwen.core.foundation.tool.function;
+
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+
+import java.util.Iterator;
+import java.util.Map;
+import java.util.function.Function;
+
+/**
+ * Local function tool that wraps a Java {@link Function} as a tool.
+ * <p>
+ * Mirrors Python's {@code LocalFunction} class. The wrapped function
+ * receives input as a {@code Map<String, Object>} and returns the result.
+ *
+ * <p>Usage:
+ * <pre>
+ *   ToolCard card = ToolCard.builder().name("add").description("Add two numbers").build();
+ *   LocalFunction tool = new LocalFunction(card, inputs -> {
+ *       int a = (int) inputs.get("a");
+ *       int b = (int) inputs.get("b");
+ *       return a + b;
+ *   });
+ *   Object result = tool.invoke(Map.of("a", 1, "b", 2));
+ * </pre>
+ */
+public class LocalFunction extends Tool {
+
+    private final Function<Map<String, Object>, Object> func;
+
+    /**
+     * Create a local function tool.
+     *
+     * @param card the tool card configuration
+     * @param func the function to wrap; must not be null
+     */
+    public LocalFunction(ToolCard card, Function<Map<String, Object>, Object> func) {
+        super(card);
+        if (func == null) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED,
+                    "card", card.toString());
+        }
+        this.func = func;
+    }
+
+    @Override
+    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        return func.apply(inputs);
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        Object result = func.apply(inputs);
+
+        // If the function returns an Iterator, yield it directly
+        if (result instanceof Iterator<?> iterator) {
+            @SuppressWarnings("unchecked")
+            Iterator<Object> typedIterator = (Iterator<Object>) iterator;
+            return typedIterator;
+        }
+
+        // If the function returns an Iterable, convert to iterator
+        if (result instanceof Iterable<?> iterable) {
+            @SuppressWarnings("unchecked")
+            Iterator<Object> typedIterator = ((Iterable<Object>) iterable).iterator();
+            return typedIterator;
+        }
+
+        // Otherwise wrap single result as a single-element iterator
+        return new Iterator<>() {
+            private boolean hasNext = true;
+
+            @Override
+            public boolean hasNext() {
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                hasNext = false;
+                return result;
+            }
+        };
+    }
+
+    /**
+     * Get the underlying function.
+     */
+    public Function<Map<String, Object>, Object> getFunc() {
+        return func;
+    }
+}
