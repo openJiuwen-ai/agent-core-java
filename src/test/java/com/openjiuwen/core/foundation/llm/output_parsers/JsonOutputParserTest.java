@@ -269,6 +269,40 @@ class JsonOutputParserTest {
             assertEquals("json", map.get("direct"));
         }
 
+        @Test
+        @DisplayName("Stream parse empty chunks yields empty")
+        void testStreamParseEmptyChunks() {
+            List<String> chunks = List.of("", "", "");
+
+            List<Object> parsedObjects = collectStreamResults(chunks.iterator());
+
+            assertEquals(0, parsedObjects.size());
+        }
+
+        @Test
+        @DisplayName("Stream parse complex nested JSON chunks")
+        @SuppressWarnings("unchecked")
+        void testStreamParseComplexJsonChunks() {
+            List<String> chunks = List.of(
+                    "```json\n{",
+                    "\"users\":[",
+                    "{\"id\":1,\"name\":\"Alice\"},",
+                    "{\"id\":2,\"name\":\"Bob\"}",
+                    "],\"total\":2",
+                    "}\n```"
+            );
+
+            List<Object> parsedObjects = collectStreamResults(chunks.iterator());
+
+            assertEquals(1, parsedObjects.size());
+            Map<String, Object> map = (Map<String, Object>) parsedObjects.get(0);
+            List<Map<String, Object>> users = (List<Map<String, Object>>) map.get("users");
+            assertEquals(2, users.size());
+            assertEquals("Alice", users.get(0).get("name"));
+            assertEquals("Bob", users.get(1).get("name"));
+            assertEquals(2, map.get("total"));
+        }
+
         /**
          * Collect all results from a stream parse iterator.
          */

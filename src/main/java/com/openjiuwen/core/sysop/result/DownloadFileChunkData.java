@@ -1,0 +1,24 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
+package com.openjiuwen.core.sysop.result;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Data structure for chunked download file.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DownloadFileChunkData {
+    private String sourcePath;
+    private String localPath;
+    private int chunkSize;
+    private int chunkIndex;
+    private boolean lastChunk;
+}

@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 
 /**
  * 大模型连接测试示例。
@@ -52,13 +53,13 @@ public class LlmConnectionExample {
     // ====================================================================
 
     /** API密钥 */
-    private static final String API_KEY = "your-api-key-here";
+    private static final String API_KEY = "sk-plrywdjqxgkhqeudbrznqeukhlksazrhlziiszdgcowkxhds";
 
     /** API地址（不需要带 /chat/completions 后缀） */
-    private static final String API_BASE = "https://api.openai.com/v1";
+    private static final String API_BASE = "https://api.siliconflow.cn/v1";
 
     /** 模型名称（如 gpt-4o-mini、deepseek-chat、qwen-plus 等） */
-    private static final String MODEL_NAME = "gpt-4o-mini";
+    private static final String MODEL_NAME = "Pro/zai-org/GLM-4.7";
 
     /** 提供商名称（OpenAI、SiliconFlow、DashScope，或自定义字符串均可） */
     private static final String PROVIDER = "OpenAI";
@@ -182,7 +183,6 @@ public class LlmConnectionExample {
             System.out.println();
             System.out.println("⏱  耗时: " + elapsed + " ms");
             System.out.println();
-
             System.out.println("============================================");
             System.out.println("  🎉 所有测试通过！大模型连接正常！");
             System.out.println("============================================");

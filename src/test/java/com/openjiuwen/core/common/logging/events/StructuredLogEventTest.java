@@ -476,6 +476,92 @@ class StructuredLogEventTest {
     }
 
     // ==========================================================================
+    // test_sanitize_event (Python: test_sanitize_event)
+    // ==========================================================================
+    @Test
+    @DisplayName("Sanitize event replaces sensitive fields with <REDACTED>")
+    void testSanitizeEvent() {
+        LLMEvent event = new LLMEvent();
+        event.setEventType(LogEventType.LLM_CALL_END);
+        event.setModuleId("llm_gpt4");
+        event.setMessages(List.of(Map.of("role", "user", "content", "secret")));
+        event.setResponseContent("sensitive response");
+        event.setQuery("sensitive query");
+
+        Map<String, Object> sanitized = EventSanitizer.sanitizeEventForLogging(event);
+
+        assertEquals("<REDACTED>", sanitized.get("messages"));
+        assertEquals("<REDACTED>", sanitized.get("response_content"));
+        assertEquals("<REDACTED>", sanitized.get("query"));
+        assertEquals("llm_gpt4", sanitized.get("module_id"));  // Not sanitized
+    }
+
+    @Test
+    @DisplayName("Sanitize event with custom sensitive fields")
+    void testSanitizeEventCustomFields() {
+        BaseLogEvent event = EventClassRegistry.createEvent(LogEventType.AGENT_START);
+        event.setModuleId("agent_123");
+        event.setMessage("test message");
+
+        Map<String, Object> sanitized = EventSanitizer.sanitizeEventForLogging(event,
+                List.of("message"));
+
+        assertEquals("<REDACTED>", sanitized.get("message"));
+        assertEquals("agent_123", sanitized.get("module_id"));
+    }
+
+    @Test
+    @DisplayName("Sanitize event with null sensitive fields does not replace")
+    void testSanitizeEventNullFieldsNotReplaced() {
+        LLMEvent event = new LLMEvent();
+        event.setEventType(LogEventType.LLM_CALL_START);
+        event.setModuleId("llm_gpt4");
+        // query is null by default -> should not be redacted
+
+        Map<String, Object> sanitized = EventSanitizer.sanitizeEventForLogging(event);
+
+        // query is not in the map (putIfNotNull skips nulls)
+        assertFalse(sanitized.containsKey("query") && "<REDACTED>".equals(sanitized.get("query")));
+        assertEquals("llm_gpt4", sanitized.get("module_id"));
+    }
+
+    // ==========================================================================
+    // test_static_event_class_map_unchanged (Python: test_static_event_class_map_unchanged)
+    // ==========================================================================
+    @Test
+    @DisplayName("Dynamic registration does not modify static event class map")
+    void testStaticEventClassMapUnchanged() {
+        // Record original factory for AGENT_START
+        var originalFactory = EventClassRegistry.getFactory(LogEventType.AGENT_START);
+        BaseLogEvent originalEvent = originalFactory.get();
+        assertInstanceOf(AgentEvent.class, originalEvent);
+
+        // Register a dynamic custom event
+        String newType = "new_dynamic_event_type";
+        EventClassRegistry.register(newType, () -> {
+            BaseLogEvent e = new BaseLogEvent();
+            e.setModuleType(ModuleType.SYSTEM);
+            return e;
+        });
+
+        // Static mapping should remain unchanged
+        var afterFactory = EventClassRegistry.getFactory(LogEventType.AGENT_START);
+        BaseLogEvent afterEvent = afterFactory.get();
+        assertInstanceOf(AgentEvent.class, afterEvent);
+
+        // Custom type should be retrievable via string key
+        var customFactory = EventClassRegistry.getFactory(newType);
+        assertNotNull(customFactory);
+
+        // Cleanup
+        EventClassRegistry.unregister(newType);
+
+        // After unregister, static mapping is still intact
+        var finalFactory = EventClassRegistry.getFactory(LogEventType.AGENT_START);
+        assertInstanceOf(AgentEvent.class, finalFactory.get());
+    }
+
+    // ==========================================================================
     // Enum value tests
     // ==========================================================================
     @Nested
