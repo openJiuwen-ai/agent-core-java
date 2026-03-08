@@ -10,6 +10,7 @@ package com.openjiuwen.core.foundation.llm.schema;
  */
 public enum ProviderType {
     OpenAI("OpenAI"),
+    OpenRouter("OpenRouter"),
     SiliconFlow("SiliconFlow"),
     DashScope("DashScope");
 

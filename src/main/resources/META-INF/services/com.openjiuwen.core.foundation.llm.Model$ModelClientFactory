@@ -1,0 +1,4 @@
+com.openjiuwen.core.foundation.llm.model_clients.OpenAiModelClientFactory
+com.openjiuwen.core.foundation.llm.model_clients.OpenRouterModelClientFactory
+com.openjiuwen.core.foundation.llm.model_clients.SiliconFlowModelClientFactory
+com.openjiuwen.core.foundation.llm.model_clients.DashScopeModelClientFactory

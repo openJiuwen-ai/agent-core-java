@@ -5,6 +5,7 @@ package com.openjiuwen.core.foundation.llm;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -60,6 +61,7 @@ public class Model {
         for (ModelClientFactory f : ServiceLoader.load(ModelClientFactory.class)) {
             FACTORY_REGISTRY.put(f.providerName(), f);
         }
+        DefaultModelClientFactories.ensureRegistered();
     }
 
     /**
