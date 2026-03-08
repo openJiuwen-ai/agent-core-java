@@ -204,19 +204,15 @@ class LocalFunctionTest {
     class StreamTests {
 
         @Test
-        @DisplayName("Stream wraps single result as iterator")
-        void testStreamSingleResult() throws Exception {
+        @DisplayName("Stream rejects non-generator functions")
+        void testStreamSingleResult() {
             ToolCard card = ToolCard.builder()
                     .name("test")
                     .description("test")
                     .build();
 
             LocalFunction tool = new LocalFunction(card, inputs -> "single result");
-
-            Iterator<Object> iter = tool.stream(Map.of());
-            assertTrue(iter.hasNext());
-            assertEquals("single result", iter.next());
-            assertFalse(iter.hasNext());
+            assertThrows(Throwable.class, () -> tool.stream(Map.of()));
         }
 
         @Test

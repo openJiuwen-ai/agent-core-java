@@ -7,6 +7,8 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -20,6 +22,7 @@ import java.util.UUID;
  * Supports extra fields via {@link #extraFields}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonDeserialize(builder = ModelClientConfig.Builder.class)
 public class ModelClientConfig {
 
     private final String clientId;
@@ -78,6 +81,7 @@ public class ModelClientConfig {
         return new Builder();
     }
 
+    @JsonPOJOBuilder(withPrefix = "")
     public static class Builder {
         private String clientId;
         private String clientProvider;
@@ -89,13 +93,28 @@ public class ModelClientConfig {
         private String sslCert;
         private final Map<String, Object> extraFields = new HashMap<>();
 
+        @JsonProperty("client_id")
         public Builder clientId(String clientId) { this.clientId = clientId; return this; }
+
+        @JsonProperty("client_provider")
         public Builder clientProvider(String clientProvider) { this.clientProvider = clientProvider; return this; }
+
+        @JsonProperty("api_key")
         public Builder apiKey(String apiKey) { this.apiKey = apiKey; return this; }
+
+        @JsonProperty("api_base")
         public Builder apiBase(String apiBase) { this.apiBase = apiBase; return this; }
+
+        @JsonProperty("timeout")
         public Builder timeout(double timeout) { this.timeout = timeout; return this; }
+
+        @JsonProperty("max_retries")
         public Builder maxRetries(int maxRetries) { this.maxRetries = maxRetries; return this; }
+
+        @JsonProperty("verify_ssl")
         public Builder verifySsl(boolean verifySsl) { this.verifySsl = verifySsl; return this; }
+
+        @JsonProperty("ssl_cert")
         public Builder sslCert(String sslCert) { this.sslCert = sslCert; return this; }
 
         @JsonAnySetter

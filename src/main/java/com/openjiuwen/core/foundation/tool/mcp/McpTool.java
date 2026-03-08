@@ -5,6 +5,7 @@ package com.openjiuwen.core.foundation.tool.mcp;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 
 import java.util.Iterator;
@@ -38,6 +39,11 @@ public class McpTool extends Tool {
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         try {
             Map<String, Object> arguments = inputs != null ? inputs : Map.of();
+            // Schema validation: format inputs against inputParams if defined
+            Map<String, Object> inputParams = card.getInputParams();
+            if (inputParams != null && !inputParams.isEmpty()) {
+                arguments = SchemaUtils.formatWithSchema(arguments, inputParams);
+            }
             Object result = mcpClient.callTool(card.getName(), arguments);
             return Map.of("result", result);
         } catch (Exception e) {

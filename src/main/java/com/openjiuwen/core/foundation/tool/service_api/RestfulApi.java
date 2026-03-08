@@ -6,10 +6,11 @@ package com.openjiuwen.core.foundation.tool.service_api;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.UrlUtils;
+import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -42,8 +43,9 @@ public class RestfulApi extends Tool {
      */
     public RestfulApi(RestfulApiCard card) {
         super(card);
+        validateCard(card);
         this.url = card.getUrl();
-        this.method = card.getMethod();
+        this.method = card.getMethod().toUpperCase();
         this.timeout = card.getTimeout();
         this.maxResponseByteSize = card.getMaxResponseByteSize();
         this.apiParamMapper = new ApiParamMapper(
@@ -53,12 +55,39 @@ public class RestfulApi extends Tool {
                 card.getPaths());
     }
 
+    /**
+     * Validate RestfulApiCard URL and method.
+     * Mirrors Python's field_validator('method') and field_validator('url').
+     */
+    private static void validateCard(RestfulApiCard card) {
+        // Validate method
+        String method = card.getMethod();
+        if (method == null || !RestfulApiCard.SUPPORTED_METHODS.contains(method.toUpperCase())) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason", "unsupported method: " + method + ", only accepts: " + RestfulApiCard.SUPPORTED_METHODS);
+        }
+        // Validate URL
+        String url = card.getUrl();
+        try {
+            UrlUtils.checkUrlIsValid(url);
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason", "invalid url: " + url);
+        }
+    }
+
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         double finalTimeout = this.timeout;
         try {
+            // Schema validation: format inputs against inputParams if defined
+            Map<String, Object> validatedInputs = inputs;
+            Map<String, Object> inputParams = card.getInputParams();
+            if (inputParams != null && !inputParams.isEmpty()) {
+                validatedInputs = SchemaUtils.formatWithSchema(inputs, inputParams);
+            }
             Map<ApiParamLocation, Map<String, Object>> mapResults =
-                    apiParamMapper.map(inputs, ApiParamLocation.BODY);
+                    apiParamMapper.map(validatedInputs, ApiParamLocation.BODY);
             if (kwargs != null && kwargs.containsKey("timeout")) {
                 finalTimeout = ((Number) kwargs.get("timeout")).doubleValue();
             }
@@ -98,14 +127,7 @@ public class RestfulApi extends Tool {
 
         // Append query params
         Map<String, Object> queryParams = mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of());
-        if (!queryParams.isEmpty()) {
-            StringJoiner joiner = new StringJoiner("&");
-            for (var entry : queryParams.entrySet()) {
-                joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
-                        + "=" + URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
-            }
-            resolvedUrl = resolvedUrl + "?" + joiner;
-        }
+        resolvedUrl = appendQueryParams(resolvedUrl, queryParams);
 
         // Build request
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -122,15 +144,8 @@ public class RestfulApi extends Tool {
         Map<String, Object> bodyParams = mapResults.getOrDefault(ApiParamLocation.BODY, Map.of());
         if ("GET".equalsIgnoreCase(method)) {
             // For GET, body params go as additional query params
-            if (!bodyParams.isEmpty()) {
-                StringJoiner joiner = new StringJoiner("&");
-                for (var entry : bodyParams.entrySet()) {
-                    joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
-                            + "=" + URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
-                }
-                String sep = resolvedUrl.contains("?") ? "&" : "?";
-                requestBuilder.uri(URI.create(resolvedUrl + sep + joiner));
-            }
+            resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
+            requestBuilder.uri(URI.create(resolvedUrl));
             requestBuilder.GET();
         } else {
             // POST: serialize body as JSON
@@ -158,10 +173,11 @@ public class RestfulApi extends Tool {
         }
 
         if (raiseForStatus && (response.statusCode() < 200 || response.statusCode() >= 400)) {
+            String reason = reasonPhrase(response.statusCode());
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR,
                     "method", "invoke",
                     "code", String.valueOf(response.statusCode()),
-                    "reason", "HTTP " + response.statusCode(),
+                    "reason", reason,
                     "card", card.toString());
         }
 
@@ -184,15 +200,54 @@ public class RestfulApi extends Tool {
             result.put("data", parsed);
             result.put("url", response.uri().toString());
             result.put("headers", responseHeaders);
+            String reason = reasonPhrase(statusCode);
+            result.put("reason", reason);
             if (statusCode >= 200 && statusCode < 300) {
                 result.put("message", "success");
             } else {
-                result.put("message", "HTTP " + statusCode);
+                result.put("message", reason);
             }
             return result;
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR,
                     "reason", e.getMessage(), "card", card.toString());
         }
+    }
+
+    private static String appendQueryParams(String url, Map<String, Object> queryParams) {
+        if (queryParams == null || queryParams.isEmpty()) {
+            return url;
+        }
+        StringJoiner joiner = new StringJoiner("&");
+        for (var entry : queryParams.entrySet()) {
+            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                    + "=" + URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
+        }
+        return url + (url.contains("?") ? "&" : "?") + joiner;
+    }
+
+    private static String reasonPhrase(int statusCode) {
+        return switch (statusCode) {
+            case 200 -> "OK";
+            case 201 -> "Created";
+            case 202 -> "Accepted";
+            case 204 -> "No Content";
+            case 400 -> "Bad Request";
+            case 401 -> "Unauthorized";
+            case 403 -> "Forbidden";
+            case 404 -> "Not Found";
+            case 405 -> "Method Not Allowed";
+            case 408 -> "Request Timeout";
+            case 409 -> "Conflict";
+            case 413 -> "Payload Too Large";
+            case 415 -> "Unsupported Media Type";
+            case 422 -> "Unprocessable Entity";
+            case 429 -> "Too Many Requests";
+            case 500 -> "Internal Server Error";
+            case 502 -> "Bad Gateway";
+            case 503 -> "Service Unavailable";
+            case 504 -> "Gateway Timeout";
+            default -> "HTTP " + statusCode;
+        };
     }
 }

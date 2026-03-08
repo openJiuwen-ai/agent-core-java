@@ -11,6 +11,11 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -88,11 +93,106 @@ public abstract class BaseOperation {
      */
     protected List<ToolCard> generateToolCards(List<String> methodNames) {
         return methodNames.stream()
-                .map(methodName -> (ToolCard) ToolCard.builder()
-                        .name(methodName)
-                        .description(name + "." + methodName)
+                .map(this::findMethod)
+                .filter(method -> method != null)
+                .map(method -> (ToolCard) ToolCard.builder()
+                        .name(method.getName())
+                        .description(humanize(method.getName()))
+                        .inputParams(buildInputSchema(method))
                         .build())
                 .toList();
+    }
+
+    private Method findMethod(String methodName) {
+        for (Method method : getClass().getMethods()) {
+            if (method.getName().equals(methodName) && method.getDeclaringClass() != Object.class) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Object> buildInputSchema(Method method) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        for (Parameter parameter : method.getParameters()) {
+            properties.put(parameter.getName(), buildParameterSchema(parameter));
+        }
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        return schema;
+    }
+
+    private Map<String, Object> buildParameterSchema(Parameter parameter) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        Class<?> parameterType = parameter.getType();
+        schema.put("description", humanize(parameter.getName()));
+
+        if (parameterType == String.class || parameterType == char.class || parameterType == Character.class) {
+            schema.put("type", "string");
+        } else if (parameterType == boolean.class || parameterType == Boolean.class) {
+            schema.put("type", "boolean");
+        } else if (parameterType == int.class || parameterType == Integer.class
+                || parameterType == long.class || parameterType == Long.class
+                || parameterType == short.class || parameterType == Short.class
+                || parameterType == byte.class || parameterType == Byte.class) {
+            schema.put("type", "integer");
+        } else if (parameterType == float.class || parameterType == Float.class
+                || parameterType == double.class || parameterType == Double.class) {
+            schema.put("type", "number");
+        } else if (parameterType.isEnum()) {
+            schema.put("type", "string");
+            Object[] constants = parameterType.getEnumConstants();
+            if (constants != null) {
+                schema.put("enum", java.util.Arrays.stream(constants).map(String::valueOf).toList());
+            }
+        } else if (parameterType.isArray() || List.class.isAssignableFrom(parameterType)) {
+            schema.put("type", "array");
+            schema.put("items", buildArrayItemSchema(parameterType, parameter.getParameterizedType()));
+        } else if (Map.class.isAssignableFrom(parameterType)) {
+            schema.put("type", "object");
+        } else {
+            schema.put("type", "object");
+        }
+
+        return schema;
+    }
+
+    private Map<String, Object> buildArrayItemSchema(Class<?> parameterType, Type genericType) {
+        Map<String, Object> items = new LinkedHashMap<>();
+        Class<?> itemType = Object.class;
+        if (parameterType.isArray()) {
+            itemType = parameterType.getComponentType();
+        } else if (genericType instanceof ParameterizedType parameterizedType
+                && parameterizedType.getActualTypeArguments().length > 0
+                && parameterizedType.getActualTypeArguments()[0] instanceof Class<?> typeClass) {
+            itemType = typeClass;
+        }
+
+        if (itemType == String.class || itemType == char.class || itemType == Character.class) {
+            items.put("type", "string");
+        } else if (itemType == int.class || itemType == Integer.class
+                || itemType == long.class || itemType == Long.class
+                || itemType == short.class || itemType == Short.class
+                || itemType == byte.class || itemType == Byte.class) {
+            items.put("type", "integer");
+        } else if (itemType == float.class || itemType == Float.class
+                || itemType == double.class || itemType == Double.class) {
+            items.put("type", "number");
+        } else if (itemType == boolean.class || itemType == Boolean.class) {
+            items.put("type", "boolean");
+        } else {
+            items.put("type", "object");
+        }
+        return items;
+    }
+
+    private String humanize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.replaceAll("([a-z])([A-Z])", "$1 $2").replace('_', ' ');
+        return normalized.toLowerCase();
     }
 
     /**

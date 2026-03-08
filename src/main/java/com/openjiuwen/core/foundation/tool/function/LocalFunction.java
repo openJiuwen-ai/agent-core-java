@@ -5,6 +5,7 @@ package com.openjiuwen.core.foundation.tool.function;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
@@ -50,12 +51,14 @@ public class LocalFunction extends Tool {
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        return func.apply(inputs);
+        Map<String, Object> validatedInputs = validateInputs(inputs, kwargs);
+        return func.apply(validatedInputs);
     }
 
     @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        Object result = func.apply(inputs);
+        Map<String, Object> validatedInputs = validateInputs(inputs, kwargs);
+        Object result = func.apply(validatedInputs);
 
         // If the function returns an Iterator, yield it directly
         if (result instanceof Iterator<?> iterator) {
@@ -71,21 +74,10 @@ public class LocalFunction extends Tool {
             return typedIterator;
         }
 
-        // Otherwise wrap single result as a single-element iterator
-        return new Iterator<>() {
-            private boolean hasNext = true;
-
-            @Override
-            public boolean hasNext() {
-                return hasNext;
-            }
-
-            @Override
-            public Object next() {
-                hasNext = false;
-                return result;
-            }
-        };
+        // Non-streaming function: throw error instead of silently wrapping
+        throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
+                "method", "stream", "reason", "func is not a streaming function (must return Iterator or Iterable)",
+                "card", getCard().toString());
     }
 
     /**
@@ -93,5 +85,16 @@ public class LocalFunction extends Tool {
      */
     public Function<Map<String, Object>, Object> getFunc() {
         return func;
+    }
+
+    /**
+     * Validate and format inputs against the tool card's input schema.
+     */
+    private Map<String, Object> validateInputs(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        Map<String, Object> inputParams = getCard().getInputParams();
+        if (inputParams != null && !inputParams.isEmpty()) {
+            return SchemaUtils.formatWithSchema(inputs, inputParams);
+        }
+        return inputs;
     }
 }

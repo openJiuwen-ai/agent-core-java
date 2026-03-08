@@ -7,7 +7,14 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,9 +56,12 @@ public final class SysOperationToolAdapter {
             }
 
             for (ToolCard toolCard : toolCards) {
-                String toolId = SysOperationCard.generateToolId(card.getId(), opType, toolCard.getName());
+                Method method = findToolMethod(subOp.getClass(), toolCard.getName());
+                if (method == null) {
+                    continue;
+                }
 
-                // Create a new card with the tool-specific ID
+                String toolId = SysOperationCard.generateToolId(card.getId(), opType, toolCard.getName());
                 ToolCard newCard = ToolCard.builder()
                         .id(toolId)
                         .name(toolCard.getName())
@@ -59,13 +69,8 @@ public final class SysOperationToolAdapter {
                         .inputParams(toolCard.getInputParams())
                         .build();
 
-                // Wrap as LocalFunction — in the real scenario, reflect to the method
-                LocalFunction localFunc = new LocalFunction(newCard, (Map<String, Object> inputs) -> {
-                    // Delegate to the actual operation method
-                    // This is a simplified version; in production, use reflection
-                    return "Operation " + toolId + " invoked with inputs: " + inputs;
-                });
-
+                LocalFunction localFunc = new LocalFunction(newCard,
+                        inputs -> invokeToolMethod(subOp, method, inputs != null ? inputs : Map.of()));
                 tools.add(new ToolEntry(toolId, localFunc));
             }
         }
@@ -81,5 +86,157 @@ public final class SysOperationToolAdapter {
      */
     public static String getToolIdPrefix(String sysOperationId) {
         return sysOperationId + ".";
+    }
+
+    private static Method findToolMethod(Class<?> operationClass, String methodName) {
+        for (Method method : operationClass.getMethods()) {
+            if (method.getName().equals(methodName)) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Object invokeToolMethod(BaseOperation operation, Method method, Map<String, Object> inputs) {
+        Object[] args = buildArguments(method, inputs);
+        try {
+            return method.invoke(operation, args);
+        } catch (InvocationTargetException e) {
+            Throwable target = e.getTargetException();
+            if (target instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (target instanceof Error error) {
+                throw error;
+            }
+            throw new RuntimeException(target);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to invoke sys operation method " + method.getName(), e);
+        }
+    }
+
+    private static Object[] buildArguments(Method method, Map<String, Object> inputs) {
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter parameter = parameters[i];
+            args[i] = convertValue(inputs.get(parameter.getName()), parameter.getType(), parameter.getParameterizedType());
+        }
+        return args;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object convertValue(Object rawValue, Class<?> targetType, Type genericType) {
+        if (rawValue == null) {
+            return defaultValue(targetType);
+        }
+        if (targetType.isInstance(rawValue)) {
+            return rawValue;
+        }
+        if (targetType == String.class) {
+            return String.valueOf(rawValue);
+        }
+        if (targetType == int.class || targetType == Integer.class) {
+            return rawValue instanceof Number ? ((Number) rawValue).intValue() : Integer.parseInt(String.valueOf(rawValue));
+        }
+        if (targetType == long.class || targetType == Long.class) {
+            return rawValue instanceof Number ? ((Number) rawValue).longValue() : Long.parseLong(String.valueOf(rawValue));
+        }
+        if (targetType == double.class || targetType == Double.class) {
+            return rawValue instanceof Number ? ((Number) rawValue).doubleValue() : Double.parseDouble(String.valueOf(rawValue));
+        }
+        if (targetType == boolean.class || targetType == Boolean.class) {
+            if (rawValue instanceof Boolean) {
+                return rawValue;
+            }
+            return Boolean.parseBoolean(String.valueOf(rawValue));
+        }
+        if (targetType == int[].class) {
+            if (rawValue instanceof List<?> list) {
+                int[] result = new int[list.size()];
+                for (int i = 0; i < list.size(); i++) {
+                    Object item = list.get(i);
+                    result[i] = item instanceof Number ? ((Number) item).intValue() : Integer.parseInt(String.valueOf(item));
+                }
+                return result;
+            }
+            return rawValue;
+        }
+        if (Map.class.isAssignableFrom(targetType) && rawValue instanceof Map<?, ?> mapValue) {
+            return convertMap(mapValue, genericType);
+        }
+        if (List.class.isAssignableFrom(targetType) && rawValue instanceof List<?> listValue) {
+            return convertList(listValue, genericType);
+        }
+        if (Iterator.class.isAssignableFrom(targetType)) {
+            if (rawValue instanceof Iterator<?>) {
+                return rawValue;
+            }
+            if (rawValue instanceof Iterable<?> iterable) {
+                return iterable.iterator();
+            }
+        }
+        return rawValue;
+    }
+
+    private static Object defaultValue(Class<?> targetType) {
+        if (!targetType.isPrimitive()) {
+            return null;
+        }
+        if (targetType == boolean.class) {
+            return false;
+        }
+        if (targetType == int.class) {
+            return 0;
+        }
+        if (targetType == long.class) {
+            return 0L;
+        }
+        if (targetType == double.class) {
+            return 0D;
+        }
+        if (targetType == float.class) {
+            return 0F;
+        }
+        if (targetType == short.class) {
+            return (short) 0;
+        }
+        if (targetType == byte.class) {
+            return (byte) 0;
+        }
+        if (targetType == char.class) {
+            return '\0';
+        }
+        return null;
+    }
+
+    private static Map<?, ?> convertMap(Map<?, ?> rawMap, Type genericType) {
+        Type valueType = getGenericArgument(genericType, 1);
+        if (valueType == String.class) {
+            Map<String, String> converted = new LinkedHashMap<>();
+            rawMap.forEach((key, value) -> converted.put(String.valueOf(key), value == null ? null : String.valueOf(value)));
+            return converted;
+        }
+        Map<String, Object> converted = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> converted.put(String.valueOf(key), value));
+        return converted;
+    }
+
+    private static List<?> convertList(List<?> rawList, Type genericType) {
+        Type itemType = getGenericArgument(genericType, 0);
+        if (itemType == String.class) {
+            return rawList.stream().map(String::valueOf).toList();
+        }
+        return rawList;
+    }
+
+    private static Type getGenericArgument(Type genericType, int index) {
+        if (genericType instanceof ParameterizedType parameterizedType) {
+            Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
+            if (index >= 0 && index < actualTypeArguments.length) {
+                return actualTypeArguments[index];
+            }
+        }
+        return Object.class;
     }
 }

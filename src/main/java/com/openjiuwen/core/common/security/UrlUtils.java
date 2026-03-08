@@ -34,7 +34,7 @@ public final class UrlUtils {
                 "illegal url protocol", null, null, null);
         }
         try {
-            URI uri = new URI(url);
+            URI uri = new URI(sanitizeUrl(url));
             String hostname = uri.getHost();
             InetAddress addr = InetAddress.getByName(hostname);
             if (isInnerIpAddress(addr)) {
@@ -93,6 +93,9 @@ public final class UrlUtils {
 
     private static boolean isInnerIpAddress(InetAddress addr) {
         String ssrfEnabled = System.getenv("SSRF_PROTECT_ENABLED");
+        if (ssrfEnabled == null || ssrfEnabled.isBlank()) {
+            ssrfEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
+        }
         if ("false".equalsIgnoreCase(ssrfEnabled)) {
             return false;
         }
@@ -100,6 +103,10 @@ public final class UrlUtils {
             || addr.isSiteLocalAddress()
             || addr.isLinkLocalAddress()
             || addr.isAnyLocalAddress();
+    }
+
+    private static String sanitizeUrl(String url) {
+        return url.replaceAll("\\{[^/{}]+}", "placeholder");
     }
 
     private static List<String> getNoProxyList() {

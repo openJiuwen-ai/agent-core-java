@@ -46,6 +46,7 @@ public enum LogEventType {
 
     // Memory events
     MEMORY_STORE("memory_store"),
+    MEMORY_INIT("memory_init"),
     MEMORY_RETRIEVE("memory_retrieve"),
     MEMORY_DELETE("memory_delete"),
     MEMORY_UPDATE("memory_update"),

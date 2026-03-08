@@ -4,6 +4,9 @@
 package com.openjiuwen.core.common.logging;
 
 import java.util.Map;
+import java.util.logging.Filter;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
 
 /**
  * Logger protocol — every logger implementation must satisfy this contract.
@@ -19,6 +22,10 @@ public interface LoggerProtocol {
 
     void warning(String msg, Object... args);
 
+    default void warn(String msg, Object... args) {
+        warning(msg, args);
+    }
+
     void error(String msg, Object... args);
 
     void critical(String msg, Object... args);
@@ -29,6 +36,31 @@ public interface LoggerProtocol {
     void log(int level, String msg, Object... args);
 
     void setLevel(int level);
+
+    /** Add a log handler. */
+    default void addHandler(Handler handler) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
+
+    /** Remove a log handler. */
+    default void removeHandler(Handler handler) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
+
+    /** Add a log filter. */
+    default void addFilter(Filter filter) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
+
+    /** Remove a log filter. */
+    default void removeFilter(Filter filter) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
+
+    /** Return the inner logger object. */
+    default Logger logger() {
+        return null;
+    }
 
     /** Get logger configuration. */
     Map<String, Object> getConfig();

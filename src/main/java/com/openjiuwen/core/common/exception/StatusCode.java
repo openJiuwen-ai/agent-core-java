@@ -289,6 +289,10 @@ public enum StatusCode {
     RETRIEVAL_RERANKER_REQUEST_CALL_FAILED(155600, "retrieval reranker_request call failed, reason: {error_msg}"),
     RETRIEVAL_RERANKER_UNREACHABLE_CALL_FAILED(155601, "retrieval reranker call failed, reason: {error_msg}"),
     RETRIEVAL_RERANKER_INPUT_INVALID(155602, "retrieval reranker_input is invalid, reason: {error_msg}"),
+    RETRIEVAL_QUERY_REWRITER_INPUT_INVALID(155603, "retrieval query_rewriter_input is invalid, reason: {error_msg}"),
+    RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED(155604, "retrieval query_rewriter_llm invoke failed, reason: {error_msg}"),
+    RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID(155605, "retrieval query_rewriter_output is invalid, reason: {error_msg}"),
+    RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND(155606, "retrieval query_rewriter_prompt not found, reason: {error_msg}"),
 
     // =============================================================================================================
     // Memory Engine 158000 – 159999
@@ -303,6 +307,9 @@ public enum StatusCode {
     MEMORY_STORE_INIT_FAILED(158006, "failed to init {store_type}, reason: {error_msg}"),
     MEMORY_CONNECT_STORE_EXECUTION_ERROR(158007, "failed to connect {store_type}, reason: {error_msg}"),
     MEMORY_STORE_VALIDATION_INVALID(158008, "{store_type} validation failed, reason: {error_msg}"),
+    MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR(158009, "memory migration failed, reason: {error_msg}"),
+    MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010, "failed to register operation for entity {entity_key} with schema_version {schema_version}, reason: {error_msg}"),
+    MEMORY_INIT_ERROR(158011, "memory initialization failed, reason: {error_msg}"),
 
     // =============================================================================================================
     // Optimization Toolchain 170000 - 179999

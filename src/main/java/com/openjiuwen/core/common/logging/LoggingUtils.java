@@ -3,6 +3,14 @@
  */
 package com.openjiuwen.core.common.logging;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.PathChecker;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 /**
  * Logging utility functions.
  * <p>
@@ -63,5 +71,47 @@ public final class LoggingUtils {
             maxBytes = defaultLogMaxBytes;
         }
         return maxBytes;
+    }
+
+    /**
+     * Normalize log path (resolve to real path) and validate it is not a sensitive path.
+     * <p>
+     * Mirrors Python's {@code normalize_and_validate_log_path()}.
+     *
+     * @param pathValue the raw path value (String or Path)
+     * @return the normalized, validated real path string
+     * @throws RuntimeException if the path is invalid, empty, or points to a sensitive location
+     */
+    public static String normalizeAndValidateLogPath(Object pathValue) {
+        if (pathValue == null) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the path_value is null");
+        }
+
+        String pathStr = pathValue.toString().trim();
+        if (pathStr.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the path_str is empty");
+        }
+
+        String realPath;
+        try {
+            Path path = Paths.get(pathStr).toRealPath();
+            realPath = path.toString();
+        } catch (IOException | IllegalArgumentException e) {
+            try {
+                realPath = Paths.get(pathStr).toAbsolutePath().normalize().toString();
+            } catch (Exception ex) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                        "error_msg", "cannot resolve path: " + pathStr);
+            }
+        }
+
+        if (PathChecker.isSensitivePath(realPath)) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the real_path is sensitive: " + realPath);
+        }
+
+        return realPath;
     }
 }
