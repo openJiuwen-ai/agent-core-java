@@ -314,10 +314,16 @@ public class Workflow {
         BaseSession parent = null;
         String sessionId = null;
         Map<String, Object> envs = null;
+        WorkflowSession existingWorkflowSession = null;
         if (session instanceof WorkflowSessionApi sessionApi) {
             parent = sessionApi.getParent();
             sessionId = sessionApi.getSessionId();
             envs = sessionApi.getEnvs();
+        } else if (session instanceof WorkflowSession workflowSession) {
+            existingWorkflowSession = workflowSession;
+            parent = workflowSession.parent();
+            sessionId = workflowSession.sessionId();
+            envs = workflowSession.config() != null ? workflowSession.config().getEnvs() : null;
         } else if (session instanceof BaseSession baseSession) {
             parent = baseSession;
             sessionId = baseSession.sessionId();
@@ -327,12 +333,15 @@ public class Workflow {
                     "card", card.getId());
         }
 
-        WorkflowSession workflowSession = new WorkflowSession(
-                card.getId(),
-                parent,
-                sessionId,
-                InMemoryState.create(),
-                session instanceof WorkflowSessionApi sessionApi ? sessionApi.getCallbackManager() : null);
+        WorkflowSession workflowSession = existingWorkflowSession != null
+                ? existingWorkflowSession
+                : new WorkflowSession(
+                        card.getId(),
+                        parent,
+                        sessionId,
+                        InMemoryState.create(),
+                        session instanceof WorkflowSessionApi sessionApi ? sessionApi.getCallbackManager() : null);
+        workflowSession.setWorkflowId(card.getId());
         if (envs != null) {
             workflowSession.config().setEnvs(envs);
         }

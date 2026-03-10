@@ -201,6 +201,26 @@ ProxySession(BaseSession stub)
 | `sessionId()` | `String` | 委托给 stub |
 | `checkpointer()` | `Object` | 委托给 stub |
 
+### 1.7 AgentGroupSessionApi
+
+面向多智能体分组场景的用户侧 Session API，内部包装 `AgentSession`，用于 `multiagent` 模块共享状态与流输出。
+
+**包路径**：`com.openjiuwen.core.session`
+
+**构造方法**：
+```java
+AgentGroupSessionApi(String sessionId, Map<String, Object> envs)
+AgentGroupSessionApi(String sessionId)
+AgentGroupSessionApi()
+```
+
+| 方法签名 | 返回类型 | 说明 |
+|----------|----------|------|
+| `getSessionId()` | `String` | 获取会话 ID |
+| `getEnv(String key, Object defaultValue)` | `Object` | 读取环境变量 |
+| `getInner()` | `AgentSession` | 获取内部 `AgentSession` 实例 |
+| `create(String sessionId, Map<String, Object> envs)` | `AgentGroupSessionApi` | 创建分组 Session（静态工厂） |
+
 ---
 
 ## 2. 回调（callback）

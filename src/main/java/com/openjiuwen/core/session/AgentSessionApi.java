@@ -22,7 +22,7 @@ import java.util.UUID;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.agent.Session}.
  */
-public class AgentSessionApi {
+public class AgentSessionApi implements Session {
 
     private final String sessionId;
     private final AgentSession inner;
@@ -104,6 +104,11 @@ public class AgentSessionApi {
         return inner.state().getGlobal(key);
     }
 
+    @Override
+    public Object getState(String key) {
+        return getState((Object) key);
+    }
+
     public Map<String, Object> dumpState() {
         return inner.state().dump();
     }
@@ -149,7 +154,7 @@ public class AgentSessionApi {
      *
      * @param inputs the inputs map
      */
-    public void preRun(Map<String, Object> inputs) {
+    public void preRun(Object inputs) {
         if (preRunDone) {
             return;
         }

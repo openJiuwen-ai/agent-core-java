@@ -9,18 +9,18 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,18 +30,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Corresponds to Python's react_agent tool calling pattern.
  */
 @Tag("system-test")
-class LLMToolCallingSystemTest {
+@Timeout(value = 90, unit = TimeUnit.SECONDS)
+class LLMToolCallingSystemTest extends SystemTestSupport {
 
-    private static Model model;
+    private static final float REQUEST_TIMEOUT_SECONDS = 20.0f;
 
-    @BeforeAll
-    static void setUp() {
+    private Model model;
+
+    @BeforeEach
+    void setUp() {
+        assumeRemoteModelAvailable();
+
         ModelClientConfig clientConfig = ModelClientConfig.builder()
                 .clientProvider(ApiConfigLoader.getModelProvider())
                 .apiKey(ApiConfigLoader.getApiKey())
                 .apiBase(ApiConfigLoader.getApiBase())
-                .timeout(60.0)
-                .maxRetries(2)
+                .timeout(REQUEST_TIMEOUT_SECONDS)
+                .maxRetries(0)
                 .verifySsl(ApiConfigLoader.getSslVerify())
                 .build();
 
@@ -49,7 +54,7 @@ class LLMToolCallingSystemTest {
                 .modelName(ApiConfigLoader.getModelName())
                 .temperature(0.1)
                 .topP(0.9)
-                .maxTokens(1024)
+                .maxTokens(256)
                 .build();
 
         model = new Model(clientConfig, requestConfig);
@@ -65,22 +70,19 @@ class LLMToolCallingSystemTest {
                 .inputParams(Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "city", Map.of("type", "string",
+                                "city", Map.of(
+                                        "type", "string",
                                         "description", "The city name to get weather for")),
                         "required", List.of("city")))
                 .build();
 
-        ToolInfo toolInfo = weatherCard.toolInfo();
-        List<ToolInfo> tools = List.of(toolInfo);
-
-        List<UserMessage> messages = List.of(
-                new UserMessage("北京今天天气怎么样？"));
+        List<ToolInfo> tools = List.of(weatherCard.toolInfo());
+        List<UserMessage> messages = List.of(new UserMessage("What is the weather in Beijing today?"));
 
         AssistantMessage response = model.invoke(
-                messages, tools, 0.1f, null, null, 512, null, null, null, null);
+                messages, tools, 0.1f, null, null, 128, null, null, REQUEST_TIMEOUT_SECONDS, null);
 
         assertNotNull(response, "Response should not be null");
-        // The model may either produce tool_calls or a direct text reply
         String content = response.getContentAsString();
         boolean hasToolCalls = response.getToolCalls() != null && !response.getToolCalls().isEmpty();
         boolean hasContent = content != null && !content.isBlank();
@@ -88,7 +90,6 @@ class LLMToolCallingSystemTest {
                 + ", HasContent=" + hasContent
                 + ", ToolCalls=" + response.getToolCalls()
                 + ", Content=" + content);
-        // At least one of tool call or content should be present
         assertTrue(hasToolCalls || hasContent,
                 "Response should contain either tool calls or content");
     }
@@ -103,7 +104,8 @@ class LLMToolCallingSystemTest {
                 .inputParams(Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "city", Map.of("type", "string",
+                                "city", Map.of(
+                                        "type", "string",
                                         "description", "City name")),
                         "required", List.of("city")))
                 .build();
@@ -115,27 +117,26 @@ class LLMToolCallingSystemTest {
                 .inputParams(Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "expression", Map.of("type", "string",
+                                "expression", Map.of(
+                                        "type", "string",
                                         "description", "Math expression to evaluate")),
                         "required", List.of("expression")))
                 .build();
 
         List<ToolInfo> tools = List.of(weatherCard.toolInfo(), calcCard.toolInfo());
-
-        List<UserMessage> messages = List.of(
-                new UserMessage("请计算 123 * 456 的结果"));
+        List<UserMessage> messages = List.of(new UserMessage("Calculate 123 * 456."));
 
         AssistantMessage response = model.invoke(
-                messages, tools, 0.1f, null, null, 512, null, null, null, null);
+                messages, tools, 0.1f, null, null, 128, null, null, REQUEST_TIMEOUT_SECONDS, null);
 
-        assertNotNull(response);
+        assertNotNull(response, "Response should not be null");
         boolean hasToolCalls = response.getToolCalls() != null && !response.getToolCalls().isEmpty();
         boolean hasContent = response.getContentAsString() != null
                 && !response.getContentAsString().isBlank();
         System.out.println("[MultiTool] HasToolCalls=" + hasToolCalls
                 + ", Content=" + response.getContentAsString()
                 + ", ToolCalls=" + response.getToolCalls());
-        org.junit.jupiter.api.Assertions.assertTrue(hasToolCalls || hasContent,
+        assertTrue(hasToolCalls || hasContent,
                 "Response should have either tool calls or content");
     }
 }

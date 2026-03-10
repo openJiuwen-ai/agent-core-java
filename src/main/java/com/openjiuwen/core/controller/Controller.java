@@ -12,6 +12,7 @@ import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventQueue;
 import com.openjiuwen.core.controller.modules.TaskExecutor;
 import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
+import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
 import com.openjiuwen.core.controller.modules.TaskManagerState;
 import com.openjiuwen.core.controller.modules.TaskScheduler;
@@ -20,6 +21,8 @@ import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
 import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 
@@ -334,6 +337,7 @@ public class Controller {
 
             // Publish input event
             eventQueue.publishEvent(agentId, session, inputs);
+            emitCompletionSignalIfIdle(session);
 
             // Return an iterator that reads from session stream
             @SuppressWarnings("deprecation")
@@ -359,6 +363,25 @@ public class Controller {
         taskScheduler.getSessions().remove(sessionId);
         Loggers.CONTROLLER.info("Session {} completed, {} active sessions remaining",
                 sessionId, taskScheduler.getSessions().size());
+    }
+
+    private void emitCompletionSignalIfIdle(AgentSessionApi session) {
+        String sessionId = session.getSessionId();
+        List<Task> sessionTasks = taskManager.getTask(TaskFilter.bySessionId(sessionId));
+        boolean hasActiveTask = sessionTasks.stream().anyMatch(task ->
+                task.getStatus() == TaskStatus.SUBMITTED || task.getStatus() == TaskStatus.WORKING);
+
+        if (hasActiveTask) {
+            return;
+        }
+
+        ControllerOutputChunk completionChunk = new ControllerOutputChunk(
+                0,
+                ControllerOutputPayload.allTasksProcessed("All tasks have been successfully processed"),
+                true
+        );
+        session.writeStream(completionChunk);
+        Loggers.CONTROLLER.info("Immediate completion signal sent for idle session {}", sessionId);
     }
 
     /**

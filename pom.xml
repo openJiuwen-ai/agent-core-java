@@ -33,6 +33,8 @@
         <mockito.version>5.11.0</mockito.version>
         <assertj.version>3.25.3</assertj.version>
         <jacoco.version>0.8.11</jacoco.version>
+        <surefire.groups></surefire.groups>
+        <surefire.excludedGroups>system-test</surefire.excludedGroups>
     </properties>
 
     <dependencies>
@@ -151,6 +153,8 @@
                 <version>3.2.5</version>
                 <configuration>
                     <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                    <groups>${surefire.groups}</groups>
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
             <plugin>
@@ -174,4 +178,14 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>system-tests</id>
+            <properties>
+                <surefire.groups>system-test</surefire.groups>
+                <surefire.excludedGroups></surefire.excludedGroups>
+            </properties>
+        </profile>
+    </profiles>
 </project>

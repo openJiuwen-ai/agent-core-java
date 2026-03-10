@@ -471,6 +471,18 @@ DefaultLogger(String logType, Map<String, Object> config)
 | `ARRAY` | 数组 |
 | `OBJECT` | 对象 |
 
+### 4.4 Part
+
+Artifact 内容片段模型，用于描述单个结果片段的类型、正文与附加元数据。
+
+**包路径**：`com.openjiuwen.core.common.schema`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | `String` | 片段类型，如文本、代码、文件等 |
+| `content` | `String` | 片段正文内容 |
+| `metadata` | `Map<String, Object>` | 扩展元数据 |
+
 ---
 
 ## 5. 安全工具（security）
