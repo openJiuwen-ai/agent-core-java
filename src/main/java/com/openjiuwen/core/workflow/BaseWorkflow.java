@@ -11,6 +11,7 @@ import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.graph.stream_actor.StreamGraph;
+import com.openjiuwen.core.graph.visualization.Drawable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.ProxySession;
 import com.openjiuwen.core.session.internal.RouterSession;
@@ -36,7 +37,7 @@ import java.util.regex.Pattern;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow._workflow.BaseWorkflow}.
  */
-public class BaseWorkflow {
+public class BaseWorkflow implements HasDrawable {
 
     private static final Pattern COMP_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
     private static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
@@ -46,8 +47,7 @@ public class BaseWorkflow {
     private final WorkflowSpec workflowSpec;
     private final StreamGraph streamActor;
     private final ProxySession session;
-    // Drawable is optional; kept as Object to avoid hard dependency on visualization module
-    private Object drawable;
+    private final Drawable drawable;
 
     public BaseWorkflow() {
         this(null, null);
@@ -60,7 +60,7 @@ public class BaseWorkflow {
         this.workflowSpec = this.workflowConfig.getSpec();
         this.streamActor = new StreamGraph();
         this.session = new ProxySession();
-        this.drawable = null;
+        this.drawable = isDrawableEnabled() ? new Drawable() : null;
     }
 
     public WorkflowConfig getConfig() {
@@ -101,6 +101,9 @@ public class BaseWorkflow {
 
         boolean wait = waitForAll != null && waitForAll;
         workflowComp.addComponent(graph, compId, wait);
+        if (drawable != null) {
+            drawable.addNode(compId, workflowComp);
+        }
 
         return this;
     }
@@ -108,6 +111,9 @@ public class BaseWorkflow {
     public BaseWorkflow startComp(String startCompId) {
         validateCompId(startCompId);
         graph.startNode(startCompId);
+        if (drawable != null) {
+            drawable.setStartNode(startCompId);
+        }
         workflowSpec.getStartNodes().add(startCompId);
         return this;
     }
@@ -115,6 +121,9 @@ public class BaseWorkflow {
     public BaseWorkflow endComp(String endCompId) {
         validateCompId(endCompId);
         graph.endNode(endCompId);
+        if (drawable != null) {
+            drawable.setEndNode(endCompId);
+        }
         return this;
     }
 
@@ -127,11 +136,17 @@ public class BaseWorkflow {
             List<String> srcList = (List<String>) srcCompId;
             for (String sourceId : srcList) {
                 workflowSpec.getEdges().computeIfAbsent(sourceId, k -> new ArrayList<>()).add(targetCompId);
+                if (drawable != null) {
+                    drawable.addEdge(sourceId, targetCompId);
+                }
             }
         } else {
             workflowSpec.getEdges()
                     .computeIfAbsent((String) srcCompId, k -> new ArrayList<>())
                     .add(targetCompId);
+            if (drawable != null) {
+                drawable.addEdge((String) srcCompId, targetCompId);
+            }
         }
         return this;
     }
@@ -148,6 +163,9 @@ public class BaseWorkflow {
         workflowSpec.getStreamEdges()
                 .computeIfAbsent(srcCompId, k -> new ArrayList<>())
                 .add(targetCompId);
+        if (drawable != null) {
+            drawable.addEdge(srcCompId, targetCompId, false, true, null);
+        }
         return this;
     }
 
@@ -177,6 +195,9 @@ public class BaseWorkflow {
                     "src_comp_id", srcCompId,
                     "reason", "router must be a callable function, got " + router.getClass().getSimpleName());
         }
+        if (drawable != null) {
+            drawable.addEdge(srcCompId, null, true, false, router);
+        }
         return this;
     }
 
@@ -203,6 +224,30 @@ public class BaseWorkflow {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
                     "reason", e.getMessage());
         }
+    }
+
+    public String toMermaid(String title, int expandSubgraph, boolean enableAnimation) {
+        if (drawable == null) {
+            return "";
+        }
+        return drawable.toMermaid(title, expandSubgraph, enableAnimation);
+    }
+
+    public String toMermaid() {
+        return toMermaid("", 0, false);
+    }
+
+    @Override
+    public Drawable getDrawable() {
+        return drawable;
+    }
+
+    static boolean isDrawableEnabled() {
+        String drawableFlag = System.getenv(WORKFLOW_DRAWABLE);
+        if (drawableFlag == null || drawableFlag.isBlank()) {
+            drawableFlag = System.getProperty(WORKFLOW_DRAWABLE);
+        }
+        return "true".equalsIgnoreCase(drawableFlag);
     }
 
     /**

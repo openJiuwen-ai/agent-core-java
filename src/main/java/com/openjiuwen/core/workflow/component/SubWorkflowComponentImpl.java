@@ -38,14 +38,22 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
     @SuppressWarnings("unchecked")
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : Map.of();
-        return subWorkflow.invokeSubWorkflow(inputsMap.get(Constant.INPUTS_KEY), session, context);
+        return subWorkflow.invokeSubWorkflow(
+                inputsMap.get(Constant.INPUTS_KEY),
+                session,
+                context,
+                inputsMap.get(Constant.CONFIG_KEY));
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : Map.of();
-        return subWorkflow.stream(inputsMap.get(Constant.INPUTS_KEY), session, context, true);
+        return subWorkflow.streamSubWorkflow(
+                inputsMap.get(Constant.INPUTS_KEY),
+                session,
+                context,
+                inputsMap.get(Constant.CONFIG_KEY));
     }
 
     @Override
@@ -65,6 +73,6 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
     public HasDrawable getSubWorkflowInternal() {
         // The Drawable accesses workflow._internal which is the BaseWorkflow
         // This is kept as HasDrawable interface — Workflow would need to expose internal
-        return null;
+        return subWorkflow.getInternalDrawable();
     }
 }

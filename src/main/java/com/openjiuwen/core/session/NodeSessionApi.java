@@ -65,7 +65,7 @@ public class NodeSessionApi {
      * @param value the interaction value descriptor
      * @return the user inputs
      */
-    public Map<String, Object> interact(Object value) {
+    public <T> T interact(Object value) {
         if (streamMode) {
             throw new UnsupportedOperationException(
                     "Interact during streaming process (transform or collect) is not supported. " +
@@ -75,7 +75,7 @@ public class NodeSessionApi {
             interaction = new WorkflowInteraction(inner);
         }
         @SuppressWarnings("unchecked")
-        Map<String, Object> userInputs = (Map<String, Object>) interaction.waitUserInputs(value);
+        T userInputs = (T) interaction.waitUserInputs(value);
         TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
         return userInputs;
     }

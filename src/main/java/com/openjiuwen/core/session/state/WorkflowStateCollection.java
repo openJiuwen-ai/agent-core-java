@@ -179,13 +179,9 @@ public class WorkflowStateCollection implements State {
         if (ioState == null || results == null) {
             return;
         }
-        if (results instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> data = (Map<String, Object>) results;
-            Map<String, Object> wrappedData = new HashMap<>();
-            wrappedData.put(nodeId, data);
-            ioState.updateById(nodeId, wrappedData);
-        }
+        Map<String, Object> wrappedData = new HashMap<>();
+        wrappedData.put(nodeId, results);
+        ioState.updateById(nodeId, wrappedData);
     }
 
     /**

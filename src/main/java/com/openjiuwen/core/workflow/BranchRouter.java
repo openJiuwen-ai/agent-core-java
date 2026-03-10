@@ -21,8 +21,6 @@ import java.util.List;
  */
 public class BranchRouter implements Router {
 
-    private static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
-
     private final List<Branch> branches = new ArrayList<>();
     private BaseSession session;
     private final boolean reportTrace;
@@ -30,8 +28,7 @@ public class BranchRouter implements Router {
 
     public BranchRouter(boolean reportTrace) {
         this.reportTrace = reportTrace;
-        String drawableEnv = System.getenv(WORKFLOW_DRAWABLE);
-        if (drawableEnv != null && drawableEnv.equalsIgnoreCase("true")) {
+        if (BaseWorkflow.isDrawableEnabled()) {
             this.drawableBranchRouter = new DrawableBranchRouter(new ArrayList<>(), new ArrayList<>());
         }
     }

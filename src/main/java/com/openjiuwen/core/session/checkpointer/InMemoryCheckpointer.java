@@ -7,11 +7,13 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
@@ -91,6 +93,11 @@ public class InMemoryCheckpointer extends Checkpointer {
             throw new RuntimeException(exception);
         }
 
+        if (result instanceof Map<?, ?> resultMap && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
+            saveWorkflowCheckpoint(workflowId, sessionId, session, "workflow interruption");
+            return;
+        }
+
         // Normal completion - clear checkpoints
         Loggers.SESSION.info("Clear workflow checkpoints on completion, sessionId={}, workflowId={}",
                 sessionId, workflowId);
@@ -105,7 +112,15 @@ public class InMemoryCheckpointer extends Checkpointer {
             }
             workflowStore.clear(workflowId);
             if (workflowStore.isEmpty()) {
-                workflowStores.remove(sessionId);
+                BaseSession parent = null;
+                try {
+                    parent = (BaseSession) session.getClass().getMethod("parent").invoke(session);
+                } catch (Exception ignored) {
+                    // Best effort: only preserve parent-owned stores when session exposes parent().
+                }
+                if (!(parent instanceof AgentSession)) {
+                    workflowStores.remove(sessionId);
+                }
             }
         }
     }

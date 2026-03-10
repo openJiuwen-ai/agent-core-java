@@ -7,21 +7,24 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
+import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
+import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.SubWorkflowSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.Tracer;
+import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import java.util.ArrayList;
@@ -196,22 +199,28 @@ public class Workflow {
         WorkflowSession workflowSession = createWorkflowSession(session, List.of(StreamMode.OUTPUT));
 
         try {
-            executeCompiledGraph(inputs, workflowSession, context, Map.of());
-            closeStreamEmitter(workflowSession);
-            Object result;
-            if (isStreaming) {
-                result = workflowSession.streamWriterManager() != null
-                        ? workflowSession.streamWriterManager().collectStreamOutput()
-                        : List.of();
-            } else {
-                result = workflowSession.state() instanceof WorkflowStateCollection
-                        ? ((WorkflowStateCollection) workflowSession.state()).getOutputs(endCompId)
-                        : null;
+            traceWorkflowStart(workflowSession, inputs);
+            Object executionResult;
+            try {
+                executionResult = executeCompiledGraph(inputs, workflowSession, context, null);
+            } finally {
+                traceWorkflowDone(workflowSession);
+                closeStreamEmitter(workflowSession);
             }
+            List<Object> outputChunks = collectOutputChunks(workflowSession);
+            if (isInterrupted(executionResult, outputChunks)) {
+                return new WorkflowOutput(outputChunks, WorkflowExecutionState.INPUT_REQUIRED);
+            }
+            Object result = isStreaming
+                    ? outputChunks
+                    : workflowSession.state() instanceof WorkflowStateCollection
+                            ? ((WorkflowStateCollection) workflowSession.state()).getOutputs(endCompId)
+                            : null;
             return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
         } catch (Exception e) {
             throw wrapWorkflowException(e);
         } finally {
+            resetGraphExecutionState();
             workflowSession.close();
         }
     }
@@ -232,8 +241,13 @@ public class Workflow {
         }
         WorkflowSession workflowSession = createWorkflowSession(session, List.of(StreamMode.OUTPUT));
         try {
-            executeCompiledGraph(inputs, workflowSession, context, Map.of());
-            closeStreamEmitter(workflowSession);
+            traceWorkflowStart(workflowSession, inputs);
+            try {
+                executeCompiledGraph(inputs, workflowSession, context, null);
+            } finally {
+                traceWorkflowDone(workflowSession);
+                closeStreamEmitter(workflowSession);
+            }
             List<Object> chunks = workflowSession.streamWriterManager() != null
                     ? workflowSession.streamWriterManager().collectStreamOutput()
                     : List.of();
@@ -241,6 +255,7 @@ public class Workflow {
         } catch (Exception e) {
             throw wrapWorkflowException(e);
         } finally {
+            resetGraphExecutionState();
             workflowSession.close();
         }
     }
@@ -253,16 +268,28 @@ public class Workflow {
      * Generate a Mermaid diagram of the workflow.
      */
     public String draw(String title, String outputFormat, Object expandSubgraph) {
-        return "";
+        if (outputFormat != null && !"mermaid".equalsIgnoreCase(outputFormat)) {
+            return "";
+        }
+        return internal.toMermaid(title == null ? "" : title, normalizeExpandSubgraph(expandSubgraph), false);
+    }
+
+    public HasDrawable getInternalDrawable() {
+        return internal;
     }
 
     // ======================= Private Methods =======================
 
     @SuppressWarnings("unchecked")
     public Object invokeSubWorkflow(Object inputs, Object session, ModelContext context) {
+        return invokeSubWorkflow(inputs, session, context, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Object invokeSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
         SubWorkflowSession subSession = createSubWorkflowSession(session);
         try {
-            executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, Map.of());
+            executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, config);
             if (isStreaming) {
                 return drainSubWorkflowStream(subSession);
             }
@@ -274,12 +301,17 @@ public class Workflow {
         } catch (Exception e) {
             throw wrapWorkflowException(e);
         } finally {
+            resetGraphExecutionState();
             subSession.close();
         }
     }
 
-    private Iterator<Object> streamSubWorkflow(Object inputs, Object session, ModelContext context) {
-        Object results = invokeSubWorkflow(inputs, session, context);
+    public Iterator<Object> streamSubWorkflow(Object inputs, Object session, ModelContext context) {
+        return streamSubWorkflow(inputs, session, context, null);
+    }
+
+    public Iterator<Object> streamSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
+        Object results = invokeSubWorkflow(inputs, session, context, config);
         if (results instanceof List<?> list) {
             @SuppressWarnings("unchecked")
             List<Object> chunks = (List<Object>) list;
@@ -289,14 +321,15 @@ public class Workflow {
     }
 
     @SuppressWarnings("unchecked")
-    private void executeCompiledGraph(Object inputs, BaseSession session, ModelContext context, Map<String, Object> config) {
+    private Object executeCompiledGraph(Object inputs, BaseSession session, ModelContext context, Object config) {
         internal.autoCompleteAbilities();
         session.config().addWorkflowConfig(card.getId(), internal.getConfig());
         ExecutableGraph<?, ?> compiled = internal.compile(session, context);
         ExecutableGraph<Object, Object> typedCompiled = (ExecutableGraph<Object, Object>) compiled;
-        typedCompiled.invoke(Map.of(
-                Constant.INPUTS_KEY, inputs != null ? inputs : Map.of(),
-                Constant.CONFIG_KEY, config != null ? config : Map.of()), session);
+        java.util.Map<String, Object> graphInputs = new java.util.HashMap<>();
+        graphInputs.put(Constant.INPUTS_KEY, inputs != null ? inputs : Map.of());
+        graphInputs.put(Constant.CONFIG_KEY, config);
+        return typedCompiled.invoke(graphInputs, session);
     }
 
     private RuntimeException wrapWorkflowException(Exception e) {
@@ -345,6 +378,7 @@ public class Workflow {
         if (envs != null) {
             workflowSession.config().setEnvs(envs);
         }
+        workflowSession.config().addWorkflowConfig(card.getId(), internal.getConfig());
         workflowSession.setStreamWriterManager(new StreamWriterManager(new StreamEmitter(), streamModes));
         workflowSession.setActorManager(buildActorManager(workflowSession, false));
         if (workflowSession.tracer() == null) {
@@ -408,6 +442,49 @@ public class Workflow {
         return messages;
     }
 
+    private List<Object> collectOutputChunks(WorkflowSession workflowSession) {
+        if (workflowSession.streamWriterManager() == null) {
+            return List.of();
+        }
+        return workflowSession.streamWriterManager().collectStreamOutput();
+    }
+
+    private boolean isInterrupted(Object executionResult, List<Object> outputChunks) {
+        if (executionResult instanceof Map<?, ?> resultMap
+                && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
+            return true;
+        }
+        for (Object chunk : outputChunks) {
+            if (chunk instanceof OutputSchema outputSchema
+                    && Constant.INTERACTION.equals(outputSchema.getType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void resetGraphExecutionState() {
+        if (internal.getGraph() instanceof PregelGraph pregelGraph) {
+            pregelGraph.reset();
+        }
+    }
+
+    private void traceWorkflowStart(WorkflowSession workflowSession, Object inputs) {
+        if (workflowSession.tracer() == null) {
+            return;
+        }
+        TracerWorkflowUtils.traceWorkflowStart(workflowSession, inputs);
+    }
+
+    private void traceWorkflowDone(WorkflowSession workflowSession) {
+        if (workflowSession.tracer() == null
+                || !(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
+            return;
+        }
+        Object outputs = stateCollection.getOutputs(endCompId);
+        TracerWorkflowUtils.traceWorkflowDone(workflowSession, outputs);
+    }
+
     private BaseSession extractInnerSession(Object session) {
         if (session instanceof BaseSession) {
             return (BaseSession) session;
@@ -433,5 +510,15 @@ public class Workflow {
             }
         }
         throw new IllegalArgumentException("Unsupported session type: " + session.getClass().getSimpleName());
+    }
+
+    private int normalizeExpandSubgraph(Object expandSubgraph) {
+        if (expandSubgraph instanceof Boolean expand) {
+            return expand ? -1 : 0;
+        }
+        if (expandSubgraph instanceof Number depth) {
+            return depth.intValue();
+        }
+        return 0;
     }
 }

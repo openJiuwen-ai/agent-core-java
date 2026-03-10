@@ -734,18 +734,15 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         boolean needSend = !hasStreamCall || streamDone.isDone();
         TracerWorkflowUtils.traceComponentInputs(session, inputs, needSend);
         if (SUB_WORKFLOW_COMPONENT.equals(executable.componentType())) {
-            // Register workflow span manager for sub-workflow tracing
-            // TracerWorkflowUtils.registerWorkflowSpanManager not yet implemented
+            TracerWorkflowUtils.registerWorkflowSpanManager(session);
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void traceComponentOutputs(Object outputs) {
         if (session.tracer() == null || executable.skipTrace()) {
             return;
         }
-        Map<String, Object> outputMap = (outputs instanceof Map) ? (Map<String, Object>) outputs : null;
-        TracerWorkflowUtils.traceComponentOutputs(session, outputMap);
+        TracerWorkflowUtils.traceComponentOutputs(session, outputs);
     }
 
     private void traceComponentDone() {

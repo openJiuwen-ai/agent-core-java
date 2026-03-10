@@ -8,6 +8,7 @@ import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.utils.SessionUtils;
+import com.openjiuwen.core.workflow.WorkflowConfig;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,10 +36,12 @@ public final class TracerWorkflowUtils {
         metadata.put("workflow_version", "");
         metadata.put("workflow_name", "");
 
-        // Attempt to get workflow config for richer metadata
         if (session.config() != null) {
             Object workflowConfig = session.config().getWorkflowConfig(workflowId);
-            // Placeholder: in full implementation, extract version/name from workflow config card
+            if (workflowConfig instanceof WorkflowConfig config && config.getCard() != null) {
+                metadata.put("workflow_version", config.getCard().getVersion());
+                metadata.put("workflow_name", config.getCard().getName());
+            }
         }
 
         return metadata;
@@ -90,7 +93,7 @@ public final class TracerWorkflowUtils {
     /**
      * Trace workflow start event.
      */
-    public static void traceWorkflowStart(BaseSession session, Map<String, Object> inputs) {
+    public static void traceWorkflowStart(BaseSession session, Object inputs) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
             return;
@@ -160,7 +163,7 @@ public final class TracerWorkflowUtils {
     /**
      * Trace component outputs.
      */
-    public static void traceComponentOutputs(BaseSession session, Map<String, Object> outputs) {
+    public static void traceComponentOutputs(BaseSession session, Object outputs) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
             return;
@@ -190,7 +193,7 @@ public final class TracerWorkflowUtils {
     /**
      * Trace workflow done event.
      */
-    public static void traceWorkflowDone(BaseSession session, Map<String, Object> outputs) {
+    public static void traceWorkflowDone(BaseSession session, Object outputs) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
             return;
@@ -265,7 +268,7 @@ public final class TracerWorkflowUtils {
     /**
      * Trace component interactive inputs.
      */
-    public static void traceComponentInteractiveInputs(BaseSession session, Map<String, Object> inputs,
+    public static void traceComponentInteractiveInputs(BaseSession session, Object inputs,
                                                         boolean send) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
@@ -278,5 +281,16 @@ public final class TracerWorkflowUtils {
         kwargs.put("need_send", send);
         kwargs.put("component_metadata", getComponentMetadata(session));
         tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_interact", kwargs);
+    }
+
+    /**
+     * Register a dedicated workflow span manager for nested workflow tracing.
+     */
+    public static void registerWorkflowSpanManager(BaseSession session) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return;
+        }
+        tracer.registerWorkflowSpanManager(getExecutableId(session));
     }
 }

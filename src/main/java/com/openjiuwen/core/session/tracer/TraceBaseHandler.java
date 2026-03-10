@@ -56,7 +56,7 @@ public abstract class TraceBaseHandler extends BaseHandler {
      * Send span data to stream.
      */
     protected void sendData(Span span) {
-        emitStreamWriter(span);
+        emitStreamWriter(span != null ? span.snapshot() : null);
     }
 
     /**

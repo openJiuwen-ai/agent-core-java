@@ -12,6 +12,7 @@ public enum NodeStatus {
     START("start"),
     FINISH("finish"),
     RUNNING("running"),
+    INTERRUPTED("interrupted"),
     ERROR("error");
 
     private final String value;

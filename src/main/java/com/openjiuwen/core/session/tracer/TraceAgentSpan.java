@@ -48,6 +48,17 @@ public class TraceAgentSpan extends Span {
         }
     }
 
+    @Override
+    public TraceAgentSpan snapshot() {
+        TraceAgentSpan copy = new TraceAgentSpan();
+        copyBaseFields(copy);
+        copy.invokeType = invokeType;
+        copy.name = name;
+        copy.elapsedTime = elapsedTime;
+        copy.metaData = deepCopyMap(metaData);
+        return copy;
+    }
+
     public String getInvokeType() { return invokeType; }
     public void setInvokeType(String invokeType) { this.invokeType = invokeType; }
     public String getName() { return name; }

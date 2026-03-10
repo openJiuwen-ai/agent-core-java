@@ -37,7 +37,7 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     @Override
     @SuppressWarnings("unchecked")
     protected Map<String, Object> doInvoke(Object inputs, BaseSession session, Object config) {
-        boolean isMain = false;
+        boolean isMain = session instanceof WorkflowSession;
         String sessionId = session.sessionId();
         String workflowId = "";
 
@@ -49,7 +49,6 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
         PregelConfig pregelConfig;
         if (config == null) {
-            isMain = true;
             pregelConfig = new PregelConfig(sessionId, workflowId, PregelConstants.MAX_RECURSIVE_LIMIT);
         } else if (config instanceof PregelConfig) {
             pregelConfig = (PregelConfig) config;

@@ -26,6 +26,7 @@ public class TraceWorkflowSpan extends Span {
     private Integer loopIndex;
     private Map<String, Map<String, Object>> llmInvokeData;
     private String parentNodeId;
+    private Object interactiveInputs;
     private List<Object> streamInputs;
     private List<Object> streamOutputs;
 
@@ -106,6 +107,10 @@ public class TraceWorkflowSpan extends Span {
             case "parentNodeId":
                 if (value instanceof String) parentNodeId = (String) value;
                 break;
+            case "interactive_inputs":
+            case "interactiveInputs":
+                interactiveInputs = value;
+                break;
             case "stream_inputs":
             case "streamInputs":
                 if (value instanceof List) streamInputs = (List<Object>) value;
@@ -117,6 +122,30 @@ public class TraceWorkflowSpan extends Span {
             default:
                 super.setField(fieldName, value);
         }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public TraceWorkflowSpan snapshot() {
+        TraceWorkflowSpan copy = new TraceWorkflowSpan();
+        copyBaseFields(copy);
+        copy.executionId = executionId;
+        copy.sourceIds = sourceIds == null ? null : new ArrayList<>(sourceIds);
+        copy.workflowId = workflowId;
+        copy.workflowVersion = workflowVersion;
+        copy.workflowName = workflowName;
+        copy.componentId = componentId;
+        copy.componentName = componentName;
+        copy.componentType = componentType;
+        copy.loopNodeId = loopNodeId;
+        copy.loopIndex = loopIndex;
+        copy.llmInvokeData = llmInvokeData == null ? null
+                : (Map<String, Map<String, Object>>) (Map<?, ?>) deepCopyMap(llmInvokeData);
+        copy.parentNodeId = parentNodeId;
+        copy.interactiveInputs = deepCopyValue(interactiveInputs);
+        copy.streamInputs = streamInputs == null ? null : deepCopyList(streamInputs);
+        copy.streamOutputs = streamOutputs == null ? null : deepCopyList(streamOutputs);
+        return copy;
     }
 
     // Getters and setters
@@ -144,6 +173,8 @@ public class TraceWorkflowSpan extends Span {
     public void setLlmInvokeData(Map<String, Map<String, Object>> llmInvokeData) { this.llmInvokeData = llmInvokeData; }
     public String getParentNodeId() { return parentNodeId; }
     public void setParentNodeId(String parentNodeId) { this.parentNodeId = parentNodeId; }
+    public Object getInteractiveInputs() { return interactiveInputs; }
+    public void setInteractiveInputs(Object interactiveInputs) { this.interactiveInputs = interactiveInputs; }
     public List<Object> getStreamInputs() { return streamInputs; }
     public void setStreamInputs(List<Object> streamInputs) { this.streamInputs = streamInputs; }
     public List<Object> getStreamOutputs() { return streamOutputs; }

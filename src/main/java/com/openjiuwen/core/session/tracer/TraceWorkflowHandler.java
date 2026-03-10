@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.core.session.tracer;
 
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.callback.TriggerEvent;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
@@ -30,7 +31,8 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
 
     @Override
     protected Map<String, Object> formatData(Span span) {
-        if (span instanceof TraceWorkflowSpan) {
+        if (span instanceof TraceWorkflowSpan
+                && !NodeStatus.INTERRUPTED.getValue().equals(span.getStatus())) {
             span.setStatus(getNodeStatus(span));
         }
         Map<String, Object> data = new HashMap<>();
@@ -105,12 +107,15 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         LocalDateTime endTime = LocalDateTime.now();
 
         if (exception != null) {
-            Map<String, Object> errorInfo = new HashMap<>();
-            errorInfo.put("message", exception.getMessage());
-
             Map<String, Object> data = new HashMap<>();
             data.put("end_time", endTime);
-            data.put("error", errorInfo);
+            if (exception instanceof GraphInterrupt) {
+                data.put("status", NodeStatus.INTERRUPTED.getValue());
+            } else {
+                Map<String, Object> errorInfo = new HashMap<>();
+                errorInfo.put("message", exception.getMessage());
+                data.put("error", errorInfo);
+            }
             String elapsed = getElapsedTime(span.getStartTime(), endTime);
             if (elapsed != null) {
                 data.put("elapsed_time", elapsed);
@@ -132,6 +137,21 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
 
         sendData(span);
+    }
+
+    @TriggerEvent
+    public void onInteract(String invokeId, Object inputs, Map<String, Object> componentMetadata,
+                           boolean needSend) {
+        TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
+        Map<String, Object> data = new HashMap<>();
+        data.put("interactive_inputs", inputs);
+        if (componentMetadata != null) {
+            data.putAll(componentMetadata);
+        }
+        spanManager.updateSpan(span, data);
+        if (needSend) {
+            sendData(span);
+        }
     }
 
     @TriggerEvent

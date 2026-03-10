@@ -3,8 +3,10 @@
  */
 package com.openjiuwen.core.session.tracer;
 
+import java.lang.reflect.Array;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,7 +20,7 @@ public class Span {
     private String traceId;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
-    private Map<String, Object> inputs;
+    private Object inputs;
     private Object outputs;
     private Map<String, Object> error;
     private String invokeId;
@@ -69,7 +71,7 @@ public class Span {
                 if (value instanceof LocalDateTime) endTime = (LocalDateTime) value;
                 break;
             case "inputs":
-                if (value instanceof Map) inputs = (Map<String, Object>) value;
+                inputs = value;
                 break;
             case "outputs":
                 outputs = value;
@@ -94,6 +96,94 @@ public class Span {
         }
     }
 
+    /**
+     * Create a detached snapshot so previously emitted trace frames are not mutated later.
+     */
+    public Span snapshot() {
+        Span copy = new Span();
+        copyBaseFields(copy);
+        return copy;
+    }
+
+    protected void copyBaseFields(Span copy) {
+        copy.traceId = traceId;
+        copy.startTime = startTime;
+        copy.endTime = endTime;
+        copy.inputs = deepCopyValue(inputs);
+        copy.outputs = deepCopyValue(outputs);
+        copy.error = deepCopyMap(error);
+        copy.invokeId = invokeId;
+        copy.parentInvokeId = parentInvokeId;
+        copy.childInvokesId = childInvokesId == null ? null : new ArrayList<>(childInvokesId);
+        copy.status = status;
+        copy.onInvokeData = deepCopyMapList(onInvokeData);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected static Map<String, Object> deepCopyMap(Map<?, ?> source) {
+        if (source == null) {
+            return null;
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            copy.put(String.valueOf(entry.getKey()), deepCopyValue(entry.getValue()));
+        }
+        return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    protected static List<Map<String, Object>> deepCopyMapList(List<Map<String, Object>> source) {
+        if (source == null) {
+            return null;
+        }
+        List<Map<String, Object>> copy = new ArrayList<>(source.size());
+        for (Map<String, Object> item : source) {
+            copy.add(deepCopyMap(item));
+        }
+        return copy;
+    }
+
+    protected static List<Object> deepCopyList(List<?> source) {
+        if (source == null) {
+            return null;
+        }
+        List<Object> copy = new ArrayList<>(source.size());
+        for (Object item : source) {
+            copy.add(deepCopyValue(item));
+        }
+        return copy;
+    }
+
+    protected static Object deepCopyValue(Object value) {
+        if (value == null
+                || value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean
+                || value instanceof Character
+                || value instanceof Enum<?>
+                || value instanceof LocalDateTime) {
+            return value;
+        }
+        if (value instanceof Span span) {
+            return span.snapshot();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return deepCopyMap(map);
+        }
+        if (value instanceof List<?> list) {
+            return deepCopyList(list);
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            Object copy = Array.newInstance(value.getClass().getComponentType(), length);
+            for (int index = 0; index < length; index++) {
+                Array.set(copy, index, deepCopyValue(Array.get(value, index)));
+            }
+            return copy;
+        }
+        return value;
+    }
+
     // -- Getters and Setters --
 
     public String getTraceId() { return traceId; }
@@ -102,8 +192,8 @@ public class Span {
     public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
     public LocalDateTime getEndTime() { return endTime; }
     public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
-    public Map<String, Object> getInputs() { return inputs; }
-    public void setInputs(Map<String, Object> inputs) { this.inputs = inputs; }
+    public Object getInputs() { return inputs; }
+    public void setInputs(Object inputs) { this.inputs = inputs; }
     public Object getOutputs() { return outputs; }
     public void setOutputs(Object outputs) { this.outputs = outputs; }
     public Map<String, Object> getError() { return error; }

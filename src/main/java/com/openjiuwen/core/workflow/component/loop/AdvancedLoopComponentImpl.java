@@ -15,6 +15,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
@@ -250,7 +251,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
         // Tracer registration (if tracer is present)
         if (loopSession.tracer() != null) {
-            // Register workflow span manager — simplified, tracer is Object
+            TracerWorkflowUtils.registerWorkflowSpanManager(this.nodeSession);
         }
 
         Object context = kwargs.length > 0 ? kwargs[0] : null;
