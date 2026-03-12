@@ -14,7 +14,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Filter;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 
 /**
  * Default logger implementation backed by SLF4J + Logback.
@@ -33,48 +39,57 @@ public class DefaultLogger implements LoggerProtocol {
 
     private final String logType;
     private Map<String, Object> config;
-    private final Logger logger;
+    private final Logger slf4jLogger;
+    private final java.util.logging.Logger julLogger;
+    private final List<Filter> filters = new CopyOnWriteArrayList<>();
 
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
         this.config = config != null ? Map.copyOf(config) : Map.of();
-        this.logger = LoggerFactory.getLogger(logType);
+        this.slf4jLogger = LoggerFactory.getLogger(logType);
+        this.julLogger = java.util.logging.Logger.getLogger(logType + ".jul");
+        this.julLogger.setUseParentHandlers(false);
+        this.julLogger.setFilter(record -> filters.stream().allMatch(filter -> filter.isLoggable(record)));
     }
 
     // ==================== LoggerProtocol Implementation ====================
 
     @Override
     public void debug(String msg, Object... args) {
-        if (logger.isDebugEnabled()) {
+        if (slf4jLogger.isDebugEnabled()) {
             setMdc();
-            logger.debug(sanitize(msg), args);
+            slf4jLogger.debug(sanitize(msg), args);
+            publishToJul(Level.FINE, msg, null, args);
             clearMdc();
         }
     }
 
     @Override
     public void info(String msg, Object... args) {
-        if (logger.isInfoEnabled()) {
+        if (slf4jLogger.isInfoEnabled()) {
             setMdc();
-            logger.info(sanitize(msg), args);
+            slf4jLogger.info(sanitize(msg), args);
+            publishToJul(Level.INFO, msg, null, args);
             clearMdc();
         }
     }
 
     @Override
     public void warning(String msg, Object... args) {
-        if (logger.isWarnEnabled()) {
+        if (slf4jLogger.isWarnEnabled()) {
             setMdc();
-            logger.warn(sanitize(msg), args);
+            slf4jLogger.warn(sanitize(msg), args);
+            publishToJul(Level.WARNING, msg, null, args);
             clearMdc();
         }
     }
 
     @Override
     public void error(String msg, Object... args) {
-        if (logger.isErrorEnabled()) {
+        if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            logger.error(sanitize(msg), args);
+            slf4jLogger.error(sanitize(msg), args);
+            publishToJul(Level.SEVERE, msg, null, args);
             clearMdc();
         }
     }
@@ -82,9 +97,10 @@ public class DefaultLogger implements LoggerProtocol {
     @Override
     public void critical(String msg, Object... args) {
         // SLF4J has no CRITICAL level; use ERROR
-        if (logger.isErrorEnabled()) {
+        if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            logger.error("[CRITICAL] " + sanitize(msg), args);
+            slf4jLogger.error("[CRITICAL] " + sanitize(msg), args);
+            publishToJul(Level.SEVERE, "[CRITICAL] " + msg, null, args);
             clearMdc();
         }
     }
@@ -92,7 +108,8 @@ public class DefaultLogger implements LoggerProtocol {
     @Override
     public void exception(String msg, Throwable t, Object... args) {
         setMdc();
-        logger.error(sanitize(msg), t);
+        slf4jLogger.error(sanitize(msg), t);
+        publishToJul(Level.SEVERE, msg, t, args);
         clearMdc();
     }
 
@@ -112,9 +129,43 @@ public class DefaultLogger implements LoggerProtocol {
 
     @Override
     public void setLevel(int level) {
-        // In Logback, level is controlled via configuration, not programmatically (unless Logback API used directly).
-        // Store for config purposes.
-        // Users should configure level via logback.xml or LogConfig.
+        julLogger.setLevel(toJulLevel(level));
+        if (slf4jLogger instanceof ch.qos.logback.classic.Logger logbackLogger) {
+            logbackLogger.setLevel(toLogbackLevel(level));
+        }
+    }
+
+    @Override
+    public void addHandler(Handler handler) {
+        if (handler != null) {
+            julLogger.addHandler(handler);
+        }
+    }
+
+    @Override
+    public void removeHandler(Handler handler) {
+        if (handler != null) {
+            julLogger.removeHandler(handler);
+        }
+    }
+
+    @Override
+    public void addFilter(Filter filter) {
+        if (filter != null) {
+            filters.add(filter);
+        }
+    }
+
+    @Override
+    public void removeFilter(Filter filter) {
+        if (filter != null) {
+            filters.remove(filter);
+        }
+    }
+
+    @Override
+    public java.util.logging.Logger logger() {
+        return julLogger;
     }
 
     @Override
@@ -176,6 +227,51 @@ public class DefaultLogger implements LoggerProtocol {
     private void clearMdc() {
         MDC.remove("trace_id");
         MDC.remove("log_type");
+    }
+
+    private void publishToJul(Level level, String msg, Throwable throwable, Object... args) {
+        String formatted = sanitize(formatMessage(msg, args));
+        LogRecord record = new LogRecord(level, formatted);
+        record.setLoggerName(julLogger.getName());
+        record.setThrown(throwable);
+        julLogger.log(record);
+    }
+
+    private static Level toJulLevel(int level) {
+        if (level >= 50) {
+            return Level.SEVERE;
+        }
+        if (level >= 40) {
+            return Level.WARNING;
+        }
+        if (level >= 20) {
+            return Level.INFO;
+        }
+        return Level.FINE;
+    }
+
+    private static ch.qos.logback.classic.Level toLogbackLevel(int level) {
+        if (level >= 50) {
+            return ch.qos.logback.classic.Level.ERROR;
+        }
+        if (level >= 40) {
+            return ch.qos.logback.classic.Level.WARN;
+        }
+        if (level >= 20) {
+            return ch.qos.logback.classic.Level.INFO;
+        }
+        return ch.qos.logback.classic.Level.DEBUG;
+    }
+
+    private static String formatMessage(String msg, Object... args) {
+        if (msg == null || args == null || args.length == 0) {
+            return msg;
+        }
+        String formatted = msg;
+        for (Object arg : args) {
+            formatted = formatted.replaceFirst("\\{}", java.util.regex.Matcher.quoteReplacement(String.valueOf(arg)));
+        }
+        return formatted;
     }
 
     /**

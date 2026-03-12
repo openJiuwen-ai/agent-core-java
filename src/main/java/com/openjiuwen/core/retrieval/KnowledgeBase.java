@@ -13,6 +13,7 @@ import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
+import com.openjiuwen.core.retrieval.indexing.indexer.IndexerFactory;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
 import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
@@ -36,6 +37,7 @@ public abstract class KnowledgeBase implements AutoCloseable {
     protected Chunker chunker;
     protected Extractor extractor;
     protected Indexer indexManager;
+    private boolean autoResolvedIndexManager;
     protected BaseModelClient llmClient;
     protected Retriever retriever;
 
@@ -77,6 +79,10 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     public void setVectorStore(VectorStore vectorStore) {
+        if (autoResolvedIndexManager) {
+            this.indexManager = null;
+            this.autoResolvedIndexManager = false;
+        }
         this.vectorStore = vectorStore;
         validateIndex();
     }
@@ -114,11 +120,12 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     public Indexer getIndexManager() {
-        return indexManager;
+        return resolveIndexManager();
     }
 
     public void setIndexManager(Indexer indexManager) {
         this.indexManager = indexManager;
+        this.autoResolvedIndexManager = false;
         validateIndex();
     }
 
@@ -239,6 +246,26 @@ public abstract class KnowledgeBase implements AutoCloseable {
                             + leftOwner.getClass().getSimpleName() + "=" + left
                             + " and " + rightOwner.getClass().getSimpleName() + "=" + right);
         }
+    }
+
+    protected Indexer resolveIndexManager() {
+        if (indexManager != null || vectorStore == null) {
+            return indexManager;
+        }
+        indexManager = IndexerFactory.createIndexer(vectorStore);
+        autoResolvedIndexManager = true;
+        validateIndex();
+        return indexManager;
+    }
+
+    protected Indexer requireIndexManager() {
+        Indexer activeIndexManager = resolveIndexManager();
+        if (activeIndexManager == null) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+                    "index_manager is required");
+        }
+        return activeIndexManager;
     }
 
     protected static void closeQuietly(AutoCloseable closeable) {

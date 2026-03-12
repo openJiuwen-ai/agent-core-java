@@ -3,18 +3,23 @@
  */
 package com.openjiuwen.core.memory.migration.migrator;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.memory.manage.mem_model.SupportMemoryType;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Vector store migrator. Simplified version since Java VectorStore does not support
- * update_schema, list_collection_names, get/update_collection_metadata.
- * Migration operations are logged but not fully executable.
+ * Vector store migrator.
  */
 public class VectorMigrator {
 
@@ -26,28 +31,70 @@ public class VectorMigrator {
         this.semanticStore = semanticStore;
     }
 
-    /**
-     * Attempt to migrate vector collections matching the entity key pattern.
-     * Limited functionality due to Java VectorStore API constraints.
-     */
     public boolean tryMigrate(String entityKey, List<BaseOperation> operations) {
         if (operations == null || operations.isEmpty()) {
             return true;
         }
+        List<String> collectionNames = findCollections(entityKey);
+        for (String collectionName : collectionNames) {
+            Map<String, Object> metadata = semanticStore.getCollectionMetadata(collectionName);
+            int currentVersion = metadata.get("schema_version") instanceof Number number ? number.intValue() : 0;
 
-        MEMORY_LOGGER.warn("[{}] VectorMigrator has limited support in Java. " +
-                        "VectorStore API does not expose update_schema, list_collection_names, " +
-                        "get/update_collection_metadata. Entity: {}, operations: {}",
-                LogEventType.MEMORY_INIT, entityKey, operations.size());
+            List<BaseOperation> operationsToApply = new ArrayList<>();
+            for (BaseOperation operation : operations) {
+                if (operation.getSchemaVersion() > currentVersion) {
+                    operationsToApply.add(operation);
+                }
+            }
+            if (operationsToApply.isEmpty()) {
+                continue;
+            }
 
-        // In Python, this would:
-        // 1. Find collections matching the entity_key pattern via list_collection_names
-        // 2. For each collection, get metadata to check current schema_version
-        // 3. Apply pending operations via update_schema
-        // 4. Update collection metadata with new schema_version
-        //
-        // Since Java VectorStore doesn't support these operations,
-        // we log and return true (no-op migration).
+            boolean updated = semanticStore.updateSchema(collectionName, operationsToApply);
+            if (!updated) {
+                MEMORY_LOGGER.warn("[{}] Vector schema operations are not supported by current store, collection={}",
+                        LogEventType.MEMORY_INIT, collectionName);
+                continue;
+            }
+
+            int maxVersion = operationsToApply.stream()
+                    .mapToInt(BaseOperation::getSchemaVersion)
+                    .max()
+                    .orElse(currentVersion);
+            semanticStore.updateCollectionMetadata(collectionName, Map.of("schema_version", maxVersion));
+            MEMORY_LOGGER.info("[{}] Applied {} vector migration operations for collection {} -> schema_version={}",
+                    LogEventType.MEMORY_INIT, operationsToApply.size(), collectionName, maxVersion);
+        }
         return true;
+    }
+
+    private List<String> findCollections(String memType) {
+        String normalized = memType != null && memType.startsWith("vector_")
+                ? memType.substring("vector_".length())
+                : memType;
+        validateMemoryType(normalized);
+
+        List<String> allCollections = semanticStore.listCollectionNames();
+        String suffix = "_" + normalized;
+        List<String> matched = new ArrayList<>();
+        for (String collectionName : allCollections) {
+            if (collectionName != null && collectionName.endsWith(suffix)) {
+                matched.add(collectionName);
+            }
+        }
+        return matched;
+    }
+
+    private void validateMemoryType(String memType) {
+        Set<String> supportedTypes = new LinkedHashSet<>();
+        for (SupportMemoryType type : SupportMemoryType.values()) {
+            supportedTypes.add(type.getValue());
+        }
+        if (!supportedTypes.contains(memType)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR,
+                    "error_msg", "Unsupported memory type: '" + memType + "'. Supported types: " + supportedTypes
+            );
+        }
     }
 }

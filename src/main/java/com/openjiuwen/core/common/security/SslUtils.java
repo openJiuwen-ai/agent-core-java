@@ -11,8 +11,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.List;
 
 /**
  * SSL utilities — creates strict SSL contexts for secure HTTPS communication.
@@ -86,6 +88,37 @@ public final class SslUtils {
     }
 
     /**
+     * Create an insecure SSL context that trusts every certificate.
+     * Intended only for explicit verify=false scenarios to mirror Python behaviour.
+     */
+    public static SSLContext createInsecureSslContext() {
+        try {
+            TrustManager[] trustAllManagers = new TrustManager[]{
+                    new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                        }
+                    }
+            };
+            SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+            ctx.init(null, trustAllManagers, new SecureRandom());
+            return ctx;
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "failed to create insecure SSL context: " + e.getMessage(), null, e, null);
+        }
+    }
+
+    /**
      * Get SSL config based on environment variables.
      *
      * @param verifySwitchEnv env var name for verify switch
@@ -99,17 +132,21 @@ public final class SslUtils {
         if (!urlIsHttps) {
             return new Object[]{false, null};
         }
-        String envValue = System.getenv(verifySwitchEnv);
+        String envValue = readEnvOrProperty(verifySwitchEnv);
         boolean isOff = envValue != null && triggerValues.contains(envValue.trim().toLowerCase());
         if (isOff) {
             return new Object[]{false, null};
         }
-        String sslCert = System.getenv(sslCertEnv);
-        if (sslCert == null || sslCert.isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CERT_INVALID,
-                "when " + verifySwitchEnv + "=true, must provide ssl cert " + sslCertEnv,
-                null, null, null);
-        }
+        String sslCert = readEnvOrProperty(sslCertEnv);
         return new Object[]{true, sslCert};
+    }
+
+    private static String readEnvOrProperty(String key) {
+        String envValue = System.getenv(key);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue;
+        }
+        String propertyValue = System.getProperty(key);
+        return propertyValue != null && !propertyValue.isBlank() ? propertyValue : null;
     }
 }

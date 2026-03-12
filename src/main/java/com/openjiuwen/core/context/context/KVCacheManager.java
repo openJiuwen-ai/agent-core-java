@@ -5,6 +5,7 @@ package com.openjiuwen.core.context.context;
 
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.foundation.llm.InferenceAffinityModel;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
@@ -40,6 +41,17 @@ public class KVCacheManager {
      * @param contextWindow the current context window
      */
     public void release(ContextWindow contextWindow) {
+        release(contextWindow, null);
+    }
+
+    /**
+     * Check and release stale KV cache if the context window has changed and a model
+     * with release capability is provided.
+     *
+     * @param contextWindow the current context window
+     * @param model         optional model instance
+     */
+    public void release(ContextWindow contextWindow, Object model) {
         if (lastContextWindow == null) {
             lastContextWindow = contextWindow;
             return;
@@ -53,7 +65,20 @@ public class KVCacheManager {
                     "KV cache release triggered for session " + sessionId
                             + " (msg_idx=" + result.messagesReleasedIndex
                             + ", tool_idx=" + result.toolsReleasedIndex + ")");
-            // Actual release call would go here when InferenceAffinityModel is available
+            if (model instanceof InferenceAffinityModel inferenceAffinityModel) {
+                try {
+                    inferenceAffinityModel.release(
+                            sessionId,
+                            lastContextWindow.getMessages(),
+                            result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,
+                            lastContextWindow.getToolList(),
+                            result.toolsReleasedIndex,
+                            null
+                    );
+                } catch (Exception e) {
+                    Loggers.CONTEXT_ENGINE.warning("Failed to release inference-affinity KV cache: " + e.getMessage());
+                }
+            }
         }
 
         lastContextWindow = contextWindow;

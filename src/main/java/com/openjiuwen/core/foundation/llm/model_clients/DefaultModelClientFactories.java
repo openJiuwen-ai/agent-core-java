@@ -23,6 +23,8 @@ public final class DefaultModelClientFactories {
         Model.registerFactory(new OpenRouterModelClientFactory());
         Model.registerFactory(new SiliconFlowModelClientFactory());
         Model.registerFactory(new DashScopeModelClientFactory());
+        Model.registerFactory(new InferenceAffinityModelClientFactory("InferenceAffinity"));
+        Model.registerFactory(new InferenceAffinityModelClientFactory("inference_affinity"));
         registered = true;
     }
 }

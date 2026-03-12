@@ -13,12 +13,7 @@ import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
-import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.common.DataType;
-import io.milvus.v2.common.IndexParam;
-import io.milvus.v2.service.collection.request.AddFieldReq;
-import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 
@@ -178,96 +173,8 @@ public class MilvusIndexer implements Indexer {
     }
 
     private void ensureCollection(String collectionName, IndexConfig config, Embedding embedModel) {
-        if (indexExists(collectionName)) {
-            return;
-        }
-        CreateCollectionReq.CollectionSchema schema = client.createSchema();
-        schema.setEnableDynamicField(false);
-        schema.addField(AddFieldReq.builder()
-                .fieldName("pk")
-                .dataType(DataType.Int64)
-                .isPrimaryKey(true)
-                .autoID(true)
-                .build());
-        schema.addField(AddFieldReq.builder()
-                .fieldName(getDocIdField())
-                .dataType(DataType.VarChar)
-                .maxLength(256)
-                .build());
-        schema.addField(AddFieldReq.builder()
-                .fieldName("chunk_id")
-                .dataType(DataType.VarChar)
-                .maxLength(256)
-                .build());
-
-        boolean enableBm25 = !"vector".equals(config.getIndexType());
-        AddFieldReq.AddFieldReqBuilder<?> textFieldBuilder = AddFieldReq.builder()
-                .fieldName(getTextField())
-                .dataType(DataType.VarChar)
-                .maxLength(65535);
-        if (enableBm25) {
-            textFieldBuilder.enableAnalyzer(true)
-                    .enableMatch(true)
-                    .analyzerParams(Map.of("tokenizer", "jieba"));
-        }
-        schema.addField(textFieldBuilder.build());
-
-        List<IndexParam> indexParams = new ArrayList<>();
-        indexParams.add(IndexParam.builder()
-                .fieldName(getDocIdField())
-                .indexType(IndexParam.IndexType.INVERTED)
-                .build());
-        indexParams.add(IndexParam.builder()
-                .fieldName("chunk_id")
-                .indexType(IndexParam.IndexType.INVERTED)
-                .build());
-
-        if (enableBm25) {
-            schema.addField(AddFieldReq.builder()
-                    .fieldName(getSparseVectorField())
-                    .dataType(DataType.SparseFloatVector)
-                    .build());
-            schema.addFunction(CreateCollectionReq.Function.builder()
-                    .name("text_bm25_emb")
-                    .functionType(FunctionType.BM25)
-                    .inputFieldNames(List.of(getTextField()))
-                    .outputFieldNames(List.of(getSparseVectorField()))
-                    .build());
-            indexParams.add(IndexParam.builder()
-                    .fieldName(getSparseVectorField())
-                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
-                    .metricType(IndexParam.MetricType.BM25)
-                    .build());
-        }
-
-        if (!"bm25".equals(config.getIndexType())) {
-            int dimension = resolveDimension(embedModel);
-            schema.addField(AddFieldReq.builder()
-                    .fieldName(getVectorField())
-                    .dataType(DataType.FloatVector)
-                    .dimension(dimension)
-                    .build());
-            indexParams.add(IndexParam.builder()
-                    .fieldName(getVectorField())
-                    .indexType(IndexParam.IndexType.AUTOINDEX)
-                    .metricType(metricType())
-                    .build());
-        }
-
-        schema.addField(AddFieldReq.builder()
-                .fieldName(getMetadataField())
-                .dataType(DataType.JSON)
-                .build());
-
-        CreateCollectionReq.CreateCollectionReqBuilder builder = CreateCollectionReq.builder()
-                .collectionName(collectionName)
-                .enableDynamicField(false)
-                .collectionSchema(schema)
-                .indexParams(indexParams);
-        if (getDatabaseName() != null && !getDatabaseName().isBlank()) {
-            builder.databaseName(getDatabaseName());
-        }
-        client.createCollection(builder.build());
+        Integer dimension = "bm25".equals(config.getIndexType()) ? null : resolveDimension(embedModel);
+        vectorStore.ensureCollection(collectionName, config.getIndexType(), dimension);
     }
 
     private int resolveDimension(Embedding embedModel) {
@@ -342,11 +249,4 @@ public class MilvusIndexer implements Indexer {
         return embeddings;
     }
 
-    private IndexParam.MetricType metricType() {
-        return switch (getDistanceMetric()) {
-            case "dot" -> IndexParam.MetricType.IP;
-            case "euclidean" -> IndexParam.MetricType.L2;
-            default -> IndexParam.MetricType.COSINE;
-        };
-    }
 }

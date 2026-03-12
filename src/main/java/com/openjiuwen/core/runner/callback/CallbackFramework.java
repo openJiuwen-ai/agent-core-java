@@ -367,6 +367,10 @@ public class CallbackFramework {
                 Map<String, Object> errorKwargs = new HashMap<>(kwargs);
                 errorKwargs.put("_error", e);
                 executeHooks(event, HookType.ERROR, args, errorKwargs);
+                RuntimeException requested = extractRequestedException(errorKwargs);
+                if (requested != null) {
+                    throw requested;
+                }
 
                 if (enableLogging) {
                     log.error("Callback execution failed: {} - {}",
@@ -943,5 +947,16 @@ public class CallbackFramework {
         if (list != null) {
             list.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
         }
+    }
+
+    private static RuntimeException extractRequestedException(Map<String, Object> hookKwargs) {
+        Object raised = hookKwargs.get("_raise");
+        if (raised instanceof RuntimeException runtimeException) {
+            return runtimeException;
+        }
+        if (raised instanceof Throwable throwable) {
+            return new RuntimeException(throwable);
+        }
+        return null;
     }
 }

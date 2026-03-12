@@ -6,11 +6,15 @@ package com.openjiuwen.core.foundation.tool.service_api;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -18,9 +22,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.net.ProxySelector;
 import java.util.StringJoiner;
 
 /**
@@ -29,6 +35,9 @@ import java.util.StringJoiner;
  * Mirrors Python's {@code RestfulApi} class. Uses JDK {@link HttpClient} instead of aiohttp.
  */
 public class RestfulApi extends Tool {
+
+    private static final String RESTFUL_SSL_VERIFY = "RESTFUL_SSL_VERIFY";
+    private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
 
     private final String url;
     private final String method;
@@ -155,10 +164,7 @@ public class RestfulApi extends Tool {
             requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
         }
 
-        HttpClient client = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)))
-                .build();
+        HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);
 
         HttpResponse<byte[]> response = client.send(requestBuilder.build(),
                 HttpResponse.BodyHandlers.ofByteArray());
@@ -211,6 +217,62 @@ public class RestfulApi extends Tool {
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR,
                     "reason", e.getMessage(), "card", card.toString());
+        }
+    }
+
+    private HttpClient buildHttpClient(String resolvedUrl, double timeoutSec) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
+
+        configureProxy(builder, resolvedUrl);
+        configureSsl(builder, resolvedUrl);
+        return builder.build();
+    }
+
+    private void configureProxy(HttpClient.Builder builder, String resolvedUrl) {
+        String proxyUrl = UrlUtils.getGlobalProxyUrl(resolvedUrl);
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            return;
+        }
+        try {
+            URI proxyUri = URI.create(proxyUrl);
+            int port = proxyUri.getPort();
+            if (proxyUri.getHost() == null || port <= 0) {
+                return;
+            }
+            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), port)));
+        } catch (Exception ignored) {
+            // Keep default direct connection when proxy parsing fails.
+        }
+    }
+
+    private void configureSsl(HttpClient.Builder builder, String resolvedUrl) {
+        URI resolvedUri = URI.create(resolvedUrl);
+        boolean isHttps = "https".equalsIgnoreCase(resolvedUri.getScheme());
+        if (!isHttps) {
+            return;
+        }
+
+        Object[] sslConfig = SslUtils.getSslConfig(
+                RESTFUL_SSL_VERIFY,
+                RESTFUL_SSL_CERT,
+                List.of("false", "0", "off"),
+                true);
+        boolean sslVerify = (Boolean) sslConfig[0];
+        String sslCertPath = (String) sslConfig[1];
+
+        if (!sslVerify) {
+            builder.sslContext(SslUtils.createInsecureSslContext());
+            SSLParameters sslParameters = new SSLParameters();
+            sslParameters.setEndpointIdentificationAlgorithm("");
+            builder.sslParameters(sslParameters);
+            return;
+        }
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
+            builder.sslContext(sslContext);
         }
     }
 

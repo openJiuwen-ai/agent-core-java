@@ -10,6 +10,11 @@ import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient;
+import com.openjiuwen.core.foundation.tool.mcp.client.PlaywrightClient;
+import com.openjiuwen.core.foundation.tool.mcp.client.SseClient;
+import com.openjiuwen.core.foundation.tool.mcp.client.StdioClient;
+import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,11 +119,15 @@ public class ToolMgr {
     }
 
     private McpClient createClient(McpServerConfig config) {
-        // In Java, the MCP client creation is typically done via reflection or factory.
-        // The actual client implementations (SseClient, StdioClient, etc.) should be available.
-        throw new UnsupportedOperationException(
-                "MCP client creation for type '" + config.getClientType() + "' not yet implemented in Java runner. "
-                        + "Register client factories via McpClientFactory.");
+        String clientType = config.getClientType() == null ? "sse" : config.getClientType().toLowerCase();
+        return switch (clientType) {
+            case "sse" -> new SseClient(config);
+            case "stdio" -> new StdioClient(config);
+            case "openapi" -> new OpenApiClient(config);
+            case "streamable_http", "streamable-http", "http" -> new StreamableHttpClient(config);
+            case "playwright" -> new PlaywrightClient(config);
+            default -> throw new UnsupportedOperationException("Unsupported MCP client type: " + config.getClientType());
+        };
     }
 
     public List<String> getMcpServerIds(String serverName) {

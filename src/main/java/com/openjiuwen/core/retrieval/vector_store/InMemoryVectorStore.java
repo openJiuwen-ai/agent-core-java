@@ -7,6 +7,7 @@ import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,7 +25,7 @@ import java.util.regex.Pattern;
 /**
  * Local in-memory vector store used for translated retrieval regression tests.
  */
-public class InMemoryVectorStore implements VectorStore {
+public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStore {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{IsAlphabetic}\\p{IsDigit}_]+");
     private static final double BM25_K1 = 1.5;
@@ -59,6 +60,7 @@ public class InMemoryVectorStore implements VectorStore {
         this.docIdField = "doc_id";
         this.backend = DATABASES.computeIfAbsent(databaseName, key -> new Backend());
         backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
+        backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
     private InMemoryVectorStore(InMemoryVectorStore source, String collectionName) {
@@ -73,6 +75,7 @@ public class InMemoryVectorStore implements VectorStore {
         this.metadataField = source.metadataField;
         this.docIdField = source.docIdField;
         backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
+        backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
     @Override
@@ -185,6 +188,7 @@ public class InMemoryVectorStore implements VectorStore {
     @Override
     public void deleteTable(String tableName) {
         backend.collections.remove(tableName);
+        backend.collectionMetadata.remove(tableName);
     }
 
     @Override
@@ -202,6 +206,42 @@ public class InMemoryVectorStore implements VectorStore {
     @Override
     public long count(String tableName) {
         return backend.collections.getOrDefault(tableName, Map.of()).size();
+    }
+
+    @Override
+    public List<String> listCollectionNames() {
+        return new ArrayList<>(backend.collections.keySet());
+    }
+
+    @Override
+    public Map<String, Object> getCollectionMetadata(String collectionName) {
+        return new LinkedHashMap<>(backend.collectionMetadata.getOrDefault(collectionName, Map.of()));
+    }
+
+    @Override
+    public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return;
+        }
+        backend.collectionMetadata
+                .computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>())
+                .putAll(metadata);
+    }
+
+    @Override
+    public void updateSchema(String collectionName, List<?> operations) {
+        if (operations == null || operations.isEmpty()) {
+            return;
+        }
+        Map<String, StoredRecord> collection = backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
+        for (Map.Entry<String, StoredRecord> entry : new ArrayList<>(collection.entrySet())) {
+            StoredRecord current = entry.getValue();
+            StoredRecord updated = current;
+            for (Object operation : operations) {
+                updated = applyOperation(updated, operation);
+            }
+            collection.put(entry.getKey(), updated);
+        }
     }
 
     @Override
@@ -452,6 +492,7 @@ public class InMemoryVectorStore implements VectorStore {
 
     private static final class Backend {
         private final Map<String, Map<String, StoredRecord>> collections = new ConcurrentHashMap<>();
+        private final Map<String, Map<String, Object>> collectionMetadata = new ConcurrentHashMap<>();
     }
 
     private record StoredRecord(String id, String text, List<Float> vector, Map<String, Object> metadata, Map<String, Object> fields) {
@@ -470,5 +511,108 @@ public class InMemoryVectorStore implements VectorStore {
     }
 
     private record ScoredRecord(StoredRecord record, double score) {
+    }
+
+    private StoredRecord applyOperation(StoredRecord record, Object operation) {
+        String operationName = operation.getClass().getSimpleName();
+        Map<String, Object> metadata = new LinkedHashMap<>(record.metadata == null ? Map.of() : record.metadata);
+        Map<String, Object> fields = new LinkedHashMap<>(record.fields == null ? Map.of() : record.fields);
+        List<Float> vector = record.vector == null ? null : new ArrayList<>(record.vector);
+
+        switch (operationName) {
+            case "AddScalarFieldOperation" -> {
+                String fieldName = readString(operation, "getFieldName");
+                Object defaultValue = readValue(operation, "getDefaultValue");
+                fields.putIfAbsent(fieldName, defaultValue);
+                metadata.putIfAbsent(fieldName, defaultValue);
+            }
+            case "RenameScalarFieldOperation" -> {
+                String oldFieldName = readString(operation, "getOldFieldName");
+                String newFieldName = readString(operation, "getNewFieldName");
+                renameField(fields, oldFieldName, newFieldName);
+                renameField(metadata, oldFieldName, newFieldName);
+            }
+            case "UpdateScalarFieldTypeOperation" -> {
+                String fieldName = readString(operation, "getFieldName");
+                String newFieldType = readString(operation, "getNewFieldType");
+                if (fields.containsKey(fieldName)) {
+                    fields.put(fieldName, coerceScalar(fields.get(fieldName), newFieldType));
+                }
+                if (metadata.containsKey(fieldName)) {
+                    metadata.put(fieldName, coerceScalar(metadata.get(fieldName), newFieldType));
+                }
+            }
+            case "UpdateEmbeddingDimensionOperation" -> {
+                String fieldName = readString(operation, "getFieldName");
+                int newDimension = readInt(operation, "getNewDimension");
+                if ((fieldName == null || fieldName.equals(vectorField) || fieldName.equals("embedding") || fieldName.equals("vector"))
+                        && vector != null) {
+                    vector = resizeVector(vector, newDimension);
+                    fields.put(vectorField, vector);
+                }
+            }
+            default -> {
+                return record;
+            }
+        }
+
+        return new StoredRecord(record.id, record.text, vector, metadata, fields);
+    }
+
+    private static void renameField(Map<String, Object> values, String oldFieldName, String newFieldName) {
+        if (values.containsKey(oldFieldName)) {
+            Object value = values.remove(oldFieldName);
+            values.put(newFieldName, value);
+        }
+    }
+
+    private static Object coerceScalar(Object value, String type) {
+        if (value == null || type == null) {
+            return value;
+        }
+        return switch (type.toLowerCase()) {
+            case "int", "int32", "int64", "integer", "long" -> value instanceof Number number
+                    ? number.longValue()
+                    : Long.parseLong(String.valueOf(value));
+            case "float", "double", "number" -> value instanceof Number number
+                    ? number.doubleValue()
+                    : Double.parseDouble(String.valueOf(value));
+            case "bool", "boolean" -> value instanceof Boolean bool
+                    ? bool
+                    : Boolean.parseBoolean(String.valueOf(value));
+            case "string", "varchar", "text" -> String.valueOf(value);
+            default -> value;
+        };
+    }
+
+    private static List<Float> resizeVector(List<Float> vector, int dimension) {
+        if (dimension <= 0) {
+            return vector;
+        }
+        List<Float> resized = new ArrayList<>(dimension);
+        for (int i = 0; i < dimension; i++) {
+            resized.add(i < vector.size() ? vector.get(i) : 0.0f);
+        }
+        return resized;
+    }
+
+    private static String readString(Object target, String methodName) {
+        Object value = readValue(target, methodName);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static int readInt(Object target, String methodName) {
+        Object value = readValue(target, methodName);
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private static Object readValue(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

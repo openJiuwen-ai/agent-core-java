@@ -10,9 +10,12 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
+import com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Semantic store wrapping VectorStore for memory module.
@@ -27,6 +30,8 @@ public class SemanticStore {
 
     private final VectorStore vectorStore;
     private Embedding embeddingModel;
+    private final Set<String> knownCollections = ConcurrentHashMap.newKeySet();
+    private final Map<String, Map<String, Object>> collectionMetadata = new ConcurrentHashMap<>();
 
     public SemanticStore(VectorStore vectorStore) {
         this(vectorStore, null);
@@ -52,7 +57,11 @@ public class SemanticStore {
      * Check if a collection exists.
      */
     public boolean collectionExist(String collectionName) {
-        return vectorStore.tableExists(collectionName);
+        boolean exists = vectorStore.tableExists(collectionName);
+        if (exists) {
+            knownCollections.add(collectionName);
+        }
+        return exists;
     }
 
     /**
@@ -62,13 +71,12 @@ public class SemanticStore {
         if (collectionExist(collectionName)) {
             return;
         }
-        Map<String, Object> options = new HashMap<>();
-        options.put("dimension", dimension);
-        if (schema != null) {
-            options.put("schema", schema);
-        }
         VectorStore scoped = vectorStore.withCollection(collectionName);
-        scoped.add(Collections.emptyList(), null, options);
+        knownCollections.add(collectionName);
+        collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
+        if (scoped instanceof MilvusVectorStore milvusStore) {
+            milvusStore.ensureCollection(collectionName, "vector", dimension);
+        }
     }
 
     /**
@@ -88,6 +96,7 @@ public class SemanticStore {
             return false;
         }
         VectorStore scoped = vectorStore.withCollection(tableName);
+        knownCollections.add(tableName);
 
         List<String> texts = new ArrayList<>();
         for (Map.Entry<String, String> doc : docs) {
@@ -104,7 +113,7 @@ public class SemanticStore {
             row.put(VECTOR_FIELD, vectors.get(i));
             data.add(row);
         }
-        scoped.add(data, null, null);
+        scoped.add(data, null, bootstrapOptions(vectors));
         return true;
     }
 
@@ -143,21 +152,28 @@ public class SemanticStore {
      */
     public void deleteTable(String tableName) {
         vectorStore.deleteTable(tableName);
+        knownCollections.remove(tableName);
+        collectionMetadata.remove(tableName);
     }
 
     /**
      * List collection names. Not supported by Java VectorStore.
      */
     public List<String> listCollectionNames() {
-        MEMORY_LOGGER.warn("[{}] listCollectionNames not supported by Java VectorStore.",
-                LogEventType.MEMORY_STORE);
-        return Collections.emptyList();
+        if (vectorStore instanceof SchemaMutableVectorStore schemaMutableVectorStore) {
+            return schemaMutableVectorStore.listCollectionNames();
+        }
+        return new ArrayList<>(knownCollections);
     }
 
     /**
      * Update schema. Not supported by Java VectorStore.
      */
-    public boolean updateSchema(String collectionName, List<Map<String, Object>> newFields) {
+    public boolean updateSchema(String collectionName, List<?> operations) {
+        if (vectorStore instanceof SchemaMutableVectorStore schemaMutableVectorStore) {
+            schemaMutableVectorStore.updateSchema(collectionName, new ArrayList<>(operations));
+            return true;
+        }
         MEMORY_LOGGER.warn("[{}] updateSchema not supported for collection {}.",
                 LogEventType.MEMORY_STORE, collectionName);
         return false;
@@ -167,16 +183,44 @@ public class SemanticStore {
      * Get collection metadata. Not supported by Java VectorStore.
      */
     public Map<String, Object> getCollectionMetadata(String collectionName) {
-        MEMORY_LOGGER.warn("[{}] getCollectionMetadata not supported for collection {}.",
-                LogEventType.MEMORY_STORE, collectionName);
-        return Collections.emptyMap();
+        if (vectorStore instanceof SchemaMutableVectorStore schemaMutableVectorStore) {
+            return schemaMutableVectorStore.getCollectionMetadata(collectionName);
+        }
+        return new LinkedHashMap<>(collectionMetadata.getOrDefault(collectionName, Map.of()));
     }
 
     /**
      * Update collection metadata. Not supported by Java VectorStore.
      */
     public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
-        MEMORY_LOGGER.warn("[{}] updateCollectionMetadata not supported for collection {}.",
+        collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>()).putAll(metadata);
+        if (vectorStore instanceof SchemaMutableVectorStore schemaMutableVectorStore) {
+            schemaMutableVectorStore.updateCollectionMetadata(collectionName, metadata);
+            return;
+        }
+        MEMORY_LOGGER.warn("[{}] updateCollectionMetadata persisted only in SemanticStore metadata cache for collection {}.",
                 LogEventType.MEMORY_STORE, collectionName);
+    }
+
+    private static Map<String, Object> bootstrapOptions(List<List<Float>> vectors) {
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("bootstrap_index_type", "vector");
+        Integer dimension = inferDimension(vectors);
+        if (dimension != null) {
+            options.put("dimension", dimension);
+        }
+        return options;
+    }
+
+    private static Integer inferDimension(List<List<Float>> vectors) {
+        if (vectors == null) {
+            return null;
+        }
+        for (List<Float> vector : vectors) {
+            if (vector != null && !vector.isEmpty()) {
+                return vector.size();
+            }
+        }
+        return null;
     }
 }

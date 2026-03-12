@@ -3,6 +3,10 @@
  */
 package com.openjiuwen.core.common.logging;
 
+import java.util.logging.Filter;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
+
 /**
  * Lazy initialization logger wrapper.
  * <p>
@@ -67,6 +71,31 @@ public class LazyLogger implements LoggerProtocol {
     @Override
     public void setLevel(int level) {
         getDelegate().setLevel(level);
+    }
+
+    @Override
+    public void addHandler(Handler handler) {
+        getDelegate().addHandler(handler);
+    }
+
+    @Override
+    public void removeHandler(Handler handler) {
+        getDelegate().removeHandler(handler);
+    }
+
+    @Override
+    public void addFilter(Filter filter) {
+        getDelegate().addFilter(filter);
+    }
+
+    @Override
+    public void removeFilter(Filter filter) {
+        getDelegate().removeFilter(filter);
+    }
+
+    @Override
+    public Logger logger() {
+        return getDelegate().logger();
     }
 
     @Override

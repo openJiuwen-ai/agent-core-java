@@ -16,9 +16,12 @@ import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.common.WeightedRankConfig;
 import com.openjiuwen.core.retrieval.utils.FusionUtils;
+import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.request.DropCollectionReq;
@@ -71,6 +74,7 @@ public class MilvusVectorStore implements VectorStore {
     private final MilvusClientV2 client;
     private final boolean ownsClient;
     private final Set<String> loadedCollections;
+    private final Set<String> knownCollections;
     private final String databaseName;
     private final String distanceMetric;
     private final String indexType;
@@ -97,6 +101,7 @@ public class MilvusVectorStore implements VectorStore {
                 createClient(config.getDatabaseName(), milvusUri, milvusToken),
                 true,
                 ConcurrentHashMap.newKeySet(),
+                ConcurrentHashMap.newKeySet(),
                 config,
                 milvusUri,
                 milvusToken,
@@ -113,6 +118,7 @@ public class MilvusVectorStore implements VectorStore {
                 client,
                 false,
                 ConcurrentHashMap.newKeySet(),
+                ConcurrentHashMap.newKeySet(),
                 config,
                 "",
                 null,
@@ -127,6 +133,7 @@ public class MilvusVectorStore implements VectorStore {
     private MilvusVectorStore(MilvusClientV2 client,
                               boolean ownsClient,
                               Set<String> loadedCollections,
+                              Set<String> knownCollections,
                               VectorStoreConfig config,
                               String milvusUri,
                               String milvusToken,
@@ -142,6 +149,7 @@ public class MilvusVectorStore implements VectorStore {
         this.client = client;
         this.ownsClient = ownsClient;
         this.loadedCollections = loadedCollections;
+        this.knownCollections = knownCollections;
         this.databaseName = config.getDatabaseName();
         this.collectionName = config.getCollectionName();
         this.distanceMetric = config.getDistanceMetric();
@@ -205,6 +213,7 @@ public class MilvusVectorStore implements VectorStore {
                 client,
                 false,
                 loadedCollections,
+                knownCollections,
                 scopedConfig,
                 milvusUri,
                 milvusToken,
@@ -221,6 +230,7 @@ public class MilvusVectorStore implements VectorStore {
         if (data == null || data.isEmpty()) {
             return;
         }
+        ensureCollectionForWrite(data, options);
         int safeBatchSize = batchSize == null || batchSize <= 0 ? 128 : batchSize;
         for (int start = 0; start < data.size(); start += safeBatchSize) {
             int end = Math.min(start + safeBatchSize, data.size());
@@ -237,6 +247,112 @@ public class MilvusVectorStore implements VectorStore {
             client.insert(builder.build());
         }
         flush(collectionName);
+    }
+
+    public void ensureCollection(String targetCollection, String requestedIndexType, Integer dimension) {
+        String safeCollection = firstNonBlank(targetCollection, collectionName);
+        if (safeCollection == null || safeCollection.isBlank()) {
+            throw new IllegalArgumentException("collectionName is required for Milvus collection bootstrap");
+        }
+        if (tableExists(safeCollection)) {
+            return;
+        }
+
+        String safeIndexType = RetrievalValidation.validateIndexType(
+                firstNonBlank(requestedIndexType, indexType),
+                "MilvusVectorStore.indexType");
+        boolean enableSparse = !"vector".equals(safeIndexType);
+        boolean enableDense = !"bm25".equals(safeIndexType);
+        if (enableDense && (dimension == null || dimension <= 0)) {
+            throw new IllegalArgumentException("vector dimension is required to bootstrap Milvus collection");
+        }
+
+        CreateCollectionReq.CollectionSchema schema = client.createSchema();
+        schema.setEnableDynamicField(false);
+        schema.addField(AddFieldReq.builder()
+                .fieldName("pk")
+                .dataType(DataType.Int64)
+                .isPrimaryKey(true)
+                .autoID(true)
+                .build());
+        schema.addField(AddFieldReq.builder()
+                .fieldName(docIdField)
+                .dataType(DataType.VarChar)
+                .maxLength(256)
+                .build());
+        schema.addField(AddFieldReq.builder()
+                .fieldName("chunk_id")
+                .dataType(DataType.VarChar)
+                .maxLength(256)
+                .build());
+
+        AddFieldReq.AddFieldReqBuilder<?> textFieldBuilder = AddFieldReq.builder()
+                .fieldName(textField)
+                .dataType(DataType.VarChar)
+                .maxLength(65535);
+        if (enableSparse) {
+            textFieldBuilder.enableAnalyzer(true)
+                    .enableMatch(true)
+                    .analyzerParams(Map.of("tokenizer", "jieba"));
+        }
+        schema.addField(textFieldBuilder.build());
+
+        List<IndexParam> indexParams = new ArrayList<>();
+        indexParams.add(IndexParam.builder()
+                .fieldName(docIdField)
+                .indexType(IndexParam.IndexType.INVERTED)
+                .build());
+        indexParams.add(IndexParam.builder()
+                .fieldName("chunk_id")
+                .indexType(IndexParam.IndexType.INVERTED)
+                .build());
+
+        if (enableSparse) {
+            schema.addField(AddFieldReq.builder()
+                    .fieldName(sparseVectorField)
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .name("text_bm25_emb")
+                    .functionType(FunctionType.BM25)
+                    .inputFieldNames(List.of(textField))
+                    .outputFieldNames(List.of(sparseVectorField))
+                    .build());
+            indexParams.add(IndexParam.builder()
+                    .fieldName(sparseVectorField)
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
+                    .metricType(IndexParam.MetricType.BM25)
+                    .build());
+        }
+
+        if (enableDense) {
+            schema.addField(AddFieldReq.builder()
+                    .fieldName(vectorField)
+                    .dataType(DataType.FloatVector)
+                    .dimension(dimension)
+                    .build());
+            indexParams.add(IndexParam.builder()
+                    .fieldName(vectorField)
+                    .indexType(IndexParam.IndexType.AUTOINDEX)
+                    .metricType(metricType())
+                    .build());
+        }
+
+        schema.addField(AddFieldReq.builder()
+                .fieldName(metadataField)
+                .dataType(DataType.JSON)
+                .build());
+
+        CreateCollectionReq.CreateCollectionReqBuilder builder = CreateCollectionReq.builder()
+                .collectionName(safeCollection)
+                .enableDynamicField(false)
+                .collectionSchema(schema)
+                .indexParams(indexParams);
+        if (hasDatabase()) {
+            builder.databaseName(databaseName);
+        }
+        client.createCollection(builder.build());
+        knownCollections.add(safeCollection);
     }
 
     @Override
@@ -377,11 +493,18 @@ public class MilvusVectorStore implements VectorStore {
         if (tableName == null || tableName.isBlank()) {
             return false;
         }
+        if (knownCollections.contains(tableName)) {
+            return true;
+        }
         HasCollectionReq.HasCollectionReqBuilder builder = HasCollectionReq.builder().collectionName(tableName);
         if (hasDatabase()) {
             builder.databaseName(databaseName);
         }
-        return Boolean.TRUE.equals(client.hasCollection(builder.build()));
+        boolean exists = Boolean.TRUE.equals(client.hasCollection(builder.build()));
+        if (exists) {
+            knownCollections.add(tableName);
+        }
+        return exists;
     }
 
     @Override
@@ -394,6 +517,7 @@ public class MilvusVectorStore implements VectorStore {
             builder.databaseName(databaseName);
         }
         client.dropCollection(builder.build());
+        knownCollections.remove(tableName);
         loadedCollections.remove(tableName);
     }
 
@@ -499,6 +623,14 @@ public class MilvusVectorStore implements VectorStore {
 
     private boolean hasDatabase() {
         return databaseName != null && !databaseName.isBlank();
+    }
+
+    private void ensureCollectionForWrite(List<Map<String, Object>> data, Map<String, Object> options) {
+        Integer dimension = extractDimension(options);
+        if (dimension == null || dimension <= 0) {
+            dimension = inferDimension(data);
+        }
+        ensureCollection(collectionName, resolveBootstrapIndexType(options), dimension);
     }
 
     private void ensureLoaded(String targetCollection) {
@@ -811,6 +943,9 @@ public class MilvusVectorStore implements VectorStore {
     }
 
     private static Object firstPresent(Map<String, Object> source, String... keys) {
+        if (source == null) {
+            return null;
+        }
         for (String key : keys) {
             if (source.containsKey(key)) {
                 return source.get(key);
@@ -868,6 +1003,38 @@ public class MilvusVectorStore implements VectorStore {
             }
         }
         return null;
+    }
+
+    private String resolveBootstrapIndexType(Map<String, Object> options) {
+        Object requested = firstPresent(
+                options,
+                "bootstrap_index_type",
+                "bootstrapIndexType",
+                "index_type",
+                "indexType");
+        return requested == null ? indexType : String.valueOf(requested);
+    }
+
+    private static Integer extractDimension(Map<String, Object> options) {
+        Object value = firstPresent(options, "dimension", "vector_dimension", "vectorDimension");
+        if (value instanceof Number number) {
+            int dimension = number.intValue();
+            return dimension > 0 ? dimension : null;
+        }
+        return null;
+    }
+
+    private int inferDimension(List<Map<String, Object>> data) {
+        if (data == null) {
+            return 0;
+        }
+        for (Map<String, Object> record : data) {
+            List<Float> vector = castFloatList(record.get(vectorField));
+            if (vector != null && !vector.isEmpty()) {
+                return vector.size();
+            }
+        }
+        return 0;
     }
 
     private enum SearchMode {

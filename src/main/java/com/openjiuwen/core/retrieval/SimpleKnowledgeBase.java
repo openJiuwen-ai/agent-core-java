@@ -55,9 +55,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
         }
-        if (indexManager == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND, "index_manager is required");
-        }
+        Indexer activeIndexManager = requireIndexManager();
         List<Document> normalized = new ArrayList<>();
         List<String> docIds = new ArrayList<>();
         for (Document document : documents) {
@@ -65,7 +63,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             normalized.add(new Document(docId, document.getText(), document.getMetadata()));
             docIds.add(docId);
         }
-        boolean built = indexManager.buildIndex(
+        boolean built = activeIndexManager.buildIndex(
                 chunker.chunkDocuments(normalized),
                 new IndexConfig(chunkIndexName(), config.getIndexType()),
                 embedModel,
@@ -90,12 +88,10 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
 
     @Override
     public boolean deleteDocuments(List<String> docIds) {
-        if (indexManager == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND, "index_manager is required");
-        }
+        Indexer activeIndexManager = requireIndexManager();
         boolean deleted = true;
         for (String docId : docIds) {
-            deleted &= indexManager.deleteIndex(docId, chunkIndexName(), Map.of());
+            deleted &= activeIndexManager.deleteIndex(docId, chunkIndexName(), Map.of());
         }
         return deleted;
     }
@@ -105,14 +101,12 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
         }
-        if (indexManager == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND, "index_manager is required");
-        }
+        Indexer activeIndexManager = requireIndexManager();
         List<String> ids = new ArrayList<>();
         for (Document document : documents) {
             String docId = document.getId() == null || document.getId().isBlank() ? UUID.randomUUID().toString() : document.getId();
             ids.add(docId);
-            indexManager.updateIndex(
+            activeIndexManager.updateIndex(
                     chunker.chunkDocuments(List.of(new Document(docId, document.getText(), document.getMetadata()))),
                     docId,
                     new IndexConfig(chunkIndexName(), config.getIndexType()),
@@ -127,12 +121,13 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
         stats.put("index_type", config.getIndexType());
-        if (indexManager == null) {
+        Indexer activeIndexManager = resolveIndexManager();
+        if (activeIndexManager == null) {
             stats.put("index_exists", false);
             return stats;
         }
-        stats.put("index_exists", indexManager.indexExists(chunkIndexName()));
-        stats.put("index_info", indexManager.getIndexInfo(chunkIndexName()));
+        stats.put("index_exists", activeIndexManager.indexExists(chunkIndexName()));
+        stats.put("index_info", activeIndexManager.getIndexInfo(chunkIndexName()));
         return stats;
     }
 

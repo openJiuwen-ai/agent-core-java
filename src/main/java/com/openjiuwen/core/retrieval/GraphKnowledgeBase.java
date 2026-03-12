@@ -67,9 +67,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
         }
-        if (indexManager == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND, "index_manager is required");
-        }
+        Indexer activeIndexManager = requireIndexManager();
         List<Document> normalized = new ArrayList<>();
         List<String> docIds = new ArrayList<>();
         for (Document document : documents) {
@@ -78,7 +76,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
             docIds.add(docId);
         }
         List<TextChunk> chunks = chunker.chunkDocuments(normalized);
-        boolean chunkBuilt = indexManager.buildIndex(chunks, new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
+        boolean chunkBuilt = activeIndexManager.buildIndex(chunks, new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
         if (!chunkBuilt) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNK_INDEX_BUILD_EXECUTION_ERROR, "Failed to build chunk index");
         }
@@ -93,7 +91,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
                         "extractor is required when use_graph is enabled");
             }
             List<Triple> triples = activeExtractor.extract(chunks, Map.of());
-            boolean tripleBuilt = indexManager.buildIndex(
+            boolean tripleBuilt = activeIndexManager.buildIndex(
                     tripleChunks(triples),
                     new IndexConfig(tripleIndexName(), config.getIndexType()),
                     embedModel,
@@ -152,14 +150,12 @@ public class GraphKnowledgeBase extends KnowledgeBase {
 
     @Override
     public boolean deleteDocuments(List<String> docIds) {
-        if (indexManager == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND, "index_manager is required");
-        }
+        Indexer activeIndexManager = requireIndexManager();
         boolean deleted = true;
         for (String docId : docIds) {
-            deleted &= indexManager.deleteIndex(docId, chunkIndexName(), Map.of());
+            deleted &= activeIndexManager.deleteIndex(docId, chunkIndexName(), Map.of());
             if (config.isUseGraph()) {
-                deleted &= indexManager.deleteIndex(docId, tripleIndexName(), Map.of());
+                deleted &= activeIndexManager.deleteIndex(docId, tripleIndexName(), Map.of());
             }
         }
         return deleted;
@@ -182,13 +178,14 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
         stats.put("use_graph", config.isUseGraph());
-        if (indexManager == null) {
+        Indexer activeIndexManager = resolveIndexManager();
+        if (activeIndexManager == null) {
             stats.put("index_exists", false);
             return stats;
         }
-        stats.put("chunk_index_info", indexManager.getIndexInfo(chunkIndexName()));
+        stats.put("chunk_index_info", activeIndexManager.getIndexInfo(chunkIndexName()));
         if (config.isUseGraph()) {
-            stats.put("triple_index_info", indexManager.getIndexInfo(tripleIndexName()));
+            stats.put("triple_index_info", activeIndexManager.getIndexInfo(tripleIndexName()));
         }
         return stats;
     }
