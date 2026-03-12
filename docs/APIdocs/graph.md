@@ -2,709 +2,1129 @@
 
 > 包路径：`com.openjiuwen.core.graph`
 
-Graph 模块提供基于 Pregel 计算模型的有向图执行引擎，支持图的构建、编译、执行、状态持久化、流式通信以及可视化。
+图执行引擎、Pregel 运行时、可视化与图存储实现。基于 `graph` 包源码逐页复核整理。
 
----
+## 文档说明
 
-## 目录
+- 本页覆盖 `54` 个公开类型（含嵌套公开类型）。
+- 默认记录源码中显式声明的 public/protected API；接口中按语言规则公开的成员同样列出。
+- Lombok 自动生成的 getter/setter/builder 不逐项展开，DTO/配置类改为记录显式字段。
+- 标记为 `@Deprecated` 或位于 `legacy` 包的类型会在条目中注明兼容性。
 
-- [1. 核心类](#1-核心类)
-- [2. Pregel 引擎](#2-pregel-引擎)
-- [3. 状态存储（store）](#3-状态存储store)
-- [4. 流式通信（stream_actor）](#4-流式通信stream_actor)
-- [5. 可视化（visualization）](#5-可视化visualization)
+## 包概览
 
----
+| 包 | 公开类型数 |
+|---|---:|
+| `com.openjiuwen.core.graph` | 11 |
+| `com.openjiuwen.core.graph.pregel` | 21 |
+| `com.openjiuwen.core.graph.store` | 8 |
+| `com.openjiuwen.core.graph.stream_actor` | 7 |
+| `com.openjiuwen.core.graph.visualization` | 7 |
 
-## 1. 核心类
+## `com.openjiuwen.core.graph`
 
-### 1.1 Executable\<I, O\>
+公开类型：`11`
 
-可执行组件的泛型抽象基类，提供 invoke/stream/collect/transform 四种执行模式。
+### `AtomicNode`
 
-**包路径**：`com.openjiuwen.core.graph`  
-**类型参数**：`<I>` 输入类型，`<O>` 输出类型
+- 类型：`class`
+- 声明：`public abstract class AtomicNode`
+- 说明：Abstract atomic node that validates the session, invokes the inner logic, and commits component state.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `onInvoke(I inputs, BaseSession session, Object... kwargs)` | `O` | 同步调用 |
-| `onStream(I inputs, BaseSession session, Object... kwargs)` | `Iterator<O>` | 流式输出 |
-| `onCollect(I inputs, BaseSession session, Object... kwargs)` | `O` | 从流式输入收集结果 |
-| `onTransform(I inputs, BaseSession session, Object... kwargs)` | `Iterator<O>` | 流式输入转换为流式输出 |
-| `skipTrace()` | `boolean` | 是否跳过追踪（默认 false） |
-| `graphInvoker()` | `boolean` | 是否为图调用者（默认 false） |
-| `postCommit()` | `boolean` | 是否执行后提交（默认 true） |
-| `componentType()` | `String` | 返回组件类型标识 |
+**方法**
 
-### 1.2 ExecutableGraph\<I, O\>
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object atomicInvoke(Map<String, Object> kwargs)` | `Object` | Execute the atomic node operation with session validation and state commit. |
+| `protected abstract Object doAtomicInvoke(Map<String, Object> kwargs)` | `Object` | Internal atomic invoke logic to be implemented by subclasses. |
 
-可执行图的抽象基类，封装 invoke/stream/collect/transform 并从输入 Map 中提取配置。
+### `CompiledGraph`
 
-**包路径**：`com.openjiuwen.core.graph`  
-**继承**：`Executable<I, O>`
+- 类型：`class`
+- 声明：`public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>>`
+- 说明：A compiled graph that wraps a Pregel engine and a Checkpointer for execution.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `invoke(I inputs, BaseSession session)` | `O` | 执行图（提取 `INPUTS_KEY` 和 `CONFIG_KEY`） |
-| `stream(I inputs, BaseSession session)` | `Iterator<O>` | 流式执行 |
-| `collect(Iterator<I> inputs, BaseSession session)` | `O` | 收集流式输入 |
-| `transform(Iterator<I> inputs, BaseSession session)` | `Iterator<O>` | 转换流式输入 |
-| `interrupt(Map<String, Object> message)` | `void` | 处理中断 |
-| `doInvoke(I inputs, BaseSession session, Object config)` | `O` | 内部实现（抽象） |
+**构造方法**
 
-### 1.3 Graph
+| 签名 | 说明 |
+|---|---|
+| `public CompiledGraph(Pregel pregel, Checkpointer checkpointer)` | - |
 
-图定义的抽象类，管理节点/边以及编译。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `protected Map<String, Object> doInvoke(Object inputs, BaseSession session, Object config)` | `Map<String, Object>` | - |
+| `public Iterator<Map<String, Object>> stream(Object inputs, BaseSession session)` | `Iterator<Map<String, Object>>` | - |
+| `public void interrupt(Map<String, Object> message)` | `void` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `startNode(String nodeId)` | `Graph` | 设置起始节点 |
-| `endNode(String nodeId)` | `Graph` | 设置结束节点 |
-| `addNode(String nodeId, Executable<?, ?> node, boolean waitForAll)` | `Graph` | 添加节点（含屏障选项，抽象） |
-| `addNode(String nodeId, Executable<?, ?> node)` | `Graph` | 添加节点（无屏障） |
-| `addEdge(Object sourceNodeId, String targetNodeId)` | `Graph` | 添加边（source 可为 String 或 List<String>，抽象） |
-| `addConditionalEdges(String sourceNodeId, Object router)` | `Graph` | 添加条件边（抽象） |
-| `compile(BaseSession session)` | `ExecutableGraph<?, ?>` | 编译为可执行形式（抽象） |
-| `getNodes()` | `Map<String, Executable<?, ?>>` | 获取所有节点（抽象） |
+### `Executable`
 
-### 1.4 PregelGraph
+- 类型：`class`
+- 声明：`public abstract class Executable<I, O>`
+- 说明：Generic executable component base class with invoke/stream/collect/transform abilities.
 
-基于 Pregel 的图构建器实现。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph`  
-**继承**：`Graph`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public O onInvoke(I inputs, BaseSession session, Object... kwargs)` | `O` | Invoke the component with the given inputs and session. |
+| `public Iterator<O> onStream(I inputs, BaseSession session, Object... kwargs)` | `Iterator<O>` | Stream the component output. |
+| `public O onCollect(I inputs, BaseSession session, Object... kwargs)` | `O` | Collect from streaming inputs and produce a single output. |
+| `public Iterator<O> onTransform(I inputs, BaseSession session, Object... kwargs)` | `Iterator<O>` | Transform streaming inputs to streaming outputs. |
+| `public boolean skipTrace()` | `boolean` | Whether tracing should be skipped for this component. |
+| `public boolean graphInvoker()` | `boolean` | Whether this component is a graph invoker. |
+| `public boolean postCommit()` | `boolean` | Whether post-commit should be performed after execution. |
+| `public String componentType()` | `String` | The component type identifier. |
 
-**构造方法**：
-```java
-PregelGraph()
-```
+### `ExecutableGraph`
 
-**方法**：
+- 类型：`class`
+- 声明：`public abstract class ExecutableGraph<I, O> extends Executable<I, O>`
+- 说明：An executable graph that wraps the standard invoke/stream/collect/transform with config extraction from the input map.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `startNode(String nodeId)` | `Graph` | 设置起始节点 |
-| `endNode(String nodeId)` | `Graph` | 设置结束节点 |
-| `addNode(String nodeId, Executable<?, ?> node, boolean waitForAll)` | `Graph` | 添加节点 |
-| `getNodes()` | `Map<String, Executable<?, ?>>` | 获取所有节点 |
-| `getVertex(String nodeId)` | `Vertex` | 获取内部节点包装 |
-| `addEdge(Object sourceNodeId, String targetNodeId)` | `Graph` | 添加边（支持 N→1、1→N、1→1） |
-| `addConditionalEdges(String sourceNodeId, Object router)` | `Graph` | 添加条件边 |
-| `compile(BaseSession session)` | `ExecutableGraph<?, ?>` | 编译为 CompiledGraph |
-| `reset()` | `void` | 重置所有节点以便重用 |
+**方法**
 
-### 1.5 CompiledGraph
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public O invoke(I inputs, BaseSession session)` | `O` | Invoke the graph. |
+| `public Iterator<O> stream(I inputs, BaseSession session)` | `Iterator<O>` | Stream the graph output. |
+| `public O collect(Iterator<I> inputs, BaseSession session)` | `O` | Collect from streaming inputs and produce a single output. |
+| `public Iterator<O> transform(Iterator<I> inputs, BaseSession session)` | `Iterator<O>` | Transform streaming inputs to streaming outputs. |
+| `public void interrupt(Map<String, Object> message)` | `void` | Handle interrupt messages. |
+| `protected abstract O doInvoke(I inputs, BaseSession session, Object config)` | `O` | Internal invoke implementation to be provided by subclasses. |
 
-编译后的图，封装 Pregel 引擎和 Checkpointer。
+### `Graph`
 
-**包路径**：`com.openjiuwen.core.graph`  
-**继承**：`ExecutableGraph<Object, Map<String, Object>>`
+- 类型：`class`
+- 声明：`public abstract class Graph`
+- 说明：Abstract graph definition with node/edge management and compilation.
 
-**构造方法**：
-```java
-CompiledGraph(Pregel pregel, Checkpointer checkpointer)
-```
+**方法**
 
-**方法**：
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Graph startNode(String nodeId)` | `Graph` | Set the start node for the graph. |
+| `public Graph endNode(String nodeId)` | `Graph` | Set the end node for the graph. |
+| `public abstract Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll)` | `Graph` | Add a node to the graph. |
+| `public Graph addNode(String nodeId, Executable<?, ?> node)` | `Graph` | Add a node to the graph (no barrier, default). |
+| `public abstract Graph addEdge(Object sourceNodeId, String targetNodeId)` | `Graph` | Add an edge from one or more source nodes to a target node. |
+| `public abstract Graph addConditionalEdges(String sourceNodeId, Object router)` | `Graph` | Add conditional edges from a source node using a router. |
+| `public abstract ExecutableGraph<?, ?> compile(BaseSession session)` | `ExecutableGraph<?, ?>` | Compile the graph into an executable form. |
+| `public abstract Map<String, Executable<?, ?>> getNodes()` | `Map<String, Executable<?, ?>>` | Get the nodes in this graph. |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `doInvoke(Object inputs, BaseSession session, Object config)` | `Map<String, Object>` | 执行 Pregel 计算（含检查点） |
-| `stream(Object inputs, BaseSession session)` | `Iterator<Map<String, Object>>` | 流式执行 |
-| `interrupt(Map<String, Object> message)` | `void` | 处理中断 |
+### `GraphNodeState`
 
-### 1.6 AtomicNode
+- 类型：`class`
+- 声明：`public class GraphNodeState`
+- 说明：Graph-level state containing the list of source node IDs that have been visited.
 
-原子节点抽象基类，验证会话状态、调用内部逻辑并提交组件状态。
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `sourceNodeId` | `List<String>` | `private` | `-` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public GraphNodeState()` | - |
+| `public GraphNodeState(List<String> sourceNodeId)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<String> getSourceNodeId()` | `List<String>` | - |
+| `public void setSourceNodeId(List<String> sourceNodeId)` | `void` | - |
+| `public void merge(GraphNodeState other)` | `void` | Merge another state into this one by concatenating source node IDs. |
+
+### `PregelGraph`
 
-**包路径**：`com.openjiuwen.core.graph`
+- 类型：`class`
+- 声明：`public class PregelGraph extends Graph`
+- 说明：PregelGraph is the main graph builder for constructing a Pregel-based workflow graph.
+- 嵌套公开类型：`PregelGraph.Branch`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `atomicInvoke(Map<String, Object> kwargs)` | `Object` | 执行原子节点操作 |
-| `doAtomicInvoke(Map<String, Object> kwargs)` | `Object` | 内部实现（抽象受保护） |
+**构造方法**
 
-### 1.7 Vertex
+| 签名 | 说明 |
+|---|---|
+| `public PregelGraph()` | - |
 
-图节点的执行包装器，管理初始化、执行生命周期、流协调和追踪。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph`  
-**继承**：`AtomicNode`  
-**实现**：`StreamConsumer`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Graph startNode(String nodeId)` | `Graph` | - |
+| `public Graph endNode(String nodeId)` | `Graph` | - |
+| `public Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll)` | `Graph` | - |
+| `public Map<String, Executable<?, ?>> getNodes()` | `Map<String, Executable<?, ?>>` | - |
+| `public Vertex getVertex(String nodeId)` | `Vertex` | Get the internal vertex wrapper for a node. |
+| `public Graph addEdge(Object sourceNodeId, String targetNodeId)` | `Graph` | - |
+| `public Graph addConditionalEdges(String sourceNodeId, Object router)` | `Graph` | - |
+| `public ExecutableGraph<?, ?> compile(BaseSession session)` | `ExecutableGraph<?, ?>` | - |
+| `public void reset()` | `void` | Reset all vertices for reuse. |
 
-**构造方法**：
-```java
-Vertex(String nodeId, Executable<?, ?> executable)
-```
+### `PregelGraph.Branch`
 
-**方法**：
+- 类型：`class`
+- 声明：`public static class Branch`
+- 说明：A conditional branch definition.
+- 宿主类型：`PregelGraph`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `init(BaseSession session, Map<String, Object> kwargs)` | `boolean` | 初始化节点 |
-| `call(GraphNodeState state, Object config)` | `Map<String, Object>` | Pregel 调用的主入口 |
-| `streamCall(CountDownLatch latch, Consumer<Exception> errorCallback)` | `void` | 处理流式输入调用 |
-| `isDone()` | `boolean` | 节点是否已完成执行 |
-| `shouldHandleMessage()` | `boolean` | 节点是否具有流能力 |
-| `reset()` | `void` | 重置以便重用 |
-| `getNodeId()` | `String` | 获取节点 ID |
-| `getExecutable()` | `Executable<Object, Object>` | 获取底层可执行组件 |
-| `getSession()` | `NodeSession` | 获取节点会话 |
-| `isEndNode()` / `setEndNode(boolean)` | `boolean` / `void` | 结束节点标记 |
+**构造方法**
 
-### 1.8 Router
+| 签名 | 说明 |
+|---|---|
+| `public Branch(Object condition)` | - |
 
-图路由器函数式接口，确定条件边目标。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph`  
-**继承**：`Function<Object, Object>`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Function<Object, Object> getCondition()` | `Function<Object, Object>` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `apply(Object input)` | `Object` | 返回单个目标节点 ID 或 List |
+### `Router`
 
-### 1.9 GraphNodeState
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface Router extends Function<Object, Object>`
+- 说明：Functional interface for a graph router that determines conditional edge targets.
+- 注解：`@FunctionalInterface`
 
-图级别状态，包含已访问的源节点 ID 列表。
+显式公开成员较少，当前源码主要通过字段访问器、继承关系或运行时约定暴露能力。
 
-**包路径**：`com.openjiuwen.core.graph`
+### `Vertex`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getSourceNodeId()` | `List<String>` | 获取源节点 ID 列表 |
-| `setSourceNodeId(List<String>)` | `void` | 设置源节点 ID 列表 |
-| `merge(GraphNodeState other)` | `void` | 合并另一个状态（拼接列表） |
+- 类型：`class`
+- 声明：`public class Vertex extends AtomicNode implements StreamConsumer`
+- 说明：Vertex is the execution wrapper for a graph node.
+- 嵌套公开类型：`Vertex.MixModeAware`
 
----
+**构造方法**
 
-## 2. Pregel 引擎
+| 签名 | 说明 |
+|---|---|
+| `public Vertex(String nodeId, Executable<?, ?> executable)` | - |
 
-### 2.1 Pregel
+**方法**
 
-Pregel 图执行引擎，实现 BSP（Bulk Synchronous Parallel）模型。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean init(BaseSession session, Map<String, Object> kwargs)` | `boolean` | Initialize the vertex with a session and optional context. |
+| `public Map<String, Object> call(GraphNodeState state, Object config) throws Exception` | `Map<String, Object>` | Main entry point - called by the Pregel engine. |
+| `protected Object doAtomicInvoke(Map<String, Object> kwargs)` | `Object` | - |
+| `public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback)` | `void` | Handle stream-in call for stream abilities (COLLECT, TRANSFORM). |
+| `public boolean isDone()` | `boolean` | - |
+| `public boolean shouldHandleMessage()` | `boolean` | - |
+| `public void reset()` | `void` | Reset the vertex for reuse. |
+| `public String getNodeId()` | `String` | - |
+| `public Executable<Object, Object> getExecutable()` | `Executable<Object, Object>` | - |
+| `public NodeSession getSession()` | `NodeSession` | - |
+| `public boolean isEndNode()` | `boolean` | - |
+| `public void setEndNode(boolean endNode)` | `void` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+### `Vertex.MixModeAware`
 
-**构造方法**：
-```java
-Pregel(Map<String, PregelNode> nodes, List<Channel> channels, Store store, Consumer<PregelLoop> afterStep)
-Pregel(Map<String, PregelNode> nodes, List<Channel> channels, String initial, Store store, Consumer<PregelLoop> afterStep)
-```
+- 类型：`interface`
+- 声明：`public interface MixModeAware`
+- 说明：Marker interface for executables that support mixed mode (stream + batch).
+- 宿主类型：`Vertex`
 
-**方法**：
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `run(PregelConfig config)` | `Map<String, Object>` | 执行 Pregel 计算 |
-| `getNodes()` | `Map<String, PregelNode>` | 获取所有节点 |
-| `getChannels()` | `List<Channel>` | 获取所有通道 |
-| `getInitial()` | `String` | 获取初始节点 |
-| `getStore()` | `Store` | 获取状态存储 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `void setMix()` | `void` | - |
 
-### 2.2 PregelBuilder
+## `com.openjiuwen.core.graph.pregel`
 
-Pregel 图构建器。
+公开类型：`21`
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+### `BarrierChannel`
 
-**构造方法**：
-```java
-PregelBuilder()  // 自动初始化 START 和 END 节点
-```
+- 类型：`class`
+- 声明：`public class BarrierChannel extends Channel`
+- 说明：Channel for N\u21921 fan-in barrier synchronization.
 
-**方法**：
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `addNode(String name, Object fn, List<IRouter> routers)` | `PregelBuilder` | 添加节点 |
-| `addNode(String name, Object fn)` | `PregelBuilder` | 添加无路由器节点 |
-| `addEdge(Object start, Object end)` | `PregelBuilder` | 添加边（支持 N→1、1→N、1→1） |
-| `addBranch(String src, Function<Object, Object> selector)` | `PregelBuilder` | 添加条件分支 |
-| `build(Store store, Consumer<PregelLoop> afterStepCallback)` | `Pregel` | 构建引擎 |
-| `build()` | `Pregel` | 构建引擎（无存储和回调） |
+| 签名 | 说明 |
+|---|---|
+| `public BarrierChannel(String nodeName, Set<String> expected)` | - |
 
-### 2.3 PregelLoop
+**方法**
 
-Pregel 执行循环，实现 BSP 超级步。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getKey()` | `String` | - |
+| `public String getNodeName()` | `String` | - |
+| `public boolean isReady()` | `boolean` | - |
+| `public boolean accept(Message msg)` | `boolean` | - |
+| `public void consume()` | `void` | - |
+| `public Object snapshot()` | `Object` | - |
+| `public void restore(Object snapshotData)` | `void` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+### `BarrierMessage`
 
-**构造方法**：
-```java
-PregelLoop(Pregel graph, PregelConfig config)
-```
+- 类型：`class`
+- 声明：`public class BarrierMessage extends Message`
+- 说明：Barrier message for N\u21921 fan-in synchronization.
 
-**方法**：
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `init()` | `void` | 初始化循环（若有则恢复状态） |
-| `runStep()` | `boolean` | 执行一个超级步；返回 true 表示还有更多步骤 |
-| `getStep()` | `int` | 获取当前步数 |
-| `getConfig()` | `PregelConfig` | 获取配置 |
-| `getActiveNodes()` | `List<String>` | 获取活跃节点列表 |
+| 签名 | 说明 |
+|---|---|
+| `public BarrierMessage(String sender, String target)` | - |
+| `public BarrierMessage(String sender, String target, Object payload)` | - |
 
-### 2.4 PregelConfig
+### `BarrierRouter`
 
-Pregel 图执行配置。
+- 类型：`class`
+- 声明：`public class BarrierRouter implements IRouter`
+- 说明：Barrier router that sends barrier messages for N\u21921 fan-in synchronization.
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+**构造方法**
 
-| 字段/方法 | 类型 | 说明 |
-|-----------|------|------|
-| `sessionId` | `String` | 会话 ID |
-| `recursionLimit` | `int` | 递归限制 |
-| `ns` | `String` | 命名空间 |
-| `parentNs` | `String` | 父命名空间 |
-| `DEFAULT` | `PregelConfig` | 默认配置（静态常量） |
-| `get(String key)` | `Object` | 按键名获取配置值 |
-| `toMap()` | `Map<String, Object>` | 转换为 Map |
-| `createInnerConfig(PregelConfig config)` | `PregelConfig` | 创建内部配置副本（静态） |
+| 签名 | 说明 |
+|---|---|
+| `public BarrierRouter(List<String> targets)` | - |
 
-### 2.5 PregelConstants
+**方法**
 
-Pregel 常量定义。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<Message> dispatch(String sourceNode)` | `List<Message>` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+### `Channel`
 
-| 常量 | 值 | 说明 |
-|------|----|------|
-| `START` | `"__start__"` | 虚拟起始节点 |
-| `END` | `"__end__"` | 虚拟结束节点 |
-| `MAX_RECURSIVE_LIMIT` | `10000` | 默认递归限制 |
-| `TASK_STATUS_INTERRUPT` | `"__interrupt__"` | 中断状态 |
-| `TASK_STATUS_ERROR` | `"__error__"` | 错误状态 |
-| `NS_SEPARATOR` | `":"` | 命名空间分隔符 |
+- 类型：`class`
+- 声明：`public abstract class Channel`
+- 说明：Abstract channel for message passing between Pregel nodes.
 
-### 2.6 PregelNode
+**构造方法**
 
-Pregel 执行图中的节点。
+| 签名 | 说明 |
+|---|---|
+| `protected Channel(String name)` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+**方法**
 
-**构造方法**：
-```java
-PregelNode(String name, Object func, List<IRouter> routers)
-```
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getKey()` | `String` | Get the routing key for this channel. |
+| `public String getNodeName()` | `String` | Get the node name this channel belongs to. |
+| `public abstract boolean isReady()` | `boolean` | Check whether the channel has received enough messages to trigger execution. |
+| `public abstract boolean accept(Message msg)` | `boolean` | Accept an incoming message. |
+| `public abstract void consume()` | `void` | Consume the buffered messages and reset the channel. |
+| `public abstract Object snapshot()` | `Object` | Create a snapshot of the current channel state for persistence. |
+| `public abstract void restore(Object snapshotData)` | `void` | Restore channel state from a snapshot. |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getName()` | `String` | 获取节点名称 |
-| `getFunc()` | `Object` | 获取节点函数 |
-| `getRouters()` | `List<IRouter>` | 获取路由器列表 |
+### `ChannelManager`
 
-### 2.7 通道系统
+- 类型：`class`
+- 声明：`public class ChannelManager`
+- 说明：Manages all channels and message routing between Pregel nodes.
 
-#### Channel（抽象类）
+**构造方法**
 
-Pregel 节点间消息传递通道的抽象基类。
+| 签名 | 说明 |
+|---|---|
+| `public ChannelManager(List<Channel> channels)` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getKey()` | `String` | 获取路由键（默认为名称） |
-| `getNodeName()` | `String` | 获取节点名称 |
-| `isReady()` | `boolean` | 是否有足够消息（抽象） |
-| `accept(Message msg)` | `boolean` | 接受传入消息（抽象） |
-| `consume()` | `void` | 重置通道（抽象） |
-| `snapshot()` | `Object` | 创建状态快照（抽象） |
-| `restore(Object snapshotData)` | `void` | 从快照恢复（抽象） |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void bufferMessage(Message msg)` | `void` | Add a message to the buffer for the next flush. |
+| `public boolean isEmpty()` | `boolean` | Check if the message buffer is empty. |
+| `public void flush()` | `void` | Flush buffered messages into channels and update ready nodes. |
+| `public List<String> getReadyNodes()` | `List<String>` | Get names of all nodes that are ready to execute. |
+| `public void consume(String nodeName)` | `void` | Consume (clear) all ready channels for the given node. |
+| `public Map<String, Object> snapshot()` | `Map<String, Object>` | Create a snapshot of all channel states for persistence. |
+| `public void restore(Map<String, Object> snapshotMap)` | `void` | Restore channel states from a snapshot. |
+| `public List<Message> getBuffer()` | `List<Message>` | Get the raw buffer (for error state persistence). |
 
-#### TriggerChannel
+### `ConditionalRouter`
 
-触发通道，接收到任意消息即就绪。
+- 类型：`class`
+- 声明：`public class ConditionalRouter implements IRouter`
+- 说明：Conditional router that determines targets dynamically via a selector function.
 
-**构造方法**：`TriggerChannel(String name)`
+**构造方法**
 
-#### BarrierChannel
+| 签名 | 说明 |
+|---|---|
+| `public ConditionalRouter(Function<Object, Object> selector)` | Create a conditional router. |
 
-屏障通道，N→1 扇入同步。
+**方法**
 
-**构造方法**：`BarrierChannel(String nodeName, Set<String> expected)`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<Message> dispatch(String sourceNode)` | `List<Message>` | - |
 
-#### ChannelManager
+### `GraphInterrupt`
 
-通道管理器，管理所有通道和消息路由。
+- 类型：`class`
+- 声明：`public class GraphInterrupt extends Exception`
+- 说明：Exception thrown when a graph execution is interrupted.
 
-**构造方法**：`ChannelManager(List<Channel> channels)`
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `bufferMessage(Message msg)` | `void` | 将消息加入缓冲区 |
-| `isEmpty()` | `boolean` | 缓冲区是否为空 |
-| `flush()` | `void` | 将缓冲消息刷入通道 |
-| `getReadyNodes()` | `List<String>` | 获取就绪节点 |
-| `consume(String nodeName)` | `void` | 消费指定节点的就绪通道 |
-| `snapshot()` | `Map<String, Object>` | 创建完整通道状态快照 |
-| `restore(Map<String, Object> snapshotMap)` | `void` | 从快照恢复 |
+| 签名 | 说明 |
+|---|---|
+| `public GraphInterrupt()` | - |
+| `public GraphInterrupt(Interrupt value)` | - |
 
-### 2.8 消息系统
+**方法**
 
-#### Message
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Interrupt getValue()` | `Interrupt` | - |
 
-Pregel 节点间传递的基础消息。
+### `IRouter`
 
-**构造方法**：
-```java
-Message(String sender, String target)
-Message(String sender, String target, Object payload)
-```
+- 类型：`interface`
+- 声明：`public interface IRouter`
+- 说明：Router interface for dispatching messages after a node executes.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getSender()` | `String` | 获取发送者 |
-| `getTarget()` | `String` | 获取目标 |
-| `getPayload()` | `Object` | 获取负载 |
+**方法**
 
-#### TriggerMessage
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `List<Message> dispatch(String sourceNode)` | `List<Message>` | Dispatch messages from the given source node. |
 
-触发消息，在下一超级步激活目标节点。继承 `Message`。
+### `Interrupt`
 
-#### BarrierMessage
+- 类型：`class`
+- 声明：`public class Interrupt`
+- 说明：Represents an interrupt value during graph execution.
 
-屏障消息，用于 N→1 扇入同步。继承 `Message`。
+**构造方法**
 
-### 2.9 路由器系统
+| 签名 | 说明 |
+|---|---|
+| `public Interrupt(Object value)` | - |
 
-#### IRouter（接口）
+**方法**
 
-路由器接口，在节点执行后分发消息。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object getValue()` | `Object` | - |
+| `public String toString()` | `String` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `dispatch(String sourceNode)` | `List<Message>` | 从源节点分发消息 |
+### `Message`
 
-#### StaticRouter
+- 类型：`class`
+- 声明：`public class Message`
+- 说明：Base message passed between Pregel nodes via channels.
 
-静态路由器，向固定目标发送触发消息（1→N）。
+**字段**
 
-**构造方法**：`StaticRouter(List<String> targets)`
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `sender` | `String` | `private final` | `-` | - |
+| `target` | `String` | `private final` | `-` | - |
+| `payload` | `Object` | `private final` | `-` | - |
 
-#### ConditionalRouter
+**构造方法**
 
-条件路由器，通过选择器函数动态确定目标。
+| 签名 | 说明 |
+|---|---|
+| `public Message(String sender, String target)` | - |
+| `public Message(String sender, String target, Object payload)` | - |
 
-**构造方法**：`ConditionalRouter(Function<Object, Object> selector)`
+**方法**
 
-#### BarrierRouter
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getSender()` | `String` | - |
+| `public String getTarget()` | `String` | - |
+| `public Object getPayload()` | `Object` | - |
+| `public String toString()` | `String` | - |
 
-屏障路由器，发送屏障消息进行 N→1 扇入同步。
+### `NodeTask`
 
-**构造方法**：`BarrierRouter(List<String> targets)`
+- 类型：`class`
+- 声明：`public class NodeTask implements Callable<Object>`
+- 说明：Executes a single Pregel node and produces routing messages.
 
-### 2.10 TaskExecutorPool
+**构造方法**
 
-Pregel 节点任务并发执行池，使用虚拟线程。
+| 签名 | 说明 |
+|---|---|
+| `public NodeTask(PregelNode node, PregelConfig config, int version)` | - |
 
-**包路径**：`com.openjiuwen.core.graph.pregel`
+**方法**
 
-**构造方法**：
-```java
-TaskExecutorPool(PregelConfig config)
-```
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object call() throws Exception` | `Object` | Execute the node function and dispatch routing messages. |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `submit(PregelNode node, int version)` | `void` | 提交节点执行任务 |
-| `waitAll()` | `void` | 等待所有任务完成（FIRST_EXCEPTION 语义） |
-| `cancelAll()` | `void` | 取消所有运行中的任务 |
-| `clear()` | `void` | 清空结果集合 |
-| `getSucceedMessages()` | `List<Message>` | 获取成功消息列表 |
-| `getFailed()` | `Map<String, PendingNode>` | 获取失败节点映射 |
+### `Pregel`
 
-### 2.11 GraphInterrupt
+- 类型：`class`
+- 声明：`public class Pregel`
+- 说明：Pregel graph execution engine implementing the BSP (Bulk Synchronous Parallel) model.
 
-图执行中断异常。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.graph.pregel`  
-**继承**：`Exception`
+| 签名 | 说明 |
+|---|---|
+| `public Pregel(Map<String, PregelNode> nodes, List<Channel> channels, Store store, Consumer<PregelLoop> afterStep)` | - |
+| `public Pregel(Map<String, PregelNode> nodes, List<Channel> channels, String initial, Store store, Consumer<PregelLoop> afterStep)` | - |
 
-**构造方法**：
-```java
-GraphInterrupt()
-GraphInterrupt(Interrupt value)
-```
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getValue()` | `Interrupt` | 获取中断值 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Object> run(PregelConfig config) throws Exception` | `Map<String, Object>` | Execute the Pregel graph computation. |
+| `public Map<String, PregelNode> getNodes()` | `Map<String, PregelNode>` | - |
+| `public List<Channel> getChannels()` | `List<Channel>` | - |
+| `public String getInitial()` | `String` | - |
+| `public Store getStore()` | `Store` | - |
+| `public Consumer<PregelLoop> getAfterStep()` | `Consumer<PregelLoop>` | - |
 
----
+### `PregelBuilder`
 
-## 3. 状态存储（store）
+- 类型：`class`
+- 声明：`public class PregelBuilder`
+- 说明：Builder for constructing a Pregel graph engine.
 
-### 3.1 Store（接口）
+**构造方法**
 
-图状态持久化的抽象接口。
+| 签名 | 说明 |
+|---|---|
+| `public PregelBuilder()` | - |
 
-**包路径**：`com.openjiuwen.core.graph.store`
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `get(String sessionId, String ns)` | `Optional<GraphStoreState>` | 获取存储状态 |
-| `save(String sessionId, String ns, GraphStoreState state)` | `void` | 保存状态 |
-| `delete(String sessionId, String ns)` | `void` | 删除状态（ns=null 删除全部） |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public PregelBuilder addNode(String name, Object fn, List<IRouter> routers)` | `PregelBuilder` | Add a node to the graph. |
+| `public PregelBuilder addNode(String name, Object fn)` | `PregelBuilder` | Add a node with no initial routers. |
+| `public PregelBuilder addEdge(Object start, Object end)` | `PregelBuilder` | Add an edge between nodes. |
+| `public PregelBuilder addBranch(String src, java.util.function.Function<Object, Object> selector)` | `PregelBuilder` | Add a conditional branch from a source node using a selector function. |
+| `public Pregel build(Store store, Consumer<PregelLoop> afterStepCallback)` | `Pregel` | Build the Pregel engine. |
+| `public Pregel build()` | `Pregel` | Build the Pregel engine with no store or callback. |
 
-### 3.2 InMemoryStore
+### `PregelConfig`
 
-内存实现的图状态存储。
+- 类型：`class`
+- 声明：`public class PregelConfig`
+- 说明：Configuration for Pregel graph execution.
 
-**包路径**：`com.openjiuwen.core.graph.store`  
-**实现**：`Store`
+**字段**
 
-**构造方法**：`InMemoryStore()`
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `sessionId` | `String` | `private` | `-` | - |
+| `recursionLimit` | `int` | `private` | `-` | - |
+| `ns` | `String` | `private` | `-` | - |
+| `parentNs` | `String` | `private` | `-` | - |
+| `DEFAULT` | `PregelConfig` | `public static final` | `new PregelConfig(null, null, PregelConstants.MAX_RECURSIVE_LIMIT)` | Default Pregel configuration. |
 
-### 3.3 GraphStore
+**构造方法**
 
-Store 的装饰器，添加日志记录。
+| 签名 | 说明 |
+|---|---|
+| `public PregelConfig()` | - |
+| `public PregelConfig(String sessionId, String ns, int recursionLimit)` | - |
 
-**包路径**：`com.openjiuwen.core.graph.store`  
-**实现**：`Store`
+**方法**
 
-**构造方法**：`GraphStore(Store delegate)`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getSessionId()` | `String` | - |
+| `public void setSessionId(String sessionId)` | `void` | - |
+| `public int getRecursionLimit()` | `int` | - |
+| `public void setRecursionLimit(int recursionLimit)` | `void` | - |
+| `public String getNs()` | `String` | - |
+| `public void setNs(String ns)` | `void` | - |
+| `public String getParentNs()` | `String` | - |
+| `public void setParentNs(String parentNs)` | `void` | - |
+| `public Object get(String key)` | `Object` | Get a config value by key name (for compatibility with dict-style access). |
+| `public Map<String, Object> toMap()` | `Map<String, Object>` | Convert to a map representation. |
+| `public static PregelConfig createInnerConfig(PregelConfig config)` | `PregelConfig` | Create an inner config copy with defaults applied. |
 
-### 3.4 GraphStoreState
+### `PregelConstants`
 
-Pregel 图执行的持久化状态，用于恢复/续接。
+- 类型：`class`
+- 声明：`public final class PregelConstants`
+- 说明：Constants for the Pregel graph execution engine.
 
-**包路径**：`com.openjiuwen.core.graph.store`
+**字段**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getNs()` | `String` | 获取命名空间 |
-| `getStep()` | `int` | 获取步数 |
-| `getChannelValues()` | `Map<String, Object>` | 获取通道值 |
-| `getPendingBuffer()` | `List<Message>` | 获取待处理缓冲区 |
-| `getPendingNode()` | `Map<String, PendingNode>` | 获取待处理节点 |
-| `getNodeVersion()` | `Map<String, Integer>` | 获取节点版本 |
-| `create(...)` | `GraphStoreState` | 工厂方法（静态） |
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `START` | `String` | `public static final` | `"__start__"` | Virtual start node identifier. |
+| `END` | `String` | `public static final` | `"__end__"` | Virtual end node identifier. |
+| `MAX_RECURSIVE_LIMIT` | `int` | `public static final` | `10000` | Default maximum recursion (super-step) limit. |
+| `TASK_STATUS_INTERRUPT` | `String` | `public static final` | `"__interrupt__"` | Task status for interrupted execution. |
+| `TASK_STATUS_ERROR` | `String` | `public static final` | `"__error__"` | Task status for failed execution. |
+| `NS_SEPARATOR` | `String` | `public static final` | `":"` | Namespace separator used in config paths. |
+| `NS_REPLACE_CHAR` | `String` | `public static final` | `"#"` | Replacement character for namespace separator in keys. |
+| `NS` | `String` | `public static final` | `"ns"` | Config key for namespace. |
+| `PARENT_NS` | `String` | `public static final` | `"parent_ns"` | Config key for parent namespace. |
+| `SESSION_ID` | `String` | `public static final` | `"session_id"` | Config key for session ID. |
+| `RECURSION_LIMIT` | `String` | `public static final` | `"recursion_limit"` | Config key for recursion limit. |
 
-### 3.5 PendingNode
+### `PregelLoop`
 
-挂起（失败或中断）的节点。
+- 类型：`class`
+- 声明：`public class PregelLoop`
+- 说明：Pregel execution loop implementing the BSP (Bulk Synchronous Parallel) model.
 
-**包路径**：`com.openjiuwen.core.graph.store`
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getNodeName()` | `String` | 获取节点名称 |
-| `getStatus()` | `String` | 获取状态 |
-| `getExceptions()` | `List<Exception>` | 获取异常列表 |
+| 签名 | 说明 |
+|---|---|
+| `public PregelLoop(Pregel graph, PregelConfig config)` | - |
 
-### 3.6 Serializer
+**方法**
 
-图状态持久化的抽象序列化器。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void init()` | `void` | Initialize the Pregel loop, restoring state if available. |
+| `public boolean runStep() throws Exception` | `boolean` | Execute one super-step of the Pregel computation. |
+| `public int getStep()` | `int` | - |
+| `public PregelConfig getConfig()` | `PregelConfig` | - |
+| `public List<String> getActiveNodes()` | `List<String>` | - |
 
-**包路径**：`com.openjiuwen.core.graph.store`
+### `PregelNode`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `dumpsTyped(Object obj)` | `TypedBytes` | 序列化为类型化字节（抽象） |
-| `loadsTyped(TypedBytes data)` | `Object` | 从类型化字节反序列化（抽象） |
-| `create(String typeName)` | `Serializer` | 工厂方法（静态） |
+- 类型：`class`
+- 声明：`public class PregelNode`
+- 说明：Represents a node in the Pregel execution graph.
 
-**内部类**：
-- `record TypedBytes(String type, byte[] data)` — 类型化字节
-- `JsonSerializer` — 基于 Jackson 的 JSON 序列化器
+**构造方法**
 
----
+| 签名 | 说明 |
+|---|---|
+| `public PregelNode(String name, Object func, List<IRouter> routers)` | - |
 
-## 4. 流式通信（stream_actor）
+**方法**
 
-### 4.1 StreamConsumer（接口）
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getName()` | `String` | - |
+| `public Object getFunc()` | `Object` | - |
+| `public List<IRouter> getRouters()` | `List<IRouter>` | - |
 
-可消费流式数据的图节点接口。
+### `StaticRouter`
 
-**包路径**：`com.openjiuwen.core.graph.stream_actor`
+- 类型：`class`
+- 声明：`public class StaticRouter implements IRouter`
+- 说明：Static router that sends trigger messages to fixed targets (1\u2192N).
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `streamCall(CountDownLatch latch, Consumer<Exception> errorCallback)` | `void` | 处理流式输入调用 |
-| `shouldHandleMessage()` | `boolean` | 是否具有流能力 |
-| `isDone()` | `boolean` | 执行周期是否完成 |
+**构造方法**
 
-### 4.2 ActorManager
+| 签名 | 说明 |
+|---|---|
+| `public StaticRouter(List<String> targets)` | - |
 
-图中节点间流式通信的管理器。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph.stream_actor`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<Message> dispatch(String sourceNode)` | `List<Message>` | - |
 
-**构造方法**：
-```java
-ActorManager(Map<String, List<String>> streamEdges, StreamGraph graph, boolean subGraph,
-             BaseSession session, Function<String, List<ComponentAbility>> compAbilitiesProvider)
-```
+### `TaskExecutorPool`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `subWorkflowStream()` | `BlockingQueue<Object>` | 获取子工作流流队列 |
-| `getStreamTransform()` | `StreamTransform` | 获取流转换器 |
-| `produce(String producerId, Object messageContent, ComponentAbility ability, boolean firstFrame)` | `void` | 生产流消息 |
-| `endMessage(String producerId, ComponentAbility ability)` | `void` | 发送结束消息 |
-| `consume(String consumerId, ComponentAbility ability, Object schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | 消费流数据 |
-| `shutdown()` | `void` | 关闭所有 Actor |
+- 类型：`class`
+- 声明：`public class TaskExecutorPool`
+- 说明：Pool for executing Pregel node tasks concurrently using virtual threads.
 
-### 4.3 StreamActor
+**构造方法**
 
-单个节点的流生命周期管理器。
+| 签名 | 说明 |
+|---|---|
+| `public TaskExecutorPool(PregelConfig config)` | - |
 
-**包路径**：`com.openjiuwen.core.graph.stream_actor`
+**方法**
 
-**构造方法**：
-```java
-StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities,
-            List<String> sources, long streamGeneratorTimeoutSeconds)
-```
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void submit(PregelNode node, int version)` | `void` | Submit a node for execution. |
+| `public void waitAll() throws Exception` | `void` | Wait for all submitted tasks to complete. |
+| `public void cancelAll()` | `void` | Cancel all running tasks. |
+| `public void clear()` | `void` | Clear all result collections. |
+| `public List<Message> getSucceedMessages()` | `List<Message>` | - |
+| `public Map<String, PendingNode> getFailed()` | `Map<String, PendingNode>` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `send(Object message, ComponentAbility sourceAbility, boolean firstFrame, String producerId)` | `void` | 发送流消息 |
-| `generator(ComponentAbility ability, Map<String, Object> schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | 获取生成器 Map |
-| `shutdown()` | `void` | 关闭所有任务 |
+### `TriggerChannel`
 
-### 4.4 StreamProcessor
+- 类型：`class`
+- 声明：`public class TriggerChannel extends Channel`
+- 说明：Channel that triggers when any message is received.
 
-单个节点的流消息处理器。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.graph.stream_actor`
+| 签名 | 说明 |
+|---|---|
+| `public TriggerChannel(String name)` | - |
 
-**常量**：`END_SENTINEL` — 流结束标记
+**方法**
 
-**构造方法**：
-```java
-StreamProcessor(String nodeId, List<String> sources, long streamGeneratorTimeoutSeconds)
-```
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean isReady()` | `boolean` | - |
+| `public boolean accept(Message msg)` | `boolean` | - |
+| `public void consume()` | `void` | - |
+| `public Object snapshot()` | `Object` | - |
+| `public void restore(Object snapshotData)` | `void` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `run(ComponentAbility ability)` | `void` | 主处理循环（在虚拟线程上运行） |
-| `receive(StreamPayload payload)` | `void` | 接收流消息 |
-| `generator(Map<String, Object> schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | 创建生成器 Map |
+### `TriggerMessage`
 
-### 4.5 StreamGraph
+- 类型：`class`
+- 声明：`public class TriggerMessage extends Message`
+- 说明：Trigger message that activates a target node in the next super-step.
 
-图的流消费者管理器。
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `addStreamConsumer(StreamConsumer consumer, String nodeId)` | `void` | 注册消费者 |
-| `getNode(String nodeId)` | `StreamConsumer` | 获取节点的消费者 |
+| 签名 | 说明 |
+|---|---|
+| `public TriggerMessage(String sender, String target)` | - |
+| `public TriggerMessage(String sender, String target, Object payload)` | - |
 
-### 4.6 StreamPayload
+## `com.openjiuwen.core.graph.store`
 
-节点间流消息的负载。
+公开类型：`8`
 
-**构造方法**：`StreamPayload(Object message, ComponentAbility sourceAbility)`
+### `GraphStore`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getMessage()` | `Object` | 获取消息内容 |
-| `getSourceAbility()` | `ComponentAbility` | 获取源能力 |
+- 类型：`class`
+- 声明：`public class GraphStore implements Store`
+- 说明：Decorator around Store that adds logging for graph state operations.
 
-### 4.7 StreamTransform
+**构造方法**
 
-流数据转换工具。
+| 签名 | 说明 |
+|---|---|
+| `public GraphStore(Store delegate)` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getByDefinedTransformer(Object originMessage, Object transformer)` | `Object` | 使用自定义转换器转换 |
-| `getByDefaultTransformer(Object originMessage, Object streamInputsSchema)` | `Object` | 使用 Schema 转换 |
+**方法**
 
----
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Optional<GraphStoreState> get(String sessionId, String ns)` | `Optional<GraphStoreState>` | - |
+| `public void save(String sessionId, String ns, GraphStoreState state)` | `void` | - |
+| `public void delete(String sessionId, String ns)` | `void` | - |
 
-## 5. 可视化（visualization）
+### `GraphStoreState`
 
-### 5.1 Drawable
+- 类型：`class`
+- 声明：`public class GraphStoreState`
+- 说明：Persisted state of a Pregel graph execution for recovery/resume.
 
-可绘制图表示的构建器，用于工作流可视化。
+**字段**
 
-**包路径**：`com.openjiuwen.core.graph.visualization`
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `ns` | `String` | `private final` | `-` | - |
+| `step` | `int` | `private final` | `-` | - |
+| `channelValues` | `Map<String, Object>` | `private final` | `-` | - |
+| `pendingBuffer` | `List<Message>` | `private final` | `-` | - |
+| `pendingNode` | `Map<String, PendingNode>` | `private final` | `-` | - |
+| `nodeVersion` | `Map<String, Integer>` | `private final` | `-` | - |
 
-**构造方法**：`Drawable()`
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `addNode(String nodeId, ComponentComposable component)` | `void` | 将组件转换为 DrawableNode 添加 |
-| `addSimpleNode(String nodeId)` | `void` | 添加简单节点 |
-| `setStartNode(String nodeId)` | `void` | 标记为起始节点 |
-| `setEndNode(String nodeId)` | `void` | 标记为结束节点 |
-| `setBreakNode(String nodeId)` | `void` | 标记为中断节点 |
-| `addEdge(String source, String target, boolean conditional, boolean streaming, Object data)` | `void` | 添加边 |
-| `addEdge(String source, String target)` | `void` | 添加简单边 |
-| `toMermaid(String title, int expandSubgraph, boolean enableAnimation)` | `String` | 转换为 Mermaid 语法 |
-| `toMermaid()` | `String` | 使用默认参数转换 |
-| `getGraph()` | `DrawableGraph` | 获取底层图 |
+| 签名 | 说明 |
+|---|---|
+| `public GraphStoreState(String ns, int step, Map<String, Object> channelValues, List<Message> pendingBuffer, Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion)` | - |
 
-### 5.2 DrawableGraph
+**方法**
 
-可绘制图的容器。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getNs()` | `String` | - |
+| `public int getStep()` | `int` | - |
+| `public Map<String, Object> getChannelValues()` | `Map<String, Object>` | - |
+| `public List<Message> getPendingBuffer()` | `List<Message>` | - |
+| `public Map<String, PendingNode> getPendingNode()` | `Map<String, PendingNode>` | - |
+| `public Map<String, Integer> getNodeVersion()` | `Map<String, Integer>` | - |
+| `public static GraphStoreState create(String ns, int step, Map<String, Object> channelSnapshot, List<Message> pendingBuffer, Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion)` | `GraphStoreState` | Factory method to create a new GraphStoreState. |
 
-**包路径**：`com.openjiuwen.core.graph.visualization`
+### `InMemoryStore`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getNodes()` | `Map<String, DrawableNode>` | 获取所有节点 |
-| `getEdges()` | `List<DrawableEdge>` | 获取所有边 |
-| `getStartNodes()` | `List<DrawableNode>` | 获取起始节点 |
-| `getEndNodes()` | `List<DrawableNode>` | 获取结束节点 |
-| `getBreakNodes()` | `List<DrawableNode>` | 获取中断节点 |
+- 类型：`class`
+- 声明：`public class InMemoryStore implements Store`
+- 说明：In-memory implementation of the graph state store.
 
-### 5.3 DrawableNode
+**方法**
 
-可绘制图中的节点。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Optional<GraphStoreState> get(String sessionId, String ns)` | `Optional<GraphStoreState>` | - |
+| `public void save(String sessionId, String ns, GraphStoreState state)` | `void` | - |
+| `public void delete(String sessionId, String ns)` | `void` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getId()` | `String` | 获取节点 ID |
-| `getName()` | `String` | 获取节点名称 |
-| `getMetadata()` | `Map<String, Object>` | 获取元数据 |
+### `PendingNode`
 
-### 5.4 DrawableSubgraphNode
+- 类型：`class`
+- 声明：`public class PendingNode`
+- 说明：Represents a pending (failed or interrupted) node in the graph execution.
 
-包含子图的可绘制节点，用于嵌套可视化（循环、子工作流）。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.graph.visualization`  
-**继承**：`DrawableNode`
+| 签名 | 说明 |
+|---|---|
+| `public PendingNode(String nodeName, String status)` | - |
+| `public PendingNode(String nodeName, String status, List<Exception> exceptions)` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getSubgraph()` | `DrawableGraph` | 获取子图 |
-| `setSubgraph(DrawableGraph)` | `void` | 设置子图 |
+**方法**
 
-### 5.5 DrawableEdge
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getNodeName()` | `String` | - |
+| `public String getStatus()` | `String` | - |
+| `public List<Exception> getExceptions()` | `List<Exception>` | - |
 
-可绘制图中的边。
+### `Serializer`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getSource()` | `String` | 获取源节点 |
-| `getTarget()` | `String` | 获取目标节点 |
-| `getData()` | `Object` | 获取边数据 |
-| `isConditional()` | `boolean` | 是否为条件边 |
-| `isStreaming()` | `boolean` | 是否为流式边 |
+- 类型：`class`
+- 声明：`public abstract class Serializer`
+- 说明：Abstract serializer for graph state persistence.
+- 嵌套公开类型：`Serializer.TypedBytes`、`Serializer.JsonSerializer`
 
-### 5.6 DrawableBranchRouter
+**方法**
 
-分支路由器的可绘制信息。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public abstract TypedBytes dumpsTyped(Object obj)` | `TypedBytes` | Serialize an object to a typed byte representation. |
+| `public abstract Object loadsTyped(TypedBytes data)` | `Object` | Deserialize a typed byte representation back to an object. |
+| `public static Serializer create(String typeName)` | `Serializer` | Create a serializer of the given type. |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getTargets()` | `List<String>` | 获取目标列表 |
-| `getDatas()` | `List<String>` | 获取数据列表 |
+### `Serializer.JsonSerializer`
 
-### 5.7 MermaidDiagram
+- 类型：`class`
+- 声明：`public static class JsonSerializer extends Serializer`
+- 说明：JSON-based serializer implementation using Jackson.
+- 宿主类型：`Serializer`
 
-从 DrawableGraph 生成 Mermaid 流程图语法。
+**方法**
 
-**包路径**：`com.openjiuwen.core.graph.visualization`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public TypedBytes dumpsTyped(Object obj)` | `TypedBytes` | - |
+| `public Object loadsTyped(TypedBytes data)` | `Object` | - |
 
-**构造方法**：`MermaidDiagram()`
+### `Serializer.TypedBytes`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `toMermaid(DrawableGraph graph, String title, int expandSubgraph, boolean enableAnimation)` | `String` | 转换为 Mermaid 语法 |
+- 类型：`record`
+- 声明：`public record TypedBytes(String type, byte[] data)`
+- 说明：Container for typed serialized data.
+- 宿主类型：`Serializer`
 
-**支持特性**：节点形状（普通、圆角）、链接样式（普通、虚线、粗线）、子图展开、动画属性。
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `type` | `String` | `private final` | `-` | - |
+| `data` | `byte[]` | `private final` | `-` | - |
+
+### `Store`
+
+- 类型：`interface`
+- 声明：`public interface Store`
+- 说明：Abstract interface for graph state persistence.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `Optional<GraphStoreState> get(String sessionId, String ns)` | `Optional<GraphStoreState>` | Get the stored graph state for a given session and namespace. |
+| `void save(String sessionId, String ns, GraphStoreState state)` | `void` | Save graph state. |
+| `void delete(String sessionId, String ns)` | `void` | Delete graph state. |
+
+## `com.openjiuwen.core.graph.stream_actor`
+
+公开类型：`7`
+
+### `ActorManager`
+
+- 类型：`class`
+- 声明：`public class ActorManager`
+- 说明：Manages stream actors for inter-node stream communication in a graph.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ActorManager(Map<String, List<String>> streamEdges, StreamGraph graph, boolean subGraph, BaseSession session, java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider)` | Create an ActorManager. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public BlockingQueue<Object> subWorkflowStream()` | `BlockingQueue<Object>` | Get the sub-workflow stream queue. |
+| `public StreamTransform getStreamTransform()` | `StreamTransform` | - |
+| `public void produce(String producerId, Object messageContent, ComponentAbility ability, boolean firstFrame)` | `void` | Produce a stream message from a producer node to its consumers. |
+| `public void endMessage(String producerId, ComponentAbility ability)` | `void` | Send an end message from a producer node. |
+| `public Map<String, Object> consume(String consumerId, ComponentAbility ability, Object schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | Consume stream data for a consumer node. |
+| `public void shutdown()` | `void` | Shutdown all stream actors. |
+
+### `StreamActor`
+
+- 类型：`class`
+- 声明：`public class StreamActor`
+- 说明：Manages the stream lifecycle for a single graph vertex, coordinating stream-in abilities (COLLECT/TRANSFORM) with message producers.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities, List<String> sources, long streamGeneratorTimeoutSeconds)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void send(Object message, ComponentAbility sourceAbility, boolean firstFrame, String producerId)` | `void` | Send a stream message to this actor. |
+| `public Map<String, Object> generator(ComponentAbility ability, Map<String, Object> schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | Get a generator (iterator) for consuming stream data for a specific ability. |
+| `public void shutdown()` | `void` | Shutdown the stream actor, cancelling all running tasks. |
+
+### `StreamConsumer`
+
+- 类型：`interface`
+- 声明：`public interface StreamConsumer`
+- 说明：Interface for graph nodes that can consume streaming data.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback)` | `void` | Handle stream-in call for stream abilities (COLLECT, TRANSFORM). |
+| `boolean shouldHandleMessage()` | `boolean` | Whether this consumer should handle stream messages. |
+| `boolean isDone()` | `boolean` | Whether this consumer has completed its execution cycle. |
+
+### `StreamGraph`
+
+- 类型：`class`
+- 声明：`public class StreamGraph`
+- 说明：Manages stream consumers for a graph.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addStreamConsumer(StreamConsumer consumer, String nodeId)` | `void` | Register a stream consumer for a node. |
+| `public StreamConsumer getNode(String nodeId)` | `StreamConsumer` | Get the stream consumer for a node. |
+
+### `StreamPayload`
+
+- 类型：`class`
+- 声明：`public class StreamPayload`
+- 说明：Payload for stream messages between graph nodes.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public StreamPayload(Object message, ComponentAbility sourceAbility)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object getMessage()` | `Object` | - |
+| `public ComponentAbility getSourceAbility()` | `ComponentAbility` | - |
+
+### `StreamProcessor`
+
+- 类型：`class`
+- 声明：`public class StreamProcessor`
+- 说明：Processes stream messages for a single node by managing message routing and generating iterators for consuming stream data.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `END_SENTINEL` | `Object` | `public static final` | `new Object()` | Sentinel object to mark end of stream |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public StreamProcessor(String nodeId, List<String> sources, long streamGeneratorTimeoutSeconds)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void run(ComponentAbility ability)` | `void` | Main processing loop. |
+| `public void receive(StreamPayload payload)` | `void` | Receive a stream message for processing. |
+| `public Map<String, Object> generator(Map<String, Object> schema, Consumer<Object> streamCallback)` | `Map<String, Object>` | Create a generator (iterator) map based on the schema. |
+
+### `StreamTransform`
+
+- 类型：`class`
+- 声明：`public class StreamTransform`
+- 说明：Utility class for transforming stream data using schemas or transformers.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object getByDefinedTransformer(Object originMessage, Object transformer)` | `Object` | Transform a message using a user-defined transformer function. |
+| `public Object getByDefaultTransformer(Object originMessage, Object streamInputsSchema)` | `Object` | Transform a message using a default schema-based approach. |
+
+## `com.openjiuwen.core.graph.visualization`
+
+公开类型：`7`
+
+### `Drawable`
+
+- 类型：`class`
+- 声明：`public class Drawable`
+- 说明：Builds a drawable graph representation of a workflow for visualization purposes.
+- 嵌套公开类型：`Drawable.TargetProvider`
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public Drawable()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addNode(String nodeId, ComponentComposable component)` | `void` | Convert a component to a DrawableNode and save it to the graph. |
+| `public void addSimpleNode(String nodeId)` | `void` | Adds a plain (non-component) node to the graph. |
+| `public void setStartNode(String nodeId)` | `void` | Sets the specified node as a start node. |
+| `public void setEndNode(String nodeId)` | `void` | Sets the specified node as an end node. |
+| `public void setBreakNode(String nodeId)` | `void` | Sets the specified node as a break node. |
+| `public void addEdge(String source, String target, boolean conditional, boolean streaming, Object data)` | `void` | Adds an edge to the graph. |
+| `public void addEdge(String source, String target)` | `void` | Convenience method: add a simple edge from source to target. |
+| `public String toMermaid(String title, int expandSubgraph, boolean enableAnimation)` | `String` | Convert the graph to Mermaid flowchart syntax. |
+| `public String toMermaid()` | `String` | Convert the graph to Mermaid flowchart syntax with default settings. |
+| `public DrawableGraph getGraph()` | `DrawableGraph` | Gets the underlying drawable graph. |
+
+### `Drawable.TargetProvider`
+
+- 类型：`interface`
+- 声明：`public interface TargetProvider`
+- 说明：Optional interface for callables that can provide their target node names.
+- 宿主类型：`Drawable`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `List<String> getTargets()` | `List<String>` | Gets the list of possible target node names. |
+
+### `DrawableBranchRouter`
+
+- 类型：`class`
+- 声明：`public class DrawableBranchRouter`
+- 说明：Represents a branch router's drawable information for visualization.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DrawableBranchRouter(List<String> targets, List<String> datas)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<String> getTargets()` | `List<String>` | - |
+| `public List<String> getDatas()` | `List<String>` | - |
+
+### `DrawableEdge`
+
+- 类型：`class`
+- 声明：`public class DrawableEdge`
+- 说明：Represents an edge in a drawable graph for visualization.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DrawableEdge(String source, String target)` | - |
+| `public DrawableEdge(String source, String target, Object data, boolean conditional, boolean streaming)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getSource()` | `String` | - |
+| `public String getTarget()` | `String` | - |
+| `public Object getData()` | `Object` | - |
+| `public void setData(Object data)` | `void` | - |
+| `public boolean isConditional()` | `boolean` | - |
+| `public void setConditional(boolean conditional)` | `void` | - |
+| `public boolean isStreaming()` | `boolean` | - |
+| `public void setStreaming(boolean streaming)` | `void` | - |
+
+### `DrawableGraph`
+
+- 类型：`class`
+- 声明：`public class DrawableGraph`
+- 说明：Container for a drawable graph representation used in visualization.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DrawableGraph()` | - |
+| `public DrawableGraph(Map<String, DrawableNode> nodes, List<DrawableEdge> edges, List<DrawableNode> startNodes, List<DrawableNode> endNodes, List<DrawableNode> breakNodes)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, DrawableNode> getNodes()` | `Map<String, DrawableNode>` | - |
+| `public List<DrawableEdge> getEdges()` | `List<DrawableEdge>` | - |
+| `public List<DrawableNode> getStartNodes()` | `List<DrawableNode>` | - |
+| `public List<DrawableNode> getEndNodes()` | `List<DrawableNode>` | - |
+| `public List<DrawableNode> getBreakNodes()` | `List<DrawableNode>` | - |
+| `public void setBreakNodes(List<DrawableNode> breakNodes)` | `void` | - |
+
+### `DrawableNode`
+
+- 类型：`class`
+- 声明：`public class DrawableNode`
+- 说明：Represents a node in a drawable graph for visualization.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DrawableNode(String id)` | - |
+| `public DrawableNode(String id, String name, Map<String, Object> metadata)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getId()` | `String` | - |
+| `public String getName()` | `String` | - |
+| `public void setName(String name)` | `void` | - |
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
+| `public void setMetadata(Map<String, Object> metadata)` | `void` | - |
+
+### `DrawableSubgraphNode`
+
+- 类型：`class`
+- 声明：`public class DrawableSubgraphNode extends DrawableNode`
+- 说明：A drawable node that contains a subgraph for nested visualization.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DrawableSubgraphNode(String id)` | - |
+| `public DrawableSubgraphNode(String id, DrawableGraph subgraph)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public DrawableGraph getSubgraph()` | `DrawableGraph` | - |
+| `public void setSubgraph(DrawableGraph subgraph)` | `void` | - |
+

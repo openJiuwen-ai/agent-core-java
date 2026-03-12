@@ -2,564 +2,719 @@
 
 > 包路径：`com.openjiuwen.core.context`
 
-Context 模块提供对话上下文的完整生命周期管理，包括上下文引擎、消息处理器、上下文窗口构建、Token 计数以及消息压缩/卸载等能力。
+上下文窗口、上下文处理器、压缩器、卸载器与 token 计数能力。基于 `context` 包源码逐页复核整理。
+
+## 文档说明
+
+- 本页覆盖 `32` 个公开类型（含嵌套公开类型）。
+- 默认记录源码中显式声明的 public/protected API；接口中按语言规则公开的成员同样列出。
+- Lombok 自动生成的 getter/setter/builder 不逐项展开，DTO/配置类改为记录显式字段。
+- 标记为 `@Deprecated` 或位于 `legacy` 包的类型会在条目中注明兼容性。
+
+## 包概览
+
+| 包 | 公开类型数 |
+|---|---:|
+| `com.openjiuwen.core.context` | 5 |
+| `com.openjiuwen.core.context.context` | 5 |
+| `com.openjiuwen.core.context.processor` | 3 |
+| `com.openjiuwen.core.context.processor.compressor` | 6 |
+| `com.openjiuwen.core.context.processor.offloader` | 4 |
+| `com.openjiuwen.core.context.schema` | 7 |
+| `com.openjiuwen.core.context.token` | 2 |
+
+## `com.openjiuwen.core.context`
+
+公开类型：`5`
+
+### `ContextEngine`
+
+- 类型：`class`
+- 声明：`public class ContextEngine`
+- 说明：Manages the lifecycle and processing of conversational context.
+- 嵌套公开类型：`ContextEngine.ProcessorSpec`
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ContextEngine()` | - |
+| `public ContextEngine(ContextEngineConfig config)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public ModelContext createContext(String contextId, Session session, List<ProcessorSpec> processors, List<BaseMessage> historyMessages, TokenCounter tokenCounter)` | `ModelContext` | Create or retrieve a ModelContext for the given session and context ID. |
+| `public ModelContext createContext(String contextId, Session session)` | `ModelContext` | Create context with defaults. |
+| `public ModelContext getContext(String contextId, String sessionId)` | `ModelContext` | Retrieve an existing ModelContext from the pool. |
+| `public void clearContext(String contextId, String sessionId)` | `void` | Remove contexts from the internal pool. |
+| `public void saveContexts(Session session, List<String> contextIds)` | `void` | Batch-persist multiple contexts and their runtime states. |
+| `public static void registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass, Function<Object, ContextProcessor> factory)` | `void` | Register a processor class so the engine can instantiate it at runtime. |
+| `public static void registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass)` | `void` | Register a processor class with a constructor-based factory. |
+| `public static Class<? extends ContextProcessor> getProcessorClass(String processorType)` | `Class<? extends ContextProcessor>` | Get a registered processor class by type name. |
+
+### `ContextEngine.ProcessorSpec`
+
+- 类型：`record`
+- 声明：`public record ProcessorSpec(String processorType, Object config)`
+- 说明：Specifies a processor type and its associated configuration.
+- 宿主类型：`ContextEngine`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `processorType` | `String` | `private final` | `-` | - |
+| `config` | `Object` | `private final` | `-` | - |
+
+### `ContextStats`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class ContextStats`
+- 说明：Token-usage snapshot for any context container (ModelContext or ContextWindow).
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `totalMessages` | `int` | `private` | `0` | - |
+| `totalTokens` | `int` | `private` | `0` | - |
+| `totalDialogues` | `int` | `private` | `0` | - |
+| `systemMessages` | `int` | `private` | `0` | - |
+| `userMessages` | `int` | `private` | `0` | - |
+| `assistantMessages` | `int` | `private` | `0` | - |
+| `toolMessages` | `int` | `private` | `0` | - |
+| `tools` | `int` | `private` | `0` | - |
+| `systemMessageTokens` | `int` | `private` | `0` | - |
+| `userMessageTokens` | `int` | `private` | `0` | - |
+| `assistantMessageTokens` | `int` | `private` | `0` | - |
+| `toolMessageTokens` | `int` | `private` | `0` | - |
+| `toolTokens` | `int` | `private` | `0` | - |
+
+### `ContextWindow`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class ContextWindow`
+- 说明：A lightweight, serializable snapshot of the messages and tools that will actually be sent to the LLM endpoint.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `systemMessages` | `List<BaseMessage>` | `private` | `new ArrayList<>()` | System-level directives (e.g., instructions, personas) that should remain at the beginning of the final message list. |
+| `contextMessages` | `List<BaseMessage>` | `private` | `new ArrayList<>()` | Conversation history or user inputs that may be truncated, compressed, or re-ordered by ContextEngine processors. |
+| `tools` | `List<ToolInfo>` | `private` | `new ArrayList<>()` | Tool definitions (functions, plugins) that the model is allowed to invoke during the turn. |
+| `statistic` | `ContextStats` | `private` | `new ContextStats()` | Aggregated statistics for this context window. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public List<BaseMessage> getMessages()` | `List<BaseMessage>` | Get all messages (system + context) for sending to the model. |
+| `public List<ToolInfo> getToolList()` | `List<ToolInfo>` | Get the tool definitions. |
+
+### `ModelContext`
+
+- 类型：`class`
+- 声明：`public abstract class ModelContext`
+- 说明：Abstract base class for managing conversational context in a model-agnostic way.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public abstract int size()` | `int` | Return the length of the context (number of messages). |
+| `public abstract List<BaseMessage> getMessages(Integer size, boolean withHistory)` | `List<BaseMessage>` | Retrieve messages from the conversation context without removing them. |
+| `public List<BaseMessage> getMessages()` | `List<BaseMessage>` | Get all messages (with history). |
+| `public abstract void setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | Replace the current message list with the provided one. |
+| `public void setMessages(List<BaseMessage> messages)` | `void` | Set messages replacing all (with history). |
+| `public abstract List<BaseMessage> popMessages(int size, boolean withHistory)` | `List<BaseMessage>` | Remove and return the oldest messages from the context. |
+| `public List<BaseMessage> popMessages()` | `List<BaseMessage>` | Pop one message (with history). |
+| `public abstract void clearMessages(boolean withHistory)` | `void` | Remove all messages added in the current turn. |
+| `public abstract List<BaseMessage> addMessages(List<BaseMessage> messages)` | `List<BaseMessage>` | Add one or more messages to the conversation context. |
+| `public List<BaseMessage> addMessages(BaseMessage message)` | `List<BaseMessage>` | Add a single message. |
+| `public abstract ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize, Integer dialogueRound)` | `ContextWindow` | Build and return a window of messages suitable for model inference. |
+| `public ContextWindow getContextWindow()` | `ContextWindow` | Get context window with defaults. |
+| `public abstract ContextStats statistic()` | `ContextStats` | Compute context-wide statistics. |
+| `public abstract String sessionId()` | `String` | Return the session identifier. |
+| `public abstract String contextId()` | `String` | Return the context identifier. |
+| `public abstract TokenCounter tokenCounter()` | `TokenCounter` | Return the token counter used by this context. |
+| `public abstract Tool reloaderTool()` | `Tool` | Return a tool for reloading offloaded messages back into context. |
 
----
+## `com.openjiuwen.core.context.context`
 
-## 目录
+公开类型：`5`
+
+### `ContextMessageBuffer`
+
+- 类型：`class`
+- 声明：`public class ContextMessageBuffer`
+- 说明：Manages the context message buffer, supporting history tracking and size limits.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ContextMessageBuffer(List<BaseMessage> historyMessages, Integer maxBufferSize)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public int size()` | `int` | Return the effective size of the buffer. |
+| `public void addBack(List<BaseMessage> messages)` | `void` | Append messages to the back of the buffer. |
+| `public List<BaseMessage> getBack(Integer size, boolean withHistory)` | `List<BaseMessage>` | Get messages from the back of the buffer. |
+| `public List<BaseMessage> getBack()` | `List<BaseMessage>` | Get all messages from the back. |
+| `public List<BaseMessage> popBack(int size, boolean withHistory)` | `List<BaseMessage>` | Pop messages from the back of the buffer. |
+| `public void setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | Replace messages in the buffer. |
+| `public void rebuild(List<BaseMessage> historyMessages)` | `void` | Rebuild the buffer from a new list of history messages. |
+
+### `ContextUtils`
+
+- 类型：`class`
+- 声明：`public final class ContextUtils`
+- 说明：Utility helper functions for manipulating and parsing conversation contexts.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static Optional<Integer> findLastAiMessageWithoutToolCall(List<BaseMessage> messages)` | `Optional<Integer>` | Find the index of the last assistant message without tool calls. |
+| `public static List<BaseMessage> replaceMessages(List<BaseMessage> messages, List<BaseMessage> targetMessages, int startIndex, int endIndex)` | `List<BaseMessage>` | Replace a range of messages with target messages. |
+| `public static String formatReloadedMessages(String offloadHandle, List<BaseMessage> messages)` | `String` | Format reloaded messages for display. |
+| `public static List<int[]> findAllDialogueRound(List<BaseMessage> messages)` | `List<int[]>` | Find all dialogue rounds in the message list. |
+| `public static int findLastNDialogueRound(List<BaseMessage> messages, int n)` | `int` | Find the start index for the last N dialogue rounds. |
+
+### `KVCacheManager`
+
+- 类型：`class`
+- 声明：`public class KVCacheManager`
+- 说明：Manages KV cache release for inference-affinity models.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public KVCacheManager(String sessionId)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void release(ContextWindow contextWindow)` | `void` | Check and release stale KV cache if the context window has changed. |
+| `public void release(ContextWindow contextWindow, Object model)` | `void` | Check and release stale KV cache if the context window has changed and a model with release capability is provided. |
+
+### `OffloadMessageBuffer`
+
+- 类型：`class`
+- 声明：`public class OffloadMessageBuffer`
+- 说明：Buffer for messages that have been offloaded from the context window.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public OffloadMessageBuffer()` | - |
+| `public OffloadMessageBuffer(Map<String, List<BaseMessage>> initMessages)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void offload(String offloadHandle, String offloadType, List<BaseMessage> messages)` | `void` | Offload messages to the specified storage. |
+| `public List<BaseMessage> reload(String offloadHandle, String offloadType)` | `List<BaseMessage>` | Reload offloaded messages from storage. |
+| `public void clear(String offloadHandle, String offloadType)` | `void` | Clear a specific offloaded message set. |
+| `public Map<String, List<BaseMessage>> getAll()` | `Map<String, List<BaseMessage>>` | Get all offloaded messages. |
+
+### `SessionModelContext`
+
+- 类型：`class`
+- 声明：`public class SessionModelContext extends ModelContext`
+- 说明：Core implementation of ModelContext backed by a message buffer and supporting processors, offloading, and KV cache management.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config, List<BaseMessage> historyMessages, List<ContextProcessor> processors, TokenCounter tokenCounter)` | - |
+
+**方法**
 
-- [1. 核心类](#1-核心类)
-- [2. 上下文实现（context）](#2-上下文实现context)
-- [3. 处理器（processor）](#3-处理器processor)
-- [4. 压缩器（compressor）](#4-压缩器compressor)
-- [5. 卸载器（offloader）](#5-卸载器offloader)
-- [6. 配置与模式（schema）](#6-配置与模式schema)
-- [7. Token 计数器（token）](#7-token-计数器token)
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public int size()` | `int` | - |
+| `public String sessionId()` | `String` | - |
+| `public String contextId()` | `String` | - |
+| `public List<BaseMessage> addMessages(List<BaseMessage> messages)` | `List<BaseMessage>` | - |
+| `public List<BaseMessage> popMessages(int size, boolean withHistory)` | `List<BaseMessage>` | - |
+| `public List<BaseMessage> getMessages(Integer size, boolean withHistory)` | `List<BaseMessage>` | - |
+| `public void setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | - |
+| `public void clearMessages(boolean withHistory)` | `void` | - |
+| `public ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize, Integer dialogueRound)` | `ContextWindow` | - |
+| `public ContextStats statistic()` | `ContextStats` | - |
+| `public TokenCounter tokenCounter()` | `TokenCounter` | - |
+| `public Tool reloaderTool()` | `Tool` | - |
+| `public void offloadMessages(String offloadHandle, List<BaseMessage> messages)` | `void` | Offload messages to the in-memory buffer. |
+| `public Map<String, Object> saveState()` | `Map<String, Object>` | Save context state for persistence. |
+| `public void loadState(Map<String, Object> state)` | `void` | Load context state from persistence. |
+
+## `com.openjiuwen.core.context.processor`
 
----
+公开类型：`3`
 
-## 1. 核心类
+### `ContextEvent`
 
-### 1.1 ContextEngine
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class ContextEvent`
+- 说明：Event emitted by a ContextProcessor describing what was modified.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `eventType` | `String` | `private` | `-` | - |
+| `messagesToModify` | `List<Integer>` | `private` | `new ArrayList<>()` | - |
+
+### `ContextProcessor`
+
+- 类型：`class`
+- 声明：`public abstract class ContextProcessor`
+- 说明：Abstract base class for all context-processing plug-ins.
+- 嵌套公开类型：`ContextProcessor.ProcessResult`
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `protected ContextProcessor(Object config)` | Store the processor-specific configuration. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | Transform or filter the incoming message batch. |
+| `public ProcessResult onGetContextWindow(ModelContext context, ContextWindow contextWindow)` | `ProcessResult` | Mutate the outgoing context window (e.g. |
+| `public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | Return `true` if this processor wants to intervene before the messages are appended to the context. |
+| `public boolean triggerGetContextWindow(ModelContext context, ContextWindow contextWindow)` | `boolean` | Return `true` if this processor wants to intervene before the context window is returned to the caller. |
+| `public abstract void loadState(Map<String, Object> state)` | `void` | Restore internal state from a dictionary produced by #saveState(). |
+| `public abstract Map<String, Object> saveState()` | `Map<String, Object>` | Export internal state to a serialisable map. |
+| `public String processorType()` | `String` | Return the registered processor type string (the simple class name). |
+| `public <T>T getConfig()` | `T` | Read-only access to the validated configuration object. |
+| `protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context, String offloadHandle, String offloadType)` | `BaseMessage` | Offload messages to in-memory storage and return a replacement marker message. |
+| `protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context)` | `BaseMessage` | Overloaded convenience method with defaults. |
 
-对话上下文生命周期管理的核心入口，负责处理器注册、上下文创建和检索。
+### `ContextProcessor.ProcessResult`
+
+- 类型：`record`
+- 声明：`public record ProcessResult(ContextEvent event, List<BaseMessage> messages, ContextWindow contextWindow)`
+- 说明：Result from a processor hook.
+- 宿主类型：`ContextProcessor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `event` | `ContextEvent` | `private final` | `-` | - |
+| `messages` | `List<BaseMessage>` | `private final` | `-` | - |
+| `contextWindow` | `ContextWindow` | `private final` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static ProcessResult ofMessages(ContextEvent event, List<BaseMessage> messages)` | `ProcessResult` | - |
+| `public static ProcessResult ofContextWindow(ContextEvent event, ContextWindow contextWindow)` | `ProcessResult` | - |
+
+## `com.openjiuwen.core.context.processor.compressor`
 
-**包路径**：`com.openjiuwen.core.context`
+公开类型：`6`
+
+### `CurrentRoundCompressor`
+
+- 类型：`class`
+- 声明：`public class CurrentRoundCompressor extends ContextProcessor`
+- 说明：Compresses messages within the current dialogue round to stay within token or message-count budgets.
 
-**静态字段**：
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public CurrentRoundCompressor(CurrentRoundCompressorConfig config)` | - |
+
+**方法**
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `PROCESSOR_FACTORY_MAP` | `Map<String, Function<Object, ContextProcessor>>` | 处理器工厂全局注册表 |
-| `PROCESSOR_CLASS_MAP` | `Map<String, Class<? extends ContextProcessor>>` | 处理器类全局注册表 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | - |
+| `public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Map<String, Object> saveState()` | `Map<String, Object>` | - |
+
+### `CurrentRoundCompressorConfig`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class CurrentRoundCompressorConfig`
+- 说明：Configuration for the CurrentRoundCompressor ContextProcessor.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-**构造方法**：
-```java
-ContextEngine()                           // 使用默认配置
-ContextEngine(ContextEngineConfig config)  // 使用指定配置
-```
+**字段**
 
-**公共方法**：
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `messagesThreshold` | `Integer` | `private` | `-` | Maximum number of messages allowed before compression is triggered. |
+| `tokensThreshold` | `int` | `private` | `10000` | Maximum accumulated token count before compression is triggered. |
+| `messagesToKeep` | `Integer` | `private` | `-` | Number of most-recent messages to retain, regardless of thresholds. |
+| `largeMessageThreshold` | `int` | `private` | `1000` | Token count above which a single message is considered 'large'. |
+| `customizedCompressionPrompt` | `String` | `private` | `-` | User-supplied prompt for compression; falls back to built-in prompt if null. |
+| `singleMultiCompression` | `boolean` | `private` | `false` | Switch between single-message and whole-block compression. |
+| `model` | `ModelRequestConfig` | `private` | `-` | Model request configuration. |
+| `modelClient` | `ModelClientConfig` | `private` | `-` | Optional client-level configuration for the model. |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `createContext(String contextId, Session session, List<ProcessorSpec> processors, List<BaseMessage> historyMessages, TokenCounter tokenCounter)` | `ModelContext` | 创建或获取 ModelContext |
-| `createContext(String contextId, Session session)` | `ModelContext` | 使用默认参数创建上下文 |
-| `getContext(String contextId, String sessionId)` | `ModelContext` | 检索已有的 ModelContext |
-| `clearContext(String contextId, String sessionId)` | `void` | 从上下文池中移除上下文 |
-| `saveContexts(Session session, List<String> contextIds)` | `void` | 批量持久化多个上下文 |
+### `DialogueCompressor`
 
-**静态方法**：
+- 类型：`class`
+- 声明：`public class DialogueCompressor extends ContextProcessor`
+- 说明：Compresses completed dialogue rounds (user question \u2192 tool calls \u2192 assistant answer) to keep context within budget.
+
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass, Function<Object, ContextProcessor> factory)` | `void` | 注册处理器（含工厂） |
-| `registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass)` | `void` | 注册处理器（不含工厂） |
-| `getProcessorClass(String processorType)` | `Class<? extends ContextProcessor>` | 根据类型获取已注册处理器类 |
+| 签名 | 说明 |
+|---|---|
+| `public DialogueCompressor(DialogueCompressorConfig config)` | - |
 
-**内部记录**：
-```java
-record ProcessorSpec(String processorType, Object config)
-```
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | - |
+| `public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Map<String, Object> saveState()` | `Map<String, Object>` | - |
 
-### 1.2 ContextStats
+### `DialogueCompressorConfig`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class DialogueCompressorConfig`
+- 说明：Configuration for the DialogueCompressor ContextProcessor.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `messagesThreshold` | `Integer` | `private` | `-` | Maximum number of messages allowed before compression is triggered. |
+| `tokensThreshold` | `int` | `private` | `10000` | Maximum accumulated token count before compression is triggered. |
+| `messagesToKeep` | `Integer` | `private` | `-` | Number of most-recent messages to retain regardless of thresholds. |
+| `keepLastRound` | `boolean` | `private` | `true` | If true, the most recent user-assistant round is always preserved. |
+| `customizedCompressionPrompt` | `String` | `private` | `-` | User-supplied prompt for the compression step. |
+| `compressionTokenLimit` | `int` | `private` | `2000` | Max tokens allowed in the compressed summary. |
+| `model` | `ModelRequestConfig` | `private` | `-` | Model request configuration. |
+| `modelClient` | `ModelClientConfig` | `private` | `-` | Optional client-level configuration for the model. |
 
-Token 使用量统计快照（Lombok `@Data`、`@Builder`）。
+### `RoundLevelCompressor`
 
-**包路径**：`com.openjiuwen.core.context`
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `totalMessages` | `int` | 0 | 消息总数 |
-| `totalTokens` | `int` | 0 | Token 总数 |
-| `totalDialogues` | `int` | 0 | 对话轮次总数 |
-| `systemMessages` | `int` | 0 | 系统消息数 |
-| `userMessages` | `int` | 0 | 用户消息数 |
-| `assistantMessages` | `int` | 0 | 助手消息数 |
-| `toolMessages` | `int` | 0 | 工具消息数 |
-| `tools` | `int` | 0 | 工具数 |
-| `systemMessageTokens` | `int` | 0 | 系统消息 Token 数 |
-| `userMessageTokens` | `int` | 0 | 用户消息 Token 数 |
-| `assistantMessageTokens` | `int` | 0 | 助手消息 Token 数 |
-| `toolMessageTokens` | `int` | 0 | 工具消息 Token 数 |
-| `toolTokens` | `int` | 0 | 工具定义 Token 数 |
-
-### 1.3 ContextWindow
-
-轻量级可序列化的上下文窗口快照，用于发送给 LLM 端点。
-
-**包路径**：`com.openjiuwen.core.context`
+- 类型：`class`
+- 声明：`public class RoundLevelCompressor extends ContextProcessor`
+- 说明：Compresses multiple consecutive dialogue rounds of the same compression level into a single summarized round.
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `systemMessages` | `List<BaseMessage>` | 空列表 | 系统消息列表 |
-| `contextMessages` | `List<BaseMessage>` | 空列表 | 上下文消息列表 |
-| `tools` | `List<ToolInfo>` | 空列表 | 工具定义列表 |
-| `statistic` | `ContextStats` | 新实例 | 统计信息 |
-
-**方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getMessages()` | `List<BaseMessage>` | 获取所有消息（系统 + 上下文） |
-| `getToolList()` | `List<ToolInfo>` | 获取工具定义列表 |
-
-### 1.4 ModelContext
-
-管理对话上下文的抽象基类，提供模型无关的消息管理接口。
-
-**包路径**：`com.openjiuwen.core.context`
-
-**抽象方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `size()` | `int` | 返回上下文长度 |
-| `getMessages(Integer size, boolean withHistory)` | `List<BaseMessage>` | 获取消息（不移除） |
-| `setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | 替换消息列表 |
-| `popMessages(int size, boolean withHistory)` | `List<BaseMessage>` | 移除并返回最早的消息 |
-| `clearMessages(boolean withHistory)` | `void` | 清空所有消息 |
-| `addMessages(List<BaseMessage> messages)` | `List<BaseMessage>` | 添加消息到上下文 |
-| `getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize, Integer dialogueRound)` | `ContextWindow` | 构建推理用上下文窗口 |
-| `statistic()` | `ContextStats` | 计算上下文统计信息 |
-| `sessionId()` | `String` | 返回会话标识 |
-| `contextId()` | `String` | 返回上下文标识 |
-| `tokenCounter()` | `TokenCounter` | 返回 Token 计数器实例 |
-| `reloaderTool()` | `Tool` | 返回重新加载已卸载消息的工具 |
+**构造方法**
 
-**便捷方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getMessages()` | `List<BaseMessage>` | 获取所有消息（含历史） |
-| `setMessages(List<BaseMessage> messages)` | `void` | 设置消息（含历史） |
-| `popMessages()` | `List<BaseMessage>` | 弹出一条消息 |
-| `addMessages(BaseMessage message)` | `List<BaseMessage>` | 添加单条消息 |
-| `getContextWindow()` | `ContextWindow` | 使用默认参数获取上下文窗口 |
+| 签名 | 说明 |
+|---|---|
+| `public RoundLevelCompressor(RoundLevelCompressorConfig config)` | - |
 
----
+**方法**
 
-## 2. 上下文实现（context）
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | - |
+| `public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Map<String, Object> saveState()` | `Map<String, Object>` | - |
+
+### `RoundLevelCompressorConfig`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class RoundLevelCompressorConfig`
+- 说明：Configuration for the RoundLevelCompressor ContextProcessor.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-### 2.1 SessionModelContext
+**字段**
 
-`ModelContext` 的核心实现，基于消息缓冲区，支持处理器、卸载和 KV 缓存管理。
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `roundsThreshold` | `int` | `private` | `10` | Maximum number of consecutive dialogue rounds before compression is triggered. |
+| `tokensThreshold` | `int` | `private` | `10000` | Maximum accumulated token count before compression is triggered. |
+| `keepLastRound` | `boolean` | `private` | `true` | If true, the most recent user-assistant round is always preserved. |
+| `customizedCompressionPrompt` | `String` | `private` | `-` | User-defined prompt template for round compression. |
+| `model` | `ModelRequestConfig` | `private` | `-` | Model request configuration. |
+| `modelClient` | `ModelClientConfig` | `private` | `-` | Optional client-level configuration for the model. |
 
-**包路径**：`com.openjiuwen.core.context.context`  
-**继承**：`ModelContext`
+## `com.openjiuwen.core.context.processor.offloader`
 
-**构造方法**：
-```java
-SessionModelContext(String contextId, String sessionId, ContextEngineConfig config,
-                    List<BaseMessage> historyMessages, List<ContextProcessor> processors,
-                    TokenCounter tokenCounter)
-```
+公开类型：`4`
 
-**公共方法**：
+### `MessageOffloader`
+
+- 类型：`class`
+- 声明：`public class MessageOffloader extends ContextProcessor`
+- 说明：Offloads large messages by trimming their content and storing the originals in the offload buffer.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `size()` | `int` | 返回消息缓冲区大小 |
-| `sessionId()` | `String` | 返回会话 ID |
-| `contextId()` | `String` | 返回上下文 ID |
-| `addMessages(List<BaseMessage> messages)` | `List<BaseMessage>` | 添加消息并触发处理器 |
-| `popMessages(int size, boolean withHistory)` | `List<BaseMessage>` | 从缓冲区弹出消息 |
-| `getMessages(Integer size, boolean withHistory)` | `List<BaseMessage>` | 从缓冲区获取消息 |
-| `setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | 设置缓冲区消息 |
-| `clearMessages(boolean withHistory)` | `void` | 清空所有消息和卸载缓冲区 |
-| `getContextWindow(...)` | `ContextWindow` | 构建上下文窗口并触发处理器 |
-| `statistic()` | `ContextStats` | 获取上下文统计信息 |
-| `tokenCounter()` | `TokenCounter` | 返回 Token 计数器 |
-| `reloaderTool()` | `Tool` | 返回重新加载工具 |
-| `offloadMessages(String offloadHandle, List<BaseMessage> messages)` | `void` | 将消息卸载到内存缓冲区 |
-| `saveState()` | `Map<String, Object>` | 保存上下文状态用于持久化 |
-| `loadState(Map<String, Object> state)` | `void` | 从持久化数据加载上下文状态 |
+**构造方法**
 
-### 2.2 ContextMessageBuffer
+| 签名 | 说明 |
+|---|---|
+| `public MessageOffloader(MessageOffloaderConfig config)` | - |
 
-上下文消息缓冲区，支持历史消息追踪和大小限制。
+**方法**
 
-**包路径**：`com.openjiuwen.core.context.context`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | - |
+| `public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Map<String, Object> saveState()` | `Map<String, Object>` | - |
+| `protected BaseMessage offloadMessage(BaseMessage message, ModelContext context)` | `BaseMessage` | Offload a single message. |
+| `protected void validateConfig()` | `void` | - |
 
-**构造方法**：
-```java
-ContextMessageBuffer(List<BaseMessage> historyMessages, Integer maxBufferSize)
-```
+### `MessageOffloaderConfig`
 
-**公共方法**：
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class MessageOffloaderConfig`
+- 说明：Configuration for the MessageOffloader ContextProcessor.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `size()` | `int` | 返回有效缓冲区大小 |
-| `addBack(List<BaseMessage> messages)` | `void` | 在尾部追加消息 |
-| `getBack(Integer size, boolean withHistory)` | `List<BaseMessage>` | 从尾部获取消息 |
-| `getBack()` | `List<BaseMessage>` | 获取所有消息 |
-| `popBack(int size, boolean withHistory)` | `List<BaseMessage>` | 从尾部弹出消息 |
-| `setMessages(List<BaseMessage> messages, boolean withHistory)` | `void` | 替换消息 |
-| `rebuild(List<BaseMessage> historyMessages)` | `void` | 从历史消息重建 |
+**字段**
 
-### 2.3 ContextUtils
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `messagesThreshold` | `Integer` | `private` | `-` | Maximum number of messages allowed before offloading is triggered. |
+| `tokensThreshold` | `int` | `private` | `20000` | Maximum accumulated token count before offloading is triggered. |
+| `largeMessageThreshold` | `int` | `private` | `1000` | Messages whose token count exceeds this value are considered 'large'. |
+| `offloadMessageType` | `List<String>` | `private` | `List.of("tool")` | Roles eligible for offloading (e.g., "user", "assistant", "tool"). |
+| `trimSize` | `int` | `private` | `100` | Number of tokens to retain when a message is offloaded. |
+| `messagesToKeep` | `Integer` | `private` | `-` | Number of most-recent messages to retain regardless of thresholds. |
+| `keepLastRound` | `boolean` | `private` | `true` | If true, the most recent user-assistant round is always preserved. |
 
-上下文操作静态工具类。
+### `MessageSummaryOffloader`
 
-**包路径**：`com.openjiuwen.core.context.context`
+- 类型：`class`
+- 声明：`public class MessageSummaryOffloader extends MessageOffloader`
+- 说明：Extends MessageOffloader to use an LLM for generating summarized replacement content instead of simple trimming.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `findLastAiMessageWithoutToolCall(List<BaseMessage> messages)` | `Optional<Integer>` | 查找最后一条无工具调用的助手消息索引 |
-| `replaceMessages(List<BaseMessage> messages, List<BaseMessage> targetMessages, int startIndex, int endIndex)` | `List<BaseMessage>` | 替换消息范围 |
-| `formatReloadedMessages(String offloadHandle, List<BaseMessage> messages)` | `String` | 格式化重新加载的消息 |
-| `findAllDialogueRound(List<BaseMessage> messages)` | `List<int[]>` | 查找所有对话轮次 |
-| `findLastNDialogueRound(List<BaseMessage> messages, int n)` | `int` | 查找最后 N 轮对话的起始索引 |
+**构造方法**
 
-### 2.4 KVCacheManager
+| 签名 | 说明 |
+|---|---|
+| `public MessageSummaryOffloader(MessageSummaryOffloaderConfig config)` | - |
 
-KV 缓存释放管理器，通过追踪上下文窗口变化来管理推理亲和模型的 KV 缓存。
+**方法**
 
-**包路径**：`com.openjiuwen.core.context.context`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `protected BaseMessage offloadMessage(BaseMessage message, ModelContext context)` | `BaseMessage` | - |
+| `protected void validateConfig()` | `void` | - |
 
-**构造方法**：
-```java
-KVCacheManager(String sessionId)
-```
+### `MessageSummaryOffloaderConfig`
 
-**方法**：
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class MessageSummaryOffloaderConfig`
+- 说明：Configuration for the MessageSummaryOffloader ContextProcessor.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `release(ContextWindow contextWindow)` | `void` | 检查并释放过期的 KV 缓存 |
+**字段**
 
-### 2.5 OffloadMessageBuffer
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `messagesThreshold` | `Integer` | `private` | `-` | Hard ceiling on message count. |
+| `tokensThreshold` | `int` | `private` | `20000` | Hard ceiling on accumulated tokens. |
+| `largeMessageThreshold` | `int` | `private` | `1000` | Token length above which a single message is labelled large. |
+| `offloadMessageType` | `List<String>` | `private` | `List.of("tool")` | White-list of roles that may be compressed or off-loaded. |
+| `messagesToKeep` | `Integer` | `private` | `-` | Guarantee that the newest N messages are never off-loaded. |
+| `keepLastRound` | `boolean` | `private` | `true` | If true, the latest user-assistant round is immune to off-loading. |
+| `model` | `ModelRequestConfig` | `private` | `-` | Model request configuration. |
+| `modelClient` | `ModelClientConfig` | `private` | `-` | Optional client-level configuration. |
+| `customizedSummaryPrompt` | `String` | `private` | `-` | User-supplied prompt for the summary model. |
 
-已卸载消息的缓冲区，支持内存存储。
+## `com.openjiuwen.core.context.schema`
 
-**包路径**：`com.openjiuwen.core.context.context`
+公开类型：`7`
 
-**构造方法**：
-```java
-OffloadMessageBuffer()
-OffloadMessageBuffer(Map<String, List<BaseMessage>> initMessages)
-```
+### `ContextEngineConfig`
 
-**方法**：
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class ContextEngineConfig`
+- 说明：Configuration for the ContextEngine.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `offload(String offloadHandle, String offloadType, List<BaseMessage> messages)` | `void` | 将消息卸载到存储 |
-| `reload(String offloadHandle, String offloadType)` | `List<BaseMessage>` | 从存储重新加载消息 |
-| `clear(String offloadHandle, String offloadType)` | `void` | 清除特定卸载消息集 |
-| `getAll()` | `Map<String, List<BaseMessage>>` | 获取所有已卸载消息 |
+**字段**
 
----
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `maxContextMessageNum` | `Integer` | `private` | `-` | Maximum number of messages retained in the context message buffer. |
+| `defaultWindowMessageNum` | `Integer` | `private` | `-` | Default window size (number of messages) when building a context window. |
+| `defaultWindowRoundNum` | `Integer` | `private` | `-` | Default number of dialogue rounds to keep in the context window. |
+| `enableKvCacheRelease` | `boolean` | `private` | `false` | Whether to enable KV cache release optimisation for inference-affinity models. |
+| `enableReload` | `boolean` | `private` | `false` | Whether to enable the reload tool that can re-inject offloaded messages. |
 
-## 3. 处理器（processor）
+### `OffloadMessages`
 
-### 3.1 ContextProcessor
+- 类型：`class`
+- 声明：`public final class OffloadMessages`
+- 说明：Mixin / marker interface for offloaded messages.
+- 嵌套公开类型：`OffloadMessages.OffloadUserMessage`、`OffloadMessages.OffloadAssistantMessage`、`OffloadMessages.OffloadSystemMessage`、`OffloadMessages.OffloadToolMessage`
 
-所有上下文处理插件的抽象基类。处理器在两个生命周期点介入：消息添加时和上下文窗口构建时。
+**方法**
 
-**包路径**：`com.openjiuwen.core.context.processor`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static BaseMessage createOffloadMessage(String role, String content, String offloadHandle, String offloadType)` | `BaseMessage` | Create an offloaded message of the appropriate type based on role. |
 
-**构造方法**：
-```java
-ContextProcessor(Object config)
-```
+### `OffloadMessages.OffloadAssistantMessage`
 
-**公共方法**：
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @JsonInclude(JsonInclude.Include.NON_NULL) public static class OffloadAssistantMessage extends AssistantMessage implements OffloadMixin`
+- 说明：Assistant message that has been offloaded.
+- 宿主类型：`OffloadMessages`
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@JsonInclude`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | 转换传入的消息批次（默认无操作） |
-| `onGetContextWindow(ModelContext context, ContextWindow contextWindow)` | `ProcessResult` | 变更输出的上下文窗口（默认无操作） |
-| `triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | 是否在追加前介入 |
-| `triggerGetContextWindow(ModelContext context, ContextWindow contextWindow)` | `boolean` | 是否在返回上下文窗口前介入 |
-| `loadState(Map<String, Object> state)` | `void` | 恢复内部状态（抽象） |
-| `saveState()` | `Map<String, Object>` | 导出内部状态（抽象） |
-| `processorType()` | `String` | 返回已注册的处理器类型字符串 |
-| `getConfig()` | `<T> T` | 获取处理器配置（只读） |
-| `offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context, String offloadHandle, String offloadType)` | `BaseMessage` | 卸载消息并返回替换标记 |
+**字段**
 
-**内部记录**：
-```java
-record ProcessResult(ContextEvent event, List<BaseMessage> messages, ContextWindow contextWindow)
-```
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `offloadType` | `String` | `private` | `-` | - |
+| `offloadHandle` | `String` | `private` | `-` | - |
+| `metadata` | `Map<String, Object>` | `private` | `-` | - |
 
-### 3.2 ContextEvent
+**方法**
 
-处理器发出的事件，描述已修改的内容。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
 
-**包路径**：`com.openjiuwen.core.context.processor`
+### `OffloadMessages.OffloadSystemMessage`
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `eventType` | `String` | 事件类型 |
-| `messagesToModify` | `List<Integer>` | 被修改消息的索引列表 |
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @JsonInclude(JsonInclude.Include.NON_NULL) public static class OffloadSystemMessage extends SystemMessage implements OffloadMixin`
+- 说明：System message that has been offloaded.
+- 宿主类型：`OffloadMessages`
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@JsonInclude`
 
----
+**字段**
 
-## 4. 压缩器（compressor）
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `offloadType` | `String` | `private` | `-` | - |
+| `offloadHandle` | `String` | `private` | `-` | - |
+| `metadata` | `Map<String, Object>` | `private` | `-` | - |
 
-### 4.1 CurrentRoundCompressor
+**方法**
 
-当前对话轮次压缩器，在 Token 或消息数超出预算时压缩当前轮次的消息。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
 
-**包路径**：`com.openjiuwen.core.context.processor.compressor`  
-**继承**：`ContextProcessor`
+### `OffloadMessages.OffloadToolMessage`
 
-**构造方法**：
-```java
-CurrentRoundCompressor(CurrentRoundCompressorConfig config)
-```
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @JsonInclude(JsonInclude.Include.NON_NULL) public static class OffloadToolMessage extends ToolMessage implements OffloadMixin`
+- 说明：Tool message that has been offloaded.
+- 宿主类型：`OffloadMessages`
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@JsonInclude`
 
-**方法**：
+**字段**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | 超出阈值时触发 |
-| `onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | 执行消息压缩 |
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `offloadType` | `String` | `private` | `-` | - |
+| `offloadHandle` | `String` | `private` | `-` | - |
+| `metadata` | `Map<String, Object>` | `private` | `-` | - |
 
-**配置类 CurrentRoundCompressorConfig**：
+**方法**
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messagesThreshold` | `Integer` | null | 触发压缩的最大消息数 |
-| `tokensThreshold` | `int` | 10000 | 触发压缩的最大 Token 数 |
-| `messagesToKeep` | `Integer` | null | 无论如何保留的消息数 |
-| `largeMessageThreshold` | `int` | 1000 | "大消息"的 Token 阈值 |
-| `customizedCompressionPrompt` | `String` | null | 自定义压缩提示词 |
-| `singleMultiCompression` | `boolean` | false | 单条 vs 批量压缩 |
-| `model` | `ModelRequestConfig` | null | 模型请求配置 |
-| `modelClient` | `ModelClientConfig` | null | 模型客户端配置 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
 
-### 4.2 DialogueCompressor
+### `OffloadMessages.OffloadUserMessage`
 
-对话轮次压缩器，压缩已完成的对话轮次（用户提问→工具调用→助手回答）。
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @JsonInclude(JsonInclude.Include.NON_NULL) public static class OffloadUserMessage extends UserMessage implements OffloadMixin`
+- 说明：User message that has been offloaded.
+- 宿主类型：`OffloadMessages`
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@JsonInclude`
 
-**包路径**：`com.openjiuwen.core.context.processor.compressor`  
-**继承**：`ContextProcessor`
+**字段**
 
-**构造方法**：
-```java
-DialogueCompressor(DialogueCompressorConfig config)
-```
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `offloadType` | `String` | `private` | `-` | - |
+| `offloadHandle` | `String` | `private` | `-` | - |
+| `metadata` | `Map<String, Object>` | `private` | `-` | - |
 
-**方法**：
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | 超出阈值时触发 |
-| `onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | 压缩对话轮次 |
-| `getCompressPairs(List<BaseMessage> messages)` | `List<int[]>` | 查找用户→助手消息对（静态） |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
 
-**配置类 DialogueCompressorConfig**：
+### `OffloadMixin`
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messagesThreshold` | `Integer` | null | 触发压缩的最大消息数 |
-| `tokensThreshold` | `int` | 10000 | 触发压缩的最大 Token 数 |
-| `messagesToKeep` | `Integer` | null | 保留的消息数 |
-| `keepLastRound` | `boolean` | true | 保留最近一轮 |
-| `customizedCompressionPrompt` | `String` | null | 自定义压缩提示词 |
-| `compressionTokenLimit` | `int` | 2000 | 摘要最大 Token 数 |
-| `model` | `ModelRequestConfig` | null | 模型请求配置 |
-| `modelClient` | `ModelClientConfig` | null | 模型客户端配置 |
+- 类型：`interface`
+- 声明：`public interface OffloadMixin`
+- 说明：Marker interface for messages that have been offloaded from the context window.
 
-### 4.3 RoundLevelCompressor
+**方法**
 
-多轮次级别压缩器，将相同压缩级别的多个连续对话轮次压缩为单一摘要轮次。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `String getOffloadType()` | `String` | Storage type (e.g., "in_memory"). |
+| `String getOffloadHandle()` | `String` | Unique handle to retrieve offloaded content. |
+| `Map<String, Object> getMetadata()` | `Map<String, Object>` | Arbitrary metadata attached to the offloaded message. |
 
-**包路径**：`com.openjiuwen.core.context.processor.compressor`  
-**继承**：`ContextProcessor`
+## `com.openjiuwen.core.context.token`
 
-**构造方法**：
-```java
-RoundLevelCompressor(RoundLevelCompressorConfig config)
-```
+公开类型：`2`
 
-**方法**：
+### `SimpleTokenCounter`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | 轮次数和 Token 超出阈值时触发 |
-| `onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | 压缩多个轮次 |
+- 类型：`class`
+- 声明：`public class SimpleTokenCounter extends TokenCounter`
+- 说明：A simple token counter that estimates token count based on character length.
 
-**内部记录**：
-```java
-record DialogueRound(BaseMessage user, BaseMessage ai, Integer level, int startIdx, int endIdx)
-record CompressResult(List<BaseMessage> messages, List<Integer> allStarts, List<Integer> allEnds)
-```
+**构造方法**
 
-**配置类 RoundLevelCompressorConfig**：
+| 签名 | 说明 |
+|---|---|
+| `public SimpleTokenCounter()` | - |
+| `public SimpleTokenCounter(String model)` | - |
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `roundsThreshold` | `int` | 10 | 触发压缩的最大连续轮次数 |
-| `tokensThreshold` | `int` | 10000 | 触发压缩的最大 Token 数 |
-| `keepLastRound` | `boolean` | true | 保留最近一轮 |
-| `customizedCompressionPrompt` | `String` | null | 自定义压缩提示词 |
-| `model` | `ModelRequestConfig` | null | 模型请求配置 |
-| `modelClient` | `ModelClientConfig` | null | 模型客户端配置 |
+**方法**
 
----
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public int count(String text, String model)` | `int` | - |
+| `public int countMessages(List<BaseMessage> messages, String model)` | `int` | - |
+| `public int countTools(List<ToolInfo> tools, String model)` | `int` | - |
 
-## 5. 卸载器（offloader）
+### `TokenCounter`
 
-### 5.1 MessageOffloader
+- 类型：`class`
+- 声明：`public abstract class TokenCounter`
+- 说明：Abstract base class for token counting.
 
-消息卸载器，将大消息内容裁剪并将原始内容存储到卸载缓冲区。
+**方法**
 
-**包路径**：`com.openjiuwen.core.context.processor.offloader`  
-**继承**：`ContextProcessor`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public abstract int count(String text, String model)` | `int` | Count the number of tokens in a plain text string. |
+| `public int count(String text)` | `int` | Count tokens with default model. |
+| `public abstract int countMessages(List<BaseMessage> messages, String model)` | `int` | Count the total tokens across a list of messages. |
+| `public int countMessages(List<BaseMessage> messages)` | `int` | Count messages tokens with default model. |
+| `public abstract int countTools(List<ToolInfo> tools, String model)` | `int` | Count the total tokens across a list of tool definitions. |
+| `public int countTools(List<ToolInfo> tools)` | `int` | Count tool tokens with default model. |
 
-**构造方法**：
-```java
-MessageOffloader(MessageOffloaderConfig config)
-```
-
-**方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `boolean` | 消息数或 Token 超出阈值时触发 |
-| `onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd)` | `ProcessResult` | 卸载大消息 |
-
-**配置类 MessageOffloaderConfig**：
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messagesThreshold` | `Integer` | null | 触发卸载的最大消息数 |
-| `tokensThreshold` | `int` | 20000 | 触发卸载的最大 Token 数 |
-| `largeMessageThreshold` | `int` | 1000 | "大消息"的 Token 阈值 |
-| `offloadMessageType` | `List<String>` | `["tool"]` | 可卸载的消息角色 |
-| `trimSize` | `int` | 100 | 卸载时保留的 Token 数 |
-| `messagesToKeep` | `Integer` | null | 无论如何保留的消息数 |
-| `keepLastRound` | `boolean` | true | 保留最近一轮 |
-
-### 5.2 MessageSummaryOffloader
-
-基于 LLM 摘要的消息卸载器，使用大模型生成摘要替代简单裁剪。
-
-**包路径**：`com.openjiuwen.core.context.processor.offloader`  
-**继承**：`MessageOffloader`
-
-**构造方法**：
-```java
-MessageSummaryOffloader(MessageSummaryOffloaderConfig config)
-```
-
-**配置类 MessageSummaryOffloaderConfig**：
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messagesThreshold` | `Integer` | null | 触发卸载的最大消息数 |
-| `tokensThreshold` | `int` | 20000 | 触发卸载的最大 Token 数 |
-| `largeMessageThreshold` | `int` | 1000 | "大消息"的 Token 阈值 |
-| `offloadMessageType` | `List<String>` | `["tool"]` | 可卸载的消息角色 |
-| `messagesToKeep` | `Integer` | null | 保留的消息数 |
-| `keepLastRound` | `boolean` | true | 保留最近一轮 |
-| `model` | `ModelRequestConfig` | null | 模型请求配置 |
-| `modelClient` | `ModelClientConfig` | null | 模型客户端配置 |
-| `customizedSummaryPrompt` | `String` | null | 自定义摘要提示词 |
-
----
-
-## 6. 配置与模式（schema）
-
-### 6.1 ContextEngineConfig
-
-ContextEngine 的配置类。
-
-**包路径**：`com.openjiuwen.core.context.schema`
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `maxContextMessageNum` | `Integer` | null | 上下文缓冲区最大消息数（null = 无限） |
-| `defaultWindowMessageNum` | `Integer` | null | 默认窗口消息大小（null = 无限） |
-| `defaultWindowRoundNum` | `Integer` | null | 默认保留对话轮次数（null = 无限） |
-| `enableKvCacheRelease` | `boolean` | false | 启用 KV 缓存优化 |
-| `enableReload` | `boolean` | false | 启用已卸载消息的重新加载工具 |
-
-### 6.2 OffloadMixin
-
-已卸载消息的标记接口。
-
-**包路径**：`com.openjiuwen.core.context.schema`
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getOffloadType()` | `String` | 获取存储类型（如 "in_memory"） |
-| `getOffloadHandle()` | `String` | 获取用于检索内容的唯一句柄 |
-| `getMetadata()` | `Map<String, Object>` | 获取任意元数据 |
-
-### 6.3 OffloadMessages
-
-已卸载消息的工厂和消息类型定义。
-
-**包路径**：`com.openjiuwen.core.context.schema`
-
-**内部类**（均实现 `OffloadMixin`）：
-- `OffloadUserMessage` — 继承 `UserMessage`
-- `OffloadAssistantMessage` — 继承 `AssistantMessage`
-- `OffloadSystemMessage` — 继承 `SystemMessage`
-- `OffloadToolMessage` — 继承 `ToolMessage`
-
-**静态工厂方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `createOffloadMessage(String role, String content, String offloadHandle, String offloadType)` | `BaseMessage` | 创建适当类型的卸载消息 |
-
----
-
-## 7. Token 计数器（token）
-
-### 7.1 TokenCounter
-
-Token 计数的抽象基类，提供文本、消息和工具定义的统一计数接口。
-
-**包路径**：`com.openjiuwen.core.context.token`
-
-**抽象方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `count(String text, String model)` | `int` | 计算纯文本的 Token 数 |
-| `countMessages(List<BaseMessage> messages, String model)` | `int` | 计算消息列表的 Token 数 |
-| `countTools(List<ToolInfo> tools, String model)` | `int` | 计算工具定义的 Token 数 |
-
-**便捷方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `count(String text)` | `int` | 使用默认模型计算 Token 数 |
-| `countMessages(List<BaseMessage> messages)` | `int` | 使用默认模型计算消息 Token 数 |
-| `countTools(List<ToolInfo> tools)` | `int` | 使用默认模型计算工具 Token 数 |
-
-### 7.2 SimpleTokenCounter
-
-简单 Token 计数器，使用字符长度启发式算法（约 4 字符/Token）作为回退实现。
-
-**包路径**：`com.openjiuwen.core.context.token`  
-**继承**：`TokenCounter`
-
-**常量**：
-
-| 常量 | 值 | 说明 |
-|------|----|------|
-| `CHARS_PER_TOKEN` | 4 | 每 Token 字符数估算 |
-| `MESSAGE_OVERHEAD` | 4 | 每条消息额外 Token 数 |
-| `REPLY_OVERHEAD` | 3 | 消息列表末端额外 Token 数 |
-
-**构造方法**：
-```java
-SimpleTokenCounter()           // 默认模型 "gpt-4"
-SimpleTokenCounter(String model)  // 指定模型
-```
-
-**方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `count(String text, String model)` | `int` | 计算文本 Token 数 |
-| `countMessages(List<BaseMessage> messages, String model)` | `int` | 计算消息 Token 数（含消息开销） |
-| `countTools(List<ToolInfo> tools, String model)` | `int` | 计算工具定义 Token 数 |

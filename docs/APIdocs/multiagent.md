@@ -2,253 +2,349 @@
 
 > 包路径：`com.openjiuwen.core.multiagent`
 
-MultiAgent 模块提供多智能体编排能力。当前源码同时包含两套接口：一套是新的 Card + Config 风格 `BaseGroup`/`GroupCard` 体系，另一套是为兼容旧设计保留的 `legacy` 分组与路由控制器实现。
+多智能体分组、团队编排与兼容层接口。基于 `multiagent` 包源码逐页复核整理。
 
----
+## 文档说明
 
-## 目录
+- 本页覆盖 `12` 个公开类型（含嵌套公开类型）。
+- 默认记录源码中显式声明的 public/protected API；接口中按语言规则公开的成员同样列出。
+- Lombok 自动生成的 getter/setter/builder 不逐项展开，DTO/配置类改为记录显式字段。
+- 标记为 `@Deprecated` 或位于 `legacy` 包的类型会在条目中注明兼容性。
 
-- [1. 新版分组 API](#1-新版分组-api)
-- [2. Legacy 分组 API](#2-legacy-分组-api)
-- [3. Schema 模型](#3-schema-模型)
+## 包概览
 
----
+| 包 | 公开类型数 |
+|---|---:|
+| `com.openjiuwen.core.multiagent` | 2 |
+| `com.openjiuwen.core.multiagent.legacy` | 6 |
+| `com.openjiuwen.core.multiagent.legacy.schema` | 2 |
+| `com.openjiuwen.core.multiagent.schema` | 2 |
 
-## 1. 新版分组 API
+## `com.openjiuwen.core.multiagent`
 
-### 1.1 BaseGroup
+公开类型：`2`
 
-多智能体分组基类，负责持有 `GroupCard`、运行时配置以及分组内 Agent 注册表。
+### `BaseGroup`
 
-**包路径**：`com.openjiuwen.core.multiagent`
-
-**构造方法**
-```java
-BaseGroup(GroupCard card, GroupConfig config)
-BaseGroup(GroupCard card)
-```
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `configure(GroupConfig config)` | `BaseGroup` | 更新运行时配置，支持链式调用 |
-| `addAgent(BaseAgent agent, String agentId)` | `BaseGroup` | 添加 Agent，可显式指定 ID |
-| `addAgent(BaseAgent agent)` | `BaseGroup` | 使用 `agent.card.name` 作为 ID 添加 |
-| `removeAgent(String agentId)` | `BaseGroup` | 按 ID 移除 Agent |
-| `removeAgent(BaseAgent agent)` | `BaseGroup` | 按实例移除 Agent |
-| `getAgent(String agentId)` | `BaseAgent` | 获取指定 Agent |
-| `getAgentCount()` | `int` | 获取分组内 Agent 数量 |
-| `listAgents()` | `List<String>` | 列出全部 Agent ID |
-| `getCard()` | `GroupCard` | 获取分组卡片 |
-| `getConfig()` | `GroupConfig` | 获取运行时配置 |
-| `getGroupId()` | `String` | 获取分组 ID（来源于 `card.name`） |
-| `getAgents()` | `Map<String, BaseAgent>` | 获取内部 Agent 映射 |
-| `invoke(Object message, AgentGroupSessionApi session)` | `Object` | 同步执行入口（抽象方法） |
-| `stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | 流式执行入口（抽象方法） |
-
-**行为说明**
-
-- 添加 Agent 时会校验重复 ID 与 `maxAgents` 限制。
-- 若 Agent 暴露 `getController().setGroup(...)`，会通过反射自动回填组引用。
-
-### 1.2 GroupConfig
-
-分组运行时配置对象。
-
-**包路径**：`com.openjiuwen.core.multiagent`
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `maxAgents` | `int` | `10` | 最大 Agent 数量 |
-| `maxConcurrentMessages` | `int` | `100` | 并发消息数上限 |
-| `messageTimeout` | `double` | `30.0` | 消息超时时间（秒） |
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `configureMaxAgents(int maxAgents)` | `GroupConfig` | 配置最大 Agent 数 |
-| `configureTimeout(double timeout)` | `GroupConfig` | 配置超时时间 |
-| `configureConcurrency(int maxConcurrent)` | `GroupConfig` | 配置并发上限 |
-
----
-
-## 2. Legacy 分组 API
-
-### 2.1 LegacyBaseGroup
-
-旧版多智能体分组抽象类，负责持有 `AgentGroupConfig` 和 `agents` 注册表。
-
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**状态**：`@Deprecated`
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `addAgent(String agentId, BaseAgent agent)` | `void` | 向旧版分组注册 Agent |
-| `getAgentCount()` | `int` | 获取 Agent 数量 |
-| `getConfig()` | `AgentGroupConfig` | 获取旧版配置 |
-| `getGroupId()` | `String` | 获取分组 ID |
-| `getAgents()` | `Map<String, BaseAgent>` | 获取 Agent 映射 |
-| `invoke(Object message, AgentGroupSessionApi session)` | `Object` | 同步执行入口（抽象） |
-| `stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | 流式执行入口（抽象） |
-
-### 2.2 AgentGroupConfig
-
-旧版分组配置对象。
-
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**状态**：`@Deprecated`
+- 类型：`class`
+- 声明：`public abstract class BaseGroup`
+- 说明：Abstract base class for agent groups (new Card + Config pattern).
 
 **构造方法**
-```java
-AgentGroupConfig(String groupId)
-AgentGroupConfig(String groupId, int maxAgents, int maxConcurrentMessages, double messageTimeout)
-```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `groupId` | `String` | 分组 ID |
-| `maxAgents` | `int` | 最大 Agent 数量 |
-| `maxConcurrentMessages` | `int` | 最大并发消息数 |
-| `messageTimeout` | `double` | 超时时间 |
+| 签名 | 说明 |
+|---|---|
+| `protected BaseGroup(GroupCard card, GroupConfig config)` | Initialize the agent group. |
+| `protected BaseGroup(GroupCard card)` | - |
 
-### 2.3 ControllerGroup
+**方法**
 
-旧版控制器驱动的 AgentGroup，实现消息对象转换、缺省会话创建以及对 `BaseGroupController` 的同步/流式委托。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public BaseGroup configure(GroupConfig config)` | `BaseGroup` | Set configuration (supports chaining). |
+| `public BaseGroup addAgent(BaseAgent agent, String agentId)` | `BaseGroup` | Register agent to group (supports chaining). |
+| `public BaseGroup addAgent(BaseAgent agent)` | `BaseGroup` | Register agent to group using agent's card name as ID. |
+| `public BaseGroup removeAgent(String agentId)` | `BaseGroup` | Remove agent from group (supports chaining). |
+| `public BaseGroup removeAgent(BaseAgent agent)` | `BaseGroup` | Remove agent from group by instance (supports chaining). |
+| `public BaseAgent getAgent(String agentId)` | `BaseAgent` | Get agent by ID. |
+| `public int getAgentCount()` | `int` | Get the number of agents in the group. |
+| `public List<String> listAgents()` | `List<String>` | List all agent IDs. |
+| `public GroupCard getCard()` | `GroupCard` | - |
+| `public GroupConfig getConfig()` | `GroupConfig` | - |
+| `public String getGroupId()` | `String` | - |
+| `public Map<String, BaseAgent> getAgents()` | `Map<String, BaseAgent>` | - |
+| `public abstract Object invoke(Object message, AgentGroupSessionApi session)` | `Object` | Execute synchronous operation on the agent group. |
+| `public abstract Iterator<Object> stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | Execute streaming operation on the agent group. |
 
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**继承**：`LegacyBaseGroup`  
-**状态**：`@Deprecated`
+### `GroupConfig`
 
-**构造方法**
-```java
-ControllerGroup(AgentGroupConfig config, BaseGroupController groupController)
-ControllerGroup(AgentGroupConfig config)
-```
+- 类型：`class`
+- 声明：`public class GroupConfig`
+- 说明：Group Runtime Configuration.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `invoke(Object message, AgentGroupSessionApi session)` | `Object` | 同步调用，支持 `GroupEvent`/`Map`/`String` 输入 |
-| `stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | 流式调用，后台启动控制器并回放 Session 流 |
-| `getGroupController()` | `BaseGroupController` | 获取底层控制器 |
+**字段**
 
-### 2.4 BaseGroupController
-
-旧版消息路由控制器，基于 `MessageQueueInMemory` 与主题订阅机制组织多 Agent 协作。
-
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**状态**：`@Deprecated`
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `setupFromGroup(LegacyBaseGroup group)` | `void` | 注入所属分组 |
-| `invoke(GroupEvent event, AgentGroupSessionApi session)` | `Object` | 向分组主题发送消息并等待处理结果 |
-| `subscribe(String messageType, List<String> agentIds)` | `void` | 为消息类型订阅 Agent |
-| `unsubscribe(String messageType, List<String> agentIds)` | `void` | 取消订阅 |
-| `getSubscribers(String messageType)` | `List<String>` | 获取订阅者列表 |
-| `sendToAgent(GroupEvent event, String agentId, AgentGroupSessionApi session)` | `Object` | 点对点路由到指定 Agent |
-| `publish(GroupEvent event, AgentGroupSessionApi session)` | `List<Object>` | 基于 `customEventType` 广播到订阅者 |
-| `stop()` | `void` | 停止控制器与消息队列 |
-| `getAgentGroup()` | `LegacyBaseGroup` | 获取绑定分组 |
-| `getSubscriptionsMap()` | `Map<String, List<String>>` | 获取订阅映射 |
-
-### 2.5 DefaultGroupController
-
-默认旧版路由控制器，根据 `receiverId` 决定点对点发送或广播。
-
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**继承**：`BaseGroupController`  
-**状态**：`@Deprecated`
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `maxAgents` | `int` | `private` | `10` | - |
+| `maxConcurrentMessages` | `int` | `private` | `100` | - |
+| `messageTimeout` | `double` | `private` | `30.0` | - |
 
 **构造方法**
-```java
-DefaultGroupController(LegacyBaseGroup agentGroup)
-DefaultGroupController()
-```
 
-### 2.6 GroupEvent
+| 签名 | 说明 |
+|---|---|
+| `public GroupConfig()` | - |
 
-旧版分组消息事件模型，用于跨 Agent 路由。
+**方法**
 
-**包路径**：`com.openjiuwen.core.multiagent.legacy`  
-**状态**：`@Deprecated`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public int getMaxAgents()` | `int` | - |
+| `public void setMaxAgents(int maxAgents)` | `void` | - |
+| `public int getMaxConcurrentMessages()` | `int` | - |
+| `public void setMaxConcurrentMessages(int maxConcurrentMessages)` | `void` | - |
+| `public double getMessageTimeout()` | `double` | - |
+| `public void setMessageTimeout(double messageTimeout)` | `void` | - |
+| `public GroupConfig configureMaxAgents(int maxAgents)` | `GroupConfig` | Configure maximum agents (supports chaining). |
+| `public GroupConfig configureTimeout(double timeout)` | `GroupConfig` | Configure message timeout (supports chaining). |
+| `public GroupConfig configureConcurrency(int maxConcurrent)` | `GroupConfig` | Configure concurrency limit (supports chaining). |
 
-**构造/工厂方法**
-```java
-GroupEvent()
-createUserEvent(String content, String conversationId)
-createUserEvent(String content, String conversationId, String userId)
-fromMap(Map<String, Object> map)
-```
+## `com.openjiuwen.core.multiagent.legacy`
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `eventId` | `String` | 事件 ID |
-| `query` | `String` | 文本查询 |
-| `queryPayload` | `Object` | 原始查询负载 |
-| `conversationId` | `String` | 会话 ID |
-| `userId` | `String` | 用户 ID |
-| `receiverId` | `String` | 点对点目标 Agent |
-| `customEventType` | `String` | 自定义消息类型 |
-| `metadata` | `Map<String, Object>` | 附加元数据 |
+公开类型：`6`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getQuery()/setQuery(...)` | `String` / `void` | 读写查询文本 |
-| `getQueryPayload()/setQueryPayload(...)` | `Object` / `void` | 读写原始负载 |
-| `getConversationId()/setConversationId(...)` | `String` / `void` | 读写会话 ID |
-| `getUserId()/setUserId(...)` | `String` / `void` | 读写用户 ID |
-| `getReceiverId()/setReceiverId(...)` | `String` / `void` | 读写目标 Agent |
-| `getCustomEventType()/setCustomEventType(...)` | `String` / `void` | 读写消息类型 |
-| `getMetadata()/setMetadata(...)` | `Map<String, Object>` / `void` | 读写元数据 |
+### `AgentGroupConfig`
 
----
+- 类型：`class`
+- 声明：`@Deprecated public class AgentGroupConfig`
+- 说明：Legacy AgentGroup Configuration.
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
 
-## 3. Schema 模型
+**字段**
 
-### 3.1 GroupCard
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `groupId` | `String` | `private final` | `-` | - |
+| `maxAgents` | `int` | `private` | `-` | - |
+| `maxConcurrentMessages` | `int` | `private` | `-` | - |
+| `messageTimeout` | `double` | `private` | `-` | - |
 
-新版分组卡片，描述分组身份、主题、标签以及成员 Agent 卡片列表。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.multiagent.schema`  
-**继承**：`BaseCard`
+| 签名 | 说明 |
+|---|---|
+| `public AgentGroupConfig(String groupId)` | - |
+| `public AgentGroupConfig(String groupId, int maxAgents, int maxConcurrentMessages, double messageTimeout)` | - |
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `agentCards` | `List<AgentCard>` | 空列表 | 成员 Agent 卡片列表 |
-| `topic` | `String` | `""` | 分组主题 |
-| `version` | `String` | `"1.0.0"` | 分组版本 |
-| `tags` | `List<String>` | 空列表 | 标签列表 |
+**方法**
 
-### 3.2 EventDrivenGroupCard
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getGroupId()` | `String` | - |
+| `public int getMaxAgents()` | `int` | - |
+| `public void setMaxAgents(int maxAgents)` | `void` | - |
+| `public int getMaxConcurrentMessages()` | `int` | - |
+| `public void setMaxConcurrentMessages(int maxConcurrentMessages)` | `void` | - |
+| `public double getMessageTimeout()` | `double` | - |
+| `public void setMessageTimeout(double messageTimeout)` | `void` | - |
 
-带订阅信息的新版事件驱动分组卡片。
+### `BaseGroupController`
 
-**包路径**：`com.openjiuwen.core.multiagent.schema`  
-**继承**：`GroupCard`
+- 类型：`class`
+- 声明：`@Deprecated public abstract class BaseGroupController`
+- 说明：Message routing controller for AgentGroup (legacy pattern).
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `subscriptions` | `Map<String, List<String>>` | 空映射 | `agentId -> topics` 订阅关系 |
+**构造方法**
 
-### 3.3 LegacyGroupCard
+| 签名 | 说明 |
+|---|---|
+| `protected BaseGroupController(LegacyBaseGroup agentGroup)` | Initialize BaseGroupController. |
+| `protected BaseGroupController()` | - |
 
-旧版分组卡片。
+**方法**
 
-**包路径**：`com.openjiuwen.core.multiagent.legacy.schema`  
-**继承**：`BaseCard`  
-**状态**：`@Deprecated`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void setupFromGroup(LegacyBaseGroup group)` | `void` | Setup controller from group \u2014 inject required attributes. |
+| `public Object invoke(GroupEvent event, AgentGroupSessionApi session)` | `Object` | Synchronous invocation entry. |
+| `protected abstract Object handleEvent(GroupEvent event, AgentGroupSessionApi session)` | `Object` | Core method for message processing (must be implemented). |
+| `public void subscribe(String messageType, List<String> agentIds)` | `void` | Subscribe agents to a message type. |
+| `public void unsubscribe(String messageType, List<String> agentIds)` | `void` | Unsubscribe agents from a message type. |
+| `public List<String> getSubscribers(String messageType)` | `List<String>` | Get subscribers for a message type. |
+| `public Object sendToAgent(GroupEvent event, String agentId, AgentGroupSessionApi session)` | `Object` | Send message to specified Agent (point-to-point, streaming). |
+| `public List<Object> publish(GroupEvent event, AgentGroupSessionApi session)` | `List<Object>` | Publish message to all subscribers (broadcast). |
+| `public void stop()` | `void` | Stop group controller \u2014 clean up all resources. |
+| `public LegacyBaseGroup getAgentGroup()` | `LegacyBaseGroup` | - |
+| `public Map<String, List<String>> getSubscriptionsMap()` | `Map<String, List<String>>` | - |
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `agentCard` | `List<AgentCard>` | 空列表 | 成员 Agent 卡片列表 |
-| `topic` | `String` | `""` | 分组主题 |
+### `ControllerGroup`
 
-### 3.4 LegacyEventDrivenGroupCard
+- 类型：`class`
+- 声明：`@Deprecated public class ControllerGroup extends LegacyBaseGroup`
+- 说明：Agent Group with Controller (legacy pattern).
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
 
-旧版事件驱动分组卡片。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.multiagent.legacy.schema`  
-**继承**：`LegacyGroupCard`  
-**状态**：`@Deprecated`
+| 签名 | 说明 |
+|---|---|
+| `public ControllerGroup(AgentGroupConfig config, BaseGroupController groupController)` | Initialize ControllerGroup. |
+| `public ControllerGroup(AgentGroupConfig config)` | - |
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `subscriptions` | `Map<String, List<String>>` | 空映射 | 订阅关系映射 |
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object invoke(Object message, AgentGroupSessionApi session)` | `Object` | - |
+| `public Iterator<Object> stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | - |
+| `public BaseGroupController getGroupController()` | `BaseGroupController` | - |
+
+### `DefaultGroupController`
+
+- 类型：`class`
+- 声明：`@Deprecated public class DefaultGroupController extends BaseGroupController`
+- 说明：Default GroupController \u2014 routes messages based on subscription.
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public DefaultGroupController(LegacyBaseGroup agentGroup)` | - |
+| `public DefaultGroupController()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `protected Object handleEvent(GroupEvent event, AgentGroupSessionApi session)` | `Object` | - |
+
+### `GroupEvent`
+
+- 类型：`class`
+- 声明：`@Deprecated public class GroupEvent`
+- 说明：Event class for agent group message routing.
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `eventId` | `String` | `private` | `-` | - |
+| `query` | `String` | `private` | `-` | - |
+| `queryPayload` | `Object` | `private` | `-` | - |
+| `conversationId` | `String` | `private` | `-` | - |
+| `userId` | `String` | `private` | `-` | - |
+| `receiverId` | `String` | `private` | `-` | - |
+| `customEventType` | `String` | `private` | `-` | - |
+| `metadata` | `Map<String, Object>` | `private` | `-` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public GroupEvent()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static GroupEvent createUserEvent(String content, String conversationId)` | `GroupEvent` | Create a user event from content string. |
+| `public static GroupEvent createUserEvent(String content, String conversationId, String userId)` | `GroupEvent` | Create a user event from content string with user ID. |
+| `public static GroupEvent fromMap(Map<String, Object> map)` | `GroupEvent` | Create a GroupEvent from a Map (backward compatibility). |
+| `public String getEventId()` | `String` | - |
+| `public void setEventId(String eventId)` | `void` | - |
+| `public String getQuery()` | `String` | - |
+| `public void setQuery(String query)` | `void` | - |
+| `public Object getQueryPayload()` | `Object` | - |
+| `public void setQueryPayload(Object queryPayload)` | `void` | - |
+| `public String getConversationId()` | `String` | - |
+| `public void setConversationId(String conversationId)` | `void` | - |
+| `public String getUserId()` | `String` | - |
+| `public void setUserId(String userId)` | `void` | - |
+| `public String getReceiverId()` | `String` | - |
+| `public void setReceiverId(String receiverId)` | `void` | - |
+| `public String getCustomEventType()` | `String` | - |
+| `public void setCustomEventType(String customEventType)` | `void` | - |
+| `public Map<String, Object> getMetadata()` | `Map<String, Object>` | - |
+| `public void setMetadata(Map<String, Object> metadata)` | `void` | - |
+
+### `LegacyBaseGroup`
+
+- 类型：`class`
+- 声明：`@Deprecated public abstract class LegacyBaseGroup`
+- 说明：Abstract base class for implementing agent groups (legacy pattern).
+- 注解：`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `protected LegacyBaseGroup(AgentGroupConfig config)` | Initialize the agent group. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addAgent(String agentId, BaseAgent agent)` | `void` | Register agent to the group. |
+| `public int getAgentCount()` | `int` | Get the number of agents in the group. |
+| `public AgentGroupConfig getConfig()` | `AgentGroupConfig` | - |
+| `public String getGroupId()` | `String` | - |
+| `public Map<String, BaseAgent> getAgents()` | `Map<String, BaseAgent>` | - |
+| `public abstract Object invoke(Object message, AgentGroupSessionApi session)` | `Object` | Execute synchronous operation on the agent group. |
+| `public abstract Iterator<Object> stream(Object message, AgentGroupSessionApi session)` | `Iterator<Object>` | Execute streaming operation on the agent group. |
+
+## `com.openjiuwen.core.multiagent.legacy.schema`
+
+公开类型：`2`
+
+### `LegacyEventDrivenGroupCard`
+
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @Deprecated public class LegacyEventDrivenGroupCard extends LegacyGroupCard`
+- 说明：Legacy Event-driven group card with subscription information.
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `subscriptions` | `Map<String, List<String>>` | `private` | `new HashMap<>()` | Subscription mapping: {agent_id: [topic1, topic2, ...]}. |
+
+### `LegacyGroupCard`
+
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) @Deprecated public class LegacyGroupCard extends BaseCard`
+- 说明：Legacy Group Card.
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`、`@Deprecated`
+- 兼容性：`@Deprecated`、`legacy` 包/说明
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `agentCard` | `List<AgentCard>` | `private` | `new ArrayList<>()` | - |
+| `topic` | `String` | `private` | `""` | - |
+
+## `com.openjiuwen.core.multiagent.schema`
+
+公开类型：`2`
+
+### `EventDrivenGroupCard`
+
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) public class EventDrivenGroupCard extends GroupCard`
+- 说明：Event-driven group card with subscription information.
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `subscriptions` | `Map<String, List<String>>` | `private` | `new HashMap<>()` | Subscription mapping: {agent_id: [topic1, topic2, ...]}. |
+
+### `GroupCard`
+
+- 类型：`class`
+- 声明：`@Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode(callSuper = true) public class GroupCard extends BaseCard`
+- 说明：Group Identity Card.
+- 注解：`@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor`、`@EqualsAndHashCode`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `agentCards` | `List<AgentCard>` | `private` | `new ArrayList<>()` | - |
+| `topic` | `String` | `private` | `""` | - |
+| `version` | `String` | `private` | `"1.0.0"` | - |
+| `tags` | `List<String>` | `private` | `new ArrayList<>()` | - |
+

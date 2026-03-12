@@ -2,350 +2,323 @@
 
 > 包路径：`com.openjiuwen.core.operator`
 
-Operator 模块提供原子执行单元抽象，以及围绕 LLM、Memory、Tool 三类调用的标准操作符实现，支持参数调优、状态快照与可选流式输出。
+LLM / Tool / Memory Operator 及其调优 schema。基于 `operator` 包源码逐页复核整理。
 
----
+## 文档说明
 
-## 目录
+- 本页覆盖 `14` 个公开类型（含嵌套公开类型）。
+- 默认记录源码中显式声明的 public/protected API；接口中按语言规则公开的成员同样列出。
+- Lombok 自动生成的 getter/setter/builder 不逐项展开，DTO/配置类改为记录显式字段。
+- 标记为 `@Deprecated` 或位于 `legacy` 包的类型会在条目中注明兼容性。
 
-- [1. 核心抽象](#1-核心抽象)
-- [2. LLM 调用](#2-llm-调用)
-- [3. Memory 调用](#3-memory-调用)
-- [4. Tool 调用](#4-tool-调用)
-- [5. 向后兼容 API](#5-向后兼容-api)
+## 包概览
 
----
+| 包 | 公开类型数 |
+|---|---:|
+| `com.openjiuwen.core.operator` | 3 |
+| `com.openjiuwen.core.operator.legacy.llm_call` | 2 |
+| `com.openjiuwen.core.operator.llm_call` | 2 |
+| `com.openjiuwen.core.operator.memory_call` | 3 |
+| `com.openjiuwen.core.operator.tool_call` | 4 |
 
-## 1. 核心抽象
+## `com.openjiuwen.core.operator`
 
-### 1.1 Operator
+公开类型：`3`
 
-原子执行单元抽象基类，所有具体 Operator 都继承自该类。
+### `Operator`
 
-**包路径**：`com.openjiuwen.core.operator`
+- 类型：`class`
+- 声明：`public abstract class Operator`
+- 说明：Base class for atomic execution and optimization units.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getOperatorId()` | `String` | 返回当前 Operator 的唯一标识 |
-| `getTunables()` | `Map<String, TunableSpec>` | 返回可调参数描述 |
-| `setParameter(String target, Object value)` | `void` | 更新指定调优参数 |
-| `getState()` | `Map<String, Object>` | 导出当前状态快照 |
-| `loadState(Map<String, Object> state)` | `void` | 从状态快照恢复 |
-| `invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `Object` | 同步执行 |
-| `invoke(Map<String, Object> inputs, Session session)` | `Object` | 同步执行的便捷重载 |
-| `stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `OperatorStream<?>` | 流式执行，默认抛出 `UnsupportedOperationException` |
-| `stream(Map<String, Object> inputs, Session session)` | `OperatorStream<?>` | 流式执行的便捷重载 |
+**方法**
 
-### 1.2 OperatorStream\<T\>
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public abstract String getOperatorId()` | `String` | Unique operator id within a trajectory. |
+| `public abstract Map<String, TunableSpec> getTunables()` | `Map<String, TunableSpec>` | Describe tunable parameters. |
+| `public abstract void setParameter(String target, Object value)` | `void` | Apply a new parameter value. |
+| `public abstract Map<String, Object> getState()` | `Map<String, Object>` | Snapshot current state. |
+| `public abstract void loadState(Map<String, Object> state)` | `void` | Restore state from snapshot. |
+| `public abstract Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `Object` | Execute one operator step. |
+| `public Object invoke(Map<String, Object> inputs, Session session) throws Exception` | `Object` | Convenience overload without kwargs. |
+| `public OperatorStream<?> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `OperatorStream<?>` | Optional streaming execution. |
+| `public OperatorStream<?> stream(Map<String, Object> inputs, Session session) throws Exception` | `OperatorStream<?>` | Convenience overload without kwargs. |
+| `protected void setOperatorContext(Session session, String operatorId)` | `void` | - |
 
-显式支持关闭的流式输出接口。
+### `OperatorStream`
 
-**包路径**：`com.openjiuwen.core.operator`
+- 类型：`interface`
+- 声明：`public interface OperatorStream<T> extends Iterator<T>, AutoCloseable`
+- 说明：Iterator-like stream with an explicit close hook for early termination.
 
-| 继承关系 | 说明 |
-|----------|------|
-| `Iterator<T>` | 逐块读取流式结果 |
-| `AutoCloseable` | 支持提前终止流 |
+**方法**
 
-`close()` 默认是空实现，具体 Operator 可以覆写。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `default void close()` | `void` | - |
 
-### 1.3 TunableSpec
+### `TunableSpec`
 
-单个可调参数的结构化描述。
+- 类型：`record`
+- 声明：`public record TunableSpec(String name, String kind, String path, Object constraint)`
+- 说明：Describes a single tunable parameter of an operator.
 
-**包路径**：`com.openjiuwen.core.operator`
+**字段**
 
-**记录字段**：
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `name` | `String` | `private final` | `-` | - |
+| `kind` | `String` | `private final` | `-` | - |
+| `path` | `String` | `private final` | `-` | - |
+| `constraint` | `Object` | `private final` | `-` | - |
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | `String` | 参数名 |
-| `kind` | `String` | 参数类型，如 `prompt`、`discrete`、`text` |
-| `path` | `String` | 参数在 Operator 内部的路径 |
-| `constraint` | `Object` | 约束元数据，可为空 |
+**构造方法**
 
-**构造方法**：
-```java
-TunableSpec(String name, String kind, String path, Object constraint)
-TunableSpec(String name, String kind, String path)
-```
+| 签名 | 说明 |
+|---|---|
+| `public TunableSpec(String name, String kind, String path)` | - |
 
----
+## `com.openjiuwen.core.operator.legacy.llm_call`
 
-## 2. LLM 调用
+公开类型：`2`
 
-### 2.1 LLMCallOperator
+### `LLMCall`
 
-面向大模型调用的 Operator，实现了 Prompt 可调、历史消息拼装与流式输出封装。
+- 类型：`class`
+- 声明：`public class LLMCall`
+- 说明：Legacy compatibility implementation of the pre-operator LLMCall wrapper.
+- 兼容性：`legacy` 包/说明
 
-**包路径**：`com.openjiuwen.core.operator.llm_call`
+**字段**
 
-**常量**：
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `DEFAULT_USER_PROMPT` | `String` | `public static final` | `"{{query}}"` | - |
 
-| 常量 | 类型 | 说明 |
-|------|------|------|
-| `DEFAULT_USER_PROMPT` | `String` | 默认用户 Prompt，值为 `{{query}}` |
+**构造方法**
 
-**构造方法**：
-```java
-LLMCallOperator(
-    String modelName,
-    Model llm,
-    Object systemPrompt,
-    Object userPrompt,
-    boolean freezeSystemPrompt,
-    boolean freezeUserPrompt,
-    String llmCallId,
-    BiConsumer<String, Object> onParameterUpdated
-)
+| 签名 | 说明 |
+|---|---|
+| `public LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt, boolean freezeSystemPrompt, boolean freezeUserPrompt, String llmCallId)` | - |
+| `public LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt)` | - |
 
-LLMCallOperator(String modelName, Model llm, Object systemPrompt, Object userPrompt)
-```
+**方法**
 
-**调优参数**：
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public AssistantMessage invoke(Map<String, Object> inputs, Session session, List<BaseMessage> history, Object tools) throws Exception` | `AssistantMessage` | - |
+| `public AssistantMessage invoke(Map<String, Object> inputs, Session session) throws Exception` | `AssistantMessage` | - |
+| `public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs, Session session, List<BaseMessage> history, Object tools) throws Exception` | `OperatorStream<AssistantMessageChunk>` | - |
+| `public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs, Session session) throws Exception` | `OperatorStream<AssistantMessageChunk>` | - |
+| `public LegacyOptimizerCallback getOptimizerCallback()` | `LegacyOptimizerCallback` | - |
+| `public void setOptimizerCallback(LegacyOptimizerCallback optimizerCallback)` | `void` | - |
+| `public PromptTemplate getSystemPrompt()` | `PromptTemplate` | - |
+| `public PromptTemplate getUserPrompt()` | `PromptTemplate` | - |
+| `public void updateSystemPrompt(Object systemPrompt)` | `void` | - |
+| `public void updateUserPrompt(Object userPrompt)` | `void` | - |
+| `public void setFreezeSystemPrompt(boolean freezeSystemPrompt)` | `void` | - |
+| `public void setFreezeUserPrompt(boolean freezeUserPrompt)` | `void` | - |
+| `public boolean getFreezeSystemPrompt()` | `boolean` | - |
+| `public boolean getFreezeUserPrompt()` | `boolean` | - |
+
+### `LegacyOptimizerCallback`
+
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface LegacyOptimizerCallback`
+- 说明：Callback for the legacy LLMCall compatibility path.
+- 注解：`@FunctionalInterface`
+- 兼容性：`legacy` 包/说明
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `void onComplete(String llmCallId, Map<String, Object> inputs, Object response, Session session) throws Exception` | `void` | - |
+
+## `com.openjiuwen.core.operator.llm_call`
+
+公开类型：`2`
+
+### `LLMCall`
+
+- 类型：`class`
+- 声明：`public class LLMCall extends LLMCallOperator`
+- 说明：Backward compatible alias of LLMCallOperator.
 
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| `system_prompt` | `prompt` | 仅在 `freezeSystemPrompt=false` 时暴露 |
-| `user_prompt` | `prompt` | 仅在 `freezeUserPrompt=false` 时暴露 |
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt, boolean freezeSystemPrompt, boolean freezeUserPrompt, String llmCallId, BiConsumer<String, Object> onParameterUpdated)` | - |
+| `public LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt)` | - |
 
-**公共方法**：
+### `LLMCallOperator`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getOperatorId()` | `String` | 返回 Operator ID，默认值为 `llm_call` |
-| `getTunables()` | `Map<String, TunableSpec>` | 返回当前可调 Prompt |
-| `setParameter(String target, Object value)` | `void` | 更新系统或用户 Prompt |
-| `getState()` | `Map<String, Object>` | 返回 `system_prompt` 与 `user_prompt` 快照 |
-| `loadState(Map<String, Object> state)` | `void` | 从状态恢复 Prompt |
-| `invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `AssistantMessage` | 同步调用模型 |
-| `stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `OperatorStream<AssistantMessageChunk>` | 流式调用模型 |
-| `getSystemPrompt()` | `PromptTemplate` | 获取系统 Prompt |
-| `getUserPrompt()` | `PromptTemplate` | 获取用户 Prompt |
-| `updateSystemPrompt(Object value)` | `void` | 直接更新系统 Prompt |
-| `updateUserPrompt(Object value)` | `void` | 直接更新用户 Prompt |
-| `setFreezeSystemPrompt(boolean freezeSystemPrompt)` | `void` | 设置系统 Prompt 是否冻结 |
-| `setFreezeUserPrompt(boolean freezeUserPrompt)` | `void` | 设置用户 Prompt 是否冻结 |
-| `getFreezeSystemPrompt()` | `boolean` | 获取系统 Prompt 冻结状态 |
-| `getFreezeUserPrompt()` | `boolean` | 获取用户 Prompt 冻结状态 |
+- 类型：`class`
+- 声明：`public class LLMCallOperator extends Operator`
+- 说明：LLM invocation operator with prompt tunables.
 
-**调用约定**：
+**字段**
 
-- `kwargs.history` 可以传入 `List<BaseMessage>` 作为历史消息。
-- `kwargs.tools` 会透传给 `Model.invoke()` / `Model.stream()`。
-- 如果 `inputs.messages` 已经是 `List<BaseMessage>`，则走 passthrough 模式，仅额外补入 system prompt。
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `DEFAULT_USER_PROMPT` | `String` | `public static final` | `"{{query}}"` | - |
 
-### 2.2 LLMCall
+**构造方法**
 
-`LLMCallOperator` 的向后兼容别名类。
+| 签名 | 说明 |
+|---|---|
+| `public LLMCallOperator(String modelName, Model llm, Object systemPrompt, Object userPrompt, boolean freezeSystemPrompt, boolean freezeUserPrompt, String llmCallId, BiConsumer<String, Object> onParameterUpdated)` | - |
+| `public LLMCallOperator(String modelName, Model llm, Object systemPrompt, Object userPrompt)` | - |
 
-**包路径**：`com.openjiuwen.core.operator.llm_call`
+**方法**
 
-**构造方法**：
-```java
-LLMCall(
-    String modelName,
-    Model llm,
-    Object systemPrompt,
-    Object userPrompt,
-    boolean freezeSystemPrompt,
-    boolean freezeUserPrompt,
-    String llmCallId,
-    BiConsumer<String, Object> onParameterUpdated
-)
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getOperatorId()` | `String` | - |
+| `public Map<String, TunableSpec> getTunables()` | `Map<String, TunableSpec>` | - |
+| `public void setParameter(String target, Object value)` | `void` | - |
+| `public Map<String, Object> getState()` | `Map<String, Object>` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public AssistantMessage invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `AssistantMessage` | - |
+| `public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `OperatorStream<AssistantMessageChunk>` | - |
+| `public PromptTemplate getSystemPrompt()` | `PromptTemplate` | - |
+| `public PromptTemplate getUserPrompt()` | `PromptTemplate` | - |
+| `public void updateSystemPrompt(Object value)` | `void` | - |
+| `public void updateUserPrompt(Object value)` | `void` | - |
+| `public void setFreezeSystemPrompt(boolean freezeSystemPrompt)` | `void` | - |
+| `public void setFreezeUserPrompt(boolean freezeUserPrompt)` | `void` | - |
+| `public boolean getFreezeSystemPrompt()` | `boolean` | - |
+| `public boolean getFreezeUserPrompt()` | `boolean` | - |
 
-LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt)
-```
+## `com.openjiuwen.core.operator.memory_call`
 
----
+公开类型：`3`
 
-## 3. Memory 调用
+### `MemoryCallOperator`
 
-### 3.1 MemoryOperation
+- 类型：`class`
+- 声明：`public class MemoryCallOperator extends Operator`
+- 说明：Memory invocation operator with enabled and retry tunables.
 
-Memory Operator 依赖的最小内存操作协议。
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.operator.memory_call`
+| 签名 | 说明 |
+|---|---|
+| `public MemoryCallOperator(MemoryOperation memory, String memoryCallId, MemoryInvoker memoryInvoker)` | - |
+| `public MemoryCallOperator(MemoryOperation memory)` | - |
+| `public MemoryCallOperator(MemoryInvoker memoryInvoker)` | - |
+| `public MemoryCallOperator()` | - |
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `invoke(Map<String, Object> inputs, Map<String, Object> kwargs)` | `Object` | 执行一次内存调用 |
-| `supportsStream()` | `boolean` | 是否支持流式输出，默认 `false` |
-| `stream(Map<String, Object> inputs, Map<String, Object> kwargs)` | `Iterator<Object>` | 流式输出，默认抛出 `UnsupportedOperationException` |
+**方法**
 
-### 3.2 MemoryInvoker
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getOperatorId()` | `String` | - |
+| `public Map<String, TunableSpec> getTunables()` | `Map<String, TunableSpec>` | - |
+| `public void setParameter(String target, Object value)` | `void` | - |
+| `public Map<String, Object> getState()` | `Map<String, Object>` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `Object` | - |
+| `public OperatorStream<Object> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `OperatorStream<Object>` | - |
 
-非标准内存调用流程的函数式回调接口。
+### `MemoryInvoker`
 
-**包路径**：`com.openjiuwen.core.operator.memory_call`
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface MemoryInvoker`
+- 说明：Callback hook for non-standard memory invocation flows.
+- 注解：`@FunctionalInterface`
 
-```java
-Object invoke(Map<String, Object> inputs) throws Exception
-```
+**方法**
 
-### 3.3 MemoryCallOperator
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `Object invoke(Map<String, Object> inputs) throws Exception` | `Object` | - |
 
-面向内存调用的 Operator，支持开关和重试次数调优。
+### `MemoryOperation`
 
-**包路径**：`com.openjiuwen.core.operator.memory_call`
+- 类型：`interface`
+- 声明：`public interface MemoryOperation`
+- 说明：Minimal memory contract required by MemoryCallOperator.
 
-**构造方法**：
-```java
-MemoryCallOperator(MemoryOperation memory, String memoryCallId, MemoryInvoker memoryInvoker)
-MemoryCallOperator(MemoryOperation memory)
-MemoryCallOperator(MemoryInvoker memoryInvoker)
-MemoryCallOperator()
-```
+**方法**
 
-**调优参数**：
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | `Object` | - |
+| `default boolean supportsStream()` | `boolean` | - |
+| `default Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | `Iterator<Object>` | - |
 
-| 参数名 | 类型 | 约束 | 说明 |
-|--------|------|------|------|
-| `enabled` | `discrete` | `bool` | 是否启用 Memory Operator |
-| `max_retries` | `discrete` | `int, min=0, max=5` | 最大重试次数 |
+## `com.openjiuwen.core.operator.tool_call`
 
-**公共方法**：
+公开类型：`4`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getOperatorId()` | `String` | 返回 Operator ID，默认值为 `memory_call` |
-| `getTunables()` | `Map<String, TunableSpec>` | 返回 `enabled` 与 `max_retries` |
-| `setParameter(String target, Object value)` | `void` | 更新启用状态或重试次数 |
-| `getState()` | `Map<String, Object>` | 返回 `enabled` 与 `max_retries` 状态 |
-| `loadState(Map<String, Object> state)` | `void` | 恢复状态 |
-| `invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `Object` | 调用 `memoryInvoker` 或 `memory.invoke()` |
-| `stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `OperatorStream<Object>` | 调用 `memory.stream()`，要求已配置 `memory` |
+### `ToolCallOperator`
 
----
+- 类型：`class`
+- 声明：`public class ToolCallOperator extends Operator`
+- 说明：Tool invocation operator; tunables cover tool descriptions only.
 
-## 4. Tool 调用
+**构造方法**
 
-### 4.1 ToolExecutionResult
+| 签名 | 说明 |
+|---|---|
+| `public ToolCallOperator(Tool tool, String toolCallId, ToolExecutor toolExecutor, ToolRegistry toolRegistry)` | - |
+| `public ToolCallOperator(Tool tool)` | - |
+| `public ToolCallOperator(ToolExecutor toolExecutor)` | - |
+| `public ToolCallOperator(Tool tool, ToolRegistry toolRegistry)` | - |
+| `public ToolCallOperator()` | - |
 
-Router 模式下的工具执行结果封装。
+**方法**
 
-**包路径**：`com.openjiuwen.core.operator.tool_call`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getOperatorId()` | `String` | - |
+| `public Map<String, TunableSpec> getTunables()` | `Map<String, TunableSpec>` | - |
+| `public void setParameter(String target, Object value)` | `void` | - |
+| `public Map<String, Object> getState()` | `Map<String, Object>` | - |
+| `public void loadState(Map<String, Object> state)` | `void` | - |
+| `public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `Object` | - |
+| `public OperatorStream<Object> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception` | `OperatorStream<Object>` | - |
 
-**记录字段**：
+### `ToolExecutionResult`
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `result` | `Object` | 工具执行结果 |
-| `toolMessage` | `ToolMessage` | 与结果配套的工具响应消息 |
+- 类型：`record`
+- 声明：`public record ToolExecutionResult(Object result, ToolMessage toolMessage)`
+- 说明：Result wrapper for router-mode tool execution.
 
-### 4.2 ToolExecutor
+**字段**
 
-Router 模式工具执行器接口。
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `result` | `Object` | `private final` | `-` | - |
+| `toolMessage` | `ToolMessage` | `private final` | `-` | - |
 
-**包路径**：`com.openjiuwen.core.operator.tool_call`
+### `ToolExecutor`
 
-```java
-ToolExecutionResult execute(Object toolCall, Session session) throws Exception
-```
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface ToolExecutor`
+- 说明：Router-mode executor for tool call batches.
+- 注解：`@FunctionalInterface`
 
-### 4.3 ToolRegistry
+**方法**
 
-ToolCallOperator 依赖的最小工具注册表接口。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `ToolExecutionResult execute(Object toolCall, Session session) throws Exception` | `ToolExecutionResult` | - |
 
-**包路径**：`com.openjiuwen.core.operator.tool_call`
+### `ToolRegistry`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getToolDefs()` | `List<Map<String, Object>>` | 返回工具定义列表，默认空列表 |
-| `getTools()` | `Map<String, Tool>` | 返回工具对象映射，默认空映射 |
-| `setToolDescription(String toolName, String description)` | `void` | 更新指定工具的描述 |
+- 类型：`interface`
+- 声明：`public interface ToolRegistry`
+- 说明：Minimal tool registry contract required by ToolCallOperator.
 
-### 4.4 ToolCallOperator
+**方法**
 
-面向工具调用的 Operator，支持单工具直接执行和 Router 批量分发两种模式。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `default List<Map<String, Object>> getToolDefs()` | `List<Map<String, Object>>` | - |
+| `default Map<String, Tool> getTools()` | `Map<String, Tool>` | - |
+| `void setToolDescription(String toolName, String description)` | `void` | - |
 
-**包路径**：`com.openjiuwen.core.operator.tool_call`
-
-**构造方法**：
-```java
-ToolCallOperator(Tool tool, String toolCallId, ToolExecutor toolExecutor, ToolRegistry toolRegistry)
-ToolCallOperator(Tool tool)
-ToolCallOperator(ToolExecutor toolExecutor)
-ToolCallOperator(Tool tool, ToolRegistry toolRegistry)
-ToolCallOperator()
-```
-
-**调优参数**：
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| `tool_description` | `text` | 仅在注入 `toolRegistry` 时暴露，用于批量更新工具描述 |
-
-**公共方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getOperatorId()` | `String` | 返回 Operator ID，默认值为 `tool_call` |
-| `getTunables()` | `Map<String, TunableSpec>` | 返回工具描述调优项；无注册表时为空 |
-| `setParameter(String target, Object value)` | `void` | 批量更新工具描述 |
-| `getState()` | `Map<String, Object>` | 返回 `enabled` 与 `max_retries` 状态 |
-| `loadState(Map<String, Object> state)` | `void` | 恢复 `enabled` 与 `max_retries` |
-| `invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `Object` | 执行工具调用 |
-| `stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)` | `OperatorStream<Object>` | 流式调用单个 `Tool` |
-
-**调用模式**：
-
-- 直接模式：配置了 `Tool` 时，调用 `tool.invoke(inputs, kwargs)`。
-- Router 模式：当 `inputs.tool_calls` 是列表且配置了 `ToolExecutor` 时，逐个执行并返回 `List<ToolExecutionResult>`。
-- 流式模式仅适用于直接模式；未配置 `Tool` 时会抛出 `UnsupportedOperationException`。
-
----
-
-## 5. 向后兼容 API
-
-### 5.1 legacy.llm_call.LLMCall
-
-旧版 LLMCall 封装，不继承 `Operator`，用于兼容 pre-operator 调用路径。
-
-**包路径**：`com.openjiuwen.core.operator.legacy.llm_call`
-
-**常量**：
-
-| 常量 | 类型 | 说明 |
-|------|------|------|
-| `DEFAULT_USER_PROMPT` | `String` | 默认用户 Prompt，值为 `{{query}}` |
-
-**构造方法**：
-```java
-LLMCall(
-    String modelName,
-    Model llm,
-    Object systemPrompt,
-    Object userPrompt,
-    boolean freezeSystemPrompt,
-    boolean freezeUserPrompt,
-    String llmCallId
-)
-
-LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt)
-```
-
-**公共方法**：
-
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `invoke(Map<String, Object> inputs, Session session, List<BaseMessage> history, Object tools)` | `AssistantMessage` | 同步调用 |
-| `invoke(Map<String, Object> inputs, Session session)` | `AssistantMessage` | 便捷重载 |
-| `stream(Map<String, Object> inputs, Session session, List<BaseMessage> history, Object tools)` | `OperatorStream<AssistantMessageChunk>` | 流式调用 |
-| `stream(Map<String, Object> inputs, Session session)` | `OperatorStream<AssistantMessageChunk>` | 便捷重载 |
-| `getOptimizerCallback()` | `LegacyOptimizerCallback` | 获取回调 |
-| `setOptimizerCallback(LegacyOptimizerCallback optimizerCallback)` | `void` | 设置回调 |
-| `getSystemPrompt()` / `getUserPrompt()` | `PromptTemplate` | 获取 Prompt |
-| `updateSystemPrompt(Object systemPrompt)` / `updateUserPrompt(Object userPrompt)` | `void` | 更新 Prompt |
-| `setFreezeSystemPrompt(boolean freezeSystemPrompt)` / `setFreezeUserPrompt(boolean freezeUserPrompt)` | `void` | 设置冻结状态 |
-| `getFreezeSystemPrompt()` / `getFreezeUserPrompt()` | `boolean` | 获取冻结状态 |
-
-### 5.2 LegacyOptimizerCallback
-
-旧版 LLMCall 的完成回调接口。
-
-**包路径**：`com.openjiuwen.core.operator.legacy.llm_call`
-
-```java
-void onComplete(String llmCallId, Map<String, Object> inputs, Object response, Session session) throws Exception
-```

@@ -2,439 +2,1790 @@
 
 > 包路径：`com.openjiuwen.core.runner`
 
-Runner 模块负责统一运行入口、资源注册与查找、回调框架、轻量消息队列以及基于标签的资源组织能力。该模块也是 `application`、`singleagent`、`multiagent` 等高层模块的公共执行底座。
+运行入口、回调链、消息队列、远程运行与资源管理。基于 `runner` 包源码逐页复核整理。
 
----
+## 文档说明
 
-## 目录
+- 本页覆盖 `83` 个公开类型（含嵌套公开类型）。
+- 默认记录源码中显式声明的 public/protected API；接口中按语言规则公开的成员同样列出。
+- Lombok 自动生成的 getter/setter/builder 不逐项展开，DTO/配置类改为记录显式字段。
+- 标记为 `@Deprecated` 或位于 `legacy` 包的类型会在条目中注明兼容性。
 
-- [1. 运行入口与配置](#1-运行入口与配置)
-- [2. 基础结果与标签模型](#2-基础结果与标签模型)
-- [3. 回调框架（callback）](#3-回调框架callback)
-- [4. 消息队列（mq）](#4-消息队列mq)
-- [5. 资源管理（resourcemanager）](#5-资源管理resourcemanager)
+## 包概览
 
----
+| 包 | 公开类型数 |
+|---|---:|
+| `com.openjiuwen.core.runner` | 7 |
+| `com.openjiuwen.core.runner.base` | 10 |
+| `com.openjiuwen.core.runner.callback` | 20 |
+| `com.openjiuwen.core.runner.drunner` | 1 |
+| `com.openjiuwen.core.runner.drunner.dmessage_queue` | 3 |
+| `com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription` | 2 |
+| `com.openjiuwen.core.runner.drunner.dmessage_queue.message` | 5 |
+| `com.openjiuwen.core.runner.drunner.remote_client` | 5 |
+| `com.openjiuwen.core.runner.drunner.server_adapter` | 3 |
+| `com.openjiuwen.core.runner.mq` | 8 |
+| `com.openjiuwen.core.runner.resourcemanager` | 19 |
 
-## 1. 运行入口与配置
+## `com.openjiuwen.core.runner`
 
-### 1.1 Runner
+公开类型：`7`
 
-全局静态运行入口，对单例 `RunnerImpl` 进行代理。
+### `DistributedConfig`
 
-**包路径**：`com.openjiuwen.core.runner`
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class DistributedConfig`
+- 说明：Distributed system configuration.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `resourceMgr()` | `ResourceMgr` | 获取全局资源管理器 |
-| `pubsub()` | `LocalMessageQueue` | 获取本地发布订阅对象 |
-| `callbackFramework()` | `CallbackFramework` | 获取全局回调框架 |
-| `setConfig(RunnerConfig config)` | `void` | 设置全局配置 |
-| `getConfig()` | `RunnerConfig` | 获取当前配置 |
-| `start()` | `boolean` | 启动 Runner 和关联组件 |
-| `stop()` | `boolean` | 停止 Runner 并释放资源 |
-| `runWorkflow(Object workflow, Object inputs, Object session, ModelContext context)` | `Object` | 执行工作流 |
-| `runWorkflowStreaming(Object workflow, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | 流式执行工作流 |
-| `runAgent(Object agent, Object inputs, Object session, ModelContext context)` | `Object` | 执行单智能体 |
-| `runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | 流式执行单智能体 |
-| `runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context)` | `Object` | 执行多智能体分组 |
-| `runAgentGroupStreaming(Object agentGroup, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | 流式执行多智能体分组 |
-| `release(String sessionId)` | `void` | 释放会话相关资源 |
+**字段**
 
-### 1.2 RunnerImpl
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `requestTimeout` | `double` | `private` | `30.0` | - |
+| `maxRequestConcurrency` | `int` | `private` | `10000` | - |
+| `messageQueueConfig` | `MessageQueueConfig` | `private` | `new MessageQueueConfig()` | - |
+| `agentTopicTemplate` | `String` | `private` | `"openjiuwen.single_agent.{agent_id}.{version}"` | - |
+| `replyTopicTemplate` | `String` | `private` | `"openjiuwen.reply.runner.{instance_id}"` | - |
 
-Runner 实际实现，负责创建 Session、调度 Workflow/Agent/AgentGroup，并管理生命周期。
+**方法**
 
-**包路径**：`com.openjiuwen.core.runner`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getAgentTopicTemplate(String envPrefix)` | `String` | Get agent topic template with environment prefix. |
+| `public String getReplyTopicTemplate(String envPrefix)` | `String` | Get reply topic template with environment prefix. |
 
-**构造方法**
-```java
-RunnerImpl()
-RunnerImpl(String runnerId, RunnerConfig config)
-```
+### `MessageQueueConfig`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getResourceMgr()` | `ResourceMgr` | 获取资源管理器 |
-| `getPubsub()` | `LocalMessageQueue` | 获取本地发布订阅对象 |
-| `getCallbackFramework()` | `CallbackFramework` | 获取回调框架 |
-| `setConfig(RunnerConfig config)` | `void` | 设置 Runner 配置 |
-| `getConfig()` | `RunnerConfig` | 获取当前配置 |
-| `start()` / `stop()` | `boolean` | 启停 Runner |
-| `runWorkflow(...)` | `Object` | 解析工作流实例并创建工作流 Session |
-| `runWorkflowStreaming(...)` | `Iterator<Object>` | 流式执行工作流 |
-| `runAgent(...)` | `Object` | 解析 Agent、创建 `AgentSessionApi` 并执行 |
-| `runAgentStreaming(...)` | `Iterator<Object>` | 流式执行 Agent，并在流结束后自动 `postRun()` |
-| `runAgentGroup(...)` | `Object` | 执行 AgentGroup |
-| `runAgentGroupStreaming(...)` | `Iterator<Object>` | 流式执行 AgentGroup |
-| `release(String sessionId)` | `void` | 调用默认 Checkpointer 释放会话 |
-| `generateWorkflowKey(String workflowId, String workflowVersion)` | `String` | 生成 `workflowId_version` 键 |
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class MessageQueueConfig`
+- 说明：Message queue configuration.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-### 1.3 RunnerConfig
+**字段**
 
-Runner 全局配置。
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `type` | `String` | `private` | `MessageQueueType.PULSAR.getValue()` | - |
+| `pulsarConfig` | `PulsarConfig` | `private` | `-` | - |
 
-**包路径**：`com.openjiuwen.core.runner`
+### `MessageQueueType`
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `distributedMode` | `boolean` | `true` | 是否启用分布式模式 |
-| `distributedConfig` | `DistributedConfig` | 默认构造 | 分布式配置 |
-| `envPrefix` | `String` | `""` | 主题名前缀 |
-| `instanceId` | `String` | 随机 UUID | 实例 ID |
-| `checkpointerConfig` | `Map<String, Object>` | - | Checkpointer 配置 |
-| `DEFAULT` | `RunnerConfig` | 静态常量 | 默认配置（非分布式 + fake MQ） |
+- 类型：`enum`
+- 声明：`public enum MessageQueueType`
+- 说明：Message queue type enumeration.
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `agentTopicTemplate()` | `String` | 获取补齐环境前缀后的 Agent 主题模板 |
-| `replyTopicTemplate()` | `String` | 获取补齐环境前缀后的回复主题模板 |
-| `setRunnerConfig(RunnerConfig config)` | `void` | 设置全局静态配置 |
-| `getRunnerConfig()` | `RunnerConfig` | 获取全局静态配置 |
+**枚举常量**
 
-### 1.4 DistributedConfig / MessageQueueConfig / PulsarConfig / MessageQueueType
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `PULSAR` | `new MessageQueueType("pulsar")` | - |
+| `FAKE` | `new MessageQueueType("fake")` | - |
 
-Runner 分布式与消息队列配置模型。
+**方法**
 
-**包路径**：`com.openjiuwen.core.runner`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
 
-**DistributedConfig 字段**
+### `PulsarConfig`
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `requestTimeout` | `double` | `30.0` | 请求超时时间 |
-| `maxRequestConcurrency` | `int` | `10000` | 最大并发请求数 |
-| `messageQueueConfig` | `MessageQueueConfig` | 默认构造 | MQ 配置 |
-| `agentTopicTemplate` | `String` | `openjiuwen.single_agent.{agent_id}.{version}` | Agent 主题模板 |
-| `replyTopicTemplate` | `String` | `openjiuwen.reply.runner.{instance_id}` | 回复主题模板 |
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class PulsarConfig`
+- 说明：Pulsar message queue configuration.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `getAgentTopicTemplate(String envPrefix)` | `String` | 获取带前缀的 Agent 主题模板 |
-| `getReplyTopicTemplate(String envPrefix)` | `String` | 获取带前缀的回复主题模板 |
+**字段**
 
-**MessageQueueConfig 字段**
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `url` | `String` | `private` | `-` | - |
+| `maxWorkers` | `int` | `private` | `8` | - |
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `type` | `String` | `MessageQueueType.PULSAR.getValue()` | 队列类型 |
-| `pulsarConfig` | `PulsarConfig` | - | Pulsar 配置 |
+### `Runner`
 
-**PulsarConfig 字段**
+- 类型：`class`
+- 声明：`public final class Runner`
+- 说明：Runner singleton class that proxies all calls to the global runner instance.
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `url` | `String` | - | Pulsar 服务地址 |
-| `maxWorkers` | `int` | `8` | 最大工作线程数 |
+**方法**
 
-**MessageQueueType 枚举值**
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static ResourceMgr resourceMgr()` | `ResourceMgr` | Get the resource manager for workflow, agent, agent_group, tool, model, prompt... |
+| `public static LocalMessageQueue pubsub()` | `LocalMessageQueue` | Get the local message queue for publish/subscribe communication. |
+| `public static CallbackFramework callbackFramework()` | `CallbackFramework` | Get the callback framework. |
+| `public static void setConfig(RunnerConfig config)` | `void` | Set the runner configuration with provided config object. |
+| `public static RunnerConfig getConfig()` | `RunnerConfig` | Retrieve the current runner configuration. |
+| `public static boolean start()` | `boolean` | Start the runner and its associated components, such as message queue. |
+| `public static boolean stop()` | `boolean` | Stop the runner and clean up resources. |
+| `public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context)` | `Object` | Execute a workflow with given inputs. |
+| `public static Iterator<Object> runWorkflowStreaming(Object workflow, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a workflow with streaming output support. |
+| `public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context)` | `Object` | Execute a single agent with given inputs. |
+| `public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a single agent with streaming output support. |
+| `public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context)` | `Object` | Execute a group of agents with given inputs. |
+| `public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a group of agents with streaming output support. |
+| `public static void release(String sessionId)` | `void` | Release resources associated with a session. |
 
-| 枚举值 | 说明 |
-|--------|------|
-| `PULSAR` | Pulsar 队列 |
-| `FAKE` | 伪造/本地占位队列 |
+### `RunnerConfig`
 
----
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class RunnerConfig`
+- 说明：Runner global configuration.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
 
-## 2. 基础结果与标签模型
+**字段**
 
-### 2.1 Result / Ok / Error
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `distributedMode` | `boolean` | `private` | `true` | - |
+| `distributedConfig` | `DistributedConfig` | `private` | `new DistributedConfig()` | - |
+| `envPrefix` | `String` | `private` | `""` | - |
+| `instanceId` | `String` | `private` | `UUID.randomUUID().toString()` | - |
+| `checkpointerConfig` | `Map<String, Object>` | `private` | `-` | Checkpointer configuration. |
+| `DEFAULT` | `RunnerConfig` | `public static final` | `RunnerConfig.builder().distributedMode(false).distributedConfig(DistributedConfig.builder().requestTimeout(30.0).messageQueueConfig(MessageQueueConfig.builder().type(MessageQueueType.FAKE.getValue()).build()).build()).build()` | Default runner configuration (non-distributed, fake MQ). |
 
-类型安全的结果封装接口与成功/失败实现。
+**方法**
 
-**包路径**：`com.openjiuwen.core.runner.base`
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String agentTopicTemplate()` | `String` | Get agent topic template with environment prefix. |
+| `public String replyTopicTemplate()` | `String` | Get reply topic template with environment prefix. |
+| `public static void setRunnerConfig(RunnerConfig config)` | `void` | Set the global runner configuration. |
+| `public static RunnerConfig getRunnerConfig()` | `RunnerConfig` | Get the global runner configuration. |
 
-| 类型 | 方法/字段 | 说明 |
-|------|-----------|------|
-| `Result<T>` | `isOk()`, `isError()`, `getValue()`, `getError()` | 统一结果接口 |
-| `Ok<T>` | `Ok(T value)` | 成功结果实现 |
-| `Error<T>` | `Error(Exception error)` | 失败结果实现 |
+### `RunnerImpl`
 
-### 2.2 Tag / TagMatchStrategy / TagUpdateStrategy
-
-标签常量与标签匹配/更新策略。
-
-**包路径**：`com.openjiuwen.core.runner.base`
-
-| 类型 | 关键内容 | 说明 |
-|------|----------|------|
-| `Tag` | `ALL`, `GLOBAL`, `ACTIVE`, `INACTIVE` | 内建标签常量 |
-| `TagMatchStrategy` | `ALL`, `ANY` | 查询资源时的标签匹配策略 |
-| `TagUpdateStrategy` | `MERGE`, `REPLACE` | 更新资源标签时的策略 |
-
-### 2.3 Provider 接口
-
-用于资源管理器延迟实例化的 Provider 抽象，全部继承 `Supplier`。
-
-**包路径**：`com.openjiuwen.core.runner.base`
-
-| 类型 | 泛型/返回值 | 说明 |
-|------|-------------|------|
-| `AgentProvider<T>` | `Supplier<T>` | Agent 提供器 |
-| `AgentGroupProvider<T>` | `Supplier<T>` | AgentGroup 提供器 |
-| `ModelProvider` | `Supplier<Model>` | 模型提供器 |
-| `WorkflowProvider` | `Supplier<Workflow>` | 工作流提供器 |
-
----
-
-## 3. 回调框架（callback）
-
-### 3.1 CallbackFramework
-
-通用事件回调框架，支持优先级、过滤器、链式执行、指标统计、超时与历史回放。
-
-**包路径**：`com.openjiuwen.core.runner.callback`
+- 类型：`class`
+- 声明：`public class RunnerImpl`
+- 说明：Runner implementation class.
 
 **构造方法**
-```java
-CallbackFramework()
-CallbackFramework(boolean enableMetrics, boolean enableLogging)
-```
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `register(...)` | `CallbackInfo` | 注册回调，完整重载支持优先级、一次性执行、过滤器、回滚、超时与重试 |
-| `unregister(String event, Function<Map<String, Object>, Object> callback)` | `void` | 注销单个回调 |
-| `unregisterNamespace(String namespace)` | `void` | 按命名空间批量注销 |
-| `unregisterByTags(Set<String> tags)` | `void` | 按标签批量注销 |
-| `unregisterEvent(String event)` | `void` | 清空事件下全部回调/链/过滤器 |
-| `trigger(String event, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | 触发事件并按优先级执行 |
-| `trigger(String event, Map<String, Object> kwargs)` | `List<Object>` | 仅传 kwargs 触发 |
-| `trigger(String event)` | `List<Object>` | 无参触发 |
-| `triggerChain(String event, Object[] args, Map<String, Object> kwargs)` | `ChainResult` | 以链模式执行回调 |
-| `triggerParallel(String event, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | 并行执行回调 |
-| `triggerUntil(String event, Predicate<Object> condition, Object[] args, Map<String, Object> kwargs)` | `Object` | 执行到满足条件为止 |
-| `triggerWithTimeout(String event, double timeoutSeconds, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | 带超时触发 |
-| `triggerStream(String event, Iterator<?> inputStream, Object[] args, Map<String, Object> kwargs)` | `Iterator<Object>` | 按输入流逐项触发 |
-| `addFilter(String event, EventFilter filter)` | `void` | 为指定事件增加过滤器 |
-| `addGlobalFilter(EventFilter filter)` | `void` | 增加全局过滤器 |
-| `addCircuitBreaker(String event, CallbackInfo callback, int failureThreshold, double timeout)` | `void` | 为回调挂接断路器 |
-| `addHook(String event, HookType hookType, Consumer<Map<String, Object>> hook)` | `void` | 注册生命周期 Hook |
-| `getMetrics(...)` / `resetMetrics()` | `Map<String, Map<String, Object>>` / `void` | 获取或重置指标 |
-| `getSlowCallbacks(double threshold)` | `List<Map<String, Object>>` | 获取慢回调列表 |
-| `enableEventHistory(boolean enabled)` | `void` | 开关事件历史记录 |
-| `getEventHistory(String event, Long since)` | `List<Map<String, Object>>` | 获取事件历史 |
-| `replayEvents(Long since)` | `void` | 回放历史事件 |
-| `listEvents(String namespace)` | `List<String>` | 列出事件名 |
-| `listCallbacks(String event)` | `List<Map<String, Object>>` | 列出事件下回调 |
-| `getStatistics()` | `Map<String, Object>` | 获取整体统计信息 |
+| 签名 | 说明 |
+|---|---|
+| `public RunnerImpl()` | - |
+| `public RunnerImpl(String runnerId, RunnerConfig config)` | - |
 
-### 3.2 CallbackInfo / CallbackMetrics
+**方法**
 
-回调元数据与性能指标模型。
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public ResourceMgr getResourceMgr()` | `ResourceMgr` | Get the resource manager for workflow, agent, agent_group, tool, model, prompt... |
+| `public LocalMessageQueue getPubsub()` | `LocalMessageQueue` | Get the local message queue for publish/subscribe communication. |
+| `public CallbackFramework getCallbackFramework()` | `CallbackFramework` | Get the callback framework. |
+| `public void setConfig(RunnerConfig config)` | `void` | Set the runner configuration. |
+| `public RunnerConfig getConfig()` | `RunnerConfig` | Retrieve the current runner configuration. |
+| `public boolean start()` | `boolean` | Start the runner and its associated components, such as message queue. |
+| `public boolean stop()` | `boolean` | Stop the runner and clean up resources. |
+| `public Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context)` | `Object` | Execute a workflow with given inputs. |
+| `public Iterator<Object> runWorkflowStreaming(Object workflow, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a workflow with streaming output support. |
+| `public Object runAgent(Object agent, Object inputs, Object session, ModelContext context)` | `Object` | Execute a single agent with given inputs. |
+| `public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a single agent with streaming output support. |
+| `public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context)` | `Object` | Execute a group of agents with given inputs. |
+| `public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | `Iterator<Object>` | Execute a group of agents with streaming output support. |
+| `public void release(String sessionId)` | `void` | Release resources associated with a session. |
+| `public static String generateWorkflowKey(String workflowId, String workflowVersion)` | `String` | Generate workflow key from ID and version (matches Python's generate_workflow_key). |
 
-**包路径**：`com.openjiuwen.core.runner.callback`
+## `com.openjiuwen.core.runner.base`
 
-| 类型 | 关键字段/方法 | 说明 |
-|------|---------------|------|
-| `CallbackInfo` | `callback`, `priority`, `once`, `enabled`, `namespace`, `tags`, `maxRetries`, `retryDelay`, `timeout`, `callbackName`, `getCallbackDisplayName()` | 注册回调时的元信息 |
-| `CallbackMetrics` | `update(double executionTime, boolean isError)`, `getAvgTime()`, `toMap()` | 统计调用次数、耗时、错误率 |
+公开类型：`10`
 
-### 3.3 CallbackChain / ChainContext / ChainResult / ChainAction
+### `AgentGroupProvider`
 
-链式回调执行模型。
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface AgentGroupProvider<T> extends Supplier<T>`
+- 说明：Provider functional interface for creating AgentGroup instances.
+- 注解：`@FunctionalInterface`
 
-**包路径**：`com.openjiuwen.core.runner.callback`
+显式公开成员较少，当前源码主要通过字段访问器、继承关系或运行时约定暴露能力。
 
-| 类型 | 关键方法/字段 | 说明 |
-|------|---------------|------|
-| `CallbackChain` | `add(...)`, `remove(...)`, `execute(ChainContext context)` | 管理链式回调执行与回滚 |
-| `CallbackChain.ExceptionContext` | `exception`, `chainContext` | 错误处理器上下文 |
-| `ChainContext` | `event`, `initialArgs`, `initialKwargs`, `results`, `metadata`, `getLastResult()`, `getAllResults()`, `setMetadata(...)`, `getMetadata(...)`, `getElapsedTime()` | 链执行共享上下文 |
-| `ChainResult` | `action`, `result`, `context`, `error` | 链执行结果 |
-| `ChainAction` | `CONTINUE`, `BREAK`, `RETRY`, `ROLLBACK` | 链控制动作 |
+### `AgentProvider`
 
-### 3.4 EventFilter / FilterResult / FilterAction / HookType
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface AgentProvider<T> extends Supplier<T>`
+- 说明：Provider functional interface for creating Agent instances.
+- 注解：`@FunctionalInterface`
 
-过滤器与 Hook 抽象。
+显式公开成员较少，当前源码主要通过字段访问器、继承关系或运行时约定暴露能力。
 
-**包路径**：`com.openjiuwen.core.runner.callback`
+### `Error`
 
-| 类型 | 关键方法/值 | 说明 |
-|------|-------------|------|
-| `EventFilter` | `filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | 过滤器基类 |
-| `FilterResult` | `continueResult()`, `continueResult(args, kwargs)`, `skipResult(...)`, `stopResult(...)`, `modifyResult(...)` | 过滤结果封装 |
-| `FilterAction` | `CONTINUE`, `STOP`, `SKIP`, `MODIFY` | 过滤动作 |
-| `HookType` | `BEFORE`, `AFTER`, `ERROR`, `CLEANUP` | Hook 类型 |
+- 类型：`class`
+- 声明：`public final class Error<T> implements Result<T>`
+- 说明：Represents a failed operation result following the Result pattern.
 
-### 3.5 内置过滤器
+**构造方法**
 
-**包路径**：`com.openjiuwen.core.runner.callback`
+| 签名 | 说明 |
+|---|---|
+| `public Error(Exception error)` | - |
 
-| 类型 | 构造/API | 说明 |
-|------|----------|------|
-| `AuthFilter` | `AuthFilter(String requiredRole)` | 基于 `user_role` 的角色校验 |
-| `CircuitBreakerFilter` | `CircuitBreakerFilter(...)`, `recordSuccess(...)`, `recordFailure(...)` | 断路器过滤器 |
-| `ConditionalFilter` | `ConditionalFilter(ConditionPredicate condition)` | 条件式过滤 |
-| `LoggingFilter` | `LoggingFilter()` | 记录事件与参数 |
-| `ParamModifyFilter` | `ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier)` | 修改参数 |
-| `RateLimitFilter` | `RateLimitFilter(int maxCalls, double timeWindow)` | 限流 |
-| `ValidationFilter` | `ValidationFilter(Predicate<Map<String, Object>> validator)` | 参数校验 |
+**方法**
 
----
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean isOk()` | `boolean` | - |
+| `public boolean isError()` | `boolean` | - |
+| `public T getValue()` | `T` | - |
+| `public Exception getError()` | `Exception` | - |
+| `public String toString()` | `String` | - |
 
-## 4. 消息队列（mq）
+### `ModelProvider`
 
-### 4.1 LocalMessageQueue
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface ModelProvider extends Supplier<Model>`
+- 说明：Provider functional interface for creating Model instances.
+- 注解：`@FunctionalInterface`
 
-本地发布订阅占位实现。
+显式公开成员较少，当前源码主要通过字段访问器、继承关系或运行时约定暴露能力。
 
-**包路径**：`com.openjiuwen.core.runner.mq`
+### `Ok`
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `start()` | `boolean` | 启动本地队列（当前为 no-op） |
-| `stop()` | `boolean` | 停止本地队列（当前为 no-op） |
+- 类型：`class`
+- 声明：`public final class Ok<T> implements Result<T>`
+- 说明：Represents a successful operation result following the Result pattern.
 
-### 4.2 MessageQueueBase / MessageQueueInMemory
+**构造方法**
 
-消息队列抽象与内存实现。
+| 签名 | 说明 |
+|---|---|
+| `public Ok(T value)` | - |
 
-**包路径**：`com.openjiuwen.core.runner.mq`
+**方法**
 
-| 类型 | 方法 | 说明 |
-|------|------|------|
-| `MessageQueueBase` | `start()`, `stop()`, `subscribe(String topic)`, `unsubscribe(String topic)`, `produceMessage(String topic, QueueMessage message)` | 队列抽象基类 |
-| `MessageQueueInMemory` | `MessageQueueInMemory(int queueMaxSize, long timeoutMs)`, `subscribe(...)`, `produceMessage(...)`, `start()`, `stop()` | 基于阻塞队列和虚拟线程的内存实现 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean isOk()` | `boolean` | - |
+| `public boolean isError()` | `boolean` | - |
+| `public T getValue()` | `T` | - |
+| `public Exception getError()` | `Exception` | - |
+| `public String toString()` | `String` | - |
 
-### 4.3 SubscriptionBase / SubscriptionInMemory
+### `Result`
 
-订阅抽象与内存实现。
+- 类型：`interface`
+- 声明：`public sealed interface Result<T> permits Ok, Error`
+- 说明：Result type for type-safe error handling.
 
-**包路径**：`com.openjiuwen.core.runner.mq`
+**方法**
 
-| 类型 | 方法 | 说明 |
-|------|------|------|
-| `SubscriptionBase` | `setMessageHandler(...)`, `activate()`, `deactivate()`, `isActive()` | 订阅抽象基类 |
-| `SubscriptionInMemory` | `SubscriptionInMemory(...)`, `pushMessage(QueueMessage message)` | 内存订阅实现，支持请求-响应和流式响应 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `boolean isOk()` | `boolean` | - |
+| `boolean isError()` | `boolean` | - |
+| `T getValue()` | `T` | - |
+| `Exception getError()` | `Exception` | - |
 
-### 4.4 QueueMessage / InvokeQueueMessage / StreamQueueMessage
+### `Tag`
 
-消息队列数据模型。
+- 类型：`class`
+- 声明：`public final class Tag`
+- 说明：Tag type constants for categorizing and filtering resources.
 
-**包路径**：`com.openjiuwen.core.runner.mq`
+**字段**
 
-| 类型 | 字段/方法 | 说明 |
-|------|-----------|------|
-| `QueueMessage` | `messageId`, `payload`, `errorCode`, `errorMsg` 及对应 getter/setter | 基础消息体 |
-| `InvokeQueueMessage` | `getResponse()` | 携带 `CompletableFuture<Object>` 的请求-响应消息 |
-| `StreamQueueMessage` | `getResponse()` | 携带 `CompletableFuture<Iterator<Object>>` 的流式消息 |
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `ALL` | `String` | `public static final` | `"*"` | Special tag matching all resources. |
+| `GLOBAL` | `String` | `public static final` | `"__global__"` | Default tag for untagged resources. |
+| `ACTIVE` | `String` | `public static final` | `"__active__"` | Active state tag. |
+| `INACTIVE` | `String` | `public static final` | `"__inactive__"` | Inactive state tag. |
 
----
+### `TagMatchStrategy`
 
-## 5. 资源管理（resourcemanager）
+- 类型：`enum`
+- 声明：`public enum TagMatchStrategy`
+- 说明：Strategy for matching multiple tags when querying or filtering resources.
 
-### 5.1 ResourceMgr
+**枚举常量**
 
-统一资源管理门面，负责注册、获取、移除 Agent、Workflow、Tool、Model、Prompt、Group、SysOperation、MCP Server 以及标签管理。
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `ALL` | `new TagMatchStrategy("all")` | Resource must contain ALL specified tags. |
+| `ANY` | `new TagMatchStrategy("any")` | Resource must contain ANY of the specified tags. |
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+**方法**
 
-| 方法分类 | 代表 API | 说明 |
-|----------|----------|------|
-| AgentGroup | `addAgentGroup(...)`, `removeAgentGroup(...)`, `getAgentGroup(...)` | 管理多智能体分组资源 |
-| Agent | `addAgent(...)`, `addAgents(...)`, `removeAgent(...)`, `getAgent(...)` | 管理 Agent 资源 |
-| Workflow | `addWorkflow(...)`, `addWorkflows(...)`, `removeWorkflow(...)`, `getWorkflow(...)` | 管理工作流资源 |
-| Tool | `addTool(...)`, `addTools(...)`, `removeTool(...)`, `getTool(...)` | 管理工具资源 |
-| Model | `addModel(...)`, `addModels(...)`, `removeModel(...)`, `getModel(...)` | 管理模型资源 |
-| Prompt | `addPrompt(...)`, `addPrompts(...)`, `removePrompt(...)`, `getPrompt(...)` | 管理提示词模板 |
-| SysOperation | `addSysOperation(...)`, `removeSysOperation(...)`, `getSysOperation(...)`, `getSysOpToolCards(...)` | 管理系统操作与自动导出的工具卡片 |
-| ToolInfo | `getToolInfos(...)` | 按类型/标签聚合工具描述 |
-| MCP | `addMcpServer(...)`, `removeMcpServer(...)`, `getMcpTool(...)` | 管理 MCP Server 与工具 |
-| Tag | `getResourceByTag(...)`, `listTags()`, `hasTag(...)`, `removeTag(...)`, `updateResourceTag(...)`, `addResourceTag(...)`, `removeResourceTag(...)`, `getResourceTag(...)`, `resourceHasTag(...)` | 基于标签组织资源 |
-| Cleanup | `release()` | 释放 Tool/MCP 等底层资源 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
 
-**记录类型**
+### `TagUpdateStrategy`
 
-| 类型 | 说明 |
-|------|------|
-| `AgentEntry` | 批量注册 Agent 条目 |
-| `WorkflowEntry` | 批量注册 Workflow 条目 |
-| `ModelEntry` | 批量注册 Model 条目 |
-| `PromptEntry` | 批量注册 Prompt 条目 |
+- 类型：`enum`
+- 声明：`public enum TagUpdateStrategy`
+- 说明：Strategy for updating resource tags.
 
-### 5.2 ResourceRegistry
+**枚举常量**
 
-各子资源管理器的聚合容器。
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `MERGE` | `new TagUpdateStrategy("merge")` | Merge new tags with existing tags. |
+| `REPLACE` | `new TagUpdateStrategy("replace")` | Replace all existing tags with new tags. |
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+**方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `removeById(String resourceId)` | `void` | 按 ID 从所有子管理器中移除资源 |
-| `tool()` / `prompt()` / `model()` / `workflow()` / `agent()` / `agentGroup()` / `sysOperation()` | 对应子管理器 | 获取子管理器 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
 
-### 5.3 AbstractManager 与 Provider 型子管理器
+### `WorkflowProvider`
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface WorkflowProvider extends Supplier<Workflow>`
+- 说明：Provider functional interface for creating Workflow instances.
+- 注解：`@FunctionalInterface`
 
-| 类型 | 方法 | 说明 |
-|------|------|------|
-| `AbstractManager<T>` | 受保护的 `registerResourceProvider(...)`, `getResource(...)`, `unregisterResourceProvider(...)` | Provider 型管理器基类 |
-| `AgentMgr<T>` | `addAgent(...)`, `getAgent(...)`, `removeAgent(...)` | Agent Provider 管理器 |
-| `AgentGroupMgr<T>` | `addAgentGroup(...)`, `getAgentGroup(...)`, `removeAgentGroup(...)` | AgentGroup Provider 管理器 |
-| `ModelMgr` | `addModel(...)`, `getModel(...)`, `removeModel(...)` | Model Provider 管理器 |
-| `WorkflowMgr` | `addWorkflow(...)`, `addWorkflows(...)`, `getWorkflow(...)`, `removeWorkflow(...)` | Workflow Provider 管理器 |
+显式公开成员较少，当前源码主要通过字段访问器、继承关系或运行时约定暴露能力。
 
-### 5.4 PromptMgr / SysOperationMgr
+## `com.openjiuwen.core.runner.callback`
 
-直接存储实例的轻量管理器。
+公开类型：`20`
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+### `AuthFilter`
 
-| 类型 | 方法 | 说明 |
-|------|------|------|
-| `PromptMgr` | `addPrompt(...)`, `addPrompts(...)`, `removePrompt(...)`, `getPrompt(...)` | 管理 `PromptTemplate` 实例 |
-| `SysOperationMgr` | `addSysOperation(...)`, `removeSysOperation(...)`, `getSysOperation(...)` | 管理 `SysOperation` 实例 |
+- 类型：`class`
+- 声明：`public class AuthFilter extends EventFilter`
+- 说明：Authorization filter for role-based access control.
 
-### 5.5 ToolMgr
+**字段**
 
-工具、MCP Server 与 SysOperation 导出工具管理器。
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `requiredRole` | `String` | `private final` | `-` | - |
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+**构造方法**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `addTool(String toolId, Tool tool)` | `void` | 注册本地工具 |
-| `getTool(String toolId)` | `Tool` | 获取工具 |
-| `getMcpTool(String toolName, String serverId)` | `Tool` | 获取指定 MCP 工具 |
-| `getMcpTools(String serverId)` | `List<Tool>` | 获取 MCP Server 下全部工具 |
-| `getMcpToolId(String serverId, String toolName)` | `Object` | 获取 MCP 工具 ID 或 ID 列表 |
-| `removeTool(String toolId)` | `Tool` | 移除工具 |
-| `generateMcpToolId(String serverId, String serverName, String toolName)` | `String` | 生成 MCP 工具 ID |
-| `addToolServer(McpServerConfig serverConfig, Double expiryTime)` | `List<McpToolCard>` | 连接 MCP Server 并注册工具 |
-| `getMcpServerIds(String serverName)` | `List<String>` | 根据服务名获取 MCP Server ID |
-| `removeToolServer(String serverId, boolean ignoreNotExist)` | `List<String>` | 移除 MCP Server 及其工具 |
-| `refreshToolServer(String serverId, boolean skipNotExist, boolean force)` | `List<McpToolCard>` | 刷新远端工具清单 |
-| `addSysOperationTools(String sysOpId, List<String> toolIds)` | `void` | 记录系统操作导出的工具 |
-| `removeSysOperationTools(String sysOpId)` | `List<String>` | 移除系统操作导出工具记录 |
-| `getSysOperationToolIds(String sysOpId)` | `List<String>` | 获取系统操作导出工具 ID |
-| `release()` | `void` | 释放 MCP 连接和内部缓存 |
+| 签名 | 说明 |
+|---|---|
+| `public AuthFilter(String requiredRole)` | - |
+| `public AuthFilter(String requiredRole, String name)` | - |
 
-**记录类型**
+**方法**
 
-| 类型 | 说明 |
-|------|------|
-| `McpServerResource` | MCP Server 配置、客户端、工具 ID 与更新时间 |
-| `SysOpToolResource` | SysOperation 导出工具记录 |
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
 
-### 5.6 TagMgr
+### `CallbackChain`
 
-标签管理器，提供资源与标签的双向索引和线程安全更新。
+- 类型：`class`
+- 声明：`public class CallbackChain`
+- 说明：Manages sequential execution of callbacks with rollback support.
+- 嵌套公开类型：`CallbackChain.ExceptionContext`
 
-**包路径**：`com.openjiuwen.core.runner.resourcemanager`
+**字段**
 
-| 方法签名 | 返回类型 | 说明 |
-|----------|----------|------|
-| `hasTag(String tag)` | `boolean` | 标签是否存在 |
-| `listTags()` | `List<String>` | 列出全部非空标签 |
-| `hasResource(String resourceId)` | `boolean` | 资源是否已被标签系统管理 |
-| `hasResourceTag(String resourceId, String tag)` | `boolean` | 资源是否带有标签 |
-| `getResourcesTags(String resourceId)` | `List<String>` | 获取资源全部标签 |
-| `tagResource(String resourceId, Object tags)` | `List<String>` | 为资源设置/追加标签 |
-| `removeResource(String resourceId)` | `List<String>` | 从标签系统移除资源 |
-| `removeResourceTags(String resourceId, Object tags, boolean skipIfNotExists)` | `List<String>` | 移除资源标签 |
-| `updateResourceTags(String resourceId, Object tags, TagUpdateStrategy strategy)` | `List<String>` | 替换或合并资源标签 |
-| `removeTag(String tag, boolean skipIfNotExists)` | `List<String>` | 删除标签并返回受影响资源 |
-| `getTagResources(String tag)` | `List<String>` | 获取标签下资源 ID |
-| `findResourcesByTags(Object tags, TagMatchStrategy strategy, boolean skipIfNotExists)` | `List<String>` | 按标签查询资源 |
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `name` | `String` | `private final` | `-` | - |
+| `callbacks` | `List<CallbackInfo>` | `private final` | `new ArrayList<>()` | - |
+| `rollbackHandlers` | `Map<Function<Map<String, Object>, Object>, Consumer<ChainContext>>` | `private final` | `new HashMap<>()` | - |
+| `errorHandlers` | `Map<Function<Map<String, Object>, Object>, Function<ExceptionContext, Object>>` | `private final` | `new HashMap<>()` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public CallbackChain(String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getName()` | `String` | - |
+| `public List<CallbackInfo> getCallbacks()` | `List<CallbackInfo>` | - |
+| `public void add(CallbackInfo callbackInfo, Consumer<ChainContext> rollbackHandler, Function<ExceptionContext, Object> errorHandler)` | `void` | Add callback to the chain. |
+| `public void remove(Function<Map<String, Object>, Object> callback)` | `void` | Remove callback from the chain. |
+| `public ChainResult execute(ChainContext context)` | `ChainResult` | Execute the callback chain. |
+
+### `CallbackChain.ExceptionContext`
+
+- 类型：`record`
+- 声明：`public record ExceptionContext(Exception exception, ChainContext chainContext)`
+- 说明：Context passed to error handlers: the exception + the chain context.
+- 宿主类型：`CallbackChain`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `exception` | `Exception` | `private final` | `-` | - |
+| `chainContext` | `ChainContext` | `private final` | `-` | - |
+
+### `CallbackFramework`
+
+- 类型：`class`
+- 声明：`public class CallbackFramework`
+- 说明：Production-ready callback framework for Java.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `callbacks` | `Map<String, List<CallbackInfo>>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `chains` | `Map<String, CallbackChain>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `filters` | `Map<String, List<EventFilter>>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `globalFilters` | `List<EventFilter>` | `private final` | `Collections.synchronizedList(new ArrayList<>())` | - |
+| `callbackFilters` | `Map<Function<Map<String, Object>, Object>, List<EventFilter>>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `hooks` | `Map<String, Map<HookType, List<Consumer<Map<String, Object>>>>>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `enableMetrics` | `boolean` | `private final` | `-` | - |
+| `metrics` | `Map<String, CallbackMetrics>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `enableLogging` | `boolean` | `private final` | `-` | - |
+| `circuitBreakers` | `Map<String, CircuitBreakerFilter>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `eventHistory` | `LinkedList<Map<String, Object>>` | `private final` | `new LinkedList<>()` | - |
+| `enableHistory` | `boolean` | `private` | `false` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public CallbackFramework()` | - |
+| `public CallbackFramework(boolean enableMetrics, boolean enableLogging)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, List<CallbackInfo>> getCallbacks()` | `Map<String, List<CallbackInfo>>` | - |
+| `public Map<String, CallbackChain> getChains()` | `Map<String, CallbackChain>` | - |
+| `public Map<String, CircuitBreakerFilter> getCircuitBreakers()` | `Map<String, CircuitBreakerFilter>` | - |
+| `public Map<Function<Map<String, Object>, Object>, List<EventFilter>> getCallbackFilters()` | `Map<Function<Map<String, Object>, Object>, List<EventFilter>>` | - |
+| `public CallbackInfo register(String event, Function<Map<String, Object>, Object> callback, int priority, boolean once, String namespace, Set<String> tags, List<EventFilter> eventFilters, Consumer<ChainContext> rollbackHandler, Function<CallbackChain.ExceptionContext, Object> errorHandler, int maxRetries, double retryDelay, Double timeout, String callbackName)` | `CallbackInfo` | Register a callback for an event. |
+| `public CallbackInfo register(String event, Function<Map<String, Object>, Object> callback, int priority, String callbackName)` | `CallbackInfo` | Simplified register with fewer parameters. |
+| `public CallbackInfo register(String event, Function<Map<String, Object>, Object> callback, String callbackName)` | `CallbackInfo` | Register with default priority. |
+| `public void unregister(String event, Function<Map<String, Object>, Object> callback)` | `void` | Unregister a callback from an event. |
+| `public void unregisterNamespace(String namespace)` | `void` | Unregister all callbacks in a namespace. |
+| `public void unregisterByTags(Set<String> tags)` | `void` | Unregister callbacks matching any of the given tags. |
+| `public void unregisterEvent(String event)` | `void` | Unregister all callbacks for a specific event. |
+| `public List<Object> trigger(String event, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | Trigger an event and execute all registered callbacks. |
+| `public List<Object> trigger(String event, Map<String, Object> kwargs)` | `List<Object>` | Trigger with just event name and kwargs. |
+| `public List<Object> trigger(String event)` | `List<Object>` | Trigger with just event name. |
+| `public ChainResult triggerChain(String event, Object[] args, Map<String, Object> kwargs)` | `ChainResult` | Trigger callbacks as a chain with data flow. |
+| `public List<Object> triggerParallel(String event, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | Trigger callbacks in parallel (concurrent execution). |
+| `public Object triggerUntil(String event, Predicate<Object> condition, Object[] args, Map<String, Object> kwargs)` | `Object` | Trigger callbacks until a condition is satisfied. |
+| `public List<Object> triggerWithTimeout(String event, double timeoutSeconds, Object[] args, Map<String, Object> kwargs)` | `List<Object>` | Trigger event with timeout control. |
+| `public Iterator<Object> triggerStream(String event, Iterator<?> inputStream, Object[] args, Map<String, Object> kwargs)` | `Iterator<Object>` | Trigger event for each item in an input iterator (stream processing). |
+| `public void addFilter(String event, EventFilter filter)` | `void` | Add a filter to a specific event. |
+| `public void addGlobalFilter(EventFilter filter)` | `void` | Add a filter that applies to all events. |
+| `public void addCircuitBreaker(String event, CallbackInfo callback, int failureThreshold, double timeout)` | `void` | Add circuit breaker protection to a callback. |
+| `public void addHook(String event, HookType hookType, Consumer<Map<String, Object>> hook)` | `void` | Add a lifecycle hook to an event. |
+| `public Map<String, Map<String, Object>> getMetrics(String event, String callback)` | `Map<String, Map<String, Object>>` | Get performance metrics for callbacks. |
+| `public Map<String, Map<String, Object>> getMetrics()` | `Map<String, Map<String, Object>>` | Get all metrics. |
+| `public void resetMetrics()` | `void` | Reset all performance metrics. |
+| `public List<Map<String, Object>> getSlowCallbacks(double threshold)` | `List<Map<String, Object>>` | Get callbacks with average execution time above threshold. |
+| `public void enableEventHistory(boolean enabled)` | `void` | Enable or disable event history recording. |
+| `public List<Map<String, Object>> getEventHistory(String event, Long since)` | `List<Map<String, Object>>` | Get recorded event history. |
+| `public void replayEvents(Long since)` | `void` | Replay recorded events. |
+| `public List<String> listEvents(String namespace)` | `List<String>` | List all registered events. |
+| `public List<Map<String, Object>> listCallbacks(String event)` | `List<Map<String, Object>>` | List all callbacks registered for an event. |
+| `public Map<String, Object> getStatistics()` | `Map<String, Object>` | Get overall framework statistics. |
+
+### `CallbackInfo`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class CallbackInfo`
+- 说明：Metadata and configuration for a registered callback.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `callback` | `Function<Map<String, Object>, Object>` | `private` | `-` | The callback function. |
+| `priority` | `int` | `private` | `0` | Execution priority (higher executes first). |
+| `once` | `boolean` | `private` | `false` | Whether callback should execute only once. |
+| `enabled` | `boolean` | `private` | `true` | Whether callback is currently enabled. |
+| `namespace` | `String` | `private` | `"default"` | Namespace for grouping callbacks. |
+| `tags` | `Set<String>` | `private` | `new HashSet<>()` | Set of tags for filtering. |
+| `maxRetries` | `int` | `private` | `0` | Maximum retry attempts on failure. |
+| `retryDelay` | `double` | `private` | `0.0` | Delay between retries in seconds. |
+| `timeout` | `Double` | `private` | `-` | Execution timeout in seconds. |
+| `createdAt` | `double` | `private` | `System.currentTimeMillis() / 1000.0` | Timestamp when callback was registered (epoch seconds). |
+| `callbackName` | `String` | `private` | `-` | Name of the callback for logging purposes. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getCallbackDisplayName()` | `String` | Get the callback name for logging/metrics purposes. |
+
+### `CallbackMetrics`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class CallbackMetrics`
+- 说明：Performance metrics for callback execution.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `callCount` | `int` | `private` | `0` | - |
+| `totalTime` | `double` | `private` | `0.0` | - |
+| `minTime` | `double` | `private` | `Double.MAX_VALUE` | - |
+| `maxTime` | `double` | `private` | `0.0` | - |
+| `errorCount` | `int` | `private` | `0` | - |
+| `lastCallTime` | `Double` | `private` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public synchronized void update(double executionTime, boolean isError)` | `void` | Update metrics with new execution data. |
+| `public double getAvgTime()` | `double` | Calculate average execution time. |
+| `public Map<String, Object> toMap()` | `Map<String, Object>` | Convert metrics to dictionary format. |
+
+### `ChainAction`
+
+- 类型：`enum`
+- 声明：`public enum ChainAction`
+- 说明：Actions that callbacks can return to control chain execution.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `CONTINUE` | `new ChainAction("continue")` | Continue to next callback in chain. |
+| `BREAK` | `new ChainAction("break")` | Break the chain and return current result. |
+| `RETRY` | `new ChainAction("retry")` | Retry current callback. |
+| `ROLLBACK` | `new ChainAction("rollback")` | Rollback all executed callbacks. |
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `value` | `String` | `private final` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
+
+### `ChainContext`
+
+- 类型：`class`
+- 声明：`@Data public class ChainContext`
+- 说明：Execution context for callback chains.
+- 注解：`@Data`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `event` | `String` | `private final` | `-` | Name of the event being processed. |
+| `initialArgs` | `Object[]` | `private final` | `-` | Original positional arguments. |
+| `initialKwargs` | `Map<String, Object>` | `private final` | `-` | Original keyword arguments. |
+| `results` | `List<Object>` | `private final` | `new ArrayList<>()` | List of results from executed callbacks. |
+| `metadata` | `Map<String, Object>` | `private final` | `new HashMap<>()` | Arbitrary metadata for sharing data. |
+| `currentIndex` | `int` | `private` | `0` | Index of currently executing callback. |
+| `completed` | `boolean` | `private` | `false` | Whether chain completed successfully. |
+| `rolledBack` | `boolean` | `private` | `false` | Whether chain was rolled back. |
+| `startTime` | `long` | `private final` | `-` | Timestamp when chain execution started (epoch millis). |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ChainContext(String event, Object[] initialArgs, Map<String, Object> initialKwargs)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object getLastResult()` | `Object` | Get the result from the previous callback. |
+| `public List<Object> getAllResults()` | `List<Object>` | Get all results from executed callbacks. |
+| `public void setMetadata(String key, Object value)` | `void` | Store metadata in the context. |
+| `public Object getMetadata(String key, Object defaultValue)` | `Object` | Retrieve metadata from the context. |
+| `public double getElapsedTime()` | `double` | Calculate elapsed time since chain start. |
+
+### `ChainResult`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class ChainResult`
+- 说明：Result of callback chain execution.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `action` | `ChainAction` | `private` | `-` | Final action taken by the chain. |
+| `result` | `Object` | `private` | `-` | Final result value. |
+| `context` | `ChainContext` | `private` | `-` | The chain execution context. |
+| `error` | `Exception` | `private` | `-` | Exception if chain failed. |
+
+### `CircuitBreakerFilter`
+
+- 类型：`class`
+- 声明：`public class CircuitBreakerFilter extends EventFilter`
+- 说明：Circuit breaker pattern implementation.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `failureThreshold` | `int` | `private final` | `-` | - |
+| `timeout` | `double` | `private final` | `-` | - |
+| `failures` | `Map<String, Integer>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `lastFailureTime` | `Map<String, Double>` | `private final` | `new ConcurrentHashMap<>()` | - |
+| `isOpen` | `Map<String, Boolean>` | `private final` | `new ConcurrentHashMap<>()` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public CircuitBreakerFilter()` | - |
+| `public CircuitBreakerFilter(int failureThreshold, double timeout)` | - |
+| `public CircuitBreakerFilter(int failureThreshold, double timeout, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Map<String, Integer> getFailures()` | `Map<String, Integer>` | - |
+| `public synchronized FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+| `public synchronized void recordSuccess(String event, CallbackInfo callback)` | `void` | Record successful execution. |
+| `public synchronized void recordFailure(String event, CallbackInfo callback)` | `void` | Record failed execution and potentially open circuit. |
+
+### `ConditionalFilter`
+
+- 类型：`class`
+- 声明：`public class ConditionalFilter extends EventFilter`
+- 说明：Conditional filter based on custom predicate.
+- 嵌套公开类型：`ConditionalFilter.ConditionPredicate`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `condition` | `ConditionPredicate` | `private final` | `-` | - |
+| `actionOnFalse` | `FilterAction` | `private final` | `-` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ConditionalFilter(ConditionPredicate condition)` | - |
+| `public ConditionalFilter(ConditionPredicate condition, FilterAction actionOnFalse, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+
+### `ConditionalFilter.ConditionPredicate`
+
+- 类型：`interface`
+- 声明：`@FunctionalInterface public interface ConditionPredicate`
+- 说明：Predicate function: (event, callback, args, kwargs) -> boolean
+- 宿主类型：`ConditionalFilter`
+- 注解：`@FunctionalInterface`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `boolean test(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `boolean` | - |
+
+### `EventFilter`
+
+- 类型：`class`
+- 声明：`public class EventFilter`
+- 说明：Base class for event filters.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `name` | `String` | `private final` | `-` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public EventFilter()` | - |
+| `public EventFilter(String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getName()` | `String` | - |
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | Filter logic to execute before callback. |
+
+### `FilterAction`
+
+- 类型：`enum`
+- 声明：`public enum FilterAction`
+- 说明：Actions that filters can return to control callback execution.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `CONTINUE` | `new FilterAction("continue")` | Continue with callback execution. |
+| `STOP` | `new FilterAction("stop")` | Stop the entire event processing. |
+| `SKIP` | `new FilterAction("skip")` | Skip current callback and continue to next. |
+| `MODIFY` | `new FilterAction("modify")` | Modify arguments and continue. |
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `value` | `String` | `private final` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
+
+### `FilterResult`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class FilterResult`
+- 说明：Result returned by event filters.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `action` | `FilterAction` | `private` | `-` | The action to take (CONTINUE, STOP, SKIP, MODIFY). |
+| `modifiedArgs` | `Object[]` | `private` | `-` | New positional arguments if action is MODIFY. |
+| `modifiedKwargs` | `Map<String, Object>` | `private` | `-` | New keyword arguments if action is MODIFY. |
+| `reason` | `String` | `private` | `-` | Optional reason for the action taken. |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static FilterResult continueResult()` | `FilterResult` | Create a CONTINUE result. |
+| `public static FilterResult continueResult(Object[] args, Map<String, Object> kwargs)` | `FilterResult` | Create a CONTINUE result with modified arguments. |
+| `public static FilterResult skipResult(String reason)` | `FilterResult` | Create a SKIP result with reason. |
+| `public static FilterResult stopResult(String reason)` | `FilterResult` | Create a STOP result with reason. |
+| `public static FilterResult modifyResult(Object[] modifiedArgs, Map<String, Object> modifiedKwargs)` | `FilterResult` | Create a MODIFY result with new arguments. |
+
+### `HookType`
+
+- 类型：`enum`
+- 声明：`public enum HookType`
+- 说明：Types of hooks that can be registered for lifecycle events.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `BEFORE` | `new HookType("before")` | Executed before event processing. |
+| `AFTER` | `new HookType("after")` | Executed after event processing. |
+| `ERROR` | `new HookType("error")` | Executed when an error occurs. |
+| `CLEANUP` | `new HookType("cleanup")` | Executed during cleanup phase. |
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `value` | `String` | `private final` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getValue()` | `String` | - |
+
+### `LoggingFilter`
+
+- 类型：`class`
+- 声明：`public class LoggingFilter extends EventFilter`
+- 说明：Filter for logging callback execution.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public LoggingFilter()` | - |
+| `public LoggingFilter(Logger logger, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+
+### `ParamModifyFilter`
+
+- 类型：`class`
+- 声明：`public class ParamModifyFilter extends EventFilter`
+- 说明：Filter for modifying callback arguments.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `modifier` | `BiFunction<Object[], Map<String, Object>, Object[]>` | `private final` | `-` | Modifier that takes (args, kwargs) and returns a two-element array: [newArgs, newKwargs]. |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier)` | - |
+| `public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+
+### `RateLimitFilter`
+
+- 类型：`class`
+- 声明：`public class RateLimitFilter extends EventFilter`
+- 说明：Filter to limit callback execution rate.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `maxCalls` | `int` | `private final` | `-` | - |
+| `timeWindow` | `double` | `private final` | `-` | - |
+| `callTimes` | `Map<String, Deque<Double>>` | `private final` | `new ConcurrentHashMap<>()` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public RateLimitFilter(int maxCalls, double timeWindow)` | - |
+| `public RateLimitFilter(int maxCalls, double timeWindow, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public synchronized FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+
+### `ValidationFilter`
+
+- 类型：`class`
+- 声明：`public class ValidationFilter extends EventFilter`
+- 说明：Filter for validating callback arguments.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `validator` | `Predicate<Map<String, Object>>` | `private final` | `-` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ValidationFilter(Predicate<Map<String, Object>> validator)` | - |
+| `public ValidationFilter(Predicate<Map<String, Object>> validator, String name)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs)` | `FilterResult` | - |
+
+## `com.openjiuwen.core.runner.drunner`
+
+公开类型：`1`
+
+### `DistributedRunner`
+
+- 类型：`class`
+- 声明：`public final class DistributedRunner`
+- 说明：Lightweight runtime holder for distributed-runner components.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static synchronized void ensureStarted()` | `void` | - |
+| `public static MessageQueueBase messageQueue()` | `MessageQueueBase` | - |
+| `public static ReplyTopicSubscription replySubscription()` | `ReplyTopicSubscription` | - |
+| `public static synchronized void shutdown()` | `void` | - |
+| `public static String replyTopic()` | `String` | - |
+| `public static String agentTopic(String agentId, String version)` | `String` | - |
+
+## `com.openjiuwen.core.runner.drunner.dmessage_queue`
+
+公开类型：`3`
+
+### `FakeMessageQueue`
+
+- 类型：`class`
+- 声明：`public class FakeMessageQueue extends MessageQueueBase`
+- 说明：In-memory fake MQ used by the distributed-runner compatibility layer.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void start()` | `void` | - |
+| `public void stop()` | `void` | - |
+| `public SubscriptionBase subscribe(String topic)` | `SubscriptionBase` | - |
+| `public void unsubscribe(String topic)` | `void` | - |
+| `public void produceMessage(String topic, QueueMessage message)` | `void` | - |
+
+### `MessageQueueFactory`
+
+- 类型：`class`
+- 声明：`public final class MessageQueueFactory`
+- 说明：Factory for distributed-runner message queues.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static MessageQueueBase create(MessageQueueConfig config)` | `MessageQueueBase` | - |
+
+### `MessageSerializer`
+
+- 类型：`class`
+- 声明：`public final class MessageSerializer`
+- 说明：JSON serializer for distributed-runner messages.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static byte[] serializeMessage(DmqMessage message) throws Exception` | `byte[]` | - |
+| `public static DmqMessage deserializeMessage(byte[] bytes) throws Exception` | `DmqMessage` | - |
+
+## `com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription`
+
+公开类型：`2`
+
+### `ReplyTopicSubscription`
+
+- 类型：`class`
+- 声明：`public class ReplyTopicSubscription`
+- 说明：Listens on a reply topic and dispatches responses to collectors.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ReplyTopicSubscription(MessageQueueBase mq, String topic)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void activate()` | `void` | - |
+| `public void deactivate()` | `void` | - |
+| `public ResponseCollector registerCollector(String messageId, String remoteId, String requestId, Double ttlSeconds)` | `ResponseCollector` | - |
+| `public void unregisterCollector(String messageId, String remoteId, String requestId)` | `void` | - |
+| `public String getTopic()` | `String` | - |
+
+### `ResponseCollector`
+
+- 类型：`class`
+- 声明：`public class ResponseCollector`
+- 说明：Collects responses for one distributed request.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public ResponseCollector(String messageId, String receiverId, String requestId, Double ttlSeconds)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void putMessage(DmqResponseMessage message)` | `void` | - |
+| `public Object result(Double timeoutSeconds) throws Exception` | `Object` | - |
+| `public Iterator<Object> stream(Double timeoutSeconds)` | `Iterator<Object>` | - |
+| `public void close()` | `void` | - |
+
+## `com.openjiuwen.core.runner.drunner.dmessage_queue.message`
+
+公开类型：`5`
+
+### `DMessageType`
+
+- 类型：`enum`
+- 声明：`public enum DMessageType`
+- 说明：Distributed message type.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `INPUT` | `new DMessageType()` | - |
+| `STOP` | `new DMessageType()` | - |
+| `OUTPUT` | `new DMessageType()` | - |
+
+### `DmqMessage`
+
+- 类型：`class`
+- 声明：`public abstract class DmqMessage extends QueueMessage`
+- 说明：Base distributed-runner queue message.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `body` | `Object` | `private` | `-` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object getPayload()` | `Object` | - |
+| `public void setPayload(Object payload)` | `void` | - |
+| `public Object getBody()` | `Object` | - |
+| `public void setBody(Object body)` | `void` | - |
+
+### `DmqRequestMessage`
+
+- 类型：`class`
+- 声明：`@Data @EqualsAndHashCode(callSuper = true) public class DmqRequestMessage extends DmqMessage`
+- 说明：Distributed request message.
+- 注解：`@Data`、`@EqualsAndHashCode`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `type` | `DMessageType` | `private` | `DMessageType.INPUT` | - |
+| `replyTopic` | `String` | `private` | `""` | - |
+| `requestId` | `String` | `private` | `""` | - |
+| `senderId` | `String` | `private` | `""` | - |
+| `receiverId` | `String` | `private` | `""` | - |
+| `enableStream` | `boolean` | `private` | `-` | - |
+| `expireAt` | `Double` | `private` | `-` | - |
+
+### `DmqResponseMessage`
+
+- 类型：`class`
+- 声明：`@Data @EqualsAndHashCode(callSuper = true) public class DmqResponseMessage extends DmqMessage`
+- 说明：Distributed response message.
+- 注解：`@Data`、`@EqualsAndHashCode`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `type` | `DMessageType` | `private` | `DMessageType.OUTPUT` | - |
+| `resultType` | `ResultType` | `private` | `ResultType.MESSAGE` | - |
+| `requestId` | `String` | `private` | `""` | - |
+| `senderId` | `String` | `private` | `""` | - |
+| `receiverId` | `String` | `private` | `""` | - |
+| `seq` | `int` | `private` | `-` | - |
+| `lastChunk` | `boolean` | `private` | `-` | - |
+| `expireAt` | `Double` | `private` | `-` | - |
+
+### `ResultType`
+
+- 类型：`enum`
+- 声明：`public enum ResultType`
+- 说明：Remote result type.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `MESSAGE` | `new ResultType()` | - |
+| `ERROR` | `new ResultType()` | - |
+
+## `com.openjiuwen.core.runner.drunner.remote_client`
+
+公开类型：`5`
+
+### `MqRemoteClient`
+
+- 类型：`class`
+- 声明：`public class MqRemoteClient implements RemoteClient`
+- 说明：MQ-backed remote client.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public MqRemoteClient(RemoteClientConfig config)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void start()` | `void` | - |
+| `public void stop()` | `void` | - |
+| `public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Object` | - |
+| `public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Iterator<Object>` | - |
+
+### `ProtocolEnum`
+
+- 类型：`enum`
+- 声明：`public enum ProtocolEnum`
+- 说明：Supported remote transport protocols.
+
+**枚举常量**
+
+| 名称 | 初始化值 | 说明 |
+|---|---|---|
+| `MQ` | `new ProtocolEnum()` | - |
+
+### `RemoteAgent`
+
+- 类型：`class`
+- 声明：`public class RemoteAgent`
+- 说明：Remote-agent facade.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public RemoteAgent(String agentId, String version, String description, String topic, ProtocolEnum protocol, Map<String, Object> config)` | - |
+| `public RemoteAgent(String agentId)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Object` | - |
+| `public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Iterator<Object>` | - |
+
+### `RemoteClient`
+
+- 类型：`interface`
+- 声明：`public interface RemoteClient`
+- 说明：Remote-client abstraction.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `void start()` | `void` | - |
+| `void stop()` | `void` | - |
+| `Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Object` | - |
+| `Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception` | `Iterator<Object>` | - |
+
+### `RemoteClientConfig`
+
+- 类型：`class`
+- 声明：`@Data @Builder @NoArgsConstructor @AllArgsConstructor public class RemoteClientConfig`
+- 说明：Remote client configuration.
+- 注解：`@Data`、`@Builder`、`@NoArgsConstructor`、`@AllArgsConstructor`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `String` | `private` | `-` | - |
+| `version` | `String` | `private` | `-` | - |
+| `name` | `String` | `private` | `-` | - |
+| `description` | `String` | `private` | `-` | - |
+| `protocol` | `ProtocolEnum` | `private` | `ProtocolEnum.MQ` | - |
+| `type` | `String` | `private` | `-` | - |
+| `topic` | `String` | `private` | `-` | - |
+| `url` | `String` | `private` | `-` | - |
+| `kwargs` | `Map<String, Object>` | `private` | `new LinkedHashMap<>()` | - |
+
+## `com.openjiuwen.core.runner.drunner.server_adapter`
+
+公开类型：`3`
+
+### `AgentAdapter`
+
+- 类型：`class`
+- 声明：`public class AgentAdapter`
+- 说明：Exposes a local agent over the distributed-runner MQ transport.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public AgentAdapter(String agentId, String version)` | - |
+| `public AgentAdapter(String agentId)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void start()` | `void` | - |
+| `public void stop()` | `void` | - |
+
+### `MqMessageUtils`
+
+- 类型：`class`
+- 声明：`public final class MqMessageUtils`
+- 说明：Helpers for distributed MQ response construction.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public static DmqResponseMessage buildStreamResponse(DmqRequestMessage request, String senderId, Object payload, int seq, boolean last)` | `DmqResponseMessage` | - |
+| `public static DmqResponseMessage buildFinalResponse(DmqRequestMessage request, String senderId, int seq)` | `DmqResponseMessage` | - |
+| `public static DmqResponseMessage buildBatchResponse(DmqRequestMessage request, String senderId, Object result)` | `DmqResponseMessage` | - |
+| `public static DmqResponseMessage buildErrorResponse(DmqRequestMessage request, String senderId, Exception error)` | `DmqResponseMessage` | - |
+
+### `MqServerAdapter`
+
+- 类型：`class`
+- 声明：`public class MqServerAdapter`
+- 说明：MQ-based server adapter for distributed-runner requests.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public MqServerAdapter(String adapterId, String topic, Function<Map<String, Object>, Object> invokeHandler, Function<Map<String, Object>, Iterator<Object>> streamHandler)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void start()` | `void` | - |
+| `public void stop()` | `void` | - |
+
+## `com.openjiuwen.core.runner.mq`
+
+公开类型：`8`
+
+### `InvokeQueueMessage`
+
+- 类型：`class`
+- 声明：`public class InvokeQueueMessage extends QueueMessage`
+- 说明：Message for invoke (request-response) pattern.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `response` | `CompletableFuture<Object>` | `private final` | `new CompletableFuture<>()` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public InvokeQueueMessage()` | - |
+| `public InvokeQueueMessage(String messageId, Object payload)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public CompletableFuture<Object> getResponse()` | `CompletableFuture<Object>` | - |
+
+### `LocalMessageQueue`
+
+- 类型：`class`
+- 声明：`public class LocalMessageQueue`
+- 说明：No-op local message queue stub.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean start()` | `boolean` | - |
+| `public boolean stop()` | `boolean` | - |
+
+### `MessageQueueBase`
+
+- 类型：`class`
+- 声明：`public abstract class MessageQueueBase`
+- 说明：Abstract message queue supporting pub-sub topics.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public abstract void start()` | `void` | - |
+| `public abstract void stop()` | `void` | - |
+| `public abstract SubscriptionBase subscribe(String topic)` | `SubscriptionBase` | - |
+| `public abstract void unsubscribe(String topic)` | `void` | - |
+| `public abstract void produceMessage(String topic, QueueMessage message)` | `void` | - |
+
+### `MessageQueueInMemory`
+
+- 类型：`class`
+- 声明：`public class MessageQueueInMemory extends MessageQueueBase`
+- 说明：In-memory message queue with topic-based routing.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public MessageQueueInMemory(int queueMaxSize, long timeoutMs)` | - |
+| `public MessageQueueInMemory()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void start()` | `void` | - |
+| `public void stop()` | `void` | - |
+| `public SubscriptionBase subscribe(String topic)` | `SubscriptionBase` | - |
+| `public void unsubscribe(String topic)` | `void` | - |
+| `public void produceMessage(String topic, QueueMessage message)` | `void` | - |
+
+### `QueueMessage`
+
+- 类型：`class`
+- 声明：`public class QueueMessage`
+- 说明：Base message object for message queue communication.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `messageId` | `String` | `private` | `""` | - |
+| `payload` | `Object` | `private` | `-` | - |
+| `errorCode` | `int` | `private` | `0` | - |
+| `errorMsg` | `String` | `private` | `""` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public QueueMessage()` | - |
+| `public QueueMessage(String messageId, Object payload)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public String getMessageId()` | `String` | - |
+| `public void setMessageId(String messageId)` | `void` | - |
+| `public Object getPayload()` | `Object` | - |
+| `public void setPayload(Object payload)` | `void` | - |
+| `public int getErrorCode()` | `int` | - |
+| `public void setErrorCode(int errorCode)` | `void` | - |
+| `public String getErrorMsg()` | `String` | - |
+| `public void setErrorMsg(String errorMsg)` | `void` | - |
+
+### `StreamQueueMessage`
+
+- 类型：`class`
+- 声明：`public class StreamQueueMessage extends QueueMessage`
+- 说明：Message for streaming (iterator) pattern.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `response` | `CompletableFuture<Iterator<Object>>` | `private final` | `new CompletableFuture<>()` | - |
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public StreamQueueMessage()` | - |
+| `public StreamQueueMessage(String messageId, Object payload)` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public CompletableFuture<Iterator<Object>> getResponse()` | `CompletableFuture<Iterator<Object>>` | - |
+
+### `SubscriptionBase`
+
+- 类型：`class`
+- 声明：`public abstract class SubscriptionBase`
+- 说明：Abstract subscription that processes received messages.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void setMessageHandler(Function<Object, Object> handler)` | `void` | - |
+| `public void activate()` | `void` | - |
+| `public void deactivate()` | `void` | - |
+| `public boolean isActive()` | `boolean` | - |
+
+### `SubscriptionInMemory`
+
+- 类型：`class`
+- 声明：`public class SubscriptionInMemory extends SubscriptionBase`
+- 说明：In-memory subscription using a blocking queue and Virtual Thread consumer.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public SubscriptionInMemory(int maxSize, long timeoutMs)` | - |
+| `public SubscriptionInMemory()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void setMessageHandler(Function<Object, Object> handler)` | `void` | - |
+| `public void activate()` | `void` | - |
+| `public void deactivate()` | `void` | - |
+| `public boolean isActive()` | `boolean` | - |
+| `public void pushMessage(QueueMessage message)` | `void` | - |
+
+## `com.openjiuwen.core.runner.resourcemanager`
+
+公开类型：`19`
+
+### `AbstractManager`
+
+- 类型：`class`
+- 声明：`public abstract class AbstractManager<T>`
+- 说明：Generic base class for resource managers that use provider-based registration.
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `providers` | `ConcurrentHashMap<String, Supplier<? extends T>>` | `protected final` | `new ConcurrentHashMap<>()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `protected void registerResourceProvider(String resourceId, Supplier<? extends T> resource)` | `void` | - |
+| `protected T getResource(String resourceId)` | `T` | - |
+| `protected Supplier<? extends T> unregisterResourceProvider(String resourceId)` | `Supplier<? extends T>` | - |
+
+### `AgentGroupMgr`
+
+- 类型：`class`
+- 声明：`public class AgentGroupMgr<T> extends AbstractManager<T>`
+- 说明：Manager for AgentGroup resource providers.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addAgentGroup(String agentGroupId, Supplier<? extends T> agentGroup)` | `void` | - |
+| `public Supplier<? extends T> removeAgentGroup(String agentGroupId)` | `Supplier<? extends T>` | - |
+| `public T getAgentGroup(String agentGroupId)` | `T` | - |
+
+### `AgentMgr`
+
+- 类型：`class`
+- 声明：`public class AgentMgr<T> extends AbstractManager<T>`
+- 说明：Manager for Agent resource providers.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addAgent(String agentId, Supplier<? extends T> agent)` | `void` | - |
+| `public T getAgent(String agentId)` | `T` | - |
+| `public Supplier<? extends T> removeAgent(String agentId)` | `Supplier<? extends T>` | - |
+
+### `ModelMgr`
+
+- 类型：`class`
+- 声明：`public class ModelMgr extends AbstractManager<Model>`
+- 说明：Manager for Model resource providers.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addModel(String modelId, Supplier<Model> model)` | `void` | - |
+| `public Supplier<? extends Model> removeModel(String modelId)` | `Supplier<? extends Model>` | - |
+| `public Model getModel(String modelId)` | `Model` | - |
+
+### `PromptMgr`
+
+- 类型：`class`
+- 声明：`public class PromptMgr`
+- 说明：Manager for PromptTemplate instances.
+- 嵌套公开类型：`PromptMgr.PromptEntry`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addPrompt(String templateId, PromptTemplate template)` | `void` | - |
+| `public void addPrompts(List<PromptEntry> templates)` | `void` | - |
+| `public PromptTemplate removePrompt(String templateId)` | `PromptTemplate` | - |
+| `public PromptTemplate getPrompt(String templateId)` | `PromptTemplate` | - |
+
+### `PromptMgr.PromptEntry`
+
+- 类型：`record`
+- 声明：`public record PromptEntry(String id, PromptTemplate template)`
+- 说明：Prompt 管理器批量注册条目，包含模板 id 与模板实例。
+- 宿主类型：`PromptMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `String` | `private final` | `-` | - |
+| `template` | `PromptTemplate` | `private final` | `-` | - |
+
+### `ResourceMgr`
+
+- 类型：`class`
+- 声明：`public class ResourceMgr`
+- 说明：Resource Manager facade for Model, Workflow, Prompt, Tool, Agent, AgentGroup, SysOperation.
+- 嵌套公开类型：`ResourceMgr.AgentEntry`、`ResourceMgr.WorkflowEntry`、`ResourceMgr.ModelEntry`、`ResourceMgr.PromptEntry`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public Result<GroupCard> addAgentGroup(GroupCard card, Supplier<Object> agentGroup, Object tag)` | `Result<GroupCard>` | - |
+| `public List<Result<GroupCard>> removeAgentGroup(Object groupId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `List<Result<GroupCard>>` | - |
+| `public Object getAgentGroup(String groupId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Result<AgentCard> addAgent(AgentCard card, Supplier<Object> agent, Object tag)` | `Result<AgentCard>` | - |
+| `public List<Result<AgentCard>> addAgents(List<AgentEntry> agents, Object tag)` | `List<Result<AgentCard>>` | - |
+| `public Object removeAgent(Object agentId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Object getAgent(String agentId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getAgent(String agentId)` | `Object` | - |
+| `public Result<WorkflowCard> addWorkflow(WorkflowCard card, Supplier<Workflow> workflow, Object tag)` | `Result<WorkflowCard>` | - |
+| `public List<Result<WorkflowCard>> addWorkflows(List<WorkflowEntry> workflows, Object tag)` | `List<Result<WorkflowCard>>` | - |
+| `public Object removeWorkflow(Object workflowId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Object getWorkflow(String workflowId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getWorkflow(String workflowId)` | `Object` | - |
+| `public Result<ToolCard> addTool(Tool tool, Object tag)` | `Result<ToolCard>` | - |
+| `public List<Result<ToolCard>> addTools(List<Tool> tools, Object tag)` | `List<Result<ToolCard>>` | - |
+| `public Object getTool(String toolId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getTool(String toolId)` | `Object` | - |
+| `public Object removeTool(Object toolId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Result<String> addModel(String modelId, Supplier<Model> model, Object tag)` | `Result<String>` | - |
+| `public List<Result<String>> addModels(List<ModelEntry> models, Object tag)` | `List<Result<String>>` | - |
+| `public Object removeModel(Object modelId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Object getModel(String modelId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getModel(String modelId)` | `Object` | - |
+| `public Result<String> addPrompt(String promptId, PromptTemplate template, Object tag)` | `Result<String>` | - |
+| `public List<Result<String>> addPrompts(List<PromptEntry> prompts, Object tag)` | `List<Result<String>>` | - |
+| `public Object removePrompt(Object promptId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Object getPrompt(String promptId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getPrompt(String promptId)` | `Object` | - |
+| `public Result<SysOperationCard> addSysOperation(SysOperationCard card, Object tag)` | `Result<SysOperationCard>` | - |
+| `public Object removeSysOperation(Object sysOperationId, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists)` | `Object` | - |
+| `public Object getSysOperation(String sysOperationId, Object tag, TagMatchStrategy tagMatchStrategy)` | `Object` | - |
+| `public Object getSysOpToolCards(String sysOperationId, Object operationName, Object toolName)` | `Object` | - |
+| `public List<ToolInfo> getToolInfos(Object toolId, Object toolType, Object tag, TagMatchStrategy tagMatchStrategy)` | `List<ToolInfo>` | - |
+| `public List<Result<String>> addMcpServer(Object serverConfig, Object tag, Double expiryTime) throws Exception` | `List<Result<String>>` | - |
+| `public List<Result<String>> removeMcpServer(Object serverId, Object serverName, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists) throws Exception` | `List<Result<String>>` | - |
+| `public Object getMcpTool(Object name, Object serverId, Object serverName, Object tag, TagMatchStrategy tagMatchStrategy, boolean skipIfTagNotExists) throws Exception` | `Object` | - |
+| `public List<BaseCard> getResourceByTag(String tag)` | `List<BaseCard>` | - |
+| `public List<String> listTags()` | `List<String>` | - |
+| `public boolean hasTag(String tag)` | `boolean` | - |
+| `public List<Result<String>> removeTag(Object tag, boolean skipIfTagNotExists)` | `List<Result<String>>` | - |
+| `public Result<List<String>> updateResourceTag(String resourceId, Object tag)` | `Result<List<String>>` | - |
+| `public Result<List<String>> addResourceTag(String resourceId, Object tag)` | `Result<List<String>>` | - |
+| `public Result<List<String>> removeResourceTag(String resourceId, Object tag, boolean skipIfTagNotExists)` | `Result<List<String>>` | - |
+| `public List<String> getResourceTag(String resourceId)` | `List<String>` | - |
+| `public boolean resourceHasTag(String resourceId, String tag)` | `boolean` | - |
+| `public void release()` | `void` | - |
+
+### `ResourceMgr.AgentEntry`
+
+- 类型：`record`
+- 声明：`public record AgentEntry(AgentCard card, Supplier<Object> provider)`
+- 说明：资源注册条目：`AgentCard` 与其实例提供器。
+- 宿主类型：`ResourceMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `card` | `AgentCard` | `private final` | `-` | - |
+| `provider` | `Supplier<Object>` | `private final` | `-` | - |
+
+### `ResourceMgr.ModelEntry`
+
+- 类型：`record`
+- 声明：`public record ModelEntry(String id, Supplier<Model> provider)`
+- 说明：资源注册条目：模型 id 与其实例提供器。
+- 宿主类型：`ResourceMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `String` | `private final` | `-` | - |
+| `provider` | `Supplier<Model>` | `private final` | `-` | - |
+
+### `ResourceMgr.PromptEntry`
+
+- 类型：`record`
+- 声明：`public record PromptEntry(String id, PromptTemplate template)`
+- 说明：资源注册条目：prompt id 与模板实例。
+- 宿主类型：`ResourceMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `String` | `private final` | `-` | - |
+| `template` | `PromptTemplate` | `private final` | `-` | - |
+
+### `ResourceMgr.WorkflowEntry`
+
+- 类型：`record`
+- 声明：`public record WorkflowEntry(WorkflowCard card, Supplier<Workflow> provider)`
+- 说明：资源注册条目：`WorkflowCard` 与工作流提供器。
+- 宿主类型：`ResourceMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `card` | `WorkflowCard` | `private final` | `-` | - |
+| `provider` | `Supplier<Workflow>` | `private final` | `-` | - |
+
+### `ResourceRegistry`
+
+- 类型：`class`
+- 声明：`public class ResourceRegistry`
+- 说明：Central registry holding all sub-managers for different resource types.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void removeById(String resourceId)` | `void` | - |
+| `public ToolMgr tool()` | `ToolMgr` | - |
+| `public PromptMgr prompt()` | `PromptMgr` | - |
+| `public ModelMgr model()` | `ModelMgr` | - |
+| `public WorkflowMgr workflow()` | `WorkflowMgr` | - |
+| `public AgentMgr<Object> agent()` | `AgentMgr<Object>` | - |
+| `public AgentGroupMgr<Object> agentGroup()` | `AgentGroupMgr<Object>` | - |
+| `public SysOperationMgr sysOperation()` | `SysOperationMgr` | - |
+
+### `SysOperationMgr`
+
+- 类型：`class`
+- 声明：`public class SysOperationMgr`
+- 说明：Manager for SysOperation instances.
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addSysOperation(String sysOperationId, SysOperation sysOperationInstance)` | `void` | - |
+| `public SysOperation removeSysOperation(String sysOperationId)` | `SysOperation` | - |
+| `public SysOperation getSysOperation(String sysOperationId)` | `SysOperation` | - |
+
+### `TagMgr`
+
+- 类型：`class`
+- 声明：`public class TagMgr`
+- 说明：Tag-based resource organization and filtering manager.
+
+**构造方法**
+
+| 签名 | 说明 |
+|---|---|
+| `public TagMgr()` | - |
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public boolean hasTag(String tag)` | `boolean` | - |
+| `public List<String> listTags()` | `List<String>` | - |
+| `public boolean hasResource(String resourceId)` | `boolean` | - |
+| `public boolean hasResourceTag(String resourceId, String tag)` | `boolean` | - |
+| `public List<String> getResourcesTags(String resourceId)` | `List<String>` | - |
+| `public List<String> tagResource(String resourceId, Object tags)` | `List<String>` | - |
+| `public List<String> removeResource(String resourceId)` | `List<String>` | - |
+| `public List<String> removeResourceTags(String resourceId, Object tags, boolean skipIfNotExists)` | `List<String>` | - |
+| `public List<String> updateResourceTags(String resourceId, Object tags, TagUpdateStrategy strategy)` | `List<String>` | - |
+| `public List<String> removeTag(String tag, boolean skipIfNotExists)` | `List<String>` | - |
+| `public List<String> getTagResources(String tag)` | `List<String>` | - |
+| `public List<String> findResourcesByTags(Object tags, TagMatchStrategy strategy, boolean skipIfNotExists)` | `List<String>` | - |
+
+### `ToolMgr`
+
+- 类型：`class`
+- 声明：`public class ToolMgr`
+- 说明：Manager for Tool instances, MCP servers, and SysOperation-related tools.
+- 嵌套公开类型：`ToolMgr.McpServerResource`、`ToolMgr.SysOpToolResource`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addTool(String toolId, Tool tool)` | `void` | - |
+| `public Tool getTool(String toolId)` | `Tool` | - |
+| `public Tool getMcpTool(String toolName, String serverId)` | `Tool` | - |
+| `public List<Tool> getMcpTools(String serverId)` | `List<Tool>` | - |
+| `public Object getMcpToolId(String serverId, String toolName)` | `Object` | - |
+| `public Tool removeTool(String toolId)` | `Tool` | - |
+| `public static String generateMcpToolId(String serverId, String serverName, String toolName)` | `String` | - |
+| `public List<McpToolCard> addToolServer(McpServerConfig serverConfig, Double expiryTime) throws Exception` | `List<McpToolCard>` | - |
+| `public List<String> getMcpServerIds(String serverName)` | `List<String>` | - |
+| `public List<String> removeToolServer(String serverId, boolean ignoreNotExist) throws Exception` | `List<String>` | - |
+| `public List<String> removeToolServer(String serverId) throws Exception` | `List<String>` | - |
+| `public void addSysOperationTools(String sysOpId, List<String> toolIds)` | `void` | - |
+| `public List<String> removeSysOperationTools(String sysOpId)` | `List<String>` | - |
+| `public List<String> getSysOperationToolIds(String sysOpId)` | `List<String>` | - |
+| `public List<McpToolCard> refreshToolServer(String serverId, boolean skipNotExist, boolean force) throws Exception` | `List<McpToolCard>` | - |
+| `public void release()` | `void` | - |
+
+### `ToolMgr.McpServerResource`
+
+- 类型：`record`
+- 声明：`public record McpServerResource(McpServerConfig config, McpClient client, List<String> toolIds, long lastUpdateTime, Double expiryTime)`
+- 说明：MCP 服务缓存条目，记录配置、客户端、工具 id 和刷新信息。
+- 宿主类型：`ToolMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `config` | `McpServerConfig` | `private final` | `-` | - |
+| `client` | `McpClient` | `private final` | `-` | - |
+| `toolIds` | `List<String>` | `private final` | `-` | - |
+| `lastUpdateTime` | `long` | `private final` | `-` | - |
+| `expiryTime` | `Double` | `private final` | `-` | - |
+
+### `ToolMgr.SysOpToolResource`
+
+- 类型：`record`
+- 声明：`public record SysOpToolResource(String sysOpId, List<String> toolIds, long lastUpdateTime)`
+- 说明：SysOperation 工具缓存条目，记录该系统操作导出的工具 id。
+- 宿主类型：`ToolMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `sysOpId` | `String` | `private final` | `-` | - |
+| `toolIds` | `List<String>` | `private final` | `-` | - |
+| `lastUpdateTime` | `long` | `private final` | `-` | - |
+
+### `WorkflowMgr`
+
+- 类型：`class`
+- 声明：`public class WorkflowMgr extends AbstractManager<Workflow>`
+- 说明：Manager for Workflow resource providers.
+- 嵌套公开类型：`WorkflowMgr.WorkflowEntry`
+
+**方法**
+
+| 签名 | 返回类型 | 说明 |
+|---|---|---|
+| `public void addWorkflow(String workflowId, Supplier<Workflow> workflow)` | `void` | - |
+| `public void addWorkflows(List<WorkflowEntry> workflows)` | `void` | - |
+| `public Workflow getWorkflow(String workflowId)` | `Workflow` | - |
+| `public Supplier<? extends Workflow> removeWorkflow(String workflowId)` | `Supplier<? extends Workflow>` | - |
+
+### `WorkflowMgr.WorkflowEntry`
+
+- 类型：`record`
+- 声明：`public record WorkflowEntry(String id, Supplier<Workflow> provider)`
+- 说明：Workflow 管理器批量注册条目，包含工作流 id 与提供器。
+- 宿主类型：`WorkflowMgr`
+
+**字段**
+
+| 字段 | 类型 | 修饰符 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `String` | `private final` | `-` | - |
+| `provider` | `Supplier<Workflow>` | `private final` | `-` | - |
+
