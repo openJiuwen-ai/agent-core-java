@@ -107,6 +107,12 @@ public enum StatusCode {
     COMPONENT_TOOL_INPUT_PARAM_ERROR(102001, "component tool_input parameter error, reason: {error_msg}"),
     COMPONENT_TOOL_INIT_FAILED(102002, "component tool initialization failed, reason: {error_msg}"),
 
+    // KnowledgeRetrievalComponent 102100 - 102119
+    COMPONENT_KNOWLEDGE_RETRIEVAL_INPUT_PARAM_ERROR(102100, "component knowledge_retrieval_input parameter error, reason: {error_msg}"),
+    COMPONENT_KNOWLEDGE_RETRIEVAL_INVOKE_CALL_FAILED(102101, "component knowledge_retrieval_invoke call failed, reason: {error_msg}"),
+    COMPONENT_KNOWLEDGE_RETRIEVAL_EMBED_MODEL_INIT_ERROR(102102, "component knowledge_retrieval_embed_model initialization error, reason: {error_msg}"),
+    COMPONENT_KNOWLEDGE_RETRIEVAL_LLM_MODEL_INIT_ERROR(102103, "component knowledge_retrieval_llm_model initialization error, reason: {error_msg}"),
+
     // =============================================================================================================
     // Agent Orchestration 120000–129999
     // =============================================================================================================

@@ -42,6 +42,16 @@ public final class SchemaUtils {
      */
     public static Map<String, Object> formatWithSchema(Map<String, Object> data,
                                                        Map<String, Object> schema) {
+        return formatWithSchema(data, schema, false);
+    }
+
+    /**
+     * Format data according to the provided JSON Schema, optionally skipping
+     * validation while still applying defaults.
+     */
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       Map<String, Object> schema,
+                                                       boolean skipValidate) {
         if (data == null) {
             throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
                     null, null, null,
@@ -49,10 +59,10 @@ public final class SchemaUtils {
         }
 
         try {
-            // Validate first
-            validateWithSchema(data, schema);
+            if (!skipValidate) {
+                validateWithSchema(data, schema);
+            }
 
-            // Fill in defaults
             return applyDefaults(data, schema);
         } catch (ValidationError e) {
             throw e;

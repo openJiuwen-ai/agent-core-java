@@ -3,6 +3,8 @@
  */
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.workflow.WorkflowChunk;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,7 +13,7 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.base.CustomSchema}.
  */
-public class CustomSchema implements StreamSchema {
+public class CustomSchema implements WorkflowChunk {
 
     private final Map<String, Object> properties;
 

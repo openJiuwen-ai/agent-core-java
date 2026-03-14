@@ -13,6 +13,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.Workflow;
 import org.slf4j.Logger;
@@ -197,7 +198,7 @@ public class RunnerImpl {
      * @param streamModes Types of streaming data to output
      * @return Iterator of streaming chunks
      */
-    public Iterator<Object> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+    public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
                                                   ModelContext context, List<StreamMode> streamModes) {
         Workflow workflowInstance;
         Object workflowSession;
@@ -216,7 +217,7 @@ public class RunnerImpl {
         }
 
         workflowSession = createWorkflowSession(session);
-        return workflowInstance.stream(inputs, workflowSession, context);
+        return workflowInstance.stream(inputs, workflowSession, context, streamModes);
     }
 
     // ========== Agent Execution ==========

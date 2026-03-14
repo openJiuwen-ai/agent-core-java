@@ -64,7 +64,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
         return null;
     }
 
-    private static Object generateValue(NodeSessionApi session, Object value) {
+    public static Object generateValue(NodeSessionApi session, Object value) {
         if (value instanceof String && SessionUtils.isRefPath((String) value)) {
             String refStr = SessionUtils.extractOriginKey((String) value);
             return session.getGlobalState(refStr);
@@ -72,7 +72,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
         return value;
     }
 
-    static Object generateOutput(String[] keys, Object value) {
+    public static Object generateOutput(String[] keys, Object value) {
         Object output = value;
         for (int i = keys.length - 1; i >= 0; i--) {
             output = Map.of(keys[i], output);

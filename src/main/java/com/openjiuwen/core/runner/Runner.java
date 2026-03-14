@@ -7,6 +7,7 @@ import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
 import java.util.List;
@@ -113,7 +114,7 @@ public final class Runner {
      * @param streamModes Types of streaming data to output
      * @return Iterator of streaming chunks
      */
-    public static Iterator<Object> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+    public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
                                                          ModelContext context, List<StreamMode> streamModes) {
         return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes);
     }

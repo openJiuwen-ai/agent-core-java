@@ -5,6 +5,7 @@ package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.HasDrawable;
+import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 
 /**
  * Interface for advanced loop components that contain a body subgraph.
@@ -22,4 +23,9 @@ public interface AdvancedLoopComponent extends ComponentComposable {
      * @return the has-drawable body
      */
     HasDrawable getBody();
+
+    /**
+     * Register a loop callback after construction.
+     */
+    void registerCallback(LoopCallback callback);
 }

@@ -4,6 +4,7 @@
 package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,18 +31,32 @@ public class WorkflowCard extends BaseCard {
     @Builder.Default
     private String version = "";
 
-    private Map<String, Object> inputParams;
+    private Object inputParams;
 
     @Override
     public Object toolInfo() {
         return ToolInfo.builder()
                 .name(getName())
                 .description(getDescription())
-                .parameters(inputParams != null ? inputParams : Map.of())
+                .parameters(resolveInputParamsSchema())
                 .build();
     }
 
     public String str() {
         return toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveInputParamsSchema() {
+        if (inputParams == null) {
+            return Map.of();
+        }
+        if (inputParams instanceof Map<?, ?> params) {
+            return (Map<String, Object>) params;
+        }
+        if (inputParams instanceof Class<?> clazz) {
+            return SchemaUtils.getSchemaDict(clazz);
+        }
+        return Map.of();
     }
 }

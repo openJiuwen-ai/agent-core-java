@@ -32,6 +32,7 @@ public class End extends WorkflowComponent {
     private final String template;
     private final List<String> segments;
     private final List<Boolean> isVariable;
+    private boolean mix = false;
 
     public End(EndConfig conf) {
         if (conf != null) {
@@ -63,6 +64,19 @@ public class End extends WorkflowComponent {
 
     public End() {
         this((EndConfig) null);
+    }
+
+    /**
+     * Mark this End component as mixed-mode (concurrent data sources).
+     * <p>
+     * Mirrors Python's {@code End.set_mix()}.
+     */
+    public void setMix() {
+        this.mix = true;
+    }
+
+    public boolean isMix() {
+        return mix;
     }
 
     @Override

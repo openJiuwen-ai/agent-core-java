@@ -49,7 +49,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
     @SuppressWarnings("unchecked")
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : Map.of();
-        return subWorkflow.streamSubWorkflow(
+        return (Iterator<Object>) (Iterator<?>) subWorkflow.streamSubWorkflow(
                 inputsMap.get(Constant.INPUTS_KEY),
                 session,
                 context,

@@ -7,6 +7,8 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.internal.RouterSession;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.component.BranchComponent;
 import com.openjiuwen.core.workflow.component.Start;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
@@ -30,6 +32,8 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Workflow regression tests ported from Python workflow unit tests.
@@ -253,7 +257,11 @@ class WorkflowTest {
         assertOutputChunk(invokeChunks.get(2), 2, Map.of("output", Map.of("value", 3)));
 
         List<Object> streamChunks = new ArrayList<>();
-        Iterator<Object> iterator = flow.stream(Map.of("inputs", List.of(1, 2, 3)), newSession(), null);
+        Iterator<?> iterator = flow.stream(
+                Map.of("inputs", List.of(1, 2, 3)),
+                newSession(),
+                null,
+                List.of(StreamMode.OUTPUT));
         iterator.forEachRemaining(streamChunks::add);
         assertEquals(3, streamChunks.size());
         assertOutputChunk(streamChunks.get(0), 0, Map.of("output", Map.of("value", 1)));
@@ -323,6 +331,60 @@ class WorkflowTest {
 
         WorkflowOutput result = flow.invoke(Map.of("a", 1), newSession(), null);
         assertEquals(Map.of("result", 3), result.getResult());
+    }
+
+    @Test
+    @DisplayName("workflow validates inputs and supports skip flag")
+    void testWorkflowInputValidation() {
+        Workflow flow = new Workflow(WorkflowCard.builder()
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of("value", Map.of("type", "integer")),
+                        "required", List.of("value")))
+                .build());
+        flow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
+        flow.setEndComp("end", new IdentityNode(), Map.of("result", "${start.value}"), null);
+        flow.addConnection("start", "end");
+
+        assertThrows(RuntimeException.class, () -> flow.invoke(Map.of("value", "bad"), newSession(), null));
+
+        WorkflowOutput skipped = flow.invoke(Map.of("value", "bad"), newSession(), null, false, true);
+        assertEquals(Map.of("result", "bad"), skipped.getResult());
+    }
+
+    @Test
+    @DisplayName("workflow stream yields chunks before execution fully completes")
+    void testWorkflowStreamIsIncremental() {
+        Workflow flow = new Workflow();
+        flow.setStartComp("start", new Start(), Map.of("array", "${inputs}"), null);
+        flow.setEndComp("end", new SlowStreamingEndNode(250),
+                Map.of("array", "${start.array}"),
+                null,
+                null,
+                null,
+                "streaming");
+        flow.addConnection("start", "end");
+
+        long startNanos = System.nanoTime();
+        Iterator<?> iterator = flow.stream(
+                Map.of("inputs", List.of(1, 2, 3)),
+                newSession(),
+                null,
+                List.of(StreamMode.OUTPUT));
+        assertTrue(iterator.hasNext());
+        Object firstChunk = iterator.next();
+        long firstElapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+
+        List<Object> remaining = new ArrayList<>();
+        while (iterator.hasNext()) {
+            remaining.add(iterator.next());
+        }
+        long totalElapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+
+        assertOutputChunk(firstChunk, 0, Map.of("output", Map.of("value", 1)));
+        assertEquals(2, remaining.size());
+        assertTrue(firstElapsedMs + 150 < totalElapsedMs,
+                "first chunk should arrive before the full workflow finishes");
     }
 
     private static Workflow createWaitForAllWorkflow(boolean waitForAll) {
@@ -477,6 +539,76 @@ class WorkflowTest {
                 frames.add(Map.of("output", item));
             }
             return frames.iterator();
+        }
+    }
+
+    private static class SlowProducerNode extends WorkflowComponent {
+        private final long delayMs;
+
+        private SlowProducerNode(long delayMs) {
+            this.delayMs = delayMs;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
+            Map<String, Object> inputMap = (Map<String, Object>) inputs;
+            List<Object> values = new ArrayList<>((List<Object>) inputMap.get("array"));
+            return new Iterator<>() {
+                private int index = 0;
+
+                @Override
+                public boolean hasNext() {
+                    return index < values.size();
+                }
+
+                @Override
+                public Object next() {
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    Object value = values.get(index++);
+                    return Map.of("output", value);
+                }
+            };
+        }
+    }
+
+    private static class SlowStreamingEndNode extends WorkflowComponent {
+        private final long delayMs;
+
+        private SlowStreamingEndNode(long delayMs) {
+            this.delayMs = delayMs;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
+            Map<String, Object> inputMap = (Map<String, Object>) inputs;
+            List<Object> values = new ArrayList<>((List<Object>) inputMap.get("array"));
+            return new Iterator<>() {
+                private int index = 0;
+
+                @Override
+                public boolean hasNext() {
+                    return index < values.size();
+                }
+
+                @Override
+                public Object next() {
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    Object value = values.get(index++);
+                    return Map.of("output", Map.of("value", value));
+                }
+            };
         }
     }
 

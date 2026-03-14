@@ -116,6 +116,23 @@ class WorkflowVisualizationSystemTest {
         assertFalse(mermaid.isBlank());
     }
 
+    @Test
+    @DisplayName("Workflow.draw exposes animation metadata for streaming edges")
+    void testDrawStreamingAnimation() {
+        String mermaid = withWorkflowDrawableEnabled(() -> {
+            Workflow flow = new Workflow();
+            flow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
+            flow.addWorkflowComp("stream_node", new PassthroughComponent());
+            flow.setEndComp("end", new PassthroughComponent(), null, null);
+            flow.addConnection("start", "stream_node");
+            flow.addStreamConnection("stream_node", "end");
+            return flow.draw("animated-stream", "mermaid", false, true);
+        });
+
+        assertTrue(mermaid.contains("animate: true"));
+        assertTrue(mermaid.contains("link_"));
+    }
+
     private <T> T withWorkflowDrawableEnabled(Supplier<T> action) {
         String previous = System.getProperty("WORKFLOW_DRAWABLE");
         System.setProperty("WORKFLOW_DRAWABLE", "true");

@@ -207,6 +207,40 @@ public class Drawable {
     }
 
     /**
+     * Convert the graph to Mermaid syntax and render it as PNG bytes via the mermaid.ink service.
+     * <p>
+     * Mirrors Python's {@code Drawable.to_mermaid_png()}.
+     *
+     * @param title          the diagram title
+     * @param expandSubgraph depth of subgraph expansion
+     * @return PNG image bytes, or empty array if rendering fails
+     */
+    public byte[] toMermaidPng(String title, int expandSubgraph) {
+        String mermaidSyntax = toMermaid(title, expandSubgraph, false);
+        if (mermaidSyntax == null || mermaidSyntax.isEmpty()) {
+            return new byte[0];
+        }
+        return MermaidRenderer.renderPng(mermaidSyntax);
+    }
+
+    /**
+     * Convert the graph to Mermaid syntax and render it as SVG bytes via the mermaid.ink service.
+     * <p>
+     * Mirrors Python's {@code Drawable.to_mermaid_svg()}.
+     *
+     * @param title          the diagram title
+     * @param expandSubgraph depth of subgraph expansion
+     * @return SVG image bytes, or empty array if rendering fails
+     */
+    public byte[] toMermaidSvg(String title, int expandSubgraph) {
+        String mermaidSyntax = toMermaid(title, expandSubgraph, true);
+        if (mermaidSyntax == null || mermaidSyntax.isEmpty()) {
+            return new byte[0];
+        }
+        return MermaidRenderer.renderSvg(mermaidSyntax);
+    }
+
+    /**
      * Gets the underlying drawable graph.
      *
      * @return the drawable graph

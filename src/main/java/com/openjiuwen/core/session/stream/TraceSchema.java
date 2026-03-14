@@ -3,6 +3,8 @@
  */
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.workflow.WorkflowChunk;
+
 import java.util.Map;
 
 /**
@@ -10,7 +12,7 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.base.TraceSchema}.
  */
-public class TraceSchema implements StreamSchema {
+public class TraceSchema implements WorkflowChunk {
 
     private String type;
     private Object payload;

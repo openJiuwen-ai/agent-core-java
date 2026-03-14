@@ -103,7 +103,7 @@ public class ExpressionCondition extends Condition {
      */
     private boolean evaluateExpression(String expr, Map<String, Object> inputs) {
         // Preprocess: replace operators
-        String processed = preprocessExpression(expr);
+        String processed = convertCondition(expr);
 
         // Substitute variables
         for (Map.Entry<String, Object> entry : inputs.entrySet()) {
@@ -124,14 +124,33 @@ public class ExpressionCondition extends Condition {
         }
     }
 
-    private static String preprocessExpression(String expr) {
-        // Replace && with AND, || with OR, true/false, length(, is_empty(, is_not_empty(, not_in
-        expr = expr.replace("&&", " AND ");
-        expr = expr.replace("||", " OR ");
-        expr = expr.replaceAll("\\btrue\\b", "TRUE_VAL");
-        expr = expr.replaceAll("\\bfalse\\b", "FALSE_VAL");
-        expr = expr.replaceAll("\\bnot_in\\b", "NOT_IN");
-        return expr;
+    public static String convertCondition(String expr) {
+        if (expr == null || expr.isEmpty()) {
+            return "";
+        }
+        List<String> stringLiterals = new ArrayList<>();
+        Pattern stringPattern = Pattern.compile("(\"(?:[^\"\\\\]|\\\\.)*\")|('(?:[^'\\\\]|\\\\.)*')");
+        Matcher matcher = stringPattern.matcher(expr);
+        StringBuffer protectedExpr = new StringBuffer();
+        while (matcher.find()) {
+            String placeholder = "__STRING_LITERAL_" + stringLiterals.size() + "__";
+            stringLiterals.add(matcher.group(0));
+            matcher.appendReplacement(protectedExpr, Matcher.quoteReplacement(placeholder));
+        }
+        matcher.appendTail(protectedExpr);
+
+        String processed = protectedExpr.toString()
+                .replace("&&", " AND ")
+                .replace("||", " OR ")
+                .replaceAll("\\btrue\\b", "TRUE_VAL")
+                .replaceAll("\\bfalse\\b", "FALSE_VAL")
+                .replaceAll("\\blength\\(", "len(")
+                .replaceAll("\\bnot_in\\b", "NOT_IN");
+
+        for (int i = 0; i < stringLiterals.size(); i++) {
+            processed = processed.replace("__STRING_LITERAL_" + i + "__", stringLiterals.get(i));
+        }
+        return processed;
     }
 
     // ==================== Recursive Descent Parser ====================

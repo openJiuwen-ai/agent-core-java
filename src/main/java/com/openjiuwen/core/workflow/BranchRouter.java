@@ -9,10 +9,13 @@ import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.component.Branch;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Router that evaluates branch conditions and returns target node paths.
@@ -110,9 +113,24 @@ public class BranchRouter implements Router {
     @Override
     public Object apply(Object input) {
         BaseSession currentSession = this.session;
+        if (reportTrace && currentSession != null) {
+            List<Map<String, Object>> branchesTrace = new ArrayList<>();
+            for (Branch branch : branches) {
+                Map<String, Object> branchTrace = new LinkedHashMap<>();
+                branchTrace.put("branch_id", branch.getBranchId());
+                branchTrace.put("condition", branch.traceInfo(currentSession));
+                branchesTrace.add(branchTrace);
+            }
+            TracerWorkflowUtils.traceComponentBegin(currentSession, List.of());
+            TracerWorkflowUtils.traceComponentInputs(currentSession, Map.of("branches", branchesTrace), true);
+        }
 
         for (Branch branch : branches) {
             if (branch.evaluate(currentSession)) {
+                if (reportTrace && currentSession != null) {
+                    TracerWorkflowUtils.traceComponentOutputs(currentSession, Map.of("branch_id", branch.getBranchId()));
+                    TracerWorkflowUtils.traceComponentDone(currentSession);
+                }
                 return branch.getTarget();
             }
         }

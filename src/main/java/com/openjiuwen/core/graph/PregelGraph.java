@@ -147,9 +147,15 @@ public class PregelGraph extends Graph {
     @Override
     @SuppressWarnings("unchecked")
     public ExecutableGraph<?, ?> compile(BaseSession session) {
+        return compile(session, null);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
         // Initialize all vertices
         for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
-            entry.getValue().init(session, null);
+            entry.getValue().init(session, kwargs);
         }
 
         // After-step callback

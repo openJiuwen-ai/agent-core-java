@@ -5,6 +5,7 @@ package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.graph.PregelGraph;
@@ -20,6 +21,7 @@ import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.component.IOConfig;
 import com.openjiuwen.core.workflow.component.NodeConfig;
+import com.openjiuwen.core.workflow.component.loop.LoopGroup;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -219,7 +221,8 @@ public class BaseWorkflow implements HasDrawable {
         }
         session.setSession(sessionArg);
         try {
-            return graph.compile(sessionArg);
+            Map<String, Object> kwargs = context != null ? Map.of("context", context) : null;
+            return graph.compile(sessionArg, kwargs);
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
                     "reason", e.getMessage());
@@ -235,6 +238,46 @@ public class BaseWorkflow implements HasDrawable {
 
     public String toMermaid() {
         return toMermaid("", 0, false);
+    }
+
+    /**
+     * Render the workflow graph as a PNG image.
+     * <p>
+     * Mirrors Python's {@code BaseWorkflow.to_mermaid_png()}.
+     *
+     * @param title          diagram title
+     * @param expandSubgraph depth of subgraph expansion
+     * @return PNG bytes, or empty array if drawable is not enabled
+     */
+    public byte[] toMermaidPng(String title, int expandSubgraph) {
+        if (drawable == null) {
+            return new byte[0];
+        }
+        return drawable.toMermaidPng(title, expandSubgraph);
+    }
+
+    public byte[] toMermaidPng() {
+        return toMermaidPng("", 0);
+    }
+
+    /**
+     * Render the workflow graph as an SVG image.
+     * <p>
+     * Mirrors Python's {@code BaseWorkflow.to_mermaid_svg()}.
+     *
+     * @param title          diagram title
+     * @param expandSubgraph depth of subgraph expansion
+     * @return SVG bytes, or empty array if drawable is not enabled
+     */
+    public byte[] toMermaidSvg(String title, int expandSubgraph) {
+        if (drawable == null) {
+            return new byte[0];
+        }
+        return drawable.toMermaidSvg(title, expandSubgraph);
+    }
+
+    public byte[] toMermaidSvg() {
+        return toMermaidSvg("", 0);
     }
 
     @Override
@@ -254,57 +297,128 @@ public class BaseWorkflow implements HasDrawable {
      * Auto-complete component abilities based on edge topology.
      */
     public void autoCompleteAbilities() {
-        Map<String, List<String>> sourceMap = workflowSpec.getEdges();
-        Map<String, List<String>> sourceStreamMap = workflowSpec.getStreamEdges();
-        Map<String, List<String>> targetMap = invertMap(sourceMap);
-        Map<String, List<String>> targetStreamMap = invertMap(sourceStreamMap);
+        EdgeTopology edgeTopology = buildEdgeTopology();
+        validateEdgeNodes(edgeTopology);
 
-        // Validate all edge nodes exist
-        Set<String> registeredComps = workflowSpec.getCompConfigs().keySet();
-        Set<String> allEdgeNodes = new HashSet<>();
-        allEdgeNodes.addAll(sourceMap.keySet());
-        allEdgeNodes.addAll(targetMap.keySet());
-        allEdgeNodes.addAll(sourceStreamMap.keySet());
-        allEdgeNodes.addAll(targetStreamMap.keySet());
-        allEdgeNodes.removeAll(registeredComps);
-        if (!allEdgeNodes.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
-                    "reason", "Component ID mismatch: nodes " + allEdgeNodes
-                            + " are referenced in edges but not registered via addWorkflowComp");
-        }
-
-        // Identify user-provided abilities
         Map<String, Boolean> userProvided = new HashMap<>();
         for (Map.Entry<String, NodeConfig> entry : workflowSpec.getCompConfigs().entrySet()) {
             userProvided.put(entry.getKey(), !entry.getValue().getAbilities().isEmpty());
         }
 
-        // Complete stream node abilities
-        for (String node : sourceStreamMap.keySet()) {
+        completeLoopNodeAbilities(edgeTopology, userProvided);
+        completeStreamNodeAbilities(edgeTopology, userProvided);
+        completeInvokeAbilities(edgeTopology, userProvided);
+    }
+
+    public void reset() {
+        if (graph instanceof PregelGraph pregelGraph) {
+            pregelGraph.reset();
+        }
+    }
+
+    private EdgeTopology buildEdgeTopology() {
+        Map<String, List<String>> sourceMap = workflowSpec.getEdges();
+        Map<String, List<String>> sourceStreamMap = workflowSpec.getStreamEdges();
+        return new EdgeTopology(
+                sourceMap,
+                invertMap(sourceMap),
+                sourceStreamMap,
+                invertMap(sourceStreamMap));
+    }
+
+    private void validateEdgeNodes(EdgeTopology edgeTopology) {
+        Set<String> registeredComps = workflowSpec.getCompConfigs().keySet();
+        Set<String> missingNodes = new HashSet<>(edgeTopology.allEdgeNodes());
+        missingNodes.removeAll(registeredComps);
+        if (missingNodes.isEmpty()) {
+            return;
+        }
+
+        List<String> edgeDetails = collectProblematicEdges(edgeTopology, missingNodes);
+        throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
+                "reason", "Component ID mismatch: nodes " + missingNodes
+                        + " are referenced in edges but not registered via addWorkflowComp/setStartComp/setEndComp. "
+                        + "Registered components: " + registeredComps
+                        + ". Problematic edges: " + edgeDetails,
+                "workflow", workflowConfig.getCard().str());
+    }
+
+    private List<String> collectProblematicEdges(EdgeTopology edgeTopology, Set<String> missingNodes) {
+        List<String> edgeDetails = new ArrayList<>();
+        collectProblematicEdges(edgeDetails, edgeTopology.getSourceMap(), missingNodes, ConnectionType.CONNECTION);
+        collectProblematicEdges(edgeDetails, edgeTopology.getSourceStreamMap(), missingNodes,
+                ConnectionType.STREAM_CONNECTION);
+        return edgeDetails;
+    }
+
+    private void collectProblematicEdges(List<String> edgeDetails,
+                                         Map<String, List<String>> edgeMap,
+                                         Set<String> missingNodes,
+                                         ConnectionType connectionType) {
+        for (Map.Entry<String, List<String>> entry : edgeMap.entrySet()) {
+            for (String target : entry.getValue()) {
+                if (missingNodes.contains(entry.getKey()) || missingNodes.contains(target)) {
+                    edgeDetails.add(connectionType.getValue() + ": '" + entry.getKey() + "' -> '" + target + "'");
+                }
+            }
+        }
+    }
+
+    private void completeLoopNodeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
+        List<String> loopStartNodes = this instanceof LoopGroup loopGroup ? loopGroup.getStartNodesList() : List.of();
+        List<String> loopEndNodes = this instanceof LoopGroup loopGroup ? loopGroup.getEndNodesList() : List.of();
+
+        for (String node : loopStartNodes) {
             if (Boolean.TRUE.equals(userProvided.get(node))) {
                 continue;
             }
-            if (targetMap.containsKey(node)) {
+            if (edgeTopology.getSourceStreamMap().containsKey(node)) {
                 addAbilityToNode(node, ComponentAbility.STREAM);
             }
-            if (targetStreamMap.containsKey(node)) {
+            if (edgeTopology.getSourceMap().containsKey(node)) {
+                addAbilityToNode(node, ComponentAbility.INVOKE);
+            }
+        }
+
+        for (String node : loopEndNodes) {
+            if (Boolean.TRUE.equals(userProvided.get(node))) {
+                continue;
+            }
+            if (edgeTopology.getTargetStreamMap().containsKey(node)) {
+                addAbilityToNode(node, ComponentAbility.COLLECT);
+            }
+        }
+    }
+
+    private void completeStreamNodeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
+        for (String node : edgeTopology.getSourceStreamMap().keySet()) {
+            if (Boolean.TRUE.equals(userProvided.get(node))) {
+                continue;
+            }
+            if (edgeTopology.getTargetMap().containsKey(node)) {
+                addAbilityToNode(node, ComponentAbility.STREAM);
+            }
+            if (edgeTopology.getTargetStreamMap().containsKey(node)) {
                 addAbilityToNode(node, ComponentAbility.TRANSFORM);
             } else if (!workflowSpec.getStartNodes().contains(node)) {
                 addAbilityToNode(node, ComponentAbility.STREAM);
             }
         }
-        for (String node : targetStreamMap.keySet()) {
+
+        for (String node : edgeTopology.getTargetStreamMap().keySet()) {
             if (Boolean.TRUE.equals(userProvided.get(node))) {
                 continue;
             }
-            if (sourceMap.containsKey(node)) {
+            if (edgeTopology.getSourceMap().containsKey(node)) {
                 addAbilityToNode(node, ComponentAbility.COLLECT);
             }
         }
+    }
 
-        // Complete invoke abilities
-        for (String node : targetMap.keySet()) {
-            if (!Boolean.TRUE.equals(userProvided.get(node)) && sourceMap.containsKey(node)) {
+    private void completeInvokeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
+        for (String node : edgeTopology.getTargetMap().keySet()) {
+            if (!Boolean.TRUE.equals(userProvided.get(node))
+                    && edgeTopology.getSourceMap().containsKey(node)) {
                 addAbilityToNode(node, ComponentAbility.INVOKE);
             }
         }
@@ -315,16 +429,19 @@ public class BaseWorkflow implements HasDrawable {
     private void validateCompId(String compId) {
         if (compId == null || compId.isEmpty()) {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
-                    "comp_id", compId, "reason", "is None or empty");
+                    "comp_id", compId, "reason", "is None or empty",
+                    "workflow", workflowConfig.getCard().str());
         }
         if (compId.length() > 100) {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
-                    "comp_id", compId, "reason", "length must not between [1, 100]");
+                    "comp_id", compId, "reason", "length must not between [1, 100]",
+                    "workflow", workflowConfig.getCard().str());
         }
         if (!COMP_ID_PATTERN.matcher(compId).matches()) {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
                     "comp_id", compId,
-                    "reason", "only support letters (a-z, A-Z), digits (0-9), underscores (_) or hyphens (-)");
+                    "reason", "only support letters (a-z, A-Z), digits (0-9), underscores (_) or hyphens (-)",
+                    "workflow", workflowConfig.getCard().str());
         }
     }
 
@@ -338,7 +455,8 @@ public class BaseWorkflow implements HasDrawable {
                 if (!wait) {
                     throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ABILITY_INVALID,
                             "comp_id", compId,
-                            "reason", "stream components (TRANSFORM/COLLECT) must set 'wait_for_all' to True");
+                            "reason", "stream components (TRANSFORM/COLLECT) must set 'wait_for_all' to True",
+                            "workflow", workflowConfig.getCard().str());
                 }
             }
         }
@@ -347,23 +465,66 @@ public class BaseWorkflow implements HasDrawable {
     private void validateEdge(Object srcCompId, String targetCompId, StatusCode errorCode) {
         if (srcCompId == null || (srcCompId instanceof String && ((String) srcCompId).isEmpty())) {
             throw ErrorHelper.buildError(errorCode,
-                    "src_comp_id", String.valueOf(srcCompId),
-                    "target_comp_id", targetCompId,
-                    "reason", "src_comp_id cannot be empty or None");
+                    "src_cmp_id", String.valueOf(srcCompId),
+                    "target_cmp_id", targetCompId,
+                    "reason", "src_comp_id cannot be empty or None",
+                    "workflow", workflowConfig.getCard().str());
+        }
+        if (srcCompId instanceof List<?> list) {
+            for (int idx = 0; idx < list.size(); idx++) {
+                Object value = list.get(idx);
+                if (!(value instanceof String strValue) || strValue.isEmpty()) {
+                    throw ErrorHelper.buildError(errorCode,
+                            "src_cmp_id", String.valueOf(srcCompId),
+                            "target_cmp_id", targetCompId,
+                            "reason", "src_comp_id list contains invalid value at index " + idx,
+                            "workflow", workflowConfig.getCard().str());
+                }
+            }
+        } else if (!(srcCompId instanceof String)) {
+            throw ErrorHelper.buildError(errorCode,
+                    "src_cmp_id", String.valueOf(srcCompId),
+                    "target_cmp_id", targetCompId,
+                    "reason", "src_comp_id must be a string or list[string]",
+                    "workflow", workflowConfig.getCard().str());
         }
         if (targetCompId == null || targetCompId.isEmpty()) {
             throw ErrorHelper.buildError(errorCode,
-                    "src_comp_id", String.valueOf(srcCompId),
-                    "target_comp_id", targetCompId,
-                    "reason", "target_comp_id cannot be empty or None");
+                    "src_cmp_id", String.valueOf(srcCompId),
+                    "target_cmp_id", targetCompId,
+                    "reason", "target_comp_id cannot be empty or None",
+                    "workflow", workflowConfig.getCard().str());
         }
     }
 
     @SuppressWarnings("unchecked")
     private void validateSchemas(String compId, Object inputsSchema, Object outputsSchema,
                                  Object streamInputsSchema, Object streamOutputsSchema) {
-        // No overlap validation needed unless both are dicts
-        // This matches Python's _validate_schemas logic
+        validateSchemaOverlap(compId, inputsSchema, streamInputsSchema,
+                "inputs_schema", "stream_inputs_schema");
+        validateSchemaOverlap(compId, outputsSchema, streamOutputsSchema,
+                "outputs_schema", "stream_outputs_schema");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void validateSchemaOverlap(String compId, Object firstSchema, Object secondSchema,
+                                       String firstName, String secondName) {
+        if (!(firstSchema instanceof Map<?, ?> firstMapRaw) || !(secondSchema instanceof Map<?, ?> secondMapRaw)) {
+            return;
+        }
+        Map<String, Object> firstMap = (Map<String, Object>) firstMapRaw;
+        Map<String, Object> secondMap = (Map<String, Object>) secondMapRaw;
+        Map<String, Object> flattenedFirst = DictUtils.flattenMap(firstMap);
+        Map<String, Object> flattenedSecond = DictUtils.flattenMap(secondMap);
+        for (String key : flattenedFirst.keySet()) {
+            if (flattenedSecond.containsKey(key)) {
+                throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_SCHEMA_INVALID,
+                        "comp_id", compId,
+                        "reason", "duplicate key both exist in " + firstName + " with " + secondName
+                                + ", key=" + key,
+                        "workflow", workflowConfig.getCard().str());
+            }
+        }
     }
 
     // ======================= Helper Methods =======================

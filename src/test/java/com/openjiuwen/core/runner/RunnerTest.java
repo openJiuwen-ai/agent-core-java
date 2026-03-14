@@ -189,9 +189,9 @@ class RunnerTest {
         RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
         Workflow workflow = createStreamingWorkflow("workflow-stream");
 
-        Iterator<Object> iterator = runner.runWorkflowStreaming(
+        Iterator<?> iterator = runner.runWorkflowStreaming(
                 workflow, Map.of("query", "stream"), "stream-session", null, null);
-        List<Object> chunks = collect(iterator);
+        List<?> chunks = collect(iterator);
 
         assertEquals(1, chunks.size());
         OutputSchema chunk = assertInstanceOf(OutputSchema.class, chunks.get(0));
@@ -324,8 +324,8 @@ class RunnerTest {
         return (Map<String, Object>) value;
     }
 
-    private List<Object> collect(Iterator<Object> iterator) {
-        List<Object> values = new ArrayList<>();
+    private <T> List<T> collect(Iterator<T> iterator) {
+        List<T> values = new ArrayList<>();
         iterator.forEachRemaining(values::add);
         return values;
     }

@@ -338,7 +338,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             wrappedInputs.put(Constant.CONFIG_KEY, config);
             inputs = wrappedInputs;
         }
-        Object results = executable.onInvoke(inputs, session);
+        Object results = executable.onInvoke(inputs, session, context);
         results = postInvoke(results);
         logger.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
     }
@@ -353,7 +353,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             wrappedInputs.put(Constant.CONFIG_KEY, config);
             inputs = wrappedInputs;
         }
-        Iterator<Object> resultIter = executable.onStream(inputs, session);
+        Iterator<Object> resultIter = executable.onStream(inputs, session, context);
         postStream(resultIter, ComponentAbility.STREAM);
     }
 
@@ -362,7 +362,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         if (latch != null) {
             latch.countDown();
         }
-        Object batchOutput = executable.onCollect(collectInputs, session);
+        Object batchOutput = executable.onCollect(collectInputs, session, context);
         Object results = postInvoke(batchOutput);
         logger.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
     }
@@ -372,7 +372,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         if (latch != null) {
             latch.countDown();
         }
-        Iterator<Object> outputIter = executable.onTransform(transformInputs, session);
+        Iterator<Object> outputIter = executable.onTransform(transformInputs, session, context);
         postStream(outputIter, ComponentAbility.TRANSFORM);
     }
 

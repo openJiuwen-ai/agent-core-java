@@ -83,6 +83,17 @@ public abstract class Graph {
     public abstract ExecutableGraph<?, ?> compile(BaseSession session);
 
     /**
+     * Compile the graph into an executable form with additional keyword arguments.
+     *
+     * @param session execution session
+     * @param kwargs  additional arguments (e.g. "context" for ModelContext)
+     * @return an executable graph
+     */
+    public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
+        return compile(session);
+    }
+
+    /**
      * Get the nodes in this graph.
      *
      * @return a map of node IDs to executables

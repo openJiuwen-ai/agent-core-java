@@ -293,4 +293,11 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
     public Executable<Object, Object> getBodyExecutable() {
         return body;
     }
+
+    @Override
+    public void registerCallback(LoopCallback callback) {
+        if (callback != null) {
+            callbacks.add(callback);
+        }
+    }
 }

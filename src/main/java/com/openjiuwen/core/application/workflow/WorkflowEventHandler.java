@@ -26,6 +26,7 @@ import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
@@ -203,7 +204,7 @@ public class WorkflowEventHandler extends EventHandler {
 
             // Execute workflow with streaming
             ModelContext context = appContextEngine.createContext(workflowId, session.getInner());
-            Iterator<Object> workflowStream = Runner.runWorkflowStreaming(
+            Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
                     workflow, inputs, workflowSession, context, null);
 
             List<Object> chunks = new ArrayList<>();
@@ -211,7 +212,7 @@ public class WorkflowEventHandler extends EventHandler {
             Object finalResult = null;
 
             while (workflowStream.hasNext()) {
-                Object chunk = workflowStream.next();
+                WorkflowChunk chunk = workflowStream.next();
                 if (chunk instanceof OutputSchema os) {
                     if (INTERACTION.equals(os.getType())) {
                         hasInteraction = true;
