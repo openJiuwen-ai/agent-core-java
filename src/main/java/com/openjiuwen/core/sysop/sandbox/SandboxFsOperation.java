@@ -39,7 +39,7 @@ public class SandboxFsOperation extends BaseFsOperation {
     }
 
     @Override
-    public WriteFileResult writeFile(String path, String content, String mode,
+    public WriteFileResult writeFile(String path, Object content, String mode,
                                      boolean prependNewline, boolean appendNewline,
                                      boolean createIfNotExist, String permissions,
                                      String encoding, Map<String, Object> options) {

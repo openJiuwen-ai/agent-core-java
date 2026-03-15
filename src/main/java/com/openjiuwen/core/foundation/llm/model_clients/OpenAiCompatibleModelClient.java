@@ -131,7 +131,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                                                  boolean promptExtend,
                                                  boolean watermark,
                                                  int seed,
-                                                 Map<String, Object> kwargs) {
+                                                 Map<String, Object> kwargs) throws Exception {
         throw new UnsupportedOperationException("Image generation is not supported by the built-in HTTP client");
     }
 
@@ -140,7 +140,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                                                   String model,
                                                   String voice,
                                                   String languageType,
-                                                  Map<String, Object> kwargs) {
+                                                  Map<String, Object> kwargs) throws Exception {
         throw new UnsupportedOperationException("Speech generation is not supported by the built-in HTTP client");
     }
 
@@ -156,7 +156,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                                                  boolean watermark,
                                                  String negativePrompt,
                                                  Integer seed,
-                                                 Map<String, Object> kwargs) {
+                                                 Map<String, Object> kwargs) throws Exception {
         throw new UnsupportedOperationException("Video generation is not supported by the built-in HTTP client");
     }
 

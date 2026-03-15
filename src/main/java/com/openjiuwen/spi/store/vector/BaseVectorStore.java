@@ -84,4 +84,36 @@ public abstract class BaseVectorStore {
     public abstract void deleteDocsByFilters(String collectionName,
                                              Map<String, Object> filters,
                                              Map<String, Object> kwargs) throws Exception;
+
+    /**
+     * List all collection names in the vector store.
+     *
+     * @return list of collection names
+     */
+    public abstract List<String> listCollectionNames() throws Exception;
+
+    /**
+     * Upgrade the schema field for vector data migration.
+     *
+     * @param collectionName name of the collection
+     * @param operations     list of migration operations
+     */
+    public abstract void updateSchema(String collectionName, List<?> operations) throws Exception;
+
+    /**
+     * Update the metadata of a collection.
+     *
+     * @param collectionName name of the collection
+     * @param metadata       metadata key-value pairs to update
+     */
+    public abstract void updateCollectionMetadata(String collectionName,
+                                                  Map<String, Object> metadata) throws Exception;
+
+    /**
+     * Get the metadata of a collection.
+     *
+     * @param collectionName name of the collection
+     * @return metadata key-value pairs
+     */
+    public abstract Map<String, Object> getCollectionMetadata(String collectionName) throws Exception;
 }

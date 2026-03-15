@@ -14,6 +14,7 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Extends {@link MessageOffloader} to use an LLM for generating
@@ -61,7 +62,9 @@ public class MessageSummaryOffloader extends MessageOffloader {
                     null, null, null, null, null, null, null, null, null);
 
             String summarizedContent = response.getContentAsString();
-            return offloadMessages(message.getRole(), summarizedContent, List.of(message), context);
+            Map<String, Object> extraFields = extractExtraFields(message);
+            return offloadMessages(message.getRole(), summarizedContent, List.of(message), context,
+                    null, "in_memory", extraFields);
         } catch (Exception e) {
             Loggers.CONTEXT_ENGINE.warning("Summary offload failed: " + e.getMessage());
             // Fall back to simple trim

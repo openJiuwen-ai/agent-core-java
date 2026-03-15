@@ -9,6 +9,9 @@ import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.base.TagUpdateStrategy;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,6 +28,8 @@ import java.util.stream.Collectors;
  * Mirrors Python's {@code TagMgr} in {@code resources_manager/tag_manager.py}.
  */
 public class TagMgr {
+
+    private static final Logger logger = LoggerFactory.getLogger(TagMgr.class);
 
     private final Map<String, Set<String>> resourceTags = new HashMap<>();
     private final Map<String, Set<String>> tagToResource = new HashMap<>();
@@ -340,5 +345,58 @@ public class TagMgr {
             return (List<String>) list;
         }
         return List.of(String.valueOf(tags));
+    }
+
+    /**
+     * Display current tag manager state.
+     *
+     * @param enableLog if true, logs the state via logger
+     * @return formatted string describing current tag-resource mappings
+     */
+    public String display(boolean enableLog) {
+        lock.lock();
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("\nTag -> Resource IDs:\n");
+            tagToResource.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        if (!entry.getValue().isEmpty()) {
+                            sb.append("  tag['").append(entry.getKey()).append("']: [");
+                            sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
+                            sb.append("]\n");
+                        }
+                    });
+
+            sb.append("\nResource -> Tags:\n");
+            resourceTags.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        sb.append("  resource['").append(entry.getKey()).append("']: [");
+                        sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
+                        sb.append("]\n");
+                    });
+
+            sb.append("\nStatistics:\n");
+            sb.append("  Total tags: ").append(tagToResource.size()).append('\n');
+            sb.append("  Total resources: ").append(resourceTags.size()).append('\n');
+            Set<String> globalResources = tagToResource.getOrDefault(Tag.GLOBAL, Collections.emptySet());
+            sb.append("  GLOBAL resources: ").append(globalResources.size()).append('\n');
+
+            String msg = sb.toString();
+            if (enableLog) {
+                logger.info("---- Tag Manager State ----\n{}", msg);
+            }
+            return msg;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Display with logging enabled by default.
+     */
+    public String display() {
+        return display(true);
     }
 }

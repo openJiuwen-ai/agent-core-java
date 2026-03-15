@@ -58,6 +58,7 @@ public class RoundLevelCompressor extends ContextProcessor {
 
     public RoundLevelCompressor(RoundLevelCompressorConfig config) {
         super(config);
+        config.validate();
         this.roundsThreshold = config.getRoundsThreshold();
         this.prompt = config.getCustomizedCompressionPrompt() != null
                 ? config.getCustomizedCompressionPrompt()
@@ -322,5 +323,46 @@ public class RoundLevelCompressor extends ContextProcessor {
         }
         Object level = metadata.get(COMPRESS_LEVEL);
         return level instanceof Number num ? num.intValue() : 0;
+    }
+
+    /**
+     * Compress a list of messages of a single role into one summarized message.
+     * <p>
+     * Mirrors Python's {@code RoundLevelCompressor._compress_messages(messages, role, context)}.
+     *
+     * @param messages the messages to compress
+     * @param role     the role for the resulting compressed message
+     * @param context  the model context (for offloading)
+     * @return the compressed offload message, or null on failure
+     */
+    private BaseMessage compressMessages(List<BaseMessage> messages, String role, ModelContext context) {
+        try {
+            List<BaseMessage> processed = new ArrayList<>();
+            for (BaseMessage m : messages) {
+                processed.add(new UserMessage("role:" + m.getRole() + ", content:" + m.getContentAsString()));
+            }
+
+            List<BaseMessage> invokeMessages = new ArrayList<>();
+            invokeMessages.add(new SystemMessage(prompt));
+            invokeMessages.addAll(processed);
+
+            AssistantMessage response = model.invoke(
+                    invokeMessages, null, null, null, null, null, null,
+                    new JsonOutputParser(), null, null);
+
+            Object parserContent = response.getParserContent();
+            if (parserContent instanceof Map<?, ?> summaryMap) {
+                Object summaryObj = summaryMap.get("summary");
+                String summary = summaryObj != null ? String.valueOf(summaryObj) : "";
+                if (!summary.isEmpty()) {
+                    return offloadMessages(role, summary, messages, context);
+                }
+            }
+            Loggers.CONTEXT_ENGINE.warning("[RoundLevelCompressor] Invalid summary from model");
+            return null;
+        } catch (Exception e) {
+            Loggers.CONTEXT_ENGINE.warning("[RoundLevelCompressor] compression error: " + e.getMessage());
+            return null;
+        }
     }
 }

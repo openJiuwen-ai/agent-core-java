@@ -14,6 +14,6 @@ public final class PgFields {
     }
 
     public static CollectionSchema defaultSchema(int dimension) {
-        return BaseVectorFields.defaultSchema("vector", dimension);
+        return BaseVectorFields.defaultSchema("embedding", dimension);
     }
 }

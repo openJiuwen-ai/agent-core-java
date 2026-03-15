@@ -42,7 +42,7 @@ public final class SchemaUtils {
      */
     public static Map<String, Object> formatWithSchema(Map<String, Object> data,
                                                        Map<String, Object> schema) {
-        return formatWithSchema(data, schema, false);
+        return formatWithSchema(data, schema, false, false);
     }
 
     /**
@@ -52,6 +52,24 @@ public final class SchemaUtils {
     public static Map<String, Object> formatWithSchema(Map<String, Object> data,
                                                        Map<String, Object> schema,
                                                        boolean skipValidate) {
+        return formatWithSchema(data, schema, false, skipValidate);
+    }
+
+    /**
+     * Format data according to the provided JSON Schema, optionally removing null
+     * values and/or skipping validation.
+     *
+     * @param data          the data to format
+     * @param schema        JSON Schema dictionary
+     * @param skipNoneValue if true, recursively remove null values before formatting
+     * @param skipValidate  if true, skip schema validation
+     * @return formatted data with defaults populated
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       Map<String, Object> schema,
+                                                       boolean skipNoneValue,
+                                                       boolean skipValidate) {
         if (data == null) {
             throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
                     null, null, null,
@@ -59,11 +77,13 @@ public final class SchemaUtils {
         }
 
         try {
+            Map<String, Object> newData = skipNoneValue ? removeNoneValues(data) : data;
+
             if (!skipValidate) {
-                validateWithSchema(data, schema);
+                validateWithSchema(newData, schema);
             }
 
-            return applyDefaults(data, schema);
+            return applyDefaults(newData, schema);
         } catch (ValidationError e) {
             throw e;
         } catch (Exception e) {
@@ -347,5 +367,64 @@ public final class SchemaUtils {
             return ((Number) value).intValue();
         }
         return null;
+    }
+
+    // ==================== Null-value cleaning ====================
+
+    /**
+     * Recursively remove null values from a data structure.
+     * <p>
+     * Traverses through maps and lists, removing any null values while
+     * preserving the structure for non-null values.
+     *
+     * @param data the input map to clean
+     * @return a new map without null values, or null if all values were null
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> removeNoneValues(Map<String, Object> data) {
+        if (data == null) {
+            return null;
+        }
+        Map<String, Object> cleaned = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            Object cleanedValue = removeNoneValue(entry.getValue());
+            if (cleanedValue != null) {
+                cleaned.put(entry.getKey(), cleanedValue);
+            }
+        }
+        return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    /**
+     * Recursively clean a single value.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object removeNoneValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Map) {
+            Map<String, Object> mapValue = (Map<String, Object>) value;
+            Map<String, Object> cleaned = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : mapValue.entrySet()) {
+                Object cv = removeNoneValue(entry.getValue());
+                if (cv != null) {
+                    cleaned.put(entry.getKey(), cv);
+                }
+            }
+            return cleaned.isEmpty() ? null : cleaned;
+        }
+        if (value instanceof List) {
+            List<?> listValue = (List<?>) value;
+            List<Object> cleaned = new ArrayList<>();
+            for (Object item : listValue) {
+                Object cv = removeNoneValue(item);
+                if (cv != null) {
+                    cleaned.add(cv);
+                }
+            }
+            return cleaned.isEmpty() ? null : cleaned;
+        }
+        return value;
     }
 }

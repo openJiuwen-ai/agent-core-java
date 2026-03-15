@@ -32,14 +32,45 @@ public class StreamEvent {
     private StreamEventType type;
 
     /**
-     * Event payload data:
-     * stdout/stderr = text output string,
-     * exit = integer exit code as string,
-     * error = error message string.
+     * Event payload data with type dependent on event type:
+     * <ul>
+     *   <li>stdout/stderr = text output {@code String}</li>
+     *   <li>exit = integer exit code ({@code Integer})</li>
+     *   <li>error = error message {@code String}</li>
+     * </ul>
+     * <p>
+     * Mirrors Python's {@code data: Union[str, int]}.
      */
-    private String data;
+    private Object data;
 
     /** UTC timestamp when the event was created. */
     @Builder.Default
     private Instant timestamp = Instant.now();
+
+    /**
+     * Get data as String.
+     */
+    public String getDataAsString() {
+        return data != null ? data.toString() : null;
+    }
+
+    /**
+     * Get data as Integer (for EXIT events).
+     */
+    public Integer getDataAsInt() {
+        if (data instanceof Integer i) {
+            return i;
+        }
+        if (data instanceof Number n) {
+            return n.intValue();
+        }
+        if (data instanceof String s) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
 }

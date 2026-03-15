@@ -61,7 +61,8 @@ public abstract class BaseFsOperation extends BaseOperation {
      * Write content to a file.
      *
      * @param path            file path to write
-     * @param content         data to write
+     * @param content         data to write (String for text mode, byte[] for bytes mode).
+     *                        Mirrors Python's {@code content: str | bytes}.
      * @param mode            writing mode: "text" or "bytes"
      * @param prependNewline  add newline before content (text mode)
      * @param appendNewline   add newline after content (text mode)
@@ -72,7 +73,7 @@ public abstract class BaseFsOperation extends BaseOperation {
      * @return structured result
      */
     public abstract WriteFileResult writeFile(
-            String path, String content, String mode,
+            String path, Object content, String mode,
             boolean prependNewline, boolean appendNewline,
             boolean createIfNotExist, String permissions,
             String encoding, Map<String, Object> options);

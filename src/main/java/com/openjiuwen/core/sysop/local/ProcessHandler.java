@@ -312,7 +312,7 @@ public class ProcessHandler {
                     int exitCode = process.isAlive() ? -1 : process.exitValue();
                     return StreamEvent.builder()
                             .type(StreamEventType.EXIT)
-                            .data(String.valueOf(exitCode))
+                            .data(exitCode)
                             .build();
                 }
             }

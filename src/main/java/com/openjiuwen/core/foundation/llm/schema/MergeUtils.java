@@ -3,6 +3,10 @@
  */
 package com.openjiuwen.core.foundation.llm.schema;
 
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +22,15 @@ public final class MergeUtils {
     }
 
     /**
+     * Interface for objects that support merging (Java equivalent of Python's {@code __add__}).
+     *
+     * @param <T> the concrete type
+     */
+    public interface Mergeable<T> {
+        T mergeWith(T other);
+    }
+
+    /**
      * Intelligently merge parser_content fields.
      * <p>
      * Merge strategy:
@@ -27,6 +40,8 @@ public final class MergeUtils {
      *   <li>If both are strings, concatenate</li>
      *   <li>If both are lists, concatenate</li>
      *   <li>If both are maps, recursively merge</li>
+     *   <li>If both implement {@link Mergeable} and are the same type, delegate to {@code mergeWith}</li>
+     *   <li>If both are same-type POJOs, merge field-by-field via {@link #mergeObjects}</li>
      *   <li>Otherwise, return right (keep latest)</li>
      * </ul>
      */
@@ -56,6 +71,20 @@ public final class MergeUtils {
             return mergeMaps((Map<String, Object>) lm, (Map<String, Object>) rm);
         }
 
+        // Mergeable interface (Java equivalent of Python __add__)
+        if (left instanceof Mergeable && left.getClass() == right.getClass()) {
+            return ((Mergeable<Object>) left).mergeWith(right);
+        }
+
+        // Same-type POJO field-level merge (Java equivalent of merge_pydantic_models)
+        if (left.getClass() == right.getClass()
+                && !isPrimitiveOrWrapper(left.getClass())) {
+            Object merged = mergeObjects(left, right);
+            if (merged != null) {
+                return merged;
+            }
+        }
+
         // Otherwise keep the latest value
         return right;
     }
@@ -68,7 +97,7 @@ public final class MergeUtils {
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> mergeMaps(Map<String, Object> left, Map<String, Object> right) {
-        var result = new java.util.LinkedHashMap<>(left);
+        var result = new LinkedHashMap<>(left);
         for (var entry : right.entrySet()) {
             String key = entry.getKey();
             Object rightValue = entry.getValue();
@@ -92,5 +121,70 @@ public final class MergeUtils {
             }
         }
         return result;
+    }
+
+    /**
+     * Merge two same-type POJO instances field-by-field using JavaBeans introspection.
+     * <p>
+     * Mirrors Python's {@code merge_pydantic_models}: iterates all readable/writable
+     * properties, and for each field applies {@link #mergeParserContent} to recursively
+     * merge strings, lists, maps, and nested objects.
+     *
+     * @param left  the base object
+     * @param right the object whose non-null fields override/merge into left
+     * @param <T>   the object type
+     * @return new merged instance, or {@code null} if merge is not possible
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T mergeObjects(T left, T right) {
+        if (left == null) {
+            return right;
+        }
+        if (right == null) {
+            return left;
+        }
+        if (left.getClass() != right.getClass()) {
+            return right;
+        }
+
+        try {
+            Class<?> clazz = left.getClass();
+            T result = (T) clazz.getDeclaredConstructor().newInstance();
+            PropertyDescriptor[] descriptors = Introspector.getBeanInfo(clazz, Object.class)
+                    .getPropertyDescriptors();
+
+            for (PropertyDescriptor pd : descriptors) {
+                Method getter = pd.getReadMethod();
+                Method setter = pd.getWriteMethod();
+                if (getter == null || setter == null) {
+                    continue;
+                }
+
+                Object leftValue = getter.invoke(left);
+                Object rightValue = getter.invoke(right);
+                Object mergedValue = mergeParserContent(leftValue, rightValue);
+                setter.invoke(result, mergedValue);
+            }
+            return result;
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            // If reflective merge fails, fall back to returning right
+            return right;
+        } catch (Exception e) {
+            return right;
+        }
+    }
+
+    private static boolean isPrimitiveOrWrapper(Class<?> clazz) {
+        return clazz.isPrimitive()
+                || clazz == Boolean.class
+                || clazz == Byte.class
+                || clazz == Character.class
+                || clazz == Short.class
+                || clazz == Integer.class
+                || clazz == Long.class
+                || clazz == Float.class
+                || clazz == Double.class
+                || clazz == String.class
+                || Number.class.isAssignableFrom(clazz);
     }
 }

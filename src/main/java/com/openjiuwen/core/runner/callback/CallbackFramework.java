@@ -5,6 +5,10 @@ package com.openjiuwen.core.runner.callback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -18,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -183,6 +189,27 @@ public class CallbackFramework {
                                   Function<Map<String, Object>, Object> callback,
                                   String callbackName) {
         return register(event, callback, 0, callbackName);
+    }
+
+    /**
+     * Synchronous registration method for decorator / initialization use.
+     * Identical to {@link #register} but explicitly named for use outside async contexts.
+     */
+    public CallbackInfo registerSync(String event,
+                                      Function<Map<String, Object>, Object> callback,
+                                      int priority,
+                                      boolean once,
+                                      String namespace,
+                                      Set<String> tags,
+                                      List<EventFilter> eventFilters,
+                                      Consumer<ChainContext> rollbackHandler,
+                                      Function<CallbackChain.ExceptionContext, Object> errorHandler,
+                                      int maxRetries,
+                                      double retryDelay,
+                                      Double timeout,
+                                      String callbackName) {
+        return register(event, callback, priority, once, namespace, tags, eventFilters,
+                rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName);
     }
 
     /**
@@ -638,6 +665,115 @@ public class CallbackFramework {
         return allResults.iterator();
     }
 
+    /**
+     * Trigger an event after a delay.
+     *
+     * @param event         Event name to trigger
+     * @param delaySeconds  Delay in seconds before triggering
+     * @param args          Positional arguments for callbacks
+     * @param kwargs        Keyword arguments for callbacks
+     * @return ScheduledFuture that can be cancelled; its result is the callback result list
+     */
+    public ScheduledFuture<List<Object>> triggerDelayed(String event, double delaySeconds,
+                                                         Object[] args, Map<String, Object> kwargs) {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        long delayMillis = (long) (delaySeconds * 1000);
+        return scheduler.schedule(() -> {
+            try {
+                return trigger(event, args, kwargs);
+            } finally {
+                scheduler.shutdown();
+            }
+        }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Trigger event and aggregate results from all callbacks as an iterator.
+     * <p>
+     * If a callback returns an {@link Iterable} or {@link Iterator}, its items are
+     * individually yielded; otherwise the single result is yielded.
+     *
+     * @param event  Event name to trigger
+     * @param args   Positional arguments for callbacks
+     * @param kwargs Keyword arguments for callbacks
+     * @return Iterator of individual results
+     */
+    public Iterator<Object> triggerGenerator(String event, Object[] args, Map<String, Object> kwargs) {
+        List<Object> aggregated = new ArrayList<>();
+
+        if (args == null) args = new Object[0];
+        if (kwargs == null) kwargs = new HashMap<>();
+
+        executeHooks(event, HookType.BEFORE, args, kwargs);
+
+        List<CallbackInfo> eventCallbacks = callbacks.getOrDefault(event, Collections.emptyList());
+
+        for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
+            if (!callbackInfo.isEnabled()) {
+                continue;
+            }
+
+            try {
+                FilterResult filterResult = applyFilters(event, callbackInfo, args, kwargs);
+
+                if (filterResult.getAction() == FilterAction.STOP) {
+                    break;
+                } else if (filterResult.getAction() == FilterAction.SKIP) {
+                    continue;
+                }
+
+                Object[] finalArgs = filterResult.getModifiedArgs() != null ? filterResult.getModifiedArgs() : args;
+                Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
+                        ? filterResult.getModifiedKwargs() : kwargs;
+
+                Map<String, Object> callbackKwargs = new HashMap<>(finalKwargs);
+                callbackKwargs.put("_args", finalArgs);
+
+                long startTime = System.nanoTime();
+                Object result = callbackInfo.getCallback().apply(callbackKwargs);
+                double executionTime = (System.nanoTime() - startTime) / 1_000_000_000.0;
+
+                if (enableMetrics) {
+                    String key = event + ":" + callbackInfo.getCallbackDisplayName();
+                    metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(executionTime, false);
+                }
+
+                // Flatten Iterable/Iterator results
+                if (result instanceof Iterable<?> iterable) {
+                    for (Object item : iterable) {
+                        aggregated.add(item);
+                    }
+                } else if (result instanceof Iterator<?> iter) {
+                    while (iter.hasNext()) {
+                        aggregated.add(iter.next());
+                    }
+                } else if (result != null) {
+                    aggregated.add(result);
+                }
+
+                if (callbackInfo.isOnce()) {
+                    callbackInfo.setEnabled(false);
+                }
+
+            } catch (Exception e) {
+                if (enableMetrics) {
+                    String key = event + ":" + callbackInfo.getCallbackDisplayName();
+                    metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(0.0, true);
+                }
+                if (enableLogging) {
+                    log.error("Callback {} failed in triggerGenerator: {}",
+                            callbackInfo.getCallbackDisplayName(), e.getMessage(), e);
+                }
+            }
+        }
+
+        Map<String, Object> afterKwargs = new HashMap<>(kwargs);
+        afterKwargs.put("_results", aggregated);
+        executeHooks(event, HookType.AFTER, args, afterKwargs);
+
+        return aggregated.iterator();
+    }
+
     // ========== Filters ==========
 
     /**
@@ -872,6 +1008,53 @@ public class CallbackFramework {
         }
     }
 
+    // ========== State Persistence ==========
+
+    /**
+     * Save framework state (metadata only, not callback functions) to a JSON file.
+     *
+     * @param filepath Path to the output file
+     */
+    public void saveState(String filepath) {
+        Map<String, Object> state = new HashMap<>();
+
+        // Callback metadata
+        Map<String, List<Map<String, Object>>> callbackState = new HashMap<>();
+        for (Map.Entry<String, List<CallbackInfo>> entry : callbacks.entrySet()) {
+            List<Map<String, Object>> infos = new ArrayList<>();
+            for (CallbackInfo ci : entry.getValue()) {
+                Map<String, Object> info = new HashMap<>();
+                info.put("name", ci.getCallbackDisplayName());
+                info.put("priority", ci.getPriority());
+                info.put("namespace", ci.getNamespace());
+                info.put("tags", new ArrayList<>(ci.getTags()));
+                info.put("enabled", ci.isEnabled());
+                infos.add(info);
+            }
+            callbackState.put(entry.getKey(), infos);
+        }
+        state.put("callbacks", callbackState);
+
+        // Metrics
+        Map<String, Map<String, Object>> metricsState = new HashMap<>();
+        for (Map.Entry<String, CallbackMetrics> entry : metrics.entrySet()) {
+            metricsState.put(entry.getKey(), entry.getValue().toMap());
+        }
+        state.put("metrics", metricsState);
+
+        // History
+        synchronized (eventHistory) {
+            state.put("history", new ArrayList<>(eventHistory));
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.writerWithDefaultPrettyPrinter().writeValue(new File(filepath), state);
+        } catch (IOException e) {
+            log.error("Failed to save state to {}: {}", filepath, e.getMessage(), e);
+        }
+    }
+
     // ========== Queries ==========
 
     /**
@@ -938,6 +1121,302 @@ public class CallbackFramework {
         stats.put("history_size", eventHistory.size());
         stats.put("metrics_collected", metrics.size());
         return stats;
+    }
+
+    // ========== Decorator-style DSL ==========
+    // These methods mirror Python's AsyncCallbackFramework decorator API:
+    // on(), trigger_on_call(), emits(), emits_stream(), emit_around(), transform_io()
+
+    /**
+     * Register a callback via the DSL style (mirrors Python {@code @framework.on(event)}).
+     * <p>
+     * Returns the registered {@link CallbackInfo} so callers can hold a reference.
+     *
+     * @param event    Event name to listen for
+     * @param callback Callback function
+     * @return The registered CallbackInfo
+     */
+    public CallbackInfo on(String event, Function<Map<String, Object>, Object> callback, String callbackName) {
+        return register(event, callback, 0, callbackName);
+    }
+
+    /**
+     * Full-parameter DSL registration (mirrors Python {@code @framework.on(event, priority=..., ...)}).
+     */
+    public CallbackInfo on(String event,
+                           Function<Map<String, Object>, Object> callback,
+                           int priority,
+                           boolean once,
+                           String namespace,
+                           Set<String> tags,
+                           List<EventFilter> eventFilters,
+                           Consumer<ChainContext> rollbackHandler,
+                           Function<CallbackChain.ExceptionContext, Object> errorHandler,
+                           int maxRetries,
+                           double retryDelay,
+                           Double timeout,
+                           String callbackName) {
+        return register(event, callback, priority, once, namespace, tags, eventFilters,
+                rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName);
+    }
+
+    /**
+     * Wrap a function so that it triggers an event when called (mirrors Python {@code @framework.trigger_on_call(event)}).
+     * <p>
+     * Returns a new function that:
+     * <ol>
+     *   <li>Triggers the event (with args if {@code passArgs} is true)</li>
+     *   <li>Invokes the original function</li>
+     *   <li>Optionally triggers the event again with the result</li>
+     * </ol>
+     *
+     * @param event      Event name to trigger
+     * @param wrapped    The function to wrap
+     * @param passResult Whether to trigger event again with the result
+     * @param passArgs   Whether to pass function arguments to the event
+     * @return Wrapped function
+     */
+    public Function<Map<String, Object>, Object> triggerOnCall(
+            String event,
+            Function<Map<String, Object>, Object> wrapped,
+            boolean passResult,
+            boolean passArgs) {
+        return kwargs -> {
+            if (passArgs) {
+                trigger(event, (Object[]) kwargs.get("_args"), kwargs);
+            } else {
+                trigger(event);
+            }
+
+            Object result = wrapped.apply(kwargs);
+
+            if (passResult) {
+                Map<String, Object> resultKwargs = new HashMap<>(kwargs);
+                resultKwargs.put("result", result);
+                trigger(event, (Object[]) kwargs.get("_args"), resultKwargs);
+            }
+
+            return result;
+        };
+    }
+
+    /**
+     * Wrap a function so that it triggers an event with the result after execution
+     * (mirrors Python {@code @framework.emits(event)}).
+     *
+     * @param event      Event name to trigger after execution
+     * @param wrapped    The function to wrap
+     * @param resultKey  Keyword argument name for the result (default: "result")
+     * @param includeArgs Whether to include original args in event
+     * @return Wrapped function
+     */
+    public Function<Map<String, Object>, Object> emits(
+            String event,
+            Function<Map<String, Object>, Object> wrapped,
+            String resultKey,
+            boolean includeArgs) {
+        return kwargs -> {
+            Object result = wrapped.apply(kwargs);
+
+            Map<String, Object> eventKwargs = new HashMap<>();
+            eventKwargs.put(resultKey, result);
+            if (includeArgs) {
+                eventKwargs.putAll(kwargs);
+                eventKwargs.put(resultKey, result);
+            }
+
+            Object[] args = includeArgs ? (Object[]) kwargs.get("_args") : new Object[0];
+            trigger(event, args, eventKwargs);
+
+            return result;
+        };
+    }
+
+    /**
+     * Wrap an iterator-producing function so that each yielded item triggers an event
+     * (mirrors Python {@code @framework.emits_stream(event)}).
+     *
+     * @param event   Event name to trigger for each item
+     * @param wrapped Function that returns an Iterator
+     * @param itemKey Keyword argument name for the yielded item (default: "item")
+     * @return Wrapped function that returns an Iterator with event triggers
+     */
+    @SuppressWarnings("unchecked")
+    public Function<Map<String, Object>, Object> emitsStream(
+            String event,
+            Function<Map<String, Object>, Object> wrapped,
+            String itemKey) {
+        return kwargs -> {
+            Object rawResult = wrapped.apply(kwargs);
+            if (!(rawResult instanceof Iterator<?> || rawResult instanceof Iterable<?>)) {
+                throw new IllegalStateException(
+                        "emitsStream can only wrap functions returning Iterator/Iterable, got "
+                                + (rawResult == null ? "null" : rawResult.getClass().getName()));
+            }
+            Iterator<?> source;
+            if (rawResult instanceof Iterable<?> iterable) {
+                source = iterable.iterator();
+            } else {
+                source = (Iterator<?>) rawResult;
+            }
+
+            List<Object> collected = new ArrayList<>();
+            while (source.hasNext()) {
+                Object item = source.next();
+                Map<String, Object> eventKwargs = new HashMap<>();
+                eventKwargs.put(itemKey, item);
+                trigger(event, new Object[0], eventKwargs);
+                collected.add(item);
+            }
+            return collected.iterator();
+        };
+    }
+
+    /**
+     * Wrap a function with before/after/error events (mirrors Python {@code @framework.emit_around(before, after)}).
+     *
+     * @param beforeEvent  Event to trigger before execution
+     * @param afterEvent   Event to trigger after successful execution
+     * @param wrapped      The function to wrap
+     * @param passArgs     Whether to pass function arguments to events
+     * @param passResult   Whether to pass result to afterEvent
+     * @param onErrorEvent Optional event to trigger on error (null to skip)
+     * @return Wrapped function
+     */
+    public Function<Map<String, Object>, Object> emitAround(
+            String beforeEvent,
+            String afterEvent,
+            Function<Map<String, Object>, Object> wrapped,
+            boolean passArgs,
+            boolean passResult,
+            String onErrorEvent) {
+        return kwargs -> {
+            Object[] args = kwargs.get("_args") instanceof Object[] ? (Object[]) kwargs.get("_args") : new Object[0];
+
+            // Before event
+            if (passArgs) {
+                trigger(beforeEvent, args, kwargs);
+            } else {
+                trigger(beforeEvent);
+            }
+
+            try {
+                Object result = wrapped.apply(kwargs);
+
+                // After event
+                if (passResult) {
+                    Map<String, Object> afterKwargs = new HashMap<>(kwargs);
+                    afterKwargs.put("result", result);
+                    if (passArgs) {
+                        trigger(afterEvent, args, afterKwargs);
+                    } else {
+                        Map<String, Object> resultOnly = new HashMap<>();
+                        resultOnly.put("result", result);
+                        trigger(afterEvent, new Object[0], resultOnly);
+                    }
+                } else {
+                    if (passArgs) {
+                        trigger(afterEvent, args, kwargs);
+                    } else {
+                        trigger(afterEvent);
+                    }
+                }
+
+                return result;
+
+            } catch (Exception e) {
+                if (onErrorEvent != null) {
+                    Map<String, Object> errorKwargs = new HashMap<>(kwargs);
+                    errorKwargs.put("error", e);
+                    if (passArgs) {
+                        trigger(onErrorEvent, args, errorKwargs);
+                    } else {
+                        Map<String, Object> errOnly = new HashMap<>();
+                        errOnly.put("error", e);
+                        trigger(onErrorEvent, new Object[0], errOnly);
+                    }
+                }
+                throw e;
+            }
+        };
+    }
+
+    /**
+     * Wrap a function with input/output transformation via direct callables
+     * (mirrors Python {@code @framework.transform_io(input_transform=..., output_transform=...)}).
+     *
+     * @param wrapped         The function to wrap
+     * @param inputTransform  Optional input transform: takes kwargs, returns modified kwargs (null to skip)
+     * @param outputTransform Optional output transform: takes result, returns modified result (null to skip)
+     * @return Wrapped function with I/O transformation
+     */
+    public Function<Map<String, Object>, Object> transformIo(
+            Function<Map<String, Object>, Object> wrapped,
+            Function<Map<String, Object>, Map<String, Object>> inputTransform,
+            Function<Object, Object> outputTransform) {
+        return kwargs -> {
+            Map<String, Object> finalKwargs = kwargs;
+            if (inputTransform != null) {
+                finalKwargs = inputTransform.apply(kwargs);
+            }
+
+            Object result = wrapped.apply(finalKwargs);
+
+            if (outputTransform != null) {
+                result = outputTransform.apply(result);
+            }
+            return result;
+        };
+    }
+
+    /**
+     * Wrap a function with input/output transformation via event callbacks
+     * (mirrors Python {@code @framework.transform_io(input_event=..., output_event=...)}).
+     * <p>
+     * The last callback result from inputEvent is used as the new kwargs.
+     * The last callback result from outputEvent is used as the transformed output.
+     *
+     * @param wrapped     The function to wrap
+     * @param inputEvent  Event name for input transform (null to skip)
+     * @param outputEvent Event name for output transform (null to skip)
+     * @param resultKey   Keyword for output event payload (default: "result")
+     * @return Wrapped function with event-driven I/O transformation
+     */
+    @SuppressWarnings("unchecked")
+    public Function<Map<String, Object>, Object> transformIoByEvents(
+            Function<Map<String, Object>, Object> wrapped,
+            String inputEvent,
+            String outputEvent,
+            String resultKey) {
+        return kwargs -> {
+            Map<String, Object> finalKwargs = kwargs;
+
+            // Input transform via event
+            if (inputEvent != null) {
+                Object[] args = kwargs.get("_args") instanceof Object[] ? (Object[]) kwargs.get("_args") : new Object[0];
+                List<Object> results = trigger(inputEvent, args, kwargs);
+                if (!results.isEmpty()) {
+                    Object last = results.get(results.size() - 1);
+                    if (last instanceof Map<?, ?>) {
+                        finalKwargs = (Map<String, Object>) last;
+                    }
+                }
+            }
+
+            Object result = wrapped.apply(finalKwargs);
+
+            // Output transform via event
+            if (outputEvent != null) {
+                Map<String, Object> outKwargs = new HashMap<>();
+                outKwargs.put(resultKey, result);
+                List<Object> results = trigger(outputEvent, new Object[0], outKwargs);
+                if (!results.isEmpty()) {
+                    result = results.get(results.size() - 1);
+                }
+            }
+
+            return result;
+        };
     }
 
     // ========== Internal ==========

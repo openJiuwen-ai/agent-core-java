@@ -72,4 +72,22 @@ public class MessageSummaryOffloaderConfig {
      * User-supplied prompt for the summary model.
      */
     private String customizedSummaryPrompt;
+
+    /**
+     * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
+     */
+    public void validate() {
+        if (messagesThreshold != null && messagesThreshold <= 0) {
+            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
+        }
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+        }
+        if (largeMessageThreshold <= 0) {
+            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
+        }
+        if (messagesToKeep != null && messagesToKeep <= 0) {
+            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+    }
 }

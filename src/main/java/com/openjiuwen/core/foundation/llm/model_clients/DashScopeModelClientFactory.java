@@ -19,6 +19,6 @@ public class DashScopeModelClientFactory implements Model.ModelClientFactory {
 
     @Override
     public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
-        return new OpenAiCompatibleModelClient(modelConfig, clientConfig);
+        return new DashScopeModelClient(modelConfig, clientConfig);
     }
 }

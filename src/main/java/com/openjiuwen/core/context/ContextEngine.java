@@ -83,6 +83,7 @@ public class ContextEngine {
 
     public ContextEngine(ContextEngineConfig config) {
         this.config = config != null ? config : ContextEngineConfig.builder().build();
+        this.config.validate();
     }
 
     // ==================================================================
@@ -223,8 +224,8 @@ public class ContextEngine {
             String processedId = processContextId(ctxId);
             String fullId = sessionId + "_" + processedId;
             ModelContext context = contextPool.get(fullId);
-            if (context instanceof SessionModelContext smc) {
-                states.put(processedId, smc.saveState());
+            if (context instanceof StatefulContext stateful) {
+                states.put(processedId, stateful.saveState());
             }
         }
 
@@ -323,7 +324,7 @@ public class ContextEngine {
             return;
         }
 
-        if (!(context instanceof SessionModelContext smc)) {
+        if (!(context instanceof StatefulContext stateful)) {
             return;
         }
 
@@ -336,7 +337,7 @@ public class ContextEngine {
             states.put(contextId, ctxState);
         }
 
-        smc.loadState(states);
+        stateful.loadState(states);
     }
 
     private static void saveStateToSession(Session session, Map<String, Object> states) {

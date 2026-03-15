@@ -11,14 +11,20 @@ import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DMessageType;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 
 /**
  * MQ-backed remote client.
  */
 public class MqRemoteClient implements RemoteClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqRemoteClient.class);
 
     private final RemoteClientConfig config;
     private MessageQueueBase mq;
@@ -55,6 +61,10 @@ public class MqRemoteClient implements RemoteClient {
         try {
             mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, false, effectiveTimeout));
             return collector.result(effectiveTimeout);
+        } catch (CancellationException e) {
+            logger.info("[MqRemoteClient] invoke {} cancelled, sending STOP", messageId);
+            sendStopMessage(messageId);
+            throw e;
         } finally {
             replySubscription.unregisterCollector(messageId, config.getId(), null);
         }
@@ -67,8 +77,36 @@ public class MqRemoteClient implements RemoteClient {
         double effectiveTimeout = timeoutSeconds != null ? timeoutSeconds
                 : RunnerConfig.getRunnerConfig().getDistributedConfig().getRequestTimeout();
         ResponseCollector collector = replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
-        mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, true, effectiveTimeout));
-        return collector.stream(effectiveTimeout);
+        try {
+            mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, true, effectiveTimeout));
+            return collector.stream(effectiveTimeout);
+        } catch (CancellationException e) {
+            logger.info("[MqRemoteClient] stream {} cancelled, sending STOP", messageId);
+            sendStopMessage(messageId);
+            throw e;
+        }
+    }
+
+    /**
+     * Send a STOP message to cancel an in-flight request.
+     * Messages contain an expiration time, so STOP is only needed when closed early
+     * (not on timeout).
+     */
+    private void sendStopMessage(String messageId) {
+        try {
+            DmqRequestMessage stopMsg = new DmqRequestMessage();
+            stopMsg.setType(DMessageType.STOP);
+            stopMsg.setMessageId(messageId);
+            stopMsg.setSenderId(replySubscription.getTopic());
+            stopMsg.setReceiverId(config.getId());
+            stopMsg.setBody(Map.of());
+            double requestTimeout = RunnerConfig.getRunnerConfig().getDistributedConfig().getRequestTimeout();
+            stopMsg.setExpireAt((System.currentTimeMillis() / 1000.0) + requestTimeout);
+            mq.produceMessage(config.getTopic(), stopMsg);
+            logger.info("[MqRemoteClient] Sent STOP message for {}", messageId);
+        } catch (Exception e) {
+            logger.error("[MqRemoteClient] Failed to send STOP message: {}", e.getMessage(), e);
+        }
     }
 
     private void ensureStarted() {

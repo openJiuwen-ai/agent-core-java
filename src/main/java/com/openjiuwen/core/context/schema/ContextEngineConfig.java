@@ -22,19 +22,19 @@ public class ContextEngineConfig {
 
     /**
      * Maximum number of messages retained in the context message buffer.
-     * {@code null} means unlimited.
+     * {@code null} means unlimited. Must be > 0 if set.
      */
     private Integer maxContextMessageNum;
 
     /**
      * Default window size (number of messages) when building a context window.
-     * {@code null} means no default limit.
+     * {@code null} means no default limit. Must be > 0 if set.
      */
     private Integer defaultWindowMessageNum;
 
     /**
      * Default number of dialogue rounds to keep in the context window.
-     * {@code null} means no round-based truncation by default.
+     * {@code null} means no round-based truncation by default. Must be > 0 if set.
      */
     private Integer defaultWindowRoundNum;
 
@@ -49,4 +49,21 @@ public class ContextEngineConfig {
      */
     @Builder.Default
     private boolean enableReload = false;
+
+    /**
+     * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
+     *
+     * @throws IllegalArgumentException if any constraint is violated
+     */
+    public void validate() {
+        if (maxContextMessageNum != null && maxContextMessageNum <= 0) {
+            throw new IllegalArgumentException("maxContextMessageNum must be > 0, got " + maxContextMessageNum);
+        }
+        if (defaultWindowMessageNum != null && defaultWindowMessageNum <= 0) {
+            throw new IllegalArgumentException("defaultWindowMessageNum must be > 0, got " + defaultWindowMessageNum);
+        }
+        if (defaultWindowRoundNum != null && defaultWindowRoundNum <= 0) {
+            throw new IllegalArgumentException("defaultWindowRoundNum must be > 0, got " + defaultWindowRoundNum);
+        }
+    }
 }

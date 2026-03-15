@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.OffloadCapableContext;
+import com.openjiuwen.core.context.StatefulContext;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.context.token.TokenCounter;
@@ -30,7 +32,7 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code SessionModelContext} from {@code context_engine/context/context.py}.
  */
-public class SessionModelContext extends ModelContext {
+public class SessionModelContext extends ModelContext implements StatefulContext, OffloadCapableContext {
 
     private static final String RELOADER_SYSTEM_PROMPT = """
             You may see offloaded content markers in your context: [[OFFLOAD: handle=<id>, type=<type>]].
@@ -171,7 +173,8 @@ public class SessionModelContext extends ModelContext {
             List<BaseMessage> systemMessages,
             List<ToolInfo> tools,
             Integer windowSize,
-            Integer dialogueRound) {
+            Integer dialogueRound,
+            Map<String, Object> kwargs) {
 
         if (windowSize != null && windowSize <= 0) {
             throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
@@ -195,6 +198,9 @@ public class SessionModelContext extends ModelContext {
                 .tools(tools != null ? tools : new ArrayList<>())
                 .build();
 
+        Map<String, Object> effectiveKwargs = new HashMap<>(kwargs != null ? kwargs : Map.of());
+        effectiveKwargs.put("window_size", windowSize);
+
         for (ContextProcessor processor : processors) {
             try {
                 if (processor.triggerGetContextWindow(this, window)) {
@@ -215,7 +221,8 @@ public class SessionModelContext extends ModelContext {
 
         validateAndFixContextWindow(window);
         if (kvCacheManager != null) {
-            kvCacheManager.release(window);
+            Object model = effectiveKwargs.get("model");
+            kvCacheManager.release(window, model);
         }
         window.setStatistic(statContextWindow(window));
         return window;

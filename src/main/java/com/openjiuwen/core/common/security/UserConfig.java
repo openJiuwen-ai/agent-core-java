@@ -26,7 +26,7 @@ public final class UserConfig {
     private static volatile UserConfig instance;
     private static volatile Path configPath;
 
-    private final boolean sensitive;
+    private volatile boolean sensitive;
     private volatile List<String> sensitivePaths;
     private final Properties properties;
 
@@ -77,7 +77,21 @@ public final class UserConfig {
         return getConfig().getSensitivePathsList();
     }
 
-    private List<String> getSensitivePathsList() {
+    /**
+     * Set the is_sensitive flag at runtime.
+     *
+     * @param isSensitive whether sensitivity checking should be enabled
+     */
+    public static void setSensitive(boolean isSensitive) {
+        getConfig().sensitive = isSensitive;
+    }
+
+    /**
+     * Get the resolved list of sensitive paths (lazy-initialized).
+     *
+     * @return an immutable copy of the sensitive paths
+     */
+    public List<String> getSensitivePathsList() {
         if (sensitivePaths == null) {
             synchronized (this) {
                 if (sensitivePaths == null) {

@@ -10,7 +10,12 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.sysop.BaseOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -105,6 +110,10 @@ public final class OperationRegistry {
 
     /**
      * Ensure built-in operations for the given mode are discovered and registered.
+     * <p>
+     * First registers explicitly known built-in classes, then performs dynamic package
+     * scanning to discover any additional {@link Operation}-annotated classes, mirroring
+     * Python's {@code _discover_package()} behavior.
      */
     @SuppressWarnings("unchecked")
     private static synchronized void loadBuiltInOperations(OperationMode mode) {
@@ -114,32 +123,118 @@ public final class OperationRegistry {
 
         REPOSITORY.put(mode, new ConcurrentHashMap<>());
 
-        // Explicitly register built-in operation classes for the given mode
-        // This replaces Python's dynamic pkgutil.walk_packages discovery
+        // 1. Explicitly register known built-in operation classes
         List<String> classNames = getBuiltInClassNames(mode);
         for (String className : classNames) {
-            try {
-                Class<?> cls = Class.forName(className);
-                if (BaseOperation.class.isAssignableFrom(cls)) {
-                    Operation annotation = cls.getAnnotation(Operation.class);
-                    if (annotation != null && annotation.mode() == mode) {
-                        REPOSITORY.get(mode).put(
-                                annotation.name(),
-                                new OperationDef(
-                                        (Class<? extends BaseOperation>) cls,
-                                        annotation.name(),
-                                        annotation.mode(),
-                                        annotation.description()
-                                ));
+            registerClassByName(className, mode);
+        }
+
+        // 2. Dynamic package scanning: discover additional @Operation-annotated classes
+        // Mirrors Python's _discover_package("openjiuwen.core.sys_operation.{mode.value}")
+        String packageName = "com.openjiuwen.core.sysop." + mode.getValue();
+        discoverPackage(packageName, mode);
+    }
+
+    /**
+     * Discover and register operations in a package via {@link Operation} annotations.
+     * <p>
+     * Mirrors Python's {@code _discover_package(package_name)} — scans the given package
+     * for classes annotated with {@code @Operation} and registers them automatically.
+     *
+     * @param packageName the fully-qualified package name to scan
+     * @param mode        the operation mode to filter by
+     */
+    @SuppressWarnings("unchecked")
+    private static void discoverPackage(String packageName, OperationMode mode) {
+        String packagePath = packageName.replace('.', '/');
+        try {
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            if (classLoader == null) {
+                classLoader = OperationRegistry.class.getClassLoader();
+            }
+            Enumeration<URL> resources = classLoader.getResources(packagePath);
+            while (resources.hasMoreElements()) {
+                URL resource = resources.nextElement();
+                if ("file".equals(resource.getProtocol())) {
+                    scanDirectoryForClasses(new java.io.File(resource.toURI()), packageName, mode);
+                } else if ("jar".equals(resource.getProtocol())) {
+                    scanJarForClasses(resource, packagePath, packageName, mode);
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("Failed to discover package " + packageName + ": " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void scanDirectoryForClasses(java.io.File directory, String packageName, OperationMode mode) {
+        if (!directory.exists() || !directory.isDirectory()) {
+            return;
+        }
+        java.io.File[] files = directory.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (java.io.File file : files) {
+            if (file.isDirectory()) {
+                scanDirectoryForClasses(file, packageName + "." + file.getName(), mode);
+            } else if (file.getName().endsWith(".class")) {
+                String className = packageName + "." + file.getName().replace(".class", "");
+                registerClassByName(className, mode);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void scanJarForClasses(URL resource, String packagePath,
+                                          String packageName, OperationMode mode) {
+        try {
+            String jarPath = resource.getPath();
+            if (jarPath.contains("!")) {
+                jarPath = jarPath.substring(0, jarPath.indexOf("!"));
+            }
+            if (jarPath.startsWith("file:")) {
+                jarPath = jarPath.substring(5);
+            }
+            try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(jarPath)) {
+                Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
+                while (entries.hasMoreElements()) {
+                    java.util.jar.JarEntry entry = entries.nextElement();
+                    String entryName = entry.getName();
+                    if (entryName.startsWith(packagePath) && entryName.endsWith(".class")) {
+                        String className = entryName.replace('/', '.').replace(".class", "");
+                        registerClassByName(className, mode);
                     }
                 }
-            } catch (ClassNotFoundException e) {
-                logger.warning("Built-in operation class not found: " + className);
-            } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR,
-                        "process", "register",
-                        "error_msg", "Failed to load built-in operation: " + className + " - " + e.getMessage());
             }
+        } catch (Exception e) {
+            logger.warning("Failed to scan JAR for operations: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void registerClassByName(String className, OperationMode mode) {
+        try {
+            Class<?> cls = Class.forName(className);
+            if (BaseOperation.class.isAssignableFrom(cls)) {
+                Operation annotation = cls.getAnnotation(Operation.class);
+                if (annotation != null && annotation.mode() == mode) {
+                    REPOSITORY.get(mode).putIfAbsent(
+                            annotation.name(),
+                            new OperationDef(
+                                    (Class<? extends BaseOperation>) cls,
+                                    annotation.name(),
+                                    annotation.mode(),
+                                    annotation.description()
+                            ));
+                }
+            }
+        } catch (ClassNotFoundException e) {
+            logger.warning("Operation class not found: " + className);
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR,
+                    "process", "register",
+                    "error_msg", "Failed to load operation: " + className + " - " + e.getMessage());
         }
     }
 

@@ -305,7 +305,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
         return switch (event.getType()) {
             case STDOUT, STDERR -> {
                 ExecuteCodeChunkData chunkData = ExecuteCodeChunkData.builder()
-                        .text(event.getData())
+                        .text(event.getDataAsString())
                         .type(event.getType().getValue())
                         .chunkIndex(chunkIndex)
                         .build();
@@ -315,13 +315,11 @@ public class LocalCodeOperation extends BaseCodeOperation {
                         .data(chunkData)
                         .build();
             }
-            case ERROR -> buildCodeStreamErrorResult("execution receive error: " + event.getData(),
+            case ERROR -> buildCodeStreamErrorResult("execution receive error: " + event.getDataAsString(),
                     ExecuteCodeChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build());
             case EXIT -> {
-                int exitCode;
-                try {
-                    exitCode = Integer.parseInt(event.getData());
-                } catch (NumberFormatException e) {
+                Integer exitCode = event.getDataAsInt();
+                if (exitCode == null) {
                     exitCode = -1;
                 }
                 ExecuteCodeChunkData chunkData = ExecuteCodeChunkData.builder()

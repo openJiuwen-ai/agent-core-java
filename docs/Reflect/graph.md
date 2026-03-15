@@ -2,155 +2,162 @@
 
 ## 对照范围
 
-- Python 源码: `agent-core-python/openjiuwen/core/graph/**`
-- Java 源码: `agent-core-java/agent-core-java/src/main/java/com/openjiuwen/core/graph/**`
-- Python 统计口径: 模块内非 `_` 顶层类，以及这些类的主要公开/准公开方法；`TypedDict`、`dataclass` 采用“字段名即 API”方式统计。
-- Java 统计口径: `public` / `protected` 类型与方法；纯 DTO/Bean 的 getter、setter 不逐个机械展开，而以“字段 -> getter/setter”汇总。
-- 命名规则: 默认按 `snake_case -> camelCase` 对照；async / await 在 Java 侧通常落成同步 `Iterator`、阻塞队列或虚拟线程实现。
+- Python：`agent-core-python/openjiuwen/core/graph/**`
+- Java：`agent-core-java/agent-core-java/src/main/java/com/openjiuwen/core/graph/**`
+- 统计口径：
+  - Python 统计公开类、公开函数、公开方法；同时补充少量以下划线开头、但在 Java 中有直接对应生命周期方法的 helper。
+  - Java 统计 `public` 类型与 `public` 方法；对直接承接 Python underscore helper 的 `private/protected` 方法，在表中一并注明。
+- 对照分组：`core graph`、`pregel`、`store`、`stream_actor`、`visualization`
 
 ## 复核结论
 
-- Python `graph` 模块共复核 54 个类；Java `com.openjiuwen.core.graph` 及其子包共复核 50 个源码类。
-- Java 版主干能力已经覆盖 `core graph`、`pregel`、`store`、`stream_actor`、`visualization` 五个分组。
-- 差异主要分成三类:
-  1. 命名与语言适配: `snake_case -> camelCase`、`TypedDict/dataclass -> bean`、`async -> sync/virtual thread`。
-  2. 结构调整: `Branch`、`InnerPregelConfig`、`JsonSerializer` 等在 Java 中变成宿主类的嵌套类或被合并。
-  3. 真实缺口: compile 上下文透传、异步条件路由、`FIRST_EXCEPTION` 语义、LLM 流式输出回写、`png/svg` 导出、`PickleSerializer` 等。详见 `../FIXED/graph_fixed.md`。
+- Java 版 `graph` 主干 API 已基本覆盖 Python 版；第一轮文档里提到的 `compile(..., context)` 透传、`TaskExecutorPool.waitAll()` 的 `FIRST_EXCEPTION` 语义、`Vertex._post_stream()` 的 LLM 输出回写、`Drawable.to_mermaid_png/svg()` 都已经在 Java 中补齐。
+- 当前真实仍未完全对齐的点，主要只剩 4 类：
+  - 条件路由仍只支持同步 `Function<Object, Object>`，还没有 Python 的“任意 callable + 可选 `state` + async selector”能力。
+  - `Drawable` 还不能像 Python `_get_targets()` 一样从 `Literal[...]` 返回类型自动推导条件边目标。
+  - `Serializer` 的公开命名仍未与 Python `PickleSerializer` / `create_serializer("pickle")` 对齐。
+  - `Pregel.after_step` 仍只接受同步 `Consumer<PregelLoop>`，不能直接承载 Python 的 async callback。
+- 主要结构性适配已经完成：
+  - `AsyncAtomicNode` 合并进 Java `AtomicNode`
+  - `Branch`、`JsonSerializer` 等落为宿主类的嵌套类型
+  - `AsyncIterator` / `asyncio.Queue` 分别落为 `Iterator` / `BlockingQueue`
+  - `TypedDict` / `dataclass` 多数落为 Java bean / record
 
-## 状态说明
+## 包级映射
 
-- `完全映射`: Python API 与 Java API 语义基本一致。
-- `适配映射`: Java 有对位实现，但命名、宿主类位置或同步模型不同。
-- `部分映射`: Java 有主体实现，但仍存在可见能力差异或部分公开 API 未对齐。
-- `Python-only`: Python 有公开类型，Java 没有同位公开类型。
-- `Java-only`: Java 为桥接、类型系统或可用性额外增加的公开类型/方法。
-
-## 包级总览
-
-| Python 模块 | Java 包 | 状态 | 说明 |
+| Python 模块 | Java 对应位置 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| `openjiuwen.core.graph` | `com.openjiuwen.core.graph` | 部分映射 | 主图构建、执行包装器已齐，`compile(**kwargs)` / `context` 透传未齐。 |
-| `openjiuwen.core.graph.pregel` | `com.openjiuwen.core.graph.pregel` | 部分映射 | BSP 引擎主体齐全，异步 selector、async after-step 与 `FIRST_EXCEPTION` 语义仍有差异。 |
-| `openjiuwen.core.graph.store` | `com.openjiuwen.core.graph.store` | 部分映射 | 存储主流程齐，`PickleSerializer` 缺失。 |
-| `openjiuwen.core.graph.stream_actor` | `com.openjiuwen.core.graph.stream_actor` | 适配映射 | 流式 actor 主体齐，async 接口改为同步/阻塞式实现。 |
-| `openjiuwen.core.graph.visualization` | `com.openjiuwen.core.graph.visualization` | 部分映射 | Mermaid 文本生成已齐，`png/svg` 导出与自动目标推断能力未完全对齐。 |
+| `openjiuwen.core.graph` | `com.openjiuwen.core.graph` | 部分映射 | 核心图构建、编译、执行入口都在；`get_nodes()` 的返回类型与 Python 不同。 |
+| `openjiuwen.core.graph.pregel` | `com.openjiuwen.core.graph.pregel` | 部分映射 | BSP 主体已经齐；剩余差异集中在条件路由 callable/async 支持与 async hook。 |
+| `openjiuwen.core.graph.store` | `com.openjiuwen.core.graph.store` | 部分映射 | 状态存取主链已齐；`PickleSerializer` 的公开命名与工厂参数未对齐。 |
+| `openjiuwen.core.graph.stream_actor` | `com.openjiuwen.core.graph.stream_actor` | 适配映射 | Stream actor 主体已齐；Python 的异步生成器被 Java 的阻塞式 `Iterator`/队列实现替代。 |
+| `openjiuwen.core.graph.visualization` | `com.openjiuwen.core.graph.visualization` | 部分映射 | Mermaid 文本和 png/svg 导出都已齐；条件边目标自动推断仍弱于 Python。 |
 
-## 1. core graph
+## 命名映射约定
 
-| Python API | Java API | 方法映射 | 状态 | 说明 |
+- Python `snake_case` 在 Java 中通常转为 `camelCase`
+- Python 模块级函数通常落为 Java 静态 helper 或宿主类私有 helper
+- Python `async` API 在 Java 中通常转为同步方法、虚拟线程、`Iterator` 或 `BlockingQueue`
+- Python `TypedDict/dataclass` 在 Java 中通常转为 bean、record 或带 getter/setter 的实体类
+
+## 1. Core Graph
+
+| Python API | Java 对应 | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `AtomicNode` | `AtomicNode` | `atomic_invoke -> atomicInvoke`; `_atomic_invoke -> doAtomicInvoke` | 适配映射 | Python 同时存在同步 `AtomicNode` 与异步 `AsyncAtomicNode`；Java 合并为一个同步原子节点抽象。 |
-| `AsyncAtomicNode` | `AtomicNode` | `atomic_invoke -> atomicInvoke`; `_atomic_invoke -> doAtomicInvoke` | 适配映射 | Java 无独立异步原子节点类型。 |
-| `Executable` | `Executable` | `on_invoke -> onInvoke`; `on_stream -> onStream`; `on_collect -> onCollect`; `on_transform -> onTransform`; `skip_trace -> skipTrace`; `graph_invoker -> graphInvoker`; `post_commit -> postCommit`; `component_type -> componentType` | 完全映射 | 公开方法一一可对位。 |
-| `ExecutableGraph` | `ExecutableGraph` | `invoke -> invoke`; `stream -> stream`; `collect -> collect`; `transform -> transform`; `interrupt -> interrupt`; `_invoke -> doInvoke` | 适配映射 | 两边都保留了 `stream/collect/transform` 默认占位实现。 |
-| `Router` type alias | `Router` functional interface | Python callable / awaitable router -> Java `Function<Object, Object>` | 部分映射 | Java 不支持 async router；详见缺漏清单。 |
-| `Graph` | `Graph` | `start_node -> startNode`; `end_node -> endNode`; `add_node -> addNode`; `add_edge -> addEdge`; `add_conditional_edges -> addConditionalEdges`; `compile -> compile`; `get_nodes -> getNodes` | 部分映射 | Java 额外提供 `addNode(nodeId, node)` 重载，但没有 `compile(session, **kwargs)`。 |
-| `Branch` (`graph.py`) | `PregelGraph.Branch` | `condition -> getCondition()` | 适配映射 | Python 是顶层 dataclass，Java 是 `PregelGraph` 的静态嵌套类。 |
-| `PregelGraph` | `PregelGraph` | `start_node -> startNode`; `end_node -> endNode`; `add_node(wait_for_all=...) -> addNode(..., boolean)`; `add_edge -> addEdge`; `add_conditional_edges -> addConditionalEdges`; `compile -> compile`; `reset -> reset` | 部分映射 | Python `get_nodes()` 返回 `dict[str, Vertex]`；Java `getNodes()` 返回 `Map<String, Executable<?, ?>>`，并新增 `getVertex()` 作为补偿入口。 |
-| `CompiledGraph` | `CompiledGraph` | `_invoke -> doInvoke`; `stream -> stream`; `interrupt -> interrupt` | 适配映射 | `stream()` 与 `interrupt()` 两边当前都未形成完整能力；Java `stream()` 返回 `null`，Python 也仍是占位。 |
-| `GraphState` (`graph_state.py`) | `GraphNodeState` | `source_node_id -> getSourceNodeId/setSourceNodeId` | 适配映射 | Java 把 `TypedDict` 落成实体类，并额外补了 `merge()`。 |
-| `Vertex` | `Vertex` | `init -> init`; `__call__ -> call`; `_atomic_invoke -> doAtomicInvoke`; `stream_call -> streamCall`; `is_done -> isDone`; `should_handle_message -> shouldHandleMessage`; `reset -> reset` | 部分映射 | Python 的 `_pre/_post_*` 与 tracing helper 在 Java 中被内联为私有实现；此外 Java 版缺少 LLM 流式输出回写。 |
+| `_validate_session_and_state(session)` | `AtomicNode.validateSessionAndState(session)` | 模块级 helper -> 私有静态 helper | 完全映射 | Java 复用了同样的“校验 session/state 后提交组件状态”的入口。 |
+| `AtomicNode` | `AtomicNode` | `atomic_invoke -> atomicInvoke`; `_atomic_invoke -> doAtomicInvoke` | 适配映射 | Python 同时有 sync `AtomicNode` 与 async `AsyncAtomicNode`；Java 合并成单一抽象类。 |
+| `AsyncAtomicNode` | `AtomicNode` | `atomic_invoke -> atomicInvoke`; `_atomic_invoke -> doAtomicInvoke` | 适配映射 | Java 通过同步方法 + 虚拟线程语义承接。 |
+| `Executable` | `Executable` | `on_invoke -> onInvoke`; `on_stream -> onStream`; `on_collect -> onCollect`; `on_transform -> onTransform`; `skip_trace -> skipTrace`; `graph_invoker -> graphInvoker`; `post_commit -> postCommit`; `component_type -> componentType` | 完全映射 | 公开能力一一对位。 |
+| `ExecutableGraph` | `ExecutableGraph` | `invoke -> invoke`; `stream -> stream`; `collect -> collect`; `transform -> transform`; `interrupt -> interrupt`; `_invoke -> doInvoke` | 适配映射 | Java 把异步图执行包装成同步 `Iterator`/返回值；占位方法两边都仍保留。 |
+| `Router` type alias | `Router` | Python callable/awaitable -> Java `Function<Object, Object>` | 部分映射 | Java 只覆盖同步 `Function`，不支持 async router，也不接受所有 callable 对象。 |
+| `Graph` | `Graph` | `start_node -> startNode`; `end_node -> endNode`; `add_node -> addNode`; `add_edge -> addEdge`; `add_conditional_edges -> addConditionalEdges`; `compile -> compile`; `get_nodes -> getNodes` | 部分映射 | `compile(session, **kwargs)` 已对齐；`getNodes()` 返回的是 `Executable`，不是 Python 的 `Vertex` wrapper。 |
+| `Branch` (`graph.py`) | `PregelGraph.Branch` | `condition -> getCondition()` | 适配映射 | Python 顶层 dataclass 在 Java 中变成 `PregelGraph` 静态嵌套类。 |
+| `_get_callable_name(func)` | `PregelGraph.getCallableName(func)` | 模块级 helper -> 私有静态 helper | 完全映射 | 用于分支命名。 |
+| `PregelGraph` | `PregelGraph` | `start_node -> startNode`; `_validate_node_id -> validateNodeId`; `end_node -> endNode`; `add_node(wait_for_all=...) -> addNode(..., boolean)`; `get_nodes -> getNodes + getVertex`; `add_edge -> addEdge`; `add_conditional_edges -> addConditionalEdges`; `compile -> compile`; `_compile -> doCompile`; `reset -> reset` | 部分映射 | `compile(BaseSession, Map<String, Object>)` 已把 `kwargs["context"]` 传进 `Vertex.init()`；但 `getNodes()` 返回值仍与 Python 不同，所以额外补了 `getVertex()`。 |
+| `CompiledGraph` | `CompiledGraph` | `_invoke -> doInvoke`; `stream -> stream`; `interrupt -> interrupt` | 适配映射 | 两边的 `stream()` / `interrupt()` 当前都还是占位。Java `doInvoke()` 直接返回 `Pregel.run()` 的结果 map。 |
+| `GraphState` (`graph_state.py`) | `GraphNodeState` | `source_node_id -> getSourceNodeId/setSourceNodeId`; `merge -> merge`(Java only) | 适配映射 | Java 在 `source_node_id` 之外额外补了 `merge()` 便于节点状态合并。 |
+| `Vertex` | `Vertex` | `init -> init`; `__call__ -> call`; `_atomic_invoke -> doAtomicInvoke`; `call(config) -> doCall(config)`; `_pre_invoke/_post_invoke -> preInvoke/postInvoke`; `_pre_stream/_post_stream -> preStream/postStream`; `_process_chunk -> processChunk`; `_clear_interactive -> clearInteractive`; `stream_call -> streamCall`; `_stream_abilities -> streamAbilities`; `should_handle_message -> shouldHandleMessage`; `is_done -> isDone`; tracing helpers `__trace_* -> trace*`; `reset -> reset` | 部分映射 | Java 把 Python 的 `call(config)` 与 Pregel 入口 `__call__(state, config)` 拆成 public `call(GraphNodeState, Object)` + private `doCall(Object)`；`_post_stream()` 的 LLM 输出回写已补齐。 |
 
-## 2. pregel
+## 2. Pregel
 
-| Python API | Java API | 方法映射 | 状态 | 说明 |
+| Python API | Java 对应 | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `START/END/MAX_RECURSIVE_LIMIT/...` | `PregelConstants.*` | 常量同名映射 | 完全映射 | 常量集合与取值对齐。 |
-| `Interrupt` | `Interrupt` | `value -> getValue`; `__str__ -> toString` | 完全映射 | - |
-| `GraphInterrupt` | `GraphInterrupt` | `value -> getValue` | 完全映射 | Python 异常值对象在 Java 中保留。 |
-| `IRouter` | `IRouter` | `dispatch -> dispatch` | 适配映射 | Python 为 async `dispatch`，Java 为同步返回 `List<Message>`。 |
-| `Message` | `Message` | 构造参数 `sender/target/payload`; 字段 -> `getSender/getTarget/getPayload`; `__str__ -> toString` | 完全映射 | - |
+| `pregel.constants` | `PregelConstants` | `START/END/MAX_RECURSIVE_LIMIT/... -> PregelConstants.*` | 完全映射 | 关键常量都已对齐。 |
+| `Interrupt` | `Interrupt` | `value -> getValue`; `__init__ -> ctor` | 适配映射 | Java 额外实现了 `toString()`。 |
+| `GraphInterrupt` | `GraphInterrupt` | `value -> getValue`; `__init__ -> ctor` | 完全映射 | - |
+| `IRouter` | `IRouter` | `dispatch -> dispatch` | 适配映射 | Python 是 async interface，Java 是同步接口。 |
+| `Message` | `Message` | 构造参数 `sender/target/payload`; 字段 -> `getSender/getTarget/getPayload` | 完全映射 | Java 额外补了 `toString()`。 |
 | `TriggerMessage` | `TriggerMessage` | 同父类构造 | 完全映射 | - |
 | `BarrierMessage` | `BarrierMessage` | 同父类构造 | 完全映射 | - |
-| `PregelNode` | `PregelNode` | `name/func/routers -> getName/getFunc/getRouters` | 完全映射 | Java 用 getter 暴露 dataclass 字段。 |
+| `PregelNode` | `PregelNode` | `name/func/routers -> getName/getFunc/getRouters` | 完全映射 | dataclass -> getter。 |
 | `Channel` | `Channel` | `key -> getKey`; `node_name -> getNodeName`; `is_ready -> isReady`; `accept -> accept`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore` | 完全映射 | - |
 | `TriggerChannel` | `TriggerChannel` | `is_ready -> isReady`; `accept -> accept`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore` | 完全映射 | - |
-| `BarrierChannel` | `BarrierChannel` | `key -> getKey`; `node_name -> getNodeName`; `is_ready -> isReady`; `accept -> accept`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore` | 适配映射 | Python 的 `_make_router_key()` 在 Java 中被内部化。 |
-| `ChannelManager` | `ChannelManager` | `buffer_message -> bufferMessage`; `is_empty -> isEmpty`; `flush -> flush`; `get_ready_nodes -> getReadyNodes`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore` | 完全映射 | Java 额外公开了 `getBuffer()`。 |
-| `PregelConfig` | `PregelConfig` | `session_id/ns/recursion_limit -> getter/setter`; dict-style `get(key) -> get(key)` | 适配映射 | Java 把 `InnerPregelConfig` 合并进同一个类，并补了 `toMap()`。 |
-| `InnerPregelConfig` | `PregelConfig` | `create_inner_config -> PregelConfig.createInnerConfig` | 适配映射 | Java 没有独立 `InnerPregelConfig` 类型。 |
+| `BarrierChannel` | `BarrierChannel` | `key -> getKey`; `node_name -> getNodeName`; `is_ready -> isReady`; `accept -> accept`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore`; `_make_router_key -> makeRouterKey` | 完全映射 | Python 的静态 helper 在 Java 中是私有静态方法。 |
+| `ChannelManager` | `ChannelManager` | `buffer_message -> bufferMessage`; `is_empty -> isEmpty`; `flush -> flush`; `get_ready_nodes -> getReadyNodes`; `consume -> consume`; `snapshot -> snapshot`; `restore -> restore`; `buffer -> getBuffer` | 完全映射 | Java 额外公开了 `getBuffer()` 便于错误恢复和测试。 |
+| `PregelConfig` | `PregelConfig` | `session_id/ns/recursion_limit -> getter/setter`; `get(key) -> get(key)`; `to_map -> toMap` | 适配映射 | Python `TypedDict` 被 Java bean 承接。 |
+| `InnerPregelConfig` | `PregelConfig` | `parent_ns -> getParentNs/setParentNs`; `create_inner_config -> createInnerConfig` | 适配映射 | Java 把外部/内部配置合并到同一个类。 |
 | `DEFAULT_PREGEL_CONFIG` | `PregelConfig.DEFAULT` | 常量映射 | 完全映射 | - |
-| `create_inner_config(config)` | `PregelConfig.createInnerConfig(config)` | 顶层函数 -> 静态工厂 | 完全映射 | - |
-| `PregelBuilder` | `PregelBuilder` | `add_node -> addNode`; `add_edge -> addEdge`; `add_branch -> addBranch`; `build -> build` | 部分映射 | `selector` 仅支持同步 `Function<Object, Object>`。 |
+| `create_inner_config(config)` | `PregelConfig.createInnerConfig(config)` | 模块级函数 -> 静态工厂 | 完全映射 | - |
+| `PregelBuilder` | `PregelBuilder` | `add_node -> addNode`; `add_edge -> addEdge`; `add_branch -> addBranch`; `build -> build` | 部分映射 | builder 主体已齐；但 `addBranch()` 只能接受同步 `Function<Object, Object>`。 |
 | `StaticRouter` | `StaticRouter` | `dispatch -> dispatch` | 完全映射 | - |
-| `ConditionalRouter` | `ConditionalRouter` | `dispatch -> dispatch` | 部分映射 | Python 支持 sync/async selector，且会检查 `state` 参数；Java 仅 `selector.apply(null)`。 |
+| `SelectorProtocol` | `Function<Object, Object>` | Python protocol -> Java 函数式接口 | 部分映射 | Java 只有同步 `Function` 形态，没有 protocol/async 兼容层。 |
+| `ConditionalRouter` | `ConditionalRouter` | `dispatch -> dispatch` | 部分映射 | Python 会探测 `state` 参数并支持 coroutine；Java 固定 `selector.apply(null)`。 |
 | `BarrierRouter` | `BarrierRouter` | `dispatch -> dispatch` | 完全映射 | - |
-| `NodeTask` | `NodeTask` | `run -> call` | 适配映射 | Java 用 `Callable<Object>` 实现。 |
-| `TaskExecutorPool` | `TaskExecutorPool` | `submit -> submit`; `wait_all -> waitAll`; `cancel_all -> cancelAll`; `clear -> clear` | 部分映射 | Java 补了 `getSucceedMessages/getFailed`，但 `waitAll()` 未完全保留 Python 的 `FIRST_EXCEPTION` 取消语义。 |
-| `PregelLoop` | `PregelLoop` | `init -> init`; `run_step -> runStep` | 适配映射 | Python 的 `_is_resume/_save_state_on_error` 在 Java 中保留为私有 helper，语义总体一致。 |
-| `Pregel` | `Pregel` | `run -> run`; `nodes/channels/initial/store/after_step -> getter` | 部分映射 | Python `after_step` 可为 sync 或 async；Java 仅 `Consumer<PregelLoop>`。 |
+| `NodeTask` | `NodeTask` | `run -> call`; `kwargs` 组装逻辑 -> `buildArgs/acceptsParameter/findCallMethod/invokeFunc` | 适配映射 | Java 通过反射构造 `config/state` 入参，承接 Python 的 `inspect.signature(...)`。 |
+| `TaskExecutorPool` | `TaskExecutorPool` | `submit -> submit`; `wait_all -> waitAll`; `cancel_all -> cancelAll`; `clear -> clear`; `_commit_failure -> commitFailure`; `succeed_messages/failed -> getSucceedMessages/getFailed` | 完全映射 | `waitAll()` 已改为“首错触发 + 取消剩余任务”的语义。 |
+| `PregelLoop` | `PregelLoop` | `init -> init`; `run_step -> runStep`; `_run_step -> doRunStep`; `_save_state_on_error -> saveStateOnError`; `_is_resume -> isResume`; `step/config/active_nodes -> getter` | 部分映射 | 主体流程对齐；after-step callback 仍只能同步执行。 |
+| `Pregel` | `Pregel` | `run -> run`; `nodes/channels/initial/store/after_step -> getter` | 部分映射 | `run()` 的返回语义已与 Python 对齐；`after_step` 仍只有同步 `Consumer` 版本。 |
 
-## 3. store
+## 3. Store
 
-| Python API | Java API | 方法映射 | 状态 | 说明 |
+| Python API | Java 对应 | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `PendingNode` | `PendingNode` | `node_name/status/exception -> getNodeName/getStatus/getExceptions` | 适配映射 | Java 用 getter 暴露字段。 |
-| `GraphState` (`store.base`) | `GraphStoreState` | `ns/step/channel_values/pending_buffer/pending_node/node_version -> getter`; `create_state -> GraphStoreState.create` | 适配映射 | Java 重命名为 `GraphStoreState` 以避免与 `GraphNodeState` 冲突。 |
-| `Store` | `Store` | `get/save/delete -> get/save/delete` | 完全映射 | async -> 同步接口。 |
-| `GraphStore` | `GraphStore` | `get/save/delete -> get/save/delete` | 完全映射 | Java `get()` 返回 `Optional<GraphStoreState>`。 |
-| `InMemoryStore` | `InMemoryStore` | `get/save/delete -> get/save/delete` | 完全映射 | Python `_delete_ns_by_prefix()` 在 Java 中保留为私有 `deleteNsByPrefix()`。 |
-| `Serializer` | `Serializer` | `dumps_typed -> dumpsTyped`; `loads_typed -> loadsTyped`; `create_serializer -> Serializer.create` | 部分映射 | `pickle` 路径未对齐，Java 仅内建 JSON serializer。 |
-| `JsonSerializer` | `Serializer.JsonSerializer` | `dumps_typed -> dumpsTyped`; `loads_typed -> loadsTyped` | 适配映射 | Java 用嵌套类承载。 |
-| `PickleSerializer` | 无 | 无 | Python-only | Java 没有等价公开类型。 |
+| `PendingNode` | `PendingNode` | `node_name/status/exception -> getNodeName/getStatus/getExceptions` | 适配映射 | Java getter 使用复数 `getExceptions()`。 |
+| `GraphState` (`store/base.py`) | `GraphStoreState` | `ns/step/channel_values/pending_buffer/pending_node/node_version -> getter` | 适配映射 | Java 改名为 `GraphStoreState`，避免与 `GraphNodeState` 冲突。 |
+| `create_state(...)` | `GraphStoreState.create(...)` | 模块级工厂 -> 静态工厂 | 完全映射 | - |
+| `Store` | `Store` | `get/save/delete -> get/save/delete` | 适配映射 | Java 用同步接口和 `Optional<GraphStoreState>` 承接。 |
+| `GraphStore` | `GraphStore` | `get/save/delete -> get/save/delete` | 完全映射 | 装饰器语义对齐。 |
+| `InMemoryStore` | `InMemoryStore` | `get/save/delete -> get/save/delete`; `_delete_ns_by_prefix -> deleteNsByPrefix` | 完全映射 | Java 额外补了 `deepCopy(...)` 私有 helper。 |
+| `Serializer` | `Serializer` | `dumps_typed -> dumpsTyped`; `loads_typed -> loadsTyped` | 部分映射 | 抽象协议已齐；typed bytes 在 Java 中用 `TypedBytes` record 承载。 |
+| `JsonSerializer` | `Serializer.JsonSerializer` | `dumps_typed -> dumpsTyped`; `loads_typed -> loadsTyped` | 适配映射 | Python 是独立类，Java 是嵌套类。 |
+| `PickleSerializer` | `Serializer.JavaNativeSerializer` | `dumps_typed -> dumpsTyped`; `loads_typed -> loadsTyped` | 部分映射 | 序列化机制相近，但公开名字、类型标签和工厂参数未与 Python 的 `"pickle"` 对齐。 |
+| `create_serializer(type_name)` | `Serializer.create(typeName)` | 模块级工厂 -> 静态工厂 | 部分映射 | Python 公开的是 `"pickle"` 路径；Java 公开 `"json"` 与 `"java"`。 |
 
-## 4. stream_actor
+## 4. Stream Actor
 
-| Python API | Java API | 方法映射 | 状态 | 说明 |
+| Python API | Java 对应 | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `StreamConsumer` | `StreamConsumer` | `stream_call -> streamCall`; `should_handle_message -> shouldHandleMessage`; `is_done -> isDone` | 完全映射 | - |
+| `StreamConsumer` | `StreamConsumer` | `stream_call -> streamCall`; `should_handle_message -> shouldHandleMessage`; `is_done -> isDone` | 适配映射 | Python `async def` 在 Java 中改为同步接口。 |
 | `StreamGraph` | `StreamGraph` | `add_stream_consumer -> addStreamConsumer`; `get_node -> getNode` | 完全映射 | - |
-| `StreamPayload` | `StreamPayload` | `message/source_ability -> getMessage/getSourceAbility` | 完全映射 | - |
-| `StreamActor` | `StreamActor` | `send -> send`; `generator -> generator`; `shutdown -> shutdown` | 适配映射 | Python `_error_callback()` 在 Java 中内联处理。 |
-| `StreamProcessor` | `StreamProcessor` | `run -> run`; `receive -> receive`; `generator -> generator` | 适配映射 | Python 的 `_create_generator/is_value_from_source/_get_unique_source_key` 在 Java 中保留为私有或包级 helper。 |
+| `StreamPayload` | `StreamPayload` | `message/source_ability -> getMessage/getSourceAbility` | 完全映射 | dataclass -> bean。 |
+| `StreamActor` | `StreamActor` | `send -> send`; `generator -> generator`; `_error_callback -> errorCallback`; `shutdown -> shutdown` | 适配映射 | Python 用 task + future；Java 用虚拟线程 + `CompletableFuture`。 |
+| `StreamProcessor` | `StreamProcessor` | `run -> run`; `receive -> receive`; `generator -> generator`; `_create_generator -> createIterator`; `is_value_from_source -> isValueFromSource`; `_get_unique_source_key -> getUniqueSourceKey`; `_is_end_message -> isEndMessage`; `_get_producer_id -> getProducerId` | 适配映射 | Java 以 `Iterator.hasNext()/next()` 代替 Python async generator，因此额外暴露了 `hasNext/next`。 |
 | `StreamTransform` | `StreamTransform` | `get_by_defined_transformer -> getByDefinedTransformer`; `get_by_default_transformer -> getByDefaultTransformer` | 完全映射 | - |
-| `ActorManager` | `ActorManager` | `sub_workflow_stream -> subWorkflowStream`; `stream_transform -> getStreamTransform`; `produce -> produce`; `end_message -> endMessage`; `consume -> consume`; `shutdown -> shutdown` | 适配映射 | Python `_get_actor()` 在 Java 中内联。 |
+| `ActorManager` | `ActorManager` | `sub_workflow_stream -> subWorkflowStream`; `stream_transform -> getStreamTransform`; `produce -> produce`; `end_message -> endMessage`; `consume -> consume`; `shutdown -> shutdown`; `_build_reverse_graph -> buildReverseGraph` | 适配映射 | Python 的 `_get_actor()` 在 Java 中被内联到 `streams` map 访问。 |
 
-## 5. visualization
+## 5. Visualization
 
-| Python API | Java API | 方法映射 | 状态 | 说明 |
+| Python API | Java 对应 | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `Drawable` | `Drawable` | `add_node -> addNode`; `set_start_node -> setStartNode`; `set_end_node -> setEndNode`; `set_break_node -> setBreakNode`; `add_edge -> addEdge`; `to_mermaid -> toMermaid`; `get_graph -> getGraph` | 部分映射 | Java 额外提供 `addSimpleNode()` 与 `toMermaid()` 默认重载；但缺少 `to_mermaid_png()/to_mermaid_svg()`，且 callable 目标推断能力弱于 Python。 |
-| `_get_targets(data)` | `Drawable.TargetProvider` + `Drawable.getTargetsFromCallable()` | 顶层 helper -> 嵌套接口 + 私有 helper | 部分映射 | Python 能从 `Literal[...]` 返回类型自动推导目标；Java 只有 `TargetProvider` 时才能显式提供。 |
-| `DrawableEdge` | `DrawableEdge` | `source/target/data/conditional/streaming -> getter/setter` | 完全映射 | - |
+| `_get_targets(data)` | `Drawable.getTargetsFromCallable(data)` + `Drawable.TargetProvider` | 模块级 helper -> 私有 helper + 可选接口 | 部分映射 | Java 只能在对象实现 `TargetProvider` 时显式给出目标，尚不支持 Python 的 `Literal[...]` 类型推导。 |
+| `Drawable` | `Drawable` | `add_node -> addNode`; `set_start_node -> setStartNode`; `set_end_node -> setEndNode`; `set_break_node -> setBreakNode`; `add_edge -> addEdge`; `to_mermaid -> toMermaid`; `to_mermaid_png -> toMermaidPng`; `to_mermaid_svg -> toMermaidSvg`; `get_graph -> getGraph` | 部分映射 | png/svg 导出已补齐；Java 还额外提供 `addSimpleNode()`。 |
+| `DrawableEdge` | `DrawableEdge` | 字段 -> `getSource/getTarget/getData/setData/isConditional/setConditional/isStreaming/setStreaming` | 完全映射 | - |
 | `DrawableBranchRouter` | `DrawableBranchRouter` | `targets/datas -> getTargets/getDatas` | 完全映射 | - |
-| `DrawableGraph` | `DrawableGraph` | `nodes/edges/start_nodes/end_nodes/break_nodes -> getter/setter` | 完全映射 | - |
-| `DrawableNode` | `DrawableNode` | `id/name/metadata -> getter/setter` | 完全映射 | - |
+| `DrawableGraph` | `DrawableGraph` | `nodes/edges/start_nodes/end_nodes/break_nodes -> getter`; `break_nodes = ... -> setBreakNodes` | 完全映射 | - |
+| `DrawableNode` | `DrawableNode` | `id/name/metadata -> getId/getName/setName/getMetadata/setMetadata` | 完全映射 | - |
 | `DrawableSubgraphNode` | `DrawableSubgraphNode` | `subgraph -> getSubgraph/setSubgraph` | 完全映射 | - |
-| `Stringifiable` | 无 | 无 | Python-only | 这是 Python 的 typing protocol；Java 直接依赖 `Object.toString()`。 |
-| `_MermaidDiagram` | `MermaidDiagram` | Mermaid 文本生成器 | 适配映射 | Python 为模块内部类；Java 为包级实现类。 |
+| `Stringifiable` | 无独立同名类型 | `__str__ -> Object.toString()` | 适配映射 | Python protocol 在 Java 中没有独立公开接口。 |
+| `_MermaidDiagram` | `MermaidDiagram` | `to_mermaid -> toMermaid`; `to_mermaid_png/svg -> MermaidRenderer.renderPng/renderSvg` | 适配映射 | Python 是模块私有实现，Java 拆成 `MermaidDiagram` + `MermaidRenderer`。 |
+| `MermaidRenderer` | Java-only | `renderPng/renderSvg` | Java-only | Python 版通过 `mermaid-py` 直接渲染，没有单独 renderer 类。 |
 
-## 6. 结构性差异
+## 6. 结构性适配与额外桥接
 
-### Python 有, Java 采用“合并/嵌套/替代”实现
+### Python 类型在 Java 中的承接方式
 
 | Python API | Java 落点 | 说明 |
 | --- | --- | --- |
-| `AsyncAtomicNode` | `AtomicNode` | Java 用同步原子节点统一承载。 |
-| `Branch` | `PregelGraph.Branch` | 改为宿主类嵌套类型。 |
-| `InnerPregelConfig` | `PregelConfig` | 被合并为同一个配置类。 |
-| `JsonSerializer` | `Serializer.JsonSerializer` | 改为嵌套类。 |
-| `SelectorProtocol` | `Router` / `ConditionalRouter` | Python typing protocol 在 Java 中退化为函数接口。 |
+| `AsyncAtomicNode` | `AtomicNode` | Java 统一用一个同步抽象类承接原子调用语义。 |
+| `Branch` | `PregelGraph.Branch` | 顶层 dataclass 被收拢为宿主类嵌套类型。 |
+| `InnerPregelConfig` | `PregelConfig` | 外部/内部配置合并为同一类，用 `parentNs` 区分。 |
+| `JsonSerializer` / `PickleSerializer` | `Serializer.JsonSerializer` / `Serializer.JavaNativeSerializer` | Java 用嵌套类承接序列化实现。 |
+| `_MermaidDiagram` | `MermaidDiagram` | Python 私有 helper 被拆成 Java 包内实现类。 |
 
 ### Java 额外公开的桥接 API
 
 | Java API | Python 对位 | 说明 |
 | --- | --- | --- |
-| `PregelGraph.getVertex()` | 无同名公开方法 | 用于补回 `getNodes()` 不再直接返回 `Vertex` 的差异。 |
-| `ChannelManager.getBuffer()` | 无同名公开方法 | 暴露缓冲区，便于恢复和测试。 |
-| `TaskExecutorPool.getSucceedMessages()` | Python 直接访问 `succeed_messages` | Java 通过 getter 暴露。 |
-| `TaskExecutorPool.getFailed()` | Python 直接访问 `failed` | Java 通过 getter 暴露。 |
-| `Drawable.addSimpleNode()` | 无同名公开方法 | 额外提供直接加简易节点的入口。 |
-| `Serializer.TypedBytes` | 无独立公开类型 | Java 用 record 表达 typed bytes。 |
+| `PregelGraph.getVertex(String)` | 无同名公开方法 | 用来弥补 `getNodes()` 不再直接返回 `Vertex` 的差异。 |
+| `Drawable.addSimpleNode(String)` | 无同名公开方法 | 额外提供纯节点占位入口。 |
+| `Serializer.TypedBytes` | Python `(type, bytes)` tuple | Java 用 record 表达 typed bytes。 |
+| `Drawable.TargetProvider` | 无同名公开类型 | 用显式接口替代 Python 的返回类型推导。 |
+| `StreamProcessor.hasNext()/next()` | Python async generator 协议 | Java 迭代器模式需要显式暴露。 |
+| `MermaidRenderer` | 无独立同名类 | Java 单独拆出渲染器类。 |
 
-## 7. 仍需关注的未对齐点
+## 7. 第二轮复核后仍未完全对齐的点
 
-1. `Graph.compile/PregelGraph.compile` 缺少 Python `**kwargs` 与 `context` 透传。
-2. `ConditionalRouter` 与 `Router` 不支持 async selector，也没有 Python 那样的 `state` 参数探测逻辑。
-3. `TaskExecutorPool.waitAll()` 未精确保留 Python `FIRST_EXCEPTION` 的“首错即取消”语义。
-4. `Vertex` 少了 Python `LLMExecutable.get_stream_output()` 的流式输出回写。
-5. `Drawable` 缺少 `to_mermaid_png()`、`to_mermaid_svg()`。
-6. `Drawable` 对条件边目标节点的自动推断弱于 Python。
-7. `PickleSerializer` 与 `Serializer.create("pickle")` 未落地。
-8. `Pregel/PregelBuilder` 的 after-step callback 仅支持同步 `Consumer`。
+1. 条件路由兼容性仍不足：`Router` / `ConditionalRouter` / `PregelGraph.Branch` 仍只覆盖同步 `Function<Object, Object>`，没有 Python 对任意 callable、`state` 参数探测和 async selector 的兼容层。
+2. `Drawable` 条件边目标自动推导仍弱于 Python：Java 只能依赖 `TargetProvider`，无法直接复用 Python `_get_targets()` 对 `Literal[...]` 返回类型的推断。
+3. `PickleSerializer` 的 API 表面仍未对齐：Java 虽然已有 `JavaNativeSerializer`，但没有 `PickleSerializer` 公开名，也不支持 `create("pickle")`。
+4. `Pregel.after_step` 仍只有同步 callback：Python `PregelBuilder.build(..., after_step_callback=...)` / `Pregel` 允许 sync 或 async callback，Java 目前只接受 `Consumer<PregelLoop>`。
 
-详细缺漏、影响和定位见 `../FIXED/graph_fixed.md`。
+详细缺漏与优先级见：`../FIXED/graph_fixed.md`

@@ -53,7 +53,9 @@ public class TaskExecutorPool {
 
     /**
      * Wait for all submitted tasks to complete.
-     * Uses FIRST_EXCEPTION semantics: if any task fails, cancel remaining tasks.
+     * Uses FIRST_EXCEPTION semantics: once the first task fails, cancel remaining tasks.
+     * <p>
+     * Mirrors Python's {@code asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)}.
      */
     @SuppressWarnings("unchecked")
     public void waitAll() throws Exception {
@@ -65,60 +67,64 @@ public class TaskExecutorPool {
         Exception firstErrExc = null;
         GraphInterrupt interruptExc = null;
 
-        // Wait for all futures, collecting results/errors
-        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        // Signal that fires when the first task completes exceptionally
+        CompletableFuture<Void> firstFailure = new CompletableFuture<>();
+        for (CompletableFuture<Object> future : futures) {
+            future.whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    firstFailure.complete(null);
+                }
+            });
+        }
+
+        // Wait for either all-done or first-exception (FIRST_EXCEPTION semantics)
+        CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         try {
-            allOf.join();
+            CompletableFuture.anyOf(allDone, firstFailure).join();
         } catch (Exception ignored) {
             // Individual errors will be handled below
         }
 
-        // Process results
-        List<CompletableFuture<Object>> pendingToCancel = new ArrayList<>();
+        // Process completed futures and cancel pending ones
         for (CompletableFuture<Object> future : futures) {
             PregelNode node = runningTasks.remove(future);
             if (node == null) {
                 continue;
             }
 
-            if (future.isCompletedExceptionally()) {
-                try {
-                    future.join();
-                } catch (Exception e) {
-                    Throwable cause = unwrapException(e);
-                    if (cause instanceof GraphInterrupt gi) {
+            if (future.isDone() && !future.isCancelled()) {
+                if (future.isCompletedExceptionally()) {
+                    try {
+                        future.join();
+                    } catch (Exception e) {
+                        Throwable cause = unwrapException(e);
+                        if (cause instanceof GraphInterrupt gi) {
+                            commitFailure(node, gi);
+                            if (interruptExc == null) {
+                                interruptExc = gi;
+                            }
+                        } else {
+                            Exception exc = cause instanceof Exception ex ? ex : new RuntimeException(cause);
+                            commitFailure(node, exc);
+                            if (firstErrExc == null) {
+                                firstErrExc = exc;
+                            }
+                        }
+                    }
+                } else {
+                    Object result = future.join();
+                    if (result instanceof GraphInterrupt gi) {
                         commitFailure(node, gi);
                         if (interruptExc == null) {
                             interruptExc = gi;
                         }
-                    } else {
-                        Exception exc = cause instanceof Exception ex ? ex : new RuntimeException(cause);
-                        commitFailure(node, exc);
-                        if (firstErrExc == null) {
-                            firstErrExc = exc;
-                        }
+                    } else if (result instanceof List<?> msgs) {
+                        succeedMessages.addAll((List<Message>) msgs);
                     }
-                }
-            } else if (future.isDone()) {
-                Object result = future.join();
-                if (result instanceof GraphInterrupt gi) {
-                    commitFailure(node, gi);
-                    if (interruptExc == null) {
-                        interruptExc = gi;
-                    }
-                } else if (result instanceof List<?> msgs) {
-                    succeedMessages.addAll((List<Message>) msgs);
                 }
             } else {
-                pendingToCancel.add(future);
-            }
-        }
-
-        // Cancel any pending tasks
-        for (CompletableFuture<Object> future : pendingToCancel) {
-            future.cancel(true);
-            PregelNode node = runningTasks.remove(future);
-            if (node != null) {
+                // Cancel pending task
+                future.cancel(true);
                 commitFailure(node, new CancellationException());
             }
         }

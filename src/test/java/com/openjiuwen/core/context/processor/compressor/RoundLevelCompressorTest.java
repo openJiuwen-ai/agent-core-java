@@ -56,22 +56,23 @@ class RoundLevelCompressorTest {
     @Test
     @DisplayName("trigger returns true when token count exceeds threshold")
     void testTriggerOnTokenCount() {
-        TokenCounter counter = mockTokenCounter(20000);
+        TokenCounter counter = mockTokenCounter(15000);
         RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder()
                 .tokensThreshold(5000)
-                .roundsThreshold(1)
+                .roundsThreshold(3)
                 .keepLastRound(false)
                 .build();
         RoundLevelCompressor compressor = new RoundLevelCompressor(config);
 
         ModelContext context = new ContextEngine(ContextEngineConfig.builder().build())
                 .createContext("test", null, null, null, counter);
-        // Need at least 2 consecutive rounds for findBestRoundWindow to match
-        context.addMessages(new UserMessage("msg1"));
-        context.addMessages(new AssistantMessage("reply1"));
-        context.addMessages(new UserMessage("msg2"));
+        // Add enough rounds to exceed roundsThreshold=3 (matching Python test)
+        for (int i = 0; i < 5; i++) {
+            context.addMessages(new UserMessage("User question " + i));
+            context.addMessages(new AssistantMessage("Assistant answer " + i));
+        }
 
-        List<BaseMessage> newMsgs = List.of(new AssistantMessage("reply2"));
+        List<BaseMessage> newMsgs = List.of(new AssistantMessage("reply"));
         assertTrue(compressor.triggerAddMessages(context, newMsgs));
     }
 

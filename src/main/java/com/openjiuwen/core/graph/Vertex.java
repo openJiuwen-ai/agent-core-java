@@ -28,6 +28,7 @@ import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.component.IOConfig;
 import com.openjiuwen.core.workflow.component.NodeConfig;
+import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -522,6 +523,14 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
         logger.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
         clearInteractive();
+
+        // LLM stream output writeback: mirrors Python Vertex._post_stream() LLMExecutable handling
+        if (executable instanceof LLMExecutable llmExec) {
+            Map<String, Object> result = llmExec.getStreamOutput();
+            if (result != null && session.state() instanceof WorkflowStateCollection) {
+                ((WorkflowStateCollection) session.state()).setOutputs(result);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

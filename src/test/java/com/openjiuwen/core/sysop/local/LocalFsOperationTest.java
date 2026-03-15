@@ -150,7 +150,7 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("multi.txt", "text",
                 3, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        String resultContent = res.getData().getContent();
+        String resultContent = res.getData().getContentAsString();
         assertTrue(resultContent.contains("Line 1"));
         assertTrue(resultContent.contains("Line 2"));
         assertTrue(resultContent.contains("Line 3"));
@@ -178,7 +178,7 @@ class LocalFsOperationTest {
 
         // Verify content
         String joined = chunks.stream()
-                .map(c -> c.getData().getChunkContent())
+                .map(c -> c.getData().getChunkContentAsString())
                 .reduce("", String::concat);
         assertTrue(joined.contains("Line 1"));
         assertTrue(joined.contains("Line 2"));
@@ -268,7 +268,7 @@ class LocalFsOperationTest {
         assertFalse(tailChunks.get(0).getData().isLastChunk());
         assertTrue(tailChunks.get(1).getData().isLastChunk());
         String joinedTail = tailChunks.stream()
-                .map(c -> c.getData().getChunkContent())
+                .map(c -> c.getData().getChunkContentAsString())
                 .reduce("", String::concat);
         assertTrue(joinedTail.contains("Line 4"));
         assertTrue(joinedTail.contains("Line 5"));
@@ -285,7 +285,7 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("multi.txt", "text",
                 null, null, new int[]{2, 4}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        String rc = res.getData().getContent();
+        String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 2"));
         assertTrue(rc.contains("Line 3"));
         assertTrue(rc.contains("Line 4"));
@@ -302,7 +302,7 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("multi.txt", "text",
                 null, null, new int[]{1, 3}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        String rc = res.getData().getContent();
+        String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 1"));
         assertTrue(rc.contains("Line 2"));
         assertTrue(rc.contains("Line 3"));
@@ -342,7 +342,7 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("multi.txt", "text",
                 null, null, new int[]{2, 10}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        String rc = res.getData().getContent();
+        String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 2"));
         assertTrue(rc.contains("Line 5"));
         assertFalse(rc.contains("Line 1"));
@@ -369,9 +369,9 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("multi.txt", "text",
                 null, null, new int[]{3, 3}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertTrue(res.getData().getContent().contains("Line 3"));
-        assertFalse(res.getData().getContent().contains("Line 2"));
-        assertFalse(res.getData().getContent().contains("Line 4"));
+        assertTrue(res.getData().getContentAsString().contains("Line 3"));
+        assertFalse(res.getData().getContentAsString().contains("Line 2"));
+        assertFalse(res.getData().getContentAsString().contains("Line 4"));
     }
 
     @Test
@@ -452,7 +452,7 @@ class LocalFsOperationTest {
             assertEquals(StatusCode.SUCCESS.getCode(), chunk.getCode());
         }
         String joined = chunks.stream()
-                .map(c -> c.getData().getChunkContent())
+                .map(c -> c.getData().getChunkContentAsString())
                 .reduce("", String::concat);
         assertTrue(joined.contains("line1"));
         assertTrue(joined.contains("line2"));
@@ -646,7 +646,7 @@ class LocalFsOperationTest {
     // ==================== Binary Read/Write ====================
 
     @Test
-    @DisplayName("Binary file read returns base64 encoded content")
+    @DisplayName("Binary file read returns raw bytes")
     void testBinaryReadWrite() throws IOException {
         byte[] binData = new byte[]{0x00, 0x01, 0x02, (byte) 0xFF};
         Files.write(workDir.resolve("test.bin"), binData);
@@ -654,10 +654,9 @@ class LocalFsOperationTest {
         ReadFileResult res = fs().readFile("test.bin", "bytes",
                 null, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        // In Java, binary read returns Base64 encoded string
-        String b64Content = res.getData().getContent();
-        byte[] decoded = Base64.getDecoder().decode(b64Content);
-        assertArrayEquals(binData, decoded);
+        // Binary read now returns raw byte[] (aligned with Python)
+        byte[] rawContent = res.getData().getContentAsBytes();
+        assertArrayEquals(binData, rawContent);
     }
 
     // ==================== Upload & Download ====================

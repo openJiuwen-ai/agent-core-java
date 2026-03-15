@@ -6,6 +6,8 @@ package com.openjiuwen.core.common.logging.events;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
+import java.lang.reflect.Method;
 
 /**
  * Event class registry — maps {@link LogEventType} to concrete event class constructors.
@@ -197,5 +199,127 @@ public final class EventClassRegistry {
         BaseLogEvent event = getFactory(eventType).get();
         event.setEventType(eventType);
         return event;
+    }
+
+    /**
+     * Create a log event of the appropriate type for the given string event type.
+     *
+     * @param eventTypeKey string event type key
+     * @return a new event instance with the event type set
+     */
+    public static BaseLogEvent createEvent(String eventTypeKey) {
+        LogEventType enumType = LogEventType.fromValue(eventTypeKey);
+        if (enumType != null) {
+            return createEvent(enumType);
+        }
+        BaseLogEvent event = getFactory(eventTypeKey).get();
+        return event;
+    }
+
+    /**
+     * Create a log event and populate it with the given properties via setter methods.
+     * <p>
+     * Smart detection: if the resolved event class is {@link StreamEvent} and the properties
+     * contain workflow indicators (workflowId, componentId, componentTypeStr), a
+     * {@link WorkflowStreamEvent} is created instead.
+     * <p>
+     * Unknown property keys are silently ignored (with a warning log).
+     *
+     * @param eventType  the event type
+     * @param properties field values to set on the event (camelCase keys)
+     * @return the populated event
+     */
+    public static BaseLogEvent createEvent(LogEventType eventType, Map<String, Object> properties) {
+        Supplier<? extends BaseLogEvent> factory = getFactory(eventType);
+        BaseLogEvent probe = factory.get();
+
+        // Smart detection: StreamEvent → WorkflowStreamEvent if workflow fields present
+        if (probe instanceof StreamEvent && !(probe instanceof WorkflowStreamEvent) && properties != null) {
+            Set<String> workflowIndicators = Set.of("workflowId", "componentId", "componentTypeStr");
+            if (properties.keySet().stream().anyMatch(workflowIndicators::contains)) {
+                probe = new WorkflowStreamEvent();
+            }
+        }
+
+        probe.setEventType(eventType);
+
+        if (properties != null && !properties.isEmpty()) {
+            populateFields(probe, properties);
+        }
+
+        return probe;
+    }
+
+    /**
+     * Validate an event object's validity.
+     * <p>
+     * Checks:
+     * <ul>
+     *   <li>eventId is not null/empty</li>
+     *   <li>eventType is not null</li>
+     *   <li>logLevel is not null</li>
+     *   <li>moduleType is not null</li>
+     * </ul>
+     *
+     * @param event the event to validate
+     * @return true if the event is valid
+     */
+    public static boolean validateEvent(BaseLogEvent event) {
+        if (event == null) {
+            return false;
+        }
+        if (event.getEventId() == null || event.getEventId().isEmpty()) {
+            return false;
+        }
+        if (event.getEventType() == null) {
+            return false;
+        }
+        if (event.getLogLevel() == null) {
+            return false;
+        }
+        if (event.getModuleType() == null) {
+            return false;
+        }
+        return true;
+    }
+
+    // ==================== Field population helper ====================
+
+    private static final Logger LOG = Logger.getLogger(EventClassRegistry.class.getName());
+
+    /**
+     * Populate fields on an event via reflection-based setter lookup.
+     */
+    private static void populateFields(BaseLogEvent event, Map<String, Object> properties) {
+        Class<?> clazz = event.getClass();
+        List<String> ignored = new ArrayList<>();
+
+        for (Map.Entry<String, Object> entry : properties.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            String setterName = "set" + Character.toUpperCase(key.charAt(0)) + key.substring(1);
+
+            boolean found = false;
+            for (Method m : clazz.getMethods()) {
+                if (m.getName().equals(setterName) && m.getParameterCount() == 1) {
+                    try {
+                        m.invoke(event, value);
+                        found = true;
+                    } catch (Exception e) {
+                        // type mismatch or access error — treat as ignored
+                        ignored.add(key);
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                ignored.add(key);
+            }
+        }
+
+        if (!ignored.isEmpty()) {
+            LOG.warning("Ignoring undefined fields for " + event.getClass().getSimpleName()
+                    + ": " + String.join(", ", ignored));
+        }
     }
 }

@@ -25,6 +25,7 @@ public class FieldSchema {
     private final VectorDataType elementType;
     private final Integer maxCapacity;
     private final String description;
+    private final Object defaultValue;
 
     private FieldSchema(Builder builder) {
         this.name = builder.name;
@@ -36,6 +37,7 @@ public class FieldSchema {
         this.elementType = builder.elementType;
         this.maxCapacity = builder.maxCapacity;
         this.description = builder.description;
+        this.defaultValue = builder.defaultValue;
 
         // Validate dim for vector fields
         if (dim != null && dim <= 0) {
@@ -58,6 +60,7 @@ public class FieldSchema {
     public VectorDataType getElementType() { return elementType; }
     public Integer getMaxCapacity() { return maxCapacity; }
     public String getDescription() { return description; }
+    public Object getDefaultValue() { return defaultValue; }
 
     /** Convert to dictionary format. */
     public Map<String, Object> toDict() {
@@ -70,6 +73,7 @@ public class FieldSchema {
         if (dim != null) result.put("dim", dim);
         if (elementType != null) result.put("element_type", elementType.name());
         if (maxCapacity != null) result.put("max_capacity", maxCapacity);
+        if (defaultValue != null) result.put("default_value", defaultValue);
         return result;
     }
 
@@ -92,6 +96,7 @@ public class FieldSchema {
         }
         if (data.containsKey("max_capacity")) b.maxCapacity(((Number) data.get("max_capacity")).intValue());
         if (data.containsKey("description")) b.description((String) data.get("description"));
+        if (data.containsKey("default_value")) b.defaultValue(data.get("default_value"));
 
         return b.build();
     }
@@ -108,6 +113,7 @@ public class FieldSchema {
         private VectorDataType elementType;
         private Integer maxCapacity;
         private String description;
+        private Object defaultValue;
 
         public Builder name(String name) { this.name = name; return this; }
         public Builder dtype(VectorDataType dtype) { this.dtype = dtype; return this; }
@@ -118,6 +124,7 @@ public class FieldSchema {
         public Builder elementType(VectorDataType elementType) { this.elementType = elementType; return this; }
         public Builder maxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity; return this; }
         public Builder description(String description) { this.description = description; return this; }
+        public Builder defaultValue(Object defaultValue) { this.defaultValue = defaultValue; return this; }
         public FieldSchema build() { return new FieldSchema(this); }
     }
 }

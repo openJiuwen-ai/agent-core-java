@@ -100,7 +100,18 @@ public class Model {
             throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
                     "error_msg", "model client config client_id is none");
         }
-        ModelClientFactory factory = FACTORY_REGISTRY.get(config.getClientProvider());
+        String provider = config.getClientProvider().strip();
+        ModelClientFactory factory = FACTORY_REGISTRY.get(provider);
+        if (factory == null) {
+            // Case-insensitive fallback: match "openai" -> "OpenAI", etc.
+            String lowerProvider = provider.toLowerCase();
+            for (Map.Entry<String, ModelClientFactory> entry : FACTORY_REGISTRY.entrySet()) {
+                if (entry.getKey().toLowerCase().equals(lowerProvider)) {
+                    factory = entry.getValue();
+                    break;
+                }
+            }
+        }
         if (factory == null) {
             throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
                     "error_msg", "Unsupported client_type: '" + config.getClientProvider()

@@ -20,9 +20,37 @@ public class ReadFileData {
     /** File path of the read file. */
     private String path;
 
-    /** File content (text string or binary bytes represented as string). */
-    private String content;
+    /**
+     * File content.
+     * <p>When mode is "text", this is a {@code String}.
+     * When mode is "bytes", this is a {@code byte[]} (raw binary content).
+     * Mirrors Python's {@code Union[str, bytes]}.
+     */
+    private Object content;
 
     /** File read mode: "text" or "bytes". */
     private String mode;
+
+    /**
+     * Get content as String (for text mode).
+     */
+    public String getContentAsString() {
+        if (content instanceof String s) {
+            return s;
+        }
+        return content != null ? content.toString() : null;
+    }
+
+    /**
+     * Get content as byte[] (for bytes mode).
+     */
+    public byte[] getContentAsBytes() {
+        if (content instanceof byte[] b) {
+            return b;
+        }
+        if (content instanceof String s) {
+            return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+        return null;
+    }
 }

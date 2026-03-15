@@ -3,17 +3,24 @@
  */
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 
+import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Listens on a reply topic and dispatches responses to collectors.
  */
 public class ReplyTopicSubscription {
+
+    private static final Logger logger = LoggerFactory.getLogger(ReplyTopicSubscription.class);
 
     private final MessageQueueBase mq;
     private final String topic;
@@ -37,6 +44,7 @@ public class ReplyTopicSubscription {
         });
         subscription.activate();
         active = true;
+        logger.info("[ReplyTopicSubscription] activated topic={}", topic);
     }
 
     public void deactivate() {
@@ -46,25 +54,42 @@ public class ReplyTopicSubscription {
             mq.unsubscribe(topic);
             subscription = null;
         }
-        collectors.values().forEach(ResponseCollector::close);
+        // Close and clear all collectors
+        for (ResponseCollector collector : collectors.values()) {
+            collector.close(CancelReason.RUNNER_STOPPED);
+        }
         collectors.clear();
+        logger.info("[ReplyTopicSubscription] Stopped");
+    }
+
+    /**
+     * Whether this subscription is currently active.
+     */
+    public boolean isActive() {
+        return active;
     }
 
     public ResponseCollector registerCollector(String messageId, String remoteId, String requestId, Double ttlSeconds) {
         if (!active) {
-            throw new IllegalStateException("ReplyTopicSubscription is not active");
+            throw new CancellationException("ReplyTopicSubscription was cancelled");
+        }
+        int maxConcurrency = RunnerConfig.getRunnerConfig().getDistributedConfig().getMaxRequestConcurrency();
+        if (collectors.size() >= maxConcurrency) {
+            throw new RuntimeException(
+                    "[ReplyTopicSubscription] Too many collectors (" + maxConcurrency + ")");
         }
         CollectorKey key = new CollectorKey(remoteId, messageId, requestId);
         ResponseCollector collector = new ResponseCollector(messageId, remoteId, requestId, ttlSeconds);
         if (collectors.putIfAbsent(key, collector) != null) {
             throw new IllegalStateException("Collector already exists for " + key);
         }
+        logger.info("[ReplyTopicSubscription] register collector for {}", key);
         return collector;
     }
 
     public void unregisterCollector(String messageId, String remoteId, String requestId) {
         if (messageId == null && remoteId == null && requestId == null) {
-            collectors.values().forEach(ResponseCollector::close);
+            collectors.values().forEach(c -> c.close(CancelReason.RUNNER_STOPPED));
             collectors.clear();
             return;
         }
@@ -74,7 +99,7 @@ public class ReplyTopicSubscription {
                     && (remoteId == null || remoteId.equals(key.remoteId()))
                     && (requestId == null || requestId.equals(key.requestId()));
             if (match) {
-                entry.getValue().close();
+                entry.getValue().close(CancelReason.RUNNER_STOPPED);
             }
             return match;
         });
@@ -89,9 +114,14 @@ public class ReplyTopicSubscription {
         ResponseCollector collector = collectors.get(key);
         if (collector != null) {
             collector.putMessage(message);
+        } else {
+            logger.info("[ReplyTopicSubscription] No collector for {}, discard message", key);
         }
     }
 
-    private record CollectorKey(String remoteId, String messageId, String requestId) {
+    /**
+     * Unique key identifying a collector by remote ID, message ID, and optional request ID.
+     */
+    public record CollectorKey(String remoteId, String messageId, String requestId) {
     }
 }

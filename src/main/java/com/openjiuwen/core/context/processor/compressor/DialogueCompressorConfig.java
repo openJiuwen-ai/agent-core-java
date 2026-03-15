@@ -64,4 +64,22 @@ public class DialogueCompressorConfig {
      * Optional client-level configuration for the model.
      */
     private ModelClientConfig modelClient;
+
+    /**
+     * Validate configuration constraints matching Python Pydantic rules.
+     */
+    public void validate() {
+        if (messagesThreshold != null && messagesThreshold <= 0) {
+            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
+        }
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+        }
+        if (messagesToKeep != null && messagesToKeep <= 0) {
+            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+        if (compressionTokenLimit <= 0) {
+            throw new IllegalArgumentException("compressionTokenLimit must be > 0, got " + compressionTokenLimit);
+        }
+    }
 }

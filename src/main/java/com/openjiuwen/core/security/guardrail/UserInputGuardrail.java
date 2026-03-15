@@ -27,7 +27,7 @@ public class UserInputGuardrail extends BaseGuardrail {
     @Override
     public GuardrailResult detect(String eventName, Object[] args, Map<String, Object> kwargs) throws Exception {
         Object text = kwargs != null ? kwargs.get("text") : null;
-        if (!(text instanceof String stringText) || stringText.isBlank()) {
+        if (!(text instanceof String stringText) || stringText.isEmpty()) {
             return GuardrailResult.pass(Map.of("empty_input", true));
         }
         if (backend == null) {

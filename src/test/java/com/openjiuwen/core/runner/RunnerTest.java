@@ -136,7 +136,7 @@ class RunnerTest {
         RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
         Workflow workflow = createEchoWorkflow("workflow-auto");
 
-        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), null, null);
+        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), null, null, null);
 
         assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
         assertEquals("hello", getWorkflowResultField(result, "query"));
@@ -150,7 +150,7 @@ class RunnerTest {
         Workflow workflow = createEchoWorkflow("workflow-string-session");
 
         WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow, Map.of("query", "hello"), "workflow-session", null);
+                workflow, Map.of("query", "hello"), "workflow-session", null, null);
 
         assertEquals("workflow-session", getWorkflowResultField(result, "session_id"));
     }
@@ -164,7 +164,7 @@ class RunnerTest {
         agentSession.updateState(Map.of("seed", 41));
 
         WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow, Map.of("query", "hello"), agentSession, null);
+                workflow, Map.of("query", "hello"), agentSession, null, null);
 
         assertEquals("agent-session", getWorkflowResultField(result, "session_id"));
         assertEquals(41, getWorkflowResultField(result, "seed"));
@@ -178,7 +178,7 @@ class RunnerTest {
         runner.getResourceMgr().addWorkflow(workflow.getCard(), () -> workflow, null);
 
         WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow.getCard().getId(), Map.of("query", "by-id"), null, null);
+                workflow.getCard().getId(), Map.of("query", "by-id"), null, null, null);
 
         assertEquals("by-id", getWorkflowResultField(result, "query"));
     }
@@ -190,7 +190,7 @@ class RunnerTest {
         Workflow workflow = createStreamingWorkflow("workflow-stream");
 
         Iterator<?> iterator = runner.runWorkflowStreaming(
-                workflow, Map.of("query", "stream"), "stream-session", null, null);
+                workflow, Map.of("query", "stream"), "stream-session", null, null, null);
         List<?> chunks = collect(iterator);
 
         assertEquals(1, chunks.size());
@@ -211,9 +211,9 @@ class RunnerTest {
         trackSession(sessionId);
 
         Map<String, Object> first = castMap(runner.runAgent(
-                agent, Map.of("conversation_id", sessionId, "query", "hello"), null, null));
+                agent, Map.of("conversation_id", sessionId, "query", "hello"), null, null, null));
         Map<String, Object> second = castMap(runner.runAgent(
-                agent, Map.of("conversation_id", sessionId, "query", "hello again"), null, null));
+                agent, Map.of("conversation_id", sessionId, "query", "hello again"), null, null, null));
 
         assertEquals(sessionId, first.get("session_id"));
         assertEquals(1, first.get("count"));
@@ -229,7 +229,7 @@ class RunnerTest {
         trackSession(sessionId);
 
         Map<String, Object> result = castMap(runner.runAgent(
-                agent, Map.of("query", "hello"), sessionId, null));
+                agent, Map.of("query", "hello"), sessionId, null, null));
 
         assertEquals(sessionId, result.get("session_id"));
         assertEquals(1, result.get("count"));
@@ -242,8 +242,8 @@ class RunnerTest {
         TypedSessionAgent agent = new TypedSessionAgent();
         trackSession("default_session");
 
-        Map<String, Object> first = castMap(runner.runAgent(agent, Map.of("query", "hello"), null, null));
-        Map<String, Object> second = castMap(runner.runAgent(agent, Map.of("query", "hello again"), null, null));
+        Map<String, Object> first = castMap(runner.runAgent(agent, Map.of("query", "hello"), null, null, null));
+        Map<String, Object> second = castMap(runner.runAgent(agent, Map.of("query", "hello again"), null, null, null));
 
         assertEquals("default_session", first.get("session_id"));
         assertEquals(1, first.get("count"));
@@ -259,9 +259,9 @@ class RunnerTest {
         trackSession(sessionId);
 
         List<Object> firstChunks = collect(runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null));
+                agent, Map.of("conversation_id", sessionId), null, null, null, null));
         List<Object> secondChunks = collect(runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null));
+                agent, Map.of("conversation_id", sessionId), null, null, null, null));
 
         assertEquals(List.of(Map.of("session_id", sessionId, "count", 1)), firstChunks);
         assertEquals(List.of(Map.of("session_id", sessionId, "count", 2)), secondChunks);
@@ -278,7 +278,7 @@ class RunnerTest {
         runner.getResourceMgr().addAgent(AgentCard.builder().id(agentId).name(agentId).build(), () -> agent, null);
 
         Map<String, Object> result = castMap(runner.runAgent(
-                agentId, Map.of("conversation_id", sessionId), null, null));
+                agentId, Map.of("conversation_id", sessionId), null, null, null));
 
         assertEquals(sessionId, result.get("session_id"));
     }
@@ -292,9 +292,9 @@ class RunnerTest {
         runner.getResourceMgr().addAgentGroup(GroupCard.builder().id(groupId).name(groupId).build(), () -> group, null);
 
         Map<String, Object> invokeResult = castMap(runner.runAgentGroup(
-                groupId, Map.of("value", "hello"), "group-session", null));
-        List<Object> streamResult = collect(runner.runAgentGroupStreaming(
                 groupId, Map.of("value", "hello"), "group-session", null, null));
+        List<Object> streamResult = collect(runner.runAgentGroupStreaming(
+                groupId, Map.of("value", "hello"), "group-session", null, null, null));
 
         assertEquals(Map.of("group_value", "hello", "session_id", "group-session"), invokeResult);
         assertEquals(List.of(

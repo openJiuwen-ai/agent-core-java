@@ -93,7 +93,9 @@ public class LocalFunction extends Tool {
     private Map<String, Object> validateInputs(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Map<String, Object> inputParams = getCard().getInputParams();
         if (inputParams != null && !inputParams.isEmpty()) {
-            return SchemaUtils.formatWithSchema(inputs, inputParams);
+            boolean skipNoneValue = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_none_value"));
+            boolean skipValidate = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_inputs_validate"));
+            return SchemaUtils.formatWithSchema(inputs, inputParams, skipNoneValue, skipValidate);
         }
         return inputs;
     }

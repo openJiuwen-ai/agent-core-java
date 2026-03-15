@@ -93,7 +93,9 @@ public class RestfulApi extends Tool {
             Map<String, Object> validatedInputs = inputs;
             Map<String, Object> inputParams = card.getInputParams();
             if (inputParams != null && !inputParams.isEmpty()) {
-                validatedInputs = SchemaUtils.formatWithSchema(inputs, inputParams);
+                boolean skipNoneValue = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_none_value"));
+                boolean skipValidate = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_inputs_validate"));
+                validatedInputs = SchemaUtils.formatWithSchema(inputs, inputParams, skipNoneValue, skipValidate);
             }
             Map<ApiParamLocation, Map<String, Object>> mapResults =
                     apiParamMapper.map(validatedInputs, ApiParamLocation.BODY);

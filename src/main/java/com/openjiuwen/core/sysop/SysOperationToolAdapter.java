@@ -88,6 +88,20 @@ public final class SysOperationToolAdapter {
         return sysOperationId + ".";
     }
 
+    /**
+     * Get tool ID prefixes for multiple sys operations.
+     * <p>
+     * Mirrors Python's {@code get_tool_id_prefix(sys_operation_id: List[str])} overload.
+     *
+     * @param sysOperationIds list of sys operation card IDs
+     * @return list of prefix strings, each ending with "."
+     */
+    public static List<String> getToolIdPrefix(List<String> sysOperationIds) {
+        return sysOperationIds.stream()
+                .map(id -> id + ".")
+                .toList();
+    }
+
     private static Method findToolMethod(Class<?> operationClass, String methodName) {
         for (Method method : operationClass.getMethods()) {
             if (method.getName().equals(methodName)) {

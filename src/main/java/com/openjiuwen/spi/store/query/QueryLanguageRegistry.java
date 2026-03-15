@@ -17,9 +17,31 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class QueryLanguageRegistry {
 
     private static final Map<String, QueryLanguageDefinition> DEFINITIONS = new ConcurrentHashMap<>();
+    private static volatile boolean builtInRegistered = false;
 
     private QueryLanguageRegistry() {
         // static utility
+    }
+
+    /**
+     * Ensure built-in dialects (milvus, chroma) are registered.
+     * Called automatically on first {@link #get(String)} invocation.
+     */
+    private static void ensureBuiltInRegistered() {
+        if (!builtInRegistered) {
+            synchronized (QueryLanguageRegistry.class) {
+                if (!builtInRegistered) {
+                    try {
+                        Class<?> registration = Class.forName(
+                                "com.openjiuwen.core.foundation.store.query.QueryDialectRegistration");
+                        registration.getMethod("ensureRegistered").invoke(null);
+                    } catch (Exception ignored) {
+                        // Foundation module may not be on classpath; skip auto-registration
+                    }
+                    builtInRegistered = true;
+                }
+            }
+        }
     }
 
     /**
@@ -39,6 +61,7 @@ public final class QueryLanguageRegistry {
      * @return the registered definition
      */
     public static QueryLanguageDefinition get(String name) {
+        ensureBuiltInRegistered();
         QueryLanguageDefinition def = DEFINITIONS.get(name);
         if (def == null) {
             throw ErrorHelper.buildError(StatusCode.RETRIEVAL_VECTOR_STORE_QUERY_INVALID,

@@ -62,7 +62,7 @@ public class LocalFsOperation extends BaseFsOperation {
             }
 
             Charset charset = Charset.forName(encoding);
-            String content;
+            Object content;
             if ("bytes".equals(mode)) {
                 content = readBytesContent(filePath, chunkSize);
             } else {
@@ -135,7 +135,7 @@ public class LocalFsOperation extends BaseFsOperation {
     // ==================== Write File ====================
 
     @Override
-    public WriteFileResult writeFile(String path, String content, String mode,
+    public WriteFileResult writeFile(String path, Object content, String mode,
                                      boolean prependNewline, boolean appendNewline,
                                      boolean createIfNotExist, String permissions,
                                      String encoding, Map<String, Object> options) {
@@ -154,8 +154,18 @@ public class LocalFsOperation extends BaseFsOperation {
             }
 
             byte[] dataBytes;
-            if ("text".equals(mode)) {
-                String txt = content != null ? content : "";
+            if ("bytes".equals(mode)) {
+                // Binary mode: accept byte[] directly, or convert String to bytes
+                if (content instanceof byte[] rawBytes) {
+                    dataBytes = rawBytes;
+                } else if (content instanceof String strContent) {
+                    dataBytes = strContent.getBytes(StandardCharsets.UTF_8);
+                } else {
+                    dataBytes = content != null ? content.toString().getBytes(StandardCharsets.UTF_8) : new byte[0];
+                }
+            } else {
+                // Text mode
+                String txt = content instanceof String s ? s : (content != null ? content.toString() : "");
                 if (prependNewline) {
                     txt = "\n" + txt;
                 }
@@ -163,8 +173,6 @@ public class LocalFsOperation extends BaseFsOperation {
                     txt = txt + "\n";
                 }
                 dataBytes = txt.getBytes(Charset.forName(encoding));
-            } else {
-                dataBytes = content != null ? content.getBytes(StandardCharsets.UTF_8) : new byte[0];
             }
 
             Files.write(filePath, dataBytes);
@@ -260,47 +268,34 @@ public class LocalFsOperation extends BaseFsOperation {
                 return results.iterator();
             }
 
+            int effectiveChunkSize = chunkSize > 0 ? chunkSize : FsConstants.DEFAULT_UPLOAD_STREAM_CHUNK_SIZE;
             try (InputStream in = Files.newInputStream(src);
                  OutputStream out = Files.newOutputStream(dst)) {
-                byte[] buffer = new byte[chunkSize > 0 ? chunkSize : FsConstants.DEFAULT_UPLOAD_STREAM_CHUNK_SIZE];
                 int index = 0;
-                int bytesRead = in.read(buffer);
-                while (bytesRead != -1) {
-                    int nextRead = in.read(buffer, 0, 0); // peek
-                    byte[] nextBuffer = new byte[buffer.length];
-                    int nextBytesRead = in.read(nextBuffer);
-                    boolean isLast = (nextBytesRead == -1);
+                byte[] currentChunk = new byte[effectiveChunkSize];
+                int currentRead = in.read(currentChunk);
 
-                    out.write(buffer, 0, bytesRead);
+                while (currentRead != -1) {
+                    byte[] nextChunk = new byte[effectiveChunkSize];
+                    int nextRead = in.read(nextChunk);
+                    boolean isLast = (nextRead == -1);
+
+                    out.write(currentChunk, 0, currentRead);
                     results.add(UploadFileStreamResult.builder()
                             .code(StatusCode.SUCCESS.getCode())
                             .message("Success")
                             .data(UploadFileChunkData.builder()
                                     .localPath(src.toString())
                                     .targetPath(dst.toString())
-                                    .chunkSize(bytesRead)
+                                    .chunkSize(currentRead)
                                     .chunkIndex(index)
                                     .lastChunk(isLast)
                                     .build())
                             .build());
                     index++;
 
-                    if (isLast) break;
-                    // Write the next chunk we already read
-                    out.write(nextBuffer, 0, nextBytesRead);
-                    results.add(UploadFileStreamResult.builder()
-                            .code(StatusCode.SUCCESS.getCode())
-                            .message("Success")
-                            .data(UploadFileChunkData.builder()
-                                    .localPath(src.toString())
-                                    .targetPath(dst.toString())
-                                    .chunkSize(nextBytesRead)
-                                    .chunkIndex(index)
-                                    .lastChunk(false)
-                                    .build())
-                            .build());
-                    index++;
-                    bytesRead = in.read(buffer);
+                    currentChunk = nextChunk;
+                    currentRead = nextRead;
                 }
             }
 
@@ -566,6 +561,8 @@ public class LocalFsOperation extends BaseFsOperation {
     /**
      * Resolve path relative to workDir if configured. Enforces sandbox.
      */
+    private static final Pattern UNSAFE_CHAR_PATTERN = Pattern.compile("[^\\w.-]");
+
     private Path resolvePath(String path, boolean createParent) {
         String workDirVal = null;
         if (getRunConfig() instanceof LocalWorkConfig config) {
@@ -576,14 +573,29 @@ public class LocalFsOperation extends BaseFsOperation {
         if (workDirVal == null) {
             finalPath = Path.of(path).toAbsolutePath().normalize();
         } else {
-            Path workDir = Path.of(workDirVal).toAbsolutePath().normalize();
-            Path rawResolved = workDir.resolve(path).normalize();
-            if (!rawResolved.startsWith(workDir)) {
+            Path workDir = toRealOrAbsolutePath(Path.of(workDirVal));
+            Path rawResolved = toRealOrAbsolutePath(workDir.resolve(path));
+            Path relPath;
+            try {
+                relPath = workDir.relativize(rawResolved);
+            } catch (IllegalArgumentException e) {
                 throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR,
                         "execution", "resolve_path",
                         "error_msg", "Access denied: Path " + path + " traverses outside " + workDir);
             }
-            finalPath = rawResolved;
+            if (relPath.startsWith("..")) {
+                throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR,
+                        "execution", "resolve_path",
+                        "error_msg", "Access denied: Path " + path + " traverses outside " + workDir);
+            }
+            // Sanitize each path segment: replace non-word, non-dot, non-hyphen chars with '_'
+            Path sanitized = workDir;
+            for (int i = 0; i < relPath.getNameCount(); i++) {
+                String part = relPath.getName(i).toString();
+                String cleanPart = UNSAFE_CHAR_PATTERN.matcher(part).replaceAll("_");
+                sanitized = sanitized.resolve(cleanPart);
+            }
+            finalPath = sanitized;
         }
 
         if (createParent && finalPath.getParent() != null) {
@@ -595,6 +607,19 @@ public class LocalFsOperation extends BaseFsOperation {
         }
 
         return finalPath;
+    }
+
+    /**
+     * Resolve a path to its real (canonical) path if it exists, otherwise fall back to absolute + normalize.
+     * This mirrors Python's pathlib.Path.resolve() which follows symlinks.
+     */
+    private static Path toRealOrAbsolutePath(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (IOException e) {
+            // Path does not exist yet — fall back to absolute + normalize
+            return p.toAbsolutePath().normalize();
+        }
     }
 
     private void validateReadParams(Integer head, Integer tail, int[] lineRange, String mode) {
@@ -629,17 +654,47 @@ public class LocalFsOperation extends BaseFsOperation {
 
     // --- Read helpers ---
 
-    private String readBytesContent(Path filePath, int chunkSize) throws IOException {
+    private byte[] readBytesContent(Path filePath, int chunkSize) throws IOException {
         if (chunkSize <= 0) {
-            return Base64.getEncoder().encodeToString(Files.readAllBytes(filePath));
+            return Files.readAllBytes(filePath);
         }
         byte[] bytes = new byte[chunkSize];
         int read;
         try (InputStream in = Files.newInputStream(filePath)) {
             read = in.read(bytes);
         }
-        if (read == -1) return "";
-        return Base64.getEncoder().encodeToString(Arrays.copyOf(bytes, read));
+        if (read == -1) return new byte[0];
+        return Arrays.copyOf(bytes, read);
+    }
+
+    /**
+     * Split text into lines preserving original line endings (\r\n, \r, or \n).
+     * Mirrors Python's str.splitlines(True).
+     */
+    private static List<String> splitLinesKeepEndings(String content) {
+        List<String> lines = new ArrayList<>();
+        int len = content.length();
+        int start = 0;
+        for (int i = 0; i < len; i++) {
+            char c = content.charAt(i);
+            if (c == '\n') {
+                lines.add(content.substring(start, i + 1));
+                start = i + 1;
+            } else if (c == '\r') {
+                if (i + 1 < len && content.charAt(i + 1) == '\n') {
+                    lines.add(content.substring(start, i + 2));
+                    start = i + 2;
+                    i++;
+                } else {
+                    lines.add(content.substring(start, i + 1));
+                    start = i + 1;
+                }
+            }
+        }
+        if (start < len) {
+            lines.add(content.substring(start));
+        }
+        return lines;
     }
 
     private String readTextContent(Path filePath, Charset charset, Integer head, Integer tail,
@@ -649,7 +704,8 @@ public class LocalFsOperation extends BaseFsOperation {
             return Files.readString(filePath, charset);
         }
 
-        List<String> lines = Files.readAllLines(filePath, charset);
+        String content = Files.readString(filePath, charset);
+        List<String> lines = splitLinesKeepEndings(content);
         List<String> selectedLines;
 
         if (tail != null && tail > 0) {
@@ -671,7 +727,7 @@ public class LocalFsOperation extends BaseFsOperation {
             return "";
         }
 
-        return String.join("\n", selectedLines);
+        return String.join("", selectedLines);
     }
 
     private void readBytesStream(Path filePath, int chunkSize, List<ReadFileStreamResult> results)
@@ -691,8 +747,7 @@ public class LocalFsOperation extends BaseFsOperation {
                         .message("Success")
                         .data(ReadFileChunkData.builder()
                                 .path(filePath.toString())
-                                .chunkContent(Base64.getEncoder().encodeToString(
-                                        Arrays.copyOf(currentChunk, currentRead)))
+                                .chunkContent(Arrays.copyOf(currentChunk, currentRead))
                                 .mode("bytes")
                                 .chunkSize(currentRead)
                                 .chunkIndex(index)
@@ -709,17 +764,13 @@ public class LocalFsOperation extends BaseFsOperation {
     private void streamTextFile(Path filePath, Charset charset, Integer head, Integer tail,
                                 int[] lineRange, String mode, List<ReadFileStreamResult> results)
             throws IOException {
-        // When no filtering params specified, read entire file
-        if (head == null && tail == null && lineRange == null) {
-            List<String> allLines = Files.readAllLines(filePath, charset);
-            emitStreamChunks(filePath, charset, mode, allLines, results);
-            return;
-        }
-
-        List<String> allLines = Files.readAllLines(filePath, charset);
+        String content = Files.readString(filePath, charset);
+        List<String> allLines = splitLinesKeepEndings(content);
         List<String> selectedLines;
 
-        if (tail != null && tail > 0) {
+        if (head == null && tail == null && lineRange == null) {
+            selectedLines = allLines;
+        } else if (tail != null && tail > 0) {
             int start = Math.max(0, allLines.size() - tail);
             selectedLines = new ArrayList<>(allLines.subList(start, allLines.size()));
         } else if (head != null && head > 0) {
@@ -750,38 +801,7 @@ public class LocalFsOperation extends BaseFsOperation {
             selectedLines = new ArrayList<>();
         }
 
-        if (selectedLines.isEmpty()) {
-            results.add(ReadFileStreamResult.builder()
-                    .code(StatusCode.SUCCESS.getCode())
-                    .message("Success")
-                    .data(ReadFileChunkData.builder()
-                            .path(filePath.toString())
-                            .chunkContent("")
-                            .mode(mode)
-                            .chunkSize(0)
-                            .chunkIndex(0)
-                            .lastChunk(true)
-                            .build())
-                    .build());
-            return;
-        }
-
-        for (int i = 0; i < selectedLines.size(); i++) {
-            String line = selectedLines.get(i);
-            boolean isLast = (i == selectedLines.size() - 1);
-            results.add(ReadFileStreamResult.builder()
-                    .code(StatusCode.SUCCESS.getCode())
-                    .message("Success")
-                    .data(ReadFileChunkData.builder()
-                            .path(filePath.toString())
-                            .chunkContent(line)
-                            .mode(mode)
-                            .chunkSize(line.getBytes(charset).length)
-                            .chunkIndex(i)
-                            .lastChunk(isLast)
-                            .build())
-                    .build());
-        }
+        emitStreamChunks(filePath, charset, mode, selectedLines, results);
     }
 
     private void emitStreamChunks(Path filePath, Charset charset, String mode,

@@ -268,7 +268,7 @@ public class LocalShellOperation extends BaseShellOperation {
         return switch (event.getType()) {
             case STDOUT, STDERR -> {
                 ExecuteCmdChunkData chunkData = ExecuteCmdChunkData.builder()
-                        .text(event.getData())
+                        .text(event.getDataAsString())
                         .type(event.getType().getValue())
                         .chunkIndex(chunkIndex)
                         .build();
@@ -278,13 +278,11 @@ public class LocalShellOperation extends BaseShellOperation {
                         .data(chunkData)
                         .build();
             }
-            case ERROR -> buildCmdStreamErrorResult("execution receive error: " + event.getData(),
+            case ERROR -> buildCmdStreamErrorResult("execution receive error: " + event.getDataAsString(),
                     ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build());
             case EXIT -> {
-                int exitCode;
-                try {
-                    exitCode = Integer.parseInt(event.getData());
-                } catch (NumberFormatException e) {
+                Integer exitCode = event.getDataAsInt();
+                if (exitCode == null) {
                     exitCode = -1;
                 }
                 ExecuteCmdChunkData chunkData = ExecuteCmdChunkData.builder()

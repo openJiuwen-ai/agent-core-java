@@ -12,7 +12,9 @@ import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.context.schema.OffloadMixin;
 import com.openjiuwen.core.context.token.TokenCounter;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -105,7 +107,41 @@ public class MessageOffloader extends ContextProcessor {
         String content = message.getContentAsString();
         String trimmedContent = content.substring(0, Math.min(content.length(), config.getTrimSize())) + OMIT_STRING;
 
-        return offloadMessages(message.getRole(), trimmedContent, List.of(message), context);
+        Map<String, Object> extraFields = extractExtraFields(message);
+        return offloadMessages(message.getRole(), trimmedContent, List.of(message), context,
+                null, "in_memory", extraFields);
+    }
+
+    /**
+     * Extract extra fields from a message for preservation during offload.
+     * Mirrors Python's {@code message.model_dump()} with role/content removed.
+     */
+    protected static Map<String, Object> extractExtraFields(BaseMessage message) {
+        Map<String, Object> extraFields = new HashMap<>();
+        if (message.getName() != null) {
+            extraFields.put("name", message.getName());
+        }
+        if (message instanceof ToolMessage toolMsg && toolMsg.getToolCallId() != null) {
+            extraFields.put("tool_call_id", toolMsg.getToolCallId());
+        }
+        if (message instanceof AssistantMessage assistantMsg) {
+            if (assistantMsg.getToolCalls() != null) {
+                extraFields.put("tool_calls", assistantMsg.getToolCalls());
+            }
+            if (assistantMsg.getUsageMetadata() != null) {
+                extraFields.put("usage_metadata", assistantMsg.getUsageMetadata());
+            }
+            if (assistantMsg.getFinishReason() != null) {
+                extraFields.put("finish_reason", assistantMsg.getFinishReason());
+            }
+            if (assistantMsg.getParserContent() != null) {
+                extraFields.put("parser_content", assistantMsg.getParserContent());
+            }
+            if (assistantMsg.getReasoningContent() != null) {
+                extraFields.put("reasoning_content", assistantMsg.getReasoningContent());
+            }
+        }
+        return extraFields;
     }
 
     protected void validateConfig() {

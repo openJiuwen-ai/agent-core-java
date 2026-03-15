@@ -82,11 +82,23 @@ public class ContextMessageBuffer {
     /**
      * Pop messages from the back of the buffer.
      *
-     * @param size        number of messages to pop; null pops all
+     * @param size        number of messages to pop
      * @param withHistory whether to also pop from history
      * @return the popped messages
      */
     public List<BaseMessage> popBack(int size, boolean withHistory) {
+        return popBack(Integer.valueOf(size), withHistory);
+    }
+
+    /**
+     * Pop messages from the back of the buffer.
+     * Mirrors Python's {@code pop_back(size=None, with_history=True)}.
+     *
+     * @param size        number of messages to pop; {@code null} pops all
+     * @param withHistory whether to also pop from history
+     * @return the popped messages
+     */
+    public List<BaseMessage> popBack(Integer size, boolean withHistory) {
         List<BaseMessage> poppedMessages = getBack(size, withHistory);
         int poppedSize = poppedMessages.size();
         int contextSize = contextMessages.size() - historyMessagesSize;

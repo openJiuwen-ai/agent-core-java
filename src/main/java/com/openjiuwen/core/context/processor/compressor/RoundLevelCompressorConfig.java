@@ -24,12 +24,14 @@ public class RoundLevelCompressorConfig {
 
     /**
      * Maximum number of consecutive dialogue rounds before compression is triggered.
+     * Must be > 1.
      */
     @Builder.Default
     private int roundsThreshold = 10;
 
     /**
      * Maximum accumulated token count before compression is triggered.
+     * Must be > 0.
      */
     @Builder.Default
     private int tokensThreshold = 10000;
@@ -54,4 +56,16 @@ public class RoundLevelCompressorConfig {
      * Optional client-level configuration for the model.
      */
     private ModelClientConfig modelClient;
+
+    /**
+     * Validate configuration constraints matching Python Pydantic rules.
+     */
+    public void validate() {
+        if (roundsThreshold <= 1) {
+            throw new IllegalArgumentException("roundsThreshold must be > 1, got " + roundsThreshold);
+        }
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+        }
+    }
 }

@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.common.exception;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -143,6 +146,19 @@ public class BaseError extends RuntimeException {
         map.put("raw_message", message);
         map.put("details", details);
         return map;
+    }
+
+    /**
+     * Serialize this error to a JSON string.
+     *
+     * @return JSON representation of the error
+     */
+    public String toJson() {
+        try {
+            return new ObjectMapper().writeValueAsString(toMap());
+        } catch (JsonProcessingException e) {
+            return toString();
+        }
     }
 
     // ======================== Accessors ========================

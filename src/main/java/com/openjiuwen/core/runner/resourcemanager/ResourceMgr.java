@@ -503,6 +503,86 @@ public class ResourceMgr {
         return results;
     }
 
+    /**
+     * Refresh MCP server tool card(s).
+     * <p>
+     * Current implementation is a stub that returns an empty list,
+     * matching the Python reference implementation.
+     *
+     * @param serverId            MCP server ID(s) to refresh
+     * @param serverName          MCP server name(s) to refresh
+     * @param tag                 Optional tag to filter servers
+     * @param tagMatchStrategy    Strategy for matching tags
+     * @param ignoreException     If true, continue refreshing other servers on error
+     * @param skipIfTagNotExists  If true, skip non-existent tags
+     * @return List of Result with server IDs or errors
+     */
+    public List<Result<String>> refreshMcpServer(Object serverId, Object serverName,
+                                                  Object tag, TagMatchStrategy tagMatchStrategy,
+                                                  boolean ignoreException,
+                                                  boolean skipIfTagNotExists) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Get MCP tool information/metadata by name and server.
+     *
+     * @param name                MCP tool name(s) to get info for (null returns all)
+     * @param serverId            MCP server ID(s) containing the tools
+     * @param serverName          MCP server name(s) containing the tools
+     * @param tag                 Optional tag to filter servers/tools
+     * @param tagMatchStrategy    Strategy for matching tags
+     * @param skipIfTagNotExists  If true, skip non-existent tags
+     * @param ignoreException     If true, ignore refresh exceptions
+     * @return List of ToolInfo for matching MCP tools
+     */
+    public List<ToolInfo> getMcpToolInfos(Object name, Object serverId, Object serverName,
+                                           Object tag, TagMatchStrategy tagMatchStrategy,
+                                           boolean skipIfTagNotExists,
+                                           boolean ignoreException) throws Exception {
+        List<String> serverIdsToGet = innerGetServerIds(serverId, serverName, tag,
+                tagMatchStrategy, skipIfTagNotExists,
+                StatusCode.RESOURCE_MCP_TOOL_GET_ERROR);
+        List<String> toolNames = normalizeStringList(name);
+        List<ToolInfo> results = new ArrayList<>();
+        for (String mcpServerId : serverIdsToGet) {
+            try {
+                resourceRegistry.tool().refreshToolServer(mcpServerId, true, false);
+            } catch (Exception e) {
+                if (!ignoreException) {
+                    throw e;
+                }
+            }
+            List<String> toolIds = new ArrayList<>();
+            if (toolNames.isEmpty()) {
+                // getMcpToolId with null toolName returns the full list
+                Object idsObj = resourceRegistry.tool().getMcpToolId(mcpServerId, null);
+                if (idsObj instanceof List<?> idList) {
+                    for (Object item : idList) {
+                        toolIds.add(String.valueOf(item));
+                    }
+                }
+            } else {
+                for (String toolName : toolNames) {
+                    Object toolIdObj = resourceRegistry.tool().getMcpToolId(mcpServerId, toolName);
+                    if (toolIdObj instanceof String toolId) {
+                        toolIds.add(toolId);
+                    }
+                }
+            }
+            for (String toolId : toolIds) {
+                BaseCard card = idToCard.get(toolId);
+                if (card instanceof ToolCard toolCard) {
+                    ToolInfo toolInfo = toolCard.toolInfo();
+                    if (toolInfo != null) {
+                        results.add(toolInfo);
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
     // ========== Tag Operations ==========
 
     public List<BaseCard> getResourceByTag(String tag) {

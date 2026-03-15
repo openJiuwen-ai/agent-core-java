@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DMessageType;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
@@ -43,7 +44,11 @@ public final class MqMessageUtils {
     public static DmqResponseMessage buildErrorResponse(DmqRequestMessage request, String senderId, Exception error) {
         DmqResponseMessage response = buildStreamResponse(request, senderId, java.util.Map.of(), 0, true);
         response.setResultType(ResultType.ERROR);
-        response.setErrorCode(-1);
+        int errorCode = -1;
+        if (error instanceof BaseError baseError) {
+            errorCode = baseError.getCode();
+        }
+        response.setErrorCode(errorCode);
         response.setErrorMsg(error.getMessage());
         return response;
     }

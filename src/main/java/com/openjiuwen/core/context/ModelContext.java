@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Abstract base class for managing conversational context in a model-agnostic way.
@@ -106,19 +107,32 @@ public abstract class ModelContext {
      * @param tools          tool definitions to include
      * @param windowSize     maximum number of messages; {@code null} for default
      * @param dialogueRound  number of recent rounds to retain; {@code null} disables
+     * @param kwargs         additional context-specific parameters (e.g., "model" for KV cache release)
      * @return the constructed context window
      */
     public abstract ContextWindow getContextWindow(
             List<BaseMessage> systemMessages,
             List<ToolInfo> tools,
             Integer windowSize,
-            Integer dialogueRound);
+            Integer dialogueRound,
+            Map<String, Object> kwargs);
+
+    /**
+     * Convenience overload without kwargs.
+     */
+    public ContextWindow getContextWindow(
+            List<BaseMessage> systemMessages,
+            List<ToolInfo> tools,
+            Integer windowSize,
+            Integer dialogueRound) {
+        return getContextWindow(systemMessages, tools, windowSize, dialogueRound, Map.of());
+    }
 
     /**
      * Get context window with defaults.
      */
     public ContextWindow getContextWindow() {
-        return getContextWindow(null, null, null, null);
+        return getContextWindow(null, null, null, null, Map.of());
     }
 
     /**

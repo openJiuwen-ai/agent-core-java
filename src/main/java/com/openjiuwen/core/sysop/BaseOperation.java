@@ -196,6 +196,53 @@ public abstract class BaseOperation {
     }
 
     /**
+     * Safely convert an object to a Map representation, similar to Python's model_dump().
+     * Returns a default value if conversion fails.
+     * <p>
+     * Mirrors Python's {@code _safe_model_dump(obj, default=None)} in {@code BaseOperation}.
+     *
+     * @param obj          the object to convert
+     * @param defaultValue default return value when conversion fails (null defaults to {"error": "model_dump failed"})
+     * @return Map representation of the object, or defaultValue on failure
+     */
+    @SuppressWarnings("unchecked")
+    protected static Map<String, Object> safeModelDump(Object obj, Map<String, Object> defaultValue) {
+        if (defaultValue == null) {
+            defaultValue = Map.of("error", "model_dump failed");
+        }
+        if (obj == null) {
+            return defaultValue;
+        }
+        try {
+            if (obj instanceof Map) {
+                return (Map<String, Object>) obj;
+            }
+            // Use Jackson ObjectMapper if available, otherwise use reflection-based approach
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (java.lang.reflect.Method method : obj.getClass().getMethods()) {
+                String methodName = method.getName();
+                if (method.getParameterCount() == 0
+                        && method.getDeclaringClass() != Object.class
+                        && (methodName.startsWith("get") || methodName.startsWith("is"))) {
+                    String fieldName;
+                    if (methodName.startsWith("get") && methodName.length() > 3) {
+                        fieldName = Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4);
+                    } else if (methodName.startsWith("is") && methodName.length() > 2) {
+                        fieldName = Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3);
+                    } else {
+                        continue;
+                    }
+                    Object value = method.invoke(obj);
+                    result.put(fieldName, value);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    /**
      * Create a SysOperationEvent for logging.
      *
      * @param eventType       type of the system operation event
@@ -211,10 +258,46 @@ public abstract class BaseOperation {
             Map<String, Object> methodParams,
             Map<String, Object> methodResult,
             Double methodExecTimeMs) {
+        return createSysOperationEvent(eventType, methodName, methodParams, methodResult, methodExecTimeMs, null);
+    }
+
+    /**
+     * Create a SysOperationEvent for logging with additional metadata.
+     * <p>
+     * Mirrors Python's {@code _create_sys_operation_event(..., **kwargs)}.
+     * The {@code extras} map carries additional arbitrary parameters similar to Python's kwargs.
+     *
+     * @param eventType       type of the system operation event
+     * @param methodName      name of the method being logged
+     * @param methodParams    parameters passed to the method
+     * @param methodResult    results returned by the method
+     * @param methodExecTimeMs execution time in milliseconds
+     * @param extras          additional key-value pairs (mirrors Python's **kwargs)
+     * @return created SysOperationEvent, or null
+     */
+    protected SysOperationEvent createSysOperationEvent(
+            LogEventType eventType,
+            String methodName,
+            Map<String, Object> methodParams,
+            Map<String, Object> methodResult,
+            Double methodExecTimeMs,
+            Map<String, Object> extras) {
+        String moduleId = "sys_operation";
+        String moduleName = "sys_operation";
+
+        if (extras != null) {
+            if (extras.containsKey("module_id")) {
+                moduleId = String.valueOf(extras.get("module_id"));
+            }
+            if (extras.containsKey("module_name")) {
+                moduleName = String.valueOf(extras.get("module_name"));
+            }
+        }
+
         return SysOperationEvent.builder()
                 .eventType(eventType)
-                .moduleId("sys_operation")
-                .moduleName("sys_operation")
+                .moduleId(moduleId)
+                .moduleName(moduleName)
                 .operationName(name)
                 .operationMode(mode != null ? mode.getValue() : null)
                 .operationDesc(description)

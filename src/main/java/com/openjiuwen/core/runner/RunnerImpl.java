@@ -7,7 +7,10 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
+import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageQueueFactory;
+import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
+import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
@@ -47,6 +50,12 @@ public class RunnerImpl {
     private final LocalMessageQueue messageQueue;
     private final CallbackFramework callbackFramework;
 
+    /** Distributed message queue (null if not in distributed mode). */
+    private volatile MessageQueueBase distributeMessageQueue;
+
+    /** Reply topic subscription for distributed mode (null if not in distributed mode). */
+    private volatile ReplyTopicSubscription systemReplySub;
+
     public RunnerImpl() {
         this(DEFAULT_RUNNER_ID, null);
     }
@@ -85,6 +94,20 @@ public class RunnerImpl {
      */
     public CallbackFramework getCallbackFramework() {
         return callbackFramework;
+    }
+
+    /**
+     * Get the distributed message queue for cross-process communication.
+     */
+    public MessageQueueBase getDistPubsub() {
+        return distributeMessageQueue;
+    }
+
+    /**
+     * Get the reply topic subscription for distributed mode.
+     */
+    public ReplyTopicSubscription getSystemReplySub() {
+        return systemReplySub;
     }
 
     // ========== Config ==========
@@ -132,6 +155,19 @@ public class RunnerImpl {
             }
         }
 
+        if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
+            // Start distributed message queue
+            distributeMessageQueue = MessageQueueFactory.create(
+                    RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
+            distributeMessageQueue.start();
+
+            // Start reply topic subscription
+            String replyTopic = RunnerConfig.getRunnerConfig().replyTopicTemplate()
+                    .replace("{instance_id}", RunnerConfig.getRunnerConfig().getInstanceId());
+            systemReplySub = new ReplyTopicSubscription(distributeMessageQueue, replyTopic);
+            systemReplySub.activate();
+        }
+
         result = messageQueue.start();
         logger.info("Succeed to start runner, runnerId={}", runnerId);
         return result;
@@ -145,6 +181,19 @@ public class RunnerImpl {
     public boolean stop() {
         logger.info("Begin to stop runner, runnerId={}", runnerId);
         try {
+            if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
+                // Stop ReplyTopicSubscription and clean up collectors
+                if (systemReplySub != null) {
+                    systemReplySub.deactivate();
+                    systemReplySub = null;
+                }
+                // Stop distributed MQ
+                if (distributeMessageQueue != null) {
+                    distributeMessageQueue.stop();
+                    distributeMessageQueue = null;
+                }
+            }
+
             messageQueue.stop();
             logger.info("Succeed to stop runner, runnerId={}", runnerId);
             return true;
@@ -167,7 +216,8 @@ public class RunnerImpl {
      * @param context  Model context
      * @return Workflow execution result
      */
-    public Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context) {
+    public Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+                               Map<String, Object> envs) {
         Workflow workflowInstance;
         Object workflowSession;
 
@@ -199,7 +249,8 @@ public class RunnerImpl {
      * @return Iterator of streaming chunks
      */
     public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
-                                                  ModelContext context, List<StreamMode> streamModes) {
+                                                  ModelContext context, List<StreamMode> streamModes,
+                                                  Map<String, Object> envs) {
         Workflow workflowInstance;
         Object workflowSession;
 
@@ -235,7 +286,8 @@ public class RunnerImpl {
      * @param context Model context
      * @return Agent execution result
      */
-    public Object runAgent(Object agent, Object inputs, Object session, ModelContext context) {
+    public Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+                            Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
         AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session);
         Object result = invokeAgent(agentInstance, inputs, agentSession, context);
@@ -254,7 +306,8 @@ public class RunnerImpl {
      * @return Iterator of streaming chunks
      */
     public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session,
-                                              ModelContext context, List<StreamMode> streamModes) {
+                                              ModelContext context, List<StreamMode> streamModes,
+                                              Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
         AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session);
         Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context);
@@ -272,7 +325,8 @@ public class RunnerImpl {
      * @param context    Model context
      * @return Agent group execution result
      */
-    public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context) {
+    public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
+                                Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
         return invokeAgentGroup(groupInstance, inputs, session, context);
     }
@@ -288,7 +342,8 @@ public class RunnerImpl {
      * @return Iterator of streaming chunks
      */
     public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
-                                                    ModelContext context, List<StreamMode> streamModes) {
+                                                    ModelContext context, List<StreamMode> streamModes,
+                                                    Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
         return streamAgentGroup(groupInstance, inputs, session, context);
     }

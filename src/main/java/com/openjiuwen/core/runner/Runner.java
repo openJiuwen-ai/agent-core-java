@@ -4,13 +4,16 @@ package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
+import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
+import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runner singleton class that proxies all calls to the global runner instance.
@@ -57,6 +60,20 @@ public final class Runner {
         return GLOBAL_RUNNER.getCallbackFramework();
     }
 
+    /**
+     * Get the distributed message queue for cross-process communication.
+     */
+    public static MessageQueueBase distPubsub() {
+        return GLOBAL_RUNNER.getDistPubsub();
+    }
+
+    /**
+     * Get the reply topic subscription for distributed mode.
+     */
+    public static ReplyTopicSubscription systemReplySub() {
+        return GLOBAL_RUNNER.getSystemReplySub();
+    }
+
     // ========== Config ==========
 
     /**
@@ -101,7 +118,15 @@ public final class Runner {
      * @return Workflow execution result
      */
     public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context) {
-        return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context);
+        return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, null);
+    }
+
+    /**
+     * Execute a workflow with given inputs and environment overrides.
+     */
+    public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+                                     Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs);
     }
 
     /**
@@ -116,7 +141,16 @@ public final class Runner {
      */
     public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
                                                          ModelContext context, List<StreamMode> streamModes) {
-        return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes);
+        return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes, null);
+    }
+
+    /**
+     * Execute a workflow with streaming output support and environment overrides.
+     */
+    public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+                                                         ModelContext context, List<StreamMode> streamModes,
+                                                         Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
     }
 
     // ========== Agent ==========
@@ -131,7 +165,15 @@ public final class Runner {
      * @return Agent execution result
      */
     public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context) {
-        return GLOBAL_RUNNER.runAgent(agent, inputs, session, context);
+        return GLOBAL_RUNNER.runAgent(agent, inputs, session, context, null);
+    }
+
+    /**
+     * Execute a single agent with given inputs and environment overrides.
+     */
+    public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+                                  Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgent(agent, inputs, session, context, envs);
     }
 
     /**
@@ -146,7 +188,16 @@ public final class Runner {
      */
     public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session,
                                                       ModelContext context, List<StreamMode> streamModes) {
-        return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes);
+        return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, null);
+    }
+
+    /**
+     * Execute a single agent with streaming output support and environment overrides.
+     */
+    public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session,
+                                                      ModelContext context, List<StreamMode> streamModes,
+                                                      Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs);
     }
 
     // ========== Agent Group ==========
@@ -161,7 +212,15 @@ public final class Runner {
      * @return Agent group execution result
      */
     public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context) {
-        return GLOBAL_RUNNER.runAgentGroup(agentGroup, inputs, session, context);
+        return GLOBAL_RUNNER.runAgentGroup(agentGroup, inputs, session, context, null);
+    }
+
+    /**
+     * Execute a group of agents with given inputs and environment overrides.
+     */
+    public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
+                                       Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentGroup(agentGroup, inputs, session, context, envs);
     }
 
     /**
@@ -176,7 +235,16 @@ public final class Runner {
      */
     public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
                                                            ModelContext context, List<StreamMode> streamModes) {
-        return GLOBAL_RUNNER.runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes);
+        return GLOBAL_RUNNER.runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, null);
+    }
+
+    /**
+     * Execute a group of agents with streaming output support and environment overrides.
+     */
+    public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
+                                                           ModelContext context, List<StreamMode> streamModes,
+                                                           Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs);
     }
 
     // ========== Release ==========

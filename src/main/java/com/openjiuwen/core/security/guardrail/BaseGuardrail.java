@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -63,6 +64,14 @@ public abstract class BaseGuardrail {
 
     public GuardrailBackend getBackend() {
         return backend;
+    }
+
+    public boolean isEnableLogging() {
+        return enableLogging;
+    }
+
+    public void setEnableLogging(boolean enableLogging) {
+        this.enableLogging = enableLogging;
     }
 
     /**
@@ -138,7 +147,9 @@ public abstract class BaseGuardrail {
                 }
             };
 
-            framework.register(event, callback, 100, callbackName(event));
+            framework.register(event, callback, 100, false, "guardrail",
+                    Set.of("guardrail", getClass().getSimpleName()),
+                    null, null, null, 0, 0.0, null, callbackName(event));
             registeredCallbacks.put(event, callback);
 
             if (enableLogging) {
