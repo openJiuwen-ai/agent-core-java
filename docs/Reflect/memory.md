@@ -20,15 +20,8 @@
 
 - memory 模块整体上已经完成主干转译，顶层引擎、各类 manager、搜索、更新检查、迁移、提取、提示词加载均可一一对位。
 - 核心入口 `LongTermMemory` 的公开能力基本齐全，Python 中常用的 `register_store`、`add_messages`、`search_user_mem`、`search_user_history_summary`、`get_user_mem_by_page` 等，在 Java 侧均已有对应公开方法。
-- 当前需要重点关注的不是整体缺包，而是少数公开 API 与功能语义未完全保留，主要集中在:
-  - migration 结果传递与失败上抛语义
-  - `SqlDbStore` 的部分公开便捷方法
-  - scope 级 embedding 动态实例化能力
-  - vector migration 对底层 store 能力的依赖
-  - SQLite 场景下的 SQL migration 降级处理
-  - `UserMemStore` 删除索引后的空 key 清理语义
-  - migration operation 具体操作类的公开可见性
-  - `DbModel` 的 ORM 模型类被收口为 DDL 工具类
+- 本轮修补后，前期确认的主干缺口中，migration 失败上抛、scope 级 embedding 动态实例化、`SqlDbStore` 公开便捷方法、SQLite 列类型迁移、`UserMemStore` 空 key 清理、migration operation 公开化、`DbModel` 公开模型载体等问题已补齐。
+- 当前需要重点关注的真实剩余差异，主要集中在 vector migration 仍依赖底层 store 是否实现 `SchemaMutableVectorStore`，因此“真实 collection 枚举 / schema 更新 / metadata 持久化”能力仍不是所有 Java 向量后端都能保证与 Python 完全等价。
 
 ## 4. 文件、类、方法映射
 
@@ -116,10 +109,10 @@ Java 额外补充:
 | `message_manager.py::MessageAddRequest` | `MessageAddRequest` | 数据模型映射 | 对齐 |
 | `message_manager.py::MessageManager` | `MessageManager` | `add -> add`；`get -> get`；`get_by_id -> getById`；`delete_by_user_and_scope -> deleteByUserAndScope` | 对齐，返回载体由 tuple/list 改为 `MessageRecord` |
 | `scope_user_mapping_manager.py::ScopeUserMappingManager` | `ScopeUserMappingManager` | `add -> add`；`delete_by_scope_id -> deleteByScopeId`；`get_by_scope_id -> getByScopeId` | 对齐 |
-| `semantic_store.py::SemanticStore` | `SemanticStore` | `initialize_embedding_model -> initializeEmbeddingModel`；`add_docs -> addDocs`；`delete_docs -> deleteDocs`；`delete_table -> deleteTable`；`search -> search` | 核心 API 对齐；Java 还补了 collection/schema 维护方法，但部分能力依赖底层 `SchemaMutableVectorStore` |
-| `sql_db_store.py::SqlDbStore` | `SqlDbStore` | `write -> write`；`get -> get`；`get_with_sort -> getWithSort`；`exist -> exist`；`condition_get -> conditionGet`；`update -> update`；`delete -> delete` | 基本对齐，但 `batch_get` / `delete_table` / `get_table` 缺失 |
+| `semantic_store.py::SemanticStore` | `SemanticStore` | `initialize_embedding_model -> initializeEmbeddingModel`；`add_docs -> addDocs`；`delete_docs -> deleteDocs`；`delete_table -> deleteTable`；`search -> search` | 核心 API 对齐；Java 额外补了 collection/schema 维护方法，但完整迁移能力仍依赖底层 `SchemaMutableVectorStore` |
+| `sql_db_store.py::SqlDbStore` | `SqlDbStore` | `write -> write`；`get -> get`；`get_with_sort -> getWithSort`；`exist -> exist`；`batch_get -> batchGet`；`condition_get -> conditionGet`；`update -> update`；`delete -> delete`；`delete_table -> deleteTable`；`get_table -> getTable` | 对齐；Java `getTable()` 返回 JDBC 反射结果载体而非 SQLAlchemy `Table` |
 | `user_mem_store.py::UserMemStore` | `UserMemStore` | `write -> write`；`update -> update`；`delete -> delete`；`batch_delete -> batchDelete`；`get -> get`；`batch_get -> batchGet`；`get_all -> getAll`；`get_by_topic -> getByTopic`；`get_in_range -> getInRange` | 对齐 |
-| `db_model.py` | `DbModel` | Python `create_tables -> createTables`；Python ORM mixin/model 类被 Java 收口到 DDL 工具类与常量 | 功能主线存在，但公开建模 API 不完全一致 |
+| `db_model.py` | `DbModel` + `UserMessage` + `ScopeUserMapping` + `MemoryMeta` | Python `create_tables -> createTables`；Python ORM 模型 -> Java 公开 record 模型与 DDL 工具类 | 主线能力对齐；Java 不提供 SQLAlchemy 风格 mixin / table object |
 
 ### 4.8 `migration` / `operation`
 
@@ -127,14 +120,14 @@ Java 额外补充:
 | --- | --- | --- | --- |
 | `operation/base_operation.py::OperationMetadata` | `OperationMetadata` | 元数据模型映射 | 对齐 |
 | `operation/base_operation.py::BaseOperation` | `BaseOperation` | `schema_version -> getSchemaVersion`；`description -> getDescription` | 对齐 |
-| `operation/operations.py::{AddColumnOperation, RenameColumnOperation, UpdateColumnTypeOperation, AddScalarFieldOperation, RenameScalarFieldOperation, UpdateScalarFieldTypeOperation, UpdateEmbeddingDimensionOperation, UpdateKVOperation}` | `Operations.java` 内同名类 | 字段语义对齐 | Java 仅保留包内可见类，公开可见性弱于 Python |
+| `operation/operations.py::{AddColumnOperation, RenameColumnOperation, UpdateColumnTypeOperation, AddScalarFieldOperation, RenameScalarFieldOperation, UpdateScalarFieldTypeOperation, UpdateEmbeddingDimensionOperation, UpdateKVOperation}` | 同名独立公开类 | 字段语义对齐 | 对齐 |
 | `operation/operation_registry.py::OperationRegistry` | `OperationRegistry` | `register -> register`；`get_operations -> getOperations`；`get_current_version -> getCurrentVersion`；`get_all_entities -> getAllEntities`；`get_all_operations -> getAllOperations`；`clear -> clear`；`set_operations -> setOperations` | 对齐 |
 | `migration_plan.py` | `MigrationPlan` | `get_sql_registry -> getSqlRegistry`；`get_vector_registry -> getVectorRegistry`；`get_kv_registry -> getKvRegistry` | 对齐 |
 | `migrator/memory_meta_manager.py::MemoryMetaManager` | `MemoryMetaManager` | `add -> add`；`delete_by_table_name -> deleteByTableName`；`get_by_table_name -> getByTableName` | 对齐 |
 | `migrator/sql_migrator.py::SQLMigrator` | `SqlMigrator` | `try_migrate -> tryMigrate` | 对齐 |
 | `migrator/vector_migrator.py::VectorMigrator` | `VectorMigrator` | `try_migrate -> tryMigrate`；`_find_collections -> findCollections` | 对齐 |
 | `migrator/kv_migrator.py::KVMigrator` | `KvMigrator` | `try_migrate -> tryMigrate`；`_validate_operations_order -> validateOperationsOrder` | 对齐 |
-| `run_migrations.py` | `RunMigrations` | `run_sql_migrations -> runSqlMigrations`；`run_vector_migrations -> runVectorMigrations`；`run_kv_migrations -> runKvMigrations` | 入口存在，但失败传播语义弱于 Python |
+| `run_migrations.py` | `RunMigrations` | `run_sql_migrations -> runSqlMigrations`；`run_vector_migrations -> runVectorMigrations`；`run_kv_migrations -> runKvMigrations` | 入口与失败传播语义已对齐；Java 仍以 `boolean + 上层抛错` 形式承载 |
 
 ### 4.9 `process.extract` / `prompt`
 
@@ -167,24 +160,16 @@ Java 额外补充:
 
 | 位置 | Python 基线 | Java 现状 | 影响 |
 | --- | --- | --- | --- |
-| `LongTermMemory._run_migration()` / `run_migrations.py` | Python 在任一 entity 迁移失败时抛异常，`LongTermMemory._run_migration()` 统一捕获后再包装上抛 | Java `RunMigrations.*` 仅返回 `boolean`；`LongTermMemory.runMigration(Runnable, ...)` 用 `Runnable` 调用时忽略返回值，只要没有抛异常就记录“migration completed successfully” | 某些 migration 失败会被吞成日志，store 注册流程可能继续向下执行，失败可观测性与阻断语义弱于 Python |
-| `LongTermMemory._get_scope_embedding_model()` | 若 scope 配置含 `embedding_cfg`，通过 `APIEmbedding(config=...)` 动态创建并缓存 embedding 模型 | Java 工程虽然已有 `com.openjiuwen.core.retrieval.embedding.APIEmbedding`，但 `getScopeEmbeddingModel()` 当前未接入这条链路，直接返回 `null` | scope 级 embedding 配置在 Java memory 模块中不生效，语义弱于 Python |
 | `SemanticStore` / `VectorMigrator` | Python 可依赖 `BaseVectorStore.list_collection_names()`、`update_schema()`、`get_collection_metadata()`、`update_collection_metadata()` 做真实 collection 发现与 schema 迁移 | Java 仅在底层实现 `SchemaMutableVectorStore` 时才具备完整能力；否则 `listCollectionNames()` 退化为内存缓存，`updateSchema()` 直接告警返回 `false` | 既有 collection 的向量迁移与 schema 维护能力不稳定，可能漏迁或直接跳过 |
-| `manage/mem_model/SqlDbStore` | `batch_get(table, conditions_list)` | 无 `batchGet(...)` | SQL store 公共 API 未齐平 |
-| `manage/mem_model/SqlDbStore` | `delete_table(table_name)` | 无 `deleteTable(...)` | 缺少公开删表能力 |
-| `manage/mem_model/SqlDbStore` | `get_table(table_name)` | 无 `getTable(...)` | 缺少公开 schema/table 反射入口 |
-| `migration/operation/operations.py` | 8 个 operation 类型对外可直接导入/实例化 | Java 将同名类放入 `Operations.java` 且为包内可见 | 外部调用方无法像 Python 一样直接引用具体迁移操作类 |
 
 ### 6.2 中优先级
 
 | 位置 | Python 基线 | Java 现状 | 影响 |
 | --- | --- | --- | --- |
-| `migrator/sql_migrator.py::SQLMigrator._migrate_update_column_type()` | Python 在 SQLite 上走“重建新表并复制数据”的 workaround，继续执行列类型迁移 | Java `SqlMigrator.executeUpdateColumnType(...)` 在 SQLite 上仅 `warn` 后返回，不执行等价迁移 | SQLite 环境下列类型迁移会退化为 no-op，schema 演进能力弱于 Python |
-| `manage/mem_model/user_mem_store.py::__delete_mem_id()` | Python 删除最后一个 mem id 后会删除 ids key | Java `UserMemStore.deleteMemId(...)` 在最后一个 id 删除后会把空字符串写回 key | 会遗留空索引 key，和 Python 的 KV 清理语义不一致 |
-| `manage/mem_model/db_model.py` | 公开 `UserMessage`、`ScopeUserMapping`、`MemoryMeta` 及 mixin 模型 | Java 仅保留 `DbModel.createTables(...)` 和表名常量 | 若外部代码依赖 ORM 模型类型，Java 无直接对位类 |
+| `manage/mem_model/db_model.py` | Python 公开 ORM mixin、`Table` 对象与模型类 | Java 已补公开 record 模型，但仍不提供 SQLAlchemy `Table` / mixin 层反射 API | 若外部代码强依赖 Python ORM 元编程能力，Java 仍需额外适配 |
 
 ## 7. 结论
 
 - 从 memory 引擎主干能力看，Java 版已经覆盖 Python 版绝大多数对外 API。
-- 当前真正需要在“缺漏清单”中跟进的，是少量公开便捷 API、scope embedding 动态能力、vector migration 语义，以及公开类型可见性问题，而不是整体架构缺失。
-- 建议后续补齐顺序: `migration 失败结果上抛 -> scope embedding 动态实例化 -> vector migration 真实 collection/schema 能力 -> SqlDbStore 缺失便捷方法 -> SQLite 列类型迁移补齐 -> migration operation 公开化 -> UserMemStore 空 key 清理 -> DbModel 公开模型策略`。
+- 当前真正仍需跟进的，是 vector migration 在不同底层 store 上的真实 collection/schema 能力，以及 `DbModel` 是否需要继续向 Python ORM 元编程层靠拢，而不是主干 memory API 缺失。
+- 建议后续补齐顺序: `Vector store 补齐 SchemaMutableVectorStore 级能力 -> 评估 DbModel 是否需要继续暴露 Table/mixin 层 API`。

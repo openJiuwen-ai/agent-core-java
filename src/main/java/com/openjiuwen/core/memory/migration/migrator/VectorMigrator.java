@@ -35,35 +35,41 @@ public class VectorMigrator {
         if (operations == null || operations.isEmpty()) {
             return true;
         }
-        List<String> collectionNames = findCollections(entityKey);
-        for (String collectionName : collectionNames) {
-            Map<String, Object> metadata = semanticStore.getCollectionMetadata(collectionName);
-            int currentVersion = metadata.get("schema_version") instanceof Number number ? number.intValue() : 0;
+        try {
+            List<String> collectionNames = findCollections(entityKey);
+            for (String collectionName : collectionNames) {
+                Map<String, Object> metadata = semanticStore.getCollectionMetadata(collectionName);
+                int currentVersion = metadata.get("schema_version") instanceof Number number ? number.intValue() : 0;
 
-            List<BaseOperation> operationsToApply = new ArrayList<>();
-            for (BaseOperation operation : operations) {
-                if (operation.getSchemaVersion() > currentVersion) {
-                    operationsToApply.add(operation);
+                List<BaseOperation> operationsToApply = new ArrayList<>();
+                for (BaseOperation operation : operations) {
+                    if (operation.getSchemaVersion() > currentVersion) {
+                        operationsToApply.add(operation);
+                    }
                 }
-            }
-            if (operationsToApply.isEmpty()) {
-                continue;
-            }
+                if (operationsToApply.isEmpty()) {
+                    continue;
+                }
 
-            boolean updated = semanticStore.updateSchema(collectionName, operationsToApply);
-            if (!updated) {
-                MEMORY_LOGGER.warn("[{}] Vector schema operations are not supported by current store, collection={}",
-                        LogEventType.MEMORY_INIT, collectionName);
-                continue;
-            }
+                boolean updated = semanticStore.updateSchema(collectionName, operationsToApply);
+                if (!updated) {
+                    MEMORY_LOGGER.error("[{}] Vector schema operations are not supported by current store, collection={}",
+                            LogEventType.MEMORY_INIT, collectionName);
+                    return false;
+                }
 
-            int maxVersion = operationsToApply.stream()
-                    .mapToInt(BaseOperation::getSchemaVersion)
-                    .max()
-                    .orElse(currentVersion);
-            semanticStore.updateCollectionMetadata(collectionName, Map.of("schema_version", maxVersion));
-            MEMORY_LOGGER.info("[{}] Applied {} vector migration operations for collection {} -> schema_version={}",
-                    LogEventType.MEMORY_INIT, operationsToApply.size(), collectionName, maxVersion);
+                int maxVersion = operationsToApply.stream()
+                        .mapToInt(BaseOperation::getSchemaVersion)
+                        .max()
+                        .orElse(currentVersion);
+                semanticStore.updateCollectionMetadata(collectionName, Map.of("schema_version", maxVersion));
+                MEMORY_LOGGER.info("[{}] Applied {} vector migration operations for collection {} -> schema_version={}",
+                        LogEventType.MEMORY_INIT, operationsToApply.size(), collectionName, maxVersion);
+            }
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Vector migration failed for entity {}: {}",
+                    LogEventType.MEMORY_INIT, entityKey, e.getMessage());
+            return false;
         }
         return true;
     }

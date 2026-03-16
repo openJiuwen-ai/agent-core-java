@@ -242,6 +242,10 @@ public class UserMemStore {
                 newIds.append(id);
             }
         }
+        if (newIds.isEmpty()) {
+            kvStore.delete(idsKey);
+            return;
+        }
         kvStore.set(idsKey, newIds.toString());
     }
 

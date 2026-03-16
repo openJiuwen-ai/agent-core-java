@@ -39,7 +39,7 @@ public final class RunMigrations {
             if (!migrator.tryMigrate(entityKey, ops)) {
                 MEMORY_LOGGER.error("[{}] SQL migration failed for entity: {}",
                         LogEventType.MEMORY_INIT, entityKey);
-                allOk = false;
+                return false;
             }
         }
         return allOk;
@@ -58,7 +58,7 @@ public final class RunMigrations {
             if (!migrator.tryMigrate(entityKey, ops)) {
                 MEMORY_LOGGER.error("[{}] Vector migration failed for entity: {}",
                         LogEventType.MEMORY_INIT, entityKey);
-                allOk = false;
+                return false;
             }
         }
         return allOk;
@@ -77,7 +77,7 @@ public final class RunMigrations {
             if (!migrator.tryMigrate(entityKey, ops)) {
                 MEMORY_LOGGER.error("[{}] KV migration failed for entity: {}",
                         LogEventType.MEMORY_INIT, entityKey);
-                allOk = false;
+                return false;
             }
         }
         return allOk;

@@ -36,6 +36,7 @@ import com.openjiuwen.core.memory.manage.search.SearchManager;
 import com.openjiuwen.core.memory.manage.search.SearchParams;
 import com.openjiuwen.core.memory.migration.RunMigrations;
 import com.openjiuwen.core.memory.process.extract.Generator;
+import com.openjiuwen.core.retrieval.embedding.APIEmbedding;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.spi.store.BaseDbStore;
@@ -50,6 +51,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * Main memory engine implementing long-term memory management.
@@ -616,10 +618,19 @@ public class LongTermMemory {
         if (cached != null) {
             return cached;
         }
-        // Note: Java has no APIEmbedding equivalent. The embedding model must be provided
-        // via registerStore or set explicitly. Scope-level embeddings from config are not
-        // supported until an APIEmbedding factory is implemented in Java.
-        MEMORY_LOGGER.debug("[{}] No scope-level embedding model available for scope: {}",
+        try {
+            MemoryScopeConfig config = getInternalScopeConfig(scopeId);
+            if (config != null && config.getEmbeddingCfg() != null) {
+                Embedding embeddingModel = new APIEmbedding(config.getEmbeddingCfg());
+                scopeEmbedding.put(scopeId, embeddingModel);
+                return embeddingModel;
+            }
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to get scope embedding model for scope {}: {}",
+                    LogEventType.MEMORY_RETRIEVE, scopeId, e.getMessage());
+            return null;
+        }
+        MEMORY_LOGGER.error("[{}] No embedding model available for scope: {}",
                 LogEventType.MEMORY_RETRIEVE, scopeId);
         return null;
     }
@@ -715,10 +726,13 @@ public class LongTermMemory {
         return true;
     }
 
-    private void runMigration(Runnable migrateFunc, String storeType) {
+    private void runMigration(BooleanSupplier migrateFunc, String storeType) {
         try {
             MEMORY_LOGGER.info("[{}] Starting {} migration", LogEventType.MEMORY_INIT, storeType);
-            migrateFunc.run();
+            boolean success = migrateFunc.getAsBoolean();
+            if (!success) {
+                throw new IllegalStateException(storeType + " migration returned failure status");
+            }
             MEMORY_LOGGER.info("[{}] {} migration completed successfully", LogEventType.MEMORY_INIT, storeType);
         } catch (Exception e) {
             MEMORY_LOGGER.error("[{}] {} migration failed: {}", LogEventType.MEMORY_INIT, storeType, e.getMessage());

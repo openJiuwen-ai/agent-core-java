@@ -167,6 +167,48 @@ public class SqlDbStore {
     }
 
     /**
+     * Get rows matching any condition group in the provided list.
+     */
+    public List<Map<String, Object>> batchGet(String table, List<Map<String, Object>> conditionsList) {
+        try (Connection conn = getConnection()) {
+            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
+            List<Object> params = new ArrayList<>();
+            List<String> groups = new ArrayList<>();
+
+            if (conditionsList != null) {
+                for (Map<String, Object> conditions : conditionsList) {
+                    if (conditions == null || conditions.isEmpty()) {
+                        continue;
+                    }
+                    List<String> clauses = new ArrayList<>();
+                    for (Map.Entry<String, Object> entry : conditions.entrySet()) {
+                        clauses.add(entry.getKey() + " = ?");
+                        params.add(entry.getValue());
+                    }
+                    groups.add("(" + String.join(" AND ", clauses) + ")");
+                }
+            }
+
+            if (!groups.isEmpty()) {
+                sql.append(" WHERE ").append(String.join(" OR ", groups));
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setObject(i + 1, params.get(i));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    return resultSetToList(rs);
+                }
+            }
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Batch get failed for table {}: {}",
+                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * Get rows matching IN conditions on specified columns.
      */
     @SuppressWarnings("unchecked")
@@ -284,6 +326,125 @@ public class SqlDbStore {
         } catch (Exception e) {
             MEMORY_LOGGER.error("[{}] Delete failed for table {}: {}", LogEventType.MEMORY_DELETE, table, e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Drop a table if it exists.
+     */
+    public boolean deleteTable(String tableName) {
+        String sql = "DROP TABLE IF EXISTS " + tableName;
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+            return true;
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Delete table failed for {}: {}",
+                    LogEventType.MEMORY_DELETE, tableName, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Reflect table metadata for public callers that need schema access.
+     */
+    public TableInfo getTable(String tableName) {
+        try (Connection conn = getConnection()) {
+            DatabaseMetaData metaData = conn.getMetaData();
+            String resolvedTableName = resolveTableName(metaData, tableName);
+            if (resolvedTableName == null) {
+                return null;
+            }
+            List<ColumnInfo> columns = new ArrayList<>();
+            try (ResultSet rs = metaData.getColumns(conn.getCatalog(), conn.getSchema(), resolvedTableName, null)) {
+                while (rs.next()) {
+                    columns.add(new ColumnInfo(
+                            rs.getString("COLUMN_NAME"),
+                            rs.getString("TYPE_NAME"),
+                            rs.getInt("DATA_TYPE"),
+                            rs.getInt("COLUMN_SIZE"),
+                            rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable,
+                            rs.getString("COLUMN_DEF")
+                    ));
+                }
+            }
+            return new TableInfo(resolvedTableName, columns);
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to reflect table {}: {}",
+                    LogEventType.MEMORY_RETRIEVE, tableName, e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveTableName(DatabaseMetaData metaData, String tableName) throws SQLException {
+        try (ResultSet rs = metaData.getTables(null, null, null, new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String candidate = rs.getString("TABLE_NAME");
+                if (candidate != null && candidate.equalsIgnoreCase(tableName)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static final class TableInfo {
+        private final String name;
+        private final List<ColumnInfo> columns;
+
+        public TableInfo(String name, List<ColumnInfo> columns) {
+            this.name = name;
+            this.columns = List.copyOf(columns);
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public List<ColumnInfo> getColumns() {
+            return columns;
+        }
+    }
+
+    public static final class ColumnInfo {
+        private final String name;
+        private final String typeName;
+        private final int jdbcType;
+        private final int size;
+        private final boolean nullable;
+        private final String defaultValue;
+
+        public ColumnInfo(String name, String typeName, int jdbcType, int size, boolean nullable, String defaultValue) {
+            this.name = name;
+            this.typeName = typeName;
+            this.jdbcType = jdbcType;
+            this.size = size;
+            this.nullable = nullable;
+            this.defaultValue = defaultValue;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getTypeName() {
+            return typeName;
+        }
+
+        public int getJdbcType() {
+            return jdbcType;
+        }
+
+        public int getSize() {
+            return size;
+        }
+
+        public boolean isNullable() {
+            return nullable;
+        }
+
+        public String getDefaultValue() {
+            return defaultValue;
         }
     }
 

@@ -7,13 +7,19 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.core.memory.migration.operation.AddColumnOperation;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+import com.openjiuwen.core.memory.migration.operation.RenameColumnOperation;
+import com.openjiuwen.core.memory.migration.operation.UpdateColumnTypeOperation;
 
 import javax.sql.DataSource;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * SQL schema migrator using JDBC. Simplified version of Python's Alembic-based SQLMigrator.
@@ -101,80 +107,146 @@ public class SqlMigrator {
     }
 
     private void executeSqlOperation(Connection conn, BaseOperation op, String dialect) throws SQLException {
-        // Use reflection-like checks on operation class name since Operations.java uses package-private classes
-        String className = op.getClass().getSimpleName();
-        switch (className) {
-            case "AddColumnOperation" -> executeAddColumn(conn, op);
-            case "RenameColumnOperation" -> executeRenameColumn(conn, op, dialect);
-            case "UpdateColumnTypeOperation" -> executeUpdateColumnType(conn, op, dialect);
-            default -> throw new UnsupportedOperationException("Unsupported SQL operation: " + className);
+        if (op instanceof AddColumnOperation addColumnOperation) {
+            executeAddColumn(conn, addColumnOperation);
+            return;
+        }
+        if (op instanceof RenameColumnOperation renameColumnOperation) {
+            executeRenameColumn(conn, renameColumnOperation, dialect);
+            return;
+        }
+        if (op instanceof UpdateColumnTypeOperation updateColumnTypeOperation) {
+            executeUpdateColumnType(conn, updateColumnTypeOperation, dialect);
+            return;
+        }
+        throw new UnsupportedOperationException("Unsupported SQL operation: " + op.getClass().getName());
+    }
+
+    private void executeAddColumn(Connection conn, AddColumnOperation op) throws SQLException {
+        StringBuilder sql = new StringBuilder("ALTER TABLE ")
+                .append(op.getTable()).append(" ADD COLUMN ").append(op.getColumnName())
+                .append(" ").append(op.getColumnType());
+        if (!op.isNullable()) {
+            sql.append(" NOT NULL");
+        }
+        if (op.getDefaultValue() != null) {
+            sql.append(" DEFAULT ").append(formatDefault(op.getDefaultValue()));
+        }
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql.toString());
         }
     }
 
-    private void executeAddColumn(Connection conn, BaseOperation op) throws SQLException {
-        // Use accessors via reflection since class is package-private
-        try {
-            String table = (String) op.getClass().getMethod("getTable").invoke(op);
-            String columnName = (String) op.getClass().getMethod("getColumnName").invoke(op);
-            String columnType = (String) op.getClass().getMethod("getColumnType").invoke(op);
-            boolean nullable = (boolean) op.getClass().getMethod("isNullable").invoke(op);
-            Object defaultValue = op.getClass().getMethod("getDefaultValue").invoke(op);
-
-            StringBuilder sql = new StringBuilder("ALTER TABLE ")
-                    .append(table).append(" ADD COLUMN ").append(columnName)
-                    .append(" ").append(columnType);
-            if (!nullable) {
-                sql.append(" NOT NULL");
-            }
-            if (defaultValue != null) {
-                sql.append(" DEFAULT ").append(formatDefault(defaultValue));
-            }
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute(sql.toString());
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new SQLException("Failed to execute AddColumnOperation", e);
+    private void executeRenameColumn(Connection conn, RenameColumnOperation op, String dialect) throws SQLException {
+        String sql = "ALTER TABLE " + op.getTable() + " RENAME COLUMN "
+                + op.getOldColumnName() + " TO " + op.getNewColumnName();
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
         }
     }
 
-    private void executeRenameColumn(Connection conn, BaseOperation op, String dialect) throws SQLException {
-        try {
-            String table = (String) op.getClass().getMethod("getTable").invoke(op);
-            String oldCol = (String) op.getClass().getMethod("getOldColumnName").invoke(op);
-            String newCol = (String) op.getClass().getMethod("getNewColumnName").invoke(op);
-
-            String sql;
-            if ("sqlite".equals(dialect)) {
-                sql = "ALTER TABLE " + table + " RENAME COLUMN " + oldCol + " TO " + newCol;
-            } else {
-                sql = "ALTER TABLE " + table + " RENAME COLUMN " + oldCol + " TO " + newCol;
-            }
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute(sql);
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new SQLException("Failed to execute RenameColumnOperation", e);
+    private void executeUpdateColumnType(Connection conn, UpdateColumnTypeOperation op, String dialect) throws SQLException {
+        if ("sqlite".equals(dialect)) {
+            alterColumnTypeSqlite(conn, op.getTable(), op.getColumnName(), op.getNewColumnType());
+            return;
+        }
+        String sql = "ALTER TABLE " + op.getTable() + " ALTER COLUMN " + op.getColumnName()
+                + " TYPE " + op.getNewColumnType();
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
         }
     }
 
-    private void executeUpdateColumnType(Connection conn, BaseOperation op, String dialect) throws SQLException {
-        try {
-            String table = (String) op.getClass().getMethod("getTable").invoke(op);
-            String columnName = (String) op.getClass().getMethod("getColumnName").invoke(op);
-            String newType = (String) op.getClass().getMethod("getNewColumnType").invoke(op);
-
-            if ("sqlite".equals(dialect)) {
-                MEMORY_LOGGER.warn("[{}] SQLite does not support ALTER COLUMN TYPE. " +
-                        "Consider recreating the table for {}.{}", LogEventType.MEMORY_INIT, table, columnName);
-                return;
-            }
-            String sql = "ALTER TABLE " + table + " ALTER COLUMN " + columnName + " TYPE " + newType;
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute(sql);
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new SQLException("Failed to execute UpdateColumnTypeOperation", e);
+    private void alterColumnTypeSqlite(Connection conn, String tableName, String columnName, String newColumnType)
+            throws SQLException {
+        List<ColumnDefinition> columns = getTableColumns(conn, tableName);
+        if (columns.isEmpty()) {
+            throw new SQLException("Table not found for SQLite migration: " + tableName);
         }
+
+        boolean columnFound = false;
+        List<String> columnNames = new ArrayList<>();
+        List<String> columnDefinitions = new ArrayList<>();
+        for (ColumnDefinition column : columns) {
+            String effectiveType = column.typeName();
+            if (column.name().equalsIgnoreCase(columnName)) {
+                effectiveType = newColumnType;
+                columnFound = true;
+            }
+            columnNames.add(column.name());
+            columnDefinitions.add(buildColumnDefinition(column, effectiveType));
+        }
+        if (!columnFound) {
+            throw new SQLException("Column not found for SQLite migration: " + tableName + "." + columnName);
+        }
+
+        String tempTable = tableName + "_new_" + columnName;
+        String createSql = "CREATE TABLE " + tempTable + " (" + String.join(", ", columnDefinitions) + ")";
+        String copySql = "INSERT INTO " + tempTable + " (" + String.join(", ", columnNames) + ") SELECT "
+                + String.join(", ", columnNames) + " FROM " + tableName;
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("DROP TABLE IF EXISTS " + tempTable);
+            stmt.execute(createSql);
+            stmt.execute(copySql);
+            stmt.execute("DROP TABLE " + tableName);
+            stmt.execute("ALTER TABLE " + tempTable + " RENAME TO " + tableName);
+        }
+        MEMORY_LOGGER.info("[{}] SQLite column type migration completed for {}.{} -> {}",
+                LogEventType.MEMORY_INIT, tableName, columnName, newColumnType);
+    }
+
+    private List<ColumnDefinition> getTableColumns(Connection conn, String tableName) throws SQLException {
+        DatabaseMetaData metaData = conn.getMetaData();
+        Set<String> primaryKeys = new HashSet<>();
+        try (ResultSet pkRs = metaData.getPrimaryKeys(conn.getCatalog(), conn.getSchema(), tableName)) {
+            while (pkRs.next()) {
+                primaryKeys.add(pkRs.getString("COLUMN_NAME"));
+            }
+        }
+
+        List<ColumnDefinition> columns = new ArrayList<>();
+        try (ResultSet rs = metaData.getColumns(conn.getCatalog(), conn.getSchema(), tableName, null)) {
+            while (rs.next()) {
+                columns.add(new ColumnDefinition(
+                        rs.getString("COLUMN_NAME"),
+                        rs.getString("TYPE_NAME"),
+                        rs.getInt("COLUMN_SIZE"),
+                        rs.getInt("DECIMAL_DIGITS"),
+                        rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable,
+                        rs.getString("COLUMN_DEF"),
+                        primaryKeys.contains(rs.getString("COLUMN_NAME"))
+                ));
+            }
+        }
+        return columns;
+    }
+
+    private String buildColumnDefinition(ColumnDefinition column, String typeName) {
+        StringBuilder definition = new StringBuilder(column.name()).append(" ").append(normalizeTypeName(typeName));
+        if (!column.nullable()) {
+            definition.append(" NOT NULL");
+        }
+        if (column.defaultValue() != null && !column.defaultValue().isBlank()) {
+            definition.append(" DEFAULT ").append(column.defaultValue());
+        }
+        if (column.primaryKey()) {
+            definition.append(" PRIMARY KEY");
+        }
+        return definition.toString();
+    }
+
+    private String normalizeTypeName(String typeName) {
+        return typeName == null || typeName.isBlank() ? "TEXT" : typeName;
+    }
+
+    private record ColumnDefinition(String name,
+                                    String typeName,
+                                    int size,
+                                    int decimalDigits,
+                                    boolean nullable,
+                                    String defaultValue,
+                                    boolean primaryKey) {
     }
 
     private void updateMetaVersion(Connection conn, String tableName, String version) throws SQLException {
