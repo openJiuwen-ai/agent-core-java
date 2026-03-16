@@ -264,13 +264,13 @@ class RetrievalSystemTest {
                     new Document("d3", "Java版本的智能体核心库"),
                     new Document("d4", "检索增强生成模块")));
 
-            List<RetrievalResult> results = SimpleKnowledgeBase.retrieveMultiKb(
+            List<String> results = SimpleKnowledgeBase.retrieveMultiKb(
                     List.of(kb1, kb2), "智能体", 3);
 
             assertNotNull(results);
             System.out.println("[MultiKB] Results: " + results.size());
-            for (RetrievalResult r : results) {
-                System.out.println("  - " + r.getText());
+            for (String text : results) {
+                System.out.println("  - " + text);
             }
         }
     }

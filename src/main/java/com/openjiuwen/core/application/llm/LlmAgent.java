@@ -4,6 +4,7 @@
 package com.openjiuwen.core.application.llm;
 
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
+import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
@@ -11,17 +12,22 @@ import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.memory.LongTermMemory;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.ControllerAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.workflow.Workflow;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;
@@ -52,6 +58,12 @@ public class LlmAgent extends ControllerAgent {
      */
     public LlmAgent(LlmAgentConfig agentConfig) {
         super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig));
+        if (agentConfig.getControllerType() != null
+                && agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
+            throw new UnsupportedOperationException(
+                    "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType()
+            );
+        }
         this.agentConfig = agentConfig;
         this.longTermMemoryInstance = LongTermMemory.getInstance();
 
@@ -161,13 +173,72 @@ public class LlmAgent extends ControllerAgent {
         return agentConfig;
     }
 
+    /**
+     * Backward-compatible factory mirroring Python's {@code create_llm_agent_config(...)}.
+     */
+    public static LlmAgentConfig createLlmAgentConfig(
+            String agentId,
+            String agentVersion,
+            String description,
+            List<com.openjiuwen.core.application.schema.WorkflowSchema> workflows,
+            List<com.openjiuwen.core.application.schema.PluginSchema> plugins,
+            ModelConfig model,
+            List<Map<String, String>> promptTemplate,
+            List<String> tools
+    ) {
+        return LlmAgentConfig.builder()
+                .id(agentId)
+                .version(agentVersion)
+                .description(description)
+                .workflows(workflows != null ? workflows : List.of())
+                .plugins(plugins != null ? plugins : List.of())
+                .model(model)
+                .promptTemplate(promptTemplate != null ? promptTemplate : List.of())
+                .tools(tools != null ? tools : List.of())
+                .build();
+    }
+
+    /**
+     * Backward-compatible factory mirroring Python's {@code create_llm_agent(...)}.
+     */
+    public static LlmAgent createLlmAgent(
+            LlmAgentConfig agentConfig,
+            List<Workflow> workflows,
+            List<Tool> tools
+    ) {
+        LlmAgent agent = new LlmAgent(agentConfig);
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+
+        if (workflows != null) {
+            for (Workflow workflow : workflows) {
+                if (workflow == null || workflow.getCard() == null) {
+                    continue;
+                }
+                agent.getAbilityManager().add(workflow.getCard());
+                Runner.resourceMgr().addWorkflow(workflow.getCard(), () -> workflow, tag);
+            }
+        }
+
+        if (tools != null) {
+            for (Tool tool : tools) {
+                if (tool == null || tool.getCard() == null) {
+                    continue;
+                }
+                agent.getAbilityManager().add(tool.getCard());
+                Runner.resourceMgr().addTool(tool, tag);
+            }
+        }
+
+        return agent;
+    }
+
     // ==================== Private Helpers ====================
 
     private static AgentCard buildAgentCard(LlmAgentConfig config) {
         return AgentCard.builder()
                 .id(config.getId())
-                .name(config.getId())
-                .description(config.getDescription())
+                .name(Objects.requireNonNullElse(config.getId(), ""))
+                .description(Objects.requireNonNullElse(config.getDescription(), ""))
                 .build();
     }
 

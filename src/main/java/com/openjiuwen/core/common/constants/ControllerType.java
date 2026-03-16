@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.common.constants;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Controller type enumeration.
  *
@@ -20,6 +23,7 @@ public enum ControllerType {
         this.value = value;
     }
 
+    @JsonValue
     public String getValue() {
         return value;
     }
@@ -30,6 +34,7 @@ public enum ControllerType {
      * @param value the string representation
      * @return the matching enum constant, or {@link #UNDEFINED} if no match
      */
+    @JsonCreator
     public static ControllerType fromValue(String value) {
         for (ControllerType type : values()) {
             if (type.value.equals(value)) {

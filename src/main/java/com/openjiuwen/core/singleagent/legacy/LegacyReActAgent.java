@@ -3,7 +3,7 @@
  */
 package com.openjiuwen.core.singleagent.legacy;
 
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.HashUtil;
 import com.openjiuwen.core.common.utils.MessageUtils;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -12,9 +12,9 @@ import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -33,6 +33,7 @@ import java.util.Map;
 public class LegacyReActAgent extends BaseAgent {
 
     private final com.openjiuwen.core.singleagent.agents.ReActAgent delegate;
+    private Model llm;
 
     public LegacyReActAgent(LegacyReActAgentConfig agentConfig, List<Workflow> workflows, List<Tool> tools) {
         super(agentConfig);
@@ -120,16 +121,19 @@ public class LegacyReActAgent extends BaseAgent {
 
         // Get tools
         List<ToolInfo> toolInfos = com.openjiuwen.core.runner.Runner.resourceMgr()
-                .getToolInfos(null, null, legacyConfig.getId(),
-                        com.openjiuwen.core.runner.resourcemanager.ResourceMgr.TagMatchStrategy.ALL);
+                .getToolInfos(null, null, legacyConfig.getId(), TagMatchStrategy.ALL);
 
-        // Get LLM and invoke
-        Model llm = delegate.getLlm();
+        // Legacy agent owns its own LLM configuration, matching Python's LegacyReActAgent._get_llm().
+        Model llm = getLlm(legacyConfig);
+        String modelName = null;
+        if (legacyConfig.getModel() != null && legacyConfig.getModel().modelInfo() != null) {
+            modelName = legacyConfig.getModel().modelInfo().getModelName();
+        }
         AssistantMessage llmOutput;
         try {
             llmOutput = llm.invoke(
                     messages, toolInfos, null, null,
-                    null, null, null, null, null, null
+                    modelName, null, null, null, null, null
             );
         } catch (Exception e) {
             throw new RuntimeException("LLM call failed", e);
@@ -190,6 +194,40 @@ public class LegacyReActAgent extends BaseAgent {
                 .build();
     }
 
+    private Model getLlm(LegacyReActAgentConfig legacyConfig) {
+        if (llm == null) {
+            ModelConfig model = legacyConfig.getModel();
+            if (model == null) {
+                throw new IllegalStateException("model is required for LegacyReActAgent");
+            }
+
+            BaseModelInfo modelInfo = model.modelInfo() != null ? model.modelInfo() : new BaseModelInfo();
+            String apiKey = modelInfo.getApiKey() != null ? modelInfo.getApiKey() : "";
+            String apiBase = modelInfo.getApiBase() != null ? modelInfo.getApiBase() : "";
+            String provider = model.modelProvider() != null ? model.modelProvider() : "";
+
+            ModelClientConfig modelClientConfig = ModelClientConfig.builder()
+                    .clientId(HashUtil.generateKey(apiKey, apiBase, provider))
+                    .clientProvider(provider)
+                    .apiKey(apiKey)
+                    .apiBase(apiBase)
+                    .verifySsl(false)
+                    .build();
+
+            ModelRequestConfig modelRequestConfig = ModelRequestConfig.builder()
+                    .modelName(modelInfo.getModelName())
+                    .temperature(modelInfo.getTemperature())
+                    .topP(modelInfo.getTopP())
+                    .extraFields(modelInfo.getExtraFields() != null
+                            ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
+                            : new java.util.LinkedHashMap<>())
+                    .build();
+
+            llm = new Model(modelClientConfig, modelRequestConfig);
+        }
+        return llm;
+    }
+
     private static ReActAgentConfig toModernConfig(LegacyReActAgentConfig legacyConfig) {
         ReActAgentConfig config = ReActAgentConfig.builder()
                 .memScopeId(legacyConfig.getMemoryScopeId())
@@ -207,20 +245,27 @@ public class LegacyReActAgent extends BaseAgent {
         ModelConfig model = legacyConfig.getModel();
         if (model != null) {
             BaseModelInfo modelInfo = model.modelInfo() != null ? model.modelInfo() : new BaseModelInfo();
+            String apiKey = modelInfo.getApiKey() != null ? modelInfo.getApiKey() : "";
+            String apiBase = modelInfo.getApiBase() != null ? modelInfo.getApiBase() : "";
+            String provider = model.modelProvider() != null ? model.modelProvider() : "";
             config.setModelProvider(model.modelProvider());
             config.setModelName(modelInfo.getModelName());
             config.setApiKey(modelInfo.getApiKey());
             config.setApiBase(modelInfo.getApiBase());
             config.setModelClientConfig(ModelClientConfig.builder()
-                    .clientProvider(model.modelProvider())
-                    .apiKey(modelInfo.getApiKey() != null ? modelInfo.getApiKey() : "")
-                    .apiBase(modelInfo.getApiBase() != null ? modelInfo.getApiBase() : "")
+                    .clientId(HashUtil.generateKey(apiKey, apiBase, provider))
+                    .clientProvider(provider)
+                    .apiKey(apiKey)
+                    .apiBase(apiBase)
                     .verifySsl(false)
                     .build());
             config.setModelConfigObj(ModelRequestConfig.builder()
                     .modelName(modelInfo.getModelName())
                     .temperature(modelInfo.getTemperature())
                     .topP(modelInfo.getTopP())
+                    .extraFields(modelInfo.getExtraFields() != null
+                            ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
+                            : new java.util.LinkedHashMap<>())
                     .build());
         }
         return config;
