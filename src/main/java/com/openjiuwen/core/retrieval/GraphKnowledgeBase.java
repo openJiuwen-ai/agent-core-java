@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
+import com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
@@ -66,6 +67,9 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     public List<String> addDocuments(List<Document> documents) {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
+        }
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
         }
         Indexer activeIndexManager = requireIndexManager();
         List<Document> normalized = new ArrayList<>();
@@ -151,6 +155,9 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     @Override
     public boolean deleteDocuments(List<String> docIds) {
         Indexer activeIndexManager = requireIndexManager();
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
         boolean deleted = true;
         for (String docId : docIds) {
             deleted &= activeIndexManager.deleteIndex(docId, chunkIndexName(), Map.of());
@@ -163,6 +170,9 @@ public class GraphKnowledgeBase extends KnowledgeBase {
 
     @Override
     public List<String> updateDocuments(List<Document> documents) {
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
         List<String> docIds = new ArrayList<>();
         for (Document document : documents) {
             String docId = document.getId() == null || document.getId().isBlank() ? UUID.randomUUID().toString() : document.getId();
@@ -230,5 +240,27 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         } catch (JsonProcessingException e) {
             return "[\"" + triple.getSubject() + "\",\"" + triple.getPredicate() + "\",\"" + triple.getObject() + "\"]";
         }
+    }
+
+    // ========= Multi-Knowledge Base Retrieval Helpers =========
+
+    /**
+     * Perform retrieval on multiple graph knowledge bases, returns text list.
+     */
+    public static List<String> retrieveMultiGraphKb(List<? extends KnowledgeBase> knowledgeBases,
+                                                     String query,
+                                                     RetrievalConfig config,
+                                                     Integer topK) {
+        return SimpleKnowledgeBase.retrieveMultiKb(knowledgeBases, query, config, topK);
+    }
+
+    /**
+     * Perform retrieval on multiple graph knowledge bases, includes source information.
+     */
+    public static List<MultiKBRetrievalResult> retrieveMultiGraphKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
+                                                                              String query,
+                                                                              RetrievalConfig config,
+                                                                              Integer topK) {
+        return SimpleKnowledgeBase.retrieveMultiKbWithSource(knowledgeBases, query, config, topK);
     }
 }

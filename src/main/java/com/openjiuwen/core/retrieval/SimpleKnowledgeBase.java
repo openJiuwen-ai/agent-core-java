@@ -55,6 +55,9 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
         }
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
         Indexer activeIndexManager = requireIndexManager();
         List<Document> normalized = new ArrayList<>();
         List<String> docIds = new ArrayList<>();
@@ -89,6 +92,9 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     @Override
     public boolean deleteDocuments(List<String> docIds) {
         Indexer activeIndexManager = requireIndexManager();
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
         boolean deleted = true;
         for (String docId : docIds) {
             deleted &= activeIndexManager.deleteIndex(docId, chunkIndexName(), Map.of());
@@ -100,6 +106,9 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     public List<String> updateDocuments(List<Document> documents) {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
+        }
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
         }
         Indexer activeIndexManager = requireIndexManager();
         List<String> ids = new ArrayList<>();
@@ -169,38 +178,58 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         return baseRetriever;
     }
 
-    public static List<RetrievalResult> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query, int topK) {
+    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases,
+                                               String query,
+                                               RetrievalConfig config,
+                                               Integer topK) {
         if (knowledgeBases == null || knowledgeBases.isEmpty()) {
             return List.of();
         }
-        Map<String, RetrievalResult> byText = new LinkedHashMap<>();
+        RetrievalConfig retrievalConfig = config != null ? config : new RetrievalConfig();
+        Map<String, Double> byText = new LinkedHashMap<>();
         for (KnowledgeBase kb : knowledgeBases) {
             try {
-                for (RetrievalResult result : kb.retrieve(query, new RetrievalConfig())) {
-                    RetrievalResult existing = byText.get(result.getText());
-                    if (existing == null || result.getScore() > existing.getScore()) {
-                        byText.put(result.getText(), result);
+                for (RetrievalResult result : kb.retrieve(query, retrievalConfig)) {
+                    String text = result.getText();
+                    double score = result.getScore();
+                    Double existing = byText.get(text);
+                    if (existing == null || score > existing) {
+                        byText.put(text, score);
                     }
                 }
             } catch (Exception ignored) {
             }
         }
-        List<RetrievalResult> results = new ArrayList<>(byText.values());
-        results.sort((a, b) -> Double.compare(b.getScore(), a.getScore()));
-        return results.size() <= topK ? results : new ArrayList<>(results.subList(0, topK));
+        int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
+        List<Map.Entry<String, Double>> ranked = new ArrayList<>(byText.entrySet());
+        ranked.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+        List<String> results = new ArrayList<>();
+        for (int i = 0; i < Math.min(limit, ranked.size()); i++) {
+            results.add(ranked.get(i).getKey());
+        }
+        return results;
+    }
+
+    /**
+     * Convenience overload without config/topK.
+     */
+    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query, int topK) {
+        return retrieveMultiKb(knowledgeBases, query, null, topK);
     }
 
     public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
                                                                          String query,
-                                                                         int topK) {
+                                                                         RetrievalConfig config,
+                                                                         Integer topK) {
         if (knowledgeBases == null || knowledgeBases.isEmpty()) {
             return List.of();
         }
+        RetrievalConfig retrievalConfig = config != null ? config : new RetrievalConfig();
         Map<String, MultiKBRetrievalResult> byText = new LinkedHashMap<>();
         for (KnowledgeBase kb : knowledgeBases) {
             String kbId = kb.getConfig().getKbId();
             try {
-                for (RetrievalResult result : kb.retrieve(query, new RetrievalConfig())) {
+                for (RetrievalResult result : kb.retrieve(query, retrievalConfig)) {
                     MultiKBRetrievalResult aggregate = byText.get(result.getText());
                     double rawScore = result.getMetadata().get("raw_score") instanceof Number n ? n.doubleValue() : result.getScore();
                     double scaled = result.getMetadata().get("raw_score_scaled") instanceof Number n ? n.doubleValue() : result.getScore();
@@ -228,8 +257,18 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             } catch (Exception ignored) {
             }
         }
+        int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
         List<MultiKBRetrievalResult> results = new ArrayList<>(byText.values());
         results.sort((a, b) -> Double.compare(b.getScore(), a.getScore()));
-        return results.size() <= topK ? results : new ArrayList<>(results.subList(0, topK));
+        return results.size() <= limit ? results : new ArrayList<>(results.subList(0, limit));
+    }
+
+    /**
+     * Convenience overload without config/topK.
+     */
+    public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
+                                                                         String query,
+                                                                         int topK) {
+        return retrieveMultiKbWithSource(knowledgeBases, query, null, topK);
     }
 }

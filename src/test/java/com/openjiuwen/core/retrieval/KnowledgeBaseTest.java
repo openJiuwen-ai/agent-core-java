@@ -183,9 +183,9 @@ class KnowledgeBaseTest {
         when(kb2.retrieve(eq("q"), any())).thenReturn(List.of(
                 new RetrievalResult("Result 2", 0.95, Map.of("raw_score", 0.95, "raw_score_scaled", 0.95), null, null)));
 
-        List<RetrievalResult> multiResults = SimpleKnowledgeBase.retrieveMultiKb(List.of(kb1, kb2), "q", 5);
+        List<String> multiResults = SimpleKnowledgeBase.retrieveMultiKb(List.of(kb1, kb2), "q", 5);
         assertEquals(2, multiResults.size());
-        assertEquals("Result 2", multiResults.get(0).getText());
+        assertEquals("Result 2", multiResults.get(0));
 
         List<?> withSource = SimpleKnowledgeBase.retrieveMultiKbWithSource(List.of(kb1, kb2), "q", 5);
         assertEquals(2, withSource.size());

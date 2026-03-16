@@ -40,6 +40,7 @@ public abstract class KnowledgeBase implements AutoCloseable {
     private boolean autoResolvedIndexManager;
     protected BaseModelClient llmClient;
     protected Retriever retriever;
+    protected boolean strictValidation = true;
 
     protected KnowledgeBase(KnowledgeBaseConfig config) {
         this(config, null, null, null, null, null, null, null, null);
@@ -54,6 +55,19 @@ public abstract class KnowledgeBase implements AutoCloseable {
                             Indexer indexManager,
                             BaseModelClient llmClient,
                             Retriever retriever) {
+        this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever, true);
+    }
+
+    protected KnowledgeBase(KnowledgeBaseConfig config,
+                            VectorStore vectorStore,
+                            Embedding embedModel,
+                            Parser parser,
+                            Chunker chunker,
+                            Extractor extractor,
+                            Indexer indexManager,
+                            BaseModelClient llmClient,
+                            Retriever retriever,
+                            boolean strictValidation) {
         if (config == null) {
             throw RetrievalExceptions.validation("KnowledgeBaseConfig is required");
         }
@@ -67,6 +81,7 @@ public abstract class KnowledgeBase implements AutoCloseable {
         this.indexManager = indexManager;
         this.llmClient = llmClient;
         this.retriever = retriever;
+        this.strictValidation = strictValidation;
         validateIndex();
     }
 
@@ -196,6 +211,26 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return documents;
     }
 
+    public boolean isStrictValidation() {
+        return strictValidation;
+    }
+
+    public void setStrictValidation(boolean strictValidation) {
+        this.strictValidation = strictValidation;
+    }
+
+    /**
+     * Delete a collection from current database.
+     */
+    public void deleteCollection(String collection) {
+        if (vectorStore == null) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+                    "vector_store is required for delete_collection");
+        }
+        vectorStore.deleteTable(collection);
+    }
+
     public abstract List<String> addDocuments(List<Document> documents);
 
     public abstract List<RetrievalResult> retrieve(String query, RetrievalConfig config);
@@ -229,6 +264,9 @@ public abstract class KnowledgeBase implements AutoCloseable {
                 indexManager);
         compareConfig("metadata_field", vectorStore.getMetadataField(), indexManager.getMetadataField(), vectorStore, indexManager);
         compareConfig("doc_id_field", vectorStore.getDocIdField(), indexManager.getDocIdField(), vectorStore, indexManager);
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
     }
 
     protected static void compareConfig(String field,

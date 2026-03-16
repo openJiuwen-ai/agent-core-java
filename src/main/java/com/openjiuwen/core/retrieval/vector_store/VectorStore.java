@@ -20,6 +20,14 @@ public interface VectorStore extends IndexBackendConfig, AutoCloseable {
 
     VectorStore withCollection(String collectionName);
 
+    /**
+     * Check if vector field configuration is consistent with actual database.
+     * Corresponds to Python {@code VectorStore.check_vector_field()}.
+     */
+    default void checkVectorField() {
+        // Default no-op; concrete implementations should override if applicable
+    }
+
     void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options);
 
     List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters, Map<String, Object> options);

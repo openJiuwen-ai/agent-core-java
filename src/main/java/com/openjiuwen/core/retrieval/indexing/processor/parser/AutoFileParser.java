@@ -67,8 +67,14 @@ public class AutoFileParser extends Parser {
         }
         List<Document> documents = parser.parse(doc, docId, llmClient, options);
         List<Document> enriched = new ArrayList<>(documents.size());
+        String fileName = options != null && options.containsKey("file_name")
+                ? String.valueOf(options.get("file_name"))
+                : path.getFileName().toString();
         for (Document document : documents) {
             Map<String, Object> metadata = new LinkedHashMap<>(document.getMetadata());
+            metadata.put("doc_id", docId);
+            metadata.put("title", fileName);
+            metadata.put("file_path", doc);
             metadata.put("file_ext", extensionOf(doc));
             enriched.add(new Document(document.getId(), document.getText(), metadata));
         }

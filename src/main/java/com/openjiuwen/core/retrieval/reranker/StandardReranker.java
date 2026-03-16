@@ -64,10 +64,12 @@ public class StandardReranker implements Reranker {
         this.httpClient = httpClient == null ? HttpClient.newHttpClient() : httpClient;
     }
 
+    @Override
     public Map<String, Double> rerankScores(String query, List<?> documents) {
         return rerankScores(query, documents, Boolean.TRUE, Map.of());
     }
 
+    @Override
     public Map<String, Double> rerankScores(String query,
                                             List<?> documents,
                                             Object instruct,
