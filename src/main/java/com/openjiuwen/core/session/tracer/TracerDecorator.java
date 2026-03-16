@@ -81,7 +81,7 @@ public final class TracerDecorator {
             return tool;
         }
 
-        String toolName = getCardName(tool, "name");
+        String toolName = getCardName(tool);
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", toolName);
         instanceInfo.put("type", "tool");
@@ -104,7 +104,7 @@ public final class TracerDecorator {
             return workflow;
         }
 
-        String wfName = getCardName(workflow, "name");
+        String wfName = getCardName(workflow);
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", wfName);
         instanceInfo.put("type", "workflow");
@@ -136,7 +136,8 @@ public final class TracerDecorator {
      * @param invokeType   the type of invocation
      * @param instanceInfo descriptive info about the invoked instance
      * @param callable     the callable to wrap (args -> result)
-     * @param inputs       the input arguments
+     * @param args         the input arguments
+     * @param kwargs       the keyword-style arguments
      * @return the invocation result
      */
     public static Object trace(Object session, InvokeType invokeType,
@@ -144,6 +145,9 @@ public final class TracerDecorator {
                                BiFunction<Object[], Map<String, Object>, Object> callable,
                                Object[] args, Map<String, Object> kwargs) {
         Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return callable.apply(args, kwargs);
+        }
         TraceAgentSpan span = null;
         try {
             Span agentSpan = getSpan(session);
@@ -181,11 +185,24 @@ public final class TracerDecorator {
         if (agentSession == null) {
             return null;
         }
+        if (agentSession instanceof AgentSession
+                || (hasMethod(agentSession, "tracer") && hasMethod(agentSession, "span"))) {
+            return agentSession;
+        }
         try {
             Method getInner = agentSession.getClass().getMethod("getInner");
             return getInner.invoke(agentSession);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private static boolean hasMethod(Object obj, String methodName) {
+        try {
+            obj.getClass().getMethod(methodName);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
         }
     }
 
@@ -230,7 +247,7 @@ public final class TracerDecorator {
         return obj.getClass().getSimpleName();
     }
 
-    private static String getCardName(Object obj, String fieldName) {
+    private static String getCardName(Object obj) {
         try {
             Method cardMethod = obj.getClass().getMethod("getCard");
             Object card = cardMethod.invoke(obj);
