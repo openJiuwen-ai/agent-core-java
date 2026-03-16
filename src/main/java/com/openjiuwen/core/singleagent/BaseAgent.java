@@ -6,6 +6,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackFirer;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -104,6 +105,32 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     protected void setSkillUtil(SkillUtil skillUtil) {
         this.skillUtil = skillUtil;
+    }
+
+    /**
+     * Register a skill from a local path.
+     *
+     * @param skillPath path to the skill directory or file (String or List of Strings)
+     */
+    public void registerSkill(Object skillPath) {
+        lazyInitSkill();
+        if (skillUtil != null) {
+            skillUtil.registerSkills(skillPath, this);
+        }
+    }
+
+    /**
+     * Register remote skills from GitHub.
+     *
+     * @param skillsDir  local directory for skills
+     * @param githubTree the GitHub tree reference
+     * @param token      GitHub API token (optional, pass empty string if not needed)
+     */
+    public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
+        lazyInitSkill();
+        if (skillUtil != null) {
+            skillUtil.registerRemoteSkills(skillsDir, githubTree, token);
+        }
     }
 
     /**

@@ -79,4 +79,28 @@ public class AgentCallbackContext {
         this.retryRequest = null;
         return request;
     }
+
+    /**
+     * Execute a block of code wrapped in before/after lifecycle events.
+     *
+     * <p>Fires {@code before} on entry, then executes the body,
+     * and fires {@code after} in the finally block (always).
+     * Automatically saves and restores {@code inputs} so that
+     * inner steps (model_call, tool_call) can freely overwrite
+     * it without affecting the after event.</p>
+     *
+     * @param before event to fire on entry
+     * @param after  event to fire on exit (always)
+     * @param body   the code to execute between the events
+     */
+    public void lifecycle(AgentCallbackEvent before, AgentCallbackEvent after, Runnable body) {
+        EventInputs savedInputs = this.inputs;
+        fire(before);
+        try {
+            body.run();
+        } finally {
+            this.inputs = savedInputs;
+            fire(after);
+        }
+    }
 }

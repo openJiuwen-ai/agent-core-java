@@ -54,13 +54,19 @@ public abstract class AgentRail {
 
     private int priority = 50;
     private final List<ToolCard> tools;
+    private final List<Object> skills;
 
     protected AgentRail() {
-        this(null);
+        this(null, null);
     }
 
     protected AgentRail(List<ToolCard> tools) {
+        this(tools, null);
+    }
+
+    protected AgentRail(List<ToolCard> tools, List<Object> skills) {
         this.tools = tools != null ? tools : new ArrayList<>();
+        this.skills = skills != null ? skills : new ArrayList<>();
     }
 
     public int getPriority() {
@@ -73,6 +79,15 @@ public abstract class AgentRail {
 
     public List<ToolCard> getTools() {
         return tools;
+    }
+
+    /**
+     * Skills carried by this rail (reserved for future use).
+     *
+     * @return list of skills
+     */
+    public List<Object> getSkills() {
+        return skills;
     }
 
     // -- 8 hook methods (override to activate) --

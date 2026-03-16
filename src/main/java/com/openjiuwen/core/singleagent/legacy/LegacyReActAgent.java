@@ -3,12 +3,18 @@
  */
 package com.openjiuwen.core.singleagent.legacy;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.MessageUtils;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -68,6 +74,70 @@ public class LegacyReActAgent extends BaseAgent {
                 delegate.getAbilityManager().add(workflow.getCard());
             }
         }
+    }
+
+    /**
+     * Call LLM for reasoning.
+     *
+     * <p>Mirrors Python's {@code LegacyReActAgent.call_model(user_input, session, is_first_call)}.</p>
+     *
+     * @param userInput   user input text
+     * @param session     current session
+     * @param isFirstCall whether this is the first call (adds user message to context)
+     * @return LLM output as AssistantMessage
+     */
+    public AssistantMessage callModel(String userInput, Session session, boolean isFirstCall) {
+        if (isFirstCall) {
+            MessageUtils.addUserMessage(userInput, getContextEngine(), session);
+        }
+
+        LegacyReActAgentConfig legacyConfig = (LegacyReActAgentConfig) getAgentConfig();
+        int maxRounds = legacyConfig.getConstrain() != null
+                ? legacyConfig.getConstrain().getReservedMaxChatRounds() : 10;
+        List<com.openjiuwen.core.foundation.llm.schema.BaseMessage> chatHistory =
+                MessageUtils.getChatHistory(getContextEngine(), session, maxRounds);
+
+        List<Map<String, Object>> messages = new java.util.ArrayList<>();
+
+        // Build system prompt from template
+        if (legacyConfig.getPromptTemplate() != null && !legacyConfig.getPromptTemplate().isEmpty()) {
+            for (Map<String, String> prompt : legacyConfig.getPromptTemplate()) {
+                messages.add(new java.util.LinkedHashMap<>(prompt));
+            }
+        }
+
+        // Add chat history
+        for (com.openjiuwen.core.foundation.llm.schema.BaseMessage msg : chatHistory) {
+            Map<String, Object> msgMap = new java.util.LinkedHashMap<>();
+            if (msg.getRole() != null) {
+                msgMap.put("role", msg.getRole());
+            }
+            if (msg.getContent() != null) {
+                msgMap.put("content", msg.getContent());
+            }
+            messages.add(msgMap);
+        }
+
+        // Get tools
+        List<ToolInfo> toolInfos = com.openjiuwen.core.runner.Runner.resourceMgr()
+                .getToolInfos(null, null, legacyConfig.getId(),
+                        com.openjiuwen.core.runner.resourcemanager.ResourceMgr.TagMatchStrategy.ALL);
+
+        // Get LLM and invoke
+        Model llm = delegate.getLlm();
+        AssistantMessage llmOutput;
+        try {
+            llmOutput = llm.invoke(
+                    messages, toolInfos, null, null,
+                    null, null, null, null, null, null
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("LLM call failed", e);
+        }
+
+        // Store AI message
+        MessageUtils.addAiMessage(llmOutput, getContextEngine(), session);
+        return llmOutput;
     }
 
     @Override

@@ -74,7 +74,7 @@ public class RemoteSkillUtil {
                 return is.readAllBytes();
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to download file from GitHub: " + filePath, e);
+            throw new GitHubError("Failed to download file from GitHub: " + filePath, e);
         }
     }
 
@@ -101,7 +101,7 @@ public class RemoteSkillUtil {
                 }
                 Files.write(target, data);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to write downloaded skill file: " + target, e);
+                throw new GitHubError("Failed to write downloaded skill file: " + target, e);
             }
         }
 
@@ -110,7 +110,14 @@ public class RemoteSkillUtil {
         return searchResult.skillPaths();
     }
 
-    private SearchResult searchGitHubForSkills(GitHubTree tree, String token) {
+    /**
+     * Search a GitHub tree for skill directories containing SKILL.md files.
+     *
+     * @param tree  the GitHub tree reference
+     * @param token GitHub API token (optional)
+     * @return search result containing skill files and skill paths
+     */
+    public SearchResult searchGitHubForSkills(GitHubTree tree, String token) {
         List<GitHubBlob> files = listGitHubFiles(tree, token);
         files.sort(Comparator.comparing(GitHubBlob::path));
 
@@ -152,7 +159,14 @@ public class RemoteSkillUtil {
         return new SearchResult(skillFiles, skillPaths);
     }
 
-    private List<GitHubBlob> listGitHubFiles(GitHubTree tree, String token) {
+    /**
+     * List all files in a GitHub tree.
+     *
+     * @param tree  the GitHub tree reference
+     * @param token GitHub API token (optional)
+     * @return list of file blobs
+     */
+    public List<GitHubBlob> listGitHubFiles(GitHubTree tree, String token) {
         String normalizedDirectory = normalizeDirectory(tree.getDirectory());
         return recursivelyListGitHubFiles(tree, Path.of(""), normalizedDirectory, token);
     }
@@ -205,7 +219,7 @@ public class RemoteSkillUtil {
             return recursivelyListGitHubFiles(nextTree, currentDirectory.resolve(nextDirectory), nextRemainder, token);
         }
 
-        throw new RuntimeException("Directory " + nextDirectory + " not found in " + currentDirectory);
+        throw new GitHubError("Directory " + nextDirectory + " not found in " + currentDirectory);
     }
 
     private static JsonNode readGitHubJson(String url, String token, Map<String, String> params) {
@@ -231,7 +245,7 @@ public class RemoteSkillUtil {
                 return data;
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to query GitHub API: " + fullUrl, e);
+            throw new GitHubError("Failed to query GitHub API: " + fullUrl, e);
         }
     }
 
@@ -268,12 +282,21 @@ public class RemoteSkillUtil {
         return normalized;
     }
 
-    private record GitHubBlob(String path) {
+    /**
+     * Represents a file blob from GitHub.
+     */
+    public record GitHubBlob(String path) {
     }
 
-    private record SkillFile(String path, String relativePath) {
+    /**
+     * Represents a skill file with its path and relative path.
+     */
+    public record SkillFile(String path, String relativePath) {
     }
 
-    private record SearchResult(List<SkillFile> files, List<String> skillPaths) {
+    /**
+     * Result of searching for skills in a GitHub tree.
+     */
+    public record SearchResult(List<SkillFile> files, List<String> skillPaths) {
     }
 }

@@ -58,6 +58,22 @@ public class SkillManager {
     }
 
     /**
+     * Register skills from a list of paths.
+     *
+     * @param skillPaths list of paths to skill directories or files
+     * @param sessionId  session ID for file operations
+     * @param overwrite  whether to overwrite existing skills
+     */
+    public void register(List<String> skillPaths, String sessionId, boolean overwrite) {
+        if (skillPaths == null || skillPaths.isEmpty()) {
+            return;
+        }
+        for (String path : skillPaths) {
+            register(path, sessionId, overwrite);
+        }
+    }
+
+    /**
      * Register skill directory by scanning for Skill.md files.
      */
     private void registerRoot(Path root, String sessionId, boolean overwrite) {
