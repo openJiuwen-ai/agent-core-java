@@ -30,10 +30,12 @@ public class NodeSession extends BaseSession {
     private final String workflowId;
     private final int workflowNestingDepth;
     private final String mainWorkflowId;
+    private final boolean skipTrace;
 
-    public NodeSession(BaseSession session, String nodeId, String nodeType) {
+    public NodeSession(BaseSession session, String nodeId, String nodeType, boolean skipTrace) {
         this.nodeId = nodeId;
         this.nodeType = nodeType;
+        this.skipTrace = skipTrace;
 
         String pId = createParentId(session);
         String eId = createExecutableId(nodeId, pId);
@@ -65,8 +67,12 @@ public class NodeSession extends BaseSession {
         }
     }
 
+    public NodeSession(BaseSession session, String nodeId, String nodeType) {
+        this(session, nodeId, nodeType, false);
+    }
+
     public NodeSession(BaseSession session, String nodeId) {
-        this(session, nodeId, null);
+        this(session, nodeId, null, false);
     }
 
     public String nodeId() {
@@ -134,6 +140,22 @@ public class NodeSession extends BaseSession {
     @Override
     public Object checkpointer() {
         return parentSession.checkpointer();
+    }
+
+    /**
+     * Whether this node session should skip trace operations.
+     * Mirrors Python's {@code NodeSession.skip_trace()}.
+     */
+    public boolean skipTrace() {
+        return skipTrace;
+    }
+
+    /**
+     * Get the actor manager from the parent session.
+     * Mirrors Python's {@code NodeSession.actor_manager()}.
+     */
+    public Object actorManager() {
+        return parentSession.actorManager();
     }
 
     /**

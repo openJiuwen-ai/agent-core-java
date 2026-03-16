@@ -8,12 +8,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Legacy reasoner configuration.
+ * Legacy reasoner configuration using sub-module configuration.
+ * Mirrors Python's {@code ReasonerConfig} dataclass which composes
+ * IntentDetectionConfig, PlannerConfig, ProactiveIdentifierConfig, ReflectorConfig.
  */
 @Data
 @Builder
@@ -22,26 +23,23 @@ import java.util.Map;
 public class ReasonerConfig {
 
     @Builder.Default
-    private List<Map<String, Object>> intentDetectionTemplate = new ArrayList<>();
+    private IntentDetectionConfig intentDetection = new IntentDetectionConfig();
 
     @Builder.Default
-    private String defaultClass = "default";
+    private PlannerConfig planner = new PlannerConfig();
 
     @Builder.Default
-    private boolean enableInput = true;
+    private ProactiveIdentifierConfig proactiveIdentifier = new ProactiveIdentifierConfig();
 
     @Builder.Default
-    private boolean enableHistory = false;
+    private ReflectorConfig reflector = new ReflectorConfig();
 
     @Builder.Default
-    private int chatHistoryMaxTurn = 5;
+    private boolean enableMetrics = true;
 
     @Builder.Default
-    private List<String> categoryList = new ArrayList<>();
+    private boolean enableLogging = true;
 
     @Builder.Default
-    private String userPrompt = "";
-
-    @Builder.Default
-    private List<String> exampleContent = new ArrayList<>();
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 }

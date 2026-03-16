@@ -16,7 +16,6 @@ import com.openjiuwen.core.session.Session;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +141,7 @@ public class LLMCallOperator extends Operator {
         try {
             java.util.Iterator<AssistantMessageChunk> iterator = llm.stream(
                     messages, tools, null, null, modelName, null, null, null, null, passthroughKwargs);
-            return new ContextClosingIterator<>(iterator, () -> setOperatorContext(session, null));
+            return OperatorStream.wrap(iterator, () -> setOperatorContext(session, null));
         } catch (Exception ex) {
             setOperatorContext(session, null);
             throw ex;
@@ -255,45 +254,4 @@ public class LLMCallOperator extends Operator {
         return messages;
     }
 
-    private static final class ContextClosingIterator<T> implements OperatorStream<T> {
-
-        private final Iterator<T> delegate;
-        private final Runnable onClose;
-        private boolean closed;
-
-        private ContextClosingIterator(Iterator<T> delegate, Runnable onClose) {
-            this.delegate = delegate;
-            this.onClose = onClose;
-        }
-
-        @Override
-        public boolean hasNext() {
-            boolean hasNext = delegate.hasNext();
-            if (!hasNext) {
-                closeOnce();
-            }
-            return hasNext;
-        }
-
-        @Override
-        public T next() {
-            T value = delegate.next();
-            if (!delegate.hasNext()) {
-                closeOnce();
-            }
-            return value;
-        }
-
-        @Override
-        public void close() {
-            closeOnce();
-        }
-
-        private void closeOnce() {
-            if (!closed) {
-                closed = true;
-                onClose.run();
-            }
-        }
-    }
 }

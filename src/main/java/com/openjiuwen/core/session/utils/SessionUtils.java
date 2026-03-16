@@ -211,7 +211,7 @@ public final class SessionUtils {
     }
 
     @SuppressWarnings("unchecked")
-    private static void updateByKey(Object key, Object newValue, Object source) {
+    public static void updateByKey(Object key, Object newValue, Object source) {
         if (source instanceof Map map) {
             Object existing = map.get(key);
             if (existing instanceof Map && newValue instanceof Map) {
@@ -223,7 +223,7 @@ public final class SessionUtils {
     }
 
     @SuppressWarnings("unchecked")
-    private static void deleteByKey(Object key, Object source) {
+    public static void deleteByKey(Object key, Object source) {
         if (key instanceof Integer) {
             return;
         }
@@ -308,6 +308,141 @@ public final class SessionUtils {
             return result;
         }
         return schema;
+    }
+
+    /**
+     * Safely extend a list container to accommodate a target index.
+     *
+     * @param container   the list to extend
+     * @param targetIndex the target index that must be reachable
+     * @param isFinalIndex if true, fills the target position with an empty map; otherwise empty list
+     * @return true if extension succeeded or was not needed
+     */
+    public static boolean safeExtendContainer(List<Object> container, int targetIndex, boolean isFinalIndex) {
+        if (container == null) {
+            return false;
+        }
+        if (targetIndex < 0 || targetIndex > 10000) {
+            return false;
+        }
+        int currentLength = container.size();
+        if (targetIndex < currentLength) {
+            return true;
+        }
+        int expansionNeeded = targetIndex - currentLength + 1;
+        if (expansionNeeded > 10000) {
+            return false;
+        }
+        try {
+            for (int i = currentLength; i < targetIndex; i++) {
+                container.add(null);
+            }
+            container.add(isFinalIndex ? new HashMap<>() : new ArrayList<>());
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Navigate through a nested list structure using a path of indexes.
+     * Returns [adjustedIndex, container] or [null, null] on failure.
+     *
+     * @param indexes       list of integer indexes
+     * @param source        the root list
+     * @param createIfAbsent if true, extend lists to reach target
+     * @return Object array [Integer index, List container]
+     */
+    @SuppressWarnings("unchecked")
+    public static Object[] rootToIndex(List<Integer> indexes, List<Object> source, boolean createIfAbsent) {
+        if (indexes == null) {
+            throw new IllegalArgumentException("indexes must be a list");
+        }
+        for (Object idx : indexes) {
+            if (!(idx instanceof Integer)) {
+                throw new IllegalArgumentException("all elements in indexes must be integers");
+            }
+        }
+        if (source == null || indexes.isEmpty()) {
+            return new Object[]{null, null};
+        }
+        if (indexes.size() > 10) {
+            throw new IllegalArgumentException("Nesting level too deep, level limit is 10");
+        }
+
+        Object current = source;
+
+        // Process intermediate indexes
+        if (indexes.size() > 1) {
+            for (int i = 0; i < indexes.size() - 1; i++) {
+                int idx = indexes.get(i);
+                if (!(current instanceof List)) {
+                    return new Object[]{null, null};
+                }
+                List<Object> currentList = (List<Object>) current;
+                int adjustedIdx;
+                if (idx < 0) {
+                    adjustedIdx = idx + currentList.size();
+                    if (adjustedIdx < 0) {
+                        return new Object[]{null, null};
+                    }
+                } else {
+                    adjustedIdx = idx;
+                    if (adjustedIdx > 10000) {
+                        throw new IllegalArgumentException("Index must be between [0,10000]");
+                    }
+                }
+
+                if (adjustedIdx >= currentList.size()) {
+                    if (!createIfAbsent) {
+                        return new Object[]{null, null};
+                    }
+                    if (!safeExtendContainer(currentList, adjustedIdx, false)) {
+                        return new Object[]{null, null};
+                    }
+                }
+
+                try {
+                    current = currentList.get(adjustedIdx);
+                } catch (Exception e) {
+                    return new Object[]{null, null};
+                }
+
+                if (current != null && !(current instanceof List)) {
+                    return new Object[]{null, null};
+                }
+            }
+        }
+
+        // Process final index
+        if (!(current instanceof List)) {
+            return new Object[]{null, null};
+        }
+        List<Object> finalList = (List<Object>) current;
+        int finalIdx = indexes.get(indexes.size() - 1);
+        int adjustedFinalIdx;
+        if (finalIdx < 0) {
+            adjustedFinalIdx = finalIdx + finalList.size();
+            if (adjustedFinalIdx < 0) {
+                return new Object[]{null, null};
+            }
+        } else {
+            adjustedFinalIdx = finalIdx;
+            if (adjustedFinalIdx > 10000) {
+                throw new IllegalArgumentException("Index must be between [0,10000]");
+            }
+        }
+
+        if (adjustedFinalIdx >= finalList.size()) {
+            if (!createIfAbsent) {
+                return new Object[]{null, null};
+            }
+            if (!safeExtendContainer(finalList, adjustedFinalIdx, true)) {
+                return new Object[]{null, null};
+            }
+        }
+
+        return new Object[]{adjustedFinalIdx, finalList};
     }
 
     /**

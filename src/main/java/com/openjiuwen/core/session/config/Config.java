@@ -48,6 +48,14 @@ public class Config {
     private final Map<String, Object> workflowConfigs = new ConcurrentHashMap<>();
     private Object agentConfig;
 
+    /**
+     * Thread-local override for workflow session variables.
+     * Mirrors Python's {@code contextvars.ContextVar workflow_session_vars}.
+     * Values set here take precedence over system environment variables.
+     */
+    public static final ThreadLocal<Map<String, Object>> WORKFLOW_SESSION_VARS =
+            ThreadLocal.withInitial(HashMap::new);
+
     public Config() {
         loadEnvs();
     }
@@ -166,8 +174,14 @@ public class Config {
         for (String[] envPair : ENV_CONFIG_KEYS) {
             String envKey = envPair[0];
             String configKey = envPair[1];
+            // First read from system environment
             String value = System.getenv(envKey);
             trySetEnv(envConfigs, configKey, envKey, value);
+            // Then override from thread-local workflow_session_vars (matches Python's contextvar)
+            Object sessionVar = WORKFLOW_SESSION_VARS.get().get(envKey);
+            if (sessionVar != null) {
+                trySetEnv(envConfigs, configKey, envKey, String.valueOf(sessionVar));
+            }
         }
         return envConfigs;
     }

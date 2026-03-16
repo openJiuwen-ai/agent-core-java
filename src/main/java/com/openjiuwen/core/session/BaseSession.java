@@ -67,6 +67,17 @@ public abstract class BaseSession implements Session {
      */
     public abstract Object checkpointer();
 
+    /**
+     * Get the actor manager for this session.
+     * <p>
+     * Mirrors Python's {@code BaseSession.actor_manager()}.
+     *
+     * @return actor manager or null if not applicable
+     */
+    public Object actorManager() {
+        return null;
+    }
+
     // ---- Session interface compatibility ----
 
     @Override

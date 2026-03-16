@@ -11,7 +11,6 @@ import com.openjiuwen.core.session.Session;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,7 +157,7 @@ public class ToolCallOperator extends Operator {
         Map<String, Object> safeKwargs = kwargs != null ? kwargs : Collections.emptyMap();
         setOperatorContext(session, toolCallId);
         try {
-            return new ContextClosingIterator<>(tool.stream(inputs, safeKwargs), () -> setOperatorContext(session, null));
+            return OperatorStream.wrap(tool.stream(inputs, safeKwargs), () -> setOperatorContext(session, null));
         } catch (Exception ex) {
             setOperatorContext(session, null);
             throw ex;
@@ -170,45 +169,4 @@ public class ToolCallOperator extends Operator {
         return Math.max(0, Math.min(5, retries));
     }
 
-    private static final class ContextClosingIterator<T> implements OperatorStream<T> {
-
-        private final Iterator<T> delegate;
-        private final Runnable onClose;
-        private boolean closed;
-
-        private ContextClosingIterator(Iterator<T> delegate, Runnable onClose) {
-            this.delegate = delegate;
-            this.onClose = onClose;
-        }
-
-        @Override
-        public boolean hasNext() {
-            boolean hasNext = delegate.hasNext();
-            if (!hasNext) {
-                closeOnce();
-            }
-            return hasNext;
-        }
-
-        @Override
-        public T next() {
-            T value = delegate.next();
-            if (!delegate.hasNext()) {
-                closeOnce();
-            }
-            return value;
-        }
-
-        @Override
-        public void close() {
-            closeOnce();
-        }
-
-        private void closeOnce() {
-            if (!closed) {
-                closed = true;
-                onClose.run();
-            }
-        }
-    }
 }

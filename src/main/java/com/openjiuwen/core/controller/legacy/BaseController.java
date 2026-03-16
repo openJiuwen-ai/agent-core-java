@@ -14,7 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -91,12 +93,15 @@ public abstract class BaseController {
         SubscriptionBase subscription = subscriptions.remove(conversationId);
         if (subscription != null) {
             subscription.deactivate();
+            msgQueue.unsubscribe(topicFor(conversationId));
+            LOG.info("Cleaned up subscription for conversation_id={}", conversationId);
         }
     }
 
     public void stop() {
-        for (SubscriptionBase subscription : subscriptions.values()) {
-            subscription.deactivate();
+        for (Map.Entry<String, SubscriptionBase> entry : subscriptions.entrySet()) {
+            entry.getValue().deactivate();
+            msgQueue.unsubscribe(topicFor(entry.getKey()));
         }
         subscriptions.clear();
         msgQueue.stop();
@@ -105,14 +110,56 @@ public abstract class BaseController {
 
     public void setGroup(Object group) {
         this.group = group;
+        LOG.debug("{}: Group reference injected", getClass().getSimpleName());
     }
 
+    /**
+     * Send event to specified agent (point-to-point).
+     * Delegates to the group's controller for actual routing.
+     * Mirrors Python's {@code BaseController.send_to_agent()}.
+     */
     public Object sendToAgent(String agentId, Event event, Session session) {
-        throw new UnsupportedOperationException("Legacy group routing is not configured for controller " + getClass().getSimpleName());
+        if (group != null) {
+            Object groupController = readProperty(group, "getGroupController", "groupController");
+            if (groupController != null) {
+                try {
+                    Method method = groupController.getClass().getMethod("sendToAgent", Event.class, String.class, Session.class);
+                    return method.invoke(groupController, event, agentId, session);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to send_to_agent via group controller", e);
+                }
+            }
+        }
+        throw new RuntimeException(
+                getClass().getSimpleName() + ": Cannot sendToAgent('" + agentId + "'). "
+                        + "Agent is not part of a group with a controller.");
     }
 
-    public Object publish(Event event, Session session) {
-        throw new UnsupportedOperationException("Legacy group broadcast is not configured for controller " + getClass().getSimpleName());
+    /**
+     * Publish event to subscribers (broadcast).
+     * Delegates to the group's controller for actual routing.
+     * Mirrors Python's {@code BaseController.publish()}.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object> publish(Event event, Session session) {
+        if (group != null) {
+            Object groupController = readProperty(group, "getGroupController", "groupController");
+            if (groupController != null) {
+                try {
+                    Method method = groupController.getClass().getMethod("publish", Event.class, Session.class);
+                    Object result = method.invoke(groupController, event, session);
+                    if (result instanceof List<?> list) {
+                        return (List<Object>) list;
+                    }
+                    return result != null ? List.of(result) : Collections.emptyList();
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to publish via group controller", e);
+                }
+            }
+        }
+        throw new RuntimeException(
+                getClass().getSimpleName() + ": Cannot publish(). "
+                        + "Agent is not part of a group with a controller.");
     }
 
     private void ensureStarted() {

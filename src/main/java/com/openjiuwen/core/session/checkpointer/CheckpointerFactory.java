@@ -20,6 +20,7 @@ public final class CheckpointerFactory {
 
     static {
         REGISTRY.put("in_memory", conf -> DEFAULT_INMEMORY_CHECKPOINTER);
+        REGISTRY.put("persistence", new PersistenceCheckpointerProvider());
     }
 
     private CheckpointerFactory() {
@@ -33,6 +34,19 @@ public final class CheckpointerFactory {
      */
     public static void register(String name, CheckpointerProvider provider) {
         REGISTRY.put(name, provider);
+    }
+
+    /**
+     * Create a checkpointer from a CheckpointerConfig.
+     *
+     * @param checkpointerConf the checkpointer configuration
+     * @return the checkpointer instance
+     */
+    public static Checkpointer create(CheckpointerConfig checkpointerConf) {
+        if (checkpointerConf == null) {
+            throw new IllegalArgumentException("checkpointerConf cannot be null");
+        }
+        return create(checkpointerConf.getType(), checkpointerConf.getConf());
     }
 
     /**

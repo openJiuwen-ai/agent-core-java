@@ -52,10 +52,16 @@ public class NodeSessionApi {
     }
 
     public void trace(Map<String, Object> data) {
+        if (inner.skipTrace()) {
+            return;
+        }
         TracerWorkflowUtils.trace(inner, data);
     }
 
     public void traceError(Exception error) {
+        if (inner.skipTrace()) {
+            return;
+        }
         TracerWorkflowUtils.traceError(inner, error);
     }
 
@@ -76,7 +82,9 @@ public class NodeSessionApi {
         }
         @SuppressWarnings("unchecked")
         T userInputs = (T) interaction.waitUserInputs(value);
-        TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
+        if (!inner.skipTrace()) {
+            TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
+        }
         return userInputs;
     }
 

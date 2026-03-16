@@ -53,6 +53,17 @@ public class SubWorkflowSession extends NodeSession {
         this.actorManager = actorManager;
     }
 
+    /**
+     * Close the sub-workflow session by shutting down its actor manager.
+     * Mirrors Python's {@code SubWorkflowSession.close()}.
+     */
+    @Override
+    public void close() {
+        if (actorManager != null) {
+            actorManager.shutdown();
+        }
+    }
+
     private static BaseSession resolveParentSession(BaseSession session) {
         if (session instanceof NodeSession nodeSession && nodeSession.parent() != null) {
             return nodeSession.parent();

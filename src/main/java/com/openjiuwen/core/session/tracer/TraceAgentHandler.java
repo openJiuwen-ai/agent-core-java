@@ -9,6 +9,7 @@ import com.openjiuwen.core.session.stream.StreamWriterManager;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,6 +75,12 @@ public class TraceAgentHandler extends TraceBaseHandler {
     @TriggerEvent
     public void onLlmStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.LLM.getValue(), inputs, instanceInfo);
+        sendData(span);
+    }
+
+    @TriggerEvent
+    public void onLlmRequest(TraceAgentSpan span, Map<String, Object> kwargs) {
+        updateRunningTraceData(span, kwargs);
         sendData(span);
     }
 
@@ -225,5 +232,17 @@ public class TraceAgentHandler extends TraceBaseHandler {
             data.put("elapsed_time", elapsed);
         }
         spanManager.updateSpan(span, data);
+    }
+
+    private void updateRunningTraceData(TraceAgentSpan span, Map<String, Object> kwargs) {
+        List<Map<String, Object>> onInvokeData = span.getOnInvokeData();
+        if (onInvokeData == null) {
+            onInvokeData = new ArrayList<>();
+            span.setOnInvokeData(onInvokeData);
+        }
+        if (kwargs != null) {
+            onInvokeData.add(new HashMap<>(kwargs));
+        }
+        spanManager.updateSpan(span, new HashMap<>());
     }
 }

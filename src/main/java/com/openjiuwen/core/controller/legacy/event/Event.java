@@ -121,8 +121,136 @@ public class Event {
                 .build();
     }
 
+    // ========== Missing factory methods (P1) ==========
+
+    /**
+     * Create Agent response event.
+     * Mirrors Python's {@code Event.create_agent_response()}.
+     */
+    public static Event createAgentResponse(String content, String conversationId, String replyToEventId) {
+        EventContent eventContent = new EventContent();
+        eventContent.setQuery(content);
+        return Event.builder()
+                .eventType(EventType.AGENT_RESPONSE)
+                .source(new EventSource(conversationId, SourceType.AGENT, null))
+                .content(eventContent)
+                .context(new EventContext(replyToEventId, conversationId, null, null))
+                .build();
+    }
+
+    /**
+     * Create Agent handoff event.
+     * Mirrors Python's {@code Event.create_agent_handoff()}.
+     */
+    public static Event createAgentHandoff(String conversationId, String toAgentId, String handoffReason) {
+        EventContent eventContent = new EventContent();
+        eventContent.setQuery(handoffReason);
+        Map<String, Object> ext = new LinkedHashMap<>();
+        ext.put("to_agent_id", toAgentId);
+        eventContent.setExtensions(ext);
+        return Event.builder()
+                .eventType(EventType.AGENT_HANDOFF)
+                .source(new EventSource(conversationId, SourceType.AGENT, null))
+                .content(eventContent)
+                .context(new EventContext(null, conversationId, null, null))
+                .build();
+    }
+
+    // ========== Missing convenience methods (P1) ==========
+
+    /**
+     * Set correlation ID.
+     * Mirrors Python's {@code Event.set_correlation()}.
+     */
+    public void setCorrelation(String correlationId) {
+        if (this.context == null) {
+            this.context = new EventContext();
+        }
+        this.context.setCorrelationId(correlationId);
+    }
+
+    /**
+     * Set conversation ID.
+     * Mirrors Python's {@code Event.set_conversation()}.
+     */
+    public void setConversation(String conversationId) {
+        if (this.context == null) {
+            this.context = new EventContext();
+        }
+        this.context.setConversationId(conversationId);
+    }
+
+    /**
+     * Check if from user.
+     * Mirrors Python's {@code Event.is_from_user()}.
+     */
+    public boolean isFromUser() {
+        return source != null && source.getSourceType() == SourceType.USER;
+    }
+
+    /**
+     * Check if from Agent.
+     * Mirrors Python's {@code Event.is_from_agent()}.
+     */
+    public boolean isFromAgent() {
+        return source != null && source.getSourceType() == SourceType.AGENT;
+    }
+
+    /**
+     * Check if task related.
+     * Mirrors Python's {@code Event.is_task_related()}.
+     */
+    public boolean isTaskRelated() {
+        return context != null && context.getTaskId() != null;
+    }
+
+    /**
+     * Check if workflow related.
+     * Mirrors Python's {@code Event.is_workflow_related()}.
+     */
+    public boolean isWorkflowRelated() {
+        return context != null && context.getWorkflowId() != null;
+    }
+
     public String getDisplayContent() {
         return content != null ? content.getQueryText() : "";
+    }
+
+    /**
+     * Convert to map format.
+     * Mirrors Python's {@code Event.to_dict()}.
+     */
+    public Map<String, Object> toDict() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("event_id", eventId);
+        result.put("event_type", eventType != null ? eventType.name() : null);
+        result.put("priority", priority != null ? priority.name() : null);
+        if (source != null) {
+            Map<String, Object> srcMap = new LinkedHashMap<>();
+            srcMap.put("conversation_id", source.getConversationId());
+            srcMap.put("source_type", source.getSourceType() != null ? source.getSourceType().name() : null);
+            srcMap.put("user_id", source.getUserId());
+            result.put("source", srcMap);
+        }
+        if (content != null) {
+            Map<String, Object> cntMap = new LinkedHashMap<>();
+            cntMap.put("query", content.getQuery());
+            cntMap.put("extensions", content.getExtensions());
+            result.put("content", cntMap);
+        }
+        if (context != null) {
+            Map<String, Object> ctxMap = new LinkedHashMap<>();
+            ctxMap.put("correlation_id", context.getCorrelationId());
+            ctxMap.put("conversation_id", context.getConversationId());
+            ctxMap.put("task_id", context.getTaskId());
+            ctxMap.put("workflow_id", context.getWorkflowId());
+            result.put("context", ctxMap);
+        }
+        result.put("created_at", createdAt != null ? createdAt.toString() : null);
+        result.put("metadata", metadata);
+        result.put("receiver_id", receiverId);
+        result.put("custom_event_type", customEventType);
+        return result;
     }
 
     public enum EventType {
