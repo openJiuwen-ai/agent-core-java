@@ -1,135 +1,70 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.logging;
 
-import java.util.List;
 import java.util.Map;
+import java.util.logging.Filter;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
 
 /**
- * 日志记录器协议接口
- *
- * <p>定义所有日志记录器实现必须提供的方法。</p>
+ * Logger protocol — every logger implementation must satisfy this contract.
+ * <p>
+ * Java equivalent of Python's {@code LoggerProtocol}.
+ * In Java we use an interface instead of a Protocol class.
  */
 public interface LoggerProtocol {
 
-    /**
-     * 记录调试级别日志
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
     void debug(String msg, Object... args);
 
-    /**
-     * 记录信息级别日志
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
     void info(String msg, Object... args);
 
-    /**
-     * 记录警告级别日志
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
     void warning(String msg, Object... args);
 
-    /**
-     * 记录错误级别日志
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
+    default void warn(String msg, Object... args) {
+        warning(msg, args);
+    }
+
     void error(String msg, Object... args);
 
-    /**
-     * 记录严重级别日志
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
     void critical(String msg, Object... args);
 
-    /**
-     * 记录异常（包含堆栈跟踪）
-     *
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
-    void exception(String msg, Object... args);
+    /** Log exception with stack trace. */
+    void exception(String msg, Throwable t, Object... args);
 
-    /**
-     * 通用日志记录方法
-     *
-     * @param level 日志级别
-     * @param msg 日志消息
-     * @param args 消息参数
-     */
-    void log(LogLevel level, String msg, Object... args);
+    void log(int level, String msg, Object... args);
 
-    /**
-     * 设置日志级别
-     *
-     * @param level 日志级别
-     */
-    void setLevel(LogLevel level);
+    void setLevel(int level);
 
-    /**
-     * 获取日志级别
-     *
-     * @return 日志级别
-     */
-    LogLevel getLevel();
+    /** Add a log handler. */
+    default void addHandler(Handler handler) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
 
-    /**
-     * 添加日志处理器
-     *
-     * @param handler 日志处理器
-     */
-    void addHandler(LogHandler handler);
+    /** Remove a log handler. */
+    default void removeHandler(Handler handler) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
 
-    /**
-     * 移除日志处理器
-     *
-     * @param handler 日志处理器
-     */
-    void removeHandler(LogHandler handler);
+    /** Add a log filter. */
+    default void addFilter(Filter filter) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
 
-    /**
-     * 获取内部日志记录器
-     *
-     * @return 内部日志记录器
-     */
-    Object logger();
+    /** Remove a log filter. */
+    default void removeFilter(Filter filter) {
+        // Default no-op — override in implementations backed by java.util.logging.
+    }
 
-    /**
-     * 添加日志过滤器
-     *
-     * @param filter 日志过滤器
-     */
-    void addFilter(LogFilter filter);
+    /** Return the inner logger object. */
+    default Logger logger() {
+        return null;
+    }
 
-    /**
-     * 移除日志过滤器
-     *
-     * @param filter 日志过滤器
-     */
-    void removeFilter(LogFilter filter);
-
-    /**
-     * 获取日志配置
-     *
-     * @return 配置映射
-     */
+    /** Get logger configuration. */
     Map<String, Object> getConfig();
 
-    /**
-     * 重新配置日志记录器
-     *
-     * @param config 配置映射
-     */
+    /** Reconfigure logger with new config. */
     void reconfigure(Map<String, Object> config);
 }
