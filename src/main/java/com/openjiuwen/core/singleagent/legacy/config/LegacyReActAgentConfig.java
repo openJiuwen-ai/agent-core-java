@@ -4,6 +4,7 @@
 package com.openjiuwen.core.singleagent.legacy.config;
 
 import com.openjiuwen.core.common.constants.ControllerType;
+import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.PluginSchema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,7 +14,6 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +43,7 @@ public class LegacyReActAgentConfig extends AgentConfig {
     private String memoryScopeId = "";
 
     @Builder.Default
-    private Map<String, Object> agentMemoryConfig = new LinkedHashMap<>();
+    private AgentMemoryConfig agentMemoryConfig = AgentMemoryConfig.builder().build();
 
     public int getContextWindowLimit() {
         return constrain != null ? constrain.getReservedMaxChatRounds() : 10;

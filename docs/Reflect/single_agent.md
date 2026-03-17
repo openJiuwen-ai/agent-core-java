@@ -7,6 +7,7 @@
 - 统计口径:
   - Python 统计包级导出、公共类、公共顶层函数、非 `_` 公共方法
   - Java 统计 `public`/`protected` 类型、`public` 方法、公开静态工厂/工具方法
+  - 为了覆盖迁移主链路，文中补充记录少量 Python `_` 内部方法与 Java `protected/public` 对位实现
 - 映射约定:
   - `snake_case -> camelCase`
   - `property` / Pydantic 字段 -> getter / setter / builder 字段
@@ -19,9 +20,9 @@
 
 ## 总体结论
 
-- single_agent 新版主链路已经基本对齐: `AbilityManager`、`AgentCallbackManager`、`BaseAgent`、`ControllerAgent`、`ReActAgent`、`ReActAgentEvolve`、`rail` 数据类型、`schema`、`skills` 主干都能找到 Java 对位实现。
-- Java 为适配同步运行时，对 Python 的 `async`、`@rail` 装饰器、`property`、包级懒导出做了显式化改写，整体可视为“结构对齐、语言适配实现”。
-- 当前仍有一批未完全对齐点，主要集中在 `BaseAgent` 技能便捷入口、`AgentCallbackContext.lifecycle()`、`AgentRail.skills`、`RemoteSkillUtil` 的公开搜索 API，以及 `legacy` 包若干兼容层 API；详见 `docs/FIXED/single_agent_fixed.md`。
+- single_agent 新版主链路已基本对齐，`AbilityManager`、`AgentCallbackManager`、`BaseAgent`、`ControllerAgent`、`ReActAgent`、`ReActAgentEvolve`、`rail` 生命周期、`schema`、`skills` 主干在 Java 中都能找到可用对位实现。
+- 与上一版文档相比，Java 侧已补齐多项曾经缺失的公开 API，包括 `BaseAgent.registerSkill/registerRemoteSkills`、`AgentCallbackContext.lifecycle()`、`AgentRail.skills`、`GitHubError`、`RemoteSkillUtil.searchGitHubForSkills/listGitHubFiles`，以及多项 `legacy` 配置/会话类型。
+- 当前剩余差异主要集中在两类：一类是语言门面差异，例如 Python 的 `__all__`、`__getattr__`、装饰器与 deprecated wrapper；另一类是 `legacy` 兼容层的调用形态差异，例如 `workflow_provider(...)`、`Config` wrapper、`WorkflowFactory` 接入方式，以及少数强类型 schema 在 Java 中被弱化。
 
 ## 1. 包级导出与门面
 
@@ -29,9 +30,9 @@
 | --- | --- | --- | --- | --- |
 | `single_agent.__all__ = [AgentCard, ReActAgent, ReActAgentConfig, ReActAgentEvolve, Session, create_agent_session, BaseAgent, AbilityManager, LegacyBaseAgent]` | 无单一 package facade；分别使用 `singleagent.*`、`singleagent.agents.*`、`singleagent.schema.AgentCard`、`core.session.*`、`singleagent.legacy.BaseAgent` | 包门面导出 -> 直接导入具体类 | 适配映射 | Java 不提供 Python 风格 `__all__`/`__getattr__` |
 | `single_agent.__getattr__("LegacyBaseAgent")` | `legacy.BaseAgent` | 懒导出旧类 -> 直接使用 legacy 包 | 部分映射 | Java 没有兼容别名 `LegacyBaseAgent` |
-| `skills.__all__ = [SkillUtil, SkillManager, GitHubTree, RemoteSkillUtil]` | `skills.SkillUtil`、`SkillManager`、`GitHubTree`、`RemoteSkillUtil` | 包导出 -> 直接导入类型 | 完全映射 | Java 还额外公开 `Skill` |
+| `skills.__all__ = [SkillUtil, SkillManager, GitHubTree, RemoteSkillUtil]` | `skills.SkillUtil`、`SkillManager`、`GitHubTree`、`RemoteSkillUtil` | 包导出 -> 直接导入类型 | 完全映射 | Java 还额外公开 `Skill`、`GitHubError` |
 | `schema.__init__` 空模块 | `schema` 包 | 无额外门面 | 完全映射 | 两侧都没有额外导出行为 |
-| `rail.__all__` 导出 `InvokeInputs/ModelCallInputs/ToolCallInputs/RetryRequest/AgentCallbackEvent/AgentCallbackContext/AgentRail/AgentCallback/SyncAgentCallback/AnyAgentCallback/rail` | `rail` 包下同名数据类/枚举/接口 + `RailExecutor` | 类型导出 1:1；`rail` 装饰器 -> `RailExecutor.execute(...)` | 适配映射 | `SyncAgentCallback`/`AnyAgentCallback` 变成 Java 函数式接口/`Consumer` |
+| `rail.__all__` 导出 `InvokeInputs/ModelCallInputs/ToolCallInputs/EventInputs/AgentCallbackEvent/AgentCallbackContext/AgentRail/AgentCallback/SyncAgentCallback/AnyAgentCallback/EVENT_METHOD_MAP/rail` | `rail` 包下同名数据类/枚举/接口 + `RailExecutor` | 类型导出基本 1:1；`rail` 装饰器 -> `RailExecutor.execute(...)` | 部分映射 | Java 没有公开 `EVENT_METHOD_MAP` 常量，`SyncAgentCallback`/`AnyAgentCallback` 变成函数式接口/`Consumer` |
 
 ## 2. 核心类型
 
@@ -79,8 +80,8 @@
 | `agent_callback_manager` property | `getAgentCallbackManager()` | 属性 -> getter | 完全映射 | - |
 | `card` attribute | `getCard()` | 字段 -> getter | 完全映射 | - |
 | `_skill_util` | `getSkillUtil()` / `setSkillUtil()` | 内部字段 -> getter/setter | 适配映射 | Java 暴露度更高 |
-| `register_skill(skill_path)` | 无 BaseAgent 同名公开方法 | 可由 `getSkillUtil().registerSkills(...)` 间接完成 | 部分映射 | Java 缺少 BaseAgent 级便捷入口 |
-| `register_remote_skills(skills_dir, github_tree, token="")` | 无 BaseAgent 同名公开方法 | 可由 `getSkillUtil().registerRemoteSkills(...)` 间接完成 | 部分映射 | Java 缺少 BaseAgent 级便捷入口 |
+| `register_skill(skill_path)` | `registerSkill(Object)` | 同名便捷入口映射 | 完全映射 | Python `async` -> Java 同步；两侧都委托 `SkillUtil` |
+| `register_remote_skills(skills_dir, github_tree, token="")` | `registerRemoteSkills(String, GitHubTree, String)` | 同名便捷入口映射 | 完全映射 | Python `async` -> Java 同步 |
 | `register_callback(event, callback, priority=100)` | `registerCallback(event, callback, priority)` | 同名语义映射 | 完全映射 | - |
 | `register_rail(rail)` | `registerRail(AgentRail)` | 同名语义映射 | 完全映射 | - |
 | `unregister_rail(rail)` | `unregisterRail(AgentRail)` | 同名语义映射 | 完全映射 | - |
@@ -178,7 +179,7 @@
 | `fire(event)` | `fire(AgentCallbackEvent)` | 同名语义映射 | 完全映射 | - |
 | `request_retry(delay_seconds=0.0)` | `requestRetry(double)` | 同名语义映射 | 完全映射 | - |
 | `consume_retry_request()` | `consumeRetryRequest()` | 同名语义映射 | 完全映射 | - |
-| `lifecycle(before, after)` | 无同名公开方法 | 由各调用点手工 `fire(before)` + `try/finally fire(after)` 实现 | 部分映射 | Java 缺少独立 context-manager 风格 API |
+| `lifecycle(before, after)` | `lifecycle(before, after, Runnable)` | async context manager -> 同步生命周期执行器 | 完全映射 | Java 以 `Runnable` 包裹执行体，并保留 `inputs` 保存/恢复语义 |
 
 ### 4.3 `AgentRail`
 
@@ -186,7 +187,7 @@
 | --- | --- | --- | --- | --- |
 | `priority` | `getPriority()/setPriority()` | 属性 -> getter/setter | 完全映射 | - |
 | `tools` property | `getTools()` | 属性 -> getter | 完全映射 | - |
-| `skills` property | 无同名公开字段/方法 | - | 部分映射 | Java 当前只保留 rail tools，没有保留 reserved skills 容器 |
+| `skills` property | `getSkills()` | 属性 -> getter | 完全映射 | 两侧都将其作为 reserved 容器 |
 | `before_invoke/after_invoke/before_model_call/after_model_call/on_model_exception/before_tool_call/after_tool_call/on_tool_exception` | `beforeInvoke/afterInvoke/beforeModelCall/afterModelCall/onModelException/beforeToolCall/afterToolCall/onToolException` | 8 个 hook 一一对应 | 完全映射 | - |
 | `get_callbacks()` | `getCallbacks()` | 同名语义映射 | 完全映射 | 都只提取子类真正覆写的方法 |
 
@@ -220,7 +221,7 @@
 | --- | --- | --- | --- | --- |
 | `__init__(sys_operation_id)` | `SkillManager(String sysOperationId)` | 构造语义一致 | 完全映射 | - |
 | `set_sys_operation_id()` | `setSysOperationId()` | 同名语义映射 | 完全映射 | Java 还公开 `getSysOperationId()` |
-| `register(skill_path, session_id=None, overwrite=False)` | `register(String skillPath, String sessionId, boolean overwrite)` / `register(String)` | 同名主语义映射 | 部分映射 | Python 支持 `Path | List[Path]` 且通过 `sys_operation.fs()` 读文件；Java 目前走本地文件系统字符串路径 |
+| `register(skill_path, session_id=None, overwrite=False)` | `register(String skillPath, String sessionId, boolean overwrite)` / `register(String)` / `register(List<String>, String, boolean)` | 同名主语义映射 | 部分映射 | Java 已支持字符串列表批量注册，但仍以本地文件系统字符串路径为主，不对位 Python 的 `Path` + `sys_operation.fs()` 模式 |
 | `unregister(name)` | `unregister(String)` | 同名语义映射 | 完全映射 | - |
 | `get(name)` | `get(String)` | 同名语义映射 | 完全映射 | - |
 | `get_all()` | `getAll()` | 同名语义映射 | 完全映射 | - |
@@ -247,13 +248,13 @@
 
 | Python API | Java API | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `GitHubError` | 无同名公开类型 | - | 缺失 | Java 当前直接抛 `RuntimeException` |
+| `GitHubError` | `GitHubError` | 同名异常类型映射 | 完全映射 | Java 继承 `RuntimeException`，语义对位 Python 专用异常 |
 | `GitHubTree(repo_owner, repo_name, tree_ref="HEAD", directory="")` | `GitHubTree(repoOwner, repoName)` / 全参构造 | 同名语义映射 | 完全映射 | `Path directory` 在 Java 中变为 `String directory` |
 | `clone()` | `copy()` | 同名语义映射 | 适配映射 | Java 避免与 `Object.clone()` 语义混淆 |
 | `RemoteSkillUtil.sys_operation_id` property | `getSysOperationId()/setSysOperationId()` | 属性 -> getter/setter | 完全映射 | - |
 | `download_file_from_github(tree, file_path, token=None)` | `downloadFileFromGitHub(GitHubTree, String, String)` | 同名语义映射 | 完全映射 | - |
-| `search_github_for_skills(tree, token=None)` | 无同名公开方法 | 仅保留私有 `searchGitHubForSkills(...)` | 部分映射 | Java 缺少外部可直接复用的搜索 API |
-| `_list_github_files/_recursively_list_github_files()` | 无同名公开方法 | 仅保留私有 `listGitHubFiles(...)` / `recursivelyListGitHubFiles(...)` | 适配映射 | 内部能力存在，但未作为公开 API 暴露 |
+| `search_github_for_skills(tree, token=None)` | `searchGitHubForSkills(GitHubTree, String)` | 同名语义映射 | 完全映射 | Python 返回 `(files, skill_paths)`；Java 返回 `SearchResult(files, skillPaths)` |
+| `_list_github_files/_recursively_list_github_files()` | `listGitHubFiles(GitHubTree, String)` + 私有 `recursivelyListGitHubFiles(...)` | Python 私有流程 -> Java 公共入口 + 私有递归助手 | 适配映射 | Java 对外公开度更高，但不单独暴露递归助手 |
 | `upload_skill_from_github(tree, skills_dir="", token=None)` | `uploadSkillFromGitHub(GitHubTree, String, String)` | 同名语义映射 | 完全映射 | Java 已补齐真实 GitHub 搜索、下载、写盘逻辑 |
 
 ## 7. legacy 子包
@@ -262,20 +263,20 @@
 
 | Python API | Java API | 映射关系 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `legacy.__all__` 导出 `LegacyReActAgent/create_react_agent_config/LegacyBaseAgent/ControllerAgent/AgentSession/WorkflowFactory/workflow_provider/AgentConfig/LLMCallConfig/IntentDetectionConfig/ConstrainConfig/DefaultResponse/WorkflowAgentConfig/MemoryConfig/LegacyReActAgentConfig/WorkflowSchema/PluginSchema` | `legacy.*` 中只公开 `BaseAgent`、`ControllerAgent`、`LegacyReActAgent`、`ReActAgent`、部分 config/schema 类型 | Python 兼容层 -> Java 精简 legacy 包 | 部分映射 | Java 没有 Python 那层 deprecated alias/facade |
+| `legacy.__all__` 导出 `LegacyReActAgent/create_react_agent_config/LegacyBaseAgent/ControllerAgent/AgentSession/WorkflowFactory/workflow_provider/AgentConfig/LLMCallConfig/IntentDetectionConfig/ConstrainConfig/DefaultResponse/WorkflowAgentConfig/MemoryConfig/LegacyReActAgentConfig/WorkflowSchema/PluginSchema` | `legacy.*` 下直接公开 `BaseAgent`、`ControllerAgent`、`LegacyReActAgent`、`ReActAgent`、`WorkflowFactory`、`AgentSession`、config/schema 类型 | Python 兼容层 -> Java 直接包导入 | 部分映射 | Java 已有大部分类型，但没有 Python 那层 deprecated alias/facade，也没有包级 `create_react_agent_config` / `workflow_provider` 门面 |
 | `_deprecated_class(...)` | 无同名机制 | - | 适配映射 | Java 未实现实例化即发出 deprecation warning 的包装层 |
 
 ### 7.2 legacy 基础类与 agent
 
 | Python API | Java API | 方法映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| `legacy.agent.BaseAgent` | `legacy.BaseAgent` | `getAgentConfig()` 对位 `agent_config/config wrapper`；`add_tools -> addTools()`；`add_workflows -> addWorkflows()`；`clear_session -> clearSession()`；`invoke/stream` 抽象接口对齐 | 部分映射 | Java 缺少 `config()`、`context_engine`、`add_prompt()`、`remove_workflows()`、`bind_workflows()`、`add_plugins()` |
-| `WorkflowFactory` | 无同名公开类型 | - | 缺失 | Java legacy 不支持 Python 的 workflow provider 工厂类型 |
+| `legacy.agent.BaseAgent` | `legacy.BaseAgent` | `getAgentConfig()` 对位 `agent_config`；`getContextEngine()`、`addPrompt()`、`addTools()`、`addWorkflows()`、`removeWorkflows()`、`bindWorkflows()`、`addPlugins()`、`clearSession()`、`invoke/stream` 均有对位实现 | 部分映射 | Java 仍缺 Python 的 `config()` wrapper，且 `addWorkflows()` 只接收 `Workflow` 实例，不直接接收 provider/factory 调用形态 |
+| `WorkflowFactory` | `legacy.WorkflowFactory` | 同名工厂类型映射 | 部分映射 | Java 有同名类型，但当前 `legacy.BaseAgent.addWorkflows(...)` 未直接接收 `WorkflowFactory`/`Supplier`，并发安全 provider 模式未完全接通 |
 | `workflow_provider(...)` | 无同名公开函数 | - | 缺失 | Java legacy 不提供装饰器式 provider 工厂 |
 | `legacy.agent.ControllerAgent` | `legacy.ControllerAgent` | 构造器、`controller` getter/setter、`invoke`、`stream` 一一对应 | 完全映射 | - |
-| `legacy.react_agent.AgentSession` | 无同名公开类型 | - | 缺失 | Java 直接使用 `AgentSessionApi` |
+| `legacy.react_agent.AgentSession` | `legacy.AgentSession` | 同名会话工厂映射 | 部分映射 | Java 公开 `preRun()/release()`，但返回 `AgentSessionApi`，没有 Python 的 `TaskSession/StateSession` 包装层 |
 | `legacy.react_agent.TaskSession` | 无同名公开类型 | - | 缺失 | Python 内部兼容会话包装未迁移 |
-| `legacy.react_agent.LegacyReActAgent` | `legacy.LegacyReActAgent` | 构造器、`addTools/addWorkflows`、`invoke`、`stream`、`create_react_agent_config -> createReActAgentConfig(...)` | 部分映射 | Java 用现代 `ReActAgent` 作为 delegate，没有公开 Python `call_model()` |
+| `legacy.react_agent.LegacyReActAgent` | `legacy.LegacyReActAgent` | 构造器、`addTools/addWorkflows`、`callModel()`、`invoke`、`stream`、`create_react_agent_config -> createReActAgentConfig(...)` | 部分映射 | Java 已公开 `callModel()`，但 `create_react_agent_config` 仅以类静态方法暴露，且内部以现代 `ReActAgent` delegate 实现 |
 | `legacy.react_agent.ReActAgentConfig = LegacyReActAgentConfig` | `legacy.config.LegacyReActAgentConfig` | 兼容别名 -> 直接使用 legacy 配置类 | 适配映射 | Java 无同名别名 |
 | `legacy.ReActAgent` 兼容类 | `legacy.ReActAgent extends LegacyReActAgent` | 同名兼容类 | 完全映射 | - |
 
@@ -284,11 +285,11 @@
 | Python API | Java API | 方法/字段映射 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
 | `AgentConfig` | `legacy.config.AgentConfig` | 字段 `id/version/description/controller_type/workflows/model/tools` 一一对应 | 部分映射 | Python `workflows` 支持 `WorkflowSchema | WorkflowCard`，Java 仅保留 `WorkflowSchema` |
-| `LLMCallConfig` | 无同名公开类型 | - | 缺失 | Java legacy 未保留该兼容配置类 |
-| `IntentDetectionConfig` | 无同名公开类型 | - | 缺失 | Java legacy 未保留该兼容配置类 |
+| `LLMCallConfig` | `legacy.config.LLMCallConfig` | 字段 `model/model_client/system_prompt/user_prompt/freeze_system_prompt/freeze_user_prompt` 一一对应 | 完全映射 | - |
+| `IntentDetectionConfig` | `legacy.config.IntentDetectionConfig` | 字段 `intent_detection_template/default_class/enable_input/enable_history/chat_history_max_turn/category_list/user_prompt/example_content` 一一对应 | 完全映射 | - |
 | `ConstrainConfig` | `legacy.config.ConstrainConfig` | 字段 `reserved_max_chat_rounds/max_iteration -> reservedMaxChatRounds/maxIteration` | 完全映射 | - |
 | `DefaultResponse` | `legacy.config.DefaultResponse` | 字段 `type/text` 一一对应 | 完全映射 | Java 未把 `type` 收窄到 Python `Literal` |
-| `MemoryConfig` | 无同名公开类型 | - | 缺失 | Java legacy 未保留该兼容配置类 |
+| `MemoryConfig` | `legacy.config.MemoryConfig` | 字段 `enabled/scope/config` 一一对应 | 完全映射 | - |
 | `WorkflowAgentConfig` | `legacy.config.WorkflowAgentConfig` | `controller_type/start_workflow/end_workflow/global_variables/global_params/constrain/default_response` 一一对应 | 完全映射 | - |
 | `LegacyReActAgentConfig` | `legacy.config.LegacyReActAgentConfig` | `controller_type/prompt_template_name/prompt_template/constrain/plugins/memory_scope_id/agent_memory_config/context_window_limit` 基本对齐 | 部分映射 | `agent_memory_config` 在 Java 中退化为 `Map<String,Object>`，不再保留 Python 的 `AgentMemoryConfig` 强类型 |
 | `WorkflowSchema` | `legacy.schema.WorkflowSchema` | 字段 `id/name/description/version/inputs` 一一对应 | 完全映射 | - |
@@ -296,8 +297,6 @@
 
 ## 8. 结论
 
-- 新版 single_agent 主干 API 在 Java 中已经具备可用的类型对位与主流程语义，尤其是 `ReActAgent`、`ReActAgentEvolve`、`AbilityManager`、`AgentCallbackManager`、`rail` 生命周期、`schema` 与 `skills` 主体已经成型。
-- 主要差异集中在两类:
-  - 语言适配: 包级导出、装饰器、异步、属性访问器。
-  - 兼容层收缩: `legacy` 包没有完整复制 Python 的兼容 facade 与所有旧配置类型。
-- 当前仍需补齐的公开 API / 重要语义差异已单列在 `docs/FIXED/single_agent_fixed.md`，可直接作为后续修补清单。
+- 当前 Java single_agent 版已经覆盖新版主链路和大部分 legacy 常用类型，之前文档中列为“缺失”的多项 API 现已补齐。
+- 现阶段真正的差异重点已经从“核心运行链路缺失”转为“兼容门面与调用形态不完全一致”，尤其是 Python `legacy` 的 `workflow_provider(...)`、deprecated wrapper、`Config` wrapper，以及少数强类型 schema/Path 抽象在 Java 中的弱化。
+- 后续若继续追求严格公开 API 对齐，应优先处理 `legacy` facade/provider 模式，其次再处理 `AgentCard`、`SkillManager`、`LegacyReActAgentConfig` 这类类型收窄问题；详见 `docs/FIXED/single_agent_fixed.md`。

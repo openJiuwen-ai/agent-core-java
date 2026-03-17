@@ -209,8 +209,8 @@ class DataClassCoverageTest {
 
         assertThat(ac.getName()).isEqualTo("agent");
         assertThat(ac.getDescription()).isEqualTo("desc");
-        assertThat(ac.getInputParams()).containsKey("q");
-        assertThat(ac.getOutputParams()).containsKey("o");
+        assertThat(ac.getInputParamsAsMap()).containsKey("q");
+        assertThat(ac.getOutputParamsAsMap()).containsKey("o");
     }
 
     @Test

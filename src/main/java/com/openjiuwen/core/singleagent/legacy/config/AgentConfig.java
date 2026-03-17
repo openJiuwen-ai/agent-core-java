@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.legacy.config;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
+import com.openjiuwen.core.workflow.WorkflowCard;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,8 +33,12 @@ public class AgentConfig {
 
     private ControllerType controllerType = ControllerType.UNDEFINED;
 
+    /**
+     * Workflow list – accepts both {@link WorkflowSchema} and {@link WorkflowCard}
+     * to mirror Python's {@code List[Union[WorkflowSchema, WorkflowCard]]}.
+     */
     @Builder.Default
-    private List<WorkflowSchema> workflows = new ArrayList<>();
+    private List<Object> workflows = new ArrayList<>();
 
     private ModelConfig model;
 

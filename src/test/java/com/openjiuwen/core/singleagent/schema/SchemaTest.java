@@ -26,8 +26,8 @@ class SchemaTest {
 
         assertThat(card.getName()).isEqualTo("myAgent");
         assertThat(card.getDescription()).isEqualTo("A test agent");
-        assertThat(card.getInputParams()).containsKey("query");
-        assertThat(card.getOutputParams()).containsKey("result");
+        assertThat(card.getInputParamsAsMap()).containsKey("query");
+        assertThat(card.getOutputParamsAsMap()).containsKey("result");
     }
 
     @Test

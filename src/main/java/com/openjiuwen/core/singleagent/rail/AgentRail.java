@@ -39,7 +39,13 @@ import java.util.function.Consumer;
  */
 public abstract class AgentRail {
 
-    private static final Map<AgentCallbackEvent, String> EVENT_METHOD_MAP = new EnumMap<>(AgentCallbackEvent.class);
+    /**
+     * Public mapping from callback event to hook method name.
+     *
+     * <p>Mirrors Python's {@code EVENT_METHOD_MAP} exported in
+     * {@code rail.__all__}.</p>
+     */
+    public static final Map<AgentCallbackEvent, String> EVENT_METHOD_MAP = new EnumMap<>(AgentCallbackEvent.class);
 
     static {
         EVENT_METHOD_MAP.put(AgentCallbackEvent.BEFORE_INVOKE, "beforeInvoke");

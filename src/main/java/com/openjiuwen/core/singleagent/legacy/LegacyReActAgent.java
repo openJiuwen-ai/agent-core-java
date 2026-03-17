@@ -78,6 +78,23 @@ public class LegacyReActAgent extends BaseAgent {
     }
 
     /**
+     * Override to also register provider-created workflow cards on the delegate.
+     */
+    @Override
+    public void addWorkflowItems(List<?> items) {
+        super.addWorkflowItems(items);
+        if (items != null) {
+            for (Object item : items) {
+                if (item instanceof WorkflowFactory factory) {
+                    delegate.getAbilityManager().add(factory.card());
+                } else if (item instanceof Workflow workflow) {
+                    delegate.getAbilityManager().add(workflow.getCard());
+                }
+            }
+        }
+    }
+
+    /**
      * Call LLM for reasoning.
      *
      * <p>Mirrors Python's {@code LegacyReActAgent.call_model(user_input, session, is_first_call)}.</p>

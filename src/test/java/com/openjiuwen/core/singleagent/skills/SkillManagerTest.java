@@ -142,7 +142,7 @@ class SkillManagerTest {
 
     @Test
     void testRegisterNullPath() {
-        manager.register(null);
+        manager.register((String) null);
         assertThat(manager.count()).isZero();
     }
 

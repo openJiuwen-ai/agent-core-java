@@ -58,6 +58,27 @@ public class SkillManager {
     }
 
     /**
+     * Register skill from a {@link Path} (mirrors Python's Path type).
+     *
+     * @param skillPath path to the skill directory or file
+     * @param sessionId session ID for file operations
+     * @param overwrite whether to overwrite existing skills
+     */
+    public void register(Path skillPath, String sessionId, boolean overwrite) {
+        if (skillPath == null) {
+            return;
+        }
+        register(skillPath.toString(), sessionId, overwrite);
+    }
+
+    /**
+     * Register skill from a {@link Path} with defaults.
+     */
+    public void register(Path skillPath) {
+        register(skillPath, null, false);
+    }
+
+    /**
      * Register skills from a list of paths.
      *
      * @param skillPaths list of paths to skill directories or files
@@ -71,6 +92,29 @@ public class SkillManager {
         for (String path : skillPaths) {
             register(path, sessionId, overwrite);
         }
+    }
+
+    /**
+     * Register skills from a list of {@link Path} objects.
+     *
+     * @param skillPaths list of Path objects pointing to skill directories or files
+     * @param sessionId  session ID for file operations
+     * @param overwrite  whether to overwrite existing skills
+     */
+    public void registerPaths(List<Path> skillPaths, String sessionId, boolean overwrite) {
+        if (skillPaths == null || skillPaths.isEmpty()) {
+            return;
+        }
+        for (Path p : skillPaths) {
+            register(p, sessionId, overwrite);
+        }
+    }
+
+    /**
+     * Register skills from a list of {@link Path} objects with defaults.
+     */
+    public void registerPaths(List<Path> skillPaths) {
+        registerPaths(skillPaths, null, false);
     }
 
     /**

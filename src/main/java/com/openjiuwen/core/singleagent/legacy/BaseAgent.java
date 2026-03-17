@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -40,6 +41,39 @@ public abstract class BaseAgent {
 
     public AgentConfig getAgentConfig() {
         return agentConfig;
+    }
+
+    // ======================== Config wrapper ========================
+
+    /**
+     * Lightweight wrapper that mirrors Python's {@code Config} object returned
+     * by {@code legacy.BaseAgent.config()}.
+     */
+    public static class Config {
+        private final AgentConfig agentConfig;
+
+        Config(AgentConfig agentConfig) {
+            this.agentConfig = agentConfig;
+        }
+
+        /**
+         * Backward-compatible accessor.
+         *
+         * @return the wrapped {@link AgentConfig}
+         */
+        public AgentConfig getAgentConfig() {
+            return agentConfig;
+        }
+    }
+
+    /**
+     * Return a {@link Config} wrapper – mirrors Python's
+     * {@code agent.config().get_agent_config()} call chain.
+     *
+     * @return a Config wrapper around this agent's configuration
+     */
+    public Config config() {
+        return new Config(agentConfig);
     }
 
     /**
@@ -122,6 +156,43 @@ public abstract class BaseAgent {
     }
 
     /**
+     * Add workflows from a heterogeneous list that may contain {@link Workflow}
+     * instances, {@link WorkflowFactory} objects, or generic {@link Supplier}
+     * providers with a {@code card()} method.
+     *
+     * <p>Mirrors Python's {@code BaseAgent.add_workflows(List[Union[Workflow,
+     * Callable[[], Workflow]]])}.</p>
+     *
+     * @param items list of Workflow / WorkflowFactory / Supplier&lt;Workflow&gt;
+     */
+    @SuppressWarnings("unchecked")
+    public void addWorkflowItems(List<?> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        for (Object item : items) {
+            if (item instanceof WorkflowFactory factory) {
+                Workflow wf = factory.get();
+                workflows.add(wf);
+                Runner.resourceMgr().addWorkflow(factory.card(), factory, agentConfig.getId());
+            } else if (item instanceof Workflow workflow) {
+                workflows.add(workflow);
+                Runner.resourceMgr().addWorkflow(workflow.getCard(), () -> workflow, agentConfig.getId());
+            } else if (item instanceof Supplier<?> supplier) {
+                Object result = supplier.get();
+                if (result instanceof Workflow wf) {
+                    workflows.add(wf);
+                    Runner.resourceMgr().addWorkflow(wf.getCard(), (Supplier<Workflow>) supplier, agentConfig.getId());
+                } else {
+                    Loggers.AGENT.warning("Supplier returned non-Workflow object: " + result);
+                }
+            } else {
+                Loggers.AGENT.warning("Unsupported item type in addWorkflowItems: " + item.getClass().getName());
+            }
+        }
+    }
+
+    /**
      * Remove workflows from agent (update config and resource manager).
      *
      * @param workflowKeys list of [workflowId, workflowVersion] pairs to remove
@@ -139,8 +210,14 @@ public abstract class BaseAgent {
             String workflowKey = WorkflowUtils.generateWorkflowKey(workflowId, workflowVersion);
 
             // Remove from config
-            agentConfig.getWorkflows().removeIf(
-                    w -> workflowId.equals(w.getId()) && workflowVersion.equals(w.getVersion()));
+            agentConfig.getWorkflows().removeIf(w -> {
+                if (w instanceof com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema ws) {
+                    return workflowId.equals(ws.getId()) && workflowVersion.equals(ws.getVersion());
+                } else if (w instanceof WorkflowCard wc) {
+                    return workflowId.equals(wc.getId()) && workflowVersion.equals(wc.getVersion());
+                }
+                return false;
+            });
 
             // Remove from resource manager
             try {
@@ -158,6 +235,15 @@ public abstract class BaseAgent {
      */
     public void bindWorkflows(List<Workflow> newWorkflows) {
         addWorkflows(newWorkflows);
+    }
+
+    /**
+     * Bind workflows – variant accepting heterogeneous items.
+     *
+     * @param items list of Workflow / WorkflowFactory / Supplier
+     */
+    public void bindWorkflowItems(List<?> items) {
+        addWorkflowItems(items);
     }
 
     /**
