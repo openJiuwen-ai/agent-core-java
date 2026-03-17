@@ -1,240 +1,122 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.security;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
 /**
- * 用户配置类（单例模式）
- *
- * <p>管理用户配置，特别是敏感路径配置。</p>
+ * User configuration — singleton that reads security settings from a properties/ini file.
+ * <p>
+ * Thread-safe singleton with configurable path.
  */
 public final class UserConfig {
 
-    private static volatile UserConfig instance;
-    private static volatile Path userConfigPath;
-    private static final Object LOCK = new Object();
-
-    private final Properties properties;
-    private volatile boolean isSensitive;
-    private volatile List<String> sensitivePaths;
-
-    private static final String DEFAULT_SENSITIVE_PATH_STR =
-        "/etc/passwd,/etc/shadow,/etc/hosts,/etc/hostname,/etc/ssh/," +
-        "C:\\Windows\\System32\\,C:\\Windows\\SysWOW64\\,C:\\Windows\\System\\";
-
-    private static final List<String> DEFAULT_SENSITIVE_PATHS = Arrays.asList(
+    public static final List<String> DEFAULT_SENSITIVE_PATHS = List.of(
         "/etc/passwd", "/etc/shadow", "/etc/hosts", "/etc/hostname", "/etc/ssh/",
         "C:\\Windows\\System32\\", "C:\\Windows\\SysWOW64\\", "C:\\Windows\\System\\"
     );
 
-    /**
-     * 私有构造函数
-     *
-     * @param configPath 配置文件路径
-     */
-    private UserConfig(Path configPath) {
+    private static volatile UserConfig instance;
+    private static volatile Path configPath;
+
+    private volatile boolean sensitive;
+    private volatile List<String> sensitivePaths;
+    private final Properties properties;
+
+    private UserConfig(Path path) {
         this.properties = new Properties();
-        this.sensitivePaths = null;
-
-        if (configPath != null && Files.exists(configPath)) {
-            try (Reader reader = Files.newBufferedReader(configPath)) {
-                properties.load(reader);
-            } catch (IOException e) {
-                // 使用默认配置
-                loadDefaultConfig();
+        if (path != null && Files.isRegularFile(path)) {
+            try (InputStream is = Files.newInputStream(path)) {
+                properties.load(is);
+            } catch (IOException ignored) {
+                // Fall back to defaults
             }
-        } else {
-            loadDefaultConfig();
         }
-
-        this.isSensitive = Boolean.parseBoolean(
-            properties.getProperty("settings.is_sensitive", "true")
-        );
+        this.sensitive = Boolean.parseBoolean(
+            properties.getProperty("settings.is_sensitive", "true"));
     }
 
-    /**
-     * 加载默认配置
-     */
-    private void loadDefaultConfig() {
-        properties.setProperty("settings.is_sensitive", "true");
-        properties.setProperty("settings.sensitive_paths", DEFAULT_SENSITIVE_PATH_STR);
-    }
-
-    /**
-     * 设置配置文件路径
-     *
-     * @param path 配置文件路径
-     * @throws IllegalStateException 如果配置已初始化
-     * @throws IllegalArgumentException 如果配置文件不在项目根目录下
-     */
+    /** Set config path — must be called before first access. */
     public static void setConfigPath(Path path) {
         if (instance != null) {
             throw new IllegalStateException("Config already initialized");
         }
-
-        Path resolvedPath = resolveAndCheck(path);
-        userConfigPath = resolvedPath;
+        configPath = path.toAbsolutePath().normalize();
     }
 
-    /**
-     * 获取UserConfig单例实例
-     *
-     * @return UserConfig实例
-     */
-    public static UserConfig getInstance() {
+    /** Get the singleton config instance. */
+    public static UserConfig getConfig() {
         if (instance == null) {
-            synchronized (LOCK) {
+            synchronized (UserConfig.class) {
                 if (instance == null) {
-                    instance = new UserConfig(userConfigPath);
+                    instance = new UserConfig(configPath);
                 }
             }
         }
         return instance;
     }
 
-    /**
-     * 检查是否处于敏感模式
-     *
-     * @return 如果处于敏感模式返回true
-     */
+    /** Whether sensitivity checking is enabled. */
     public static boolean isSensitive() {
         String envValue = System.getenv("IS_SENSITIVE");
-        if (envValue != null && envValue.equalsIgnoreCase("false")) {
+        if ("false".equalsIgnoreCase(envValue)) {
             return false;
         }
-
-        return getInstance().isSensitive;
+        return getConfig().sensitive;
     }
 
-    /**
-     * 获取敏感路径列表
-     *
-     * @return 敏感路径列表
-     */
+    /** Get the list of sensitive paths. */
     public static List<String> getSensitivePaths() {
-        return getInstance().getSensitivePathsList();
+        return getConfig().getSensitivePathsList();
     }
 
     /**
-     * 设置敏感模式标志
+     * Set the is_sensitive flag at runtime.
      *
-     * @param sensitive 是否处于敏感模式
+     * @param isSensitive whether sensitivity checking should be enabled
      */
-    public static void setIsSensitive(boolean sensitive) {
-        synchronized (LOCK) {
-            UserConfig config = getInstance();
-            config.isSensitive = sensitive;
-            config.properties.setProperty("settings.is_sensitive", String.valueOf(sensitive));
-        }
+    public static void setSensitive(boolean isSensitive) {
+        getConfig().sensitive = isSensitive;
     }
 
     /**
-     * 解析并检查配置文件路径
+     * Get the resolved list of sensitive paths (lazy-initialized).
      *
-     * @param path 配置文件路径
-     * @return 解析后的路径
-     * @throws IllegalArgumentException 如果配置文件不在项目根目录下
-     */
-    private static Path resolveAndCheck(Path path) {
-        Path expandedPath = path.normalize();
-
-        Path root = Paths.get(".").toAbsolutePath().normalize();
-        try {
-            Path relativePath = root.relativize(expandedPath);
-            // 如果能获取相对路径，说明在项目根目录下
-            return expandedPath;
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(
-                "Config file must be inside project root directory",
-                e
-            );
-        }
-    }
-
-    /**
-     * 获取敏感路径列表
-     *
-     * @return 敏感路径列表的副本
+     * @return an immutable copy of the sensitive paths
      */
     public List<String> getSensitivePathsList() {
         if (sensitivePaths == null) {
             synchronized (this) {
                 if (sensitivePaths == null) {
-                    String sensitivePathsStr = properties.getProperty(
-                        "settings.sensitive_paths", ""
-                    );
-
-                    if (sensitivePathsStr != null && !sensitivePathsStr.isEmpty()) {
-                        List<String> paths = new ArrayList<>();
-                        String[] parts = sensitivePathsStr.split(",");
-                        for (String part : parts) {
-                            String trimmed = part.trim();
+                    String raw = properties.getProperty("settings.sensitive_paths", "");
+                    if (!raw.isBlank()) {
+                        List<String> list = new ArrayList<>();
+                        for (String p : raw.split(",")) {
+                            String trimmed = p.trim();
                             if (!trimmed.isEmpty()) {
-                                paths.add(trimmed);
+                                list.add(trimmed);
                             }
                         }
-                        sensitivePaths = paths;
+                        sensitivePaths = List.copyOf(list);
                     } else {
-                        sensitivePaths = new ArrayList<>(DEFAULT_SENSITIVE_PATHS);
+                        sensitivePaths = DEFAULT_SENSITIVE_PATHS;
                     }
                 }
             }
         }
-        return new ArrayList<>(sensitivePaths);
+        return sensitivePaths;
     }
 
-    /**
-     * 获取配置属性
-     *
-     * @param key 属性键
-     * @return 属性值，如果不存在返回null
-     */
-    public String getProperty(String key) {
-        return properties.getProperty(key);
-    }
-
-    /**
-     * 设置配置属性
-     *
-     * @param key 属性键
-     * @param value 属性值
-     */
-    public void setProperty(String key, String value) {
-        properties.setProperty(key, value);
-    }
-
-    /**
-     * 保存配置到文件
-     *
-     * @param path 保存路径
-     * @throws IOException 如果保存失败
-     */
-    public void save(Path path) throws IOException {
-        synchronized (this) {
-            try (Writer writer = Files.newBufferedWriter(path)) {
-                properties.store(writer, "OpenJiuwen User Configuration");
-            }
-        }
-    }
-
-    /**
-     * 重置为默认配置
-     */
-    public static void reset() {
-        synchronized (LOCK) {
-            instance = null;
-            userConfigPath = null;
-        }
+    /** Reset singleton — primarily for testing. */
+    public static synchronized void reset() {
+        instance = null;
+        configPath = null;
     }
 }

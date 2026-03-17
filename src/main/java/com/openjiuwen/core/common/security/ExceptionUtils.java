@@ -1,59 +1,39 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.security;
 
 /**
- * 异常工具类
- *
- * <p>用于格式化验证错误。</p>
+ * Exception formatting utilities.
  */
 public final class ExceptionUtils {
 
-    /**
-     * 私有构造函数，防止实例化
-     */
     private ExceptionUtils() {
     }
 
     /**
-     * 格式化验证错误消息
+     * Format a validation exception's errors into a human-readable multi-line string.
+     * <p>
+     * Generic replacement for Python's Pydantic ValidationError formatting.
      *
-     * <p>Python版本使用Pydantic的ValidationError，Java版本简化实现。</p>
-     *
-     * @param e 验证错误异常
-     * @return 格式化后的错误消息
+     * @param t the exception
+     * @return formatted string
      */
-    public static String formatValidationError(Exception e) {
-        if (e == null) {
-            return "Unknown validation error";
+    public static String formatValidationError(Throwable t) {
+        if (t == null) {
+            return "";
         }
-        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
     }
 
     /**
-     * 格式化验证错误消息（带错误位置）
-     *
-     * @param errorMap 错误映射
-     * @return 格式化后的错误消息
+     * Get the root cause of an exception chain.
      */
-    @SuppressWarnings("unchecked")
-    public static String formatValidationErrorWithLocation(java.util.Map<String, Object> errorMap) {
-        if (errorMap == null) {
-            return "Unknown validation error";
+    public static Throwable getRootCause(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
         }
-
-        StringBuilder sb = new StringBuilder();
-
-        for (java.util.Map.Entry<String, Object> entry : errorMap.entrySet()) {
-            String location = entry.getKey();
-            Object messageObj = entry.getValue();
-
-            sb.append(location).append(": ");
-            sb.append(messageObj != null ? messageObj.toString() : "Unknown error");
-            sb.append("\n");
-        }
-
-        return sb.toString();
+        return cause;
     }
 }

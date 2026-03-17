@@ -1,148 +1,150 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.utils;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.session.Session;
+
 import java.util.List;
-import java.util.Map;
 
 /**
- * 消息工具类（占位实现）
- *
- * <p>用于添加和检索消息。</p>
- *
- * <p>⚠️ 占位实现：依赖以下未转换模块，将在后续转换时完善：</p>
- * <ul>
- *     <li>context_engine - 转换context_engine模块时完善</li>
- *     <li>session - 转换session模块时完善</li>
- *     <li>llm - 转换llm模块时完善</li>
- *     <li>single_agent - 转换single_agent模块时完善</li>
- * </ul>
- *
- * <p>Python源文件: agent-core-python/openjiuwen/core/common/utils/message_utils.py</p>
+ * Message utilities for adding and retrieving messages in the context engine.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.common.utils.message_utils.MessageUtils}.
  */
 public final class MessageUtils {
 
-    /**
-     * 私有构造函数，防止实例化
-     */
     private MessageUtils() {
     }
 
     /**
-     * 检查是否应该添加用户消息
+     * Check if a user message should be added (deduplication).
      *
-     * <p>占位实现</p>
-     *
-     * @param query 用户输入
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
-     * @return 是否添加用户消息
+     * @param query         user input
+     * @param contextEngine context engine
+     * @param session       session instance
+     * @return true if the message should be added
      */
-    public static boolean shouldAddUserMessage(Object query, Object contextEngine, Object session) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session
-        // 转换时机: 转换 context_engine 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - shouldAddUserMessage. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static boolean shouldAddUserMessage(String query, ContextEngine contextEngine, Session session) {
+        ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
+        if (agentContext == null) {
+            return true;
+        }
+
+        List<BaseMessage> lastMessages = agentContext.getMessages();
+        if (lastMessages == null || lastMessages.isEmpty()) {
+            return true;
+        }
+
+        BaseMessage lastMessage = lastMessages.get(lastMessages.size() - 1);
+        if ("user".equals(lastMessage.getRole()) && query != null && query.equals(lastMessage.getContent())) {
+            Loggers.CONTEXT_ENGINE.info("Skipping duplicate user message");
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * 添加用户消息到聊天历史
+     * Add a user message to the chat history.
      *
-     * <p>占位实现</p>
-     *
-     * @param query 用户输入
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
+     * @param query         user input
+     * @param contextEngine context engine
+     * @param session       session instance
      */
-    public static void addUserMessage(Object query, Object contextEngine, Object session) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session, llm.UserMessage
-        // 转换时机: 转换 llm 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - addUserMessage. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static void addUserMessage(Object query, ContextEngine contextEngine, Session session) {
+        String queryStr = query != null ? query.toString() : "";
+        if (shouldAddUserMessage(queryStr, contextEngine, session)) {
+            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
+            if (agentContext != null) {
+                UserMessage userMessage = new UserMessage(queryStr);
+                agentContext.addMessages(List.of(userMessage));
+                if (UserConfig.isSensitive()) {
+                    Loggers.CONTEXT_ENGINE.info("Added user message");
+                } else {
+                    Loggers.CONTEXT_ENGINE.info("Added user message: " + queryStr);
+                }
+            }
+        }
     }
 
     /**
-     * 添加助手消息到聊天历史
+     * Add an assistant message to the chat history.
      *
-     * <p>占位实现</p>
-     *
-     * @param aiMessage 助手消息对象
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
+     * @param aiMessage     assistant message object
+     * @param contextEngine context engine
+     * @param session       session instance
      */
-    public static void addAiMessage(Object aiMessage, Object contextEngine, Object session) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session, llm.AssistantMessage
-        // 转换时机: 转换 llm 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - addAiMessage. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static void addAiMessage(AssistantMessage aiMessage, ContextEngine contextEngine, Session session) {
+        if (aiMessage != null) {
+            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
+            if (agentContext != null) {
+                agentContext.addMessages(List.of(aiMessage));
+            }
+        }
     }
 
     /**
-     * 添加工具消息到聊天历史
+     * Add a tool message to the chat history.
      *
-     * <p>占位实现</p>
-     *
-     * @param toolMessage 工具消息对象
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
+     * @param toolMessage   tool message object
+     * @param contextEngine context engine
+     * @param session       session instance
      */
-    public static void addToolMessage(Object toolMessage, Object contextEngine, Object session) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session, llm.ToolMessage
-        // 转换时机: 转换 llm 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - addToolMessage. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static void addToolMessage(ToolMessage toolMessage, ContextEngine contextEngine, Session session) {
+        if (toolMessage != null) {
+            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
+            if (agentContext != null) {
+                agentContext.addMessages(List.of(toolMessage));
+            }
+        }
     }
 
     /**
-     * 添加消息到工作流聊天历史
+     * Add a message to a specific workflow's chat history.
      *
-     * <p>占位实现</p>
-     *
-     * @param message 消息对象
-     * @param workflowId 工作流ID
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
+     * @param message       message object
+     * @param workflowId    workflow ID
+     * @param contextEngine context engine
+     * @param session       session instance
      */
-    public static void addWorkflowMessage(Object message, String workflowId, Object contextEngine, Object session) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session, llm.BaseMessage
-        // 转换时机: 转换 llm 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - addWorkflowMessage. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static void addWorkflowMessage(BaseMessage message, String workflowId,
+                                           ContextEngine contextEngine, Session session) {
+        ModelContext workflowContext = contextEngine.getContext(workflowId, session.getSessionId());
+        if (workflowContext != null) {
+            workflowContext.addMessages(List.of(message));
+        }
     }
 
     /**
-     * 获取聊天历史
+     * Get chat history, limited by max rounds.
      *
-     * <p>占位实现</p>
-     *
-     * @param contextEngine 上下文引擎
-     * @param session 会话实例
-     * @param config Agent配置
-     * @return 聊天历史消息列表
+     * @param contextEngine context engine
+     * @param session       session instance
+     * @param maxRounds     maximum number of dialogue rounds to return
+     * @return chat history message list
      */
-    public static List<Object> getChatHistory(Object contextEngine, Object session, Map<String, Object> config) {
-        // TODO: 完善此方法，参考 Python: agent-core-python/openjiuwen/core/common/utils/message_utils.py
-        // 依赖: context_engine.ContextEngine, session.Session, single_agent.AgentConfig, llm.BaseMessage
-        // 转换时机: 转换 single_agent 模块时
-        throw new UnsupportedOperationException(
-            "Placeholder implementation - getChatHistory. " +
-            "Reference: agent-core-python/openjiuwen/core/common/utils/message_utils.py"
-        );
+    public static List<BaseMessage> getChatHistory(ContextEngine contextEngine, Session session, int maxRounds) {
+        ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
+        if (agentContext == null) {
+            return List.of();
+        }
+        List<BaseMessage> chatHistory = agentContext.getMessages();
+        if (chatHistory == null || chatHistory.isEmpty()) {
+            return List.of();
+        }
+        int limit = 2 * maxRounds;
+        if (chatHistory.size() <= limit) {
+            return chatHistory;
+        }
+        return chatHistory.subList(chatHistory.size() - limit, chatHistory.size());
     }
 }
