@@ -1,39 +1,35 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.exception;
 
+import java.util.Map;
+
 /**
- * 验证错误
- *
- * <p>约束/验证/不支持能力的错误。
- * 不应重试或重新规划。</p>
+ * Constraint / validation / unsupported capability errors.
+ * Should NOT retry or replan.
  */
 public class ValidationError extends BaseError {
+
+    public ValidationError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
+        super(status, msg, details, cause, params);
+    }
+
+    public ValidationError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
 
     public ValidationError(StatusCode status) {
         super(status);
     }
 
-    public ValidationError(StatusCode status, String message) {
-        super(status, message);
-    }
-
-    public ValidationError(StatusCode status, Object details, Throwable cause) {
-        super(status, details, cause);
-    }
-
-    public ValidationError(StatusCode status, String message, Object details, Throwable cause) {
-        super(status, message, details, cause);
-    }
-
     @Override
-    public boolean isRecoverable() {
+    protected boolean defaultRecoverable() {
         return false;
     }
 
     @Override
-    public boolean isFatal() {
+    protected boolean defaultFatal() {
         return false;
     }
 }

@@ -1,117 +1,99 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.logging;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.openjiuwen.core.common.logging.default_.LogConfig;
-
 /**
- * 日志管理器
- *
- * <p>提供日志记录器的创建、注册和检索功能。</p>
- *
- * <p>针对异步环境优化，使用线程安全的并发结构。</p>
+ * Log Manager — provides logger creation, registration, and retrieval.
+ * <p>
+ * Thread-safe via ConcurrentHashMap. Lazy initialization of individual loggers.
  */
 public final class LogManager {
 
     private static final Map<String, LoggerProtocol> LOGGERS = new ConcurrentHashMap<>();
     private static volatile boolean initialized = false;
-    private static Class<? extends LoggerProtocol> defaultLoggerClass = null;
+    private static volatile LoggerFactory defaultLoggerFactory;
 
-    /**
-     * 私有构造函数，防止实例化
-     */
     private LogManager() {
     }
 
-    /**
-     * 设置默认日志记录器类
-     *
-     * @param loggerClass 默认日志记录器类
-     */
-    public static synchronized void setDefaultLoggerClass(Class<? extends LoggerProtocol> loggerClass) {
-        defaultLoggerClass = loggerClass;
+    /** Functional interface for creating loggers from a type name and config. */
+    @FunctionalInterface
+    public interface LoggerFactory {
+        LoggerProtocol create(String logType, Map<String, Object> config);
+    }
+
+    /** Set the default logger factory (e.g., DefaultLogger::new). */
+    public static void setDefaultLoggerFactory(LoggerFactory factory) {
+        defaultLoggerFactory = factory;
     }
 
     /**
-     * 初始化日志管理器
-     *
-     * <p>在异步环境中，通常只在应用程序启动时调用一次。</p>
-     * <p>如果多次调用，已初始化的部分将被跳过（幂等操作）。</p>
-     *
-     * <p>根据Python版本行为，从LogConfig获取所有配置，预创建logger实例。</p>
+     * Initialize the logging system. Idempotent — safe to call multiple times.
+     * <p>
+     * Loads default configuration and creates the standard set of loggers.
      */
-    public static void initialize() {
+    public static synchronized void initialize() {
         if (initialized) {
             return;
         }
-
-        try {
-            Class<? extends LoggerProtocol> loggerClass = getDefaultLoggerClass();
-            LogConfig logConfig = LogConfig.getInstance();
-
-            Map<String, Map<String, Object>> allConfigs = logConfig.getAllConfigs();
-            for (Map.Entry<String, Map<String, Object>> entry : allConfigs.entrySet()) {
-                String logType = entry.getKey();
-                if (!LOGGERS.containsKey(logType)) {
-                    Map<String, Object> config = entry.getValue();
-                    createLoggerWithConfig(logType, loggerClass, config);
-                }
+        if (defaultLoggerFactory == null) {
+            try {
+                // Attempt to load DefaultLogger via reflection to avoid hard dependency
+                Class<?> cls = Class.forName(
+                    "com.openjiuwen.core.common.logging.defaults.DefaultLogger");
+                var ctor = cls.getConstructor(String.class, Map.class);
+                defaultLoggerFactory = (logType, config) -> {
+                    try {
+                        return (LoggerProtocol) ctor.newInstance(logType, config);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to create DefaultLogger", e);
+                    }
+                };
+            } catch (Exception e) {
+                throw new RuntimeException("No default logger factory set and cannot load DefaultLogger", e);
             }
-        } catch (Exception e) {
-            // 配置不可用时继续，允许延迟创建logger
-            // Python版本在配置不可用时会抛出RuntimeError，但在Java中我们采用更宽松的策略
+        }
+
+        // Create standard loggers from default config
+        var logConfig = LogConfigProvider.getLogConfig();
+        if (logConfig != null) {
+            logConfig.forEach((logType, config) -> {
+                if (!LOGGERS.containsKey(logType)) {
+                    LOGGERS.put(logType, defaultLoggerFactory.create(logType, config));
+                }
+            });
         }
 
         initialized = true;
     }
 
-    /**
-     * 注册自定义日志记录器
-     *
-     * @param logType 日志类型标识符
-     * @param logger 日志记录器实例，必须实现LoggerProtocol
-     * @throws IllegalArgumentException 如果logger不支持基本方法
-     */
+    /** Register a custom logger for a given log type. */
     public static void registerLogger(String logType, LoggerProtocol logger) {
-        if (logger == null) {
-            throw new IllegalArgumentException("Logger cannot be null");
-        }
-
-        // 基本类型检查
-        if (!supportsBasicMethods(logger)) {
-            throw new IllegalArgumentException(
-                "Logger must implement basic LoggerProtocol methods, got: " + logger.getClass().getName()
-            );
-        }
-
         LOGGERS.put(logType, logger);
     }
 
     /**
-     * 获取日志记录器
-     *
-     * <p>根据Python版本行为，从LogConfig获取配置并传递给logger构造函数。</p>
-     *
-     * @param logType 日志类型标识符
-     * @return 日志记录器实例
+     * Get a logger by type. Creates one on-demand if not present.
      */
     public static LoggerProtocol getLogger(String logType) {
         if (!initialized) {
             initialize();
         }
-
-        return LOGGERS.computeIfAbsent(logType, key -> createDefaultLogger(key));
+        return LOGGERS.computeIfAbsent(logType, type -> {
+            var logConfig = LogConfigProvider.getLogConfig();
+            Map<String, Object> config = logConfig != null ? logConfig.get(type) : null;
+            if (config == null) {
+                config = Map.of("level", "INFO", "output", "console");
+            }
+            return defaultLoggerFactory.create(type, config);
+        });
     }
 
-    /**
-     * 获取所有已注册的日志记录器
-     *
-     * @return 日志记录器映射的副本
-     */
+    /** Get all registered loggers. */
     public static Map<String, LoggerProtocol> getAllLoggers() {
         if (!initialized) {
             initialize();
@@ -119,105 +101,31 @@ public final class LogManager {
         return Map.copyOf(LOGGERS);
     }
 
-    /**
-     * 重置日志管理器
-     *
-     * <p>清除所有日志记录器和初始化状态。</p>
-     * <p>主要用于测试场景。</p>
-     */
+    /** Reset the log manager — primarily for testing. */
     public static synchronized void reset() {
         LOGGERS.clear();
         initialized = false;
-        defaultLoggerClass = null;
+        defaultLoggerFactory = null;
     }
 
-    /**
-     * 创建默认日志记录器
-     *
-     * <p>根据Python版本行为，从LogConfig获取配置并传递给logger。</p>
-     *
-     * @param logType 日志类型
-     * @return 日志记录器实例
-     */
-    private static LoggerProtocol createDefaultLogger(String logType) {
-        Class<? extends LoggerProtocol> loggerClass = getDefaultLoggerClass();
-        Map<String, Object> config = null;
+    // ==================== Internal Config Provider ====================
 
-        try {
-            LogConfig logConfig = LogConfig.getInstance();
-            config = logConfig.getCustomConfig(logType, null);
-        } catch (Exception e) {
-            // 配置获取失败时使用空配置
-            config = Map.of();
+    /**
+     * Simple provider interface for log configuration.
+     * Override via {@link LogConfigProvider#setProvider} for custom configs.
+     */
+    public static final class LogConfigProvider {
+        private static volatile java.util.function.Supplier<Map<String, Map<String, Object>>> provider;
+
+        private LogConfigProvider() {
         }
 
-        return createLoggerWithConfig(logType, loggerClass, config);
-    }
-
-    /**
-     * 使用配置创建日志记录器
-     *
-     * @param logType 日志类型
-     * @param loggerClass 日志记录器类
-     * @param config 日志配置
-     * @return 日志记录器实例
-     */
-    private static LoggerProtocol createLoggerWithConfig(
-        String logType,
-        Class<? extends LoggerProtocol> loggerClass,
-        Map<String, Object> config
-    ) {
-        try {
-            // 使用带config的构造函数
-            return loggerClass.getConstructor(String.class, Map.class).newInstance(logType, config);
-        } catch (NoSuchMethodException e) {
-            // 如果没有带config的构造函数，使用单参数构造函数
-            try {
-                return loggerClass.getConstructor(String.class).newInstance(logType);
-            } catch (Exception ex) {
-                throw new RuntimeException("Failed to create default logger for type: " + logType, ex);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create default logger for type: " + logType, e);
+        public static void setProvider(java.util.function.Supplier<Map<String, Map<String, Object>>> p) {
+            provider = p;
         }
-    }
 
-    /**
-     * 获取默认日志记录器类
-     *
-     * @return 默认日志记录器类
-     */
-    private static Class<? extends LoggerProtocol> getDefaultLoggerClass() {
-        if (defaultLoggerClass == null) {
-            // 尝试加载默认实现（从default子包）
-            try {
-                @SuppressWarnings("unchecked")
-                Class<? extends LoggerProtocol> clazz = (Class<? extends LoggerProtocol>)
-                    Class.forName("com.openjiuwen.core.common.logging.default_.DefaultLogger");
-                defaultLoggerClass = clazz;
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException(
-                    "No default logger class set and cannot load DefaultLogger. " +
-                    "Please set default logger class using setDefaultLoggerClass().",
-                    e
-                );
-            }
-        }
-        return defaultLoggerClass;
-    }
-
-    /**
-     * 检查日志记录器是否支持基本方法
-     *
-     * @param logger 日志记录器
-     * @return 是否支持
-     */
-    private static boolean supportsBasicMethods(LoggerProtocol logger) {
-        try {
-            // 检查是否能获取方法（协议接口已定义，Java类型系统保证）
-            return true;
-        } catch (Exception e) {
-            return false;
+        static Map<String, Map<String, Object>> getLogConfig() {
+            return provider != null ? provider.get() : null;
         }
     }
 }

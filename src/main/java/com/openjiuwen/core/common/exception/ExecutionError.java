@@ -1,39 +1,35 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.core.common.exception;
 
+import java.util.Map;
+
 /**
- * 执行错误
- *
- * <p>工作流/Agent/工具执行时的运行时错误。
- * 通常可以通过重试/重新规划恢复。</p>
+ * Execution-time errors during workflow / agent / tool execution.
+ * Usually recoverable via retry / replan.
  */
 public class ExecutionError extends BaseError {
+
+    public ExecutionError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
+        super(status, msg, details, cause, params);
+    }
+
+    public ExecutionError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
 
     public ExecutionError(StatusCode status) {
         super(status);
     }
 
-    public ExecutionError(StatusCode status, String message) {
-        super(status, message);
-    }
-
-    public ExecutionError(StatusCode status, Object details, Throwable cause) {
-        super(status, details, cause);
-    }
-
-    public ExecutionError(StatusCode status, String message, Object details, Throwable cause) {
-        super(status, message, details, cause);
-    }
-
     @Override
-    public boolean isRecoverable() {
+    protected boolean defaultRecoverable() {
         return true;
     }
 
     @Override
-    public boolean isFatal() {
+    protected boolean defaultFatal() {
         return false;
     }
 }
