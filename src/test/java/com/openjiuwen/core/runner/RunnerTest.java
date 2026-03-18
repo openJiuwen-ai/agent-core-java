@@ -11,29 +11,16 @@ import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.workflow.WorkflowComponent;
-import com.openjiuwen.core.workflow.WorkflowExecutionState;
-import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.*;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for Runner singleton and RunnerImpl lifecycle/behavior.

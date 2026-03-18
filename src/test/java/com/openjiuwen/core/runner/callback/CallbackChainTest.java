@@ -1,7 +1,6 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 package com.openjiuwen.core.runner.callback;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
