@@ -7,8 +7,6 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.operator.Operator;
-import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.operator.TunableSpec;
 import com.openjiuwen.core.operator.llm_call.LLMCallOperator;
 import com.openjiuwen.core.operator.tool_call.ToolCallOperator;

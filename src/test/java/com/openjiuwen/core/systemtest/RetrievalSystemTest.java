@@ -9,13 +9,11 @@ import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
-import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.embedding.HashEmbedding;
 import com.openjiuwen.core.retrieval.embedding.APIEmbedding;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker;
 import com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer;
 import com.openjiuwen.core.retrieval.reranker.LexicalReranker;
-import com.openjiuwen.core.retrieval.reranker.Reranker;
 import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
 
 import org.junit.jupiter.api.DisplayName;

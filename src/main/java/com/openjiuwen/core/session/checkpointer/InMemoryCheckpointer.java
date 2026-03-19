@@ -270,13 +270,13 @@ public class InMemoryCheckpointer extends Checkpointer {
                 session.state().setState(deepCopyMap(state));
             }
 
-            if (inputs != null) {
-                processInteractiveInputs(session, inputs);
-            }
-
             Map<String, Object> updates = stateUpdatesBlobs.get(workflowId);
             if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
                 workflowState.setUpdates(deepCopyMap(updates));
+            }
+
+            if (inputs != null) {
+                processInteractiveInputs(session, inputs);
             }
         }
 
@@ -309,12 +309,17 @@ public class InMemoryCheckpointer extends Checkpointer {
 
             for (Map.Entry<String, Object> entry : inputs.getUserInputs().entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
-                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
-                List<Object> values = interactiveInput instanceof List<?>
-                        ? new ArrayList<>((List<Object>) interactiveInput)
-                        : new ArrayList<>();
-                values.add(entry.getValue());
-                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, values));
+                Object value = entry.getValue();
+                List<Object> inputList;
+                if (value instanceof List<?> listValue) {
+                    // When a list is provided, treat each element as a separate
+                    // sequential response for the same node (e.g. nodes with
+                    // multiple interact() calls).
+                    inputList = new java.util.ArrayList<>(listValue);
+                } else {
+                    inputList = List.of(value);
+                }
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
 
             if (session.state() instanceof WorkflowCommitState workflowState) {

@@ -4,7 +4,6 @@
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.ContextMessageBuffer;
 import com.openjiuwen.core.context.context.SessionModelContext;

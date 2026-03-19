@@ -54,7 +54,7 @@ public abstract class BaseInteraction {
         }
         if (interactiveInputs != null && !interactiveInputs.isEmpty()) {
             java.util.Map<String, Object> updateMap = new java.util.HashMap<>();
-            updateMap.put(Constant.INTERACTIVE_INPUT, interactiveInputs);
+            updateMap.put(Constant.INTERACTIVE_INPUT, null);
             session.state().update(updateMap);
             latestInteractiveInputs = interactiveInputs.get(interactiveInputs.size() - 1);
         }

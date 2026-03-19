@@ -40,13 +40,19 @@ public class ControllerAgent extends BaseAgent {
     private ContextEngine contextEngine;
 
     public ControllerAgent(AgentCard card, Controller controller) {
-        this(card, controller, null);
+        this(card, controller, null, null);
     }
 
     public ControllerAgent(AgentCard card, Controller controller, ControllerConfig config) {
+        this(card, controller, config, null);
+    }
+
+    protected ControllerAgent(AgentCard card, Controller controller, ControllerConfig config,
+                              ContextEngineConfig contextEngineConfig) {
         super(card);
         this.config = config != null ? config : new ControllerConfig();
-        this.contextEngine = new ContextEngine(ContextEngineConfig.builder().build());
+        this.contextEngine = new ContextEngine(
+                contextEngineConfig != null ? contextEngineConfig : ContextEngineConfig.builder().build());
         this.controller = controller;
         initializeController();
     }

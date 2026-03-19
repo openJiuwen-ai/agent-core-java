@@ -667,7 +667,9 @@ public class ResourceMgr {
     }
 
     public void release() {
-        resourceRegistry.tool().release();
+        resourceRegistry.clearAll();
+        tagMgr.clear();
+        idToCard.clear();
     }
 
     // ========== Internal Methods ==========

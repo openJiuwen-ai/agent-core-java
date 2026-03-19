@@ -36,6 +36,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
@@ -61,6 +62,7 @@ import java.util.Map;
 public class LlmEventHandler extends EventHandler {
 
     private static final String INTERACTION = "__interaction__";
+    private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -312,6 +314,12 @@ public class LlmEventHandler extends EventHandler {
                 throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
                         "error_msg", "Unknown task type: " + taskType);
             }
+        } catch (BaseError e) {
+            if (e.getCode() == StatusCode.AGENT_TOOL_NOT_FOUND.getCode()) {
+                throw e;
+            }
+            Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
+            return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
             return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
@@ -320,9 +328,14 @@ public class LlmEventHandler extends EventHandler {
 
     private TaskExecutionResult executeWorkflowTask(Task task, AgentSessionApi session, ModelContext context) {
         String workflowId = getWorkflowIdFromTask(task);
+        if (workflowId == null || workflowId.isBlank()) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
+                    "error_msg", "workflow '" + task.getDescription() + "' is not registered");
+        }
         Object workflow = Runner.resourceMgr().getWorkflow(workflowId);
         if (workflow == null) {
-            throw new IllegalStateException("Workflow not found: " + workflowId);
+            throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
+                    "error_msg", "workflow '" + task.getDescription() + "' is not registered");
         }
 
         boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
@@ -354,27 +367,59 @@ public class LlmEventHandler extends EventHandler {
     private TaskExecutionResult executePluginTask(Task task, AgentSessionApi session, ModelContext context) {
         String toolName = task.getDescription();
         String toolId = findPluginIdByName(toolName);
-        if (toolId == null) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Tool not found: " + toolName);
-        }
+        String resolvedToolId = toolId != null ? toolId : toolName;
 
-        Object tool = Runner.resourceMgr().getTool(toolId);
+        Object tool = Runner.resourceMgr().getTool(resolvedToolId);
         if (tool == null) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Tool '" + toolName + "' is not registered");
+            tool = Runner.resourceMgr().getTool(toolName);
+        }
+        if (tool == null && toolId != null && !toolId.equals(toolName)) {
+            tool = Runner.resourceMgr().getTool(toolId, agentConfig.getId(), null);
+        }
+        boolean abilityHasTool = false;
+        if (abilityManager instanceof AbilityManager manager) {
+            abilityHasTool = manager.listToolInfo().stream()
+                    .anyMatch(info -> toolName.equals(info.getName()));
+        }
+        if (tool == null && !abilityHasTool) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
+                    "error_msg", "tool '" + toolName + "' is not registered");
         }
 
         Loggers.CONTROLLER.info("Executing plugin: {}", toolName);
 
-        // Tool invocation would happen here via AbilityManager
-        // For now, create result structure
+        AbilityManager.ToolExecutionEntry executionEntry;
+        if (abilityManager instanceof AbilityManager manager) {
+            executionEntry = manager.executeSingleToolCall(
+                    ToolCall.builder()
+                            .id(task.getTaskId())
+                            .name(toolName)
+                            .arguments(serializeTaskArguments(getTaskArguments(task)))
+                            .build(),
+                    session,
+                    agentConfig.getId());
+        } else {
+            Map<String, Object> toolArgs = castArguments(getTaskArguments(task));
+            Object toolResult;
+            try {
+                toolResult = ((com.openjiuwen.core.foundation.tool.Tool) tool).invoke(toolArgs, Map.of());
+            } catch (Exception e) {
+                throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                        "error_msg", "Tool execution error: " + e.getMessage());
+            }
+            executionEntry = new AbilityManager.ToolExecutionEntry(
+                    toolResult,
+                    new ToolMessage(String.valueOf(toolResult), task.getTaskId())
+            );
+        }
+
         Map<String, Object> payload = new HashMap<>();
-        payload.put("output", "plugin execution result");
+        payload.put("output", executionEntry.result());
         payload.put("result_type", "answer");
         List<Object> streamData = List.of(new OutputSchema("plugin_final", 0, payload));
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("tool_name", toolName);
+        metadata.put("tool_message", executionEntry.toolMessage());
         return new TaskExecutionResult(TaskStatus.COMPLETED, streamData, null, metadata);
     }
 
@@ -414,7 +459,7 @@ public class LlmEventHandler extends EventHandler {
                 "interrupted_tasks", k -> new HashMap<>());
 
         List<String> componentIds = extractComponentIdsFromInteractionData(
-                interruptionState.getInteractionData());
+            getFirstInterrupt(interruptionState.getInteractionData()));
         String stateKey = workflowId.replace('.', '_');
 
         Map<String, Object> taskInfo = new HashMap<>();
@@ -443,9 +488,15 @@ public class LlmEventHandler extends EventHandler {
 
     private void postTaskCompletion(Task task, TaskExecutionResult result,
                                     AgentSessionApi session, ModelContext context) {
+        if (result.metadata != null && result.metadata.get("tool_message") instanceof ToolMessage toolMessage) {
+            context.addMessages(toolMessage);
+            Loggers.CONTROLLER.info("Added tool_message for completed task: {}", task.getTaskId());
+        }
+
         if (result.output != null && !result.output.isEmpty()) {
             Object firstOutput = result.output.get(0);
-            if (firstOutput instanceof OutputSchema os) {
+            if (firstOutput instanceof OutputSchema os
+                    && !(result.metadata != null && result.metadata.get("tool_message") instanceof ToolMessage)) {
                 String type = os.getType();
                 if ("plugin_final".equals(type) || "workflow_final".equals(type)) {
                     // Add tool result to context
@@ -479,6 +530,7 @@ public class LlmEventHandler extends EventHandler {
                 Loggers.CONTROLLER.warning("Failed to get tool infos: {}", e.getMessage());
             }
         }
+        Loggers.CONTROLLER.info("Loaded {} Tool(s) for generating plans", tools.size());
 
         // Build system messages from prompt template
         List<BaseMessage> systemMessages = new ArrayList<>();
@@ -658,12 +710,30 @@ public class LlmEventHandler extends EventHandler {
     // ==================== Stream Helpers ====================
 
     private Map<String, Object> sendFinalStream(String content, AgentSessionApi session) {
+        writeLlmOutputChunks(content, session);
         Map<String, Object> payload = new HashMap<>();
         payload.put("output", content);
         payload.put("result_type", "answer");
         OutputSchema finalStream = new OutputSchema("answer", 0, payload);
         session.writeStream(finalStream);
         return payload;
+    }
+
+    private void writeLlmOutputChunks(String content, AgentSessionApi session) {
+        if (content == null || content.isEmpty()) {
+            return;
+        }
+        int index = 0;
+        int offset = 0;
+        while (offset < content.length()) {
+            int codePoint = content.codePointAt(offset);
+            String chunk = new String(Character.toChars(codePoint));
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("output", chunk);
+            payload.put("result_type", "answer");
+            session.writeStream(new OutputSchema(LLM_OUTPUT, index++, payload));
+            offset += Character.charCount(codePoint);
+        }
     }
 
     private void sendErrorStream(String errorMsg, AgentSessionApi session) {
@@ -1103,6 +1173,30 @@ public class LlmEventHandler extends EventHandler {
         } catch (Exception e) {
             Loggers.CONTROLLER.warning("Failed to parse tool arguments as json, keeping raw string: {}", e.getMessage());
             return rawArguments;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castArguments(Object arguments) {
+        if (arguments instanceof Map<?, ?> map) {
+            return new HashMap<>((Map<String, Object>) map);
+        }
+        return Map.of();
+    }
+
+    private String serializeTaskArguments(Object arguments) {
+        if (arguments == null) {
+            return "{}";
+        }
+        if (arguments instanceof String rawArguments) {
+            return rawArguments;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(arguments);
+        } catch (Exception e) {
+            Loggers.CONTROLLER.warning("Failed to serialize task arguments, falling back to empty object: {}",
+                    e.getMessage());
+            return "{}";
         }
     }
 
