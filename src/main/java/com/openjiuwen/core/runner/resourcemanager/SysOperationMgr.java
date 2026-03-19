@@ -39,6 +39,13 @@ public class SysOperationMgr {
         return sysOperations.remove(sysOperationId);
     }
 
+    /**
+     * Clear all registered system operations.
+     */
+    public void clear() {
+        sysOperations.clear();
+    }
+
     public SysOperation getSysOperation(String sysOperationId) {
         if (sysOperationId == null) {
             throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,

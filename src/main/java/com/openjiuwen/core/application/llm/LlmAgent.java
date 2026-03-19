@@ -6,6 +6,7 @@ package com.openjiuwen.core.application.llm;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
@@ -23,6 +24,8 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.ControllerAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowUtils;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -57,7 +60,8 @@ public class LlmAgent extends ControllerAgent {
      * @param agentConfig the LLM agent configuration
      */
     public LlmAgent(LlmAgentConfig agentConfig) {
-        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig));
+        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig),
+                buildContextEngineConfig(agentConfig));
         if (agentConfig.getControllerType() != null
                 && agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
             throw new UnsupportedOperationException(
@@ -169,6 +173,20 @@ public class LlmAgent extends ControllerAgent {
         }
     }
 
+    /**
+     * Append prompt template entries, mirroring the legacy BaseAgent API.
+     */
+    public void addPrompt(List<Map<String, String>> promptTemplate) {
+        if (promptTemplate == null || promptTemplate.isEmpty()) {
+            return;
+        }
+        List<Map<String, String>> merged = agentConfig.getPromptTemplate() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getPromptTemplate());
+        merged.addAll(promptTemplate);
+        setPromptTemplate(merged);
+    }
+
     public LlmAgentConfig getAgentConfig() {
         return agentConfig;
     }
@@ -215,7 +233,16 @@ public class LlmAgent extends ControllerAgent {
                     continue;
                 }
                 agent.getAbilityManager().add(workflow.getCard());
-                Runner.resourceMgr().addWorkflow(workflow.getCard(), () -> workflow, tag);
+                WorkflowCard card = workflow.getCard();
+                String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+                WorkflowCard resourceCard = WorkflowCard.builder()
+                        .id(workflowResourceId)
+                        .name(card.getName())
+                        .version(card.getVersion())
+                        .description(card.getDescription())
+                        .inputParams(card.getInputParams())
+                        .build();
+                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
             }
         }
 
@@ -246,6 +273,17 @@ public class LlmAgent extends ControllerAgent {
         ControllerConfig cc = new ControllerConfig();
         cc.setMaxConcurrentTasks(1);
         return cc;
+    }
+
+    private static ContextEngineConfig buildContextEngineConfig(LlmAgentConfig config) {
+        if (config.getContextEngineConfig() != null) {
+            return config.getContextEngineConfig();
+        }
+        int maxRounds = config.getContextWindowLimit();
+        return ContextEngineConfig.builder()
+                .maxContextMessageNum(maxRounds * 2)
+                .defaultWindowRoundNum(maxRounds)
+                .build();
     }
 
     private AgentSessionApi createManagedSession(Object inputs) {

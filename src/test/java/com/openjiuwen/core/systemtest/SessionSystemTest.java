@@ -4,8 +4,6 @@
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.session.WorkflowSessionApi;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.session.BaseSession;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;

@@ -78,12 +78,13 @@ public final class SchemaUtils {
 
         try {
             Map<String, Object> newData = skipNoneValue ? removeNoneValues(data) : data;
+            Map<String, Object> dataWithDefaults = applyDefaults(newData, schema);
 
             if (!skipValidate) {
-                validateWithSchema(newData, schema);
+                validateWithSchema(dataWithDefaults, schema);
             }
 
-            return applyDefaults(newData, schema);
+            return dataWithDefaults;
         } catch (ValidationError e) {
             throw e;
         } catch (Exception e) {
@@ -212,42 +213,44 @@ public final class SchemaUtils {
         switch (type) {
             case "string" -> {
                 if (!(value instanceof String)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected string, got " + value.getClass().getSimpleName());
+                    throw new IllegalArgumentException("Input should be a valid string");
                 }
                 validateStringConstraints(fieldName, (String) value, fieldSchema);
             }
             case "integer" -> {
                 if (!(value instanceof Number)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected integer, got " + value.getClass().getSimpleName());
+                    if (value instanceof String) {
+                        throw new IllegalArgumentException(
+                                "Input should be a valid integer, unable to parse string as an integer");
+                    }
+                    throw new IllegalArgumentException("Input should be a valid integer");
                 }
                 validateNumericConstraints(fieldName, ((Number) value).doubleValue(), fieldSchema);
             }
             case "number" -> {
                 if (!(value instanceof Number)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected number, got " + value.getClass().getSimpleName());
+                    if (value instanceof String) {
+                        throw new IllegalArgumentException(
+                                "Input should be a valid number, unable to parse string as a number");
+                    }
+                    throw new IllegalArgumentException("Input should be a valid number");
                 }
                 validateNumericConstraints(fieldName, ((Number) value).doubleValue(), fieldSchema);
             }
             case "boolean" -> {
                 if (!(value instanceof Boolean)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected boolean, got " + value.getClass().getSimpleName());
+                    throw new IllegalArgumentException("Input should be a valid boolean");
                 }
             }
             case "array" -> {
                 if (!(value instanceof List)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected array, got " + value.getClass().getSimpleName());
+                    throw new IllegalArgumentException("Input should be a valid array");
                 }
                 validateArrayConstraints(fieldName, (List<?>) value, fieldSchema);
             }
             case "object" -> {
                 if (!(value instanceof Map)) {
-                    throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' expected object, got " + value.getClass().getSimpleName());
+                    throw new IllegalArgumentException("Input should be a valid object");
                 }
             }
             default -> { /* no-op for unknown types */ }

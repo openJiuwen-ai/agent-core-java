@@ -3,8 +3,6 @@
  */
 package com.openjiuwen.core.systemtest;
 
-import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;

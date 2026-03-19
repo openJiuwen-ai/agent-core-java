@@ -41,6 +41,13 @@ public class PromptMgr {
         return repo.remove(templateId);
     }
 
+    /**
+     * Clear all registered prompts.
+     */
+    public void clear() {
+        repo.clear();
+    }
+
     public PromptTemplate getPrompt(String templateId) {
         if (templateId == null) {
             throw new IllegalArgumentException("template_id is invalid, can not be None");

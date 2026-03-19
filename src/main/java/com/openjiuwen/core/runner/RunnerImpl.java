@@ -4,6 +4,7 @@ package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
@@ -411,7 +412,7 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent does not support invoke method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to invoke agent", e);
+            throw wrapRunnerRuntime("Failed to invoke agent", e);
         }
     }
 
@@ -428,7 +429,7 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent does not support stream method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to stream agent", e);
+            throw wrapRunnerRuntime("Failed to stream agent", e);
         }
     }
 
@@ -444,7 +445,7 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent group does not support invoke method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to invoke agent group", e);
+            throw wrapRunnerRuntime("Failed to invoke agent group", e);
         }
     }
 
@@ -461,8 +462,18 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent group does not support stream method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to stream agent group", e);
+            throw wrapRunnerRuntime("Failed to stream agent group", e);
         }
+    }
+
+    private RuntimeException wrapRunnerRuntime(String message, RuntimeException error) {
+        if (error instanceof BaseError baseError) {
+            return baseError;
+        }
+        if (error.getCause() instanceof BaseError baseError) {
+            return baseError;
+        }
+        return new RuntimeException(message, error);
     }
 
     private Object prepareAgent(Object agent) {
