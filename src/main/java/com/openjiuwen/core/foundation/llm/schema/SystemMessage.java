@@ -23,6 +23,11 @@ public class SystemMessage extends BaseMessage {
         super("system", content);
     }
 
+    public SystemMessage(String content, String name) {
+        this(content);
+        setName(name);
+    }
+
     @Override
     public String getRole() {
         String r = super.getRole();

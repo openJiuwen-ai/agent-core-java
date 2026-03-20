@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 
 /**
  * Executes a single Pregel node and produces routing messages.
@@ -42,6 +43,7 @@ public class NodeTask implements Callable<Object> {
     @Override
     public Object call() throws Exception {
         try {
+            throwIfInterrupted();
             Object func = node.getFunc();
 
             // Build kwargs based on function parameters
@@ -65,6 +67,7 @@ public class NodeTask implements Callable<Object> {
 
             // Invoke the node function
             invokeFunc(func, kwargs);
+            throwIfInterrupted();
 
             // Route messages
             List<Message> messages = new ArrayList<>();
@@ -82,6 +85,12 @@ public class NodeTask implements Callable<Object> {
                 return interrupt;
             }
             throw e;
+        }
+    }
+
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Node task cancelled");
         }
     }
 

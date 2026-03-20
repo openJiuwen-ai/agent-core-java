@@ -10,6 +10,7 @@ import com.openjiuwen.core.graph.store.Store;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
 /**
@@ -63,8 +64,9 @@ public class Pregel {
         PregelLoop loop = new PregelLoop(this, innerConfig);
         try {
             loop.init();
+            throwIfInterrupted();
             while (loop.runStep()) {
-                // Continue executing super-steps
+                throwIfInterrupted();
             }
             logger.info("Pregel graph engine execution completed, ns={}, sessionId={}, totalSteps={}",
                     innerConfig.getNs(), innerConfig.getSessionId(), loop.getStep());
@@ -80,6 +82,8 @@ public class Pregel {
             } else {
                 throw e;
             }
+        } catch (CancellationException e) {
+            throw e;
         }
     }
 
@@ -101,5 +105,11 @@ public class Pregel {
 
     public Consumer<PregelLoop> getAfterStep() {
         return afterStep;
+    }
+
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Pregel execution cancelled");
+        }
     }
 }

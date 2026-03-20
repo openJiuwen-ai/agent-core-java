@@ -43,6 +43,17 @@ public class WorkflowCard extends BaseCard {
 
     private Object inputParams;
 
+    /**
+     * Compatibility constructor for translated tests that still pass
+     * {@code id, name, version, description} positionally.
+     */
+    public WorkflowCard(String id, String name, String version, String description) {
+        setId(id);
+        setName(name);
+        setVersion(version);
+        setDescription(description);
+    }
+
     @Override
     public Object toolInfo() {
         return ToolInfo.builder()

@@ -243,8 +243,8 @@ public class ReActAgentEvolve extends BaseAgent {
         ContextWindow contextWindow = context.getContextWindow(
                 List.of(),
                 tools != null ? tools : null,
-                null,
-                null
+                (Integer) null,
+                (Integer) null
         );
 
         List<Object> skillMessages = new ArrayList<>(getSkillMessages());
