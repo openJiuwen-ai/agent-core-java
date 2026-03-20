@@ -211,6 +211,19 @@ public class StreamWriterManager {
     }
 
     /**
+     * Get enabled stream modes in enum declaration order.
+     */
+    public List<StreamMode> getEnabledModes() {
+        List<StreamMode> enabled = new ArrayList<>();
+        for (StreamMode mode : StreamMode.values()) {
+            if (writers.containsKey(mode)) {
+                enabled.add(mode);
+            }
+        }
+        return enabled;
+    }
+
+    /**
      * Remove a writer by mode. Cannot remove default writers.
      */
     public StreamWriter<?> removeWriter(StreamMode key) {

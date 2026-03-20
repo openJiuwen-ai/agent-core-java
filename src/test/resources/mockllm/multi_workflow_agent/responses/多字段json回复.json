@@ -1,0 +1,10 @@
+{
+  "responses": [
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"output1\": 1,\"output2\": 2,\"output3\": true,\"output4\": {\"name\":\"linda\"},\"output5\": [3,4,5]}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "responses": [
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"output1\": \"{\\\"weather\\\": \\\"晴天\\\"}\",\"output2\": \"{\\\"city\\\": \\\"杭州\\\"}\",\"output3\": \"{\\\"temp\\\": \\\"23\\\"}\"}"
+      }
+    }
+  ]
+}

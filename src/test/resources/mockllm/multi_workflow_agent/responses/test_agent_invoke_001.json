@@ -1,0 +1,64 @@
+{
+  "responses": [
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 2}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"bank\": \"民生银行\", \"action\": null, \"amount\": null}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 1}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"location\": null, \"date\": null, \"weather\": \"晴\", \"temperature\": null}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 3}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 3}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 2}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"bank\": null, \"action\": \"取钱\", \"amount\": 5000}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 1}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"location\": \"北京\", \"date\": \"明日\", \"weather\": \"null\", \"temperature\": \"三十摄氏度\"}"
+      }
+    }
+  ]
+}

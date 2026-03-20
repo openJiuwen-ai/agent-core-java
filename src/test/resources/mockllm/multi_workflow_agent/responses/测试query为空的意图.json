@@ -1,0 +1,10 @@
+{
+    "responses": [
+        {
+            "stats_code": 200,
+            "response": {
+                "content": "{\"class\": \"分类0\", \"reason\": \"当前输入为空，无法知道具体意图\"}"
+            }
+        }
+    ]
+}

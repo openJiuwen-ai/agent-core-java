@@ -108,7 +108,7 @@ public class LlmAgent extends ControllerAgent {
 
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        AgentSessionApi managedSession = session == null ? createManagedSession(inputs) : null;
+        AgentSessionApi managedSession = session == null ? createManagedSession(inputs, streamModes) : null;
         Session effectiveSession = managedSession != null ? managedSession : session;
 
         if (managedSession != null) {
@@ -287,6 +287,10 @@ public class LlmAgent extends ControllerAgent {
     }
 
     private AgentSessionApi createManagedSession(Object inputs) {
+        return createManagedSession(inputs, null);
+    }
+
+    private AgentSessionApi createManagedSession(Object inputs, List<StreamMode> streamModes) {
         String sessionId = "default_session";
         if (inputs instanceof Map<?, ?> inputMap) {
             Object conversationId = inputMap.get("conversation_id");
@@ -294,7 +298,7 @@ public class LlmAgent extends ControllerAgent {
                 sessionId = s;
             }
         }
-        return AgentSessionApi.create(sessionId, null, getCard());
+        return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
     }
 
     private void writeMessagesToMemoryAsync(Map<?, ?> inputs, Object result) {
