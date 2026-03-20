@@ -4,6 +4,7 @@ package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
@@ -309,8 +310,8 @@ public class RunnerImpl {
                                               ModelContext context, List<StreamMode> streamModes,
                                               Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
-        AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session);
-        Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context);
+        AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session, streamModes);
+        Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context, streamModes);
         return wrapStreamingIterator(iterator, agentSession);
     }
 
@@ -411,7 +412,7 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent does not support invoke method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to invoke agent", e);
+            throw wrapRunnerRuntime("Failed to invoke agent", e);
         }
     }
 
@@ -419,16 +420,18 @@ public class RunnerImpl {
      * Stream from an agent instance via reflection.
      */
     @SuppressWarnings("unchecked")
-    private Iterator<Object> streamAgent(Object agentInstance, Object inputs, Object session, ModelContext context) {
+    private Iterator<Object> streamAgent(Object agentInstance, Object inputs, Object session, ModelContext context,
+                                         List<StreamMode> streamModes) {
         try {
             return (Iterator<Object>) invokeFirstCompatibleMethod(agentInstance, "stream",
                     List.of(
+                            new Object[]{inputs, session, streamModes},
                             new Object[]{inputs, session, context},
                             new Object[]{inputs, session},
                             new Object[]{inputs}),
                     "Agent does not support stream method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to stream agent", e);
+            throw wrapRunnerRuntime("Failed to stream agent", e);
         }
     }
 
@@ -444,7 +447,7 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent group does not support invoke method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to invoke agent group", e);
+            throw wrapRunnerRuntime("Failed to invoke agent group", e);
         }
     }
 
@@ -461,8 +464,18 @@ public class RunnerImpl {
                             new Object[]{inputs}),
                     "Agent group does not support stream method");
         } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to stream agent group", e);
+            throw wrapRunnerRuntime("Failed to stream agent group", e);
         }
+    }
+
+    private RuntimeException wrapRunnerRuntime(String message, RuntimeException error) {
+        if (error instanceof BaseError baseError) {
+            return baseError;
+        }
+        if (error.getCause() instanceof BaseError baseError) {
+            return baseError;
+        }
+        return new RuntimeException(message, error);
     }
 
     private Object prepareAgent(Object agent) {
@@ -478,12 +491,22 @@ public class RunnerImpl {
     }
 
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session) {
+        return prepareAgentSession(agentInstance, inputs, session, null);
+    }
+
+    private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session,
+                                                List<StreamMode> streamModes) {
         AgentSessionApi agentSession;
         if (session instanceof AgentSessionApi existingSession) {
             agentSession = existingSession;
         } else {
             String sessionId = resolveAgentSessionId(inputs, session);
-            agentSession = AgentSessionApi.create(sessionId, extractAgentEnvs(agentInstance), extractAgentCard(agentInstance));
+            agentSession = AgentSessionApi.create(
+                    sessionId,
+                    extractAgentEnvs(agentInstance),
+                    extractAgentCard(agentInstance),
+                    streamModes
+            );
         }
         agentSession.preRun(inputs);
         return agentSession;

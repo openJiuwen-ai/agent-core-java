@@ -34,4 +34,9 @@ public class IntentDetectionCompConfig
     public IntentDetectionCompConfig() {
         super();
     }
+
+    /** Snake_case aliases for test compatibility (mirrors Python attribute names). */
+    public void setModel_config(ModelRequestConfig modelConfig) { setModelConfig(modelConfig); }
+    public void setModel_client_config(ModelClientConfig modelClientConfig) { setModelClientConfig(modelClientConfig); }
+    public void setCategory_name_list(List<String> categoryNameList) { setCategoryNameList(categoryNameList); }
 }

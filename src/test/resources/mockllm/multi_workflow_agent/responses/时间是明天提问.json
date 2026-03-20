@@ -1,0 +1,10 @@
+{
+  "responses": [
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"location\": null, \"date\": \"明天\"}"
+      }
+    }
+  ]
+}

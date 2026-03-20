@@ -52,4 +52,20 @@ public class QuestionerConfig extends com.openjiuwen.core.workflow.component.llm
     public QuestionerConfig() {
         super();
     }
+
+    /** Snake_case aliases for test compatibility (mirrors Python attribute names). */
+    public void setModel_config(ModelRequestConfig modelConfig) { setModelConfig(modelConfig); }
+    public void setModel_client_config(ModelClientConfig modelClientConfig) { setModelClientConfig(modelClientConfig); }
+    public void setWith_chat_history(boolean withChatHistory) { setWithChatHistory(withChatHistory); }
+    public void setField_names(List<?> fieldNames) {
+        if (fieldNames == null) {
+            setFieldNames(java.util.List.of());
+            return;
+        }
+        java.util.List<com.openjiuwen.core.workflow.component.llm.FieldInfo> converted =
+            fieldNames.stream()
+                .map(fi -> (com.openjiuwen.core.workflow.component.llm.FieldInfo) fi)
+                .collect(java.util.stream.Collectors.toList());
+        setFieldNames(converted);
+    }
 }

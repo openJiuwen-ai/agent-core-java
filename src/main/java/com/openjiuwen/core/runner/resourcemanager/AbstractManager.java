@@ -35,4 +35,11 @@ public abstract class AbstractManager<T> {
     protected Supplier<? extends T> unregisterResourceProvider(String resourceId) {
         return providers.remove(resourceId);
     }
+
+    /**
+     * Clear all registered providers.
+     */
+    protected void clearProviders() {
+        providers.clear();
+    }
 }

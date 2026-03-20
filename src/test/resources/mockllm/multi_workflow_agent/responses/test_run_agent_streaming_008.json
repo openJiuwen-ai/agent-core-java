@@ -1,0 +1,16 @@
+{
+  "responses": [
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"result\": 31}"
+      }
+    },
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"bank\": \"民生银行\", \"action\": \"存钱\", \"amount\": 5000}"
+      }
+    }
+  ]
+}

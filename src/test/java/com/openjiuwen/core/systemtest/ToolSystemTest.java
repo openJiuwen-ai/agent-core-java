@@ -3,7 +3,6 @@
  */
 package com.openjiuwen.core.systemtest;
 
-import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;

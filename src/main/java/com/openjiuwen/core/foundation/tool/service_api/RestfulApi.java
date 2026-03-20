@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.InetSocketAddress;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -77,11 +78,34 @@ public class RestfulApi extends Tool {
         }
         // Validate URL
         String url = card.getUrl();
+        if (url == null || url.isBlank()) {
+            // Python parity: empty URL is accepted at construction time and fails during invoke.
+            return;
+        }
+        if (isLoopbackUrl(url)) {
+            return;
+        }
         try {
             UrlUtils.checkUrlIsValid(url);
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
                     "reason", "invalid url: " + url);
+        }
+    }
+
+    private static boolean isLoopbackUrl(String url) {
+        try {
+            URI uri = URI.create(url);
+            String host = uri.getHost();
+            if (host == null || host.isBlank()) {
+                return false;
+            }
+            if ("localhost".equalsIgnoreCase(host)) {
+                return true;
+            }
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -298,6 +322,7 @@ public class RestfulApi extends Tool {
             case 204 -> "No Content";
             case 400 -> "Bad Request";
             case 401 -> "Unauthorized";
+            case 402 -> "Payment Required";
             case 403 -> "Forbidden";
             case 404 -> "Not Found";
             case 405 -> "Method Not Allowed";

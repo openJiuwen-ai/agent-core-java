@@ -44,6 +44,10 @@ public class ModelRequestConfig {
 
     private String stop;
 
+    private String user;
+
+    private Integer seed;
+
     /** Extra fields that are not part of the standard config. */
     @Builder.Default
     private Map<String, Object> extraFields = new HashMap<>();

@@ -10,9 +10,10 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
+import com.openjiuwen.core.graph.pregel.Interrupt;
+import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
@@ -230,7 +231,9 @@ public class Workflow {
             }
             List<Object> outputChunks = collectOutputChunks(workflowSession);
             if (isInterrupted(executionResult, outputChunks)) {
-                return new WorkflowOutput(outputChunks, WorkflowExecutionState.INPUT_REQUIRED);
+                return new WorkflowOutput(
+                        resolveInterruptedOutputChunks(executionResult, outputChunks),
+                        WorkflowExecutionState.INPUT_REQUIRED);
             }
             Object result = isStreaming
                     ? outputChunks
@@ -570,6 +573,46 @@ public class Workflow {
         return workflowSession.streamWriterManager().collectStreamOutput();
     }
 
+    @SuppressWarnings("unchecked")
+    private List<Object> resolveInterruptedOutputChunks(Object executionResult, List<Object> outputChunks) {
+        if (outputChunks != null && !outputChunks.isEmpty()) {
+            return outputChunks;
+        }
+        if (!(executionResult instanceof Map<?, ?> resultMap)) {
+            return outputChunks;
+        }
+
+        Object interrupt = resultMap.get(PregelConstants.TASK_STATUS_INTERRUPT);
+        if (interrupt instanceof Interrupt graphInterrupt) {
+            interrupt = graphInterrupt.getValue();
+        }
+
+        if (interrupt instanceof OutputSchema outputSchema) {
+            return List.of(outputSchema);
+        }
+        if (interrupt instanceof Map<?, ?> interruptMap
+                && interruptMap.containsKey("type")
+                && interruptMap.containsKey("payload")) {
+            return List.of(OutputSchema.fromMap((Map<String, Object>) interruptMap));
+        }
+        if (interrupt instanceof List<?> interruptList) {
+            List<Object> recovered = new ArrayList<>(interruptList.size());
+            for (Object item : interruptList) {
+                if (item instanceof OutputSchema outputSchema) {
+                    recovered.add(outputSchema);
+                } else if (item instanceof Map<?, ?> itemMap
+                        && itemMap.containsKey("type")
+                        && itemMap.containsKey("payload")) {
+                    recovered.add(OutputSchema.fromMap((Map<String, Object>) itemMap));
+                }
+            }
+            if (!recovered.isEmpty()) {
+                return recovered;
+            }
+        }
+        return outputChunks;
+    }
+
     private boolean isInterrupted(Object executionResult, List<Object> outputChunks) {
         if (executionResult instanceof Map<?, ?> resultMap
                 && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
@@ -658,6 +701,7 @@ public class Workflow {
 
         try {
             Map<String, Object> schemaMap = resolveInputSchema(schema);
+            validateTopLevelInputSchema(schemaMap);
             Map<String, Object> inputMap = convertInputsToMap(inputs);
             if (inputMap == null) {
                 return inputs;
@@ -668,6 +712,19 @@ public class Workflow {
                     "inputs", String.valueOf(inputs),
                     "reason", "input validation failed against schema: " + e.getMessage(),
                     "workflow", card.str());
+        }
+    }
+
+    private void validateTopLevelInputSchema(Map<String, Object> schemaMap) {
+        if (schemaMap == null || schemaMap.isEmpty()) {
+            return;
+        }
+        Object type = schemaMap.get("type");
+        if (type == null) {
+            return;
+        }
+        if (!"object".equals(type)) {
+            throw new IllegalArgumentException("'" + type + "' is not valid under any of the given schemas");
         }
     }
 

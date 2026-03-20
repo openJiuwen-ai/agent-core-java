@@ -316,7 +316,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 logger.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
                 throw interrupt;
             }
-            throw e;
+            logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    "ability", ability.name(), "comp", nodeId,
+                    "reason", e.toString(), "workflow", session.workflowId());
         } catch (Exception e) {
             logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
@@ -661,7 +664,9 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             WorkflowStateCollection stateCollection = (WorkflowStateCollection) session.state();
             Object interactiveInput = stateCollection.getWorkflow(Constant.INTERACTIVE_INPUT);
             if (interactiveInput != null) {
-                stateCollection.updateWorkflow(Map.of(Constant.INTERACTIVE_INPUT, ""));
+                Map<String, Object> clearMap = new HashMap<>();
+                clearMap.put(Constant.INTERACTIVE_INPUT, null);
+                stateCollection.updateWorkflow(clearMap);
                 if (session.state() instanceof WorkflowCommitState commitState) {
                     commitState.commitWorkflow();
                 }

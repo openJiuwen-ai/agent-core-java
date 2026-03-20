@@ -5,7 +5,10 @@ package com.openjiuwen.core.foundation.prompt;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.assemble.PromptAssembler;
 
@@ -18,23 +21,28 @@ import java.util.Map;
 
 /**
  * Interpolatable text prompt template with configurable placeholders.
- * <p>
- * Supports both String and {@code List<BaseMessage>} as content,
- * and provides {@link #toMessages()} and {@link #format(Map)} methods.
- * <p>
+ * Supports both String and {@code List<BaseMessage>} as content.
  * Mirrors Python's {@code PromptTemplate}.
  */
 @Data
 @Builder
 public class PromptTemplate {
 
+    /**
+     * Four-arg constructor for direct instantiation in tests.
+     */
+    public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
+        this.name = name;
+        this.content = content;
+        this.placeholderPrefix = placeholderPrefix;
+        this.placeholderSuffix = placeholderSuffix;
+    }
+
     /** Template name. */
     @Builder.Default
     private String name = "";
 
-    /**
-     * Template content — either a plain {@code String} or a {@code List<BaseMessage>}.
-     */
+    /** Template content - either a plain String or a List<BaseMessage>. */
     @Builder.Default
     private Object content = "";
 
@@ -47,10 +55,8 @@ public class PromptTemplate {
     private String placeholderSuffix = "}}";
 
     /**
-     * Convert template content to a list of {@link BaseMessage}s.
-     * <p>
-     * If content is a String, wraps it as a single {@link UserMessage}.
-     * If it is already a {@code List<BaseMessage>}, returns a deep copy.
+     * Convert template content to a list of BaseMessages.
+     * Preserves original message subtype.
      */
     @SuppressWarnings("unchecked")
     public List<BaseMessage> toMessages() {
@@ -67,15 +73,9 @@ public class PromptTemplate {
                             "error_msg", "prompt template type must be in str or list[BaseMessage]");
                 }
             }
-            // Deep copy
             List<BaseMessage> result = new ArrayList<>();
             for (Object msg : list) {
-                BaseMessage bm = (BaseMessage) msg;
-                result.add(BaseMessage.builder()
-                        .role(bm.getRole())
-                        .content(bm.getContent())
-                        .name(bm.getName())
-                        .build());
+                result.add(copyMessage((BaseMessage) msg));
             }
             return result;
         }
@@ -84,10 +84,7 @@ public class PromptTemplate {
     }
 
     /**
-     * Replace placeholders with the given keywords and return a new {@link PromptTemplate}.
-     *
-     * @param keywords key-value pairs for substitution; {@code null} or empty returns a copy
-     * @return new PromptTemplate with substituted content
+     * Replace placeholders with the given keywords and return a new PromptTemplate.
      */
     @SuppressWarnings("unchecked")
     public PromptTemplate format(Map<String, Object> keywords) {
@@ -104,15 +101,9 @@ public class PromptTemplate {
         if (content instanceof String) {
             contentCopy = content;
         } else if (content instanceof List<?> list) {
-            // Shallow copy of the list with new message instances
             List<BaseMessage> copy = new ArrayList<>();
             for (Object item : list) {
-                BaseMessage bm = (BaseMessage) item;
-                copy.add(BaseMessage.builder()
-                        .role(bm.getRole())
-                        .content(bm.getContent())
-                        .name(bm.getName())
-                        .build());
+                copy.add(copyMessage((BaseMessage) item));
             }
             contentCopy = copy;
         } else {
@@ -123,7 +114,6 @@ public class PromptTemplate {
                 contentCopy, placeholderPrefix, placeholderSuffix);
         List<String> inputKeys = assembler.getInputKeys();
 
-        // Only pass keys that the template actually needs
         Map<String, Object> validKeywords = new java.util.LinkedHashMap<>();
         for (String key : inputKeys) {
             if (keywords.containsKey(key)) {
@@ -139,5 +129,48 @@ public class PromptTemplate {
                 .placeholderPrefix(placeholderPrefix)
                 .placeholderSuffix(placeholderSuffix)
                 .build();
+    }
+
+    /**
+     * Copy a BaseMessage preserving its original subtype.
+     */
+    private static BaseMessage copyMessage(BaseMessage bm) {
+        if (bm instanceof AssistantMessage am) {
+            return AssistantMessage.builder()
+                    .role(am.getRole())
+                    .content(am.getContent())
+                    .name(am.getName())
+                    .toolCalls(am.getToolCalls())
+                    .usageMetadata(am.getUsageMetadata())
+                    .finishReason(am.getFinishReason())
+                    .parserContent(am.getParserContent())
+                    .reasoningContent(am.getReasoningContent())
+                    .build();
+        } else if (bm instanceof UserMessage) {
+            return UserMessage.builder()
+                    .role(bm.getRole())
+                    .content(bm.getContent())
+                    .name(bm.getName())
+                    .build();
+        } else if (bm instanceof SystemMessage) {
+            return SystemMessage.builder()
+                    .role(bm.getRole())
+                    .content(bm.getContent())
+                    .name(bm.getName())
+                    .build();
+        } else if (bm instanceof ToolMessage tm) {
+            return ToolMessage.builder()
+                    .role(bm.getRole())
+                    .content(bm.getContent())
+                    .name(bm.getName())
+                    .toolCallId(tm.getToolCallId())
+                    .build();
+        } else {
+            return BaseMessage.builder()
+                    .role(bm.getRole())
+                    .content(bm.getContent())
+                    .name(bm.getName())
+                    .build();
+        }
     }
 }

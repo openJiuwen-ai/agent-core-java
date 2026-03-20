@@ -5,6 +5,7 @@ package com.openjiuwen.core.graph.pregel;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -75,6 +76,12 @@ public class NodeTask implements Callable<Object> {
         } catch (GraphInterrupt e) {
             // Convert interrupt exception to return value
             return e;
+        } catch (RuntimeException e) {
+            GraphInterrupt interrupt = unwrapGraphInterrupt(e);
+            if (interrupt != null) {
+                return interrupt;
+            }
+            throw e;
         }
     }
 
@@ -99,8 +106,9 @@ public class NodeTask implements Callable<Object> {
                     }
                 }
             } catch (java.lang.reflect.InvocationTargetException e) {
-                if (e.getCause() instanceof GraphInterrupt gi) {
-                    throw gi;
+                GraphInterrupt interrupt = unwrapGraphInterrupt(e.getCause());
+                if (interrupt != null) {
+                    throw interrupt;
                 }
                 if (e.getCause() instanceof Exception ex) {
                     throw ex;
@@ -161,5 +169,19 @@ public class NodeTask implements Callable<Object> {
             // Ignore reflection errors
         }
         return false;
+    }
+
+    private static GraphInterrupt unwrapGraphInterrupt(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof GraphInterrupt interrupt) {
+                return interrupt;
+            }
+            if (current instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper wrapper) {
+                return wrapper.getGraphInterrupt();
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 }

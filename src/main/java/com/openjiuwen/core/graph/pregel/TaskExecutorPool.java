@@ -85,6 +85,32 @@ public class TaskExecutorPool {
             // Individual errors will be handled below
         }
 
+        // Check if the first failure is only a GraphInterrupt (not a real exception).
+        // If so, allow remaining tasks to finish rather than cancelling them immediately.
+        boolean onlyInterrupts = true;
+        for (CompletableFuture<Object> future : futures) {
+            if (future.isDone() && !future.isCancelled() && future.isCompletedExceptionally()) {
+                try {
+                    future.join();
+                } catch (Exception e) {
+                    Throwable cause = unwrapException(e);
+                    if (!(cause instanceof GraphInterrupt)) {
+                        onlyInterrupts = false;
+                        break;
+                    }
+                }
+            }
+        }
+        if (onlyInterrupts && !allDone.isDone()) {
+            // Wait for remaining tasks to complete (they should finish quickly
+            // since they are either completing or will also interrupt).
+            try {
+                allDone.join();
+            } catch (Exception ignored) {
+                // Individual errors will be handled below
+            }
+        }
+
         // Process completed futures and cancel pending ones
         for (CompletableFuture<Object> future : futures) {
             PregelNode node = runningTasks.remove(future);
