@@ -6,7 +6,6 @@
  */
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -17,7 +16,6 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
-import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,22 +203,16 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
             throw new ValidationError(
                     StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
                     Map.of("error_msg", "prompt cannot be None"));
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt cannot be None");
         }
         if (prompt.trim().isEmpty()) {
             throw new ValidationError(
                     StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
                     Map.of("error_msg", "prompt cannot be empty"));
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt cannot be empty");
         }
         if (cases == null || cases.isEmpty()) {
             throw new ValidationError(
                     StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
                     Map.of("error_msg", "The cases cannot be empty"));
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "The cases cannot be empty");
         }
         if (cases.size() > MAX_CASES_LIMIT) {
             throw new ValidationError(
@@ -302,8 +294,5 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
             }
         }
         return sb.toString();
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "The number of cases cannot exceed " + MAX_CASES_LIMIT);
-        }
     }
 }

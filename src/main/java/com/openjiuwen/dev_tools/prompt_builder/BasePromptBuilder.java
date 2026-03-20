@@ -10,12 +10,11 @@ import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-
-import java.util.concurrent.CompletableFuture;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 提示词构建器基类
@@ -43,7 +42,6 @@ public abstract class BasePromptBuilder {
      * @param modelClientConfig 模型客户端配置
      */
     public BasePromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-    protected BasePromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this.modelConfig = modelConfig;
         this.modelClientConfig = modelClientConfig;
         this.model = new Model(modelClientConfig, modelConfig);

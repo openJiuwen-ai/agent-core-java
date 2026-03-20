@@ -4,6 +4,7 @@
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -13,6 +14,8 @@ import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,6 +64,11 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
     }
 
     @Override
+    public Mono<String> build(String prompt, List<EvaluatedCase> cases) {
+        return null;
+    }
+
+    @Override
     public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
         BuildContext context = prepareBuildContext(prompt, args);
         return CompletableFuture.supplyAsync(() -> {
@@ -83,6 +91,11 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    @Override
+    public Flux<String> streamBuild(String prompt, List<EvaluatedCase> cases) {
+        return null;
     }
 
     private String invokeBuild(BuildContext context) {
