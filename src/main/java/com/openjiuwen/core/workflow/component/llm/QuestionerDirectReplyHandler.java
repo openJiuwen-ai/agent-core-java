@@ -108,8 +108,11 @@ public class QuestionerDirectReplyHandler {
 
     private Map<String, Object> handleUserInteractState(Object inputs, NodeSessionApi session, ModelContext context) {
         // Get latest human feedback via session interaction
-        for (int i = 0; i < state.getResponseNum() + 1; i++) {
-            this.query = session.interact(state.getQuestion());
+        int totalReads = state.getResponseNum() + 1;
+        for (int i = 0; i < totalReads; i++) {
+            this.query = (i == 0)
+                    ? session.interact(state.getQuestion())
+                    : session.userLatestInput(state.getQuestion());
         }
         state.incrementResponseNum();
 
@@ -257,7 +260,10 @@ public class QuestionerDirectReplyHandler {
 
         Map<String, Object> validated = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : extractedResult.entrySet()) {
-            String expectedType = fieldTypeMap.getOrDefault(entry.getKey(), "string");
+            if (!fieldTypeMap.containsKey(entry.getKey())) {
+                continue;
+            }
+            String expectedType = fieldTypeMap.get(entry.getKey());
             Object[] result = QuestionerUtils.validateAndConvertType(entry.getValue(), expectedType);
             if ((boolean) result[1]) {
                 validated.put(entry.getKey(), result[0]);

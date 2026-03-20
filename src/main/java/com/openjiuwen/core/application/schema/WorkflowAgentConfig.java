@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -37,6 +38,8 @@ public class WorkflowAgentConfig {
     @Builder.Default
     private String description = "";
 
+    private ModelConfig model;
+
     @Builder.Default
     @JsonProperty("controller_type")
     @JsonAlias("controllerType")
@@ -44,6 +47,14 @@ public class WorkflowAgentConfig {
 
     @Builder.Default
     private List<WorkflowSchema> workflows = new ArrayList<>();
+
+    @Builder.Default
+    @JsonProperty("prompt_template")
+    @JsonAlias("promptTemplate")
+    private List<Map<String, String>> promptTemplate = new ArrayList<>();
+
+    @Builder.Default
+    private List<String> tools = new ArrayList<>();
 
     @Builder.Default
     @JsonProperty("start_workflow")

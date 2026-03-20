@@ -373,6 +373,18 @@ public class ExpressionCondition extends Condition {
             sb.append("]");
             return sb.toString();
         }
+        if (value instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("[");
+            int index = 0;
+            for (Object key : map.keySet()) {
+                if (index++ > 0) {
+                    sb.append(",");
+                }
+                sb.append(toLiteral(key));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
         return value.toString();
     }
 

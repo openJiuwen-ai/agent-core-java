@@ -1,0 +1,27 @@
+{
+    "responses": [
+        {
+            "stats_code": 200,
+            "response": {
+                "content": "",
+                "reasoning_content": "\n好的，用户让我查询杭州的天气。首先，我需要确认他需要的是哪个地方的天气，因为可能有多个城市叫杭州，不过通常来说，提到杭州应该是指浙江省的省会。接下来，我应该调用天气查询插件，也就是WeatherReporter函数。这个函数需要参数location，类型是字符串，所以我要把杭州作为参数传进去。检查一下是否有必要确认具体的区或者详细地点，但用户只提到杭州，可能只需要整体的天气情况。所以直接调用函数，参数为杭州，应该就能满足需求了。不需要其他参数，因为函数只要求location。确保参数正确，然后生成对应的tool_call。",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "019975395027e9d42a8de40effd73004",
+                        "function": {
+                            "arguments": "{\"location\":\"杭州\"}",
+                            "name": "WeatherReporter"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "stats_code": 200,
+            "response": {
+                "content": "杭州今天天气晴，气温在18℃到26℃之间，微风拂面，很适合出门走走哦～记得根据体感适当增减衣物，别着凉啦！\uD83C\uDF24\uFE0F"
+            }
+        }
+    ]
+}
