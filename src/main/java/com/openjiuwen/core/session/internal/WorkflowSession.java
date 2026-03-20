@@ -62,6 +62,28 @@ public class WorkflowSession extends BaseSession {
         this(workflowId, null, null, null, null);
     }
 
+    /**
+     * Compatibility constructor for translated tests that only need an empty
+     * workflow session with generated identifiers.
+     */
+    public WorkflowSession() {
+        this(null, null, null, null, null);
+    }
+
+    /**
+     * Compatibility factory mirroring the Python-style helper.
+     */
+    public static WorkflowSession create() {
+        return new WorkflowSession();
+    }
+
+    /**
+     * Compatibility factory for translated tests that want to control sessionId.
+     */
+    public static WorkflowSession create(String sessionId) {
+        return new WorkflowSession(null, null, sessionId, null, null);
+    }
+
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
         if (this.streamWriterManagerField == null) {
             this.streamWriterManagerField = streamWriterManager;

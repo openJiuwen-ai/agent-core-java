@@ -222,8 +222,10 @@ public class QuestionerDirectReplyHandler {
                     null, null, null, null, null, null);
             response = msg.getContent() != null ? msg.getContent().toString() : "";
         } catch (Exception e) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("error_msg", "failed to invoke llm for extraction");
             throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to invoke llm for extraction");
+                    null, null, e, params);
         }
 
         Map<String, Object> result;

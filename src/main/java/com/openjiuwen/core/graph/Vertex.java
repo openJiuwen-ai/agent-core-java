@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -217,6 +218,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @throws Exception on execution failure
      */
     private Object doCall(Object config) throws Exception {
+        throwIfInterrupted();
         // 1. Check whether the node is initialized
         if (session == null || executable == null) {
             throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR,
@@ -232,6 +234,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     .collect(Collectors.toList());
 
             for (ComponentAbility ability : callAbilities) {
+                throwIfInterrupted();
                 currentAbility = ability;
                 runExecutable(ability, isSubgraph, config, null);
             }
@@ -270,6 +273,12 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         // 4. Send end tracer frame
         traceComponentDone();
         return null;
+    }
+
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Vertex execution cancelled");
+        }
     }
 
     // ---- Ability Execution ----

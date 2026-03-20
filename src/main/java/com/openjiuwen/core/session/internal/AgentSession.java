@@ -96,6 +96,13 @@ public class AgentSession extends BaseSession {
         this(sessionId, config, null, null);
     }
 
+    /**
+     * Compatibility constructor for translated tests.
+     */
+    public AgentSession(String sessionId) {
+        this(sessionId, new Config(), null, null);
+    }
+
     @Override
     public Config config() {
         return configField;

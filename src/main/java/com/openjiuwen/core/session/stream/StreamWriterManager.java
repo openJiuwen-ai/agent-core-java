@@ -7,6 +7,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -71,14 +72,16 @@ public class StreamWriterManager {
                 data = streamEmitter.getStreamQueue().receive(firstFrameTimeoutMs);
                 if (data == null) {
                     throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", String.valueOf(firstFrameTimeoutMs));
+                            "timeout", formatTimeoutSeconds(firstFrameTimeoutMs),
+                            "reason", "");
                 }
                 isFirstFrame = false;
             } else {
                 data = streamEmitter.getStreamQueue().receive(timeoutMs);
                 if (data == null) {
                     throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", String.valueOf(timeoutMs));
+                            "timeout", formatTimeoutSeconds(timeoutMs),
+                            "reason", "");
                 }
             }
 
@@ -156,10 +159,12 @@ public class StreamWriterManager {
                 }
                 if (firstFrame) {
                     throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", String.valueOf(timeoutMs));
+                            "timeout", formatTimeoutSeconds(timeoutMs),
+                            "reason", "");
                 }
                 throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                        "timeout", String.valueOf(timeoutMs));
+                        "timeout", formatTimeoutSeconds(timeoutMs),
+                        "reason", "");
             }
         };
     }
@@ -257,5 +262,15 @@ public class StreamWriterManager {
     @SuppressWarnings("unchecked")
     private <T extends StreamSchema> StreamWriter<T> castWriter(StreamWriter<?> writer) {
         return (StreamWriter<T>) writer;
+    }
+
+    private String formatTimeoutSeconds(long timeoutMs) {
+        if (timeoutMs < 0) {
+            return String.valueOf(timeoutMs);
+        }
+        return BigDecimal.valueOf(timeoutMs)
+                .movePointLeft(3)
+                .stripTrailingZeros()
+                .toPlainString();
     }
 }

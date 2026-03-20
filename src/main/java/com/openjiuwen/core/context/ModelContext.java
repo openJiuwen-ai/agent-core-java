@@ -42,7 +42,7 @@ public abstract class ModelContext {
      * Get all messages (with history).
      */
     public List<BaseMessage> getMessages() {
-        return getMessages(null, true);
+        return getMessages((Integer) null, true);
     }
 
     /**
@@ -132,7 +132,12 @@ public abstract class ModelContext {
      * Get context window with defaults.
      */
     public ContextWindow getContextWindow() {
-        return getContextWindow(null, null, null, null, Map.of());
+        return getContextWindow(
+                null,
+                null,
+                (Integer) null,
+                (Integer) null,
+                Map.of());
     }
 
     /**

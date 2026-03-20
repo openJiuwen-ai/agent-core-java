@@ -112,6 +112,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             Loggers.SESSION.info("Workflow checkpoint save on exception, sessionId={}, workflowId={}",
                     sessionId, workflowId);
             workflowStorage.save(session);
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
             throw new RuntimeException(exception);
         }
 
@@ -428,9 +431,16 @@ public class PersistenceCheckpointer extends Checkpointer {
 
             for (Map.Entry<String, Object> entry : userInputs.entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
-                // Python parity: resuming the same node should consume the latest provided input,
-                // not replay every historical answer for that node again.
-                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, List.of(entry.getValue())));
+                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
+                List<Object> inputList;
+                if (interactiveInput instanceof List<?> existingInputs) {
+                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
+                    inputList.addAll((List<Object>) existingInputs);
+                    inputList.add(entry.getValue());
+                } else {
+                    inputList = List.of(entry.getValue());
+                }
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
             if (session.state() instanceof CommitStateLike commitState) {
                 commitState.commit();

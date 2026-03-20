@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,4 +43,19 @@ public class Case {
      * 用例ID
      */
     private String caseId;
+
+    public Case(Map<String, ?> inputs, Map<String, ?> label) {
+        this(inputs, label, null);
+    }
+
+    public Case(Map<String, ?> inputs, Map<String, ?> label, List<ToolInfo> tools) {
+        this(asObjectMap(inputs), asObjectMap(label), tools, null);
+    }
+
+    private static Map<String, Object> asObjectMap(Map<String, ?> source) {
+        if (source == null) {
+            return null;
+        }
+        return new LinkedHashMap<>(source);
+    }
 }

@@ -90,6 +90,9 @@ public class InMemoryCheckpointer extends Checkpointer {
                         "reason", "workflow store not found");
             }
             saveWorkflowCheckpoint(workflowId, sessionId, session, "workflow exception");
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
             throw new RuntimeException(exception);
         }
 
@@ -309,15 +312,14 @@ public class InMemoryCheckpointer extends Checkpointer {
 
             for (Map.Entry<String, Object> entry : inputs.getUserInputs().entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
-                Object value = entry.getValue();
+                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
                 List<Object> inputList;
-                if (value instanceof List<?> listValue) {
-                    // When a list is provided, treat each element as a separate
-                    // sequential response for the same node (e.g. nodes with
-                    // multiple interact() calls).
-                    inputList = new java.util.ArrayList<>(listValue);
+                if (interactiveInput instanceof List<?> existingInputs) {
+                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
+                    inputList.addAll((List<Object>) existingInputs);
+                    inputList.add(entry.getValue());
                 } else {
-                    inputList = List.of(value);
+                    inputList = List.of(entry.getValue());
                 }
                 nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }

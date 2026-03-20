@@ -67,6 +67,20 @@ public class IntentDetectionComponentImpl implements ComponentComposable {
     }
 
     /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target, String branchId) {
+        addBranch(condition, target, branchId);
+    }
+
+    /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target) {
+        addBranch(condition, target);
+    }
+
+    /**
      * Get the branch router.
      */
     public BranchRouter router() {
