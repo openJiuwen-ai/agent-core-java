@@ -128,7 +128,9 @@ public class BranchRouter implements Router {
         for (Branch branch : branches) {
             if (branch.evaluate(currentSession)) {
                 if (reportTrace && currentSession != null) {
-                    TracerWorkflowUtils.traceComponentOutputs(currentSession, Map.of("branch_id", branch.getBranchId()));
+                    Map<String, Object> outputs = new LinkedHashMap<>();
+                    outputs.put("branch_id", branch.getBranchId());
+                    TracerWorkflowUtils.traceComponentOutputs(currentSession, outputs);
                     TracerWorkflowUtils.traceComponentDone(currentSession);
                 }
                 return branch.getTarget();

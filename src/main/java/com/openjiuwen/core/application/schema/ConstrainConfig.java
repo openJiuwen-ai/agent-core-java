@@ -6,7 +6,6 @@ package com.openjiuwen.core.application.schema;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,18 +16,46 @@ import lombok.NoArgsConstructor;
  * <p>Mirrors Python's {@code ConstrainConfig} for legacy compatibility.</p>
  */
 @Data
-@Builder
 @NoArgsConstructor
-@AllArgsConstructor
 public class ConstrainConfig {
 
-    @Builder.Default
+    public static final int DEFAULT_RESERVED_MAX_CHAT_ROUNDS = 10;
+
+    public static final int DEFAULT_MAX_ITERATION = 5;
+
+    private static final String GREATER_THAN_ZERO_MESSAGE =
+            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
+
     @JsonProperty("reserved_max_chat_rounds")
     @JsonAlias("reservedMaxChatRounds")
-    private int reservedMaxChatRounds = 10;
+    private int reservedMaxChatRounds = DEFAULT_RESERVED_MAX_CHAT_ROUNDS;
 
-    @Builder.Default
     @JsonProperty("max_iteration")
     @JsonAlias("maxIteration")
-    private int maxIteration = 5;
+    private int maxIteration = DEFAULT_MAX_ITERATION;
+
+    @Builder
+    public ConstrainConfig(Integer reservedMaxChatRounds, Integer maxIteration) {
+        this.reservedMaxChatRounds = reservedMaxChatRounds == null
+                ? DEFAULT_RESERVED_MAX_CHAT_ROUNDS
+                : validatePositive(reservedMaxChatRounds);
+        this.maxIteration = maxIteration == null
+                ? DEFAULT_MAX_ITERATION
+                : validatePositive(maxIteration);
+    }
+
+    public void setReservedMaxChatRounds(int reservedMaxChatRounds) {
+        this.reservedMaxChatRounds = validatePositive(reservedMaxChatRounds);
+    }
+
+    public void setMaxIteration(int maxIteration) {
+        this.maxIteration = validatePositive(maxIteration);
+    }
+
+    private static int validatePositive(int value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
+        }
+        return value;
+    }
 }

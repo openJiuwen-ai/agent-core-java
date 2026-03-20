@@ -428,13 +428,9 @@ public class PersistenceCheckpointer extends Checkpointer {
 
             for (Map.Entry<String, Object> entry : userInputs.entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
-                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
-                if (interactiveInput instanceof List) {
-                    ((List<Object>) interactiveInput).add(entry.getValue());
-                    nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, interactiveInput));
-                } else {
-                    nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, List.of(entry.getValue())));
-                }
+                // Python parity: resuming the same node should consume the latest provided input,
+                // not replay every historical answer for that node again.
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, List.of(entry.getValue())));
             }
             if (session.state() instanceof CommitStateLike commitState) {
                 commitState.commit();

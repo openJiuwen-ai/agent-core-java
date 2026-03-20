@@ -1,0 +1,11 @@
+{
+  "responses": [
+
+    {
+      "stats_code": 200,
+      "response": {
+        "content": "{\"bank\": null, \"action\": \"存钱\", \"amount\": \"5000\"}"
+      }
+    }
+  ]
+}

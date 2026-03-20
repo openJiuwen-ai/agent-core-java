@@ -113,9 +113,9 @@ public class Model {
             }
         }
         if (factory == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "Unsupported client_type: '" + config.getClientProvider()
-                            + "', Supported types: " + FACTORY_REGISTRY.keySet());
+            throw ErrorHelper.buildError(StatusCode.MODEL_PROVIDER_INVALID,
+                    "error_msg", "unavailable model provider: " + config.getClientProvider()
+                            + ",and available providers are: " + FACTORY_REGISTRY.keySet());
         }
         return factory.create(modelConfig, config);
     }

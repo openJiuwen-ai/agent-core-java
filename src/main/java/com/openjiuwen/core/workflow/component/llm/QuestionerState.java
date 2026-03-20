@@ -86,6 +86,21 @@ public class QuestionerState {
             if (stateDict instanceof Map<?, ?> sd) {
                 return deserialize((Map<String, Object>) sd);
             }
+            if (map.containsKey("response_num") || map.containsKey("status")
+                    || map.containsKey("question") || map.containsKey("extracted_key_fields")) {
+                return deserialize((Map<String, Object>) map);
+            }
+            Object compState = map.get("comp_state");
+            if (compState instanceof Map<?, ?> compMap) {
+                for (Object nestedState : compMap.values()) {
+                    if (nestedState instanceof Map<?, ?> nestedMap) {
+                        QuestionerState restored = loadFromSession(nestedMap);
+                        if (!restored.isFreshState()) {
+                            return restored;
+                        }
+                    }
+                }
+            }
         }
         return new QuestionerState();
     }

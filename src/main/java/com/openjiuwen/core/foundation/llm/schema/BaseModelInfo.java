@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,39 +20,46 @@ import java.util.Map;
  * Mirrors Python's {@code BaseModelInfo} model.
  */
 @Data
-@Builder
 @NoArgsConstructor
-@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseModelInfo {
 
-    @Builder.Default
+    private static final String GREATER_THAN_ZERO_MESSAGE =
+            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
+
     @JsonProperty("api_key")
     private String apiKey = "";
 
     @JsonProperty("api_base")
     private String apiBase;
 
-    @Builder.Default
     @JsonProperty("model")
     private String modelName = "";
 
-    @Builder.Default
     private Double temperature = 0.95;
 
-    @Builder.Default
     @JsonProperty("top_p")
     private Double topP = 0.1;
 
-    @Builder.Default
     @JsonProperty("stream")
     private boolean streaming = false;
 
-    @Builder.Default
     private int timeout = 60;
 
-    @Builder.Default
     private Map<String, Object> extraFields = new HashMap<>();
+
+    @Builder
+    public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
+                         Boolean streaming, Integer timeout, Map<String, Object> extraFields) {
+        this.apiKey = apiKey == null ? "" : apiKey;
+        this.apiBase = apiBase;
+        this.modelName = modelName == null ? "" : modelName;
+        this.temperature = temperature == null ? 0.95 : temperature;
+        this.topP = topP == null ? 0.1 : topP;
+        this.streaming = streaming != null && streaming;
+        this.timeout = timeout == null ? 60 : validatePositive(timeout);
+        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
+    }
 
     @JsonAnyGetter
     public Map<String, Object> getExtraFields() {
@@ -66,5 +72,20 @@ public class BaseModelInfo {
             extraFields = new HashMap<>();
         }
         extraFields.put(key, value);
+    }
+
+    public void setTimeout(int timeout) {
+        this.timeout = validatePositive(timeout);
+    }
+
+    public void setExtraFields(Map<String, Object> extraFields) {
+        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
+    }
+
+    private static int validatePositive(int value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
+        }
+        return value;
     }
 }

@@ -18,6 +18,19 @@ public class ResourceRegistry {
     private final AgentGroupMgr<Object> agentGroupMgr = new AgentGroupMgr<>();
     private final SysOperationMgr sysOperationMgr = new SysOperationMgr();
 
+    /**
+     * Clear all registered resources across all sub-managers.
+     */
+    public void clearAll() {
+        toolMgr.release();
+        workflowMgr.clearProviders();
+        promptMgr.clear();
+        modelMgr.clearProviders();
+        agentMgr.clearProviders();
+        agentGroupMgr.clearProviders();
+        sysOperationMgr.clear();
+    }
+
     public void removeById(String resourceId) {
         if (toolMgr.removeTool(resourceId) != null) {
             return;

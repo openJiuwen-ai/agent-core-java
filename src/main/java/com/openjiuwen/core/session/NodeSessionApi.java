@@ -88,6 +88,26 @@ public class NodeSessionApi {
         return userInputs;
     }
 
+    /**
+     * Return the latest user input without requiring another queued response.
+     */
+    public <T> T userLatestInput(Object value) {
+        if (streamMode) {
+            throw new UnsupportedOperationException(
+                    "Interact during streaming process (transform or collect) is not supported. " +
+                            "component=" + getComponentId() + ", workflow=" + getWorkflowId());
+        }
+        if (interaction == null) {
+            interaction = new WorkflowInteraction(inner);
+        }
+        @SuppressWarnings("unchecked")
+        T userInputs = (T) interaction.userLatestInput(value);
+        if (!inner.skipTrace()) {
+            TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
+        }
+        return userInputs;
+    }
+
     public String getExecutableId() {
         return inner.executableId();
     }
