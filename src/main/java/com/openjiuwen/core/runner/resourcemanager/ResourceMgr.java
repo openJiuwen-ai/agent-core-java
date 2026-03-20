@@ -27,6 +27,7 @@ import com.openjiuwen.core.sysop.SysOperationToolAdapter;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -162,11 +163,19 @@ public class ResourceMgr {
 
     public Object getWorkflow(String workflowId, Object tag,
                               TagMatchStrategy tagMatchStrategy) {
-        return innerGetResourcesByProvider(workflowId, tag, tagMatchStrategy, "workflow");
+        Object workflow = innerGetResourcesByProvider(workflowId, tag, tagMatchStrategy, "workflow");
+        if (workflow != null) {
+            return workflow;
+        }
+        return findWorkflowByAlternateId(workflowId);
     }
 
     public Object getWorkflow(String workflowId) {
-        return innerGetResourcesByProvider(workflowId, null, TagMatchStrategy.ALL, "workflow");
+        Object workflow = innerGetResourcesByProvider(workflowId, null, TagMatchStrategy.ALL, "workflow");
+        if (workflow != null) {
+            return workflow;
+        }
+        return findWorkflowByAlternateId(workflowId);
     }
 
     // ========== Tool ==========
@@ -392,7 +401,7 @@ public class ResourceMgr {
 
     public List<ToolInfo> getToolInfos(Object toolId, Object toolType, Object tag,
                                        TagMatchStrategy tagMatchStrategy) {
-        FindResult findResult = innerFindResourceIds(toolId, tag, tagMatchStrategy);
+        FindResult findResult = innerFindResourceIds(toolId, tag, tagMatchStrategy, true);
         List<ToolInfo> results = new ArrayList<>();
         if (findResult.ids() == null || findResult.ids().isEmpty()) {
             return results;
@@ -767,18 +776,25 @@ public class ResourceMgr {
 
     private FindResult innerFindResourceIds(Object resourceId, Object tag,
                                             TagMatchStrategy tagMatchStrategy) {
+        return innerFindResourceIds(resourceId, tag, tagMatchStrategy, false);
+    }
+
+    private FindResult innerFindResourceIds(Object resourceId, Object tag,
+                                            TagMatchStrategy tagMatchStrategy,
+                                            boolean skipIfTagNotExists) {
         if (resourceId != null) {
             return new FindResult(normalizeIds(resourceId), true);
         }
         List<String> ids = tagMgr.findResourcesByTags(tag != null ? tag : Tag.GLOBAL,
-                tagMatchStrategy != null ? tagMatchStrategy : TagMatchStrategy.ALL, false);
+                tagMatchStrategy != null ? tagMatchStrategy : TagMatchStrategy.ALL,
+                skipIfTagNotExists);
         return new FindResult(ids, false);
     }
 
     private Object innerGetResources(Object resourceId, Object tag,
                                      TagMatchStrategy tagMatchStrategy,
                                      String resourceType) {
-        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy);
+        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true);
         List<Object> results = new ArrayList<>();
         for (String getId : findResult.ids()) {
             Object resource = null;
@@ -807,7 +823,7 @@ public class ResourceMgr {
     private Object innerGetResourcesByProvider(Object resourceId, Object tag,
                                                TagMatchStrategy tagMatchStrategy,
                                                String resourceType) {
-        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy);
+        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true);
         List<Object> results = new ArrayList<>();
         if (findResult.ids() == null || findResult.ids().isEmpty()) {
             return results;
@@ -1012,6 +1028,39 @@ public class ResourceMgr {
         throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
                 "server_config", String.valueOf(config),
                 "reason", "Invalid MCP server configuration type");
+    }
+
+    private Object findWorkflowByAlternateId(String workflowId) {
+        if (workflowId == null || workflowId.isBlank()) {
+            return null;
+        }
+        for (Map.Entry<String, BaseCard> entry : idToCard.entrySet()) {
+            if (!(entry.getValue() instanceof WorkflowCard workflowCard)) {
+                continue;
+            }
+            String registeredId = entry.getKey();
+            String baseId = deriveWorkflowBaseId(registeredId, workflowCard.getVersion());
+            String versionedId = WorkflowUtils.generateWorkflowKey(baseId, workflowCard.getVersion());
+            if (!workflowId.equals(baseId) && !workflowId.equals(versionedId)) {
+                continue;
+            }
+            Object workflow = resourceRegistry.workflow().getWorkflow(registeredId);
+            if (workflow != null) {
+                return workflow;
+            }
+        }
+        return null;
+    }
+
+    private String deriveWorkflowBaseId(String registeredId, String version) {
+        if (registeredId == null || version == null || version.isBlank()) {
+            return registeredId;
+        }
+        String suffix = "_" + version;
+        if (registeredId.endsWith(suffix) && registeredId.length() > suffix.length()) {
+            return registeredId.substring(0, registeredId.length() - suffix.length());
+        }
+        return registeredId;
     }
 
     // ========== Record Types ==========
