@@ -101,6 +101,13 @@
             <version>5.3.0</version>
         </dependency>
 
+        <!-- Reactive Programming: Project Reactor -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <version>3.6.2</version>
+        </dependency>
+
         <!-- Test Dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -125,6 +132,11 @@
             <artifactId>h2</artifactId>
             <version>2.2.224</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <version>3.6.0</version>
         </dependency>
     </dependencies>
 

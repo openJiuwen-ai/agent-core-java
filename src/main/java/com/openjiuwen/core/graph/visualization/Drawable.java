@@ -9,9 +9,9 @@ import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.BranchComponent;
-import com.openjiuwen.core.workflow.component.IntentDetectionComponent;
 import com.openjiuwen.core.workflow.component.LoopComponent;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponent;
+import com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl;
 
 import java.util.HashSet;
 import java.util.List;
@@ -69,7 +69,7 @@ public class Drawable {
         } else if (component instanceof BranchComponent branchComp) {
             graph.getNodes().put(nodeId, new DrawableNode(nodeId));
             addEdge(nodeId, null, true, false, branchComp.router());
-        } else if (component instanceof IntentDetectionComponent intentComp) {
+        } else if (component instanceof IntentDetectionComponentImpl intentComp) {
             graph.getNodes().put(nodeId, new DrawableNode(nodeId));
             addEdge(nodeId, null, true, false, intentComp.router());
         } else {

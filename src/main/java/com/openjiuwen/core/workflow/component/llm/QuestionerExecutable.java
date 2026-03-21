@@ -46,8 +46,11 @@ public class QuestionerExecutable extends ComponentExecutable {
 
     @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-        // Load state from session
-        Object sessionState = session.dumpState();
+        // Load node-scoped state first so resumed questioner runs can recover extracted fields.
+        Object sessionState = session.getState(null);
+        if (sessionState == null) {
+            sessionState = session.dumpState();
+        }
         QuestionerState stateFromSession = QuestionerState.loadFromSession(sessionState);
 
         QuestionerState currentState;

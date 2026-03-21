@@ -147,8 +147,8 @@ public class ReActAgent extends BaseAgent {
         var contextWindow = context.getContextWindow(
                 systemMessages,
                 tools != null ? tools : null,
-                null,
-                null
+                (Integer) null,
+                (Integer) null
         );
 
         ctx.setInputs(ModelCallInputs.builder()

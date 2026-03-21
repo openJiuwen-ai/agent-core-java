@@ -139,39 +139,10 @@ public class End extends WorkflowComponent {
     @SuppressWarnings("unchecked")
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-        List<Object> frames = new ArrayList<>();
-
         if (template != null) {
-            for (int i = 0; i < segments.size(); i++) {
-                String seg = segments.get(i);
-                Object data;
-                if (isVariable.get(i)) {
-                    data = getNestedValue(seg, inputsMap);
-                } else {
-                    data = seg;
-                }
-                if (data instanceof Iterator<?> iterator) {
-                    while (iterator.hasNext()) {
-                        frames.add(buildTemplateFrame(i, iterator.next()));
-                    }
-                } else if (data != null) {
-                    frames.add(buildTemplateFrame(i, data));
-                }
-            }
-        } else {
-            for (Map.Entry<List<String>, Object> entry : DictUtils.extractLeafNodes(inputsMap, null)) {
-                String path = DictUtils.formatPath(entry.getKey());
-                Object value = entry.getValue();
-                if (value instanceof Iterator<?> iterator) {
-                    while (iterator.hasNext()) {
-                        frames.add(Map.of("output", Map.of(path, iterator.next())));
-                    }
-                } else {
-                    frames.add(Map.of("output", Map.of(path, value)));
-                }
-            }
+            return templateTransformIterator(inputsMap);
         }
-        return frames.iterator();
+        return outputTransformIterator(inputsMap);
     }
 
     @Override
@@ -223,6 +194,130 @@ public class End extends WorkflowComponent {
         frame.put("index", index);
         frame.put("payload", Map.of("response", data));
         return frame;
+    }
+
+    private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap) {
+        return new Iterator<>() {
+            private int segmentIndex = 0;
+            private Iterator<?> currentIterator;
+            private Object nextFrame;
+            private boolean prepared = false;
+
+            @Override
+            public boolean hasNext() {
+                prepareNext();
+                return nextFrame != null;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new java.util.NoSuchElementException();
+                }
+                Object current = nextFrame;
+                nextFrame = null;
+                prepared = false;
+                return current;
+            }
+
+            private void prepareNext() {
+                if (prepared) {
+                    return;
+                }
+                prepared = true;
+                nextFrame = null;
+
+                while (true) {
+                    if (currentIterator != null) {
+                        if (currentIterator.hasNext()) {
+                            nextFrame = buildTemplateFrame(segmentIndex - 1, currentIterator.next());
+                            return;
+                        }
+                        currentIterator = null;
+                    }
+
+                    if (segmentIndex >= segments.size()) {
+                        return;
+                    }
+
+                    int currentSegmentIndex = segmentIndex++;
+                    String seg = segments.get(currentSegmentIndex);
+                    Object data = isVariable.get(currentSegmentIndex)
+                            ? getNestedValue(seg, inputsMap)
+                            : seg;
+                    if (data instanceof Iterator<?> iterator) {
+                        currentIterator = iterator;
+                        continue;
+                    }
+                    if (data != null) {
+                        nextFrame = buildTemplateFrame(currentSegmentIndex, data);
+                        return;
+                    }
+                }
+            }
+        };
+    }
+
+    private Iterator<Object> outputTransformIterator(Map<String, Object> inputsMap) {
+        List<Map.Entry<List<String>, Object>> entries = DictUtils.extractLeafNodes(inputsMap, null);
+        return new Iterator<>() {
+            private int entryIndex = 0;
+            private String currentPath;
+            private Iterator<?> currentIterator;
+            private Object nextFrame;
+            private boolean prepared = false;
+
+            @Override
+            public boolean hasNext() {
+                prepareNext();
+                return nextFrame != null;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new java.util.NoSuchElementException();
+                }
+                Object current = nextFrame;
+                nextFrame = null;
+                prepared = false;
+                return current;
+            }
+
+            private void prepareNext() {
+                if (prepared) {
+                    return;
+                }
+                prepared = true;
+                nextFrame = null;
+
+                while (true) {
+                    if (currentIterator != null) {
+                        if (currentIterator.hasNext()) {
+                            nextFrame = Map.of("output", Map.of(currentPath, currentIterator.next()));
+                            return;
+                        }
+                        currentIterator = null;
+                        currentPath = null;
+                    }
+
+                    if (entryIndex >= entries.size()) {
+                        return;
+                    }
+
+                    Map.Entry<List<String>, Object> entry = entries.get(entryIndex++);
+                    String path = DictUtils.formatPath(entry.getKey());
+                    Object value = entry.getValue();
+                    if (value instanceof Iterator<?> iterator) {
+                        currentPath = path;
+                        currentIterator = iterator;
+                        continue;
+                    }
+                    nextFrame = Map.of("output", Map.of(path, value));
+                    return;
+                }
+            }
+        };
     }
 
     // ==================== Template rendering ====================

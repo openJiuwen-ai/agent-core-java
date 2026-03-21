@@ -1,0 +1,29 @@
+// coding: utf-8
+// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+
+package com.openjiuwen.core.workflow.components.flow;
+
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.EndConfig;
+
+import java.util.Map;
+
+/**
+ * Alias for {@link End} — exit point component of the workflow.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
+ */
+public class EndComponent extends End {
+
+    public EndComponent() {
+        super((EndConfig) null);
+    }
+
+    public EndComponent(Map<String, Object> confMap) {
+        super(confMap);
+    }
+
+    public EndComponent(EndConfig conf) {
+        super(conf);
+    }
+}

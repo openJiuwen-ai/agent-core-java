@@ -310,8 +310,8 @@ public class RunnerImpl {
                                               ModelContext context, List<StreamMode> streamModes,
                                               Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
-        AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session);
-        Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context);
+        AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session, streamModes);
+        Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context, streamModes);
         return wrapStreamingIterator(iterator, agentSession);
     }
 
@@ -420,10 +420,12 @@ public class RunnerImpl {
      * Stream from an agent instance via reflection.
      */
     @SuppressWarnings("unchecked")
-    private Iterator<Object> streamAgent(Object agentInstance, Object inputs, Object session, ModelContext context) {
+    private Iterator<Object> streamAgent(Object agentInstance, Object inputs, Object session, ModelContext context,
+                                         List<StreamMode> streamModes) {
         try {
             return (Iterator<Object>) invokeFirstCompatibleMethod(agentInstance, "stream",
                     List.of(
+                            new Object[]{inputs, session, streamModes},
                             new Object[]{inputs, session, context},
                             new Object[]{inputs, session},
                             new Object[]{inputs}),
@@ -489,12 +491,22 @@ public class RunnerImpl {
     }
 
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session) {
+        return prepareAgentSession(agentInstance, inputs, session, null);
+    }
+
+    private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session,
+                                                List<StreamMode> streamModes) {
         AgentSessionApi agentSession;
         if (session instanceof AgentSessionApi existingSession) {
             agentSession = existingSession;
         } else {
             String sessionId = resolveAgentSessionId(inputs, session);
-            agentSession = AgentSessionApi.create(sessionId, extractAgentEnvs(agentInstance), extractAgentCard(agentInstance));
+            agentSession = AgentSessionApi.create(
+                    sessionId,
+                    extractAgentEnvs(agentInstance),
+                    extractAgentCard(agentInstance),
+                    streamModes
+            );
         }
         agentSession.preRun(inputs);
         return agentSession;

@@ -177,6 +177,15 @@ public class ActorManager {
     }
 
     /**
+     * Wait until all active stream actors finish processing their queued messages.
+     */
+    public void awaitCompletion() {
+        for (StreamActor actor : streams.values()) {
+            actor.awaitCompletion();
+        }
+    }
+
+    /**
      * Shutdown all stream actors.
      */
     public void shutdown() {

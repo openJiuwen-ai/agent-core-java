@@ -431,6 +431,13 @@ public enum StatusCode {
     }
 
     /**
+     * Compatibility accessor for translated tests that still call Python-style {@code code()}.
+     */
+    public int code() {
+        return getCode();
+    }
+
+    /**
      * Return the error message template (unformatted).
      */
     public String getErrmsg() {

@@ -101,7 +101,7 @@ public class QueryRewriter {
                     StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
                     "context is required for context-aware rewrite");
         }
-        List<BaseMessage> fullHistory = context.getMessages(null, true);
+        List<BaseMessage> fullHistory = context.getMessages((Integer) null, true);
         if (fullHistory.size() >= compressRange) {
             try {
                 Map<String, Object> compressed = compress(fullHistory);
@@ -135,7 +135,7 @@ public class QueryRewriter {
     public String msgToText(List<BaseMessage> messages) {
         List<BaseMessage> source = messages;
         if (source == null) {
-            source = context == null ? List.of() : context.getMessages(null, true);
+            source = context == null ? List.of() : context.getMessages((Integer) null, true);
         }
         List<String> lines = new ArrayList<>(source.size());
         for (BaseMessage message : source) {

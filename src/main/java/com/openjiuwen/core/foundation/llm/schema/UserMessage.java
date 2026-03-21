@@ -23,6 +23,11 @@ public class UserMessage extends BaseMessage {
         super("user", content);
     }
 
+    public UserMessage(String content, String name) {
+        this(content);
+        setName(name);
+    }
+
     @Override
     public String getRole() {
         String r = super.getRole();

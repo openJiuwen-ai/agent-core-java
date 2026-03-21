@@ -28,10 +28,31 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = true)
 public class WorkflowCard extends BaseCard {
 
+    /**
+     * Convenience constructor: WorkflowCard(id, name).
+     * Used in tests and mirrors Python's WorkflowCard(id=..., name=...) pattern.
+     */
+    public WorkflowCard(String id, String name) {
+        super();
+        setId(id);
+        setName(name);
+    }
+
     @Builder.Default
     private String version = "";
 
     private Object inputParams;
+
+    /**
+     * Compatibility constructor for translated tests that still pass
+     * {@code id, name, version, description} positionally.
+     */
+    public WorkflowCard(String id, String name, String version, String description) {
+        setId(id);
+        setName(name);
+        setVersion(version);
+        setDescription(description);
+    }
 
     @Override
     public Object toolInfo() {

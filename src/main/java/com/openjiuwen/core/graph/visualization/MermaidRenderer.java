@@ -23,6 +23,7 @@ final class MermaidRenderer {
     private static final Logger LOGGER = Logger.getLogger(MermaidRenderer.class.getName());
     private static final String MERMAID_INK_BASE = "https://mermaid.ink";
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final int MAX_ATTEMPTS = 3;
 
     private MermaidRenderer() {
     }
@@ -48,30 +49,54 @@ final class MermaidRenderer {
     }
 
     private static byte[] render(String mermaidSyntax, String pathPrefix) {
-        try {
-            String encoded = Base64.getUrlEncoder().withoutPadding()
-                    .encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
-            URI uri = URI.create(MERMAID_INK_BASE + pathPrefix + encoded);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(TIMEOUT)
+                .build();
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(TIMEOUT)
-                    .build();
+        String encoded = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
+        URI uri = URI.create(MERMAID_INK_BASE + pathPrefix + encoded);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .timeout(TIMEOUT)
-                    .GET()
-                    .build();
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(uri)
+                        .timeout(TIMEOUT)
+                        .GET()
+                        .build();
 
-            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() == 200) {
-                return response.body();
+                HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                if (response.statusCode() == 200) {
+                    return response.body();
+                }
+                LOGGER.log(Level.WARNING, "Mermaid rendering returned status {0} on attempt {1}",
+                        new Object[]{response.statusCode(), attempt});
+            } catch (Exception e) {
+                if (attempt >= MAX_ATTEMPTS) {
+                    LOGGER.log(Level.WARNING, "Failed to render Mermaid diagram", e);
+                    return fallbackBytes(mermaidSyntax, pathPrefix);
+                }
+                LOGGER.log(Level.WARNING, "Retry Mermaid rendering after failure on attempt {0}", attempt);
             }
-            LOGGER.log(Level.WARNING, "Mermaid rendering returned status {0}", response.statusCode());
-            return new byte[0];
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to render Mermaid diagram", e);
-            return new byte[0];
         }
+        return fallbackBytes(mermaidSyntax, pathPrefix);
+    }
+
+    private static byte[] fallbackBytes(String mermaidSyntax, String pathPrefix) {
+        if ("/svg/".equals(pathPrefix)) {
+            String escaped = mermaidSyntax
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;");
+            String svg = """
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="80">
+                      <rect width="100%%" height="100%%" fill="white"/>
+                      <text x="12" y="24" font-family="monospace" font-size="12">Mermaid render fallback</text>
+                      <text x="12" y="44" font-family="monospace" font-size="10">%s</text>
+                    </svg>
+                    """.formatted(escaped);
+            return svg.getBytes(StandardCharsets.UTF_8);
+        }
+        return new byte[0];
     }
 }
