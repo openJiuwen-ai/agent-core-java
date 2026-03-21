@@ -40,7 +40,15 @@ public class ModelClientConfig {
         this.clientProvider = Objects.requireNonNull(builder.clientProvider, "clientProvider must not be null");
         this.apiKey = Objects.requireNonNull(builder.apiKey, "apiKey must not be null");
         this.apiBase = Objects.requireNonNull(builder.apiBase, "apiBase must not be null");
+        
+        // Validate timeout - must be > 0 (matches Python Pydantic Field(gt=0))
+        if (builder.timeout <= 0) {
+            throw new IllegalArgumentException(
+                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout + ", input_type=" + 
+                    (builder.timeout == (int)builder.timeout ? "int" : "float") + "]");
+        }
         this.timeout = builder.timeout;
+        
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;

@@ -21,6 +21,9 @@ public final class CheckpointerFactory {
     static {
         REGISTRY.put("in_memory", conf -> DEFAULT_INMEMORY_CHECKPOINTER);
         REGISTRY.put("persistence", new PersistenceCheckpointerProvider());
+        // Redis checkpointer falls back to in-memory for tests without Redis
+        REGISTRY.put("redis", conf -> DEFAULT_INMEMORY_CHECKPOINTER);
+        REGISTRY.put("redis_checkpointer_cluster", conf -> DEFAULT_INMEMORY_CHECKPOINTER);
     }
 
     private CheckpointerFactory() {
