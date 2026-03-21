@@ -726,8 +726,16 @@ public class Workflow {
      * @param expandSubgraph  subgraph expansion level
      * @return Mermaid syntax string for "mermaid" format; empty string for "png"/"svg" (use drawBytes instead)
      */
-    public String draw(String title, String outputFormat, Object expandSubgraph) {
+    public String draw(Object title, String outputFormat, Object expandSubgraph) {
         return draw(title, outputFormat, expandSubgraph, false);
+    }
+
+    public String draw(Object title, String outputFormat, Object expandSubgraph, Object enableAnimation) {
+        return draw(normalizeTitle(title), outputFormat, expandSubgraph, normalizeEnableAnimation(enableAnimation));
+    }
+
+    public String draw(String title, String outputFormat, Object expandSubgraph) {
+        return draw((Object) title, outputFormat, expandSubgraph, false);
     }
 
     public String draw(String title, String outputFormat, Object expandSubgraph, boolean enableAnimation) {
@@ -737,7 +745,7 @@ public class Workflow {
         if ("svg".equalsIgnoreCase(outputFormat)) {
             throw new UnsupportedOperationException("Use drawBytes() for svg output");
         }
-        return internal.toMermaid(title == null ? "" : title,
+        return internal.toMermaid(normalizeTitle(title),
                 normalizeExpandSubgraph(expandSubgraph),
                 enableAnimation);
     }
@@ -750,12 +758,16 @@ public class Workflow {
      * @param expandSubgraph subgraph expansion level
      * @return image binary data
      */
+    public byte[] drawBytes(Object title, String outputFormat, Object expandSubgraph) {
+        return drawBytes(normalizeTitle(title), outputFormat, expandSubgraph);
+    }
+
     public byte[] drawBytes(String title, String outputFormat, Object expandSubgraph) {
         if ("png".equalsIgnoreCase(outputFormat)) {
-            return internal.toMermaidPng(title == null ? "" : title, normalizeExpandSubgraph(expandSubgraph));
+            return internal.toMermaidPng(normalizeTitle(title), normalizeExpandSubgraph(expandSubgraph));
         }
         if ("svg".equalsIgnoreCase(outputFormat)) {
-            return internal.toMermaidSvg(title == null ? "" : title, normalizeExpandSubgraph(expandSubgraph));
+            return internal.toMermaidSvg(normalizeTitle(title), normalizeExpandSubgraph(expandSubgraph));
         }
         throw new IllegalArgumentException("drawBytes only supports 'png' or 'svg' format, got: " + outputFormat);
     }
@@ -1162,14 +1174,42 @@ public class Workflow {
         throw new IllegalArgumentException("Unsupported session type: " + session.getClass().getSimpleName());
     }
 
+    private String normalizeTitle(Object title) {
+        if (title == null) {
+            return "";
+        }
+        if (title instanceof String titleValue) {
+            return titleValue;
+        }
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                "reason", "'title' type is not str");
+    }
+
+    private boolean normalizeEnableAnimation(Object enableAnimation) {
+        if (enableAnimation instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                "reason", "'enable_animation' type is not bool");
+    }
+
     private int normalizeExpandSubgraph(Object expandSubgraph) {
+        if (expandSubgraph == null) {
+            return 0;
+        }
         if (expandSubgraph instanceof Boolean expand) {
             return expand ? -1 : 0;
         }
         if (expandSubgraph instanceof Number depth) {
-            return depth.intValue();
+            int value = depth.intValue();
+            if (value >= 0) {
+                return value;
+            }
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                    "reason", "'expand_subgraph' type is not bool");
         }
-        return 0;
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                "reason", "'expand_subgraph' type is not bool");
     }
 
     private void validateSession(Object session) {
