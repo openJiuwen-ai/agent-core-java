@@ -273,13 +273,13 @@ public class InMemoryCheckpointer extends Checkpointer {
                 session.state().setState(deepCopyMap(state));
             }
 
+            if (inputs != null) {
+                processInteractiveInputs(session, inputs);
+            }
+
             Map<String, Object> updates = stateUpdatesBlobs.get(workflowId);
             if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
                 workflowState.setUpdates(deepCopyMap(updates));
-            }
-
-            if (inputs != null) {
-                processInteractiveInputs(session, inputs);
             }
         }
 

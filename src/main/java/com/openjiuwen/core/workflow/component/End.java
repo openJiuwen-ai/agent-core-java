@@ -7,6 +7,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 
 import java.util.AbstractMap;
@@ -188,12 +189,8 @@ public class End extends WorkflowComponent {
         return DictUtils.rebuildDict(entries);
     }
 
-    private static Map<String, Object> buildTemplateFrame(int index, Object data) {
-        Map<String, Object> frame = new HashMap<>();
-        frame.put("type", Constant.END_NODE_STREAM);
-        frame.put("index", index);
-        frame.put("payload", Map.of("response", data));
-        return frame;
+    private static OutputSchema buildTemplateFrame(int index, Object data) {
+        return new OutputSchema(Constant.END_NODE_STREAM, index, Map.of("response", data));
     }
 
     private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap) {

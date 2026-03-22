@@ -938,6 +938,9 @@ public class WorkflowEventHandler extends EventHandler {
                 .modelName(modelInfo.getModelName())
                 .temperature(modelInfo.getTemperature())
                 .topP(modelInfo.getTopP())
+                .extraFields(modelInfo.getExtraFields() != null
+                        ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
+                        : new java.util.LinkedHashMap<>())
                 .build();
 
         return new Model(clientConfig, requestConfig);
