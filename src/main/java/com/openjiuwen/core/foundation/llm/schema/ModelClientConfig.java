@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -24,31 +25,30 @@ import java.util.UUID;
 @JsonDeserialize(builder = ModelClientConfig.Builder.class)
 public class ModelClientConfig {
 
-    private String clientId;
-    private String clientProvider;
-    private String apiKey;
-    private String apiBase;
-    private double timeout;
-    private int maxRetries;
-    private boolean verifySsl;
-    private String sslCert;
-    private Map<String, Object> extraFields;
-
-    /** No-arg constructor for setter-based construction (used in tests). */
-    public ModelClientConfig() {
-        this.clientId = UUID.randomUUID().toString();
-        this.timeout = 60.0;
-        this.maxRetries = 3;
-        this.verifySsl = true;
-        this.extraFields = new HashMap<>();
-    }
+    private final String clientId;
+    private final String clientProvider;
+    private final String apiKey;
+    private final String apiBase;
+    private final double timeout;
+    private final int maxRetries;
+    private final boolean verifySsl;
+    private final String sslCert;
+    private final Map<String, Object> extraFields;
 
     private ModelClientConfig(Builder builder) {
         this.clientId = builder.clientId != null ? builder.clientId : UUID.randomUUID().toString();
-        this.clientProvider = builder.clientProvider;
-        this.apiKey = builder.apiKey;
-        this.apiBase = builder.apiBase;
+        this.clientProvider = Objects.requireNonNull(builder.clientProvider, "clientProvider must not be null");
+        this.apiKey = Objects.requireNonNull(builder.apiKey, "apiKey must not be null");
+        this.apiBase = Objects.requireNonNull(builder.apiBase, "apiBase must not be null");
+        
+        // Validate timeout - must be > 0 (matches Python Pydantic Field(gt=0))
+        if (builder.timeout <= 0) {
+            throw new IllegalArgumentException(
+                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout + ", input_type=" + 
+                    (builder.timeout == (int)builder.timeout ? "int" : "float") + "]");
+        }
         this.timeout = builder.timeout;
+        
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;
@@ -82,37 +82,6 @@ public class ModelClientConfig {
 
     @JsonAnyGetter
     public Map<String, Object> getExtraFields() { return extraFields; }
-
-    // ==================== Setters ====================
-
-    @JsonProperty("client_id")
-    public void setClientId(String clientId) { this.clientId = clientId; }
-
-    @JsonProperty("client_provider")
-    public void setClientProvider(String clientProvider) { this.clientProvider = clientProvider; }
-
-    @JsonProperty("api_key")
-    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
-
-    @JsonProperty("api_base")
-    public void setApiBase(String apiBase) { this.apiBase = apiBase; }
-
-    public void setTimeout(double timeout) { this.timeout = timeout; }
-
-    @JsonProperty("max_retries")
-    public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
-
-    @JsonProperty("verify_ssl")
-    public void setVerifySsl(boolean verifySsl) { this.verifySsl = verifySsl; }
-
-    @JsonProperty("ssl_cert")
-    public void setSslCert(String sslCert) { this.sslCert = sslCert; }
-
-    @JsonAnySetter
-    public void setExtraField(String key, Object value) {
-        if (extraFields == null) { extraFields = new HashMap<>(); }
-        extraFields.put(key, value);
-    }
 
     // ==================== Builder ====================
 

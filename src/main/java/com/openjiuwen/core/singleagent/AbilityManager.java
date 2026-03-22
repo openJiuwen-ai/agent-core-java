@@ -372,6 +372,8 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = tool.invoke(toolArgs, Map.of());
+                // Log tool result to match Python behavior
+                Loggers.TOOL.info("Tool result: " + result);
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -407,6 +409,8 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = tool.invoke(toolArgs, Map.of());
+                // Log tool result to match Python behavior
+                Loggers.TOOL.info("Tool result: " + result);
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);

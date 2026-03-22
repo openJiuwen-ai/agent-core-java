@@ -36,7 +36,7 @@ build/
 
 ### Runtime logs ###
 logs/run/run.log
-logs/run/*.log.gz
 
 ### Mac OS ###
 .DS_Store
+/logs/run/run.2026-03-15.1.log.gz

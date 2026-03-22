@@ -87,10 +87,9 @@ class InMemoryCheckpointerTest {
                 "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of("k", "v"), List.of(), Map.of(), Map.of()));
 
-        // postWorkflowExecute rethrows RuntimeException as-is (no extra wrapper), matching Python semantics.
         RuntimeException error = assertThrows(RuntimeException.class,
                 () -> checkpointer.postWorkflowExecute(session, null, new IllegalStateException("boom")));
-        assertInstanceOf(IllegalStateException.class, error);
+        assertInstanceOf(IllegalStateException.class, error.getCause());
         assertTrue(checkpointer.sessionExists("session-1"));
         assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isPresent());
 
