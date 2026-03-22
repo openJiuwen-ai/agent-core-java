@@ -1,117 +1,270 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * 提示词元模板构建器。
- * 对应 Python {@code MetaTemplateBuilder}，接受 ModelRequestConfig 和 ModelClientConfig。
+ * Java translation of Python's MetaTemplateBuilder.
  */
 public class MetaTemplateBuilder {
-    private final ModelRequestConfig modelConfig;
-    private final ModelClientConfig modelClientConfig;
-    /** key: META_TEMPLATE_{name}, value: template string */
-    private final Map<String, String> metaTemplates = new HashMap<>();
 
-    private static final String META_TEMPLATE_NAME_PREFIX = "META_TEMPLATE_";
+    static final String META_TEMPLATE_NAME_PREFIX = "META_TEMPLATE_";
+
+    private final Model model;
+    private final Map<String, PromptTemplate> metaTemplateManager = new HashMap<>();
+    private Class<?> template = PromptTemplatesZh.class;
 
     public MetaTemplateBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        this.modelConfig = modelConfig;
-        this.modelClientConfig = modelClientConfig;
+        this.model = new Model(modelClientConfig, modelConfig);
     }
 
-    /**
-     * 注册自定义元模板。
-     * 对应 Python {@code register_meta_template(name, meta_template)}。
-     *
-     * @param name    模板名称（不含前缀）
-     * @param content String 或 PromptTemplate
-     */
-    public void registerMetaTemplate(String name, Object content) {
+    public PromptTemplate getMetaTemplate(String templateName) {
+        return metaTemplateManager.get(templateName);
+    }
+
+    public PromptTemplate popMetaTemplate(String templateName) {
+        return metaTemplateManager.remove(templateName);
+    }
+
+    public void registerMetaTemplate(String name, Object metaTemplate) {
         String templateName = META_TEMPLATE_NAME_PREFIX + name;
-        if (content instanceof String s) {
-            metaTemplates.put(templateName, s);
-        } else if (content instanceof PromptTemplate pt) {
-            Object c = pt.getContent();
-            metaTemplates.put(templateName, c != null ? c.toString() : "");
+        PromptTemplate templateToRegister;
+        if (metaTemplate instanceof String content) {
+            templateToRegister = PromptTemplate.builder().content(content).build();
+        } else if (metaTemplate instanceof PromptTemplate promptTemplate) {
+            templateToRegister = copyPromptTemplate(promptTemplate);
         } else {
-            throw new IllegalArgumentException(
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
                     "failed to register meta-template: " + name
-                            + ", content must be String or PromptTemplate but was: "
-                            + content.getClass().getName());
+            );
         }
+        metaTemplateManager.put(templateName, templateToRegister);
     }
 
-    /**
-     * 构建提示词（阻塞，需要真实 LLM 连接）。
-     * 对应 Python {@code async def build(...)}。
-     *
-     * @param prompt             提示词字符串
-     * @param tools              工具列表（可为 null）
-     * @param templateType       模板类型："general" / "plan" / "other"
-     * @param customTemplateName templateType 为 "other" 时必填的模板名称
-     * @param language           语言："zh-CN" / "en-US"
-     * @return Mono 包含生成结果
-     */
-    public Mono<Optional<String>> build(Object prompt, Object tools, String templateType,
-                                        String customTemplateName, String language) {
-        validateBuildParams(prompt, tools, templateType, customTemplateName);
-        return Mono.error(new UnsupportedOperationException("Stub: requires real LLM connection."));
+    public Mono<Optional<String>> build(
+            Object prompt,
+            Object tools,
+            String templateType,
+            String customTemplateName,
+            String language
+    ) {
+        return Mono.fromCallable(() -> {
+            template = resolveTemplate(language);
+            String promptContent = PromptTemplateUtils.getStringPrompt(prompt);
+            List<ToolInfo> toolInfos = normalizeTools(tools);
+            isValidPrompt(promptContent, toolInfos);
+            List<BaseMessage> messages = formatMetaTemplate(promptContent, toolInfos, templateType, customTemplateName);
+            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+            if (response == null || response.getContent() == null) {
+                return Optional.empty();
+            }
+            return Optional.of(response.getContentAsString());
+        });
     }
 
-    /**
-     * 流式构建提示词（需要真实 LLM 连接）。
-     * 对应 Python {@code async def stream_build(...)}。
-     */
-    public Flux<String> streamBuild(Object prompt, Object tools, String templateType,
-                                    String customTemplateName, String language) {
-        validateBuildParams(prompt, tools, templateType, customTemplateName);
-        return Flux.error(new UnsupportedOperationException("Stub: requires real LLM connection."));
+    public Flux<String> streamBuild(
+            Object prompt,
+            Object tools,
+            String templateType,
+            String customTemplateName,
+            String language
+    ) {
+        return Flux.defer(() -> {
+            try {
+                template = resolveTemplate(language);
+                String promptContent = PromptTemplateUtils.getStringPrompt(prompt);
+                List<ToolInfo> toolInfos = normalizeTools(tools);
+                isValidPrompt(promptContent, toolInfos);
+                List<BaseMessage> messages = formatMetaTemplate(promptContent, toolInfos, templateType, customTemplateName);
+                Iterator<AssistantMessageChunk> iterator =
+                        model.stream(messages, null, null, null, null, null, null, null, null, null);
+                Iterable<AssistantMessageChunk> iterable = () -> iterator;
+                return Flux.fromIterable(iterable).map(chunk -> chunk != null ? chunk.getContentAsString() : "");
+            } catch (RuntimeException exception) {
+                return Flux.error(exception);
+            } catch (Exception exception) {
+                return Flux.error(Exceptions.propagate(exception));
+            }
+        });
     }
 
-    /**
-     * 参数校验，对应 Python {@code _is_valid_prompt} 和 {@code _format_meta_template} 前置检查。
-     */
-    private void validateBuildParams(Object prompt, Object tools, String templateType,
-                                     String customTemplateName) {
-        // prompt 类型检查
-        if (!(prompt instanceof String)) {
-            throw new IllegalArgumentException("prompt must be a String");
-        }
-        // prompt 不能为空（对应 Python _is_valid_prompt: prompt.strip()）
-        if (((String) prompt).isBlank()) {
-            throw new IllegalArgumentException("prompt cannot be empty");
-        }
-        // tools 类型检查
-        if (tools != null && !(tools instanceof List<?>)) {
-            throw new IllegalArgumentException("tools must be List or null");
-        }
-        // other 类型模板校验（对应 Python _format_custom_meta_template 前置检查）
+    private List<BaseMessage> formatMetaTemplate(
+            String prompt,
+            List<ToolInfo> tools,
+            String templateType,
+            String customTemplateName
+    ) {
         if ("other".equals(templateType)) {
-            if (customTemplateName == null || customTemplateName.isBlank()) {
-                throw new IllegalArgumentException(
-                        "failed to get custom meta-template, please provide template name");
-            }
-            String key = META_TEMPLATE_NAME_PREFIX + customTemplateName;
-            if (!metaTemplates.containsKey(key)) {
-                throw new IllegalArgumentException(
-                        "failed to get custom meta-template: " + key);
-            }
-            if (metaTemplates.get(key).isBlank()) {
-                throw new IllegalArgumentException(
-                        "registered meta template cannot be empty");
+            return formatCustomMetaTemplate(customTemplateName, prompt, tools);
+        }
+        return formatPredefinedMetaTemplate(templateType, prompt, tools);
+    }
+
+    private List<BaseMessage> formatPredefinedMetaTemplate(
+            String templateType,
+            String prompt,
+            List<ToolInfo> tools
+    ) {
+        PromptTemplate metaSystemTemplate;
+        PromptTemplate metaUserTemplate;
+        if ("plan".equals(templateType)) {
+            metaSystemTemplate = getTemplateField("PROMPT_BUILD_PLAN_META_SYSTEM_TEMPLATE");
+            metaUserTemplate = getTemplateField("PROMPT_BUILD_PLAN_META_USER_TEMPLATE");
+        } else {
+            metaSystemTemplate = getTemplateField("PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE");
+            metaUserTemplate = getTemplateField("PROMPT_BUILD_GENERAL_META_USER_TEMPLATE");
+        }
+
+        Map<String, Object> formatParams = new HashMap<>();
+        formatParams.put("instruction", prompt);
+        formatParams.put("tools", stringifyTools(tools));
+
+        List<BaseMessage> messages = new ArrayList<>(metaSystemTemplate.toMessages());
+        messages.addAll(metaUserTemplate.format(formatParams).toMessages());
+        return messages;
+    }
+
+    private List<BaseMessage> formatCustomMetaTemplate(
+            String customMetaTemplateName,
+            String prompt,
+            List<ToolInfo> tools
+    ) {
+        if (customMetaTemplateName == null || customMetaTemplateName.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "failed to get custom meta-template, please provide template name"
+            );
+        }
+
+        String templateName = META_TEMPLATE_NAME_PREFIX + customMetaTemplateName;
+        PromptTemplate customMetaTemplate = metaTemplateManager.get(templateName);
+        if (customMetaTemplate == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "failed to get custom meta-template: " + templateName
+            );
+        }
+
+        Map<String, Object> formatParams = new HashMap<>();
+        formatParams.put("instruction", prompt);
+        formatParams.put("tools", stringifyTools(tools));
+        return customMetaTemplate.format(formatParams).toMessages();
+    }
+
+    private void isValidPrompt(String prompt, List<ToolInfo> tools) {
+        if (prompt == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "prompt cannot be None"
+            );
+        }
+        if (prompt.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "prompt cannot be empty"
+            );
+        }
+        if (tools != null && tools.stream().anyMatch(tool -> !(tool instanceof ToolInfo))) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "each tool must be an instance of ToolInfo"
+            );
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ToolInfo> normalizeTools(Object tools) {
+        if (tools == null) {
+            return null;
+        }
+        if (!(tools instanceof List<?> list)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "each tool must be an instance of ToolInfo"
+            );
+        }
+        for (Object item : list) {
+            if (!(item instanceof ToolInfo)) {
+                throw ErrorHelper.buildError(
+                        StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                        "error_msg",
+                        "each tool must be an instance of ToolInfo"
+                );
             }
         }
+        return (List<ToolInfo>) list;
+    }
+
+    private String stringifyTools(List<ToolInfo> tools) {
+        return tools == null ? "None" : String.valueOf(tools);
+    }
+
+    private PromptTemplate getTemplateField(String fieldName) {
+        try {
+            Field field = template.getField(fieldName);
+            return (PromptTemplate) field.get(null);
+        } catch (ReflectiveOperationException exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
+                    "error_msg",
+                    "failed to load meta-template: " + fieldName
+            );
+        }
+    }
+
+    private Class<?> resolveTemplate(String language) {
+        Object resolved = PromptTemplateUtils.selectTemplate(language);
+        if (resolved instanceof Class<?> templateClass) {
+            return templateClass;
+        }
+        return PromptTemplatesZh.class;
+    }
+
+    private PromptTemplate copyPromptTemplate(PromptTemplate templateToCopy) {
+        Object content = templateToCopy.getContent();
+        Object copiedContent;
+        if (content instanceof String) {
+            copiedContent = content;
+        } else if (content instanceof List<?>) {
+            copiedContent = templateToCopy.toMessages();
+        } else {
+            copiedContent = content;
+        }
+        return PromptTemplate.builder()
+                .name(templateToCopy.getName())
+                .content(copiedContent)
+                .placeholderPrefix(templateToCopy.getPlaceholderPrefix())
+                .placeholderSuffix(templateToCopy.getPlaceholderSuffix())
+                .build();
     }
 }

@@ -150,6 +150,9 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                     <parameters>true</parameters>
+                    <testExcludes>
+                        <testExclude>**/core/systemtest/**</testExclude>
+                    </testExcludes>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
