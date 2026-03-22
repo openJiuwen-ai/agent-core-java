@@ -66,6 +66,10 @@ public class WorkflowInteraction extends BaseInteraction {
             return res;
         }
 
+        if (session.state() instanceof WorkflowStateCollection stateCollection) {
+            stateCollection.commitCmp();
+        }
+
         InteractionOutput payload = new InteractionOutput(nodeId, value);
 
         Map<String, Object> outputData = new HashMap<>();

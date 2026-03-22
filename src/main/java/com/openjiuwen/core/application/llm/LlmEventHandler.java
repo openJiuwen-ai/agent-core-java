@@ -623,6 +623,9 @@ public class LlmEventHandler extends EventHandler {
                 .modelName(modelInfo.getModelName())
                 .temperature(modelInfo.getTemperature())
                 .topP(modelInfo.getTopP())
+                .extraFields(modelInfo.getExtraFields() != null
+                        ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
+                        : new java.util.LinkedHashMap<>())
                 .build();
 
         return new Model(clientConfig, requestConfig);
@@ -765,7 +768,14 @@ public class LlmEventHandler extends EventHandler {
             }
             if (query instanceof InteractiveInput interactiveInput) {
                 Object rawInputs = interactiveInput.getRawInputs();
-                return rawInputs != null ? String.valueOf(rawInputs) : "";
+                if (rawInputs != null) {
+                    return String.valueOf(rawInputs);
+                }
+                Map<String, Object> userInputs = interactiveInput.getUserInputs();
+                if (userInputs != null && !userInputs.isEmpty()) {
+                    return String.valueOf(userInputs.values().iterator().next());
+                }
+                return "";
             }
             Object content = inputMap.get("content");
             if (content instanceof String s) {

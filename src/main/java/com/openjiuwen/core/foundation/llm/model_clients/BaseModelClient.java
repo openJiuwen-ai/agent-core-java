@@ -209,6 +209,14 @@ public abstract class BaseModelClient {
             params.put("max_tokens", finalMaxTokens);
         }
 
+        if (modelConfig != null && modelConfig.getUser() != null) {
+            params.put("user", modelConfig.getUser());
+        }
+
+        if (modelConfig != null && modelConfig.getSeed() != null) {
+            params.put("seed", modelConfig.getSeed());
+        }
+
         String finalStop = stop != null ? stop
                 : (modelConfig != null ? modelConfig.getStop() : null);
         if (finalStop != null) {
@@ -219,6 +227,14 @@ public abstract class BaseModelClient {
         if (toolsDict != null && !toolsDict.isEmpty()) {
             params.put("tools", toolsDict);
             params.put("tool_choice", "auto");
+        }
+
+        if (modelConfig != null && modelConfig.getExtraFields() != null) {
+            for (var entry : modelConfig.getExtraFields().entrySet()) {
+                if (entry.getValue() != null) {
+                    params.put(entry.getKey(), entry.getValue());
+                }
+            }
         }
 
         // Add extra kwargs (excluding internal params)
