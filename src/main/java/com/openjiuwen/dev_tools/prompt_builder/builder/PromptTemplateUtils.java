@@ -37,6 +37,9 @@ public final class PromptTemplateUtils {
      * @return 模板类
      */
     public static Object selectTemplate(String language) {
+        if (language == null) {
+            return PromptTemplatesZh.class;
+        }
         return TEMPLATE_MAP.getOrDefault(language, PromptTemplatesZh.class);
     }
 
@@ -84,7 +87,7 @@ public final class PromptTemplateUtils {
             }
         }
         throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
-                "error_msg", "Prompt type " + (prompt != null ? prompt.getClass().getName() : "null") + " is not supported");
+                "error_msg", "Prompt type " + toPythonTypeString(prompt) + " is not supported");
     }
 
     /**
@@ -94,5 +97,30 @@ public final class PromptTemplateUtils {
      */
     public static Map<String, Object> getTemplateMap() {
         return TEMPLATE_MAP;
+    }
+
+    private static String toPythonTypeString(Object value) {
+        if (value == null) {
+            return "<class 'NoneType'>";
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return "<class 'int'>";
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return "<class 'float'>";
+        }
+        if (value instanceof Boolean) {
+            return "<class 'bool'>";
+        }
+        if (value instanceof List<?>) {
+            return "<class 'list'>";
+        }
+        if (value instanceof Map<?, ?>) {
+            return "<class 'dict'>";
+        }
+        if (value instanceof String) {
+            return "<class 'str'>";
+        }
+        return "<class '" + value.getClass().getSimpleName() + "'>";
     }
 }
