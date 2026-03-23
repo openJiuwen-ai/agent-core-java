@@ -3,17 +3,17 @@
  */
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.sysop.BaseOperation;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.registry.OperationDef;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for custom operation extension and registry.

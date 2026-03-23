@@ -3,10 +3,11 @@
  */
 package com.openjiuwen.core.sysop;
 
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for SysOperation facade.

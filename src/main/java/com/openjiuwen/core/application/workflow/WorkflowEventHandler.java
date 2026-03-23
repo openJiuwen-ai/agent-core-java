@@ -106,12 +106,49 @@ public class WorkflowEventHandler extends EventHandler {
      * Handle user input: detect intent, select workflow, execute or resume.
      */
     private Map<String, Object> handleUserInput(Event event, AgentSessionApi session) {
+        InteractiveInput interactiveInput = extractInteractiveInput(event);
+        WorkflowIntent intent = intentDetection(event, session);
+        if (intent == null) {
+            return Map.of("output", "", "result_type", "answer");
+        }
+
+        return switch (intent.intentType()) {
+            case DEFAULT_RESPONSE -> {
+                String defaultText = String.valueOf(intent.metadata().getOrDefault("default_response_text", ""));
+                Loggers.CONTROLLER.info("Using default response: {}", defaultText);
+                Map<String, Object> result = new HashMap<>();
+                result.put("output", defaultText);
+                result.put("result_type", "answer");
+                OutputSchema os = new OutputSchema("answer", 0, result);
+                session.writeStream(os);
+                yield result;
+            }
+            case RESUME_TASK -> {
+                WorkflowSchema workflow = intent.workflow();
+                Task task = intent.task();
+                if (Boolean.TRUE.equals(intent.metadata().get("return_interruption"))) {
+                    Loggers.CONTROLLER.info("Returning saved interruption for workflow {}", workflow.getName());
+                    yield returnSavedInterruption(workflow, session);
+                }
+                Loggers.CONTROLLER.info("Resuming interrupted task for workflow {}", workflow.getName());
+                setTaskArguments(task, buildResumeArguments(interactiveInput, task, event, session));
+                task.setStatus(TaskStatus.INPUT_REQUIRED);
+                yield execTask(event, task, session, workflow);
+            }
+            case EXEC_NEW_TASK -> {
+                Loggers.CONTROLLER.info("No interrupted task for workflow {}, creating new task",
+                        intent.workflow().getName());
+                yield execTask(event, intent.task(), session, intent.workflow());
+            }
+        };
+    }
+
+    WorkflowIntent intentDetection(Event event, AgentSessionApi session) {
         List<WorkflowSchema> workflows = agentConfig.getWorkflows();
         if (workflows == null || workflows.isEmpty()) {
             throw new IllegalStateException("No workflows configured for agent");
         }
 
-        // Fast path: InteractiveInput with node_id - directly resume workflow
         InteractiveInput interactiveInput = extractInteractiveInput(event);
         if (interactiveInput != null && interactiveInput.getUserInputs() != null
                 && !interactiveInput.getUserInputs().isEmpty()) {
@@ -119,12 +156,15 @@ public class WorkflowEventHandler extends EventHandler {
             if (resumeResult != null) {
                 Loggers.CONTROLLER.info("InteractiveInput detected, directly resuming workflow: {}",
                         resumeResult.workflow.getName());
-                setTaskArguments(resumeResult.task, interactiveInput);
-                return execTask(event, resumeResult.task, session, resumeResult.workflow);
+                return new WorkflowIntent(
+                        WorkflowIntent.Type.RESUME_TASK,
+                        resumeResult.task,
+                        resumeResult.workflow,
+                        Map.of()
+                );
             }
         }
 
-        // Select workflow
         WorkflowSchema detectedWorkflow;
         if (workflows.size() == 1) {
             detectedWorkflow = workflows.get(0);
@@ -135,41 +175,44 @@ public class WorkflowEventHandler extends EventHandler {
                 DefaultResponse defaultResponse = agentConfig.getDefaultResponse();
                 if (defaultResponse != null && defaultResponse.getText() != null
                         && !defaultResponse.getText().isEmpty()) {
-                    Loggers.CONTROLLER.info("Using default response: {}", defaultResponse.getText());
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("output", defaultResponse.getText());
-                    result.put("result_type", "answer");
-                    OutputSchema os = new OutputSchema("answer", 0, result);
-                    session.writeStream(os);
-                    return result;
+                    return new WorkflowIntent(
+                            WorkflowIntent.Type.DEFAULT_RESPONSE,
+                            null,
+                            null,
+                            Map.of("default_response_text", defaultResponse.getText())
+                    );
                 }
                 detectedWorkflow = workflows.get(0);
             }
             Loggers.CONTROLLER.info("Multi workflow mode: detected {}", detectedWorkflow.getName());
         }
 
-        // Check for interrupted task
         Task interruptedTask = findInterruptedTask(detectedWorkflow, session);
         if (interruptedTask != null) {
             boolean shouldResume = shouldResumeInterruptedTask(interruptedTask, event, session);
             if (shouldResume) {
-                Loggers.CONTROLLER.info("Resuming interrupted task for workflow {}", detectedWorkflow.getName());
-                // Update task with user input
-                setTaskArguments(interruptedTask, buildResumeArguments(interactiveInput, interruptedTask, event, session));
-                interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
-                return execTask(event, interruptedTask, session, detectedWorkflow);
-            } else {
-                Loggers.CONTROLLER.info(
-                        "Returning saved interruption for workflow {}", detectedWorkflow.getName());
-                return returnSavedInterruption(detectedWorkflow, session);
+                return new WorkflowIntent(
+                        WorkflowIntent.Type.RESUME_TASK,
+                        interruptedTask,
+                        detectedWorkflow,
+                        Map.of()
+                );
             }
+            return new WorkflowIntent(
+                    WorkflowIntent.Type.RESUME_TASK,
+                    interruptedTask,
+                    detectedWorkflow,
+                    Map.of("return_interruption", true)
+            );
         }
 
-        // Create new task
-        Loggers.CONTROLLER.info("No interrupted task for workflow {}, creating new task",
-                detectedWorkflow.getName());
         Task newTask = createNewTask(event, detectedWorkflow, session);
-        return execTask(event, newTask, session, detectedWorkflow);
+        return new WorkflowIntent(
+                WorkflowIntent.Type.EXEC_NEW_TASK,
+                newTask,
+                detectedWorkflow,
+                Map.of()
+        );
     }
 
     // ==================== Task Execution ====================
@@ -177,8 +220,8 @@ public class WorkflowEventHandler extends EventHandler {
     /**
      * Execute workflow task.
      */
-    private Map<String, Object> execTask(Event event, Task task,
-                                          AgentSessionApi session, WorkflowSchema workflowSchema) {
+    Map<String, Object> execTask(Event event, Task task,
+                                 AgentSessionApi session, WorkflowSchema workflowSchema) {
         String workflowId = workflowSchema.getId() + "_" + workflowSchema.getVersion();
         boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
 
@@ -295,7 +338,7 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== Interruption Handling ====================
 
-    private void interruptTask(Task task, AgentSessionApi session, List<Object> interactionData) {
+    void interruptTask(Task task, AgentSessionApi session, List<Object> interactionData) {
         String workflowId = task.getMetadata() != null
                 ? (String) task.getMetadata().get("workflow_id") : "";
         if (workflowId == null || workflowId.isEmpty()) {

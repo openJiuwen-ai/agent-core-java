@@ -5,6 +5,7 @@ package com.openjiuwen.core.retrieval;
 
 import com.google.gson.JsonObject;
 import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
@@ -26,7 +27,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MilvusKnowledgeBaseTest {
 

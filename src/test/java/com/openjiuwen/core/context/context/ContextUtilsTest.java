@@ -5,6 +5,7 @@ package com.openjiuwen.core.context.context;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -5,6 +5,7 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.context.token.SimpleTokenCounter;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.Session;
 import org.junit.jupiter.api.BeforeEach;

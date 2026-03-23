@@ -5,7 +5,11 @@ package com.openjiuwen.core.retrieval.indexing.indexer;
 
 import com.google.gson.JsonObject;
 import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.retrieval.common.*;
+import com.openjiuwen.core.retrieval.common.BaseCallback;
+import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.IndexConfig;
+import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 import io.milvus.v2.client.MilvusClientV2;
@@ -22,9 +26,15 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MilvusIndexerTest {
 

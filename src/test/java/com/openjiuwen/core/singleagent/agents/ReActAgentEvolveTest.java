@@ -3,7 +3,11 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.BaseAgent;
-import com.openjiuwen.core.singleagent.rail.*;
+import com.openjiuwen.core.singleagent.rail.EventInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

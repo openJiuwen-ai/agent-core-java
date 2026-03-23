@@ -11,6 +11,7 @@ import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

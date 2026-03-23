@@ -4,7 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.llm.LlmController;
 import com.openjiuwen.core.application.llm.LlmEventHandler;
-import com.openjiuwen.core.application.schema.*;
+import com.openjiuwen.core.application.schema.ConstrainConfig;
+import com.openjiuwen.core.application.schema.LlmAgentConfig;
+import com.openjiuwen.core.application.schema.PluginSchema;
+import com.openjiuwen.core.application.schema.ReActAgentConfig;
+import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.application.workflow.WorkflowAgent;
 import com.openjiuwen.core.application.workflow.WorkflowController;
 import com.openjiuwen.core.application.workflow.WorkflowEventHandler;
@@ -30,7 +35,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApplicationTranslationRegressionTest {
 
