@@ -11,9 +11,7 @@ import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
@@ -276,7 +274,7 @@ class LocalShellOperationTest {
             Thread.sleep(1000);
             try {
                 java.nio.file.Files.walk(separateDir)
-                        .sorted(Comparator.reverseOrder())
+                        .sorted(java.util.Comparator.reverseOrder())
                         .forEach(p -> { try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} });
             } catch (Exception ignored) {}
         }

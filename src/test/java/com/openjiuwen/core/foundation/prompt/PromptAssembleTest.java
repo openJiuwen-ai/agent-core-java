@@ -3,16 +3,28 @@
  */
 package com.openjiuwen.core.foundation.prompt;
 
-import com.openjiuwen.core.foundation.llm.schema.*;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.assemble.PromptAssembler;
 import com.openjiuwen.core.foundation.prompt.assemble.variables.DictableVariable;
 import com.openjiuwen.core.foundation.prompt.assemble.variables.TextableVariable;
 import com.openjiuwen.core.foundation.prompt.assemble.variables.Variable;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 

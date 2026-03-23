@@ -2,6 +2,7 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import org.junit.jupiter.api.Test;
 

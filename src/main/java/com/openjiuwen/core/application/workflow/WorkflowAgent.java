@@ -4,6 +4,7 @@
 package com.openjiuwen.core.application.workflow;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
@@ -38,6 +39,12 @@ public class WorkflowAgent extends ControllerAgent {
      */
     public WorkflowAgent(WorkflowAgentConfig agentConfig) {
         super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig());
+        if (agentConfig.getControllerType() != null
+                && agentConfig.getControllerType() != ControllerType.WORKFLOW_CONTROLLER) {
+            throw new UnsupportedOperationException(
+                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + agentConfig.getControllerType()
+            );
+        }
         this.agentConfig = agentConfig;
 
         // Set up the WorkflowEventHandler on the controller

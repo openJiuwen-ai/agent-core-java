@@ -3,46 +3,15 @@
  */
 package com.openjiuwen.core.application.schema;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * Memory configuration for application agents.
+ * Compatibility alias for the shared memory-module {@code AgentMemoryConfig}.
  * <p>
- * Mirrors Python's {@code AgentMemoryConfig} used in ReActAgentConfig.
+ * Kept in the application package so application-layer APIs can reference a
+ * local type name without diverging from the real runtime model.
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AgentMemoryConfig {
+public class AgentMemoryConfig extends com.openjiuwen.core.memory.config.AgentMemoryConfig {
 
-    @Builder.Default
-    private boolean enableLongTermMem = false;
-
-    @Builder.Default
-    private boolean enableFragmentMemory = false;
-
-    @Builder.Default
-    private boolean enableSummaryMemory = false;
-
-    @Builder.Default
-    private List<MemVariable> memVariables = new ArrayList<>();
-
-    /**
-     * Memory variable definition.
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class MemVariable {
-        private String name;
-        private String description;
+    public AgentMemoryConfig() {
+        super();
     }
 }

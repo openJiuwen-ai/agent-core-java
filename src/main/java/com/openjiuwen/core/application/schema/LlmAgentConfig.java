@@ -3,16 +3,18 @@
  */
 package com.openjiuwen.core.application.schema;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +29,7 @@ import java.util.Map;
  * Mirrors Python's {@code LegacyReActAgentConfig} used by LLMAgent.
  */
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class LlmAgentConfig {
@@ -41,6 +43,11 @@ public class LlmAgentConfig {
     private String description = "";
 
     @Builder.Default
+    @JsonProperty("controller_type")
+    @JsonAlias("controllerType")
+    private ControllerType controllerType = ControllerType.REACT_CONTROLLER;
+
+    @Builder.Default
     private List<WorkflowSchema> workflows = new ArrayList<>();
 
     @Builder.Default
@@ -49,33 +56,41 @@ public class LlmAgentConfig {
     private ModelConfig model;
 
     @Builder.Default
+    @JsonProperty("prompt_template_name")
+    @JsonAlias("promptTemplateName")
+    private String promptTemplateName = "react_system_prompt";
+
+    @Builder.Default
+    @JsonProperty("prompt_template")
+    @JsonAlias("promptTemplate")
     private List<Map<String, String>> promptTemplate = new ArrayList<>();
 
     @Builder.Default
     private List<String> tools = new ArrayList<>();
 
     @Builder.Default
+    @JsonProperty("memory_scope_id")
+    @JsonAlias("memoryScopeId")
     private String memoryScopeId = "";
 
     @Builder.Default
+    @JsonProperty("agent_memory_config")
+    @JsonAlias("agentMemoryConfig")
     private AgentMemoryConfig agentMemoryConfig = AgentMemoryConfig.builder().build();
 
     @Builder.Default
-    private ConstrainConfig constrain = new ConstrainConfig();
+    private ConstrainConfig constrain = ConstrainConfig.builder().build();
 
+    @JsonProperty("context_engine_config")
+    @JsonAlias("contextEngineConfig")
     private ContextEngineConfig contextEngineConfig;
 
+    @JsonProperty("default_response")
+    @JsonAlias("defaultResponse")
     private DefaultResponse defaultResponse;
 
-    /**
-     * Constraint configuration for ReAct loop.
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ConstrainConfig {
-        @Builder.Default
-        private int maxIteration = 5;
+    @JsonProperty("context_window_limit")
+    public int getContextWindowLimit() {
+        return constrain != null ? constrain.getReservedMaxChatRounds() : 10;
     }
 }

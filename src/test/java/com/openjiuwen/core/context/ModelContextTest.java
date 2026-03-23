@@ -4,11 +4,18 @@
 package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.context.token.TokenCounter;
-import com.openjiuwen.core.foundation.llm.schema.*;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -932,7 +939,7 @@ class ModelContextTest {
             ((SessionModelContext) context).offloadMessages("handle-1", msgs);
             var tool = context.reloaderTool();
             Object result = tool.invoke(
-                    Map.of("offload_handle", "handle-1", "offload_type", "in_memory"), null);
+                    java.util.Map.of("offload_handle", "handle-1", "offload_type", "in_memory"), null);
             String resultStr = result.toString();
             assertTrue(resultStr.contains("handle-1"));
         }
@@ -943,7 +950,7 @@ class ModelContextTest {
             ModelContext context = createContext();
             var tool = context.reloaderTool();
             Object result = tool.invoke(
-                    Map.of("offload_handle", "nonexistent", "offload_type", "in_memory"), null);
+                    java.util.Map.of("offload_handle", "nonexistent", "offload_type", "in_memory"), null);
             String resultStr = result.toString();
             assertTrue(resultStr.contains("Failed to reload"));
             assertTrue(resultStr.contains("nonexistent"));
@@ -997,7 +1004,7 @@ class ModelContextTest {
         void testLoadEmptyStateClearsBuffer() {
             ModelContext context = createContext();
             context.addMessages(new UserMessage("x"));
-            ((SessionModelContext) context).loadState(Map.of());
+            ((SessionModelContext) context).loadState(java.util.Map.of());
             assertEquals(0, context.size());
         }
 

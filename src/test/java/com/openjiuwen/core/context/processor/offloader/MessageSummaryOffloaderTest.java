@@ -4,6 +4,7 @@
 package com.openjiuwen.core.context.processor.offloader;
 
 import com.openjiuwen.core.common.exception.BaseError;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -109,7 +110,7 @@ class MessageSummaryOffloaderTest {
                     .messagesThreshold(100)
                     .tokensThreshold(15000)
                     .largeMessageThreshold(500)
-                    .offloadMessageType(List.of("user", "assistant"))
+                    .offloadMessageType(java.util.List.of("user", "assistant"))
                     .messagesToKeep(10)
                     .keepLastRound(true)
                     .customizedSummaryPrompt("Custom summary prompt")
@@ -117,7 +118,7 @@ class MessageSummaryOffloaderTest {
             assertEquals(100, config.getMessagesThreshold());
             assertEquals(15000, config.getTokensThreshold());
             assertEquals(500, config.getLargeMessageThreshold());
-            assertEquals(List.of("user", "assistant"), config.getOffloadMessageType());
+            assertEquals(java.util.List.of("user", "assistant"), config.getOffloadMessageType());
             assertEquals(10, config.getMessagesToKeep());
             assertTrue(config.isKeepLastRound());
             assertEquals("Custom summary prompt", config.getCustomizedSummaryPrompt());

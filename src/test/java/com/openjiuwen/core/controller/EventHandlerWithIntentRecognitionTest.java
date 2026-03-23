@@ -4,9 +4,23 @@
 package com.openjiuwen.core.controller;
 
 import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.controller.modules.*;
-import com.openjiuwen.core.controller.schema.*;
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
+import com.openjiuwen.core.controller.modules.EventHandlerWithIntentRecognition;
+import com.openjiuwen.core.controller.modules.IntentRecognizer;
+import com.openjiuwen.core.controller.modules.TaskFilter;
+import com.openjiuwen.core.controller.modules.TaskManager;
+import com.openjiuwen.core.controller.modules.TaskScheduler;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Intent;
+import com.openjiuwen.core.controller.schema.IntentType;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
+import com.openjiuwen.core.controller.schema.TaskFailedEvent;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,7 +30,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 

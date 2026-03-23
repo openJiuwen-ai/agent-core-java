@@ -8,6 +8,7 @@ import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.internal.RouterSession;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.component.BranchComponent;
 import com.openjiuwen.core.workflow.component.Start;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
@@ -17,13 +18,22 @@ import com.openjiuwen.core.workflow.component.loop.LoopSetVariableComponent;
 import com.openjiuwen.core.workflow.component.loop.callback.IntermediateLoopVarCallback;
 import com.openjiuwen.core.workflow.component.loop.callback.OutputCallback;
 import com.openjiuwen.core.workflow.condition.NumberCondition;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Workflow regression tests ported from Python workflow unit tests.

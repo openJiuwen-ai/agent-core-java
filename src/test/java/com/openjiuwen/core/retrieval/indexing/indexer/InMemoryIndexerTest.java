@@ -3,7 +3,11 @@
  */
 package com.openjiuwen.core.retrieval.indexing.indexer;
 
-import com.openjiuwen.core.retrieval.common.*;
+import com.openjiuwen.core.retrieval.common.BaseCallback;
+import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.IndexConfig;
+import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
 import org.junit.jupiter.api.Test;

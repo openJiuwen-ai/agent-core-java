@@ -4,6 +4,7 @@
 package com.openjiuwen.core.foundation.tool.mcp;
 
 import com.openjiuwen.core.foundation.tool.schema.McpToolInfo;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.application.schema;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,5 +23,9 @@ import lombok.NoArgsConstructor;
 public class DefaultResponse {
 
     @Builder.Default
-    private String text = "";
+    @JsonProperty("type")
+    @JsonAlias("type")
+    private String type = "text";
+
+    private String text;
 }
