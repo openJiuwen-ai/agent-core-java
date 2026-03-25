@@ -726,19 +726,19 @@ public class Workflow {
      * @param expandSubgraph  subgraph expansion level
      * @return Mermaid syntax string for "mermaid" format; empty string for "png"/"svg" (use drawBytes instead)
      */
+    public String draw() {
+        return draw("", "mermaid", false, false);
+    }
+
+    public String draw(String title) {
+        return draw(title, "mermaid", false, false);
+    }
+
     public String draw(Object title, String outputFormat, Object expandSubgraph) {
         return draw(title, outputFormat, expandSubgraph, false);
     }
 
     public String draw(Object title, String outputFormat, Object expandSubgraph, Object enableAnimation) {
-        return draw(normalizeTitle(title), outputFormat, expandSubgraph, normalizeEnableAnimation(enableAnimation));
-    }
-
-    public String draw(String title, String outputFormat, Object expandSubgraph) {
-        return draw((Object) title, outputFormat, expandSubgraph, false);
-    }
-
-    public String draw(String title, String outputFormat, Object expandSubgraph, boolean enableAnimation) {
         if ("png".equalsIgnoreCase(outputFormat)) {
             throw new UnsupportedOperationException("Use drawBytes() for png output");
         }
@@ -747,7 +747,7 @@ public class Workflow {
         }
         return internal.toMermaid(normalizeTitle(title),
                 normalizeExpandSubgraph(expandSubgraph),
-                enableAnimation);
+                normalizeEnableAnimation(enableAnimation));
     }
 
     /**
