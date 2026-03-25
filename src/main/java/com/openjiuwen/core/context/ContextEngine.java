@@ -145,12 +145,38 @@ public class ContextEngine {
     }
 
     /**
+     * Compatibility helper for translated tests that create a context without
+     * explicitly passing processors, history, or token counter.
+     */
+    public ModelContext createContextSimple(String contextId, Session session) {
+        return createContext(contextId, session);
+    }
+
+    /**
+     * Compatibility helper for translated tests that create a context with
+     * initial history messages only.
+     */
+    public ModelContext createContextWithHistory(
+            String contextId,
+            Session session,
+            List<BaseMessage> historyMessages) {
+        return createContext(contextId, session, null, historyMessages, null);
+    }
+
+    /**
      * Retrieve an existing ModelContext from the pool.
      */
     public ModelContext getContext(String contextId, String sessionId) {
         contextId = processContextId(contextId);
         String fullContextId = sessionId + "_" + contextId;
         return contextPool.getOrDefault(fullContextId, null);
+    }
+
+    /**
+     * Retrieve a context from the default session scope.
+     */
+    public ModelContext getContext(String contextId) {
+        return getContext(contextId, "default_session_id");
     }
 
     /**
@@ -193,6 +219,20 @@ public class ContextEngine {
             return;
         }
         contextPool.remove(fullContextId);
+    }
+
+    /**
+     * Clear all contexts across all sessions.
+     */
+    public void clearContext() {
+        clearContext(null, null);
+    }
+
+    /**
+     * Clear all contexts associated with a given session.
+     */
+    public void clearContextBySession(String sessionId) {
+        clearContext(null, sessionId);
     }
 
     /**

@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 
 /**
  * Pregel execution loop implementing the BSP (Bulk Synchronous Parallel) model.
@@ -88,6 +89,8 @@ public class PregelLoop {
     public boolean runStep() throws Exception {
         try {
             return doRunStep();
+        } catch (CancellationException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Failed to run graph super-step[{}], ns={}, sessionId={}",
                     step, config.getNs(), config.getSessionId(), e);
@@ -109,6 +112,7 @@ public class PregelLoop {
     }
 
     private boolean doRunStep() throws Exception {
+        throwIfInterrupted();
         logger.debug("Start to run graph super-step[{}], ns={}, sessionId={}",
                 step, config.getNs(), config.getSessionId());
 
@@ -158,6 +162,7 @@ public class PregelLoop {
             executor.cancelAll();
             throw e;
         }
+        throwIfInterrupted();
 
         // 3. Summarize results
         for (Message msg : executor.getSucceedMessages()) {
@@ -173,6 +178,12 @@ public class PregelLoop {
 
         step++;
         return true;
+    }
+
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Pregel loop cancelled");
+        }
     }
 
     private void saveStateOnError(Exception exception) {
@@ -203,4 +214,5 @@ public class PregelLoop {
                         || (state.getChannelValues() != null && !state.getChannelValues().isEmpty())
         );
     }
+
 }

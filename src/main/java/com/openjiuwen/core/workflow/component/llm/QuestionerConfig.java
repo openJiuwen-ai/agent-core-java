@@ -6,6 +6,7 @@ package com.openjiuwen.core.workflow.component.llm;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.workflow.component.ComponentConfig;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

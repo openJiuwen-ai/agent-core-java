@@ -1,0 +1,9 @@
+{
+  "API_BASE":"https://api.siliconflow.cn/v1",
+  "API_KEY":"sk-plrywdjqxgkhqeudbrznqeukhlksazrhlziiszdgcowkxhds",
+  "MODEL_PROVIDER":"OpenAI",
+  "MODEL_NAME":"Pro/zai-org/GLM-4.7",
+  "LLM_SSL_VERIFY":"False",
+  "API_BASE_EMBEDDING":"https://api.siliconflow.cn/v1/embeddings",
+  "MODEL_NAME_EMBEDDING":"Qwen/Qwen3-Embedding-8B"
+}

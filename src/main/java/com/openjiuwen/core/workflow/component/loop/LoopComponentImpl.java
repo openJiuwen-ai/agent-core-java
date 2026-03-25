@@ -7,15 +7,22 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.component.LoopComponent;
 import com.openjiuwen.core.workflow.component.loop.callback.IntermediateLoopVarCallback;
 import com.openjiuwen.core.workflow.component.loop.callback.OutputCallback;
-import com.openjiuwen.core.workflow.condition.*;
+import com.openjiuwen.core.workflow.condition.AlwaysTrue;
+import com.openjiuwen.core.workflow.condition.ArrayConditionInSession;
+import com.openjiuwen.core.workflow.condition.Condition;
+import com.openjiuwen.core.workflow.condition.ExpressionCondition;
+import com.openjiuwen.core.workflow.condition.FuncCondition;
+import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -113,6 +120,9 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             if (e instanceof com.openjiuwen.core.common.exception.BaseError) {
                 throw e;
             }
+            if (containsGraphInterrupt(e)) {
+                throw e;
+            }
             throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR,
                     "comp", session.getComponentId(),
                     "reason", e.getMessage());
@@ -141,5 +151,16 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         } catch (Exception e) {
             throw new IllegalStateException("Cannot extract inner session from NodeSessionApi", e);
         }
+    }
+
+    private static boolean containsGraphInterrupt(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof GraphInterrupt || current instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }

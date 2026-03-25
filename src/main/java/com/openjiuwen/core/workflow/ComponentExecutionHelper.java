@@ -3,12 +3,17 @@
  */
 package com.openjiuwen.core.workflow;
 
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.graph.ExecutableGraph;
+import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.Vertex;
+import com.openjiuwen.core.graph.pregel.PregelConfig;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**

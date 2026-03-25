@@ -3,6 +3,10 @@
  */
 package com.openjiuwen.core.session.state;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+
 /**
  * Read-only state interface.
  * <p>

@@ -9,7 +9,11 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -365,6 +369,18 @@ public class ExpressionCondition extends Condition {
             for (int i = 0; i < list.size(); i++) {
                 if (i > 0) sb.append(",");
                 sb.append(toLiteral(list.get(i)));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        if (value instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("[");
+            int index = 0;
+            for (Object key : map.keySet()) {
+                if (index++ > 0) {
+                    sb.append(",");
+                }
+                sb.append(toLiteral(key));
             }
             sb.append("]");
             return sb.toString();

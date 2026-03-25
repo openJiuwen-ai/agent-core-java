@@ -10,7 +10,11 @@ import com.openjiuwen.core.multiagent.schema.GroupCard;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Abstract base class for agent groups (new Card + Config pattern).

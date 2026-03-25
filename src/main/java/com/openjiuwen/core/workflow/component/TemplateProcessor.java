@@ -6,7 +6,13 @@ package com.openjiuwen.core.workflow.component;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.utils.SessionUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Template streaming/rendering processor for the End component.

@@ -33,6 +33,11 @@ public class ToolMessage extends BaseMessage {
         this.toolCallId = toolCallId;
     }
 
+    public ToolMessage(String content, String toolCallId, String name) {
+        this(content, toolCallId);
+        setName(name);
+    }
+
     @Override
     public String getRole() {
         String r = super.getRole();

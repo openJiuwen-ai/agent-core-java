@@ -14,6 +14,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -111,6 +112,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             Loggers.SESSION.info("Workflow checkpoint save on exception, sessionId={}, workflowId={}",
                     sessionId, workflowId);
             workflowStorage.save(session);
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
             throw new RuntimeException(exception);
         }
 
@@ -428,12 +432,15 @@ public class PersistenceCheckpointer extends Checkpointer {
             for (Map.Entry<String, Object> entry : userInputs.entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
                 Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
-                if (interactiveInput instanceof List) {
-                    ((List<Object>) interactiveInput).add(entry.getValue());
-                    nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, interactiveInput));
+                List<Object> inputList;
+                if (interactiveInput instanceof List<?> existingInputs) {
+                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
+                    inputList.addAll((List<Object>) existingInputs);
+                    inputList.add(entry.getValue());
                 } else {
-                    nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, List.of(entry.getValue())));
+                    inputList = List.of(entry.getValue());
                 }
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
             if (session.state() instanceof CommitStateLike commitState) {
                 commitState.commit();

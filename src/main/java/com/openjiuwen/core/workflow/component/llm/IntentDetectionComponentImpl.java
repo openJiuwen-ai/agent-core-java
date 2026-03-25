@@ -7,7 +7,6 @@ import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.ComponentComposable;
-
 import java.util.List;
 
 /**
@@ -65,6 +64,20 @@ public class IntentDetectionComponentImpl implements ComponentComposable {
      */
     public void addBranch(Object condition, Object target) {
         addBranch(condition, target, null);
+    }
+
+    /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target, String branchId) {
+        addBranch(condition, target, branchId);
+    }
+
+    /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target) {
+        addBranch(condition, target);
     }
 
     /**

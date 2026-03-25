@@ -57,13 +57,16 @@ public class ContextEngineConfig {
      */
     public void validate() {
         if (maxContextMessageNum != null && maxContextMessageNum <= 0) {
-            throw new IllegalArgumentException("maxContextMessageNum must be > 0, got " + maxContextMessageNum);
+            throw new IllegalArgumentException(
+                    "Input should be greater than 0 [type=greater_than, input_value=" + maxContextMessageNum + ", input_type=int]");
         }
         if (defaultWindowMessageNum != null && defaultWindowMessageNum <= 0) {
-            throw new IllegalArgumentException("defaultWindowMessageNum must be > 0, got " + defaultWindowMessageNum);
+            throw new IllegalArgumentException(
+                    "Input should be greater than 0 [type=greater_than, input_value=" + defaultWindowMessageNum + ", input_type=int]");
         }
         if (defaultWindowRoundNum != null && defaultWindowRoundNum <= 0) {
-            throw new IllegalArgumentException("defaultWindowRoundNum must be > 0, got " + defaultWindowRoundNum);
+            throw new IllegalArgumentException(
+                    "Input should be greater than 0 [type=greater_than, input_value=" + defaultWindowRoundNum + ", input_type=int]");
         }
     }
 }

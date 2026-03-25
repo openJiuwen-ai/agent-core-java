@@ -3,6 +3,8 @@
  */
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.stream.StreamWriter;
@@ -73,15 +75,39 @@ public class NodeSessionApi {
      */
     public <T> T interact(Object value) {
         if (streamMode) {
-            throw new UnsupportedOperationException(
-                    "Interact during streaming process (transform or collect) is not supported. " +
-                            "component=" + getComponentId() + ", workflow=" + getWorkflowId());
+            throw ErrorHelper.buildError(
+                    StatusCode.COMP_SESSION_INTERACT_ERROR,
+                    "reason", "Interact during streaming process (transform or collect) is not supported.",
+                    "comp_id", getComponentId(),
+                    "workflow", getWorkflowId());
         }
         if (interaction == null) {
             interaction = new WorkflowInteraction(inner);
         }
         @SuppressWarnings("unchecked")
         T userInputs = (T) interaction.waitUserInputs(value);
+        if (!inner.skipTrace()) {
+            TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
+        }
+        return userInputs;
+    }
+
+    /**
+     * Return the latest user input without requiring another queued response.
+     */
+    public <T> T userLatestInput(Object value) {
+        if (streamMode) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMP_SESSION_INTERACT_ERROR,
+                    "reason", "Interact during streaming process (transform or collect) is not supported.",
+                    "comp_id", getComponentId(),
+                    "workflow", getWorkflowId());
+        }
+        if (interaction == null) {
+            interaction = new WorkflowInteraction(inner);
+        }
+        @SuppressWarnings("unchecked")
+        T userInputs = (T) interaction.userLatestInput(value);
         if (!inner.skipTrace()) {
             TracerWorkflowUtils.traceComponentInteractiveInputs(inner, userInputs, true);
         }

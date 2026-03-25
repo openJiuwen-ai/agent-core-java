@@ -45,8 +45,8 @@ public class NodeSession extends BaseSession {
         this.parentSession = session;
 
         // Create node-scoped state from parent
-        if (session.state() instanceof WorkflowStateCollection) {
-            this.stateField = ((WorkflowStateCollection) session.state())
+        if (session.state() instanceof com.openjiuwen.core.session.state.WorkflowStateCollection) {
+            this.stateField = ((com.openjiuwen.core.session.state.WorkflowStateCollection) session.state())
                     .createNodeState(eId, pId);
         } else {
             this.stateField = session.state();

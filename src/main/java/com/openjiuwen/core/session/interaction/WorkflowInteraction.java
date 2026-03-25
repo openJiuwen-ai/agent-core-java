@@ -38,17 +38,18 @@ public class WorkflowInteraction extends BaseInteraction {
         if (!(session.state() instanceof WorkflowStateCollection stateCollection)) {
             return null;
         }
-
-        Object interactiveInput = stateCollection.getWorkflow(Constant.INTERACTIVE_INPUT);
-        if (interactiveInput != null) {
-            Map<String, Object> clearMap = new HashMap<>();
-            clearMap.put(Constant.INTERACTIVE_INPUT, null);
-            stateCollection.updateWorkflow(clearMap);
-            if (session.state() instanceof WorkflowCommitState commitState) {
-                commitState.commitWorkflow();
+        synchronized (stateCollection) {
+            Object interactiveInput = stateCollection.getWorkflow(Constant.INTERACTIVE_INPUT);
+            if (interactiveInput != null) {
+                Map<String, Object> clearMap = new HashMap<>();
+                clearMap.put(Constant.INTERACTIVE_INPUT, null);
+                stateCollection.updateWorkflow(clearMap);
+                if (session.state() instanceof WorkflowCommitState commitState) {
+                    commitState.commitWorkflow();
+                }
             }
+            return interactiveInput;
         }
-        return interactiveInput;
     }
 
     private static String getExecutableId(BaseSession session) {
@@ -63,6 +64,10 @@ public class WorkflowInteraction extends BaseInteraction {
         Object res = getNextInteractiveInput();
         if (res != null) {
             return res;
+        }
+
+        if (session.state() instanceof WorkflowStateCollection stateCollection) {
+            stateCollection.commitCmp();
         }
 
         InteractionOutput payload = new InteractionOutput(nodeId, value);

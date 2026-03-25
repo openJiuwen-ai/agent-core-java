@@ -4,6 +4,7 @@
 package com.openjiuwen.core.workflow.component.tool;
 
 import com.openjiuwen.core.workflow.component.ComponentConfig;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

@@ -3,15 +3,18 @@
  */
 package com.openjiuwen.core.runner.mq;
 
-import java.util.function.Function;
-
 /**
  * Abstract subscription that processes received messages.
  * Mirrors Python's {@code SubscriptionBase} in {@code message_queue_base.py}.
  */
 public abstract class SubscriptionBase {
 
-    public void setMessageHandler(Function<Object, Object> handler) {
+    /**
+     * Sets the async message handler for this subscription.
+     *
+     * @param handler the async message handler
+     */
+    public void setMessageHandler(AsyncMessageHandler<Object, Object> handler) {
     }
 
     public void activate() {

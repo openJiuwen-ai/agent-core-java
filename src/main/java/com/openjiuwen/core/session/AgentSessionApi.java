@@ -7,9 +7,13 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
 import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriter;
+import com.openjiuwen.core.session.stream.TraceSchema;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,6 +42,18 @@ public class AgentSessionApi implements Session {
      * @param card      the agent card (nullable)
      */
     public AgentSessionApi(String sessionId, Map<String, Object> envs, Object card) {
+        this(sessionId, envs, card, null);
+    }
+
+    /**
+     * Create a new AgentSessionApi with explicit stream modes.
+     *
+     * @param sessionId    the session ID (nullable, auto-generated if absent)
+     * @param envs         environment variables (nullable)
+     * @param card         the agent card (nullable)
+     * @param streamModes  explicit enabled stream modes, null to use defaults
+     */
+    public AgentSessionApi(String sessionId, Map<String, Object> envs, Object card, List<StreamMode> streamModes) {
         if (sessionId == null) {
             sessionId = UUID.randomUUID().toString();
         }
@@ -48,7 +64,7 @@ public class AgentSessionApi implements Session {
             config.setEnvs(envs);
         }
 
-        this.inner = new AgentSession(sessionId, config, null, card);
+        this.inner = new AgentSession(sessionId, config, null, card, streamModes);
         this.card = card;
         this.preRunDone = false;
         this.postRunDone = false;
@@ -123,6 +139,14 @@ public class AgentSessionApi implements Session {
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeCustomStream(Map<String, Object> data) {
         StreamWriter writer = (StreamWriter) inner.streamWriterManager().getCustomWriter();
+        if (writer != null) {
+            writer.write(data);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void writeTraceStream(TraceSchema data) {
+        StreamWriter writer = (StreamWriter) inner.streamWriterManager().getTraceWriter();
         if (writer != null) {
             writer.write(data);
         }
@@ -204,5 +228,10 @@ public class AgentSessionApi implements Session {
      */
     public static AgentSessionApi create(String sessionId, Map<String, Object> envs, Object card) {
         return new AgentSessionApi(sessionId, envs, card);
+    }
+
+    public static AgentSessionApi create(String sessionId, Map<String, Object> envs, Object card,
+                                         List<StreamMode> streamModes) {
+        return new AgentSessionApi(sessionId, envs, card, streamModes);
     }
 }

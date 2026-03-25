@@ -271,15 +271,18 @@ public class Controller {
      */
     public ControllerOutput invoke(InputEvent inputs, AgentSessionApi session) {
         try {
-            List<ControllerOutputChunk> chunks = new ArrayList<>();
+            List<Object> outputs = new ArrayList<>();
             Iterator<Object> it = stream(inputs, session, List.of(StreamMode.OUTPUT));
             while (it.hasNext()) {
                 Object obj = it.next();
-                if (obj instanceof ControllerOutputChunk chunk) {
-                    chunks.add(chunk);
+                if (obj instanceof ControllerOutputChunk chunk
+                        && chunk.getControllerPayload() != null
+                        && ControllerOutputPayload.ALL_TASKS_PROCESSED.equals(chunk.getControllerPayload().getType())) {
+                    continue;
                 }
+                outputs.add(obj);
             }
-            return new ControllerOutput(EventType.TASK_COMPLETION, chunks);
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), outputs);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

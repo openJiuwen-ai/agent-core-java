@@ -14,6 +14,7 @@ import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * Component that sets variables in the loop's parent session scope.
@@ -75,7 +76,9 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     public static Object generateOutput(String[] keys, Object value) {
         Object output = value;
         for (int i = keys.length - 1; i >= 0; i--) {
-            output = Map.of(keys[i], output);
+            Map<String, Object> nested = new LinkedHashMap<>(1);
+            nested.put(keys[i], output);
+            output = nested;
         }
         return output;
     }
