@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -174,11 +175,11 @@ public abstract class BaseController {
             SubscriptionBase subscription = msgQueue.subscribe(topicFor(key));
             subscription.setMessageHandler(request -> {
                 if (!(request instanceof Map<?, ?> map)) {
-                    return null;
+                    return CompletableFuture.completedFuture(null);
                 }
                 Event event = map.get("message") instanceof Event e ? e : null;
                 Session session = map.get("session") instanceof Session s ? s : null;
-                return handleEvent(event, session);
+                return CompletableFuture.completedFuture(handleEvent(event, session));
             });
             subscription.activate();
             LOG.info("Created legacy controller subscription for conversation_id={}", key);

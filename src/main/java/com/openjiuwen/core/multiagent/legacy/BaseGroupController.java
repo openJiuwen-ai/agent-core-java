@@ -117,7 +117,7 @@ public abstract class BaseGroupController {
         if (!queueStarted) {
             String topic = "group_messages_" + agentGroup.getGroupId();
             SubscriptionBase subscription = msgQueue.subscribe(topic);
-            subscription.setMessageHandler(this::handleMessageWrapper);
+            subscription.setMessageHandler(msg -> CompletableFuture.completedFuture(handleMessageWrapper(msg)));
             subscription.activate();
             msgQueue.start();
             queueStarted = true;

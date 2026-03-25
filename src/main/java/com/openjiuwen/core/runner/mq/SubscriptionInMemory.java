@@ -8,11 +8,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 
 /**
  * In-memory subscription using a blocking queue and Virtual Thread consumer.
@@ -26,7 +26,7 @@ public class SubscriptionInMemory extends SubscriptionBase {
     private final long timeoutMs;
     private BlockingQueue<QueueMessage> queue;
     private volatile boolean active;
-    private Function<Object, Object> handler;
+    private AsyncMessageHandler<Object, Object> handler;
     private ExecutorService consumerExecutor;
 
     public SubscriptionInMemory(int maxSize, long timeoutMs) {
@@ -41,7 +41,7 @@ public class SubscriptionInMemory extends SubscriptionBase {
     }
 
     @Override
-    public void setMessageHandler(Function<Object, Object> handler) {
+    public void setMessageHandler(AsyncMessageHandler<Object, Object> handler) {
         this.handler = handler;
     }
 
@@ -91,8 +91,21 @@ public class SubscriptionInMemory extends SubscriptionBase {
                     continue;
                 }
                 try {
-                    Object response = handler.apply(message.getPayload());
-                    handleResponse(message, response);
+                    CompletableFuture<Object> future = handler.handle(message.getPayload());
+                    future.whenComplete((response, throwable) -> {
+                        if (throwable != null) {
+                            message.setErrorCode(-1);
+                            message.setErrorMsg(throwable.getMessage());
+                            if (message instanceof InvokeQueueMessage iqm && !iqm.getResponse().isDone()) {
+                                iqm.getResponse().completeExceptionally(throwable);
+                            }
+                            if (message instanceof StreamQueueMessage sqm && !sqm.getResponse().isDone()) {
+                                sqm.getResponse().completeExceptionally(throwable);
+                            }
+                        } else {
+                            handleResponse(message, response);
+                        }
+                    });
                 } catch (Exception e) {
                     message.setErrorCode(-1);
                     message.setErrorMsg(e.getMessage());

@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -65,7 +66,7 @@ public class MqServerAdapter {
             if (message instanceof DmqRequestMessage request) {
                 handleMessage(request);
             }
-            return null;
+            return CompletableFuture.completedFuture(null);
         });
         this.subscription.activate();
         this.active = true;

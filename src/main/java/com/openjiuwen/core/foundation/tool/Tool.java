@@ -45,7 +45,6 @@ public abstract class Tool {
         }
         this.card = card;
     }
-
     /**
      * Get the tool card.
      */
