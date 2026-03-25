@@ -51,7 +51,7 @@ public class StandardReranker implements Reranker {
         this.config = config;
         this.modelName = config.getModelName();
         this.apiKey = config.getApiKey();
-        this.apiUrl = normalizeBaseUrl(config.getApiBase(), ENDPOINT);
+        this.apiUrl = normalizeBaseUrl(config.getApiBase(), endpoint());
         this.maxRetries = Math.max(1, maxRetries);
         this.headers = new LinkedHashMap<>();
         this.headers.put("Content-Type", "application/json");
@@ -103,7 +103,7 @@ public class StandardReranker implements Reranker {
                                                Map<String, Object> options) {
         JsonNode response = ApiRequestUtils.postJsonWithRetry(
                 httpClient,
-                apiUrl + ENDPOINT,
+                apiUrl + endpoint(),
                 buildRequestPayload(query, documents, instruct, options),
                 headers,
                 Duration.ofMillis(Math.round(config.getTimeout() * 1000)),
@@ -129,6 +129,14 @@ public class StandardReranker implements Reranker {
             payload.putAll(options);
         }
         return payload;
+    }
+
+    protected String endpoint() {
+        return ENDPOINT;
+    }
+
+    protected String getModelName() {
+        return modelName;
     }
 
     protected List<Double> parseOrderedScores(JsonNode response, int documentCount) {

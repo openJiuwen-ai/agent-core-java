@@ -8,12 +8,16 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.mq.InvokeQueueMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueInMemory;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -113,7 +117,7 @@ public abstract class BaseGroupController {
         if (!queueStarted) {
             String topic = "group_messages_" + agentGroup.getGroupId();
             SubscriptionBase subscription = msgQueue.subscribe(topic);
-            subscription.setMessageHandler(this::handleMessageWrapper);
+            subscription.setMessageHandler(msg -> CompletableFuture.completedFuture(handleMessageWrapper(msg)));
             subscription.activate();
             msgQueue.start();
             queueStarted = true;

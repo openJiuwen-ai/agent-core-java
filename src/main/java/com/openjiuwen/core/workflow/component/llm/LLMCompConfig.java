@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.workflow.component.ComponentConfig;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

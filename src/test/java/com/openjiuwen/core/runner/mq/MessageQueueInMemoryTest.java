@@ -48,7 +48,7 @@ class MessageQueueInMemoryTest {
             for (int i = 1; i < 10; i++) {
                 items.add("MockStream response for msg : " + payload + ", i is " + i);
             }
-            return items.iterator();
+            return CompletableFuture.completedFuture(items.iterator());
         });
         sub.activate();
 
@@ -84,7 +84,7 @@ class MessageQueueInMemoryTest {
             // Stream handler returns an iterator, but InvokeQueueMessage expects a direct value
             List<Object> items = new ArrayList<>();
             items.add("item1");
-            return items.iterator();
+            return CompletableFuture.completedFuture(items.iterator());
         });
         sub.activate();
 
@@ -109,7 +109,7 @@ class MessageQueueInMemoryTest {
         sub.setMessageHandler(request -> {
             List<Object> items = new ArrayList<>();
             items.add("result");
-            return items.iterator();
+            return CompletableFuture.completedFuture(items.iterator());
         });
         sub.activate();
 
@@ -135,7 +135,7 @@ class MessageQueueInMemoryTest {
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
         sub.setMessageHandler(request ->
-                "MockInvoke response for msg : " + request);
+                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Send invoke request
@@ -159,7 +159,7 @@ class MessageQueueInMemoryTest {
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
         sub.setMessageHandler(request ->
-                "MockInvoke response for msg : " + request);
+                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Send StreamQueueMessage to invoke handler
@@ -188,7 +188,7 @@ class MessageQueueInMemoryTest {
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
         sub.setMessageHandler(request ->
-                "MockInvoke response for msg : " + request);
+                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Plain QueueMessage
@@ -241,7 +241,7 @@ class MessageQueueInMemoryTest {
 
         SubscriptionBase sub = mq.subscribe("topic_error");
         sub.setMessageHandler(request -> {
-            throw new RuntimeException("Handler error");
+            return CompletableFuture.failedFuture(new RuntimeException("Handler error"));
         });
         sub.activate();
 
@@ -263,7 +263,7 @@ class MessageQueueInMemoryTest {
 
         SubscriptionBase sub = mq.subscribe("topic_error");
         sub.setMessageHandler(request -> {
-            throw new RuntimeException("Stream handler error");
+            return CompletableFuture.failedFuture(new RuntimeException("Stream handler error"));
         });
         sub.activate();
 

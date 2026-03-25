@@ -6,7 +6,9 @@ package com.openjiuwen.core.multiagent.legacy;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;

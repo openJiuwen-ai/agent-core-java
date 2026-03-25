@@ -13,10 +13,12 @@ import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -48,10 +50,24 @@ public class AgentSession extends BaseSession {
      * @param card         the agent card (nullable)
      */
     public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card) {
+        this(sessionId, config, checkpointer, card, null);
+    }
+
+    /**
+     * Create a new AgentSession with explicit stream modes.
+     *
+     * @param sessionId    the unique session identifier
+     * @param config       the session config (nullable)
+     * @param checkpointer an explicit checkpointer, or null to use factory default
+     * @param card         the agent card (nullable)
+     * @param streamModes  explicit enabled stream modes, null to use defaults
+     */
+    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card,
+                        List<StreamMode> streamModes) {
         this.sessionId = sessionId;
         this.configField = config;
         this.stateField = new AgentStateCollection();
-        this.streamWriterManagerField = new StreamWriterManager(new StreamEmitter());
+        this.streamWriterManagerField = new StreamWriterManager(new StreamEmitter(), streamModes);
         this.callbackManagerField = new CallbackManager();
 
         Tracer tracer = new Tracer();
@@ -78,6 +94,13 @@ public class AgentSession extends BaseSession {
      */
     public AgentSession(String sessionId, Config config) {
         this(sessionId, config, null, null);
+    }
+
+    /**
+     * Compatibility constructor for translated tests.
+     */
+    public AgentSession(String sessionId) {
+        this(sessionId, new Config(), null, null);
     }
 
     @Override

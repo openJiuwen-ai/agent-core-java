@@ -147,8 +147,8 @@ public class ReActAgent extends BaseAgent {
         var contextWindow = context.getContextWindow(
                 systemMessages,
                 tools != null ? tools : null,
-                null,
-                null
+                (Integer) null,
+                (Integer) null
         );
 
         ctx.setInputs(ModelCallInputs.builder()
@@ -300,6 +300,12 @@ public class ReActAgent extends BaseAgent {
             query = (String) inputs;
         }
 
+        // Validate query early (match Python behavior)
+        if (query == null || query.isEmpty()) {
+            Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
+            throw new IllegalArgumentException("Input dict must contain 'query'");
+        }
+
         InvokeInputs invokeInputs = InvokeInputs.builder()
                 .query(query)
                 .conversationId(conversationId)
@@ -320,7 +326,8 @@ public class ReActAgent extends BaseAgent {
             // Extract user_input AFTER before_invoke so rail modifications take effect
             String userInput = ((InvokeInputs) ctx.getInputs()).getQuery();
             if (userInput == null || userInput.isEmpty()) {
-                throw new IllegalArgumentException("Input must contain 'query'");
+                Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
+                throw new IllegalArgumentException("Input dict must contain 'query'");
             }
 
             // Get or create model context

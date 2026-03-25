@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.stream;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Standard output stream schema.
@@ -70,5 +71,23 @@ public class OutputSchema implements WorkflowChunk {
         }
         schema.setPayload(data.get("payload"));
         return schema;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof OutputSchema that)) {
+            return false;
+        }
+        return index == that.index
+                && Objects.equals(type, that.type)
+                && Objects.equals(payload, that.payload);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, index, payload);
     }
 }

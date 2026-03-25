@@ -4,6 +4,7 @@
 package com.openjiuwen.core.session.state;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Abstract base State interface for session state management.

@@ -4,8 +4,11 @@
 package com.openjiuwen.core.application.llm;
 
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
+import com.openjiuwen.core.application.schema.PluginSchema;
+import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
@@ -23,10 +26,13 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.ControllerAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowUtils;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -57,7 +63,8 @@ public class LlmAgent extends ControllerAgent {
      * @param agentConfig the LLM agent configuration
      */
     public LlmAgent(LlmAgentConfig agentConfig) {
-        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig));
+        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig),
+                buildContextEngineConfig(agentConfig));
         if (agentConfig.getControllerType() != null
                 && agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
             throw new UnsupportedOperationException(
@@ -104,7 +111,7 @@ public class LlmAgent extends ControllerAgent {
 
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        AgentSessionApi managedSession = session == null ? createManagedSession(inputs) : null;
+        AgentSessionApi managedSession = session == null ? createManagedSession(inputs, streamModes) : null;
         Session effectiveSession = managedSession != null ? managedSession : session;
 
         if (managedSession != null) {
@@ -169,6 +176,20 @@ public class LlmAgent extends ControllerAgent {
         }
     }
 
+    /**
+     * Append prompt template entries, mirroring the legacy BaseAgent API.
+     */
+    public void addPrompt(List<Map<String, String>> promptTemplate) {
+        if (promptTemplate == null || promptTemplate.isEmpty()) {
+            return;
+        }
+        List<Map<String, String>> merged = agentConfig.getPromptTemplate() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getPromptTemplate());
+        merged.addAll(promptTemplate);
+        setPromptTemplate(merged);
+    }
+
     public LlmAgentConfig getAgentConfig() {
         return agentConfig;
     }
@@ -214,8 +235,18 @@ public class LlmAgent extends ControllerAgent {
                 if (workflow == null || workflow.getCard() == null) {
                     continue;
                 }
+                registerWorkflowSchema(agentConfig, workflow.getCard());
                 agent.getAbilityManager().add(workflow.getCard());
-                Runner.resourceMgr().addWorkflow(workflow.getCard(), () -> workflow, tag);
+                WorkflowCard card = workflow.getCard();
+                String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+                WorkflowCard resourceCard = WorkflowCard.builder()
+                        .id(workflowResourceId)
+                        .name(card.getName())
+                        .version(card.getVersion())
+                        .description(card.getDescription())
+                        .inputParams(card.getInputParams())
+                        .build();
+                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
             }
         }
 
@@ -224,12 +255,71 @@ public class LlmAgent extends ControllerAgent {
                 if (tool == null || tool.getCard() == null) {
                     continue;
                 }
+                registerPluginSchema(agentConfig, tool.getCard());
                 agent.getAbilityManager().add(tool.getCard());
                 Runner.resourceMgr().addTool(tool, tag);
             }
         }
 
         return agent;
+    }
+
+    private static void registerWorkflowSchema(LlmAgentConfig agentConfig, WorkflowCard card) {
+        if (agentConfig == null || card == null) {
+            return;
+        }
+        List<WorkflowSchema> workflows = agentConfig.getWorkflows();
+        if (workflows == null) {
+            workflows = new ArrayList<>();
+            agentConfig.setWorkflows(workflows);
+        }
+        boolean exists = workflows.stream()
+                .anyMatch(schema -> Objects.equals(schema.getId(), card.getId())
+                        && Objects.equals(schema.getVersion(), card.getVersion()));
+        if (exists) {
+            return;
+        }
+        workflows.add(WorkflowSchema.builder()
+                .id(Objects.requireNonNullElse(card.getId(), ""))
+                .name(Objects.requireNonNullElse(card.getName(), ""))
+                .version(Objects.requireNonNullElse(card.getVersion(), ""))
+                .description(Objects.requireNonNullElse(card.getDescription(), ""))
+                .inputParams(copyWorkflowInputs(card.getInputParams()))
+                .build());
+    }
+
+    private static void registerPluginSchema(LlmAgentConfig agentConfig, com.openjiuwen.core.foundation.tool.ToolCard card) {
+        if (agentConfig == null || card == null) {
+            return;
+        }
+        List<PluginSchema> plugins = agentConfig.getPlugins();
+        if (plugins == null) {
+            plugins = new ArrayList<>();
+            agentConfig.setPlugins(plugins);
+        }
+        boolean exists = plugins.stream()
+                .anyMatch(schema -> Objects.equals(schema.getId(), card.getId())
+                        || Objects.equals(schema.getName(), card.getName()));
+        if (exists) {
+            return;
+        }
+        plugins.add(PluginSchema.builder()
+                .id(Objects.requireNonNullElse(card.getId(), ""))
+                .pluginId(Objects.requireNonNullElse(card.getId(), ""))
+                .name(Objects.requireNonNullElse(card.getName(), ""))
+                .description(Objects.requireNonNullElse(card.getDescription(), ""))
+                .inputs(card.getInputParams() != null
+                        ? new LinkedHashMap<>(card.getInputParams())
+                        : new LinkedHashMap<>())
+                .build());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> copyWorkflowInputs(Object inputParams) {
+        if (inputParams instanceof Map<?, ?> map) {
+            return new LinkedHashMap<>((Map<String, Object>) map);
+        }
+        return new LinkedHashMap<>();
     }
 
     // ==================== Private Helpers ====================
@@ -248,7 +338,22 @@ public class LlmAgent extends ControllerAgent {
         return cc;
     }
 
+    private static ContextEngineConfig buildContextEngineConfig(LlmAgentConfig config) {
+        if (config.getContextEngineConfig() != null) {
+            return config.getContextEngineConfig();
+        }
+        int maxRounds = config.getContextWindowLimit();
+        return ContextEngineConfig.builder()
+                .maxContextMessageNum(maxRounds * 2)
+                .defaultWindowRoundNum(maxRounds)
+                .build();
+    }
+
     private AgentSessionApi createManagedSession(Object inputs) {
+        return createManagedSession(inputs, null);
+    }
+
+    private AgentSessionApi createManagedSession(Object inputs, List<StreamMode> streamModes) {
         String sessionId = "default_session";
         if (inputs instanceof Map<?, ?> inputMap) {
             Object conversationId = inputMap.get("conversation_id");
@@ -256,7 +361,7 @@ public class LlmAgent extends ControllerAgent {
                 sessionId = s;
             }
         }
-        return AgentSessionApi.create(sessionId, null, getCard());
+        return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
     }
 
     private void writeMessagesToMemoryAsync(Map<?, ?> inputs, Object result) {

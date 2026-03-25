@@ -15,6 +15,7 @@ import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 
 import java.util.*;
@@ -89,6 +90,9 @@ public class InMemoryCheckpointer extends Checkpointer {
                         "reason", "workflow store not found");
             }
             saveWorkflowCheckpoint(workflowId, sessionId, session, "workflow exception");
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
             throw new RuntimeException(exception);
         }
 
@@ -309,11 +313,15 @@ public class InMemoryCheckpointer extends Checkpointer {
             for (Map.Entry<String, Object> entry : inputs.getUserInputs().entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
                 Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
-                List<Object> values = interactiveInput instanceof List<?>
-                        ? new ArrayList<>((List<Object>) interactiveInput)
-                        : new ArrayList<>();
-                values.add(entry.getValue());
-                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, values));
+                List<Object> inputList;
+                if (interactiveInput instanceof List<?> existingInputs) {
+                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
+                    inputList.addAll((List<Object>) existingInputs);
+                    inputList.add(entry.getValue());
+                } else {
+                    inputList = List.of(entry.getValue());
+                }
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
 
             if (session.state() instanceof WorkflowCommitState workflowState) {

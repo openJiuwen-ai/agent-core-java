@@ -60,6 +60,20 @@ public class BranchComponent extends WorkflowComponent {
     }
 
     /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target, String branchId) {
+        addBranch(condition, target, branchId);
+    }
+
+    /**
+     * Compatibility alias for translated tests that still use snake_case naming.
+     */
+    public void add_branch(Object condition, Object target) {
+        addBranch(condition, target);
+    }
+
+    /**
      * Gets the router associated with this branch component.
      */
     public BranchRouter router() {

@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,7 +41,7 @@ public class ReplyTopicSubscription {
             if (message instanceof DmqResponseMessage responseMessage) {
                 onMessage(responseMessage);
             }
-            return null;
+            return CompletableFuture.completedFuture(null);
         });
         subscription.activate();
         active = true;

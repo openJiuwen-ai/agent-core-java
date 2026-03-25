@@ -6,8 +6,7 @@ package com.openjiuwen.core.session.callback;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**

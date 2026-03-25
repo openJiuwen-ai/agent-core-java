@@ -3,6 +3,8 @@
  */
 package com.openjiuwen.core.application.workflow;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.schema.DefaultResponse;
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
@@ -19,13 +21,21 @@ import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.stream.TraceSchema;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
@@ -33,6 +43,7 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,6 +64,23 @@ public class WorkflowEventHandler extends EventHandler {
 
     private static final String INTERACTION = "__interaction__";
     private static final String STATE_KEY = "workflow_controller";
+    private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String DEFAULT_INTENT_CLASS = "分类0";
+    private static final String INTENT_SYSTEM_PROMPT = """
+            你是一个意图分类助手，擅长判断用户的输入属于哪个分类。
+            当用户输入没有明确意图或者你无法判断用户输入意图时请选择 {{default_class}}。
+            以下是给定的意图分类列表：
+            {{category_list}}
+            {{example_content}}
+            请根据上述要求判断用户输入意图分类，输出要求如下：
+            直接以JSON格式输出分类ID，不进行任何解释。JSON格式如下：
+             {"result": int}""";
+    private static final String INTENT_USER_PROMPT = """
+            用户与助手的对话历史：
+            {{chat_history}}
+            当前输入：
+            {{input}}""";
 
     private final WorkflowAgentConfig agentConfig;
     private final ContextEngine appContextEngine;
@@ -74,6 +102,10 @@ public class WorkflowEventHandler extends EventHandler {
         } catch (BaseError e) {
             throw e;
         } catch (Exception e) {
+            BaseError nested = findNestedBaseError(e);
+            if (nested != null) {
+                throw nested;
+            }
             Loggers.CONTROLLER.error("Error in workflow handling: {}", e.getMessage());
             throw ErrorHelper.buildError(
                     StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
@@ -111,16 +143,21 @@ public class WorkflowEventHandler extends EventHandler {
         if (intent == null) {
             return Map.of("output", "", "result_type", "answer");
         }
+        addUserMessageToAgentContext(session, getDisplayContent(event));
 
         return switch (intent.intentType()) {
             case DEFAULT_RESPONSE -> {
                 String defaultText = String.valueOf(intent.metadata().getOrDefault("default_response_text", ""));
                 Loggers.CONTROLLER.info("Using default response: {}", defaultText);
-                Map<String, Object> result = new HashMap<>();
-                result.put("output", defaultText);
+                Map<String, Object> finalPayload = new LinkedHashMap<>();
+                finalPayload.put("response", defaultText);
+                finalPayload.put("output", Map.of());
+                session.writeStream(new OutputSchema("workflow_final", 0, finalPayload));
+                addAssistantMessageToAgentContext(session, defaultText);
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("status", "default_response");
+                result.put("output", Map.of("answer", defaultText));
                 result.put("result_type", "answer");
-                OutputSchema os = new OutputSchema("answer", 0, result);
-                session.writeStream(os);
                 yield result;
             }
             case RESUME_TASK -> {
@@ -144,7 +181,7 @@ public class WorkflowEventHandler extends EventHandler {
     }
 
     WorkflowIntent intentDetection(Event event, AgentSessionApi session) {
-        List<WorkflowSchema> workflows = agentConfig.getWorkflows();
+        List<WorkflowSchema> workflows = uniqueWorkflows(agentConfig.getWorkflows());
         if (workflows == null || workflows.isEmpty()) {
             throw new IllegalStateException("No workflows configured for agent");
         }
@@ -247,8 +284,9 @@ public class WorkflowEventHandler extends EventHandler {
 
             // Execute workflow with streaming
             ModelContext context = appContextEngine.createContext(workflowId, session.getInner());
+            addUserMessageToWorkflowContext(context, getDisplayContent(event));
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
-                    workflow, inputs, workflowSession, context, null);
+                    workflow, inputs, workflowSession, context, resolveWorkflowStreamModes(session));
 
             List<Object> chunks = new ArrayList<>();
             boolean hasInteraction = false;
@@ -266,31 +304,21 @@ public class WorkflowEventHandler extends EventHandler {
                     } else {
                         session.writeStream(os);
                     }
+                } else if (chunk instanceof CustomSchema customSchema) {
+                    session.writeCustomStream(customSchema.getProperties());
+                } else if (chunk instanceof TraceSchema traceSchema) {
+                    session.writeTraceStream(traceSchema);
                 } else {
                     session.writeStream(chunk);
                 }
                 chunks.add(chunk);
             }
 
-            // Add context messages
-            if (!chunks.isEmpty()) {
-                StringBuilder contentParts = new StringBuilder();
-                for (Object chunk : chunks) {
-                    if (chunk instanceof OutputSchema os) {
-                        if (os.getPayload() instanceof Map<?, ?> payloadMap) {
-                            Object response = payloadMap.get("response");
-                            if (response != null) {
-                                contentParts.append(response);
-                            }
-                        } else if (os.getPayload() instanceof InteractionOutput io) {
-                            if (io.getValue() != null) {
-                                contentParts.append(io.getValue());
-                            }
-                        }
-                    }
-                }
-                context.addMessages(new AssistantMessage(contentParts.toString()));
-            }
+            addAssistantMessageToAgentContext(session, buildAssistantContent(chunks));
+            addAssistantMessageToWorkflowContext(
+                    context,
+                    buildWorkflowAssistantContent(chunks, finalResult, hasInteraction)
+            );
 
             // Process result
             if (hasInteraction) {
@@ -301,17 +329,20 @@ public class WorkflowEventHandler extends EventHandler {
                 interruptTask(task, session, chunks);
 
                 // Return only first interrupt for streaming
+                List<Object> interruptChunks = getInteractionChunks(chunks);
                 List<Object> firstInterrupt = getFirstInterrupt(chunks);
                 Loggers.CONTROLLER.info("Workflow has {} interrupts, returning first for streaming",
                         countInteractions(chunks));
 
-                // Write interrupted stream data
-                for (Object item : firstInterrupt) {
-                    session.writeStream(item);
+                List<Object> streamedInterrupts = isInvokeCall(session) ? interruptChunks : firstInterrupt;
+                for (Object item : streamedInterrupts) {
+                    if (item instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
+                        session.writeStream(os);
+                    }
                 }
 
                 Map<String, Object> result = new HashMap<>();
-                result.put("interaction", firstInterrupt);
+                result.put("interaction", interruptChunks);
                 return result;
             } else {
                 // Workflow completed
@@ -320,7 +351,8 @@ public class WorkflowEventHandler extends EventHandler {
                 clearInterruptedState(task, session, workflowId);
 
                 Map<String, Object> result = new HashMap<>();
-                result.put("output", finalResult != null ? finalResult : "");
+                result.put("output", new WorkflowOutput(finalResult != null ? finalResult : "",
+                        WorkflowExecutionState.COMPLETED));
                 result.put("result_type", "answer");
                 return result;
             }
@@ -330,6 +362,10 @@ public class WorkflowEventHandler extends EventHandler {
             task.setStatus(TaskStatus.FAILED);
             if (e instanceof BaseError be) {
                 throw be;
+            }
+            BaseError nested = findNestedBaseError(e);
+            if (nested != null) {
+                throw nested;
             }
             throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
                     "error_msg", e.getMessage());
@@ -376,8 +412,7 @@ public class WorkflowEventHandler extends EventHandler {
         taskInfo.put("last_interaction_value", interactionValue);
         interruptedTasks.put(stateKey, taskInfo);
 
-        // Save state
-        session.updateState(Map.of(STATE_KEY, (Object) state));
+        replaceControllerState(session, state);
 
         Loggers.CONTROLLER.info("Task interrupted: workflow={}, state_key={}, component_id={}",
                 workflowId, stateKey, componentId);
@@ -427,13 +462,49 @@ public class WorkflowEventHandler extends EventHandler {
     // ==================== Intent Detection ====================
 
     private WorkflowSchema detectWorkflowViaLlm(Event event, AgentSessionApi session) {
-        // Simple implementation: return first workflow
-        // Full LLM-based detection would call the model with workflow descriptions
-        List<WorkflowSchema> workflows = agentConfig.getWorkflows();
+        List<WorkflowSchema> workflows = uniqueWorkflows(agentConfig.getWorkflows());
         if (workflows == null || workflows.isEmpty()) {
             return null;
         }
-        Loggers.CONTROLLER.info("Using first workflow as default (LLM detection not yet implemented)");
+        if (agentConfig.getModel() == null || agentConfig.getModel().modelInfo() == null) {
+            Loggers.CONTROLLER.warning("No model configured for workflow intent detection, using first workflow");
+            return workflows.get(0);
+        }
+
+        try {
+            String currentInput = getDisplayContent(event);
+            List<BaseMessage> messages = buildIntentDetectionMessages(workflows, currentInput, session);
+            var modelInfo = agentConfig.getModel().modelInfo();
+            Loggers.CONTROLLER.info(
+                    "Intent detection LLM params: {\"model\":\"{}\",\"temperature\":{},\"top_p\":{},\"timeout\":{}}",
+                    modelInfo.getModelName(), modelInfo.getTemperature(), modelInfo.getTopP(),
+                    (double) modelInfo.getTimeout());
+            Loggers.CONTROLLER.info("Intent detection messages: {}", messages);
+
+            AssistantMessage llmOutput = getModel().invoke(
+                    messages,
+                    null,
+                    null,
+                    null,
+                    modelInfo.getModelName(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+            WorkflowSchema detectedWorkflow = mapWorkflowFromIntentOutput(llmOutput, workflows);
+            if (detectedWorkflow != null) {
+                return detectedWorkflow;
+            }
+            if (hasDefaultResponseText()) {
+                Loggers.CONTROLLER.info("Intent detection returned default class, using configured default response");
+                return null;
+            }
+            Loggers.CONTROLLER.warning("Intent detection returned no workflow, using first workflow");
+        } catch (Exception e) {
+            Loggers.CONTROLLER.error("Intent detection failed: {}, using first workflow", e.getMessage());
+        }
         return workflows.get(0);
     }
 
@@ -561,7 +632,8 @@ public class WorkflowEventHandler extends EventHandler {
     // ==================== Task Creation ====================
 
     private Task createNewTask(Event event, WorkflowSchema workflow, AgentSessionApi session) {
-        String query = getDisplayContent(event);
+        Map<String, Object> rawInputs = new HashMap<>(extractInputMap(event));
+        rawInputs.remove("conversation_id");
 
         // Determine required input key
         Map<String, Object> schema = workflow.getInputParams();
@@ -570,8 +642,14 @@ public class WorkflowEventHandler extends EventHandler {
             requiredKey = "query";
         }
 
-        Map<String, Object> inputs = new HashMap<>();
-        inputs.put(requiredKey, query);
+        Map<String, Object> inputs = new HashMap<>(rawInputs);
+        if (!inputs.containsKey(requiredKey)) {
+            if ("query".equals(requiredKey)) {
+                inputs.put(requiredKey, "");
+            } else {
+                inputs.put(requiredKey, getDisplayContent(event));
+            }
+        }
 
         // Filter inputs
         if (schema != null && !schema.isEmpty()) {
@@ -629,6 +707,25 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    private List<StreamMode> resolveWorkflowStreamModes(AgentSessionApi session) {
+        if (session == null || session.getInner() == null || session.getInner().streamWriterManager() == null) {
+            return null;
+        }
+        List<StreamMode> streamModes = session.getInner().streamWriterManager().getEnabledModes();
+        return streamModes.isEmpty() ? null : streamModes;
+    }
+
+    private BaseError findNestedBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BaseError baseError) {
+                return baseError;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
     private Map<String, Object> filterWorkflowInputs(Map<String, Object> schema, Map<String, Object> userData) {
         Map<String, Object> filtered = new HashMap<>();
 
@@ -654,7 +751,14 @@ public class WorkflowEventHandler extends EventHandler {
             }
             if (query instanceof InteractiveInput interactiveInput) {
                 Object rawInputs = interactiveInput.getRawInputs();
-                return rawInputs != null ? String.valueOf(rawInputs) : "";
+                if (rawInputs != null) {
+                    return String.valueOf(rawInputs);
+                }
+                if (interactiveInput.getUserInputs() != null && !interactiveInput.getUserInputs().isEmpty()) {
+                    Object firstValue = interactiveInput.getUserInputs().values().iterator().next();
+                    return firstValue != null ? String.valueOf(firstValue) : "";
+                }
+                return "";
             }
             Object content = inputMap.get("content");
             if (content instanceof String s) {
@@ -706,9 +810,19 @@ public class WorkflowEventHandler extends EventHandler {
         }
         String stateKey = workflowId.replace('.', '_');
         if (interruptedTasks.remove(stateKey) != null) {
-            session.updateState(Map.of(STATE_KEY, state));
+            replaceControllerState(session, state);
             Loggers.CONTROLLER.info("Cleared interrupted state for workflow: {}", workflowId);
         }
+    }
+
+    private void replaceControllerState(AgentSessionApi session, Map<String, Object> state) {
+        Map<String, Object> clearState = new HashMap<>();
+        clearState.put(STATE_KEY, null);
+        session.updateState(clearState);
+
+        Map<String, Object> updatedState = new HashMap<>();
+        updatedState.put(STATE_KEY, state);
+        session.updateState(updatedState);
     }
 
     private Object extractComponentIdFromInteractionData(List<Object> interactionData) {
@@ -753,15 +867,23 @@ public class WorkflowEventHandler extends EventHandler {
             return List.of();
         }
 
-        boolean firstFound = false;
         List<Object> result = new ArrayList<>();
         for (Object chunk : interactionData) {
             if (chunk instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
-                if (!firstFound) {
-                    result.add(chunk);
-                    firstFound = true;
-                }
-            } else {
+                result.add(chunk);
+                break;
+            }
+        }
+        return result;
+    }
+
+    private List<Object> getInteractionChunks(List<Object> interactionData) {
+        if (interactionData == null || interactionData.isEmpty()) {
+            return List.of();
+        }
+        List<Object> result = new ArrayList<>();
+        for (Object chunk : interactionData) {
+            if (chunk instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
                 result.add(chunk);
             }
         }
@@ -786,6 +908,243 @@ public class WorkflowEventHandler extends EventHandler {
             return wo.getState() == WorkflowExecutionState.INPUT_REQUIRED;
         }
         return false;
+    }
+
+    private boolean hasDefaultResponseText() {
+        DefaultResponse defaultResponse = agentConfig.getDefaultResponse();
+        return defaultResponse != null && defaultResponse.getText() != null && !defaultResponse.getText().isEmpty();
+    }
+
+    private boolean isInvokeCall(AgentSessionApi session) {
+        Object callMode = session.getState(CALL_MODE_STATE_KEY);
+        return "invoke".equals(callMode);
+    }
+
+    private Model getModel() {
+        if (agentConfig.getModel() == null || agentConfig.getModel().modelInfo() == null) {
+            throw new IllegalStateException("Model configuration is required");
+        }
+
+        var modelInfo = agentConfig.getModel().modelInfo();
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(agentConfig.getModel().modelProvider())
+                .apiKey(modelInfo.getApiKey())
+                .apiBase(modelInfo.getApiBase())
+                .timeout(modelInfo.getTimeout())
+                .verifySsl(false)
+                .build();
+
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
+                .modelName(modelInfo.getModelName())
+                .temperature(modelInfo.getTemperature())
+                .topP(modelInfo.getTopP())
+                .extraFields(modelInfo.getExtraFields() != null
+                        ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
+                        : new java.util.LinkedHashMap<>())
+                .build();
+
+        return new Model(clientConfig, requestConfig);
+    }
+
+    private List<BaseMessage> buildIntentDetectionMessages(
+            List<WorkflowSchema> workflows,
+            String currentInput,
+            AgentSessionApi session
+    ) {
+        String categoryList = buildIntentCategoryList(workflows);
+        String chatHistory = buildIntentChatHistory(session, 100);
+        String exampleContent = "";
+
+        String systemPrompt = INTENT_SYSTEM_PROMPT
+                .replace("{{default_class}}", DEFAULT_INTENT_CLASS)
+                .replace("{{category_list}}", categoryList)
+                .replace("{{example_content}}", exampleContent);
+        String userPrompt = INTENT_USER_PROMPT
+                .replace("{{chat_history}}", chatHistory)
+                .replace("{{input}}", currentInput != null ? currentInput : "");
+
+        return List.of(
+                BaseMessage.builder().role("system").content(systemPrompt).build(),
+                BaseMessage.builder().role("user").content(userPrompt).build()
+        );
+    }
+
+    private String buildIntentCategoryList(List<WorkflowSchema> workflows) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(DEFAULT_INTENT_CLASS).append("：意图不明");
+        for (int i = 0; i < workflows.size(); i++) {
+            WorkflowSchema workflow = workflows.get(i);
+            String categoryName = workflow.getDescription() != null && !workflow.getDescription().isEmpty()
+                    ? workflow.getDescription()
+                    : workflow.getName();
+            builder.append("\n分类").append(i + 1).append("：").append(categoryName);
+        }
+        return builder.toString();
+    }
+
+    private String buildIntentChatHistory(AgentSessionApi session, int maxRounds) {
+        ModelContext agentContext = getOrCreateAgentContext(session);
+        List<BaseMessage> messages = agentContext.getMessages();
+        if (messages == null || messages.isEmpty()) {
+            return "";
+        }
+        int limit = Math.min(messages.size(), maxRounds * 2);
+        StringBuilder builder = new StringBuilder();
+        for (BaseMessage message : messages.subList(messages.size() - limit, messages.size())) {
+            String roleName = "assistant".equals(message.getRole()) ? "助手" : "用户";
+            builder.append(roleName).append(": ").append(message.getContentAsString()).append("\n");
+        }
+        return builder.toString();
+    }
+
+    private WorkflowSchema mapWorkflowFromIntentOutput(AssistantMessage llmOutput, List<WorkflowSchema> workflows) {
+        Integer categoryIndex = parseIntentCategoryIndex(llmOutput != null ? llmOutput.getContentAsString() : "");
+        if (categoryIndex == null || categoryIndex <= 0 || categoryIndex > workflows.size()) {
+            return null;
+        }
+        String detectedCategory = workflows.get(categoryIndex - 1).getDescription();
+        if (detectedCategory == null || detectedCategory.isEmpty()) {
+            detectedCategory = workflows.get(categoryIndex - 1).getName();
+        }
+        for (WorkflowSchema workflow : workflows) {
+            String categoryName = workflow.getDescription() != null && !workflow.getDescription().isEmpty()
+                    ? workflow.getDescription()
+                    : workflow.getName();
+            if (detectedCategory.equals(categoryName)) {
+                return workflow;
+            }
+        }
+        return null;
+    }
+
+    private Integer parseIntentCategoryIndex(String llmOutput) {
+        if (llmOutput == null || llmOutput.isBlank()) {
+            return null;
+        }
+        String cleaned = llmOutput.strip()
+                .replaceAll("(?is)^```json\\s*", "")
+                .replaceAll("(?is)^```\\s*", "")
+                .replaceAll("(?is)```\\s*$", "");
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(cleaned);
+            if (root.has("result") && root.get("result").canConvertToInt()) {
+                return root.get("result").asInt();
+            }
+        } catch (Exception ignored) {
+            // Fallback to a lightweight number search below.
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"result\"\\s*:\\s*(\\d+)")
+                .matcher(cleaned);
+        if (matcher.find()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        return null;
+    }
+
+    private String buildAssistantContent(List<Object> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return "";
+        }
+        StringBuilder contentParts = new StringBuilder();
+        for (Object chunk : chunks) {
+            if (!(chunk instanceof OutputSchema os)) {
+                continue;
+            }
+            if (os.getPayload() instanceof Map<?, ?> payloadMap) {
+                Object response = payloadMap.get("response");
+                if (response != null) {
+                    contentParts.append(response);
+                }
+            } else if (os.getPayload() instanceof InteractionOutput io && io.getValue() != null) {
+                contentParts.append(io.getValue());
+            }
+        }
+        return contentParts.toString();
+    }
+
+    private String buildWorkflowAssistantContent(List<Object> chunks, Object finalResult, boolean hasInteraction) {
+        if (hasInteraction) {
+            return buildAssistantContent(chunks);
+        }
+        if (finalResult == null) {
+            return buildAssistantContent(chunks);
+        }
+        if (finalResult instanceof String text) {
+            return text;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(finalResult);
+        } catch (Exception ignored) {
+            return String.valueOf(finalResult);
+        }
+    }
+
+    private List<WorkflowSchema> uniqueWorkflows(List<WorkflowSchema> workflows) {
+        if (workflows == null || workflows.isEmpty()) {
+            return List.of();
+        }
+        Map<String, WorkflowSchema> unique = new LinkedHashMap<>();
+        for (WorkflowSchema workflow : workflows) {
+            if (workflow == null) {
+                continue;
+            }
+            String key = workflow.getId() + "_" + workflow.getVersion();
+            unique.putIfAbsent(key, workflow);
+        }
+        return new ArrayList<>(unique.values());
+    }
+
+    private void addUserMessageToAgentContext(AgentSessionApi session, String content) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        addMessageToContext(getOrCreateAgentContext(session), new UserMessage(content), true);
+    }
+
+    private void addAssistantMessageToAgentContext(AgentSessionApi session, String content) {
+        if (content == null) {
+            return;
+        }
+        addMessageToContext(getOrCreateAgentContext(session), new AssistantMessage(content), true);
+    }
+
+    private void addUserMessageToWorkflowContext(ModelContext workflowContext, String content) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        addMessageToContext(workflowContext, new UserMessage(content), true);
+    }
+
+    private void addAssistantMessageToWorkflowContext(ModelContext workflowContext, String content) {
+        if (content == null) {
+            return;
+        }
+        addMessageToContext(workflowContext, new AssistantMessage(content), true);
+    }
+
+    private ModelContext getOrCreateAgentContext(AgentSessionApi session) {
+        ModelContext context = appContextEngine.getContext(null, session.getSessionId());
+        if (context != null) {
+            return context;
+        }
+        return appContextEngine.createContext(null, session.getInner());
+    }
+
+    private void addMessageToContext(ModelContext context, BaseMessage message, boolean deduplicate) {
+        if (context == null || message == null) {
+            return;
+        }
+        if (deduplicate) {
+            List<BaseMessage> lastMessage = context.getMessages(1, true);
+            if (!lastMessage.isEmpty()) {
+                BaseMessage previous = lastMessage.get(0);
+                if (message.getRole().equals(previous.getRole())
+                        && message.getContentAsString().equals(previous.getContentAsString())) {
+                    return;
+                }
+            }
+        }
+        context.addMessages(message);
     }
 
     private Task deserializeTask(Map<String, Object> data) {

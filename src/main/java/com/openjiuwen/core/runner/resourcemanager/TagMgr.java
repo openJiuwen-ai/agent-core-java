@@ -39,6 +39,20 @@ public class TagMgr {
         tagToResource.put(Tag.GLOBAL, new HashSet<>());
     }
 
+    /**
+     * Clear all tag and resource mappings, restoring the initial state.
+     */
+    public void clear() {
+        lock.lock();
+        try {
+            resourceTags.clear();
+            tagToResource.clear();
+            tagToResource.put(Tag.GLOBAL, new HashSet<>());
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public boolean hasTag(String tag) {
         lock.lock();
         try {

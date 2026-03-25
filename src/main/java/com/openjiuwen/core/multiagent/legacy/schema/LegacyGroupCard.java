@@ -5,7 +5,11 @@ package com.openjiuwen.core.multiagent.legacy.schema;
 
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;

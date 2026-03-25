@@ -10,6 +10,7 @@ import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.workflow.component.ComponentConfig;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
