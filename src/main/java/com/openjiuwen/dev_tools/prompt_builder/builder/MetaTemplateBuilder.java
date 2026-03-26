@@ -5,39 +5,35 @@ package com.openjiuwen.dev_tools.prompt_builder.builder;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import reactor.core.Exceptions;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Java translation of Python's MetaTemplateBuilder.
+ * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.meta_template_builder.MetaTemplateBuilder}.
  */
-public class MetaTemplateBuilder {
+public class MetaTemplateBuilder extends BasePromptBuilder {
 
+    private static final Logger log = LoggerFactory.getLogger(MetaTemplateBuilder.class);
     static final String META_TEMPLATE_NAME_PREFIX = "META_TEMPLATE_";
 
-    private final Model model;
     private final Map<String, PromptTemplate> metaTemplateManager = new HashMap<>();
-    private Class<?> template = PromptTemplatesZh.class;
+    private Object template;
 
     public MetaTemplateBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        this.model = new Model(modelClientConfig, modelConfig);
+        super(modelConfig, modelClientConfig);
+        this.template = PromptTemplateUtils.selectTemplate("zh-CN");
     }
 
     public PromptTemplate getMetaTemplate(String templateName) {
@@ -50,11 +46,12 @@ public class MetaTemplateBuilder {
 
     public void registerMetaTemplate(String name, Object metaTemplate) {
         String templateName = META_TEMPLATE_NAME_PREFIX + name;
-        PromptTemplate templateToRegister;
+        PromptTemplate templateToReg;
+
         if (metaTemplate instanceof String content) {
-            templateToRegister = PromptTemplate.builder().content(content).build();
+            templateToReg = PromptTemplate.builder().content(content).build();
         } else if (metaTemplate instanceof PromptTemplate promptTemplate) {
-            templateToRegister = copyPromptTemplate(promptTemplate);
+            templateToReg = copyPromptTemplate(promptTemplate);
         } else {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
@@ -62,57 +59,84 @@ public class MetaTemplateBuilder {
                     "failed to register meta-template: " + name
             );
         }
-        metaTemplateManager.put(templateName, templateToRegister);
+        metaTemplateManager.put(templateName, templateToReg);
     }
 
-    public Mono<Optional<String>> build(
-            Object prompt,
-            Object tools,
-            String templateType,
-            String customTemplateName,
-            String language
-    ) {
-        return Mono.fromCallable(() -> {
-            template = resolveTemplate(language);
-            String promptContent = PromptTemplateUtils.getStringPrompt(prompt);
-            List<ToolInfo> toolInfos = normalizeTools(tools);
-            isValidPrompt(promptContent, toolInfos);
-            List<BaseMessage> messages = formatMetaTemplate(promptContent, toolInfos, templateType, customTemplateName);
-            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
-            if (response == null || response.getContent() == null) {
-                return Optional.empty();
-            }
-            return Optional.of(response.getContentAsString());
-        });
-    }
-
-    public Flux<String> streamBuild(
-            Object prompt,
-            Object tools,
-            String templateType,
-            String customTemplateName,
-            String language
-    ) {
-        return Flux.defer(() -> {
+    @Override
+    public CompletableFuture<String> build(Object prompt, Object... args) {
+        return UnwrappedCompletableFuture.supplyAsync(() -> {
             try {
-                template = resolveTemplate(language);
-                String promptContent = PromptTemplateUtils.getStringPrompt(prompt);
-                List<ToolInfo> toolInfos = normalizeTools(tools);
-                isValidPrompt(promptContent, toolInfos);
-                List<BaseMessage> messages = formatMetaTemplate(promptContent, toolInfos, templateType, customTemplateName);
-                Iterator<AssistantMessageChunk> iterator =
-                        model.stream(messages, null, null, null, null, null, null, null, null, null);
-                Iterable<AssistantMessageChunk> iterable = () -> iterator;
-                return Flux.fromIterable(iterable).map(chunk -> chunk != null ? chunk.getContentAsString() : "");
-            } catch (RuntimeException exception) {
-                return Flux.error(exception);
+                BuildParams params = parseBuildParams(args);
+                this.template = PromptTemplateUtils.selectTemplate(params.language);
+                String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
+                isValidPrompt(promptStr, params.rawTools);
+                List<Object> messages = formatMetaTemplate(
+                        promptStr,
+                        params.tools,
+                        params.templateType,
+                        params.customTemplateName
+                );
+                AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+                return response != null ? response.getContentAsString() : null;
             } catch (Exception exception) {
-                return Flux.error(Exceptions.propagate(exception));
+                log.error("Error building meta template", exception);
+                throw new RuntimeException(exception);
             }
         });
     }
 
-    private List<BaseMessage> formatMetaTemplate(
+    @Override
+    public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
+        return UnwrappedCompletableFuture.supplyAsync(() -> {
+            try {
+                BuildParams params = parseBuildParams(args);
+                this.template = PromptTemplateUtils.selectTemplate(params.language);
+                String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
+                isValidPrompt(promptStr, params.rawTools);
+                List<Object> messages = formatMetaTemplate(
+                        promptStr,
+                        params.tools,
+                        params.templateType,
+                        params.customTemplateName
+                );
+
+                StringBuilder result = new StringBuilder();
+                var iterator = model.stream(messages, null, null, null, null, null, null, null, null, null);
+                while (iterator.hasNext()) {
+                    var chunk = iterator.next();
+                    result.append(chunk.getContentAsString());
+                }
+                return result.toString();
+            } catch (Exception exception) {
+                log.error("Error streaming meta template", exception);
+                throw new RuntimeException(exception);
+            }
+        });
+    }
+
+    private BuildParams parseBuildParams(Object... args) {
+        BuildParams params = new BuildParams();
+        if (args.length >= 1) {
+            params.rawTools = args[0];
+        }
+        if (args.length >= 1 && args[0] instanceof List<?>) {
+            @SuppressWarnings("unchecked")
+            List<ToolInfo> tools = (List<ToolInfo>) args[0];
+            params.tools = tools;
+        }
+        if (args.length >= 2 && args[1] instanceof String) {
+            params.templateType = (String) args[1];
+        }
+        if (args.length >= 3 && args[2] instanceof String) {
+            params.customTemplateName = (String) args[2];
+        }
+        if (args.length >= 4 && args[3] instanceof String) {
+            params.language = (String) args[3];
+        }
+        return params;
+    }
+
+    private List<Object> formatMetaTemplate(
             String prompt,
             List<ToolInfo> tools,
             String templateType,
@@ -124,36 +148,40 @@ public class MetaTemplateBuilder {
         return formatPredefinedMetaTemplate(templateType, prompt, tools);
     }
 
-    private List<BaseMessage> formatPredefinedMetaTemplate(
+    private List<Object> formatPredefinedMetaTemplate(
             String templateType,
             String prompt,
             List<ToolInfo> tools
     ) {
         PromptTemplate metaSystemTemplate;
         PromptTemplate metaUserTemplate;
+
         if ("plan".equals(templateType)) {
-            metaSystemTemplate = getTemplateField("PROMPT_BUILD_PLAN_META_SYSTEM_TEMPLATE");
-            metaUserTemplate = getTemplateField("PROMPT_BUILD_PLAN_META_USER_TEMPLATE");
+            metaSystemTemplate = PromptTemplateUtils.getTemplate(template, "PROMPT_BUILD_PLAN_META_SYSTEM_TEMPLATE");
+            metaUserTemplate = PromptTemplateUtils.getTemplate(template, "PROMPT_BUILD_PLAN_META_USER_TEMPLATE");
         } else {
-            metaSystemTemplate = getTemplateField("PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE");
-            metaUserTemplate = getTemplateField("PROMPT_BUILD_GENERAL_META_USER_TEMPLATE");
+            if (!"general".equals(templateType)) {
+                log.warn("Invalid template_type: {}, using `general` instead", templateType);
+            }
+            metaSystemTemplate = PromptTemplateUtils.getTemplate(template, "PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE");
+            metaUserTemplate = PromptTemplateUtils.getTemplate(template, "PROMPT_BUILD_GENERAL_META_USER_TEMPLATE");
         }
 
         Map<String, Object> formatParams = new HashMap<>();
         formatParams.put("instruction", prompt);
-        formatParams.put("tools", stringifyTools(tools));
+        formatParams.put("tools", tools != null ? tools.toString() : "None");
 
-        List<BaseMessage> messages = new ArrayList<>(metaSystemTemplate.toMessages());
+        List<Object> messages = new ArrayList<>(metaSystemTemplate.toMessages());
         messages.addAll(metaUserTemplate.format(formatParams).toMessages());
         return messages;
     }
 
-    private List<BaseMessage> formatCustomMetaTemplate(
+    private List<Object> formatCustomMetaTemplate(
             String customMetaTemplateName,
             String prompt,
             List<ToolInfo> tools
     ) {
-        if (customMetaTemplateName == null || customMetaTemplateName.isBlank()) {
+        if (customMetaTemplateName == null || customMetaTemplateName.isEmpty()) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
                     "error_msg",
@@ -161,23 +189,23 @@ public class MetaTemplateBuilder {
             );
         }
 
-        String templateName = META_TEMPLATE_NAME_PREFIX + customMetaTemplateName;
-        PromptTemplate customMetaTemplate = metaTemplateManager.get(templateName);
+        String fullTemplateName = META_TEMPLATE_NAME_PREFIX + customMetaTemplateName;
+        PromptTemplate customMetaTemplate = metaTemplateManager.get(fullTemplateName);
         if (customMetaTemplate == null) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
                     "error_msg",
-                    "failed to get custom meta-template: " + templateName
+                    "failed to get custom meta-template: " + fullTemplateName
             );
         }
 
         Map<String, Object> formatParams = new HashMap<>();
         formatParams.put("instruction", prompt);
-        formatParams.put("tools", stringifyTools(tools));
-        return customMetaTemplate.format(formatParams).toMessages();
+        formatParams.put("tools", tools != null ? tools.toString() : "None");
+        return new ArrayList<>(customMetaTemplate.format(formatParams).toMessages());
     }
 
-    private void isValidPrompt(String prompt, List<ToolInfo> tools) {
+    private void isValidPrompt(String prompt, Object tools) {
         if (prompt == null) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
@@ -185,36 +213,25 @@ public class MetaTemplateBuilder {
                     "prompt cannot be None"
             );
         }
-        if (prompt.isBlank()) {
+        if (prompt.trim().isEmpty()) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
                     "error_msg",
                     "prompt cannot be empty"
             );
         }
-        if (tools != null && tools.stream().anyMatch(tool -> !(tool instanceof ToolInfo))) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg",
-                    "each tool must be an instance of ToolInfo"
-            );
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<ToolInfo> normalizeTools(Object tools) {
         if (tools == null) {
-            return null;
+            return;
         }
-        if (!(tools instanceof List<?> list)) {
+        if (!(tools instanceof List<?> toolList)) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
                     "error_msg",
                     "each tool must be an instance of ToolInfo"
             );
         }
-        for (Object item : list) {
-            if (!(item instanceof ToolInfo)) {
+        for (Object tool : toolList) {
+            if (!(tool instanceof ToolInfo)) {
                 throw ErrorHelper.buildError(
                         StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
                         "error_msg",
@@ -222,32 +239,6 @@ public class MetaTemplateBuilder {
                 );
             }
         }
-        return (List<ToolInfo>) list;
-    }
-
-    private String stringifyTools(List<ToolInfo> tools) {
-        return tools == null ? "None" : String.valueOf(tools);
-    }
-
-    private PromptTemplate getTemplateField(String fieldName) {
-        try {
-            Field field = template.getField(fieldName);
-            return (PromptTemplate) field.get(null);
-        } catch (ReflectiveOperationException exception) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg",
-                    "failed to load meta-template: " + fieldName
-            );
-        }
-    }
-
-    private Class<?> resolveTemplate(String language) {
-        Object resolved = PromptTemplateUtils.selectTemplate(language);
-        if (resolved instanceof Class<?> templateClass) {
-            return templateClass;
-        }
-        return PromptTemplatesZh.class;
     }
 
     private PromptTemplate copyPromptTemplate(PromptTemplate templateToCopy) {
@@ -266,5 +257,13 @@ public class MetaTemplateBuilder {
                 .placeholderPrefix(templateToCopy.getPlaceholderPrefix())
                 .placeholderSuffix(templateToCopy.getPlaceholderSuffix())
                 .build();
+    }
+
+    private static class BuildParams {
+        List<ToolInfo> tools = null;
+        Object rawTools = null;
+        String templateType = "general";
+        String customTemplateName = null;
+        String language = "zh-CN";
     }
 }

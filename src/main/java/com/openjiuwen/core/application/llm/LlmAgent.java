@@ -271,8 +271,10 @@ public class LlmAgent extends ControllerAgent {
         List<WorkflowSchema> workflows = agentConfig.getWorkflows();
         if (workflows == null) {
             workflows = new ArrayList<>();
-            agentConfig.setWorkflows(workflows);
+        } else {
+            workflows = new ArrayList<>(workflows);
         }
+        agentConfig.setWorkflows(workflows);
         boolean exists = workflows.stream()
                 .anyMatch(schema -> Objects.equals(schema.getId(), card.getId())
                         && Objects.equals(schema.getVersion(), card.getVersion()));
@@ -295,8 +297,10 @@ public class LlmAgent extends ControllerAgent {
         List<PluginSchema> plugins = agentConfig.getPlugins();
         if (plugins == null) {
             plugins = new ArrayList<>();
-            agentConfig.setPlugins(plugins);
+        } else {
+            plugins = new ArrayList<>(plugins);
         }
+        agentConfig.setPlugins(plugins);
         boolean exists = plugins.stream()
                 .anyMatch(schema -> Objects.equals(schema.getId(), card.getId())
                         || Objects.equals(schema.getName(), card.getName()));

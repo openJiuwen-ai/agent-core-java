@@ -12,30 +12,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 提示词模板工具类
- * <p>
- * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.utils}
+ * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.utils}.
  */
 public final class PromptTemplateUtils {
 
     private PromptTemplateUtils() {
-        // Utility class
     }
 
-    /**
-     * 模板映射
-     */
     private static final Map<String, Object> TEMPLATE_MAP = Map.of(
             "zh-CN", PromptTemplatesZh.class,
             "en-US", PromptTemplatesEn.class
     );
 
-    /**
-     * 选择模板
-     *
-     * @param language 语言代码
-     * @return 模板类
-     */
     public static Object selectTemplate(String language) {
         if (language == null) {
             return PromptTemplatesZh.class;
@@ -43,12 +31,17 @@ public final class PromptTemplateUtils {
         return TEMPLATE_MAP.getOrDefault(language, PromptTemplatesZh.class);
     }
 
-    /**
-     * 获取字符串形式的提示词
-     *
-     * @param prompt 提示词对象（String 或 PromptTemplate）
-     * @return 字符串形式的提示词
-     */
+    public static PromptTemplate getTemplate(Object templateHolder, String fieldName) {
+        try {
+            Class<?> templateClass = templateHolder instanceof Class<?>
+                    ? (Class<?>) templateHolder
+                    : templateHolder.getClass();
+            return (PromptTemplate) templateClass.getField(fieldName).get(null);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Failed to read template field: " + fieldName, exception);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public static String getStringPrompt(Object prompt) {
         if (prompt instanceof String) {
@@ -58,7 +51,6 @@ public final class PromptTemplateUtils {
             if (content instanceof String s) {
                 return s;
             } else if (content instanceof List<?> list) {
-                // Check if all items are BaseMessage
                 if (!list.isEmpty() && list.get(0) instanceof BaseMessage) {
                     StringBuilder sb = new StringBuilder();
                     for (BaseMessage msg : (List<BaseMessage>) list) {
@@ -69,7 +61,6 @@ public final class PromptTemplateUtils {
                     }
                     return sb.toString();
                 } else {
-                    // Handle list of maps
                     StringBuilder sb = new StringBuilder();
                     for (Object item : list) {
                         if (item instanceof Map) {
@@ -90,11 +81,6 @@ public final class PromptTemplateUtils {
                 "error_msg", "Prompt type " + toPythonTypeString(prompt) + " is not supported");
     }
 
-    /**
-     * 获取模板映射
-     *
-     * @return 模板映射
-     */
     public static Map<String, Object> getTemplateMap() {
         return TEMPLATE_MAP;
     }

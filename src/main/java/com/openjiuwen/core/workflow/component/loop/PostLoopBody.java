@@ -21,15 +21,16 @@ public class PostLoopBody extends Executable<Object, Object> {
 
     @Override
     public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
-        if (session.state() instanceof WorkflowStateCollection) {
-            WorkflowStateCollection state = (WorkflowStateCollection) session.state();
+        if (session.state() instanceof WorkflowStateCollection state) {
             Object fi = state.get(Constant.FINISH_INDEX);
             if (fi instanceof Number) {
                 finishIndex = ((Number) fi).intValue();
             }
             finishIndex += 1;
             state.update(Map.of(Constant.FINISH_INDEX, finishIndex));
-            state.commitCmp();
+            if (state instanceof com.openjiuwen.core.session.state.WorkflowCommitState commitState) {
+                commitState.commit();
+            }
         }
         return null;
     }
