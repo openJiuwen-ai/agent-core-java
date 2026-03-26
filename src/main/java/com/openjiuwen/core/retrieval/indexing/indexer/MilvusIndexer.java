@@ -174,7 +174,7 @@ public class MilvusIndexer implements Indexer {
 
     private void ensureCollection(String collectionName, IndexConfig config, Embedding embedModel) {
         Integer dimension = "bm25".equals(config.getIndexType()) ? null : resolveDimension(embedModel);
-        vectorStore.ensureCollection(collectionName, config.getIndexType(), dimension);
+        vectorStore.ensureCollection(collectionName, config.getIndexType(), dimension, Map.of());
     }
 
     private int resolveDimension(Embedding embedModel) {
