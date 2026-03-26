@@ -5,6 +5,7 @@ package com.openjiuwen.core.graph.pregel;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.graph.GraphNodeState;
 import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 
 import java.lang.reflect.Method;
@@ -144,6 +145,14 @@ public class NodeTask implements Callable<Object> {
             String paramName = params[i].getName();
             if (kwargs.containsKey(paramName)) {
                 args[i] = kwargs.get(paramName);
+            } else if (GraphNodeState.class.isAssignableFrom(params[i].getType())) {
+                args[i] = kwargs.get("state");
+            } else if (PregelConfig.class.isAssignableFrom(params[i].getType())) {
+                args[i] = kwargs.get("config");
+            } else if (i == 0 && kwargs.containsKey("state")) {
+                args[i] = kwargs.get("state");
+            } else if (i == 1 && kwargs.containsKey("config")) {
+                args[i] = kwargs.get("config");
             } else if (params[i].getType() == PregelConfig.class) {
                 args[i] = kwargs.get("config");
             } else {
@@ -160,6 +169,7 @@ public class NodeTask implements Callable<Object> {
         try {
             Method callMethod = findCallMethod(func);
             if (callMethod != null) {
+                java.lang.reflect.Parameter[] parameters = callMethod.getParameters();
                 for (java.lang.reflect.Parameter param : callMethod.getParameters()) {
                     if (param.getName().equals(paramName)) {
                         return true;
@@ -167,11 +177,20 @@ public class NodeTask implements Callable<Object> {
                 }
                 // Also check by type
                 if ("config".equals(paramName)) {
-                    for (java.lang.reflect.Parameter param : callMethod.getParameters()) {
+                    for (java.lang.reflect.Parameter param : parameters) {
                         if (param.getType() == PregelConfig.class) {
                             return true;
                         }
                     }
+                    return parameters.length >= 2;
+                }
+                if ("state".equals(paramName)) {
+                    for (java.lang.reflect.Parameter param : parameters) {
+                        if (GraphNodeState.class.isAssignableFrom(param.getType())) {
+                            return true;
+                        }
+                    }
+                    return parameters.length >= 1;
                 }
             }
         } catch (Exception e) {

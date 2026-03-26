@@ -669,16 +669,12 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     // ---- Helpers ----
 
     private void clearInteractive() {
-        if (session.state() instanceof WorkflowStateCollection) {
-            WorkflowStateCollection stateCollection = (WorkflowStateCollection) session.state();
-            Object interactiveInput = stateCollection.getWorkflow(Constant.INTERACTIVE_INPUT);
+        if (session.state() instanceof WorkflowStateCollection stateCollection) {
+            Object interactiveInput = stateCollection.get(Constant.INTERACTIVE_INPUT);
             if (interactiveInput != null) {
                 Map<String, Object> clearMap = new HashMap<>();
                 clearMap.put(Constant.INTERACTIVE_INPUT, null);
-                stateCollection.updateWorkflow(clearMap);
-                if (session.state() instanceof WorkflowCommitState commitState) {
-                    commitState.commitWorkflow();
-                }
+                stateCollection.update(clearMap);
             }
         }
     }

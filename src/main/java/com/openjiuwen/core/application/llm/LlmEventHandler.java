@@ -3,8 +3,8 @@
  */
 package com.openjiuwen.core.application.llm;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.MapType;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.application.schema.PluginSchema;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
@@ -65,6 +65,8 @@ public class LlmEventHandler extends EventHandler {
     private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final MapType STRING_OBJECT_MAP_TYPE =
+            OBJECT_MAPPER.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class);
 
     private final LlmAgentConfig agentConfig;
     private final ContextEngine appContextEngine;
@@ -1178,8 +1180,7 @@ public class LlmEventHandler extends EventHandler {
             return Map.of();
         }
         try {
-            return OBJECT_MAPPER.readValue(rawArguments, new TypeReference<Map<String, Object>>() {
-            });
+            return OBJECT_MAPPER.readValue(rawArguments, STRING_OBJECT_MAP_TYPE);
         } catch (Exception e) {
             Loggers.CONTROLLER.warning("Failed to parse tool arguments as json, keeping raw string: {}", e.getMessage());
             return rawArguments;
