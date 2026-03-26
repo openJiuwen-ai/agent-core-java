@@ -163,7 +163,9 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         if (indexObj == null) {
             state.update(Map.of(BROKEN, false, Constant.INDEX, 0));
             state.setOutputs(Map.of(Constant.INDEX, 0));
-            state.commitCmp();
+            if (state instanceof WorkflowCommitState commitState) {
+                commitState.commit();
+            }
             index = 0;
         } else {
             index = ((Number) indexObj).intValue();
@@ -178,7 +180,9 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         if (finishIndex == index) {
             state.update(Map.of(Constant.INDEX, index + 1));
             state.setOutputs(Map.of(Constant.INDEX, index + 1));
-            state.commitCmp();
+            if (state instanceof WorkflowCommitState commitState) {
+                commitState.commit();
+            }
         }
 
         boolean continueLoop = !isBroken() && condition.evaluate(nodeSession);
@@ -198,7 +202,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
         if (!continueLoop) {
             Map<String, Object> stateReset = new java.util.HashMap<>();
-            stateReset.put(Constant.INDEX, null);
+            stateReset.put(Constant.INDEX, 0);
             stateReset.put(BROKEN, false);
             state.update(stateReset);
             postBody.setFinishIndex(-1);
@@ -208,7 +212,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
                 ((WorkflowStateCollection) nodeSession.parent().state()).update(postBodyReset);
             }
             Map<String, Object> outputReset = new java.util.HashMap<>();
-            outputReset.put(Constant.INDEX, null);
+            outputReset.put(Constant.INDEX, 0);
             state.setOutputs(outputReset);
         }
 
