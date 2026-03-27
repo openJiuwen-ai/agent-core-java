@@ -10,7 +10,6 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
@@ -65,7 +64,7 @@ public class SemanticStore {
     }
 
     /**
-     * Create a collection. In Java VectorStore, collections are auto-created on first add.
+     * Create a collection when the backend supports explicit bootstrap.
      */
     public void createCollection(String collectionName, int dimension, Map<String, Object> schema) {
         if (collectionExist(collectionName)) {
@@ -74,9 +73,7 @@ public class SemanticStore {
         VectorStore scoped = vectorStore.withCollection(collectionName);
         knownCollections.add(collectionName);
         collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
-        if (scoped instanceof MilvusVectorStore milvusStore) {
-            milvusStore.ensureCollection(collectionName, "vector", dimension);
-        }
+        scoped.ensureCollection(collectionName, "vector", dimension, schema == null ? Map.of() : schema);
     }
 
     /**

@@ -28,6 +28,17 @@ public interface VectorStore extends IndexBackendConfig, AutoCloseable {
         // Default no-op; concrete implementations should override if applicable
     }
 
+    default void ensureCollection(String collectionName, String indexType, Integer dimension) {
+        ensureCollection(collectionName, indexType, dimension, Map.of());
+    }
+
+    default void ensureCollection(String collectionName,
+                                  String indexType,
+                                  Integer dimension,
+                                  Map<String, Object> options) {
+        // Default no-op; concrete implementations should override if applicable
+    }
+
     void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options);
 
     List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters, Map<String, Object> options);

@@ -105,12 +105,13 @@ public class PGVectorField extends VectorField {
     public Map<String, Object> toDict(String stage) {
         Map<String, Object> result = new HashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {
+            result.put("index_type", indexType);
             result.put("m", m);
             result.put("ef_construction", efConstruction);
-            result.put("ef_search", efSearch);
             result.put("lists", lists);
-            result.put("probes", probes);
         } else if (STAGE_SEARCH.equals(stage)) {
+            result.put("ef_search", efSearch);
+            result.put("probes", probes);
             result.put("extra_search", new HashMap<>(extraSearch));
         }
         return finalizeDict(result, stage);

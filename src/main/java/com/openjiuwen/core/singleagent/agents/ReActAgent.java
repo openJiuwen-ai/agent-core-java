@@ -214,7 +214,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * Warn when skill prompt is enabled but read_file tool is missing.
+     * Warn when skill prompt is enabled but readFile tool is missing.
      */
     private void warnMissingSkillReadFileTool() {
         List<ToolInfo> toolInfos = getAbilityManager().listToolInfo();
@@ -226,7 +226,7 @@ public class ReActAgent extends BaseAgent {
             String name = t.getName();
             if (name != null && !name.isEmpty()) {
                 existingToolNames.add(name);
-                if ("read_file".equals(name)) {
+                if ("readFile".equals(name)) {
                     hasReadFile = true;
                 }
             }
@@ -237,7 +237,7 @@ public class ReActAgent extends BaseAgent {
         }
 
         Loggers.AGENT.warning(
-                "skill prompt requires tool 'read_file' but it is not found in ability_manager. "
+                "skill prompt requires tool 'readFile' but it is not found in ability_manager. "
                         + "existing_tools=" + existingToolNames
         );
     }
