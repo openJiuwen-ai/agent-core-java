@@ -25,6 +25,7 @@ import com.openjiuwen.core.workflow.condition.FuncCondition;
 import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -51,7 +52,8 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         try {
             if (!(inputs instanceof Map)) {
-                throw new IllegalArgumentException("inputs must be a map, but got " + inputs.getClass().getSimpleName());
+                String inputType = inputs == null ? "null" : inputs.getClass().getSimpleName();
+                throw new IllegalArgumentException("inputs must be a map, but got " + inputType);
             }
 
             Map<String, Object> inputsMap = (Map<String, Object>) inputs;
@@ -110,10 +112,10 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             AdvancedLoopComponentImpl loopComponent = new AdvancedLoopComponentImpl(
                     loopGroup, condition, loopGroup.getBreakComponents(), callbacks);
 
-            BaseSession innerSession = extractInnerSession(session);
-            Map<String, Object> invokeInputs = Map.of(
-                    Constant.INPUTS_KEY, Map.of(),
-                    Constant.CONFIG_KEY, inputsMap.getOrDefault(Constant.CONFIG_KEY, Map.of()));
+            BaseSession innerSession = session.getInner();
+            Map<String, Object> invokeInputs = new LinkedHashMap<>();
+            invokeInputs.put(Constant.INPUTS_KEY, Map.of());
+            invokeInputs.put(Constant.CONFIG_KEY, inputsMap.get(Constant.CONFIG_KEY));
             return loopComponent.onInvoke(invokeInputs, innerSession);
 
         } catch (RuntimeException e) {
@@ -141,16 +143,6 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
     @Override
     public HasDrawable getLoopGroup() {
         return (HasDrawable) loopGroup;
-    }
-
-    private BaseSession extractInnerSession(NodeSessionApi sessionApi) {
-        try {
-            java.lang.reflect.Field inner = sessionApi.getClass().getDeclaredField("inner");
-            inner.setAccessible(true);
-            return (BaseSession) inner.get(sessionApi);
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot extract inner session from NodeSessionApi", e);
-        }
     }
 
     private static boolean containsGraphInterrupt(Throwable throwable) {

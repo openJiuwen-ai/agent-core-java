@@ -4,7 +4,7 @@
 package com.openjiuwen.core.foundation.store.vector;
 
 import com.openjiuwen.core.retrieval.common.SearchResult;
-import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
+import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.spi.store.vector.BaseVectorStore;
 import com.openjiuwen.spi.store.vector.CollectionSchema;
@@ -45,12 +45,17 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
                 .orElse(null);
 
         VectorStore scoped = delegate.withCollection(collectionName);
-        if (scoped instanceof MilvusVectorStore milvusVectorStore) {
-            String indexType = kwargs != null && kwargs.containsKey("index_type")
-                    ? String.valueOf(kwargs.get("index_type"))
-                    : milvusVectorStore.getIndexType();
-            milvusVectorStore.ensureCollection(collectionName, indexType, dimension);
+        String requestedIndexType = scoped.getIndexType();
+        if (kwargs != null) {
+            Object rawIndexType = kwargs.containsKey("indexType") ? kwargs.get("indexType") : kwargs.get("index_type");
+            if (rawIndexType != null) {
+                String normalized = String.valueOf(rawIndexType).toLowerCase();
+                if (RetrievalValidation.INDEX_TYPES.contains(normalized)) {
+                    requestedIndexType = normalized;
+                }
+            }
         }
+        scoped.ensureCollection(collectionName, requestedIndexType, dimension, kwargs == null ? Map.of() : kwargs);
     }
 
     @Override
