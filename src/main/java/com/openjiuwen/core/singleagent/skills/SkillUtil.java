@@ -16,7 +16,7 @@ public class SkillUtil {
     private static final String SKILL_PROMPT_CONTENT =
             "\nTo help you better complete tasks, the following skill knowledge is equipped:\n"
                     + "%s\n"
-                    + "You can use the read_file tool to read the corresponding SKILL.md file to obtain the relevant skill.\n";
+                    + "You can use the readFile tool to read the corresponding SKILL.md file to obtain the relevant skill.\n";
 
     private final SkillManager skillManager;
     private final RemoteSkillUtil remoteSkillUtil;
@@ -81,7 +81,7 @@ public class SkillUtil {
     public String getSkillPrompt() {
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
                 + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using read_file and follow its workflow.\n";
+                + "using readFile and follow its workflow.\n";
 
         List<Skill> skills = skillManager.getAll();
         StringBuilder skillsInfo = new StringBuilder();

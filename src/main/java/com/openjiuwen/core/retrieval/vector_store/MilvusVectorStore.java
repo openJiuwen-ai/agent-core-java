@@ -250,6 +250,14 @@ public class MilvusVectorStore implements VectorStore {
     }
 
     public void ensureCollection(String targetCollection, String requestedIndexType, Integer dimension) {
+        ensureCollection(targetCollection, requestedIndexType, dimension, Map.of());
+    }
+
+    @Override
+    public void ensureCollection(String targetCollection,
+                                 String requestedIndexType,
+                                 Integer dimension,
+                                 Map<String, Object> options) {
         String safeCollection = firstNonBlank(targetCollection, collectionName);
         if (safeCollection == null || safeCollection.isBlank()) {
             throw new IllegalArgumentException("collectionName is required for Milvus collection bootstrap");
@@ -630,7 +638,10 @@ public class MilvusVectorStore implements VectorStore {
         if (dimension == null || dimension <= 0) {
             dimension = inferDimension(data);
         }
-        ensureCollection(collectionName, resolveBootstrapIndexType(options), dimension);
+        ensureCollection(collectionName,
+                resolveBootstrapIndexType(options),
+                dimension,
+                options == null ? Map.of() : options);
     }
 
     private void ensureLoaded(String targetCollection) {

@@ -110,6 +110,7 @@ public class End extends WorkflowComponent {
         List<Object> frames = new ArrayList<>();
 
         if (template != null) {
+            int chunkIndex = 0;
             for (int i = 0; i < segments.size(); i++) {
                 String seg = segments.get(i);
                 Object data;
@@ -118,10 +119,20 @@ public class End extends WorkflowComponent {
                 } else {
                     data = seg;
                 }
+                if (data instanceof Iterator<?> iterator) {
+                    while (iterator.hasNext()) {
+                        Map<String, Object> frame = new HashMap<>();
+                        frame.put("type", Constant.END_NODE_STREAM);
+                        frame.put("index", chunkIndex++);
+                        frame.put("payload", Map.of("response", iterator.next()));
+                        frames.add(frame);
+                    }
+                    continue;
+                }
                 if (data != null) {
                     Map<String, Object> frame = new HashMap<>();
                     frame.put("type", Constant.END_NODE_STREAM);
-                    frame.put("index", i);
+                    frame.put("index", chunkIndex++);
                     frame.put("payload", Map.of("response", data));
                     frames.add(frame);
                 }
@@ -196,6 +207,7 @@ public class End extends WorkflowComponent {
     private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap) {
         return new Iterator<>() {
             private int segmentIndex = 0;
+            private int chunkIndex = 0;
             private Iterator<?> currentIterator;
             private Object nextFrame;
             private boolean prepared = false;
@@ -227,7 +239,7 @@ public class End extends WorkflowComponent {
                 while (true) {
                     if (currentIterator != null) {
                         if (currentIterator.hasNext()) {
-                            nextFrame = buildTemplateFrame(segmentIndex - 1, currentIterator.next());
+                            nextFrame = buildTemplateFrame(chunkIndex++, currentIterator.next());
                             return;
                         }
                         currentIterator = null;
@@ -247,7 +259,7 @@ public class End extends WorkflowComponent {
                         continue;
                     }
                     if (data != null) {
-                        nextFrame = buildTemplateFrame(currentSegmentIndex, data);
+                        nextFrame = buildTemplateFrame(chunkIndex++, data);
                         return;
                     }
                 }

@@ -4,11 +4,13 @@
 package com.openjiuwen.core.retrieval.vector_store;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 import com.openjiuwen.core.retrieval.common.StoreType;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import io.milvus.v2.client.MilvusClientV2;
 
+import javax.sql.DataSource;
 import java.util.Map;
 
 /**
@@ -28,14 +30,11 @@ public final class VectorStoreFactory {
             throw RetrievalExceptions.validation("VectorStoreConfig is required");
         }
         config.validate();
-        String indexType = stringOption(options, "index_type", "indexType");
-        if (indexType == null || indexType.isBlank()) {
-            indexType = "hybrid";
-        }
+        String indexType = resolveRetrievalIndexType(options);
         return switch (config.getStoreType()) {
             case MILVUS -> createMilvusStore(config, indexType, options);
             case CHROMA -> new ChromaVectorStore(config, indexType);
-            case PGVECTOR -> new PGVectorStore(config, indexType);
+            case PGVECTOR -> createPgVectorStore(config, indexType, options);
         };
     }
 
@@ -56,6 +55,25 @@ public final class VectorStoreFactory {
         return new MilvusVectorStore(config, uri, token, indexType);
     }
 
+    private static VectorStore createPgVectorStore(VectorStoreConfig config,
+                                                   String indexType,
+                                                   Map<String, Object> options) {
+        Object providedDataSource = firstOption(options, "dataSource", "data_source");
+        if (providedDataSource instanceof DataSource dataSource) {
+            return new PGVectorStore(config, dataSource, indexType, options);
+        }
+
+        String jdbcUrl = stringOption(options, "jdbcUrl", "jdbc_url", "pgUri", "pg_uri", "url");
+        if (jdbcUrl == null || jdbcUrl.isBlank()) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+                    "jdbcUrl or dataSource is required for PGVectorStore");
+        }
+        String username = stringOption(options, "username", "user");
+        String password = stringOption(options, "password");
+        return new PGVectorStore(config, jdbcUrl, username, password, indexType, options);
+    }
+
     private static Object firstOption(Map<String, Object> options, String... keys) {
         if (options == null) {
             return null;
@@ -71,5 +89,17 @@ public final class VectorStoreFactory {
     private static String stringOption(Map<String, Object> options, String... keys) {
         Object value = firstOption(options, keys);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String resolveRetrievalIndexType(Map<String, Object> options) {
+        String requested = stringOption(options, "indexType", "index_type");
+        if (requested == null || requested.isBlank()) {
+            return "hybrid";
+        }
+        String normalized = requested.toLowerCase();
+        if (RetrievalValidation.INDEX_TYPES.contains(normalized)) {
+            return normalized;
+        }
+        return "hybrid";
     }
 }

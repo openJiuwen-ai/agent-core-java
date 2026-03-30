@@ -85,7 +85,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         } catch (Exception e) {
             Loggers.SYS_OPERATION.error("Failed to read file", e);
-            return buildFsErrorResult("read_file: " + e.getMessage(), ReadFileResult::new, null);
+            return buildFsErrorResult("readFile: " + e.getMessage(), ReadFileResult::new, null);
         }
     }
 
@@ -126,7 +126,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         } catch (Exception e) {
             Loggers.SYS_OPERATION.error("Failed to read file streaming", e);
-            results.add(buildFsErrorResult("read_file_stream: " + e.getMessage(),
+            results.add(buildFsErrorResult("readFileStream: " + e.getMessage(),
                     ReadFileStreamResult::new, null));
             return results.iterator();
         }
