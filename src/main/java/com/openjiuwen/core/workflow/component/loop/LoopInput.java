@@ -74,8 +74,8 @@ public class LoopInput {
         if (map.containsKey("loop_type")) {
             input.loopType = String.valueOf(map.get("loop_type"));
         }
-        if (map.containsKey("loop_number") && map.get("loop_number") instanceof Number) {
-            input.loopNumber = ((Number) map.get("loop_number")).intValue();
+        if (map.containsKey("loop_number")) {
+            input.loopNumber = parseLoopNumber(map.get("loop_number"));
         }
         if (map.containsKey("loop_array") && map.get("loop_array") instanceof Map) {
             input.loopArray = (Map<String, Object>) map.get("loop_array");
@@ -87,5 +87,29 @@ public class LoopInput {
             input.intermediateVar = (Map<String, Object>) map.get("intermediate_var");
         }
         return input;
+    }
+
+    private static Integer parseLoopNumber(Object rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
+        if (rawValue instanceof Byte || rawValue instanceof Short || rawValue instanceof Integer || rawValue instanceof Long) {
+            return ((Number) rawValue).intValue();
+        }
+        if (rawValue instanceof Float || rawValue instanceof Double) {
+            double value = ((Number) rawValue).doubleValue();
+            if (Double.isFinite(value) && Math.rint(value) == value) {
+                return (int) value;
+            }
+            throw new IllegalArgumentException("1 validation error for LoopInput\nloop_number");
+        }
+        if (rawValue instanceof String strValue) {
+            try {
+                return Integer.valueOf(strValue);
+            } catch (NumberFormatException ex) {
+                throw new IllegalArgumentException("1 validation error for LoopInput\nloop_number", ex);
+            }
+        }
+        throw new IllegalArgumentException("1 validation error for LoopInput\nloop_number");
     }
 }
