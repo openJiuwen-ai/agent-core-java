@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +34,7 @@ public class ModelClientConfig {
     private final int maxRetries;
     private final boolean verifySsl;
     private final String sslCert;
+    private final Map<String, String> headers;
     private final Map<String, Object> extraFields;
 
     private ModelClientConfig(Builder builder) {
@@ -52,6 +54,7 @@ public class ModelClientConfig {
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;
+        this.headers = new LinkedHashMap<>(builder.headers);
         this.extraFields = builder.extraFields;
     }
 
@@ -80,6 +83,9 @@ public class ModelClientConfig {
     @JsonProperty("ssl_cert")
     public String getSslCert() { return sslCert; }
 
+    @JsonProperty("headers")
+    public Map<String, String> getHeaders() { return new LinkedHashMap<>(headers); }
+
     @JsonAnyGetter
     public Map<String, Object> getExtraFields() { return extraFields; }
 
@@ -99,6 +105,7 @@ public class ModelClientConfig {
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;
+        private final Map<String, String> headers = new LinkedHashMap<>();
         private final Map<String, Object> extraFields = new HashMap<>();
 
         @JsonProperty("client_id")
@@ -124,6 +131,26 @@ public class ModelClientConfig {
 
         @JsonProperty("ssl_cert")
         public Builder sslCert(String sslCert) { this.sslCert = sslCert; return this; }
+
+        @JsonProperty("headers")
+        public Builder headers(Map<String, ?> headers) {
+            this.headers.clear();
+            if (headers != null) {
+                headers.forEach((key, value) -> {
+                    if (key != null && value != null) {
+                        this.headers.put(key, String.valueOf(value));
+                    }
+                });
+            }
+            return this;
+        }
+
+        public Builder header(String key, String value) {
+            if (key != null && value != null) {
+                this.headers.put(key, value);
+            }
+            return this;
+        }
 
         @JsonAnySetter
         public Builder extraField(String key, Object value) {

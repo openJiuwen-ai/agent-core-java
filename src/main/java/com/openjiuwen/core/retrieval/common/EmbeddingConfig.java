@@ -20,6 +20,12 @@ public class EmbeddingConfig {
     @JsonProperty("api_key")
     @JsonAlias("apiKey")
     private String apiKey;
+    @JsonProperty("verify_ssl")
+    @JsonAlias("verifySsl")
+    private boolean verifySsl = true;
+    @JsonProperty("ssl_cert")
+    @JsonAlias("sslCert")
+    private String sslCert;
 
     public EmbeddingConfig() {
     }
@@ -58,5 +64,21 @@ public class EmbeddingConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
+    }
+
+    public boolean isVerifySsl() {
+        return verifySsl;
+    }
+
+    public void setVerifySsl(boolean verifySsl) {
+        this.verifySsl = verifySsl;
+    }
+
+    public String getSslCert() {
+        return sslCert;
+    }
+
+    public void setSslCert(String sslCert) {
+        this.sslCert = sslCert;
     }
 }

@@ -931,7 +931,9 @@ public class WorkflowEventHandler extends EventHandler {
                 .apiKey(modelInfo.getApiKey())
                 .apiBase(modelInfo.getApiBase())
                 .timeout(modelInfo.getTimeout())
-                .verifySsl(false)
+                .verifySsl(modelInfo.isVerifySsl())
+                .sslCert(modelInfo.getSslCert())
+                .headers(modelInfo.getHeaders())
                 .build();
 
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()

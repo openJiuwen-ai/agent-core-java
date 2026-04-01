@@ -96,6 +96,8 @@ class RetrievalSystemTest {
                     ApiConfigLoader.getEmbeddingModelName(),
                     ApiConfigLoader.getEmbeddingApiBase(),
                     ApiConfigLoader.getApiKey());
+            config.setVerifySsl(ApiConfigLoader.getEmbeddingSslVerify());
+            config.setSslCert(ApiConfigLoader.getEmbeddingSslCert());
 
             APIEmbedding embedding = new APIEmbedding(config, 30, 2, null, 256, 1);
 
@@ -113,6 +115,8 @@ class RetrievalSystemTest {
                     ApiConfigLoader.getEmbeddingModelName(),
                     ApiConfigLoader.getEmbeddingApiBase(),
                     ApiConfigLoader.getApiKey());
+            config.setVerifySsl(ApiConfigLoader.getEmbeddingSslVerify());
+            config.setSslCert(ApiConfigLoader.getEmbeddingSslCert());
 
             APIEmbedding embedding = new APIEmbedding(config, 30, 2, null, 256, 1);
 

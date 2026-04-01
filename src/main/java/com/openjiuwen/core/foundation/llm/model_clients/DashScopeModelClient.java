@@ -53,9 +53,7 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
 
     public DashScopeModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
-        this.multiModalHttpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(Math.max(30, (long) modelClientConfig.getTimeout())))
-                .build();
+        this.multiModalHttpClient = buildHttpClient(Math.max(30, modelClientConfig.getTimeout()));
     }
 
     @Override
@@ -382,15 +380,13 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
         String body = MAPPER.writeValueAsString(apiParams);
         String apiBase = modelClientConfig.getApiBase().replaceAll("/+$", "");
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(URI.create(apiBase + "/services/aigc/multimodal-generation/generation"))
-                .timeout(Duration.ofSeconds(120))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                .build();
+                .timeout(Duration.ofSeconds(120));
+        applyConfiguredHeaders(request, true);
+        request.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
 
-        HttpResponse<String> response = multiModalHttpClient.send(request,
+        HttpResponse<String> response = multiModalHttpClient.send(request.build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
         Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);

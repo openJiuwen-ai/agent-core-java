@@ -48,6 +48,7 @@ class LLMToolCallingSystemTest extends SystemTestSupport {
                 .timeout(REQUEST_TIMEOUT_SECONDS)
                 .maxRetries(0)
                 .verifySsl(ApiConfigLoader.getSslVerify())
+                .sslCert(ApiConfigLoader.getSslCert())
                 .build();
 
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()
