@@ -5,6 +5,7 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -21,6 +22,9 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -76,10 +80,31 @@ public abstract class BaseModelClient {
             throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
                     "error_msg", "model client config api_base is required for " + clientName + ".");
         }
-        if (modelClientConfig.isVerifySsl()
-                && modelClientConfig.getSslCert() == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config ssl_cert is required when verify_ssl is True.");
+    }
+
+    protected HttpClient buildHttpClient(double timeoutSeconds) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(1_000L, Math.round(timeoutSeconds * 1_000))));
+        SslUtils.configureHttpClientSsl(
+                builder,
+                modelClientConfig.getApiBase(),
+                modelClientConfig.isVerifySsl(),
+                modelClientConfig.getSslCert());
+        return builder.build();
+    }
+
+    protected void applyConfiguredHeaders(HttpRequest.Builder builder, boolean includeJsonContentType) {
+        if (includeJsonContentType) {
+            builder.setHeader("Content-Type", "application/json");
+        }
+        if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
+            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey());
+        }
+        for (Map.Entry<String, String> entry : modelClientConfig.getHeaders().entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+                continue;
+            }
+            builder.setHeader(entry.getKey(), entry.getValue());
         }
     }
 

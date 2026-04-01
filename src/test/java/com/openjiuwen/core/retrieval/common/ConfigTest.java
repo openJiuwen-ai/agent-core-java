@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigTest {
 
@@ -80,5 +81,11 @@ class ConfigTest {
         EmbeddingConfig config = new EmbeddingConfig("test-model", "https://api.example.com");
         assertEquals("test-model", config.getModelName());
         assertNotNull(config.getBaseUrl());
+        assertTrue(config.isVerifySsl());
+
+        config.setVerifySsl(false);
+        config.setSslCert("/tmp/ca.pem");
+        assertFalse(config.isVerifySsl());
+        assertEquals("/tmp/ca.pem", config.getSslCert());
     }
 }

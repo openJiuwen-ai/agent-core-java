@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.embedding;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
@@ -85,9 +86,14 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         if (extraHeaders != null) {
             this.headers.putAll(extraHeaders);
         }
-        this.httpClient = httpClient == null
-                ? HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(this.timeout)).build()
-                : httpClient;
+        if (httpClient == null) {
+            HttpClient.Builder builder = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(this.timeout));
+            SslUtils.configureHttpClientSsl(builder, this.apiUrl, config.isVerifySsl(), config.getSslCert());
+            this.httpClient = builder.build();
+        } else {
+            this.httpClient = httpClient;
+        }
         this.executor = Executors.newFixedThreadPool(
                 this.maxConcurrent,
                 runnable -> {

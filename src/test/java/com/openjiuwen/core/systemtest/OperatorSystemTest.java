@@ -45,6 +45,7 @@ class OperatorSystemTest {
                 .timeout(60.0)
                 .maxRetries(2)
                 .verifySsl(ApiConfigLoader.getSslVerify())
+                .sslCert(ApiConfigLoader.getSslCert())
                 .build();
 
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()

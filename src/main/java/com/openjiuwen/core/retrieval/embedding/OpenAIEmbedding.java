@@ -108,6 +108,9 @@ public class OpenAIEmbedding extends APIEmbedding {
         if (normalized.endsWith("/embeddings")) {
             normalized = normalized.substring(0, normalized.length() - "/embeddings".length());
         }
-        return new EmbeddingConfig(config.getModelName(), normalized, config.getApiKey());
+        EmbeddingConfig normalizedConfig = new EmbeddingConfig(config.getModelName(), normalized, config.getApiKey());
+        normalizedConfig.setVerifySsl(config.isVerifySsl());
+        normalizedConfig.setSslCert(config.getSslCert());
+        return normalizedConfig;
     }
 }

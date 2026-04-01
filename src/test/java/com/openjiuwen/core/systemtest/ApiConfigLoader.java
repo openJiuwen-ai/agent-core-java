@@ -67,11 +67,25 @@ public final class ApiConfigLoader {
         return Boolean.parseBoolean(load().getOrDefault("LLM_SSL_VERIFY", "true"));
     }
 
+    public static String getSslCert() {
+        return load().get("LLM_SSL_CERT");
+    }
+
     public static String getEmbeddingApiBase() {
         return load().get("API_BASE_EMBEDDING");
     }
 
     public static String getEmbeddingModelName() {
         return load().get("MODEL_NAME_EMBEDDING");
+    }
+
+    public static boolean getEmbeddingSslVerify() {
+        return Boolean.parseBoolean(load().getOrDefault(
+                "EMBEDDING_SSL_VERIFY",
+                load().getOrDefault("LLM_SSL_VERIFY", "true")));
+    }
+
+    public static String getEmbeddingSslCert() {
+        return load().getOrDefault("EMBEDDING_SSL_CERT", load().get("LLM_SSL_CERT"));
     }
 }

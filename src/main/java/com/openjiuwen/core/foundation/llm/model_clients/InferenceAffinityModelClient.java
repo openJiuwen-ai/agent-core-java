@@ -48,9 +48,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
 
     public InferenceAffinityModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(resolveTimeout(modelClientConfig.getTimeout()))
-                .build();
+        this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
     }
 
     @Override
@@ -212,11 +210,8 @@ public class InferenceAffinityModelClient extends BaseModelClient {
     private HttpRequest buildJsonRequest(String suffix, Map<String, Object> body, Float timeoutOverride) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(normalizedApiBase() + suffix))
-                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()))
-                .header("Content-Type", "application/json");
-        if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
-            builder.header("Authorization", "Bearer " + modelClientConfig.getApiKey());
-        }
+                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
+        applyConfiguredHeaders(builder, true);
         return builder.POST(HttpRequest.BodyPublishers.ofString(
                 MAPPER.writeValueAsString(body), StandardCharsets.UTF_8)).build();
     }
