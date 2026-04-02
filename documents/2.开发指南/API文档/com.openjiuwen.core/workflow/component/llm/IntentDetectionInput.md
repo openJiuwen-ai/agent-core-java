@@ -6,7 +6,9 @@
 public class IntentDetectionInput
 ```
 
-Input model for IntentDetection component.
+意图识别组件的输入模型。
+
+`query` 表示当前待分类的用户输入，`extraFields` 用于保留除 `query` 之外的其他原始字段；`fromMap(...)` 会把这些附加字段完整拷贝出来。
 
 ## Fields
 

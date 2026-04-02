@@ -6,36 +6,36 @@
 public class ChromaVectorField extends VectorField
 ```
 
-HNSW index configuration for ChromaDB vector database.
+Chroma HNSW 索引配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `maxNeighbors` | `int` | `16` | Max neighbors. |
-| `efConstruction` | `int` | `100` | Ef construction. |
-| `efSearch` | `float` | `100` | Ef search. |
-| `extraSearch` | `Map<String, Object>` | `new HashMap<>()` | Extra search. |
+| `vectorField` | `String` | `"embedding"` | 向量字段名。 |
+| `maxNeighbors` | `int` | `16` | HNSW 邻接数。 |
+| `efConstruction` | `int` | `100` | 构建阶段参数。 |
+| `efSearch` | `float` | `100` | 搜索阶段参数。 |
+| `extraSearch` | `Map<String, Object>` | `{}` | 附加搜索参数。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public ChromaVectorField()` | Create a new `ChromaVectorField` instance. |
+| `public ChromaVectorField()` | 使用默认 Chroma HNSW 参数初始化。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDatabaseType()` | Return the database type. |
-| `public String getIndexType()` | Return the index type. |
-| `public int getMaxNeighbors()` | Return the max neighbors. |
-| `public void setMaxNeighbors(int maxNeighbors)` | Set the max neighbors. |
-| `public int getEfConstruction()` | Return the ef construction. |
-| `public void setEfConstruction(int efConstruction)` | Set the ef construction. |
-| `public float getEfSearch()` | Return the ef search. |
-| `public void setEfSearch(float efSearch)` | Set the ef search. |
-| `public Map<String, Object> getExtraSearch()` | Return the extra search. |
-| `public void setExtraSearch(Map<String, Object> extraSearch)` | Set the extra search. |
-| `private void validateExtraSearch(Map<String, Object> searchDict)` | Execute `validateExtraSearch`. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getDatabaseType()` | 返回数据库类型 `chroma`。 |
+| `public String getIndexType()` | 返回索引类型 `hnsw`。 |
+| `public int getMaxNeighbors()` | 返回邻接数。 |
+| `public void setMaxNeighbors(int maxNeighbors)` | 设置邻接数。 |
+| `public int getEfConstruction()` | 返回构建参数。 |
+| `public void setEfConstruction(int efConstruction)` | 设置构建参数。 |
+| `public float getEfSearch()` | 返回搜索参数。 |
+| `public void setEfSearch(float efSearch)` | 设置搜索参数。 |
+| `public Map<String, Object> getExtraSearch()` | 返回附加搜索参数。 |
+| `public void setExtraSearch(Map<String, Object> extraSearch)` | 设置附加搜索参数。 |
+| `public Map<String, Object> toDict(String stage)` | 按 `construct` 或 `search` 阶段导出参数。 |

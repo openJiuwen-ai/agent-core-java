@@ -1,21 +1,21 @@
 # com.openjiuwen.core.memory.config.MemoryScopeConfig
 
-## class MemoryScopeConfig
+## 类 MemoryScopeConfig
 
 ```java
 public class MemoryScopeConfig
 ```
 
-Scope-specific memory configuration.
+`MemoryScopeConfig` 是 `com.openjiuwen.core.memory.config` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `modelCfg` | `ModelRequestConfig` | model cfg. |
-| `modelClientCfg` | `ModelClientConfig` | model client cfg. |
-| `embeddingCfg` | `EmbeddingConfig` | embedding cfg. |
+| `modelCfg` | `ModelRequestConfig` | 字段 `modelCfg`。 |
+| `modelClientCfg` | `ModelClientConfig` | 字段 `modelClientCfg`。 |
+| `embeddingCfg` | `EmbeddingConfig` | 字段 `embeddingCfg`。 |
 
-## Notes
+## 使用说明
 
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类型通过 Lombok 生成 getter、setter 与 builder，文档仅列出显式声明的字段与公开方法。

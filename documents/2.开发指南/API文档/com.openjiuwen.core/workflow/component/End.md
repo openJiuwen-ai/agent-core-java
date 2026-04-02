@@ -1,50 +1,33 @@
 # com.openjiuwen.core.workflow.component.End
 
-## class End
+## 类 End
 
 ```java
 public class End extends WorkflowComponent
 ```
 
-Exit point component of the workflow with optional response template rendering.
+`End` 是工作流结束节点，可直接输出结果，也可按模板渲染响应，并支持 streaming、collect 和 transform 场景。
 
-## Fields
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final EndConfig conf` | Conf. |
-| `private final String template` | Template. |
-| `private final List<String> segments` | Segments. |
-| `private final List<Boolean> isVariable` | Is variable. |
-| `private boolean mix = false` | . |
+| `public End()` | 创建默认结束节点。 |
+| `public End(EndConfig conf)` | 使用 `EndConfig` 创建结束节点。 |
+| `public End(Map<String, Object> confMap)` | 使用配置字典创建结束节点。 |
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public End(EndConfig conf)` | Create a new `End` instance. |
-| `public End(Map<String, Object> confMap)` | Create a new `End` instance. |
-| `public End()` | Create a new `End` instance. |
+| `public void setMix()` | 标记为混合模式。 |
+| `public boolean isMix()` | 返回是否处于混合模式。 |
+| `public Object invoke(Object inputs, NodeSessionApi session, ModelContext context)` | 生成最终批量输出。 |
+| `public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context)` | 输出流式结果。 |
+| `public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context)` | 对流输入逐段变换后输出。 |
+| `public Object collect(Object inputs, NodeSessionApi session, ModelContext context)` | 汇聚流输入后再生成最终结果。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `private static final Pattern TEMPLATE_PATTERN = Pattern.compile()` | Compile the workflow graph into an executable graph. |
-| `public void setMix()` | Mark this End component as mixed-mode (concurrent data sources). |
-| `public boolean isMix()` | Report whether mix. |
-| `public Object invoke(Object inputs, NodeSessionApi session, ModelContext context)` | Invoke the component or workflow. |
-| `public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context)` | Stream the component or workflow output. |
-| `public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context)` | Transform streamed values. |
-| `public Object collect(Object inputs, NodeSessionApi session, ModelContext context)` | Collect streamed values into a final output. |
-| `private static Map<String, Object> materializeStreamingInputs(Map<String, Object> inputs)` | Execute `materializeStreamingInputs`. |
-| `private static OutputSchema buildTemplateFrame(int index, Object data)` | Build template frame. |
-| `private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap)` | Execute `templateTransformIterator`. |
-| `private Iterator<Object> outputTransformIterator(Map<String, Object> inputsMap)` | Execute `outputTransformIterator`. |
-| `static String renderTemplate(String template, Map<String, Object> inputs)` | Render a template string with {{variable}} substitution. |
-| `static List<String> splitTemplate(String template)` | Split template into segments (static text and {{variable}} parts). |
-| `static Object getNestedValue(String path, Map<String, Object> data)` | Get a value from a nested map using a dot-separated path. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- 配置了模板时会输出 `response`；未配置模板时主要返回 `output`。
+- `WorkflowTest` 验证了它在 streaming workflow 中可逐块返回输出。

@@ -1,30 +1,28 @@
 # com.openjiuwen.core.retrieval.utils.ApiRequestUtils
 
-## class ApiRequestUtils
+## 类 ApiRequestUtils
 
 ```java
 public final class ApiRequestUtils
 ```
 
-Shared HTTP request helper for retrieval services with retry support.
+发送带重试逻辑的 HTTP JSON POST 请求，并将失败统一转换为 retrieval 模块异常。
 
-## Constructors
+## 嵌套类型
 
-| Signature | Description |
+| 类型 | 说明 |
 | --- | --- |
-| `private ApiRequestUtils()` | Create a new `ApiRequestUtils` instance. |
+| `StatusCodeCallback` | 状态码回调接口，决定某次失败是否继续重试。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public static JsonNode postJsonWithRetry(HttpClient httpClient, String url, Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries, StatusCode failureCode, String taskName)` | Send a POST request with JSON payload and retry support (sync). |
-| `public static JsonNode postJsonWithRetry(HttpClient httpClient, String url, Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries, StatusCode failureCode, String taskName, StatusCodeCallback callback)` | Send a POST request with JSON payload, retry support, and pluggable status-code callback (sync). |
-| `HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())` | Execute `send`. |
-| `public static CompletableFuture<JsonNode> postJsonWithRetryAsync(HttpClient httpClient, String url, Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries, StatusCode failureCode, String taskName, StatusCodeCallback callback)` | Send a POST request with JSON payload asynchronously with retry and pluggable callback. |
+| `public static JsonNode postJsonWithRetry(HttpClient httpClient, String url, Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries, StatusCode failureCode, String taskName)` | 使用默认回调发送同步 POST 请求。 |
+| `public static JsonNode postJsonWithRetry(HttpClient httpClient, String url, Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries, StatusCode failureCode, String taskName, StatusCodeCallback callback)` | 使用自定义回调发送同步 POST 请求。 |
+| `public static CompletableFuture<JsonNode> postJsonWithRetryAsync(...)` | 异步发送默认回调请求。 |
 
-## Nested Types
+## 说明
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| `StatusCodeCallback` | `interface` | Callback for custom status code handling. |
+- 默认会在 `429`、`500`、`503` 时允许重试。
+- `InterruptedException` 会恢复线程中断标记。

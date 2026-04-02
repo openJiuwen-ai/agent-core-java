@@ -1,38 +1,15 @@
 # com.openjiuwen.core.retrieval.common.IndexConfig
 
-## class IndexConfig
+## 类 IndexConfig
 
 ```java
 public class IndexConfig
 ```
 
-Index configuration.
+索引配置对象，定义索引名称与索引模式。
 
-## Fields
+## 说明
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `indexName` | `String` | `-` | index name. |
-| `indexType` | `String` | `"hybrid"` | index type. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public IndexConfig()` | Create a new `IndexConfig` instance. |
-| `public IndexConfig(String indexName)` | Create a new `IndexConfig` instance. |
-| `public IndexConfig(String indexName, String indexType)` | Create a new `IndexConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public void validate()` | Execute `validate`. |
-| `public String getIndexName()` | Return the index name. |
-| `public void setIndexName(String indexName)` | Update the index name. |
-| `public String getIndexType()` | Return the index type. |
-| `public void setIndexType(String indexType)` | Update the index type. |
-
-## Notes
-
-- Related tests: `InMemoryIndexerTest.java`, `MilvusIndexerTest.java`, `MilvusKnowledgeBaseTest.java`, `RetrievalCoreTest.java`.
+- `indexName` 不能为空白。
+- `indexType` 默认值为 `"hybrid"`，仅允许 `hybrid`、`bm25`、`vector`。
+- setter 会重新触发校验。

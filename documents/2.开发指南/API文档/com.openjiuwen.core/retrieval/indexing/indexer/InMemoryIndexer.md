@@ -1,37 +1,47 @@
 # com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer
 
-## class InMemoryIndexer
+## 类 InMemoryIndexer
 
 ```java
 public class InMemoryIndexer implements Indexer
 ```
 
-In-memory index manager backed by {@link VectorStore}.
+`InMemoryIndexer` 是通用索引器实现，核心思路是把 `TextChunk` 转成文档结构后交给 `VectorStore` 写入。它既可用于真正的内存向量库，也可用于任何遵循 `VectorStore` 接口的后端。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
-| --- | --- |
-| `public InMemoryIndexer(VectorStore vectorStore)` | Create a new `InMemoryIndexer` instance. |
+### `public InMemoryIndexer(VectorStore vectorStore)`
 
-## Methods
+保存底层 `VectorStore`，后续所有 collection、字段名和统计信息都从该对象读取。
 
-| Signature | Description |
-| --- | --- |
-| `public boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel, Map<String, Object> options)` | Build the target index from the provided text chunks. |
-| `public boolean updateIndex(List<TextChunk> chunks, String docId, IndexConfig config, Embedding embedModel, Map<String, Object> options)` | Update index entries for one document. |
-| `public boolean deleteIndex(String docId, String indexName, Map<String, Object> options)` | Delete indexed entries for the target document or index. |
-| `public boolean indexExists(String indexName)` | Return whether the target index exists. |
-| `public Map<String, Object> getIndexInfo(String indexName)` | Return backend metadata for the target index. |
-| `public String getDatabaseName()` | Return the configured database name. |
-| `public String getDistanceMetric()` | Execute `getDistanceMetric`. |
-| `public String getIndexType()` | Execute `getIndexType`. |
-| `public String getTextField()` | Execute `getTextField`. |
-| `public String getVectorField()` | Execute `getVectorField`. |
-| `public String getSparseVectorField()` | Execute `getSparseVectorField`. |
-| `public String getMetadataField()` | Execute `getMetadataField`. |
-| `public String getDocIdField()` | Execute `getDocIdField`. |
+## 公开方法
 
-## Notes
+### `public boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel, Map<String, Object> options)`
 
-- Related tests: `IndexerFactoryTest.java`, `InMemoryIndexerTest.java`.
+- 先调用 `vectorStore.withCollection(config.getIndexName())` 切换到目标 collection。
+- 当 `config.getIndexType()` 不是 `bm25` 时，会要求 `embedModel` 非空，并按批次调用 `embedDocuments(...)`。
+- 最终以固定批大小 `128` 调用 `VectorStore.add(...)`。
+
+### `public boolean updateIndex(List<TextChunk> chunks, String docId, IndexConfig config, Embedding embedModel, Map<String, Object> options)`
+
+先按 `doc_id` 删除旧记录，再重新调用 `add(...)` 写入新 chunk。
+
+### `public boolean deleteIndex(String docId, String indexName, Map<String, Object> options)`
+
+按 `getDocIdField()` 构造过滤条件删除指定文档。
+
+### `public boolean indexExists(String indexName)`
+
+委托 `vectorStore.tableExists(indexName)`。
+
+### `public Map<String, Object> getIndexInfo(String indexName)`
+
+返回 `index_name`、`count`、`exists` 三个键。
+
+## 字段名透传
+
+- `getDatabaseName()`、`getDistanceMetric()`、`getIndexType()`、`getTextField()`、`getVectorField()`、`getSparseVectorField()`、`getMetadataField()`、`getDocIdField()` 全部直接透传到底层 `VectorStore`。
+
+## 相关测试
+
+- `InMemoryIndexerTest` 验证带 `callback` 的嵌入批处理会在每批完成后调用 `BaseCallback.onBatch(...)`。

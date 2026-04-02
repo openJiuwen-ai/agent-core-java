@@ -6,22 +6,17 @@
 public final class CallableSchemaExtractor
 ```
 
-Reflection-based extractor that turns Java method signatures into JSON Schema.
+方法签名 Schema 提取器。它把 Java `Method` 的参数列表转换成输入参数 JSON Schema。
 
-## Notes
+## 公开方法
 
-- Optional parameters are emitted as nullable schema entries, and non-optional parameters are added to the generated `required` list.
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private CallableSchemaExtractor()` | - |
+| `public static Map<String, Object> generateSchema(Method method)` | 为方法构造 `type=object` 的输入 Schema，并生成 `properties`、`required`、`title`。 |
+| `public static String extractFunctionDescription(Method method)` | 返回基于方法名推导的描述文本。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static Map<String, Object> generateSchema(Method method)` | - |
-| `public static String extractFunctionDescription(Method method)` | - |
-| `static String humanizeName(String name)` | - |
+- 本类是纯静态工具类，源码使用私有构造器阻止实例化。
+- 参数描述默认来自 `humanizeName(parameter.getName())` 的结果。
+- 方法名中的 camelCase 与下划线会被转换为空格分隔的小写文本。

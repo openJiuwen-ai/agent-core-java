@@ -6,27 +6,28 @@
 public class RestfulApiCard extends ToolCard
 ```
 
-HTTP tool metadata that captures the target URL, HTTP method, default headers/query/path values, timeout, and response-size limit.
+REST 工具卡片，声明 URL、HTTP 方法、默认请求头、默认参数和执行约束。
 
-## Notes
+## 字段
 
-- This type relies on Lombok-generated accessors and/or builders; the tables below document the explicit fields declared in source.
+源码通过 Lombok 生成访问器与构建器；下表列出显式声明字段。
 
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `url` | `String` | `-` | Restful API URL, e.g. /api/v1/users. */ |
-| `method` | `String` | `"POST"` | HTTP method (POST or GET). */ |
-| `timeout` | `double` | `60.0` | Request timeout in seconds. */ |
-| `maxResponseByteSize` | `int` | `10 * 1024 * 1024` | Maximum response size in bytes (default 10 MB). */ |
+| `SUPPORTED_METHODS` | `Set<String>` | `Set.of("POST", "GET")` | 支持的方法集合。 |
+| `url` | `String` | `-` | 请求 URL。 |
+| `method` | `String` | `"POST"` | HTTP 方法。 |
+| `headers` | `Map<String, Object>` | `Map.of()` | 默认请求头。 |
+| `queries` | `Map<String, Object>` | `Map.of()` | 默认查询参数。 |
+| `paths` | `Map<String, Object>` | `Map.of()` | 默认路径参数。 |
+| `timeout` | `double` | `60.0` | 默认超时时间，单位秒。 |
+| `maxResponseByteSize` | `int` | `10 * 1024 * 1024` | 最大响应体大小，默认 10MB。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static final Set<String> SUPPORTED_METHODS = Set.of("POST", "GET")` | Supported HTTP methods. */ |
+- `RestfulApi` 构造阶段会校验 `method` 是否属于 `SUPPORTED_METHODS`。
+- 空 URL 在卡片构造阶段允许存在，但真正执行时仍可能失败。
 
-## Related Tests
+## 相关测试
 
 - `RestfulApiTest`

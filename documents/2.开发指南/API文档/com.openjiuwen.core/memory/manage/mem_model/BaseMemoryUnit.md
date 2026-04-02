@@ -1,20 +1,16 @@
 # com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit
 
-## class BaseMemoryUnit
+## 类 BaseMemoryUnit
 
 ```java
 public class BaseMemoryUnit
 ```
 
-Base class for a single memory data item.
+`BaseMemoryUnit` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `memType` | `MemoryType` | mem type. |
-| `memId` | `String` | mem id. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `memType` | `MemoryType` | 字段 `memType`。 |
+| `memId` | `String` | 字段 `memId`。 |

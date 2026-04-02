@@ -6,36 +6,24 @@
 public enum ApiParamLocation
 ```
 
-API parameter locations based on OpenAPI specification.
+请求参数位置枚举，用于标记参数属于查询串、路径、请求体或请求头。
 
-## Fields
+## 枚举值
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `value` | `String` | `-` | HTTP header parameters. */ |
-
-## Enum Values
-
-| Value | Description |
+| 枚举值 | 说明 |
 | --- | --- |
-| `QUERY` | - |
-| `PATH` | - |
-| `BODY` | - |
-| `HEADER` | - |
+| `QUERY` | URL 查询参数。 |
+| `PATH` | 路径占位参数。 |
+| `BODY` | 请求体参数。 |
+| `HEADER` | HTTP 请求头参数。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `ApiParamLocation(String value)` | - |
+| `public String getValue()` | 返回对应的小写字符串值。 |
+| `public static ApiParamLocation fromString(String text)` | 忽略大小写解析字符串；未知值回退到 `BODY`。 |
 
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | - |
-| `public static ApiParamLocation fromString(String text)` | Parse a location string (case-insensitive). |
-
-## Related Tests
+## 相关测试
 
 - `ApiParamMapperTest`

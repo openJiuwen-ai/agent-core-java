@@ -1,23 +1,25 @@
 # operation
 
-`com.openjiuwen.core.memory.migration.operation` defines migration operation metadata, registries, and concrete schema-change operations.
+`com.openjiuwen.core.memory.migration.operation` 定义迁移操作的公共抽象、注册容器以及 SQL、向量库、KV 三类后端可复用的具体操作对象。
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`AddColumnOperation`](./operation/AddColumnOperation.md) | class | Add a new column to a table. |
-| [`AddScalarFieldOperation`](./operation/AddScalarFieldOperation.md) | class | Add a scalar field to a vector data type. |
-| [`BaseOperation`](./operation/BaseOperation.md) | class | Base class for all migration operations. |
-| [`OperationMetadata`](./operation/OperationMetadata.md) | class | Simple operation metadata. |
-| [`OperationRegistry`](./operation/OperationRegistry.md) | class | Registry that manages chained upgrade operations by entity_key. |
-| [`RenameColumnOperation`](./operation/RenameColumnOperation.md) | class | Rename a column in a table. |
-| [`RenameScalarFieldOperation`](./operation/RenameScalarFieldOperation.md) | class | Rename a scalar field in a vector data type. |
-| [`UpdateColumnTypeOperation`](./operation/UpdateColumnTypeOperation.md) | class | Update the data type of an existing column. |
-| [`UpdateEmbeddingDimensionOperation`](./operation/UpdateEmbeddingDimensionOperation.md) | class | Update the embedding dimension of a vector data type. |
-| [`UpdateKVOperation`](./operation/UpdateKVOperation.md) | class | Update a key-value pair via a provided callable. |
-| [`UpdateScalarFieldTypeOperation`](./operation/UpdateScalarFieldTypeOperation.md) | class | Update the data type of a scalar field in a vector data type. |
+| 类型 | 说明 |
+| --- | --- |
+| [`BaseOperation`](./operation/BaseOperation.md) | 所有迁移操作的抽象基类，统一暴露版本号与描述。 |
+| [`OperationMetadata`](./operation/OperationMetadata.md) | 封装 `schemaVersion` 与说明文本。 |
+| [`OperationRegistry`](./operation/OperationRegistry.md) | 按实体键维护递增的迁移操作链。 |
+| [`AddColumnOperation`](./operation/AddColumnOperation.md) | 新增 SQL 列。 |
+| [`AddScalarFieldOperation`](./operation/AddScalarFieldOperation.md) | 为向量数据类型新增标量字段。 |
+| [`RenameColumnOperation`](./operation/RenameColumnOperation.md) | 重命名 SQL 列。 |
+| [`RenameScalarFieldOperation`](./operation/RenameScalarFieldOperation.md) | 重命名向量数据类型中的标量字段。 |
+| [`UpdateColumnTypeOperation`](./operation/UpdateColumnTypeOperation.md) | 更新 SQL 列类型。 |
+| [`UpdateEmbeddingDimensionOperation`](./operation/UpdateEmbeddingDimensionOperation.md) | 更新向量字段的 embedding 维度。 |
+| [`UpdateKVOperation`](./operation/UpdateKVOperation.md) | 以 `Consumer<BaseKVStore>` 的形式定义 KV 更新逻辑。 |
+| [`UpdateScalarFieldTypeOperation`](./operation/UpdateScalarFieldTypeOperation.md) | 更新向量标量字段类型。 |
 
-## Notes
+## 关键行为
 
-- The current page also links the 11 direct public type page(s) defined in this package.
+- `OperationRegistry.register(...)` 要求同一实体下的 `schemaVersion` 严格递增，否则抛出 `BaseError`。
+- `BaseOperation.getDescription()` 会优先返回 `OperationMetadata.description`，为空时退回到类名。
+- 具体迁移器会根据运行环境挑选可执行的 `BaseOperation` 子类，超出支持范围的操作会在运行期报错。

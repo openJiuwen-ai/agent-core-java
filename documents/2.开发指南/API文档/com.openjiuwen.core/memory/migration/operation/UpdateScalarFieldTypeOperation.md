@@ -1,31 +1,31 @@
 # com.openjiuwen.core.memory.migration.operation.UpdateScalarFieldTypeOperation
 
-## class UpdateScalarFieldTypeOperation
+## 类 UpdateScalarFieldTypeOperation
 
 ```java
-public class UpdateScalarFieldTypeOperation extends BaseOperation
+public class UpdateScalarFieldTypeOperation
 ```
 
-Update the data type of a scalar field in a vector data type.
+`UpdateScalarFieldTypeOperation` 表示更新向量数据类型中标量字段类型的迁移操作。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `dataType` | `String` | data type. |
-| `fieldName` | `String` | field name. |
-| `newFieldType` | `String` | new field type. |
+| `dataType` | `String` | 目标向量数据类型。 |
+| `fieldName` | `String` | 目标字段名。 |
+| `newFieldType` | `String` | 更新后的字段类型。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public UpdateScalarFieldTypeOperation(OperationMetadata metadata, String dataType, String fieldName, String newFieldType)` | Create a new `UpdateScalarFieldTypeOperation` instance. |
+| `public UpdateScalarFieldTypeOperation(OperationMetadata metadata, String dataType, String fieldName, String newFieldType)` | 创建一条字段类型更新操作。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDataType()` | Execute `getDataType`. |
-| `public String getFieldName()` | Execute `getFieldName`. |
-| `public String getNewFieldType()` | Execute `getNewFieldType`. |
+| `public String getDataType()` | 返回目标数据类型。 |
+| `public String getFieldName()` | 返回目标字段名。 |
+| `public String getNewFieldType()` | 返回新的字段类型。 |

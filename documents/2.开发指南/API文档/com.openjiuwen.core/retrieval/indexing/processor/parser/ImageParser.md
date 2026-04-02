@@ -1,20 +1,18 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.ImageParser
 
-## class ImageParser
+## 类 ImageParser
 
 ```java
 public class ImageParser extends Parser
 ```
 
-Parser for image files using LLM captions.
+`ImageParser` 把图片内容转换成文本说明。它会先复制图片，再调用 `ImageCaptioner` 生成 caption，并把非空 caption 合并为单个 `Document` 文本。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Parse the input into `Document` records. |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
+- `parse(...)`：caption 为空或发生异常时返回空列表。
+- `supports(String doc)`：支持 `.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.jfif`。
 
-## Notes
+## 说明
 
-- Related tests: `ImageParserTest.java`.
+- 如果未提供可用的 `BaseModelClient`，`parseContent(...)` 通常会返回 `null`，因此不会产出文档。

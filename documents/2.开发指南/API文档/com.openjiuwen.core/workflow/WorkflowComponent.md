@@ -1,19 +1,19 @@
 # com.openjiuwen.core.workflow.WorkflowComponent
 
-## class WorkflowComponent
+## 抽象类 WorkflowComponent
 
 ```java
 public abstract class WorkflowComponent extends ComponentExecutable implements ComponentComposable
 ```
 
-Standard implementation combining both execution and graph construction. This is the most common base class for user-defined workflow components.
+`WorkflowComponent` 是最常见的工作流组件基类，同时具备执行能力和构图能力。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void addComponent(Graph graph, String nodeId, boolean waitForAll)` | Add component. |
+| `public void addComponent(Graph graph, String nodeId, boolean waitForAll)` | 直接把当前组件实例注册到工作流图中。 |
 
-## Notes
+## 说明
 
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- `Start`、`End`、`BranchComponent`、`SubWorkflowComponentImpl` 等类型都以它为基础。

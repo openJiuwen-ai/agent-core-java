@@ -6,7 +6,9 @@
 public final class ValidationUtils
 ```
 
-Validation utilities for LLM component inputs and outputs.
+LLM 组件输入输出校验工具。
+
+该工具类封装了类型检查、简化版 JSON Schema 校验以及输出配置合法性校验，发现问题时会统一抛出组件配置错误。
 
 ## Methods
 

@@ -6,26 +6,23 @@
 public final class GraphStoreFactory
 ```
 
-Factory class to assemble graph store instances.
+图存储后端工厂，负责注册后端并按配置实例化 `GraphStore`。
 
-## Fields
+## 构造说明
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `CLASS_MAP` | `static final Map<String, Class<? extends GraphStore>>` | `new ConcurrentHashMap<>()` | Class map. |
-| `LOCK` | `static final ReentrantLock` | `new ReentrantLock()` | Lock. |
+- 构造方法为私有，且调用时会抛出 `UnsupportedOperationException`。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private GraphStoreFactory()` | Create a new `GraphStoreFactory` instance. |
+| `public static void registerBackend(String name, Class<? extends GraphStore> backend, boolean force)` | 注册图存储后端。 |
+| `public static void registerBackend(String name, Class<? extends GraphStore> backend)` | 以 `force = false` 注册后端。 |
+| `public static GraphStore fromConfig(GraphConfig config, String backendName)` | 根据后端名称和配置创建图存储实例。 |
+| `public static GraphStore fromConfig(GraphConfig config)` | 使用 `config.getBackend()` 创建图存储实例。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static void registerBackend(String name, Class<? extends GraphStore> backend, boolean force)` | Register a graph store backend. |
-| `public static void registerBackend(String name, Class<? extends GraphStore> backend)` | Register a graph store backend (no force). |
-| `public static GraphStore fromConfig(GraphConfig config, String backendName)` | Fetch a GraphStore instance by configuration. |
-| `public static GraphStore fromConfig(GraphConfig config)` | Fetch a GraphStore instance by configuration using config's default backend. |
+- 默认已注册 `in_memory -> InMemoryGraphStore`。
+- `fromConfig` 通过反射调用目标后端的静态 `fromConfig(GraphConfig)` 方法。
+- 当后端名称为空白或未注册时会抛出异常。

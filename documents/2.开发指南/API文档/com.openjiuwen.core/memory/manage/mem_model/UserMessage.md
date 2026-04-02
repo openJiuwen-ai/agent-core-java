@@ -1,21 +1,21 @@
 # com.openjiuwen.core.memory.manage.mem_model.UserMessage
 
-## record UserMessage
+## 记录 UserMessage
 
 ```java
 public record UserMessage( String messageId, String userId, String scopeId, String content, String sessionId, String role, String timestamp)
 ```
 
-Public row model matching the memory user_message table.
+`UserMessage` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开记录型，文档按 Java 源码列出其公开成员与签名。
 
-## Record Components
+## 记录组件
 
-| Name | Type | Description |
+| 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `messageId` | `String` | message id. |
-| `userId` | `String` | user id. |
-| `scopeId` | `String` | scope id. |
-| `content` | `String` | content. |
-| `sessionId` | `String` | session id. |
-| `role` | `String` | role. |
-| `timestamp` | `String` | timestamp. |
+| `messageId` | `String` | 记录组件 `messageId`。 |
+| `userId` | `String` | 记录组件 `userId`。 |
+| `scopeId` | `String` | 记录组件 `scopeId`。 |
+| `content` | `String` | 记录组件 `content`。 |
+| `sessionId` | `String` | 记录组件 `sessionId`。 |
+| `role` | `String` | 记录组件 `role`。 |
+| `timestamp` | `String` | 记录组件 `timestamp`。 |

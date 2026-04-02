@@ -1,18 +1,19 @@
 # com.openjiuwen.core.foundation.store.vector_fields.MilvusVectorField
 
-## class MilvusVectorField
+## abstract class MilvusVectorField
 
 ```java
 public abstract class MilvusVectorField extends VectorField
 ```
 
-Base class for Milvus vector field configurations.
+Milvus 向量索引配置的抽象基类。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDatabaseType()` | Return the database type. |
-| `protected static String validateSqConstruct(Map<String, Object> extraConstruct)` | Validate scalar quantization (SQ) options for index construction. |
-| `protected static String validateSqSearch(Map<String, Object> extraSearch)` | Validate scalar quantization (SQ) options for search stage. |
-| `protected static String validatePqConstruct(Map<String, Object> extraConstruct)` | Validate product quantization (PQ) options for index construction. |
+| `public String getDatabaseType()` | 返回数据库类型 `milvus`。 |
+
+## 说明
+
+- 该类型不可直接实例化，通常通过 `MilvusAUTO`、`MilvusFLAT`、`MilvusHNSW`、`MilvusIVF`、`MilvusSCANN` 等子类使用。

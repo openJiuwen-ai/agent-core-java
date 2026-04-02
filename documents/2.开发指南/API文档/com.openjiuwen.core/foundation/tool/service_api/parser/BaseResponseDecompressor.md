@@ -6,11 +6,11 @@
 public abstract class BaseResponseDecompressor
 ```
 
-Base class for response decompressors.
+响应解压缩器抽象基类。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public abstract boolean canDecompress(String encoding)` | Check if this decompressor supports the given content encoding. |
-| `public abstract byte[] decompress(byte[] responseData) throws java.io.IOException` | Decompress the response data. |
+| `public abstract boolean canDecompress(String encoding)` | 判断当前解压缩器是否支持给定 `Content-Encoding`。 |
+| `public abstract byte[] decompress(byte[] responseData) throws IOException` | 对响应字节数组执行解压。 |

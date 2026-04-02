@@ -1,35 +1,23 @@
 # com.openjiuwen.core.workflow.WorkflowChunkType
 
-## enum WorkflowChunkType
+## 枚举 WorkflowChunkType
 
 ```java
 public enum WorkflowChunkType
 ```
 
-Types of data chunks produced during workflow execution.
+`WorkflowChunkType` 表示工作流执行过程中产生的数据块类型。
 
-## Enum Constants
+## 枚举值
 
-| Value | Description |
+| 值 | 说明 |
 | --- | --- |
-| `INTERACTION` | I n t e r a c t i o n. |
-| `OUTPUT` | O u t p u t. |
-| `ERROR` | E r r o r. |
+| `INTERACTION` | 交互型块。 |
+| `OUTPUT` | 正常输出块。 |
+| `ERROR` | 错误块。 |
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final String value` | Value. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `WorkflowChunkType(String value)` | Create a new `WorkflowChunkType` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | Return the value. |
+| `public String getValue()` | 返回对应字符串值。 |

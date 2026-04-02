@@ -6,7 +6,9 @@
 public class IntentDetectionComponent extends com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl
 ```
 
-Alias/extension of `com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl` with support for both parent and local config types.
+`workflow.components.llm` 包下的意图识别组件兼容包装类。
+
+它直接复用主包 `IntentDetectionComponentImpl` 的执行能力，只补充同时接受主包配置和兼容配置的构造方法。
 
 ## Constructors
 

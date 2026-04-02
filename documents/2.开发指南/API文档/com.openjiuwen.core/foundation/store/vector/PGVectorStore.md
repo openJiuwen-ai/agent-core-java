@@ -6,17 +6,15 @@
 public class PGVectorStore extends AbstractRetrievalVectorStoreAdapter
 ```
 
-Foundation-store PGVector adapter.
+foundation 层的 PGVector 向量存储适配器。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public PGVectorStore(Map<String, Object> options)` | Create a new `PGVectorStore` instance. |
+| `public PGVectorStore(Map<String, Object> options)` | 使用选项构造 PGVector 适配器。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `private static VectorStoreConfig config(Map<String, Object> options)` | Execute `config`. |
-| `private static Map<String, Object> withFoundationAliases(Map<String, Object> options)` | Execute `withFoundationAliases`. |
+- 常用选项包括 `database_name`、`collection_name`、`distance_metric`，并会补齐默认 `vector_field = embedding`。
+- 标准 collection 生命周期、写入、搜索和删除能力由父类适配器统一提供。

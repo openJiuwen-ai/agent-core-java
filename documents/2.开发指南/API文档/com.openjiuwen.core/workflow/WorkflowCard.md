@@ -1,36 +1,29 @@
 # com.openjiuwen.core.workflow.WorkflowCard
 
-## class WorkflowCard
+## 类 WorkflowCard
 
 ```java
-= true) public class WorkflowCard extends BaseCard
+public class WorkflowCard extends BaseCard
 ```
 
-Metadata card for a workflow. Contains descriptive information and input schema for a workflow.
+`WorkflowCard` 保存工作流元信息，包括 id、name、version、description 以及输入参数定义。
 
-## Fields
+## 关键字段
 
-| Signature | Description |
+| 字段 | 说明 |
 | --- | --- |
-| `private String version =` | . |
-| `private Object inputParams` | Input params. |
+| `version` | 工作流版本。 |
+| `inputParams` | 输入参数定义，可为 `Map` 或 `Class<?>`。 |
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public WorkflowCard(String id, String name)` | Convenience constructor: WorkflowCard(id, name). |
-| `public WorkflowCard(String id, String name, String version, String description)` | Compatibility constructor for translated tests that still pass `id, name, version, description` positionally. |
+| `public WorkflowCard(String id, String name)` | 以最小元信息构造工作流卡片。 |
+| `public WorkflowCard(String id, String name, String version, String description)` | 兼容旧测试位置参数风格。 |
+| `public Object toolInfo()` | 把工作流卡片转换为 `ToolInfo`。 |
+| `public String str()` | 返回字符串表示。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public Object toolInfo()` | Execute `toolInfo`. |
-| `public String str()` | Execute `str`. |
-| `private Map<String, Object> resolveInputParamsSchema()` | Execute `resolveInputParamsSchema`. |
-
-## Notes
-
-- This type uses Lombok-generated members; the page lists source-defined fields and explicit methods only.
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- `WorkflowTest` 通过 `inputParams` 覆盖了输入校验相关行为。

@@ -6,11 +6,11 @@
 public class MilvusFLAT extends MilvusVectorField
 ```
 
-FLAT index configuration for Milvus.
+Milvus FLAT 索引配置对象。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getIndexType()` | Return the index type. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getIndexType()` | 返回索引类型 `flat`。 |
+| `public Map<String, Object> toDict(String stage)` | 导出当前阶段参数；当前实现返回空配置。 |

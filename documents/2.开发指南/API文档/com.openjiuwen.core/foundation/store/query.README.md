@@ -1,15 +1,11 @@
 # query
 
-`com.openjiuwen.core.foundation.store.query` registers and exposes the built-in query dialects for supported vector-store backends.
+`com.openjiuwen.core.foundation.store.query` 提供 Chroma 与 Milvus 的查询方言定义，以及一次性注册入口。
 
-## Core Types
+## 类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`ChromaQueryDialect`](query/ChromaQueryDialect.md) | Query expression support for ChromaDB. |
-| [`MilvusQueryDialect`](query/MilvusQueryDialect.md) | Query expression support for Milvus. |
-| [`QueryDialectRegistration`](query/QueryDialectRegistration.md) | Registers built-in query dialect implementations for Milvus and Chroma. |
-
-## Notes
-
-- `QueryDialectRegistration.ensureRegistered()` is idempotent and can be called during application startup without repeated registrations.
+| [`ChromaQueryDialect`](query/ChromaQueryDialect.md) | 生成 Chroma 风格的过滤 `Map`。 |
+| [`MilvusQueryDialect`](query/MilvusQueryDialect.md) | 生成 Milvus 风格的查询表达式。 |
+| [`QueryDialectRegistration`](query/QueryDialectRegistration.md) | 把内建方言注册到 `QueryLanguageRegistry`。 |

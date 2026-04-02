@@ -6,7 +6,9 @@
 public class QuestionerConfig extends com.openjiuwen.core.workflow.component.llm.QuestionerConfig
 ```
 
-Alias/extension of `com.openjiuwen.core.workflow.component.llm.QuestionerConfig` with positional constructor for test compatibility.
+`workflow.components.llm` 包下的 Questioner 配置兼容类。
+
+该类型继承主包 `QuestionerConfig`，增加位置参数构造器及 snake_case 兼容 setter，以匹配旧测试调用方式。
 
 ## Constructors
 

@@ -1,38 +1,32 @@
 # com.openjiuwen.core.memory.prompt.PromptApplier
 
-## class PromptApplier
+## 类 PromptApplier
 
 ```java
 public class PromptApplier
 ```
 
-Singleton prompt applier that loads .md prompt templates from classpath resources and applies variable substitution.
+该类从类路径加载提示词模板并完成变量替换。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `PROMPT_RESOURCE_DIR` | `String` | prompt resource dir. |
-| `instance` | `PromptApplier` | instance. |
-| `promptCache` | `ConcurrentHashMap<String, PromptTemplate>` | prompt cache. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `PROMPT_RESOURCE_DIR` | `String` | 字段 `PROMPT_RESOURCE_DIR`。 |
+| `instance` | `PromptApplier` | 单例实例。 |
+| `promptCache` | `ConcurrentHashMap<String, PromptTemplate>` | 字段 `promptCache`。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private PromptApplier()` | Create a new `PromptApplier` instance. |
+| `public static PromptApplier getInstance()` | 返回单例实例。 |
+| `public String apply(String filePrefix, Map<String, Object> variables)` | 执行 `apply`。 |
+| `public void clearCache(String filePrefix)` | 执行 `clearCache`。 |
+| `public void clearCache()` | 执行 `clearCache`。 |
+| `public PromptTemplate getTemplate(String filePrefix)` | 返回 `getTemplate` 的执行结果。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static PromptApplier getInstance()` | Execute `getInstance`. |
-| `public String apply(String filePrefix, Map<String, Object> variables)` | Execute `apply`. |
-| `public void clearCache(String filePrefix)` | Execute `clearCache`. |
-| `public void clearCache()` | Execute `clearCache`. |
-| `public PromptTemplate getTemplate(String filePrefix)` | Execute `getTemplate`. |
-
-## Notes
-
-- Related tests: `PromptApplierTest.java`
+- 相关测试：`PromptApplierTest.java`

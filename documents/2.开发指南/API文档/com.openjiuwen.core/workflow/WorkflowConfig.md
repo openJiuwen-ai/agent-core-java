@@ -1,35 +1,22 @@
 # com.openjiuwen.core.workflow.WorkflowConfig
 
-## class WorkflowConfig
+## 类 WorkflowConfig
 
 ```java
 public class WorkflowConfig
 ```
 
-Configuration for a workflow instance.
+`WorkflowConfig` 保存工作流卡片、结构规格以及最大嵌套深度等运行配置。
 
-## Fields
+## 关键字段
 
-| Signature | Description |
+| 字段 | 说明 |
 | --- | --- |
-| `private WorkflowCard card` | Card. |
-| `private WorkflowSpec spec` | Spec. |
-| `private int workflowMaxNestingDepth = 5` | . |
+| `card` | 当前工作流卡片。 |
+| `spec` | 当前工作流结构定义。 |
+| `workflowMaxNestingDepth` | 子工作流最大嵌套深度，默认值为 `5`。 |
 
-## Constructors
+## 方法
 
-| Signature | Description |
-| --- | --- |
-| `public WorkflowConfig()` | Create a new `WorkflowConfig` instance. |
-| `public WorkflowConfig(WorkflowCard card)` | Create a new `WorkflowConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public WorkflowCard getCard()` | Return the card. |
-| `public void setCard(WorkflowCard card)` | Update the card. |
-| `public WorkflowSpec getSpec()` | Return the spec. |
-| `public void setSpec(WorkflowSpec spec)` | Update the spec. |
-| `public int getWorkflowMaxNestingDepth()` | Return the workflow max nesting depth. |
-| `public void setWorkflowMaxNestingDepth(int workflowMaxNestingDepth)` | Update the workflow max nesting depth. |
+- 提供 `card`、`spec`、`workflowMaxNestingDepth` 的标准 getter/setter。
+- `setWorkflowMaxNestingDepth(...)` 会把传入值约束在源码允许的范围内。

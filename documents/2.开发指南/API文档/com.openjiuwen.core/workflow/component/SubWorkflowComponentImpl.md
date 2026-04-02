@@ -1,37 +1,24 @@
 # com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl
 
-## class SubWorkflowComponentImpl
+## 类 SubWorkflowComponentImpl
 
 ```java
 public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWorkflowComponent
 ```
 
-Component that wraps a sub-workflow and delegates execution to it.
+`SubWorkflowComponentImpl` 把一个 `Workflow` 作为节点嵌入父工作流中。
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private static final String SUB_WORKFLOW_COMPONENT =` | . |
-| `private final Workflow subWorkflow` | Sub workflow. |
+| `public SubWorkflowComponentImpl(Workflow subWorkflow)` | 使用指定子工作流创建组件；参数不能为空。 |
+| `public Object invoke(Object inputs, NodeSessionApi session, ModelContext context)` | 以子工作流模式执行内部 `Workflow`。 |
+| `public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context)` | 流式执行内部 `Workflow`。 |
+| `public boolean graphInvoker()` | 返回 `true`，表示该组件会触发图执行。 |
+| `public Workflow getSubWorkflow()` | 返回内部子工作流。 |
+| `public HasDrawable getSubWorkflowInternal()` | 返回内部子工作流的可视化对象。 |
 
-## Constructors
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public SubWorkflowComponentImpl(Workflow subWorkflow)` | Create a new `SubWorkflowComponentImpl` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Object invoke(Object inputs, NodeSessionApi session, ModelContext context)` | Invoke the component or workflow. |
-| `public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context)` | Stream the component or workflow output. |
-| `public boolean graphInvoker()` | Execute `graphInvoker`. |
-| `public String componentType()` | Execute `componentType`. |
-| `public Workflow getSubWorkflow()` | Return the sub workflow. |
-| `public HasDrawable getSubWorkflowInternal()` | Return the sub workflow internal. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- `WorkflowTest` 的子工作流场景覆盖了该类型的核心行为。

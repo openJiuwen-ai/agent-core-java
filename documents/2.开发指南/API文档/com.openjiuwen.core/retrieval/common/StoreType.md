@@ -1,41 +1,24 @@
 # com.openjiuwen.core.retrieval.common.StoreType
 
-## enum StoreType
+## 枚举 StoreType
 
 ```java
 public enum StoreType
 ```
 
-Supported vector store providers.
+向量库提供方枚举。
 
-## Enum Values
+## 枚举值
 
-| Value | Serialized Form |
+| 值 | 说明 |
 | --- | --- |
-| `MILVUS` | `MILVUS` |
-| `CHROMA` | `CHROMA` |
-| `PGVECTOR` | `PGVECTOR` |
+| `MILVUS` | `milvus` 向量库。 |
+| `CHROMA` | `chroma` 向量库。 |
+| `PGVECTOR` | `pgvector` 向量库。 |
 
-## Fields
+## 方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `value` | `final String` | value. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `StoreType(String value)` | Create a new `StoreType` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String value()` | Execute `value`. |
-| `public static StoreType fromValue(String value)` | Execute `fromValue`. |
-| `} throw RetrievalExceptions.validation("unsupported store type: " + value)` | Execute `validation`. |
-
-## Notes
-
-- Related tests: `ConfigTest.java`, `VectorStoreFactoryTest.java`.
+| `public String value()` | 返回底层字符串值。 |
+| `public static StoreType fromValue(String value)` | 从字符串解析枚举值。 |

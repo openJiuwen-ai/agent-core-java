@@ -1,21 +1,21 @@
 # com.openjiuwen.core.memory.manage.mem_model.DataIdManager
 
-## class DataIdManager
+## 类 DataIdManager
 
 ```java
 public class DataIdManager
 ```
 
-Generates unique memory IDs using timestamp + random + user hash.
+`DataIdManager` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `random` | `SecureRandom` | random. |
+| `random` | `SecureRandom` | 字段 `random`。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String generateNextId(String userId)` | Generate a unique hex ID based on current time, random bytes, and user ID hash. |
+| `public String generateNextId(String userId)` | 执行 `generateNextId`。 |

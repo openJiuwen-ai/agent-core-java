@@ -1,15 +1,15 @@
 # com.openjiuwen.core.workflow.component.SubWorkflowComponent
 
-## interface SubWorkflowComponent
+## 接口 SubWorkflowComponent
 
 ```java
 public interface SubWorkflowComponent extends ComponentComposable
 ```
 
-Interface for sub-workflow components that wrap an inner workflow graph. Stub interface for the graph visualization module. Will be fully implemented
+`SubWorkflowComponent` 表示内部包裹子工作流的组件。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `HasDrawable getSubWorkflowInternal()` | Gets the internal drawable of the sub-workflow. |
+| `HasDrawable getSubWorkflowInternal()` | 返回内部子工作流对应的可视化对象。 |

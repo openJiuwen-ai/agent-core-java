@@ -6,7 +6,9 @@
 public class QuestionerEndState extends QuestionerState
 ```
 
-Questioner END state. fixed to `ExecutionStatus#END`. Can loop back to START via START_EVENT.
+Questioner 状态机的结束态。
+
+该类型继承 `QuestionerState` 并把 `status` 固定为 `ExecutionStatus.END`；当收到 `START_EVENT` 时，可重新回到新的起始态实例。
 
 ## Constructors
 

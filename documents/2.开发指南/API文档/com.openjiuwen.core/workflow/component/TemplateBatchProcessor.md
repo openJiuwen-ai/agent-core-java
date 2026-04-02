@@ -1,30 +1,16 @@
 # com.openjiuwen.core.workflow.component.TemplateBatchProcessor
 
-## class TemplateBatchProcessor
+## 类 TemplateBatchProcessor
 
 ```java
 public class TemplateBatchProcessor
 ```
 
-Batch template renderer for the End component. Collects inputs from multiple data sources and renders the template once all inputs are available.
+`TemplateBatchProcessor` 用于在多个数据源到齐后一次性触发模板渲染。
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final TemplateProcessor template` | Template. |
-| `private final Map<String, Object> inputs` | Inputs. |
-| `private volatile boolean rendered = false` | . |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public TemplateBatchProcessor(TemplateProcessor template, Map<String, Object> inputs)` | Create a new `TemplateBatchProcessor` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public boolean isRendered()` | Report whether rendered. |
-| `public String render(Map<String, Object> additionalInputs, NodeSessionApi session)` | Render the template by merging the initial inputs with the additional ones. Streams through the template processor and concatenates all frame data. |
+| `public boolean isRendered()` | 返回是否已经完成渲染。 |
+| `public String render(Map<String, Object> additionalInputs, NodeSessionApi session)` | 合并输入后执行模板渲染并返回最终字符串。 |

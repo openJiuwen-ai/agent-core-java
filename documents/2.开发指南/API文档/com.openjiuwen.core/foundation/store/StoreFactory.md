@@ -6,17 +6,29 @@
 public final class StoreFactory
 ```
 
-Factory helpers for foundation.store concrete implementations.
+foundation 层向量存储工厂。它根据短名称创建内建的向量存储适配器。
 
-## Constructors
+## 构造说明
 
-| Signature | Description |
+- 构造方法为私有，不能直接实例化。
+
+## 公开方法
+
+| 签名 | 说明 |
 | --- | --- |
-| `private StoreFactory()` | Create a new `StoreFactory` instance. |
+| `public static BaseVectorStore createVectorStore(String storeType)` | 使用空 `options` 创建向量存储。 |
+| `public static BaseVectorStore createVectorStore(String storeType, Map<String, Object> options)` | 按 `storeType` 和附加参数创建向量存储。 |
 
-## Methods
+## 支持的类型
 
-| Signature | Description |
+| `storeType` | 返回实现 |
 | --- | --- |
-| `public static BaseVectorStore createVectorStore(String storeType)` | Create the requested resource. |
-| `public static BaseVectorStore createVectorStore(String storeType, Map<String, Object> options)` | Create the requested resource. |
+| `in_memory`, `memory` | `InMemoryVectorStore` |
+| `chroma` | `ChromaVectorStore` |
+| `milvus` | `MilvusVectorStore` |
+| `pgvector`, `pg` | `PGVectorStore` |
+
+## 使用说明
+
+- `storeType == null` 时返回 `null`。
+- 未识别的 `storeType` 同样返回 `null`，不会主动抛异常。

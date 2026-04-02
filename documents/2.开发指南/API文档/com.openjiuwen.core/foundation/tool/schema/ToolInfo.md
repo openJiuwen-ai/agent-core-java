@@ -6,20 +6,24 @@
 public class ToolInfo
 ```
 
-LLM-facing tool descriptor that follows function-calling conventions and carries the tool name, description, and parameter schema.
+工具描述对象，供模型函数调用或上层工具注册流程使用。
 
-## Notes
+## 字段
 
-- This type relies on Lombok-generated accessors and/or builders; the tables below document the explicit fields declared in source.
+源码通过 Lombok 生成访问器与构建器；下表列出显式声明字段。
 
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `type` | `String` | `"function"` | Tool type, defaults to "function". */ |
-| `name` | `String` | `""` | Tool name. */ |
-| `description` | `String` | `""` | Tool description. */ |
+| `type` | `String` | `"function"` | 工具类型。 |
+| `name` | `String` | `""` | 工具名称。 |
+| `description` | `String` | `""` | 工具描述。 |
+| `parameters` | `Map<String, Object>` | `Map.of()` | 参数 JSON Schema。 |
 
-## Related Tests
+## 使用说明
 
-- `LocalFunctionTest`, `McpToolTest`, `RestfulApiTest`, `ToolCardTest`
+- `ToolCardTest` 说明无参 builder 默认会产生 `type=function`、空名称、空描述和空参数表。
+
+## 相关测试
+
+- `ToolCardTest`
+- `LocalFunctionTest`

@@ -1,15 +1,15 @@
 # com.openjiuwen.core.workflow.HasDrawable
 
-## interface HasDrawable
+## 接口 HasDrawable
 
 ```java
 public interface HasDrawable
 ```
 
-Interface for components that have an associated `Drawable` graph for visualization. Used by loop components, sub-workflow components, and any component containing a nested graph structure.
+`HasDrawable` 用于暴露内部 `Drawable`，让工作流、子工作流或带嵌套图结构的组件参与可视化输出。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `Drawable getDrawable()` | Gets the drawable visualization graph for this component. |
+| `Drawable getDrawable()` | 返回当前对象的可视化图实例。 |

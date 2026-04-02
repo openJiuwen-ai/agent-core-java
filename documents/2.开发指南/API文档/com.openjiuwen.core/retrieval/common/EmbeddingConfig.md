@@ -1,40 +1,15 @@
 # com.openjiuwen.core.retrieval.common.EmbeddingConfig
 
-## class EmbeddingConfig
+## 类 EmbeddingConfig
 
 ```java
 public class EmbeddingConfig
 ```
 
-Embedding model configuration.
+embedding 模型访问配置，定义模型名、服务地址与可选 API key。
 
-## Fields
+## 说明
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `modelName` | `String` | model name. |
-| `baseUrl` | `String` | base url. |
-| `apiKey` | `String` | api key. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public EmbeddingConfig()` | Create a new `EmbeddingConfig` instance. |
-| `public EmbeddingConfig(String modelName, String baseUrl)` | Create a new `EmbeddingConfig` instance. |
-| `public EmbeddingConfig(String modelName, String baseUrl, String apiKey)` | Create a new `EmbeddingConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getModelName()` | Return the model name. |
-| `public void setModelName(String modelName)` | Update the model name. |
-| `public String getBaseUrl()` | Return the base url. |
-| `public void setBaseUrl(String baseUrl)` | Update the base url. |
-| `public String getApiKey()` | Return the api key. |
-| `public void setApiKey(String apiKey)` | Update the api key. |
-
-## Notes
-
-- Related tests: `APIEmbeddingTest.java`, `ConfigTest.java`, `OpenAIEmbeddingTest.java`, `RetrievalCoreTest.java`, `VLLMEmbeddingTest.java`.
+- `modelName` 与 `baseUrl` 不能为空白。
+- 支持 `model_name/modelName`、`base_url/baseUrl`、`api_key/apiKey` 别名。
+- `apiKey` 可为空。

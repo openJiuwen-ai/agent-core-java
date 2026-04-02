@@ -1,40 +1,26 @@
 # com.openjiuwen.core.workflow.ComponentExecutionParams
 
-## class ComponentExecutionParams
+## 类 ComponentExecutionParams
 
 ```java
 public class ComponentExecutionParams
 ```
 
-Component execution parameters encapsulation.
+`ComponentExecutionParams` 封装单组件执行时需要的节点标识、session、执行器、输入、schema 与上下文。
 
-## Fields
+## 关键字段
 
-| Signature | Description |
+| 字段 | 说明 |
 | --- | --- |
-| `private final String nodeId` | Node id. |
-| `private final NodeSessionApi session` | Session. |
-| `private final ComponentExecutable executor` | Executor. |
-| `private final Map<String, Object> inputs` | Inputs. |
-| `private final Map<String, Object> inputsSchema` | Inputs schema. |
-| `private final Map<String, Object> outputsSchema` | Outputs schema. |
-| `private final ModelContext context` | Context. |
+| `nodeId` | 当前节点 id。 |
+| `session` | 节点级 `NodeSessionApi`。 |
+| `executor` | 组件执行器。 |
+| `inputs` | 组件输入。 |
+| `inputsSchema` | 可选输入 schema。 |
+| `outputsSchema` | 可选输出 schema。 |
+| `context` | 可选 `ModelContext`。 |
 
-## Constructors
+## 方法
 
-| Signature | Description |
-| --- | --- |
-| `public ComponentExecutionParams(String nodeId, NodeSessionApi session, ComponentExecutable executor, Map<String, Object> inputs, Map<String, Object> inputsSchema, Map<String, Object> outputsSchema, ModelContext context)` | Create a new `ComponentExecutionParams` instance. |
-| `public ComponentExecutionParams(String nodeId, NodeSessionApi session, ComponentExecutable executor, Map<String, Object> inputs)` | Create a new `ComponentExecutionParams` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getNodeId()` | Return the node id. |
-| `public NodeSessionApi getSession()` | Return the session. |
-| `public ComponentExecutable getExecutor()` | Return the executor. |
-| `public Map<String, Object> getInputs()` | Return the inputs. |
-| `public Map<String, Object> getInputsSchema()` | Return the inputs schema. |
-| `public Map<String, Object> getOutputsSchema()` | Return the outputs schema. |
-| `public ModelContext getContext()` | Return the context. |
+- 提供全参构造和只含基础参数的简化构造。
+- 通过各 getter 暴露只读访问。

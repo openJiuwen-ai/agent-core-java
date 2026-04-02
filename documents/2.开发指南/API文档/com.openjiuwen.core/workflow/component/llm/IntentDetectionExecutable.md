@@ -6,7 +6,9 @@
 public class IntentDetectionExecutable extends ComponentExecutable
 ```
 
-Executable for intent detection that invokes an LLM to classify user input and routes to the appropriate branch.
+意图识别组件的可执行体。
+
+该类型负责初始化模型、组装分类提示词、按需拼接历史消息，并在执行后把 LLM 输出解析为分类编号、分类名称和原因说明；如果配置了 `BranchRouter`，还会在调用前同步当前 `NodeSessionApi`。
 
 ## Constructors
 

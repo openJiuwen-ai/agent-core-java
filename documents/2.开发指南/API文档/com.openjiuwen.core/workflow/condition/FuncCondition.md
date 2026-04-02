@@ -1,28 +1,14 @@
 # com.openjiuwen.core.workflow.condition.FuncCondition
 
-## class FuncCondition
+## 类 FuncCondition
 
 ```java
 public class FuncCondition extends Condition
 ```
 
-Condition that wraps a callable predicate.
+`FuncCondition` 使用 `BooleanSupplier` 包装函数式条件。
 
-## Fields
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `private final BooleanSupplier func` | Func. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public FuncCondition(BooleanSupplier func)` | Create a new `FuncCondition` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Object doInvoke(Object inputs, BaseSession session)` | Execute `doInvoke`. |
-| `public Object traceInfo(BaseSession session)` | Execute `traceInfo`. |
+- `doInvoke(...)` 直接调用传入的布尔函数。
+- 适合表达简单动态条件或外部闭包条件。

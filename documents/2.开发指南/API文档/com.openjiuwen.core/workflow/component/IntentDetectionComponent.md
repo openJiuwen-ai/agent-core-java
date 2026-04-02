@@ -1,9 +1,9 @@
 # com.openjiuwen.core.workflow.component.IntentDetectionComponent
 
-## class IntentDetectionComponent
+## 抽象类 IntentDetectionComponent
 
 ```java
 public abstract class IntentDetectionComponent extends BranchComponent
 ```
 
-Intent detection component that routes based on detected intent. Extends `BranchComponent` since intent detection also provides routing functionality.
+`IntentDetectionComponent` 是意图识别型分支组件抽象基类，本身不增加新 API，主要用于表达组件语义角色。

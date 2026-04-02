@@ -6,37 +6,38 @@
 public class PGVectorField extends VectorField
 ```
 
-Index configuration for PGVector database.
+PGVector 索引配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `indexType` | `String` | `"hnsw"` | Index type. |
-| `m` | `int` | `16` | M. |
-| `efConstruction` | `int` | `64` | Ef construction. |
-| `efSearch` | `int` | `40` | Ef search. |
-| `lists` | `int` | `100` | Lists. |
-| `probes` | `int` | `1` | Probes. |
-| `extraSearch` | `Map<String, Object>` | `new HashMap<>()` | Extra search. |
+| `vectorField` | `String` | `"embedding"` | 向量字段名。 |
+| `indexType` | `String` | `"hnsw"` | 索引类型，支持 `hnsw` 与 `ivfflat`。 |
+| `m` | `int` | `16` | HNSW 邻接参数。 |
+| `efConstruction` | `int` | `64` | 构建参数。 |
+| `efSearch` | `int` | `40` | 搜索参数。 |
+| `lists` | `int` | `100` | IVF 列表数。 |
+| `probes` | `int` | `1` | IVF 探测数。 |
+| `extraSearch` | `Map<String, Object>` | `{}` | 附加搜索参数。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDatabaseType()` | Return the database type. |
-| `public String getIndexType()` | Return the index type. |
-| `public void setIndexType(String indexType)` | Set the index type. |
-| `public int getM()` | Return the m. |
-| `public void setM(int m)` | Set the m. |
-| `public int getEfConstruction()` | Return the ef construction. |
-| `public void setEfConstruction(int efConstruction)` | Set the ef construction. |
-| `public int getEfSearch()` | Return the ef search. |
-| `public void setEfSearch(int efSearch)` | Set the ef search. |
-| `public int getLists()` | Return the lists. |
-| `public void setLists(int lists)` | Set the lists. |
-| `public int getProbes()` | Return the probes. |
-| `public void setProbes(int probes)` | Set the probes. |
-| `public Map<String, Object> getExtraSearch()` | Return the extra search. |
-| `public void setExtraSearch(Map<String, Object> extraSearch)` | Set the extra search. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getDatabaseType()` | 返回数据库类型 `pg`。 |
+| `public String getIndexType()` | 返回索引类型。 |
+| `public void setIndexType(String indexType)` | 设置索引类型。 |
+| `public int getM()` | 返回 `m`。 |
+| `public void setM(int m)` | 设置 `m`。 |
+| `public int getEfConstruction()` | 返回构建参数。 |
+| `public void setEfConstruction(int efConstruction)` | 设置构建参数。 |
+| `public int getEfSearch()` | 返回搜索参数。 |
+| `public void setEfSearch(int efSearch)` | 设置搜索参数。 |
+| `public int getLists()` | 返回 `lists`。 |
+| `public void setLists(int lists)` | 设置 `lists`。 |
+| `public int getProbes()` | 返回 `probes`。 |
+| `public void setProbes(int probes)` | 设置 `probes`。 |
+| `public Map<String, Object> getExtraSearch()` | 返回附加搜索参数。 |
+| `public void setExtraSearch(Map<String, Object> extraSearch)` | 设置附加搜索参数。 |
+| `public Map<String, Object> toDict(String stage)` | 按阶段导出参数。 |

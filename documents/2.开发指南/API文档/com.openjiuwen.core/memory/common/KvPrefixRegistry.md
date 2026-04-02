@@ -1,33 +1,27 @@
 # com.openjiuwen.core.memory.common.KvPrefixRegistry
 
-## class KvPrefixRegistry
+## 类 KvPrefixRegistry
 
 ```java
 public final class KvPrefixRegistry
 ```
 
-Registry for managing KV store key prefixes used by memory modules.
+`KvPrefixRegistry` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `INSTANCE` | `KvPrefixRegistry` | instance. |
-| `allPrefixes` | `Set<String>` | all prefixes. |
-| `currentPrefixes` | `Set<String>` | current prefixes. |
+| `INSTANCE` | `KvPrefixRegistry` | 字段 `INSTANCE`。 |
+| `allPrefixes` | `Set<String>` | 字段 `allPrefixes`。 |
+| `currentPrefixes` | `Set<String>` | 字段 `currentPrefixes`。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private KvPrefixRegistry()` | Create a new `KvPrefixRegistry` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static KvPrefixRegistry getInstance()` | Execute `getInstance`. |
-| `public synchronized void registerCurrent(String prefix)` | Register a current (active) key prefix used by a memory module. |
-| `public synchronized void registerLegacy(String prefix)` | Register a legacy (deprecated) key prefix for migration detection. |
-| `public synchronized Set<String> getAllPrefixes()` | Get all registered prefixes (both current and legacy). |
-| `public synchronized void unregister(String prefix)` | Unregister a prefix from both current and all prefixes. |
+| `public static KvPrefixRegistry getInstance()` | 返回单例实例。 |
+| `public synchronized void registerCurrent(String prefix)` | 执行 `registerCurrent`。 |
+| `public synchronized void registerLegacy(String prefix)` | 执行 `registerLegacy`。 |
+| `public synchronized Set<String> getAllPrefixes()` | 返回 `getAllPrefixes` 的执行结果。 |
+| `public synchronized void unregister(String prefix)` | 执行 `unregister`。 |

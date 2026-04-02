@@ -6,7 +6,9 @@
 public class QuestionerComponent implements ComponentComposable
 ```
 
-Questioner workflow component (composable wrapper). Creates a `QuestionerExecutable` with initial state.
+Questioner 工作流组件封装。
+
+该类本身不执行业务逻辑，只负责基于 `QuestionerConfig` 生成 `QuestionerExecutable`，并在构建执行体时附带新的初始状态对象。
 
 ## Constructors
 

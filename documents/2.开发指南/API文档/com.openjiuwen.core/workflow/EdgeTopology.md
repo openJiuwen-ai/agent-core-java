@@ -1,34 +1,19 @@
 # com.openjiuwen.core.workflow.EdgeTopology
 
-## class EdgeTopology
+## 类 EdgeTopology
 
 ```java
 public class EdgeTopology
 ```
 
-Edge topology snapshot used by workflow ability inference.
+`EdgeTopology` 保存工作流普通边与流式边的拓扑快照，供 `BaseWorkflow.autoCompleteAbilities()` 推断节点能力。
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final Map<String, List<String>> sourceMap` | Source map. |
-| `private final Map<String, List<String>> targetMap` | Target map. |
-| `private final Map<String, List<String>> sourceStreamMap` | Source stream map. |
-| `private final Map<String, List<String>> targetStreamMap` | Target stream map. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public EdgeTopology(Map<String, List<String>> sourceMap, Map<String, List<String>> targetMap, Map<String, List<String>> sourceStreamMap, Map<String, List<String>> targetStreamMap)` | Create a new `EdgeTopology` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Map<String, List<String>> getSourceMap()` | Return the source map. |
-| `public Map<String, List<String>> getTargetMap()` | Return the target map. |
-| `public Map<String, List<String>> getSourceStreamMap()` | Return the source stream map. |
-| `public Map<String, List<String>> getTargetStreamMap()` | Return the target stream map. |
-| `public Set<String> allEdgeNodes()` | Execute `allEdgeNodes`. |
+| `public Map<String, List<String>> getSourceMap()` | 返回普通边 source 映射。 |
+| `public Map<String, List<String>> getTargetMap()` | 返回普通边 target 映射。 |
+| `public Map<String, List<String>> getSourceStreamMap()` | 返回流式边 source 映射。 |
+| `public Map<String, List<String>> getTargetStreamMap()` | 返回流式边 target 映射。 |
+| `public Set<String> allEdgeNodes()` | 汇总所有普通边与流式边中出现过的节点。 |

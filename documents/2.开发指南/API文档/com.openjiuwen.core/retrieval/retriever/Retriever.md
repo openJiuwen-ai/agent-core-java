@@ -1,26 +1,51 @@
 # com.openjiuwen.core.retrieval.retriever.Retriever
 
-## interface Retriever
+## 接口 Retriever
 
 ```java
 public interface Retriever extends AutoCloseable
 ```
 
-Unified abstraction for retrieval components that return `RetrievalResult` items and optional raw `SearchResult` views.
+`Retriever` 定义 retrieval 子系统统一的检索接口，并提供若干默认方法。
 
-## Methods
+## 抽象方法
 
-| Signature | Description |
-| --- | --- |
-| `List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode, Map<String, Object> options)` | Execute retrieval with the requested mode and optional score threshold. |
-| `List<List<RetrievalResult>> batchRetrieve(List<String> queries, int topK, String mode, Map<String, Object> options)` | Run retrieval for a batch of queries and preserve per-query result lists. |
-| `default List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options)` | Adapt `retrieve(...)` output into `SearchResult` records, preferring `chunk_id`, then `doc_id`, then a text hash as the result id. |
-| `default List<RetrievalResult> retrieve(String query)` | Convenience overload that uses `topK = 5`, `mode = "hybrid"`, and empty options. |
-| `default List<RetrievalResult> retrieve(String query, int topK)` | Convenience overload that uses the requested `topK`, `mode = "hybrid"`, and empty options. |
-| `default boolean supportsMode(String mode)` | Report whether the implementation accepts the requested retrieval mode. The default implementation returns `true`. |
-| `default String getIndexType()` | Return the retriever index type. The default value is `"hybrid"`. |
-| `default void close()` | Release owned resources. The default implementation is a no-op. |
+### `List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode, Map<String, Object> options)`
 
-## Notes
+执行单条检索。
 
-- `RetrieverDefaultMethodTest.java` verifies that `retrieveSearchResults(...)` falls back to `retrieve(...)` and keeps the returned `chunk_id` as the search-result id.
+### `List<List<RetrievalResult>> batchRetrieve(List<String> queries, int topK, String mode, Map<String, Object> options)`
+
+执行批量检索。
+
+## 默认方法
+
+### `default List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options)`
+
+把 `retrieve(...)` 的结果映射为 `SearchResult`。
+
+**实现细节：**
+
+- `RetrieverDefaultMethodTest` 验证该方法优先使用 `chunkId` 作为 `SearchResult.id`。
+- 当 `chunkId` 为空时回退到 `docId`。
+- 当 `chunkId` 与 `docId` 都为空时，回退到 `result.getText().hashCode()` 的十六进制字符串。
+
+### `default List<RetrievalResult> retrieve(String query)`
+
+等价于 `retrieve(query, 5, null, "hybrid", Map.of())`。
+
+### `default List<RetrievalResult> retrieve(String query, int topK)`
+
+等价于 `retrieve(query, topK, null, "hybrid", Map.of())`。
+
+### `default boolean supportsMode(String mode)`
+
+默认返回 `true`；具体实现可收窄支持模式。
+
+### `default String getIndexType()`
+
+默认返回 `"hybrid"`。
+
+### `default void close()`
+
+默认空实现。

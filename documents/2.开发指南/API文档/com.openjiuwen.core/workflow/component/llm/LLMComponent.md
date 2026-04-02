@@ -6,7 +6,9 @@
 public class LLMComponent implements ComponentComposable
 ```
 
-Workflow component that wraps an LLM model for invocation and streaming.
+工作流中的 LLM 组件封装。
+
+该类型持有 `LLMCompConfig` 并负责构建 `LLMExecutable`；`getExecutable()` 使用延迟初始化缓存执行体，`toExecutable()` 则可按当前配置重新创建可执行对象。
 
 ## Constructors
 

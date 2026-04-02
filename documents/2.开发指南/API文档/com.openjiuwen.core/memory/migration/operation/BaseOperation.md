@@ -1,32 +1,27 @@
 # com.openjiuwen.core.memory.migration.operation.BaseOperation
 
-## class BaseOperation
+## 类 BaseOperation
 
 ```java
 public abstract class BaseOperation
 ```
 
-Base class for all migration operations.
+`BaseOperation` 是所有迁移操作的抽象基类，统一封装元数据并提供版本号、说明文本的访问入口。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `metadata` | `OperationMetadata` | metadata. |
+| `metadata` | `OperationMetadata` | 当前操作的元数据，包含 schema 版本号与可选描述。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `protected BaseOperation(OperationMetadata metadata)` | Create a new `BaseOperation` instance. |
+| `public int getSchemaVersion()` | 返回当前操作对应的 schema 版本号。 |
+| `public String getDescription()` | 返回元数据中的描述；若描述为空则退回到当前类名。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public int getSchemaVersion()` | Execute `getSchemaVersion`. |
-| `public String getDescription()` | Execute `getDescription`. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类只有受保护构造方法，供具体迁移操作子类调用，不作为公开实例化入口。
+- `@Data` 会为 `metadata` 生成常规访问器，但显式公开方法仍以源码中的 `getSchemaVersion()`、`getDescription()` 为主。

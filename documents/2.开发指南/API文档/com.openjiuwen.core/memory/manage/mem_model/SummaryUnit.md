@@ -1,27 +1,23 @@
 # com.openjiuwen.core.memory.manage.mem_model.SummaryUnit
 
-## class SummaryUnit
+## 类 SummaryUnit
 
 ```java
 public class SummaryUnit extends BaseMemoryUnit
 ```
 
-Summary memory unit.
+`SummaryUnit` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `summary` | `String` | summary. |
-| `messageMemId` | `String` | message mem id. |
-| `timestamp` | `String` | timestamp. |
+| `summary` | `String` | 字段 `summary`。 |
+| `messageMemId` | `String` | 字段 `messageMemId`。 |
+| `timestamp` | `String` | 字段 `timestamp`。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public MemoryType getMemType()` | Execute `getMemType`. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `public MemoryType getMemType()` | 返回 `getMemType` 的执行结果。 |

@@ -1,9 +1,9 @@
 # object
 
-`com.openjiuwen.core.foundation.store.object` contains the local object-storage client used for file-backed artifacts.
+`com.openjiuwen.core.foundation.store.object` 当前提供本地文件系统版对象存储客户端。
 
-## Core Types
+## 类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`LocalObjectStorageClient`](object/LocalObjectStorageClient.md) | Local-filesystem implementation of the object storage contract. |
+| [`LocalObjectStorageClient`](object/LocalObjectStorageClient.md) | 将 bucket / object 映射到本地目录与文件。 |

@@ -1,15 +1,13 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter
 
-## class TextSplitter
+## 抽象类 TextSplitter
 
 ```java
 public abstract class TextSplitter
 ```
 
-Abstract base class for text splitters.
+`TextSplitter` 是一个更轻量的切分基类，只约定如何把单个 `Document` 转成 `TextChunk` 列表。
 
-## Methods
+## 抽象方法
 
-| Signature | Description |
-| --- | --- |
-| `public abstract List<TextChunk> split(Document doc)` | Split a document or text chunk into smaller text chunks. |
+- `List<TextChunk> split(Document doc)`：切分单个文档。

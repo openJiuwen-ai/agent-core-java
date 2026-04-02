@@ -1,28 +1,17 @@
 # com.openjiuwen.core.workflow.component.EndConfig
 
-## class EndConfig
+## 类 EndConfig
 
 ```java
 public class EndConfig
 ```
 
-Configuration for the End component.
+`EndConfig` 保存 `End` 组件的 `responseTemplate` 配置。
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final String responseTemplate` | Response template. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public EndConfig(String responseTemplate)` | Create a new `EndConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static EndConfig fromMap(Map<String, Object> map)` | Execute `fromMap`. |
-| `public String getResponseTemplate()` | Return the response template. |
+| `public EndConfig(String responseTemplate)` | 使用模板文本创建配置对象。 |
+| `public static EndConfig fromMap(Map<String, Object> map)` | 从字典创建配置，同时兼容 `responseTemplate` 和 `response_template` 键。 |
+| `public String getResponseTemplate()` | 返回模板文本。 |

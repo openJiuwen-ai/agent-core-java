@@ -6,16 +6,10 @@
 public final class BaseVectorFields
 ```
 
-Reusable helpers for building vector collection schemas.
+默认向量 schema 生成工具。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private BaseVectorFields()` | Create a new `BaseVectorFields` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static CollectionSchema defaultSchema(String vectorFieldName, int dimension)` | Execute `defaultSchema`. |
+| `public static CollectionSchema defaultSchema(String vectorFieldName, int dimension)` | 生成默认 schema，包含 `id`、向量字段、`text`、`metadata` 四个字段。 |

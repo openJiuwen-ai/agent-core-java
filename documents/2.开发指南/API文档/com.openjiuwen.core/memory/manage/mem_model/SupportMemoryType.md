@@ -1,34 +1,28 @@
 # com.openjiuwen.core.memory.manage.mem_model.SupportMemoryType
 
-## enum SupportMemoryType
+## 枚举 SupportMemoryType
 
 ```java
 public enum SupportMemoryType
 ```
 
-Supported memory types for vector operations.
+`SupportMemoryType` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
 
-## Enum Values
+## 枚举值
 
-| Value | Description |
+| 枚举值 | 说明 |
 | --- | --- |
-| `USER_PROFILE` | user profile. |
-| `SUMMARY` | summary. |
+| `USER_PROFILE` | 枚举值 `USER_PROFILE`。 |
+| `SUMMARY` | 摘要记忆。 |
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `value` | `String` | value. |
+| `value` | `String` | 原始值。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `SupportMemoryType(String value)` | Create a new `SupportMemoryType` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | Execute `getValue`. |
+| `public String getValue()` | 返回当前枚举对应的原始值。 |

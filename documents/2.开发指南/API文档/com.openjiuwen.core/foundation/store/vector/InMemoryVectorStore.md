@@ -6,19 +6,16 @@
 public class InMemoryVectorStore extends AbstractRetrievalVectorStoreAdapter
 ```
 
-Foundation-store in-memory vector store.
+foundation 层的内存向量存储适配器。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public InMemoryVectorStore()` | Create a new `InMemoryVectorStore` instance. |
-| `public InMemoryVectorStore(Map<String, Object> options)` | Create a new `InMemoryVectorStore` instance. |
+| `public InMemoryVectorStore()` | 使用默认选项构造内存向量存储。 |
+| `public InMemoryVectorStore(Map<String, Object> options)` | 使用自定义选项构造内存向量存储。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `private static VectorStoreConfig config(String storeType, Map<String, Object> options)` | Execute `config`. |
-| `static String indexType(Map<String, Object> options)` | Execute `indexType`. |
-| `static String stringOption(Map<String, Object> options, String key, String altKey, String fallback)` | Execute `stringOption`. |
+- 默认选项会把 `database_name` 设为 `default`、`collection_name` 设为 `default_collection`、`distance_metric` 设为 `cosine`、`index_type` 设为 `hybrid`。
+- 标准 collection 生命周期、写入、搜索和删除能力由父类适配器统一提供。

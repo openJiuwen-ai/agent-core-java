@@ -1,20 +1,20 @@
 # com.openjiuwen.core.memory.MemResult
 
-## class MemResult
+## 类 MemResult
 
 ```java
 public class MemResult
 ```
 
-Memory search result with relevance score.
+该类表示记忆检索返回结果。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `memInfo` | `MemInfo` | mem info. |
-| `score` | `.Default private double` | score. |
+| `memInfo` | `MemInfo` | 字段 `memInfo`。 |
+| `score` | `.Default private double` | 字段 `score`。 |
 
-## Notes
+## 使用说明
 
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类型通过 Lombok 生成构建器与访问器。

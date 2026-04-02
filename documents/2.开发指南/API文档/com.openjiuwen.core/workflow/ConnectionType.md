@@ -1,34 +1,22 @@
 # com.openjiuwen.core.workflow.ConnectionType
 
-## enum ConnectionType
+## 枚举 ConnectionType
 
 ```java
 public enum ConnectionType
 ```
 
-Type of workflow edge connection.
+`ConnectionType` 表示工作流边的类别。
 
-## Enum Constants
+## 枚举值
 
-| Value | Description |
+| 值 | 说明 |
 | --- | --- |
-| `CONNECTION` | C o n n e c t i o n. |
-| `STREAM_CONNECTION` | Stream connection. |
+| `CONNECTION` | 普通数据边。 |
+| `STREAM_CONNECTION` | 流式数据边。 |
 
-## Fields
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private final String value` | Value. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `ConnectionType(String value)` | Create a new `ConnectionType` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | Return the value. |
+| `public String getValue()` | 返回对应的字符串值。 |

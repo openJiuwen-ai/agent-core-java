@@ -1,29 +1,32 @@
-# mem_model
+﻿# mem_model
 
-`com.openjiuwen.core.memory.manage.mem_model` defines the storage DTOs, adapters, and low-level models used by the memory managers.
+`com.openjiuwen.core.memory.manage.mem_model` 定义管理层使用的数据模型与底层存储适配器，包括记忆单元、SQL 行模型、枚举值、消息写入请求，以及向量/SQL/KV 封装。
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`BaseMemoryUnit`](./mem_model/BaseMemoryUnit.md) | class | Base class for a single memory data item. |
-| [`DataIdManager`](./mem_model/DataIdManager.md) | class | Generates unique memory IDs using timestamp + random + user hash. |
-| [`DbModel`](./mem_model/DbModel.md) | class | Database model: table definitions and creation logic. |
-| [`FragmentMemoryUnit`](./mem_model/FragmentMemoryUnit.md) | class | Fragment memory unit. |
-| [`MemoryMeta`](./mem_model/MemoryMeta.md) | record | Public row model matching the memory_meta table. |
-| [`MemoryType`](./mem_model/MemoryType.md) | enum | Types of memory data. |
-| [`MessageAddRequest`](./mem_model/MessageAddRequest.md) | class | Request object for adding a message. |
-| [`MessageManager`](./mem_model/MessageManager.md) | class | DB-based message management. |
-| [`ScopeUserMapping`](./mem_model/ScopeUserMapping.md) | record | Public row model matching the memory scope_user_mapping table. |
-| [`ScopeUserMappingManager`](./mem_model/ScopeUserMappingManager.md) | class | Manages scope-user mapping records in the SQL database. |
-| [`SemanticStore`](./mem_model/SemanticStore.md) | class | Semantic store wrapping VectorStore for memory module. |
-| [`SqlDbStore`](./mem_model/SqlDbStore.md) | class | JDBC-based SQL CRUD wrapper for memory tables. |
-| [`SummaryUnit`](./mem_model/SummaryUnit.md) | class | Summary memory unit. |
-| [`SupportMemoryType`](./mem_model/SupportMemoryType.md) | enum | Supported memory types for vector operations. |
-| [`UserMemStore`](./mem_model/UserMemStore.md) | class | KV-based memory data storage with ID index management. |
-| [`UserMessage`](./mem_model/UserMessage.md) | record | Public row model matching the memory user_message table. |
-| [`VariableUnit`](./mem_model/VariableUnit.md) | class | Variable memory unit. |
+| 类型 | 说明 |
+| --- | --- |
+| [`BaseMemoryUnit`](./mem_model/BaseMemoryUnit.md) | 单条记忆单元的抽象基类。 |
+| [`DataIdManager`](./mem_model/DataIdManager.md) | 负责生成记忆与消息标识。 |
+| [`DbModel`](./mem_model/DbModel.md) | 定义 SQL 表结构并负责初始化建表。 |
+| [`FragmentMemoryUnit`](./mem_model/FragmentMemoryUnit.md) | 分片记忆单元。 |
+| [`MemoryMeta`](./mem_model/MemoryMeta.md) | `memory_meta` 表的公开记录模型。 |
+| [`MemoryType`](./mem_model/MemoryType.md) | 记忆类型枚举。 |
+| [`MessageAddRequest`](./mem_model/MessageAddRequest.md) | 新增消息请求对象。 |
+| [`MessageManager`](./mem_model/MessageManager.md) | 基于 SQL 的消息管理器。 |
+| [`ScopeUserMapping`](./mem_model/ScopeUserMapping.md) | `scope_user_mapping` 表的公开记录模型。 |
+| [`ScopeUserMappingManager`](./mem_model/ScopeUserMappingManager.md) | 管理用户与作用域映射记录。 |
+| [`SemanticStore`](./mem_model/SemanticStore.md) | 向量存储适配器，封装嵌入初始化与搜索写入。 |
+| [`SqlDbStore`](./mem_model/SqlDbStore.md) | JDBC 风格的 SQL CRUD 封装。 |
+| [`SummaryUnit`](./mem_model/SummaryUnit.md) | 摘要记忆单元。 |
+| [`SupportMemoryType`](./mem_model/SupportMemoryType.md) | 管理层支持的记忆类型枚举。 |
+| [`UserMemStore`](./mem_model/UserMemStore.md) | 基于 KV 的用户记忆存储。 |
+| [`UserMessage`](./mem_model/UserMessage.md) | 用户消息行记录模型。 |
+| [`VariableUnit`](./mem_model/VariableUnit.md) | 变量记忆单元。 |
 
-## Notes
+## 相关测试
 
-- The current page also links the 17 direct public type page(s) defined in this package.
+- `DbModelTest`
+- `SemanticStoreMilvusTest`
+- `SemanticStorePGVectorTest`
+- `SqlDbStoreTest`

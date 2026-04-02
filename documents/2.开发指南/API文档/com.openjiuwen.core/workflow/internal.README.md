@@ -1,14 +1,14 @@
 # internal
 
-`com.openjiuwen.core.workflow.internal` contains internal compatibility helpers used by the workflow component layer.
+`com.openjiuwen.core.workflow.internal` 放置工作流包内部使用的兼容桥接工具。当前只有 `LegacyWorkflowComponentSupport` 一个公开类型，用于把旧式 POJO 节点适配为新的 `ComponentComposable` 组件模型。
 
-## Types
+## 类型
 
-| Type | Kind | Description |
+| 类型 | 种类 | 说明 |
 | --- | --- | --- |
-| [`LegacyWorkflowComponentSupport`](./internal/LegacyWorkflowComponentSupport.md) | `class` | Internal compatibility bridge for translated tests that still register plain POJO nodes instead of WorkflowComponent implementations. |
+| [`LegacyWorkflowComponentSupport`](./internal/LegacyWorkflowComponentSupport.md) | `class` | 旧组件兼容桥，用反射方式适配 `invoke`、`stream`、`collect`、`transform`。 |
 
-## Notes
+## 说明
 
-- The current page also links the 1 direct public type page(s) defined in this package.
-- Representative workflow behavior is covered by `WorkflowTest.java` for the core runtime and major component flows.
+- 该包属于运行时兼容层，不是新的工作流组件开发入口。
+- `Workflow` 中接收 `Object component` 的多组兼容重载最终都会依赖这里的适配逻辑。

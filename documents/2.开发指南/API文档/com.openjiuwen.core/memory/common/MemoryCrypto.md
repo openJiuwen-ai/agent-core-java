@@ -1,35 +1,29 @@
 # com.openjiuwen.core.memory.common.MemoryCrypto
 
-## class MemoryCrypto
+## 类 MemoryCrypto
 
 ```java
 public final class MemoryCrypto
 ```
 
-AES-256-GCM encryption/decryption utilities for memory content.
+`MemoryCrypto` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `NONCE_LENGTH` | `int` | nonce length. |
-| `TAG_LENGTH` | `int` | tag length. |
-| `AES_KEY_LENGTH` | `int` | aes key length. |
-| `BIT_LENGTH` | `int` | bit length. |
+| `NONCE_LENGTH` | `int` | 字段 `NONCE_LENGTH`。 |
+| `TAG_LENGTH` | `int` | 字段 `TAG_LENGTH`。 |
+| `AES_KEY_LENGTH` | `int` | 字段 `AES_KEY_LENGTH`。 |
+| `BIT_LENGTH` | `int` | 字段 `BIT_LENGTH`。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private MemoryCrypto()` | Create a new `MemoryCrypto` instance. |
+| `public static String[] encrypt(byte[] key, String plaintext)` | 执行 `encrypt`。 |
+| `public static String decrypt(byte[] key, String ciphertext, String nonce, String tag)` | 执行 `decrypt`。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static String[] encrypt(byte[] key, String plaintext)` | Encrypt plaintext using AES-256-GCM. |
-| `public static String decrypt(byte[] key, String ciphertext, String nonce, String tag)` | Decrypt ciphertext using AES-256-GCM. |
-
-## Notes
-
-- Related tests: `MemoryCryptoTest.java`
+- 相关测试：`MemoryCryptoTest.java`

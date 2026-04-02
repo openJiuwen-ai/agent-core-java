@@ -1,16 +1,16 @@
 # com.openjiuwen.core.workflow.component.AdvancedLoopComponent
 
-## interface AdvancedLoopComponent
+## 接口 AdvancedLoopComponent
 
 ```java
-public interface AdvancedLoopComponent extends ComponentComposable
+public interface AdvancedLoopComponent extends LoopComponent
 ```
 
-Interface for advanced loop components that contain a body subgraph. Stub interface for the graph visualization module. Will be fully implemented
+`AdvancedLoopComponent` 表示带有循环体子图的高级循环组件。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `HasDrawable getBody()` | Gets the loop body (inner graph). |
-| `void registerCallback(LoopCallback callback)` | Register a loop callback after construction. |
+| `HasDrawable getBody()` | 返回循环体的可视化对象。 |
+| `void registerCallback(LoopCallback callback)` | 注册循环回调。 |

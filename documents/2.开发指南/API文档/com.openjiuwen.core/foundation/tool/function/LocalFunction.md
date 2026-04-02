@@ -6,32 +6,33 @@
 public class LocalFunction extends Tool
 ```
 
-Local function tool that wraps a Java `Function` as a tool. The wrapped function receives input as a `Map ` and returns the result. Usage:
+本地函数工具。它把一个接收 `Map<String, Object>` 的 Java `Function` 包装为标准 `Tool`。
 
-## Notes
+## 字段
 
-- `invoke(...)` optionally validates inputs through `SchemaUtils.formatWithSchema(...)`, and `stream(...)` only accepts results that are already `Iterator` or `Iterable` instances.
-
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `func` | `Function<Map<String, Object>, Object>` | `-` | - |
+| `func` | `Function<Map<String, Object>, Object>` | `-` | 被包装的本地函数。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public LocalFunction(ToolCard card, Function<Map<String, Object>, Object> func)` | Create a local function tool. |
+| `public LocalFunction(ToolCard card, Function<Map<String, Object>, Object> func)` | 创建本地函数工具；`card` 或 `func` 不合法时抛出错误。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | - |
-| `public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | - |
-| `public Function<Map<String, Object>, Object> getFunc()` | Get the underlying function. |
+| `public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | 按卡片中的 `inputParams` 校验并格式化输入后执行函数。 |
+| `public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | 执行函数并要求返回 `Iterator` 或 `Iterable`，否则抛出 `TOOL_LOCAL_FUNCTION_EXECUTION_ERROR`。 |
+| `public Function<Map<String, Object>, Object> getFunc()` | 返回底层函数对象。 |
 
-## Related Tests
+## 使用说明
+
+- `kwargs.skip_none_value` 与 `kwargs.skip_inputs_validate` 会透传给 `SchemaUtils.formatWithSchema(...)`。
+- `LocalFunctionTest` 覆盖了构造失败、加减法调用、复杂嵌套输入和流式返回三类场景。
+
+## 相关测试
 
 - `LocalFunctionTest`

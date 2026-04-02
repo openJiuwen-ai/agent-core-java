@@ -6,18 +6,16 @@
 public class McpToolInfo extends ToolInfo
 ```
 
-Extension of `ToolInfo` that also records which MCP server exposes the tool.
+MCP 工具描述对象，在 `ToolInfo` 的基础上追加服务端名称字段。
 
-## Notes
+## 字段
 
-- This type relies on Lombok-generated accessors and/or builders; the tables below document the explicit fields declared in source.
+源码通过 Lombok 生成访问器与构建器；下表列出显式声明字段。
 
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `serverName` | `String` | `-` | The MCP server name this tool belongs to. */ |
+| `serverName` | `String` | `null` | MCP 服务端名称，对应序列化键 `server_name`。 |
 
-## Related Tests
+## 使用说明
 
-- `McpToolTest`
+- `McpToolCard.toolInfo()` 会构造该类型，而不是基础 `ToolInfo`。

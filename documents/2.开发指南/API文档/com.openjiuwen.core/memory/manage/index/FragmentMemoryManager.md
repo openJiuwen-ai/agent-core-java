@@ -1,37 +1,37 @@
 # com.openjiuwen.core.memory.manage.index.FragmentMemoryManager
 
-## class FragmentMemoryManager
+## 类 FragmentMemoryManager
 
 ```java
 public class FragmentMemoryManager extends BaseMemoryManager
 ```
 
-Manages fragment (user profile) memory CRUD with encryption and vector storage.
+`FragmentMemoryManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `UPDATE_CHECK_OLD_MEMORY_NUM` | `int` | update check old memory num. |
-| `UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD` | `double` | update check old memory relevance threshold. |
-| `memStore` | `UserMemStore` | mem store. |
-| `dataIdGenerator` | `DataIdManager` | data id generator. |
-| `cryptoKey` | `byte[]` | crypto key. |
+| `UPDATE_CHECK_OLD_MEMORY_NUM` | `int` | 字段 `UPDATE_CHECK_OLD_MEMORY_NUM`。 |
+| `UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD` | `double` | 字段 `UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD`。 |
+| `memStore` | `UserMemStore` | 字段 `memStore`。 |
+| `dataIdGenerator` | `DataIdManager` | 字段 `dataIdGenerator`。 |
+| `cryptoKey` | `byte[]` | 字段 `cryptoKey`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public FragmentMemoryManager(UserMemStore memStore, DataIdManager dataIdGenerator, byte[] cryptoKey)` | Create a new `FragmentMemoryManager` instance. |
+| `public FragmentMemoryManager(UserMemStore memStore, DataIdManager dataIdGenerator, byte[] cryptoKey)` | 创建 `FragmentMemoryManager` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories, Map.Entry<String, Model> llm, Map<String, Object> kwargs)` | Execute `addMemories`. |
-| `public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs)` | Execute `update`. |
-| `public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK, Map<String, Object> kwargs)` | Execute `search`. |
-| `public Map<String, Object> get(String userId, String scopeId, String memId)` | Execute `get`. |
-| `public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs)` | Execute `delete`. |
-| `public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs)` | Execute `deleteByUserId`. |
-| `public List<Map<String, Object>> listFragmentMemories(String userId, String scopeId, String profileType)` | Execute `listFragmentMemories`. |
+| `public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories, Map.Entry<String, Model> llm, Map<String, Object> kwargs)` | 执行 `addMemories` 写入流程。 |
+| `public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs)` | 执行 `update` 更新流程。 |
+| `public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK, Map<String, Object> kwargs)` | 执行 `search` 查询流程。 |
+| `public Map<String, Object> get(String userId, String scopeId, String memId)` | 返回 `get` 的执行结果。 |
+| `public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs)` | 执行 `delete` 删除流程。 |
+| `public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs)` | 执行 `deleteByUserId` 删除流程。 |
+| `public List<Map<String, Object>> listFragmentMemories(String userId, String scopeId, String profileType)` | 执行 `listFragmentMemories` 查询流程。 |

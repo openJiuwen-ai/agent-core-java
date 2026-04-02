@@ -1,27 +1,23 @@
 # com.openjiuwen.core.memory.manage.mem_model.VariableUnit
 
-## class VariableUnit
+## 类 VariableUnit
 
 ```java
 public class VariableUnit extends BaseMemoryUnit
 ```
 
-Variable memory unit.
+`VariableUnit` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `variableName` | `String` | variable name. |
-| `variableMem` | `String` | variable mem. |
+| `variableName` | `String` | 字段 `variableName`。 |
+| `variableMem` | `String` | 字段 `variableMem`。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public MemoryType getMemType()` | Execute `getMemType`. |
-| `public String getMemId()` | Execute `getMemId`. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `public MemoryType getMemType()` | 返回 `getMemType` 的执行结果。 |
+| `public String getMemId()` | 返回 `getMemId` 的执行结果。 |

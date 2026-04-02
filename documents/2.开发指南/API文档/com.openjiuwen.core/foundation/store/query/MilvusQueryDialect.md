@@ -6,26 +6,15 @@
 public final class MilvusQueryDialect
 ```
 
-Query expression support for Milvus.
+Milvus 查询方言定义提供器。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private MilvusQueryDialect()` | Create a new `MilvusQueryDialect` instance. |
+| `public static QueryLanguageDefinition definition()` | 返回 Milvus 查询方言定义。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static QueryLanguageDefinition definition()` | Execute `definition`. |
-| `static String comparisonFilter(ComparisonExpr self)` | Execute `comparisonFilter`. |
-| `static String rangeFilter(RangeExpr self)` | Execute `rangeFilter`. |
-| `static String arithmeticFilter(ArithmeticExpr self)` | Execute `arithmeticFilter`. |
-| `static String nullFilter(NullExpr self)` | Execute `nullFilter`. |
-| `static String jsonFilter(JSONExpr self)` | Execute `jsonFilter`. |
-| `static String arrayFilter(ArrayExpr self)` | Execute `arrayFilter`. |
-| `static String logicalFilter(LogicalExpr self)` | Execute `logicalFilter`. |
-| `static String textMatchFilter(MatchExpr self)` | Execute `textMatchFilter`. |
-| `private static String sanitize(Object value)` | Execute `sanitize`. |
-| `private static void raiseQueryError(String reason)` | Execute `raiseQueryError`. |
+- 当前实现支持 comparison、range、arithmetic、null check、jsonFilter、array、logical 与 textMatch 等表达式类别。
+- 非法操作会通过 `RETRIEVAL_VECTOR_STORE_QUERY_INVALID` 抛出错误。

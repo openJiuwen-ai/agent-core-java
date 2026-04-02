@@ -1,43 +1,21 @@
 # com.openjiuwen.core.retrieval.common.TextChunk
 
-## class TextChunk
+## 类 TextChunk
 
 ```java
 public class TextChunk
 ```
 
-Text chunk model.
+文档分块模型，保存分块标识、文本、来源文档标识、元数据与可选 embedding。
 
-## Fields
+## 方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `String` | id. |
-| `text` | `String` | text. |
-| `docId` | `String` | doc id. |
-| `embedding` | `List<Float>` | embedding. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public TextChunk()` | Create a new `TextChunk` instance. |
-| `public TextChunk(String id, String text, String docId)` | Create a new `TextChunk` instance. |
-| `public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<Float> embedding)` | Create a new `TextChunk` instance. |
+| `public static TextChunk fromDocument(Document document, String text)` | 根据文档创建分块并自动生成分块标识。 |
+| `public static TextChunk fromDocument(Document document, String text, String id)` | 根据文档与显式标识创建分块。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static TextChunk fromDocument(Document document, String chunkText)` | Execute `fromDocument`. |
-| `public static TextChunk fromDocument(Document document, String chunkText, String id)` | Execute `fromDocument`. |
-| `public void setId(String id)` | Update the id. |
-| `public void setText(String text)` | Update the text. |
-| `public void setDocId(String docId)` | Update the doc id. |
-| `public void setMetadata(Map<String, Object> metadata)` | Update the metadata. |
-| `public void setEmbedding(List<Float> embedding)` | Update the embedding. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
-- Related tests: `InMemoryIndexerTest.java`, `LLMTripleExtractorTest.java`, `MilvusIndexerTest.java`, `RetrievalCoreTest.java`, `SimpleTripleExtractorTest.java`.
+- `id`、`docId` 不能为空白，`text` 不能为空。
+- `embedding` 会以不可变列表形式保存。

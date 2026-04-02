@@ -6,7 +6,9 @@
 public class IntentDetectionOutput
 ```
 
-Output model for IntentDetection component.
+意图识别组件的输出模型。
+
+该对象用于承载分类结果，`toMap()` 会按需写出 `classification_id`、`reason` 与 `category_name` 三个输出键。
 
 ## Fields
 

@@ -1,19 +1,14 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.TextFileParser
 
-## class TextFileParser
+## 类 TextFileParser
 
 ```java
 public class TextFileParser extends Parser
 ```
 
-Simple UTF-8 text file parser.
+`TextFileParser` 是最简单的 UTF-8 文本文件解析器，直接返回文件原文。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
-
-## Notes
-
-- Related tests: `TextFileParserTest.java`.
+- `parseContent(...)`：文件不存在时抛 `RETRIEVAL_INDEXING_FILE_NOT_FOUND`，读取异常也会包装成同类错误。
+- `supports(String doc)`：支持 `.txt` 和 `.md`。

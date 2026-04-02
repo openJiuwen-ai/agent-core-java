@@ -1,33 +1,33 @@
 # com.openjiuwen.core.memory.manage.update.MemUpdateChecker
 
-## class MemUpdateChecker
+## 类 MemUpdateChecker
 
 ```java
 public class MemUpdateChecker
 ```
 
-Memory update checker for detecting redundancy and conflicts between memories.
+该类借助提示词模板与模型输出来判定新旧记忆的冗余与冲突关系。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `promptApplier` | `PromptApplier` | prompt applier. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `promptApplier` | `PromptApplier` | 提示词模板应用器。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public MemUpdateChecker()` | Create a new `MemUpdateChecker` instance. |
+| `public MemUpdateChecker()` | 创建 `MemUpdateChecker` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories, Map.Entry<String, Model> baseChatModel)` | Check for redundancy and conflicts between new and old memories. |
-| `public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories, Map.Entry<String, Model> baseChatModel, int retries)` | Execute `check`. |
+| `public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories, Map.Entry<String, Model> baseChatModel)` | 执行 `check`。 |
+| `public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories, Map.Entry<String, Model> baseChatModel, int retries)` | 执行 `check`。 |
 
-## Notes
+## 使用说明
 
-- Related tests: `MemUpdateCheckerTest.java`
+- 相关测试：`MemUpdateCheckerTest.java`

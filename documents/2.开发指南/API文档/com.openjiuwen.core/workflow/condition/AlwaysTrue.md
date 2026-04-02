@@ -1,16 +1,14 @@
 # com.openjiuwen.core.workflow.condition.AlwaysTrue
 
-## class AlwaysTrue
+## 类 AlwaysTrue
 
 ```java
 public class AlwaysTrue extends Condition
 ```
 
-Condition that always evaluates to true.
+`AlwaysTrue` 是恒真条件实现。
 
-## Methods
+## 方法
 
-| Signature | Description |
-| --- | --- |
-| `public Object doInvoke(Object inputs, BaseSession session)` | Execute `doInvoke`. |
-| `public Object traceInfo(BaseSession session)` | Execute `traceInfo`. |
+- `doInvoke(...)` 永远返回 `true`。
+- `traceInfo(...)` 返回字符串 `True`。

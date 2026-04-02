@@ -1,22 +1,18 @@
 # com.openjiuwen.core.memory.manage.update.MemCheckItem
 
-## class MemCheckItem
+## 类 MemCheckItem
 
 ```java
 public class MemCheckItem
 ```
 
-Represents a single memory check result item.
+`MemCheckItem` 是 `com.openjiuwen.core.memory.manage.update` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `infoId` | `String` | info id. |
-| `infoText` | `String` | info text. |
-| `result` | `CheckResult` | result. |
-| `relatedInfos` | `.Default private Map<String, String>` | related infos. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `infoId` | `String` | 字段 `infoId`。 |
+| `infoText` | `String` | 字段 `infoText`。 |
+| `result` | `CheckResult` | 字段 `result`。 |
+| `relatedInfos` | `.Default private Map<String, String>` | 字段 `relatedInfos`。 |

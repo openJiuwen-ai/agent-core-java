@@ -6,22 +6,14 @@
 public final class QueryDialectRegistration
 ```
 
-Registers built-in query dialect implementations for Milvus and Chroma.
+内建查询方言注册入口。
 
-## Fields
+## 公开方法
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `registered` | `static volatile boolean` | `false` | Registered. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private QueryDialectRegistration()` | Create a new `QueryDialectRegistration` instance. |
+| `public static void ensureRegistered()` | 把内建的 Milvus 与 Chroma 方言注册到 `QueryLanguageRegistry`。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static void ensureRegistered()` | Register built-in query dialect implementations (idempotent). |
+- 该方法是幂等的，重复调用不会重复注册。

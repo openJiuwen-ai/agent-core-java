@@ -6,7 +6,9 @@
 public final class OutputFormatter
 ```
 
-Formats LLM response content according to response type and output configuration.
+LLM 响应格式化工具。
+
+它会根据 `responseFormat.type` 选择文本、Markdown 或 JSON 格式化路径，并结合 `outputConfig` 对输出字段进行筛选、校验与重组。
 
 ## Methods
 

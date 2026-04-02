@@ -6,7 +6,9 @@
 public final class QuestionerUtils
 ```
 
-Utility methods for the Questioner component.
+Questioner 组件的静态工具集。
+
+这些方法负责模板替换、继续追问文案生成、输出格式化、输入归一化以及字段值类型转换校验。
 
 ## Methods
 

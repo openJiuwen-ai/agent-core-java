@@ -1,26 +1,20 @@
 # com.openjiuwen.core.retrieval.embedding.EmbeddingUtils
 
-## class EmbeddingUtils
+## 类 EmbeddingUtils
 
 ```java
 public final class EmbeddingUtils
 ```
 
-Helpers for embedding model implementations.
+embedding 辅助工具，当前主要负责把 base64 little-endian float32 向量解析为 `List<Float>`。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private EmbeddingUtils()` | Create a new `EmbeddingUtils` instance. |
+| `public static List<Float> parseBase64Embedding(String base64Embedding)` | 解析 base64 float32 向量。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static List<Float> parseBase64Embedding(String base64Embedding)` | Parse base64 embedding. |
-| `byte[] bytes = Base64.getDecoder().decode(base64Embedding)` | Return the decoder. |
-
-## Notes
-
-- Related tests: `EmbeddingUtilsTest.java`.
+- 输入为空白时会抛出检索异常。
+- 若字节长度不是 `Float.BYTES` 的整数倍，也会报错。

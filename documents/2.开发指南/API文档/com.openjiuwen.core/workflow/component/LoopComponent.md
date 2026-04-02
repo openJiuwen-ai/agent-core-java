@@ -1,15 +1,15 @@
 # com.openjiuwen.core.workflow.component.LoopComponent
 
-## interface LoopComponent
+## 接口 LoopComponent
 
 ```java
 public interface LoopComponent extends ComponentComposable
 ```
 
-Interface for loop components that contain a repeatable subgraph. Stub interface for the graph visualization module. Will be fully implemented
+`LoopComponent` 表示持有循环体子图的组件。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `HasDrawable getLoopGroup()` | Gets the loop group (inner graph) that is iterated. |
+| `HasDrawable getLoopGroup()` | 返回循环体对应的可视化对象。 |

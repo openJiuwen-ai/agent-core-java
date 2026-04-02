@@ -1,31 +1,31 @@
 # com.openjiuwen.core.memory.migration.operation.RenameColumnOperation
 
-## class RenameColumnOperation
+## 类 RenameColumnOperation
 
 ```java
-public class RenameColumnOperation extends BaseOperation
+public class RenameColumnOperation
 ```
 
-Rename a column in a table.
+`RenameColumnOperation` 表示一次 SQL 列重命名操作。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `table` | `String` | table. |
-| `oldColumnName` | `String` | old column name. |
-| `newColumnName` | `String` | new column name. |
+| `table` | `String` | 目标表名。 |
+| `oldColumnName` | `String` | 原列名。 |
+| `newColumnName` | `String` | 新列名。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public RenameColumnOperation(OperationMetadata metadata, String table, String oldColumnName, String newColumnName)` | Create a new `RenameColumnOperation` instance. |
+| `public RenameColumnOperation(OperationMetadata metadata, String table, String oldColumnName, String newColumnName)` | 创建一条列重命名操作。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getTable()` | Execute `getTable`. |
-| `public String getOldColumnName()` | Execute `getOldColumnName`. |
-| `public String getNewColumnName()` | Execute `getNewColumnName`. |
+| `public String getTable()` | 返回目标表名。 |
+| `public String getOldColumnName()` | 返回旧列名。 |
+| `public String getNewColumnName()` | 返回新列名。 |

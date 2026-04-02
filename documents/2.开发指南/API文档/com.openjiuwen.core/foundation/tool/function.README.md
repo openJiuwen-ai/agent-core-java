@@ -1,14 +1,19 @@
 # function
 
-`com.openjiuwen.core.foundation.tool.function` contains factories and wrappers for exposing in-process Java callables as tool instances.
+`com.openjiuwen.core.foundation.tool.function` 提供本地函数工具包装器，以及从 `@ToolDefinition` 注解方法批量生成工具的工厂。
 
-## Core Types
+## 类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`AnnotatedToolFactory`](function/AnnotatedToolFactory.md) | Factory that turns `ToolDefinition`-annotated methods into `LocalFunction`s. |
-| [`LocalFunction`](function/LocalFunction.md) | Local function tool that wraps a Java `Function` as a tool. The wrapped function receives input as a `Map ` and returns the result. Usage: |
+| [`AnnotatedToolFactory`](function/AnnotatedToolFactory.md) | 扫描目标对象或类上的注解方法，并生成 `LocalFunction` 列表。 |
+| [`LocalFunction`](function/LocalFunction.md) | 把 `Function<Map<String, Object>, Object>` 包装成 `Tool`。 |
 
-## Notes
+## 关键行为
 
-- `LocalFunctionTest` covers card validation, synchronous invocation, and iterator-based streaming behavior.
+- `AnnotatedToolFactory.scan(...)` 只扫描声明在当前类上的方法，即 `getDeclaredMethods()` 返回的方法。
+- `LocalFunction.stream(...)` 仅接受返回值为 `Iterator` 或 `Iterable` 的函数；否则抛出错误而不是自动包装单值结果。
+
+## 相关测试
+
+- `LocalFunctionTest`

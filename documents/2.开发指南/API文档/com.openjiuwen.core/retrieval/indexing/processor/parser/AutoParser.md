@@ -1,27 +1,23 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.AutoParser
 
-## class AutoParser
+## 类 AutoParser
 
 ```java
 public class AutoParser extends Parser
 ```
 
-Top-level parser that routes between file and URL parsers.
+`AutoParser` 是统一入口，会先尝试链接解析器，再尝试文件解析器。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
-| --- | --- |
-| `public AutoParser()` | Create a new `AutoParser` instance. |
-| `public AutoParser(Parser linkParser, Parser fileParser)` | Create a new `AutoParser` instance. |
+- `public AutoParser()`：默认使用 `AutoLinkParser` 与 `AutoFileParser`。
+- `public AutoParser(Parser linkParser, Parser fileParser)`：支持自定义两个子解析器。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Parse the input into `Document` records. |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
+- `parse(...)`：先检查 `linkParser.supports(doc)`，命中则直接解析；否则再检查 `fileParser`。
+- `supports(String doc)`：任一子解析器支持即可。
 
-## Notes
+## 相关测试
 
-- Related tests: `AutoParserTest.java`.
+- `AutoParserTest` 验证 URL 与现有文件都能被识别，且链接解析优先于文件解析。

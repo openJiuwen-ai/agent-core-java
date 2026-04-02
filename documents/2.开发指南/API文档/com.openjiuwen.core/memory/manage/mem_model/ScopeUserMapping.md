@@ -1,16 +1,16 @@
 # com.openjiuwen.core.memory.manage.mem_model.ScopeUserMapping
 
-## record ScopeUserMapping
+## 记录 ScopeUserMapping
 
 ```java
 public record ScopeUserMapping(String userId, String scopeId)
 ```
 
-Public row model matching the memory scope_user_mapping table.
+`ScopeUserMapping` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开记录型，文档按 Java 源码列出其公开成员与签名。
 
-## Record Components
+## 记录组件
 
-| Name | Type | Description |
+| 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `userId` | `String` | user id. |
-| `scopeId` | `String` | scope id. |
+| `userId` | `String` | 记录组件 `userId`。 |
+| `scopeId` | `String` | 记录组件 `scopeId`。 |

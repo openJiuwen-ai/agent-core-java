@@ -1,24 +1,20 @@
 # com.openjiuwen.core.memory.manage.search.SearchParams
 
-## class SearchParams
+## 类 SearchParams
 
 ```java
 public class SearchParams
 ```
 
-Parameters for memory search operations.
+`SearchParams` 是 `com.openjiuwen.core.memory.manage.search` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `userId` | `String` | user id. |
-| `scopeId` | `String` | scope id. |
-| `query` | `String` | query. |
-| `topK` | `.Default private int` | top k. |
-| `threshold` | `.Default private double` | threshold. |
-| `searchType` | `String` | search type. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `userId` | `String` | 字段 `userId`。 |
+| `scopeId` | `String` | 字段 `scopeId`。 |
+| `query` | `String` | 字段 `query`。 |
+| `topK` | `.Default private int` | 字段 `topK`。 |
+| `threshold` | `.Default private double` | 字段 `threshold`。 |
+| `searchType` | `String` | 字段 `searchType`。 |

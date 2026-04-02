@@ -6,7 +6,9 @@
 public class ResponseFormatConfig
 ```
 
-Configuration model for LLM response format. Validates that the response type is one of: text, markdown, json.
+LLM 响应格式配置模型。
+
+该类型只接受 `text`、`markdown`、`json` 三种响应类型，并支持通过 `fromMap(...)` 从包含 `type` 键的映射中完成校验与构造。
 
 ## Fields
 

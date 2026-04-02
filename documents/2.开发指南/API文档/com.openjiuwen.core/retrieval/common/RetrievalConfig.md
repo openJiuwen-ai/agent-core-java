@@ -1,46 +1,15 @@
 # com.openjiuwen.core.retrieval.common.RetrievalConfig
 
-## class RetrievalConfig
+## 类 RetrievalConfig
 
 ```java
 public class RetrievalConfig
 ```
 
-Retrieval-time options.
+单次检索请求配置，控制返回条数、阈值、图检索开关、agentic 模式、图扩展开关与过滤条件。
 
-## Fields
+## 说明
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `topK` | `int` | `5` | top k. |
-| `scoreThreshold` | `Double` | `-` | score threshold. |
-| `useGraph` | `Boolean` | `-` | use graph. |
-| `agentic` | `boolean` | `false` | agentic. |
-| `graphExpansion` | `boolean` | `false` | graph expansion. |
-| `filters` | `Map<String, Object>` | `-` | filters. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public RetrievalConfig()` | Create a new `RetrievalConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public int getTopK()` | Return the top k. |
-| `public void setTopK(int topK)` | Update the top k. |
-| `public Double getScoreThreshold()` | Return the score threshold. |
-| `public void setScoreThreshold(Double scoreThreshold)` | Update the score threshold. |
-| `public void setUseGraph(Boolean useGraph)` | Update the use graph. |
-| `public boolean isAgentic()` | Return whether agentic. |
-| `public void setAgentic(boolean agentic)` | Update the agentic. |
-| `public boolean isGraphExpansion()` | Return whether graph expansion. |
-| `public void setGraphExpansion(boolean graphExpansion)` | Update the graph expansion. |
-| `public Map<String, Object> getFilters()` | Return the filters. |
-| `public void setFilters(Map<String, Object> filters)` | Update the filters. |
-
-## Notes
-
-- Related tests: `ConfigTest.java`, `KnowledgeBaseTest.java`, `RetrievalCoreTest.java`.
+- 默认 `topK = 5`。
+- `scoreThreshold` 可为空；若存在则必须为有限数值。
+- `filters` 在读写时都会复制，避免外部直接共享内部 `Map`。

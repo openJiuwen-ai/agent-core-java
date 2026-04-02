@@ -1,19 +1,9 @@
 # com.openjiuwen.core.workflow.component.ComponentConfig
 
-## class ComponentConfig
+## 类 ComponentConfig
 
 ```java
 public class ComponentConfig
 ```
 
-Public workflow component configuration shell.
-
-## Fields
-
-| Signature | Description |
-| --- | --- |
-| `private WorkflowComponentMetadata metadata` | Metadata. |
-
-## Notes
-
-- This type uses Lombok-generated members; the page lists source-defined fields and explicit methods only.
+`ComponentConfig` 是组件公共配置壳对象，当前只承载 `WorkflowComponentMetadata`。

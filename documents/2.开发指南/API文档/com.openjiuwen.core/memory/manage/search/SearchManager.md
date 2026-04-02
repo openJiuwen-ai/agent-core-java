@@ -1,41 +1,41 @@
 # com.openjiuwen.core.memory.manage.search.SearchManager
 
-## class SearchManager
+## 类 SearchManager
 
 ```java
 public class SearchManager
 ```
 
-Orchestrates memory search across different memory type managers.
+`SearchManager` 是 `com.openjiuwen.core.memory.manage.search` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `USER_MEM_MANAGER_LIST` | `Set<String>` | user mem manager list. |
-| `ALL_MEM_MANAGER_LIST` | `Set<String>` | all mem manager list. |
-| `managers` | `Map<String, BaseMemoryManager>` | managers. |
-| `memStore` | `UserMemStore` | mem store. |
-| `cryptoKey` | `byte[]` | crypto key. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `USER_MEM_MANAGER_LIST` | `Set<String>` | 字段 `USER_MEM_MANAGER_LIST`。 |
+| `ALL_MEM_MANAGER_LIST` | `Set<String>` | 字段 `ALL_MEM_MANAGER_LIST`。 |
+| `managers` | `Map<String, BaseMemoryManager>` | 字段 `managers`。 |
+| `memStore` | `UserMemStore` | 字段 `memStore`。 |
+| `cryptoKey` | `byte[]` | 字段 `cryptoKey`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public SearchManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore, byte[] cryptoKey)` | Create a new `SearchManager` instance. |
+| `public SearchManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore, byte[] cryptoKey)` | 创建 `SearchManager` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public List<Map<String, Object>> search(SearchParams params, SemanticStore semanticStore)` | Execute `search`. |
-| `public List<Map<String, Object>> listUserMem(String userId, String scopeId, int nums, int pages, String memType)` | Execute `listUserMem`. |
-| `public List<Map<String, Object>> listUserProfile(String userId, String scopeId, String profileType)` | Execute `listUserProfile`. |
-| `public List<Map<String, Object>> listUserProfile(String userId, String scopeId)` | Execute `listUserProfile`. |
-| `public String getUserVariable(String userId, String scopeId, String varName)` | Execute `getUserVariable`. |
-| `public Map<String, String> getAllUserVariable(String userId, String scopeId)` | Execute `getAllUserVariable`. |
+| `public List<Map<String, Object>> search(SearchParams params, SemanticStore semanticStore)` | 执行 `search` 查询流程。 |
+| `public List<Map<String, Object>> listUserMem(String userId, String scopeId, int nums, int pages, String memType)` | 执行 `listUserMem` 查询流程。 |
+| `public List<Map<String, Object>> listUserProfile(String userId, String scopeId, String profileType)` | 执行 `listUserProfile` 查询流程。 |
+| `public List<Map<String, Object>> listUserProfile(String userId, String scopeId)` | 执行 `listUserProfile` 查询流程。 |
+| `public String getUserVariable(String userId, String scopeId, String varName)` | 返回 `getUserVariable` 的执行结果。 |
+| `public Map<String, String> getAllUserVariable(String userId, String scopeId)` | 返回 `getAllUserVariable` 的执行结果。 |
 
-## Notes
+## 使用说明
 
-- Related tests: `SearchManagerTest.java`
+- 相关测试：`SearchManagerTest.java`

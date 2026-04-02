@@ -1,29 +1,25 @@
 # com.openjiuwen.core.workflow.ComponentAbility
 
-## enum ComponentAbility
+## 枚举 ComponentAbility
 
 ```java
 public enum ComponentAbility
 ```
 
-Re-export of `com.openjiuwen.core.workflow.component.ComponentAbility`. Provides the enum values at the top-level workflow package for test compatibility.
+该枚举是 `com.openjiuwen.core.workflow.component.ComponentAbility` 的顶层兼容导出，方便旧测试或旧调用方在 `workflow` 包下直接引用组件能力。
 
-## Enum Constants
+## 枚举值
 
-| Value | Description |
+| 值 | 说明 |
 | --- | --- |
-| `INVOKE` | I n v o k e. |
-| `STREAM` | S t r e a m. |
-| `COLLECT` | C o l l e c t. |
-| `TRANSFORM` | T r a n s f o r m. |
+| `INVOKE` | 普通同步执行能力。 |
+| `STREAM` | 流式输出能力。 |
+| `COLLECT` | 聚合流输入后再输出的能力。 |
+| `TRANSFORM` | 对流输入逐段转换的能力。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public com.openjiuwen.core.workflow.component.ComponentAbility toInternal()` | Convert to the internal `com.openjiuwen.core.workflow.component.ComponentAbility`. |
-| `public static ComponentAbility fromInternal(com.openjiuwen.core.workflow.component.ComponentAbility internal)` | Convert from the internal enum. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+| `public com.openjiuwen.core.workflow.component.ComponentAbility toInternal()` | 转换为内部真实能力枚举。 |
+| `public static ComponentAbility fromInternal(...)` | 从内部能力枚举回转为顶层兼容枚举。 |

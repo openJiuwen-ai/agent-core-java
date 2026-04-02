@@ -1,35 +1,29 @@
 # com.openjiuwen.core.memory.manage.mem_model.DbModel
 
-## class DbModel
+## 类 DbModel
 
 ```java
 public final class DbModel
 ```
 
-Database model: table definitions and creation logic.
+该类定义记忆 SQL 表的表名、建表逻辑与迁移元数据初始化。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `USER_MESSAGE_TABLE` | `String` | user message table. |
-| `SCOPE_USER_MAPPING_TABLE` | `String` | scope user mapping table. |
-| `MEMORY_META_TABLE` | `String` | memory meta table. |
-| `MEMORY_TABLES_CONFIG` | `String[][]` | Table configs for migration tracking. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `USER_MESSAGE_TABLE` | `String` | 字段 `USER_MESSAGE_TABLE`。 |
+| `SCOPE_USER_MAPPING_TABLE` | `String` | 字段 `SCOPE_USER_MAPPING_TABLE`。 |
+| `MEMORY_META_TABLE` | `String` | 字段 `MEMORY_META_TABLE`。 |
+| `MEMORY_TABLES_CONFIG` | `String[][]` | 字段 `MEMORY_TABLES_CONFIG`。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private DbModel()` | Create a new `DbModel` instance. |
+| `public static void createTables(BaseDbStore<?> dbStore)` | 执行 `createTables`。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static void createTables(BaseDbStore<?> dbStore)` | Create memory tables if they don't exist. |
-
-## Notes
-
-- Related tests: `DbModelTest.java`
+- 相关测试：`DbModelTest.java`

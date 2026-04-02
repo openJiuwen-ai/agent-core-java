@@ -1,20 +1,20 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser
 
-## class PDFParser
+## 类 PDFParser
 
 ```java
 public class PDFParser extends Parser
 ```
 
-PDF parser with optional image caption extraction.
+`PDFParser` 使用 PDFBox 提取 PDF 文本，并在提供 `BaseModelClient` 时，为嵌入图片追加 caption 文本。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Parse the input into `Document` records. |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
+- `parse(...)`：解析失败或内容为空时返回空列表。
+- `supports(String doc)`：仅支持 `.pdf`。
 
-## Notes
+## 解析流程
 
-- Related tests: `PDFParserTest.java`.
+- 通过 `PDFTextStripper` 提取正文。
+- 深度遍历 `PDResources` 中的图片和表单对象，保存图片到 `ImageCaptioner.SAVED_IMAGE_DIR`。
+- 提供 `llmClient` 时，对提取到的图片调用 `ImageCaptioner.captionImages(...)`。

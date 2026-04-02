@@ -6,14 +6,16 @@
 public class QuestionerOutput
 ```
 
-Output model for the Questioner component.
+Questioner 组件输出模型。
+
+它将已抽取字段保存在内部映射中，并按需附带 `user_response` 与 `question`，用于返回当前轮的追问或最终收集结果。
 
 ## Fields
 
 | Signature | Description |
 | --- | --- |
-| `private Object userResponse =` | . |
-| `private String question =` | . |
+| `private Object userResponse =` | 当前轮记录的用户回复。 |
+| `private String question =` | 当前待展示或最近一次展示的问题。 |
 
 ## Methods
 

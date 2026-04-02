@@ -1,35 +1,22 @@
 # com.openjiuwen.core.retrieval.embedding.HashEmbedding
 
-## class HashEmbedding
+## 类 HashEmbedding
 
 ```java
 public class HashEmbedding implements Embedding
 ```
 
-Deterministic local embedding based on SHA-256 hashing.
+基于 SHA-256 的本地确定性 embedding 实现，适合测试或无远程模型时使用。
 
-## Fields
+## 构造方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `dimension` | `final int` | dimension. |
-| `maxBatchSize` | `final int` | max batch size. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public HashEmbedding()` | Create a new `HashEmbedding` instance. |
-| `public HashEmbedding(int dimension, int maxBatchSize)` | Create a new `HashEmbedding` instance. |
+| `public HashEmbedding()` | 创建默认维度为 `32`、默认最大批次为 `256` 的实例。 |
+| `public HashEmbedding(int dimension, int maxBatchSize)` | 指定维度与最大批次；两者最小值都为 `1`。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public List<Float> embedQuery(String text)` | Generate embeddings for query. |
-| `public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize)` | Generate embeddings for documents. |
-| `public int getMaxBatchSize()` | Return the max batch size. |
-
-## Notes
-
-- Related tests: `HashEmbeddingTest.java`, `KnowledgeBaseTest.java`.
+- 相同文本会得到稳定一致的向量结果。
+- `null` 文本会按空字符串处理。
+- 测试确认所有向量值都位于 `[-1, 1]`。

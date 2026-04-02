@@ -1,31 +1,14 @@
 # com.openjiuwen.core.workflow.condition.NumberCondition
 
-## class NumberCondition
+## 类 NumberCondition
 
 ```java
 public class NumberCondition extends Condition
 ```
 
-Loop condition based on iteration count, resolving limit from input schema.
+`NumberCondition` 是基于次数上限的循环条件，上限值从输入中读取。
 
-## Fields
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `private final Object limit` | Limit. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public NumberCondition(Object limit)` | Create a new `NumberCondition` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Object doInvoke(Object inputs, BaseSession session)` | Execute `doInvoke`. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- 判断条件为当前 `INDEX < limit`。
+- `WorkflowTest` 的循环场景验证了该类与工作流循环执行器的协作行为。

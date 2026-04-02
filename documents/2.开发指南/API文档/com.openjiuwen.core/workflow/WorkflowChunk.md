@@ -1,9 +1,9 @@
 # com.openjiuwen.core.workflow.WorkflowChunk
 
-## interface WorkflowChunk
+## 接口 WorkflowChunk
 
 ```java
 public interface WorkflowChunk extends StreamSchema
 ```
 
-Top-level workflow chunk alias for streamed workflow outputs.
+`WorkflowChunk` 是工作流流式输出块的顶层抽象别名，用于统一表示输出块、交互块或错误块。

@@ -1,25 +1,27 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker
 
-## class CharChunker
+## 类 CharChunker
 
 ```java
 public class CharChunker extends Chunker
 ```
 
-Character window chunker.
+`CharChunker` 按固定字符窗口切块，适合没有 tokenizer 或只需要稳定字符长度窗口的场景。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
-| --- | --- |
-| `public CharChunker(int chunkSize, int chunkOverlap)` | Create a new `CharChunker` instance. |
+### `public CharChunker(int chunkSize, int chunkOverlap)`
 
-## Methods
+复用父类对 `chunkSize > 0`、`chunkOverlap >= 0`、`chunkOverlap < chunkSize` 的校验。
 
-| Signature | Description |
-| --- | --- |
-| `public List<String> chunkText(String text)` | Execute `chunkText`. |
+## 公开方法
 
-## Notes
+### `public List<String> chunkText(String text)`
 
-- Related tests: `CharChunkerTest.java`, `KnowledgeBaseTest.java`, `MilvusKnowledgeBaseTest.java`, `PGVectorKnowledgeBaseTest.java`.
+- `text == null` 或空串时返回空列表。
+- 按步长 `chunkSize - chunkOverlap` 向前滑动。
+- 最后一块长度不足 `chunkSize` 时保留剩余文本。
+
+## 相关测试
+
+- `CharChunkerTest` 覆盖固定长度切块、overlap、短文本单块返回以及非法构造参数异常。

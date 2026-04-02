@@ -1,28 +1,24 @@
 # com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit
 
-## class FragmentMemoryUnit
+## 类 FragmentMemoryUnit
 
 ```java
 public class FragmentMemoryUnit extends BaseMemoryUnit
 ```
 
-Fragment memory unit.
+`FragmentMemoryUnit` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `fragmentType` | `String` | fragment type. |
-| `content` | `String` | content. |
-| `messageMemId` | `String` | message mem id. |
-| `timestamp` | `String` | timestamp. |
+| `fragmentType` | `String` | 字段 `fragmentType`。 |
+| `content` | `String` | 字段 `content`。 |
+| `messageMemId` | `String` | 字段 `messageMemId`。 |
+| `timestamp` | `String` | 字段 `timestamp`。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public MemoryType getMemType()` | Execute `getMemType`. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `public MemoryType getMemType()` | 返回 `getMemType` 的执行结果。 |

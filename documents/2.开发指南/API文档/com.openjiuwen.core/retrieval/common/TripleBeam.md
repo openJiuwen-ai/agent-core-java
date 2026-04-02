@@ -1,38 +1,19 @@
 # com.openjiuwen.core.retrieval.common.TripleBeam
 
-## class TripleBeam
+## 类 TripleBeam
 
 ```java
 public class TripleBeam implements Iterable<RetrievalResult>
 ```
 
-Beam of retrieval triples.
+三元组 beam 搜索状态容器，保存一条 beam 中的结果列表与累计分数。
 
-## Fields
+## 方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `triples` | `final List<RetrievalResult>` | triples. |
-| `exists` | `final Set<String>` | exists. |
-| `score` | `final double` | score. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public TripleBeam(List<RetrievalResult> triples, double score)` | Create a new `TripleBeam` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public RetrievalResult get(int index)` | Execute `get`. |
-| `public int size()` | Execute `size`. |
-| `public boolean contains(RetrievalResult triple)` | Execute `contains`. |
-| `public List<RetrievalResult> getTriples()` | Return the triples. |
-| `public double getScore()` | Return the score. |
-| `public Iterator<RetrievalResult> iterator()` | Execute `iterator`. |
-
-## Notes
-
-- Related tests: `RetrievalCoreTest.java`.
+| `public RetrievalResult get(int index)` | 返回指定位置的结果。 |
+| `public int size()` | 返回当前 beam 大小。 |
+| `public boolean contains(RetrievalResult triple)` | 按 `text` 判断是否已包含某条结果。 |
+| `public List<RetrievalResult> getTriples()` | 返回 beam 内结果副本。 |
+| `public double getScore()` | 返回累计分数。 |

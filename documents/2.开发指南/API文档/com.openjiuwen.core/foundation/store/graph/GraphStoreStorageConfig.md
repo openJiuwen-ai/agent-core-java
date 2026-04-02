@@ -6,46 +6,43 @@
 public class GraphStoreStorageConfig
 ```
 
-Graph Database Storage Limits.
+图存储字段容量配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `uuid` | `final int` | `-` | Uuid. |
-| `name` | `final int` | `-` | Name. |
-| `content` | `final int` | `-` | Content. |
-| `language` | `final int` | `-` | Language. |
-| `userId` | `final int` | `-` | User id. |
-| `entities` | `final int` | `-` | Entities. |
-| `relations` | `final int` | `-` | Relations. |
-| `episodes` | `final int` | `-` | Episodes. |
-| `objType` | `final int` | `-` | Obj type. |
+| `uuid` | `int` | `32` | UUID 字段长度。 |
+| `name` | `int` | `500` | 名称字段长度。 |
+| `content` | `int` | `65535` | 内容字段长度。 |
+| `language` | `int` | `10` | 语言字段长度。 |
+| `userId` | `int` | `32` | 用户 ID 字段长度。 |
+| `entities` | `int` | `4096` | 实体字段长度。 |
+| `relations` | `int` | `4096` | 关系字段长度。 |
+| `episodes` | `int` | `4096` | 事件字段长度。 |
+| `objType` | `int` | `20` | 对象类型字段长度。 |
 
-## Nested Types
+## 构造方法
 
-| Declaration | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public static class Builder` | Builder for configuring `GraphStoreStorageConfig` instances. |
+| `public GraphStoreStorageConfig()` | 使用默认字段容量配置。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private GraphStoreStorageConfig(Builder builder)` | Create a new `GraphStoreStorageConfig` instance. |
-| `public GraphStoreStorageConfig()` | Create a new `GraphStoreStorageConfig` instance. |
+| `public int getUuid()` | 返回 `uuid` 长度。 |
+| `public int getName()` | 返回 `name` 长度。 |
+| `public int getContent()` | 返回 `content` 长度。 |
+| `public int getLanguage()` | 返回 `language` 长度。 |
+| `public int getUserId()` | 返回 `userId` 长度。 |
+| `public int getEntities()` | 返回 `entities` 长度。 |
+| `public int getRelations()` | 返回 `relations` 长度。 |
+| `public int getEpisodes()` | 返回 `episodes` 长度。 |
+| `public int getObjType()` | 返回 `objType` 长度。 |
+| `public static Builder builder()` | 创建构建器。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public int getUuid()` | Return the uuid. |
-| `public int getName()` | Return the name. |
-| `public int getContent()` | Return the content. |
-| `public int getLanguage()` | Return the language. |
-| `public int getUserId()` | Return the user id. |
-| `public int getEntities()` | Return the entities. |
-| `public int getRelations()` | Return the relations. |
-| `public int getEpisodes()` | Return the episodes. |
-| `public int getObjType()` | Return the obj type. |
-| `public static Builder builder()` | Build the configured result. |
+- `Builder` 用于链式覆盖默认字段容量配置，再通过 `build()` 生成实例。

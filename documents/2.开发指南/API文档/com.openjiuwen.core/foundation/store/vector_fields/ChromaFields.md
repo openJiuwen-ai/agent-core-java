@@ -6,16 +6,10 @@
 public final class ChromaFields
 ```
 
-Chroma-compatible field helpers.
+Chroma 默认 schema 生成入口。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private ChromaFields()` | Create a new `ChromaFields` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static CollectionSchema defaultSchema(int dimension)` | Execute `defaultSchema`. |
+| `public static CollectionSchema defaultSchema(int dimension)` | 生成以 `embedding` 为默认向量字段名的 Chroma schema。 |

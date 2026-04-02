@@ -1,20 +1,15 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.TxtMdParser
 
-## class TxtMdParser
+## 类 TxtMdParser
 
 ```java
 public class TxtMdParser extends Parser
 ```
 
-TXT/MD file parser aligned with the Python TxtMdParser behavior.
+`TxtMdParser` 用于读取普通文本和 Markdown 文件，出错时采用“吞异常并返回空结果”的保守策略。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Parse the input into `Document` records. |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
-
-## Notes
-
-- Related tests: `TxtMdParserTest.java`.
+- `parse(...)`：读取成功时返回单个 `Document`；任意运行时异常会返回空列表。
+- `parseContent(...)`：按 UTF-8 读取文件并做 `trim()`；I/O 失败时返回 `null`。
+- `supports(String doc)`：支持 `.txt`、`.md`、`.markdown`。

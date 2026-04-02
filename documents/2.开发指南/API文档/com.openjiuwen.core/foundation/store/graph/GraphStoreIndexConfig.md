@@ -6,29 +6,29 @@
 public class GraphStoreIndexConfig
 ```
 
-Graph Database Indexing Options.
+图索引配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `indexType` | `final String` | `-` | Index type. |
-| `extraConfigs` | `final Map<String, Object>` | `-` | Extra configs. |
-| `bm25Config` | `final BM25Config` | `-` | Bm25 config. |
-| `bm25AnalyzerSettings` | `final Map<String, Object>` | `-` | Bm25 analyzer settings. |
+| `indexType` | `String` | `null` | 索引类型。 |
+| `extraConfigs` | `Map<String, Object>` | `{}` | 附加配置。 |
+| `bm25Config` | `BM25Config` | `new BM25Config()` | BM25 参数配置。 |
+| `bm25AnalyzerSettings` | `Map<String, Object>` | `null` | BM25 分析器设置。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public GraphStoreIndexConfig(String indexType, Map<String, Object> extraConfigs, BM25Config bm25Config, Map<String, Object> bm25AnalyzerSettings)` | Create a new `GraphStoreIndexConfig` instance. |
-| `public GraphStoreIndexConfig()` | Create a new `GraphStoreIndexConfig` instance. |
+| `public GraphStoreIndexConfig(String indexType, Map<String, Object> extraConfigs, BM25Config bm25Config, Map<String, Object> bm25AnalyzerSettings)` | 完整指定图索引配置。 |
+| `public GraphStoreIndexConfig()` | 使用默认图索引配置。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getIndexType()` | Return the index type. |
-| `public Map<String, Object> getExtraConfigs()` | Return the extra configs. |
-| `public BM25Config getBm25Config()` | Return the bm25 config. |
-| `public Map<String, Object> getBm25AnalyzerSettings()` | Return the bm25 analyzer settings. |
+| `public String getIndexType()` | 返回索引类型。 |
+| `public Map<String, Object> getExtraConfigs()` | 返回附加配置。 |
+| `public BM25Config getBm25Config()` | 返回 BM25 配置。 |
+| `public Map<String, Object> getBm25AnalyzerSettings()` | 返回 BM25 分析器设置。 |

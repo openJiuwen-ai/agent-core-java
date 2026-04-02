@@ -1,53 +1,36 @@
 # com.openjiuwen.core.retrieval.embedding.APIEmbedding
 
-## class APIEmbedding
+## 类 APIEmbedding
 
 ```java
 public class APIEmbedding implements Embedding, AutoCloseable
 ```
 
-Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
+通用 HTTP embedding 客户端，支持重试、批量并发、回调通知与多种响应格式解析。
 
-## Fields
+## 构造方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `config` | `final EmbeddingConfig` | config. |
-| `modelName` | `final String` | model name. |
-| `apiKey` | `final String` | api key. |
-| `apiUrl` | `final String` | api url. |
-| `timeout` | `final int` | timeout. |
-| `maxRetries` | `final int` | max retries. |
-| `maxBatchSize` | `final int` | max batch size. |
-| `maxConcurrent` | `final int` | max concurrent. |
-| `headers` | `final Map<String, String>` | headers. |
-| `httpClient` | `final HttpClient` | http client. |
-| `executor` | `final ExecutorService` | executor. |
-| `dimension` | `volatile Integer` | dimension. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public APIEmbedding(EmbeddingConfig config)` | Create a new `APIEmbedding` instance. |
-| `public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders, int maxBatchSize, int maxConcurrent)` | Create a new `APIEmbedding` instance. |
-| `public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders, int maxBatchSize, int maxConcurrent, HttpClient httpClient)` | Create a new `APIEmbedding` instance. |
+| `public APIEmbedding(EmbeddingConfig config)` | 使用默认参数创建客户端。 |
+| `public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders, int maxBatchSize, int maxConcurrent)` | 指定超时、重试、请求头、批量与并发参数。 |
+| `public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders, int maxBatchSize, int maxConcurrent, HttpClient httpClient)` | 额外注入 `HttpClient`。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public List<Float> embedQuery(String text, Map<String, Object> options)` | Generate embeddings for query. |
-| `List<List<Float>> embeddings = getEmbeddings(text, options)` | Return the embeddings. |
-| `public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options)` | Generate embeddings for documents. |
-| `BaseCallback callback = resolveCallback(options, indices)` | Execute `resolveCallback`. |
-| `synchronized (this)` | Execute `synchronized`. |
-| `protected List<List<Float>> getEmbeddings(Object input, Map<String, Object> options)` | Return the embeddings. |
-| `HttpResponse<String> response = httpClient.send( requestBuilder.build(), HttpResponse.BodyHandlers.ofString())` | Execute `send`. |
-| `List<Float> embedding = new ArrayList<>(item.size())` | Execute `size`. |
-| `List<String> nonEmpty = new ArrayList<>(texts.size())` | Execute `size`. |
-| `Object callbackClass = options == null ? null : options.get("callback_cls")` | Execute `get`. |
+| `public List<Float> embedQuery(String text)` | 对单条文本生成向量。 |
+| `public List<Float> embedQuery(String text, Map<String, Object> options)` | 带选项生成向量。 |
+| `public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize)` | 批量生成向量。 |
+| `public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options)` | 带选项批量生成向量。 |
+| `public int getDimension()` | 返回向量维度；首次调用时会用 `"test"` 懒加载维度。 |
+| `public int getMaxBatchSize()` | 返回允许的最大批次。 |
+| `public void close()` | 关闭内部线程池。 |
 
-## Notes
+## 说明
 
-- Related tests: `APIEmbeddingTest.java`.
+- 默认参数：`timeout = 60` 秒、`maxRetries = 3`、`maxBatchSize = 8`、`maxConcurrent = 50`。
+- 默认请求头总是包含 `Content-Type: application/json`；若 `apiKey` 非空还会附加 `Authorization`。
+- 批量接口会按有效批次大小拆分任务，并在每个批次完成后触发回调。
+- 测试确认：支持 `embedding`、`embeddings` 与 `data[].embedding` 三类响应结构，并支持重试与维度缓存。

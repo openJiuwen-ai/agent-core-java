@@ -1,46 +1,15 @@
 # com.openjiuwen.core.retrieval.common.VectorStoreConfig
 
-## class VectorStoreConfig
+## 类 VectorStoreConfig
 
 ```java
 public class VectorStoreConfig
 ```
 
-Vector store configuration.
+向量库连接与集合配置，定义提供方、数据库名、集合名与距离度量。
 
-## Fields
+## 说明
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `storeProvider` | `String` | `-` | store provider. |
-| `databaseName` | `String` | `""` | database name. |
-| `collectionName` | `String` | `-` | collection name. |
-| `distanceMetric` | `String` | `"cosine"` | distance metric. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public VectorStoreConfig()` | Create a new `VectorStoreConfig` instance. |
-| `public VectorStoreConfig(String storeProvider, String collectionName)` | Create a new `VectorStoreConfig` instance. |
-| `public VectorStoreConfig(StoreType storeProvider, String collectionName)` | Create a new `VectorStoreConfig` instance. |
-| `public VectorStoreConfig(String storeProvider, String databaseName, String collectionName, String distanceMetric)` | Create a new `VectorStoreConfig` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public void validate()` | Execute `validate`. |
-| `public String getStoreProvider()` | Return the store provider. |
-| `public StoreType getStoreType()` | Return the store type. |
-| `public void setStoreProvider(String storeProvider)` | Update the store provider. |
-| `public String getDatabaseName()` | Return the database name. |
-| `public void setDatabaseName(String databaseName)` | Update the database name. |
-| `public String getCollectionName()` | Return the collection name. |
-| `public void setCollectionName(String collectionName)` | Update the collection name. |
-| `public String getDistanceMetric()` | Return the distance metric. |
-| `public void setDistanceMetric(String distanceMetric)` | Update the distance metric. |
-
-## Notes
-
-- Related tests: `ConfigTest.java`, `InMemoryIndexerTest.java`, `InMemoryVectorStoreTest.java`, `IndexerFactoryTest.java`, `MilvusIndexerTest.java`, `MilvusKnowledgeBaseTest.java`.
+- 默认 `databaseName = ""`、`distanceMetric = "cosine"`。
+- `storeProvider` 仅允许 `milvus`、`chroma`、`pgvector`。
+- `collectionName` 不能为空白，`distanceMetric` 仅允许 `cosine`、`euclidean`、`dot`。

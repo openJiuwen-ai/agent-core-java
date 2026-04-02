@@ -1,30 +1,26 @@
 # com.openjiuwen.core.retrieval.utils.FusionUtils
 
-## class FusionUtils
+## 类 FusionUtils
 
 ```java
 public final class FusionUtils
 ```
 
-Fusion algorithms such as reciprocal rank fusion.
+检索结果融合工具，支持 RRF 融合与加权融合。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private FusionUtils()` | Create a new `FusionUtils` instance. |
+| `public static List<RetrievalResult> rrfFusionRetrieval(List<List<RetrievalResult>> resultsList, int k)` | 对 `RetrievalResult` 列表执行 RRF 融合。 |
+| `public static List<SearchResult> rrfFusionSearch(List<List<SearchResult>> resultsList, int k)` | 对 `SearchResult` 列表执行 RRF 融合。 |
+| `public static List<RetrievalResult> rrfFusionRetrieval(List<List<RetrievalResult>> resultsList, RRFRankConfig config)` | 根据配置执行 RRF 融合。 |
+| `public static List<SearchResult> rrfFusionSearch(List<List<SearchResult>> resultsList, RRFRankConfig config)` | 根据配置执行搜索结果 RRF 融合。 |
+| `public static List<RetrievalResult> weightedFusionRetrieval(List<List<RetrievalResult>> resultsList, WeightedRankConfig config)` | 对 `RetrievalResult` 列表执行加权融合。 |
+| `public static List<SearchResult> weightedFusionSearch(List<List<SearchResult>> resultsList, WeightedRankConfig config)` | 对 `SearchResult` 列表执行加权融合。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static List<RetrievalResult> rrfFusionRetrieval(List<List<RetrievalResult>> resultsList, int k)` | Execute `rrfFusionRetrieval`. |
-| `public static List<SearchResult> rrfFusionSearch(List<List<SearchResult>> resultsList, RRFRankConfig config)` | Execute `rrfFusionSearch`. |
-| `public static List<RetrievalResult> weightedFusionRetrieval(List<List<RetrievalResult>> resultsList, WeightedRankConfig config)` | Execute `weightedFusionRetrieval`. |
-| `double weight = weights.get(i)` | Execute `get`. |
-| `double weight = weights.get(i)` | Execute `get`. |
-| `List<Double> values = List.of(config.getDenseName(), config.getDenseContent(), config.getSparseContent())` | Execute `of`. |
-
-## Notes
-
-- Related tests: `RetrievalCoreTest.java`.
+- RRF 与加权融合都按结果文本 `text` 去重。
+- 融合后的分数会直接写回结果对象。
+- 测试确认：重复文本会被合并，结果按最终分数降序排列。

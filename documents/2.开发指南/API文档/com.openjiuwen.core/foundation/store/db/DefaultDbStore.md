@@ -6,24 +6,21 @@
 public class DefaultDbStore extends BaseDbStore<DataSource>
 ```
 
-Lightweight JDBC-backed default DB store.
+基于 JDBC 的默认数据库存储包装器。
 
-## Fields
+## 构造方法
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `dataSource` | `final DataSource` | `-` | Data source. |
-| `DataSource` | `static final class SimpleDriverManagerDataSource implements` | `-` | Data source. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public DefaultDbStore(String jdbcUrl)` | Create a new `DefaultDbStore` instance. |
-| `public DefaultDbStore(String jdbcUrl, String username, String password)` | Create a new `DefaultDbStore` instance. |
+| `public DefaultDbStore(String jdbcUrl)` | 只通过 JDBC URL 创建底层 `DataSource`。 |
+| `public DefaultDbStore(String jdbcUrl, String username, String password)` | 使用 JDBC URL、用户名与密码创建底层 `DataSource`。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public DataSource getEngine()` | Return the engine. |
+| `public DataSource getEngine()` | 返回底层 `DataSource`。 |
+
+## 说明
+
+- 该实现不是连接池，而是通过 `DriverManager` 风格接口创建连接。

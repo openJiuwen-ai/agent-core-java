@@ -1,24 +1,20 @@
 # com.openjiuwen.core.retrieval.embedding.Embedding
 
-## interface Embedding
+## 接口 Embedding
 
 ```java
 public interface Embedding
 ```
 
-Embedding model abstraction.
+embedding 模型统一抽象，定义查询向量化、批量文档向量化、维度查询与最大批次能力。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `List<Float> embedQuery(String text)` | Generate embeddings for query. |
-| `default List<Float> embedQuery(String text, Map<String, Object> options)` | Generate embeddings for query. |
-| `List<List<Float>> embedDocuments(List<String> texts, Integer batchSize)` | Generate embeddings for documents. |
-| `default List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options)` | Generate embeddings for documents. |
-| `int getDimension()` | Return the dimension. |
-| `default int getMaxBatchSize()` | Return the max batch size. |
-
-## Notes
-
-- Related tests: `APIEmbeddingTest.java`, `EmbeddingUtilsTest.java`, `HashEmbeddingTest.java`, `InMemoryIndexerTest.java`, `MilvusIndexerTest.java`, `MilvusKnowledgeBaseTest.java`.
+| `List<Float> embedQuery(String text)` | 对单条查询生成向量。 |
+| `default List<Float> embedQuery(String text, Map<String, Object> options)` | 带选项的查询向量化，默认复用单参实现。 |
+| `List<List<Float>> embedDocuments(List<String> texts, Integer batchSize)` | 批量生成文档向量。 |
+| `default List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options)` | 带选项的批量向量化，默认复用基础实现。 |
+| `int getDimension()` | 返回向量维度。 |
+| `default int getMaxBatchSize()` | 返回最大批次，默认值为 `256`。 |

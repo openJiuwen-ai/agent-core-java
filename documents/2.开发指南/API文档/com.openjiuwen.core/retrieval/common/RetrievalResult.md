@@ -1,38 +1,15 @@
 # com.openjiuwen.core.retrieval.common.RetrievalResult
 
-## class RetrievalResult
+## 类 RetrievalResult
 
 ```java
 public class RetrievalResult
 ```
 
-User-facing retrieval result.
+面向调用方的检索结果模型，保存文本、分数、元数据以及可选的文档和分块标识。
 
-## Fields
+## 说明
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `text` | `String` | text. |
-| `score` | `double` | score. |
-| `docId` | `String` | doc id. |
-| `chunkId` | `String` | chunk id. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public RetrievalResult()` | Create a new `RetrievalResult` instance. |
-| `public RetrievalResult(String text, double score)` | Create a new `RetrievalResult` instance. |
-| `public RetrievalResult(String text, double score, Map<String, Object> metadata, String docId, String chunkId)` | Create a new `RetrievalResult` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public void setText(String text)` | Update the text. |
-| `public void setMetadata(Map<String, Object> metadata)` | Update the metadata. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
-- Related tests: `ChatRerankerTest.java`, `KnowledgeBaseTest.java`, `LexicalRerankerTest.java`, `QueryRewriterTest.java`, `RetrievalCoreTest.java`, `RetrieverDefaultMethodTest.java`.
+- `text` 不能为空。
+- `metadata` 会复制保存，`docId` 与 `chunkId` 可为空。
+- `StandardReranker` 会直接更新该对象的 `score` 字段并按分数重排。

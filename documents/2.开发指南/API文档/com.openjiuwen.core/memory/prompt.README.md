@@ -1,13 +1,13 @@
-# prompt
+﻿# prompt
 
-`com.openjiuwen.core.memory.prompt` provides prompt-template lookup and variable substitution utilities for memory workflows.
+`com.openjiuwen.core.memory.prompt` 提供记忆相关提示词模板的加载与变量替换能力，供更新判定、记忆提取等流程生成模型输入。
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`PromptApplier`](./prompt/PromptApplier.md) | class | Singleton prompt applier that loads .md prompt templates from classpath resources and applies variable substitution. |
+| 类型 | 说明 |
+| --- | --- |
+| [`PromptApplier`](./prompt/PromptApplier.md) | 单例提示词应用器，从类路径读取 `.md` 模板并执行变量替换。 |
 
-## Notes
+## 相关测试
 
-- The current page also links the 1 direct public type page(s) defined in this package.
+- `PromptApplierTest`

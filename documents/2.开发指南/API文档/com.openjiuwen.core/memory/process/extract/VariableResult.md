@@ -1,20 +1,21 @@
 # com.openjiuwen.core.memory.process.extract.VariableResult
 
-## class VariableResult
+## 类 VariableResult
 
 ```java
 public class VariableResult
 ```
 
-Result of variable extraction from memory analysis.
+`VariableResult` 表示单个记忆变量的抽取结果。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `variableKey` | `.Default private String` | variable key. |
-| `variableValue` | `.Default private String` | variable value. |
+| `variableKey` | `String` | 变量名。默认值为空字符串。 |
+| `variableValue` | `String` | 变量值。默认值为空字符串。 |
 
-## Notes
+## 使用说明
 
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类使用 Lombok 生成访问器、构建器与无参/全参构造方法。
+- `MemoryAnalyzer` 负责创建该对象列表，`Generator` 会把非空变量值转换为 `VariableUnit`。

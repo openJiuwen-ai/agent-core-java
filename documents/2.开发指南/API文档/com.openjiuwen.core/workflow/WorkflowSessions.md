@@ -1,24 +1,18 @@
 # com.openjiuwen.core.workflow.WorkflowSessions
 
-## class WorkflowSessions
+## 类 WorkflowSessions
 
 ```java
 public final class WorkflowSessions
 ```
 
-Convenience facade for creating workflow sessions from the workflow package. from `openjiuwen.core.workflow`.
+`WorkflowSessions` 是 workflow 包级 session 创建门面，统一代理到 `WorkflowSessionApi.create(...)`。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private WorkflowSessions()` | Create a new `WorkflowSessions` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static WorkflowSessionApi createWorkflowSession(BaseSession parent, String sessionId, Map<String, Object> envs)` | Create a new workflow session. |
-| `public static WorkflowSessionApi createWorkflowSession()` | Create a new workflow session with defaults. |
-| `public static WorkflowSessionApi createWorkflowSession(String sessionId)` | Create a new workflow session with a specific session ID. |
-| `public static WorkflowSessionApi createWorkflowSession(BaseSession parent)` | Create a new workflow session with a parent session. |
+| `public static WorkflowSessionApi createWorkflowSession()` | 使用默认参数创建工作流 session。 |
+| `public static WorkflowSessionApi createWorkflowSession(String sessionId)` | 使用指定 session id 创建工作流 session。 |
+| `public static WorkflowSessionApi createWorkflowSession(BaseSession parent)` | 基于父 session 创建工作流 session。 |
+| `public static WorkflowSessionApi createWorkflowSession(BaseSession parent, String sessionId, Map<String, Object> envs)` | 使用完整参数创建工作流 session。 |

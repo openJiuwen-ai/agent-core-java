@@ -1,15 +1,13 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.TextPreprocessor
 
-## interface TextPreprocessor
+## 接口 TextPreprocessor
 
 ```java
 public interface TextPreprocessor
 ```
 
-Text preprocessor abstraction.
+`TextPreprocessor` 定义最小的文本预处理接口。
 
-## Methods
+## 抽象方法
 
-| Signature | Description |
-| --- | --- |
-| `String process(String text)` | Execute `process`. |
+- `String process(String text)`：接收原始文本并返回处理后的文本。

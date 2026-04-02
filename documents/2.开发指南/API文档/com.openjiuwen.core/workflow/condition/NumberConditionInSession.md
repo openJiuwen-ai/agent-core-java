@@ -1,27 +1,14 @@
 # com.openjiuwen.core.workflow.condition.NumberConditionInSession
 
-## class NumberConditionInSession
+## 类 NumberConditionInSession
 
 ```java
 public class NumberConditionInSession extends Condition
 ```
 
-Loop condition based on iteration count with limit stored directly (not from schema).
+`NumberConditionInSession` 是固定上限值的次数型循环条件。
 
-## Fields
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `private final int limit` | Limit. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public NumberConditionInSession(int limit)` | Create a new `NumberConditionInSession` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Object doInvoke(Object inputs, BaseSession session)` | Execute `doInvoke`. |
+- 构造时直接持有 `limit`。
+- 执行时判断当前 `INDEX` 是否小于该固定值。

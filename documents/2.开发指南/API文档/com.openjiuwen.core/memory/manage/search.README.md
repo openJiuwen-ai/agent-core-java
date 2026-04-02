@@ -1,14 +1,14 @@
-# search
+﻿# search
 
-`com.openjiuwen.core.memory.manage.search` contains the search request model and the search coordinator used by memory retrieval flows.
+`com.openjiuwen.core.memory.manage.search` 提供记忆检索入口与参数模型，负责把查询条件转换为管理层可执行的搜索请求。
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`SearchManager`](./search/SearchManager.md) | class | Orchestrates memory search across different memory type managers. |
-| [`SearchParams`](./search/SearchParams.md) | class | Parameters for memory search operations. |
+| 类型 | 说明 |
+| --- | --- |
+| [`SearchManager`](./search/SearchManager.md) | 统一封装变量、分片记忆和摘要记忆的查询逻辑。 |
+| [`SearchParams`](./search/SearchParams.md) | 记忆搜索参数对象。 |
 
-## Notes
+## 相关测试
 
-- The current page also links the 2 direct public type page(s) defined in this package.
+- `SearchManagerTest`

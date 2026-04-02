@@ -1,33 +1,33 @@
 # com.openjiuwen.core.memory.migration.operation.UpdateEmbeddingDimensionOperation
 
-## class UpdateEmbeddingDimensionOperation
+## 类 UpdateEmbeddingDimensionOperation
 
 ```java
-public class UpdateEmbeddingDimensionOperation extends BaseOperation
+public class UpdateEmbeddingDimensionOperation
 ```
 
-Update the embedding dimension of a vector data type.
+`UpdateEmbeddingDimensionOperation` 表示更新向量字段 embedding 维度的迁移操作。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `dataType` | `String` | data type. |
-| `fieldName` | `String` | field name. |
-| `newDimension` | `int` | new dimension. |
-| `batchSize` | `int` | batch size. |
+| `dataType` | `String` | 目标向量数据类型。 |
+| `fieldName` | `String` | 目标向量字段名。 |
+| `newDimension` | `int` | 更新后的 embedding 维度。 |
+| `batchSize` | `int` | 批量迁移时使用的批大小。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public UpdateEmbeddingDimensionOperation(OperationMetadata metadata, String dataType, String fieldName, int newDimension, int batchSize)` | Create a new `UpdateEmbeddingDimensionOperation` instance. |
+| `public UpdateEmbeddingDimensionOperation(OperationMetadata metadata, String dataType, String fieldName, int newDimension, int batchSize)` | 创建一条 embedding 维度更新操作。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDataType()` | Execute `getDataType`. |
-| `public String getFieldName()` | Execute `getFieldName`. |
-| `public int getNewDimension()` | Execute `getNewDimension`. |
-| `public int getBatchSize()` | Execute `getBatchSize`. |
+| `public String getDataType()` | 返回目标数据类型。 |
+| `public String getFieldName()` | 返回目标字段名。 |
+| `public int getNewDimension()` | 返回新的 embedding 维度。 |
+| `public int getBatchSize()` | 返回批处理大小。 |

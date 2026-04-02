@@ -1,27 +1,24 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.HybridChunker
 
-## class HybridChunker
+## 类 HybridChunker
 
 ```java
 public class HybridChunker extends Chunker
 ```
 
-Chunker that skips splitting for specific document types.
+`HybridChunker` 允许某些文档跳过切分，直接以整篇文本生成一个 `TextChunk`；其余文档继续委托内部 chunker。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
-| --- | --- |
-| `public HybridChunker(Chunker innerChunker)` | Create a new `HybridChunker` instance. |
-| `public HybridChunker(Chunker innerChunker, Predicate<Document> noSplitWhen)` | Create a new `HybridChunker` instance. |
+### `public HybridChunker(Chunker innerChunker)`
 
-## Methods
+默认对 metadata 中 `source_type` 为 `row` 或 `column` 的文档不做切分。
 
-| Signature | Description |
-| --- | --- |
-| `public List<String> chunkText(String text)` | Chunk the input text into smaller segments. |
-| `public List<TextChunk> chunkDocuments(List<Document> documents)` | Execute `chunkDocuments`. |
+### `public HybridChunker(Chunker innerChunker, Predicate<Document> noSplitWhen)`
 
-## Notes
+允许自定义“不切分”判定规则。
 
-- Related tests: `TokenizerChunkerTest.java`.
+## 公开方法
+
+- `chunkText(String text)`：直接委托给内部 chunker。
+- `chunkDocuments(List<Document> documents)`：命中 `noSplitWhen` 时直接 `TextChunk.fromDocument(...)`，否则走内部 chunker。

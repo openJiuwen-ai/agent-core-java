@@ -6,21 +6,29 @@
 public class McpServerConfig
 ```
 
-Connection settings for an MCP server endpoint or process, including auth headers, auth query parameters, and transport-specific params.
+MCP 服务端配置对象，描述服务端标识、访问路径、客户端类型以及认证附加参数。
 
-## Notes
+## 字段
 
-- This type relies on Lombok-generated accessors and/or builders; the tables below document the explicit fields declared in source.
+源码通过 Lombok 生成访问器与构建器；下表列出显式声明字段。
 
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `serverName` | `String` | `-` | Server display name. */ |
-| `serverPath` | `String` | `-` | Server path or URL. */ |
-| `clientType` | `String` | `"sse"` | Client type (e.g., "sse", "stdio"). */ |
-| `NO_TIMEOUT` | `float` | `-1` | Constant for no timeout. */ |
+| `serverId` | `String` | `UUID.randomUUID().toString().replace("-", "")` | 服务端唯一标识。 |
+| `serverName` | `String` | `null` | 服务端显示名称。 |
+| `serverPath` | `String` | `null` | 服务端路径或 URL。 |
+| `clientType` | `String` | `"sse"` | 客户端类型。 |
+| `params` | `Map<String, Object>` | `new HashMap<>()` | 附加参数，例如 stdio 命令、环境变量或 OpenAPI 额外配置。 |
+| `authHeaders` | `Map<String, String>` | `new HashMap<>()` | 认证请求头。 |
+| `authQueryParams` | `Map<String, String>` | `new HashMap<>()` | 认证查询参数。 |
+| `NO_TIMEOUT` | `float` | `-1` | 无超时常量。 |
 
-## Related Tests
+## 使用说明
+
+- `McpToolTest` 说明默认 `clientType` 为 `sse`。
+- 未显式提供 `serverId` 时会自动生成非空随机值。
+- 默认 `authHeaders`、`authQueryParams` 与 `params` 均为空 `Map`。
+
+## 相关测试
 
 - `McpToolTest`

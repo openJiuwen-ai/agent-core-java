@@ -6,7 +6,9 @@
 public class IntentDetectionCompConfig extends com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig
 ```
 
-Alias/extension of `com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig` with positional constructor for test compatibility.
+`workflow.components.llm` 包下的意图识别配置兼容类。
+
+它继承主包 `IntentDetectionCompConfig`，补充位置参数构造器和若干 snake_case 兼容 setter，方便旧测试继续复用。
 
 ## Constructors
 

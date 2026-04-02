@@ -6,7 +6,9 @@
 public class LLMExecutable extends ComponentExecutable
 ```
 
-Executable for LLM workflow component, handling model invocation and streaming.
+LLM 工作流组件的可执行体。
+
+它负责校验配置、初始化 `Model`、构造 system/user prompt、插入历史消息，并分别支持同步 `invoke(...)` 与流式 `stream(...)`；当启用 `cacheStream` 时，还能在流结束后汇总最终输出。
 
 ## Constructors
 

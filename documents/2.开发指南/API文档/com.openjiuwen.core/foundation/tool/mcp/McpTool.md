@@ -6,32 +6,32 @@
 public class McpTool extends Tool
 ```
 
-MCP Tool that wraps MCP server tools for LLM function calling.
+MCP 工具包装器。它把远端 MCP 服务端暴露的工具封装为本地 `Tool`，供上层统一调用。
 
-## Notes
+## 字段
 
-- `invoke(...)` validates inputs against the card schema when present, delegates to `McpClient.callTool(...)`, and wraps the remote result as `{result: ...}`.
-- `stream(...)` is intentionally unsupported and throws the shared tool-stream error.
-
-## Fields
-
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `mcpClient` | `McpClient` | `-` | - |
+| `mcpClient` | `McpClient` | `-` | 负责实际远端调用的客户端实现。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public McpTool(McpClient mcpClient, McpToolCard card)` | Create an MCP tool. |
+| `public McpTool(McpClient mcpClient, McpToolCard card)` | 创建 MCP 工具；当 `mcpClient` 为空时抛出错误。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | - |
-| `public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | - |
+| `public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | 可选地按 `inputParams` 格式化输入，调用远端工具，并返回 `Map.of("result", result)`。 |
+| `public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception` | 始终抛出 `TOOL_STREAM_NOT_SUPPORTED`。 |
 
-## Related Tests
+## 使用说明
+
+- `inputs == null` 时会回退为空 `Map`。
+- 远端异常会被转换为 `TOOL_MCP_EXECUTION_ERROR`。
+
+## 相关测试
 
 - `McpToolTest`

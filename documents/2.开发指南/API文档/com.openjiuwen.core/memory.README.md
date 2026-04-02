@@ -1,27 +1,26 @@
-# memory
+﻿# memory
 
-`com.openjiuwen.core.memory` groups the long-term memory engine, config models, manager implementations, extraction helpers, migration utilities, and prompt application APIs.
+`com.openjiuwen.core.memory` 提供长期记忆引擎的公开入口，负责组合存储注册、作用域配置、消息写入、变量维护、摘要检索，以及 `manage`、`common`、`config`、`prompt` 等子包能力。
 
-## Modules
+## 子包
 
-| Module | Description |
+| 子包 | 说明 |
 | --- | --- |
-| [`common`](./memory/common.README.md) | provides shared locking, crypto, prefix, and parsing helpers used across the memory engine. |
-| [`config`](./memory/config.README.md) | defines system-wide, scope-level, and agent-level configuration models for memory behavior. |
-| [`manage`](./memory/manage.README.md) | groups the manager subpackages that persist, search, and update memory state. |
-| [`migration`](./memory/migration.README.md) | provides migration plans and entry points for KV, SQL, and vector memory stores. |
-| [`process`](./memory/process.README.md) | groups the processing helpers that transform conversation history into structured memory artifacts. |
-| [`prompt`](./memory/prompt.README.md) | provides prompt-template lookup and variable substitution utilities for memory workflows. |
+| [`common`](./memory/common.README.md) | 提供分布式锁、KV 前缀注册、加解密与命中结果解析等共享工具。 |
+| [`config`](./memory/config.README.md) | 定义系统级、作用域级和代理级记忆配置模型。 |
+| [`manage`](./memory/manage.README.md) | 汇总记忆管理器、底层存储模型、检索参数与更新判定逻辑。 |
+| [`prompt`](./memory/prompt.README.md) | 提供记忆流程所需的提示词模板加载与变量替换能力。 |
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`LongTermMemory`](./memory/LongTermMemory.md) | class | Main memory engine implementing long-term memory management. |
-| [`MemInfo`](./memory/MemInfo.md) | class | Memory information containing id, content, and type. |
-| [`MemResult`](./memory/MemResult.md) | class | Memory search result with relevance score. |
+| 类型 | 说明 |
+| --- | --- |
+| [`LongTermMemory`](./memory/LongTermMemory.md) | 长期记忆主引擎，负责对外暴露配置、写入、检索和删除入口。 |
+| [`MemInfo`](./memory/MemInfo.md) | 单条记忆的基础信息模型，封装 `memId`、正文与 `MemoryType`。 |
+| [`MemResult`](./memory/MemResult.md) | 记忆检索结果模型，在 `MemInfo` 外补充相似度分数。 |
 
-## Notes
+## 使用说明
 
-- This package page exposes the documented child packages for the current memory subtree.
-- The current page also links the 3 direct public type page(s) defined in this package.
+- `LongTermMemory` 采用单例模式，测试可通过 `resetInstance()` 重置全局实例。
+- `registerStore(...)` 会注册 KV、向量和 SQL 存储，并触发迁移流程。
+- `LongTermMemoryTest` 覆盖了作用域配置持久化、默认时区时间戳与变量读取等关键行为。

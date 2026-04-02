@@ -1,34 +1,34 @@
 # com.openjiuwen.core.memory.common.DistributedLock
 
-## class DistributedLock
+## 类 DistributedLock
 
 ```java
 public class DistributedLock implements AutoCloseable
 ```
 
-Synchronous distributed lock using KV store exclusive_set.
+`DistributedLock` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `store` | `BaseKVStore` | store. |
-| `lockKey` | `String` | lock key. |
-| `ttl` | `int` | ttl. |
-| `retryDelayMs` | `long` | retry delay ms. |
-| `lockValue` | `String` | lock value. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `store` | `BaseKVStore` | 字段 `store`。 |
+| `lockKey` | `String` | 字段 `lockKey`。 |
+| `ttl` | `int` | 字段 `ttl`。 |
+| `retryDelayMs` | `long` | 字段 `retryDelayMs`。 |
+| `lockValue` | `String` | 字段 `lockValue`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public DistributedLock(BaseKVStore store, String lockName)` | Create a new `DistributedLock` instance. |
+| `public DistributedLock(BaseKVStore store, String lockName)` | 创建 `DistributedLock` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void acquire()` | Execute `acquire`. |
-| `public void release()` | Execute `release`. |
-| `public void close()` | Execute `close`. |
+| `public void acquire()` | 执行 `acquire`。 |
+| `public void release()` | 执行 `release`。 |
+| `public void close()` | 执行 `close`。 |

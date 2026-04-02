@@ -1,42 +1,18 @@
 # com.openjiuwen.core.workflow.component.ComponentAbility
 
-## enum ComponentAbility
+## 枚举 ComponentAbility
 
 ```java
 public enum ComponentAbility
 ```
 
-Defines the execution abilities of a workflow component.
+`ComponentAbility` 定义组件支持的四种执行能力。
 
-## Enum Constants
+## 枚举值
 
-| Value | Description |
+| 值 | 说明 |
 | --- | --- |
-| `INVOKE` | I n v o k e. |
-| `STREAM` | S t r e a m. |
-| `COLLECT` | C o l l e c t. |
-| `TRANSFORM` | T r a n s f o r m. |
-
-## Fields
-
-| Signature | Description |
-| --- | --- |
-| `private final String name` | Transform: consumes a stream of chunks, yields transformed chunks. |
-| `private final String desc` | Desc. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `ComponentAbility(String name, String desc)` | Create a new `ComponentAbility` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getAbilityName()` | Return the ability name. |
-| `public String getDesc()` | Return the desc. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+| `INVOKE` | 普通同步执行。 |
+| `STREAM` | 流式输出。 |
+| `COLLECT` | 汇聚流输入后输出。 |
+| `TRANSFORM` | 流输入流输出。 |

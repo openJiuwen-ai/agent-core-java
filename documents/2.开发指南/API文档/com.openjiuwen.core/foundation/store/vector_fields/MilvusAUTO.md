@@ -6,11 +6,11 @@
 public class MilvusAUTO extends MilvusVectorField
 ```
 
-AUTOINDEX configuration for Milvus.
+Milvus AUTO 索引配置对象。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getIndexType()` | Return the index type. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getIndexType()` | 返回索引类型 `auto`。 |
+| `public Map<String, Object> toDict(String stage)` | 导出当前阶段参数；当前实现返回空配置。 |

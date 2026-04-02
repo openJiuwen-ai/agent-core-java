@@ -1,37 +1,22 @@
 # com.openjiuwen.core.workflow.WorkflowOutput
 
-## class WorkflowOutput
+## 类 WorkflowOutput
 
 ```java
 public class WorkflowOutput
 ```
 
-Final output container for workflow execution. Contains both the result data and the execution state.
+`WorkflowOutput` 封装工作流最终返回值与执行状态。
 
-## Fields
+## 关键字段
 
-| Signature | Description |
+| 字段 | 说明 |
 | --- | --- |
-| `private Object result` | Result. |
-| `private WorkflowExecutionState state` | State. |
+| `result` | 工作流输出结果。 |
+| `state` | 对应的 `WorkflowExecutionState`。 |
 
-## Constructors
+## 方法
 
-| Signature | Description |
-| --- | --- |
-| `public WorkflowOutput()` | Create a new `WorkflowOutput` instance. |
-| `public WorkflowOutput(Object result, WorkflowExecutionState state)` | Create a new `WorkflowOutput` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public Object getResult()` | Return the result. |
-| `public void setResult(Object result)` | Update the result. |
-| `public WorkflowExecutionState getState()` | Return the state. |
-| `public void setState(WorkflowExecutionState state)` | Update the state. |
-| `public String toString()` | Execute `toString`. |
-
-## Notes
-
-- Representative workflow regression coverage appears in `WorkflowTest.java`.
+- 提供无参构造和 `(Object result, WorkflowExecutionState state)` 全参构造。
+- 通过 getter/setter 读写 `result` 与 `state`。
+- `toString()` 返回调试友好的字符串表示。

@@ -1,20 +1,21 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.WordParser
 
-## class WordParser
+## 类 WordParser
 
 ```java
 public class WordParser extends Parser
 ```
 
-DOCX parser with optional image caption support.
+`WordParser` 使用 Apache POI 解析 DOCX，支持段落、表格以及可选图片 caption。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Parse the input into `Document` records. |
-| `public boolean supports(String doc)` | Return whether this implementation can handle the input. |
+- `parse(...)`：解析失败或结果为空时返回空列表。
+- `supports(String doc)`：仅支持 `.docx`。
 
-## Notes
+## 解析流程
 
-- Related tests: `WordParserTest.java`.
+- 遍历 `XWPFDocument.getBodyElements()`。
+- 段落使用 `paragraph.getText()`。
+- 表格会按行转为制表符分隔文本。
+- 提供 `llmClient` 时，会把文档中的图片导出到本地，再通过 `ImageCaptioner` 生成说明并追加到结果文本末尾。

@@ -6,7 +6,9 @@
 public class QuestionerDirectReplyHandler
 ```
 
-Handles "reply directly" questioner flow: field extraction via LLM, state machine transitions, and follow-up question generation.
+`reply_directly` 模式下的 Questioner 处理器。
+
+它会根据当前状态执行字段抽取、默认值补齐、继续追问判断与输出整理，是多轮追问流程的核心执行逻辑。
 
 ## Methods
 

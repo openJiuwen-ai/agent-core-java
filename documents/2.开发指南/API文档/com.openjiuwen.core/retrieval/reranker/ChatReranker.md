@@ -1,36 +1,15 @@
 # com.openjiuwen.core.retrieval.reranker.ChatReranker
 
-## class ChatReranker
+## 类 ChatReranker
 
 ```java
 public class ChatReranker extends StandardReranker
 ```
 
-Chat-completion-based reranker aligned with Python's ChatReranker behavior.
+基于 chat completion 的重排器，通过 `yes` 与 `no` token 的 logprob 计算相关性分数。
 
-## Fields
+## 说明
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `CHAT_ENDPOINT` | `static final String` | `"/chat/completions"` | chat endpoint. |
-| `DOC_TEMPLATE` | `static final String` | `"<Document>: %s"` | doc template. |
-| `SYSTEM_INSTRUCT` | `static final String` | `"Judge whether the Document meets the requirements based on the Query and the...` | system instruct. |
-| `yesNoIds` | `final List<Integer>` | `-` | yes no ids. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public ChatReranker(RerankerConfig config)` | Create a new `ChatReranker` instance. |
-| `public ChatReranker(RerankerConfig config, int maxRetries, Map<String, String> extraHeaders, HttpClient httpClient)` | Create a new `ChatReranker` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `payload.put("logit_bias", logitBias)` | Execute `put`. |
-| `JsonNode logprobs = choice.path("logprobs")` | Execute `path`. |
-
-## Notes
-
-- Related tests: `ChatRerankerTest.java`.
+- 端点固定为 `/chat/completions`。
+- 每个候选会单独发起一次请求。
+- `RerankerConfig.yesNoIds` 必须包含两个 token id；测试确认缺失时会抛出异常。

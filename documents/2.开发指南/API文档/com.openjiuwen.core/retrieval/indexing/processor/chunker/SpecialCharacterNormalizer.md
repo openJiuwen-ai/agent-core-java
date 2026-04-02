@@ -1,15 +1,16 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.SpecialCharacterNormalizer
 
-## class SpecialCharacterNormalizer
+## 类 SpecialCharacterNormalizer
 
 ```java
 public class SpecialCharacterNormalizer implements TextPreprocessor
 ```
 
-Replaces control characters with spaces.
+`SpecialCharacterNormalizer` 把除换行和制表符外的控制字符统一替换为空格。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public String process(String text)` | Execute `process`. |
+### `public String process(String text)`
+
+- `text == null` 时返回空串。
+- 使用正则 `[\p{Cntrl}&&[^\r\n\t]]` 替换不可见控制字符。

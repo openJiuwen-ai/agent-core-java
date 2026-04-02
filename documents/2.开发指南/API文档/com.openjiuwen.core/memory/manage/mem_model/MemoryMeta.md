@@ -1,16 +1,16 @@
 # com.openjiuwen.core.memory.manage.mem_model.MemoryMeta
 
-## record MemoryMeta
+## 记录 MemoryMeta
 
 ```java
 public record MemoryMeta(String tableName, String schemaVersion)
 ```
 
-Public row model matching the memory_meta table.
+`MemoryMeta` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开记录型，文档按 Java 源码列出其公开成员与签名。
 
-## Record Components
+## 记录组件
 
-| Name | Type | Description |
+| 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `tableName` | `String` | table name. |
-| `schemaVersion` | `String` | schema version. |
+| `tableName` | `String` | 表名。 |
+| `schemaVersion` | `String` | 模式版本。 |

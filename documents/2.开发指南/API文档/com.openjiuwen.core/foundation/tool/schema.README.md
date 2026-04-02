@@ -1,10 +1,15 @@
 # schema
 
-`com.openjiuwen.core.foundation.tool.schema` contains LLM-facing schema DTOs used to describe tools and MCP tool metadata.
+`com.openjiuwen.core.foundation.tool.schema` 提供供模型函数调用消费的工具描述对象，以及带服务端名称的 MCP 扩展描述对象。
 
-## Core Types
+## 类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`McpToolInfo`](schema/McpToolInfo.md) | Extension of `ToolInfo` that also records which MCP server exposes the tool. |
-| [`ToolInfo`](schema/ToolInfo.md) | LLM-facing tool descriptor that follows function-calling conventions and carries the tool name, description, and parameter schema. |
+| [`McpToolInfo`](schema/McpToolInfo.md) | 在 `ToolInfo` 基础上补充 `serverName`。 |
+| [`ToolInfo`](schema/ToolInfo.md) | 通用工具描述对象，包含类型、名称、描述和参数 Schema。 |
+
+## 说明
+
+- `ToolInfo.type` 默认值为 `function`。
+- `ToolCard.toolInfo()` 与 `McpToolCard.toolInfo()` 都会构造本包中的 DTO 供上层使用。

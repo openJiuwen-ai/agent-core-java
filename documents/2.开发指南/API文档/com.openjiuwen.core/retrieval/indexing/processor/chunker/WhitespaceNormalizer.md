@@ -1,15 +1,16 @@
 # com.openjiuwen.core.retrieval.indexing.processor.chunker.WhitespaceNormalizer
 
-## class WhitespaceNormalizer
+## 类 WhitespaceNormalizer
 
 ```java
 public class WhitespaceNormalizer implements TextPreprocessor
 ```
 
-Normalizes repeated whitespace.
+`WhitespaceNormalizer` 将连续空白折叠为单个空格，并去掉首尾空白。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public String process(String text)` | Execute `process`. |
+### `public String process(String text)`
+
+- `text == null` 时返回空串。
+- 使用 `replaceAll("\\s+", " ")` 统一空白。

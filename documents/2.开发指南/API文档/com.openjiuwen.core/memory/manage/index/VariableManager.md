@@ -1,39 +1,39 @@
 # com.openjiuwen.core.memory.manage.index.VariableManager
 
-## class VariableManager
+## 类 VariableManager
 
 ```java
 public class VariableManager extends BaseMemoryManager
 ```
 
-Manages variable memory using KV store.
+`VariableManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `SEPARATOR` | `String` | separator. |
-| `USER_VAR_PREFIX` | `String` | user var prefix. |
-| `SESSION_VAR_PREFIX` | `String` | session var prefix. |
-| `kvStore` | `BaseKVStore` | kv store. |
-| `cryptoKey` | `byte[]` | crypto key. |
+| `SEPARATOR` | `String` | 字段 `SEPARATOR`。 |
+| `USER_VAR_PREFIX` | `String` | 字段 `USER_VAR_PREFIX`。 |
+| `SESSION_VAR_PREFIX` | `String` | 字段 `SESSION_VAR_PREFIX`。 |
+| `kvStore` | `BaseKVStore` | KV 存储。 |
+| `cryptoKey` | `byte[]` | 字段 `cryptoKey`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public VariableManager(BaseKVStore kvStore, byte[] cryptoKey)` | Create a new `VariableManager` instance. |
+| `public VariableManager(BaseKVStore kvStore, byte[] cryptoKey)` | 创建 `VariableManager` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories, Map.Entry<String, Model> llm, Map<String, Object> kwargs)` | Execute `addMemories`. |
-| `public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs)` | Execute `update`. |
-| `public void updateUserVariable(String userId, String scopeId, String varName, String varMem)` | Execute `updateUserVariable`. |
-| `public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs)` | Execute `delete`. |
-| `public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs)` | Execute `deleteByUserId`. |
-| `public void deleteUserVariable(String userId, String scopeId, String varName)` | Execute `deleteUserVariable`. |
-| `public Map<String, Object> get(String userId, String scopeId, String memId)` | Execute `get`. |
-| `public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK, Map<String, Object> kwargs)` | Execute `search`. |
-| `public Map<String, String> queryVariable(String userId, String scopeId, String name, String sessionId)` | Query variable by user_id, scope_id, variable_name. |
+| `public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories, Map.Entry<String, Model> llm, Map<String, Object> kwargs)` | 执行 `addMemories` 写入流程。 |
+| `public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs)` | 执行 `update` 更新流程。 |
+| `public void updateUserVariable(String userId, String scopeId, String varName, String varMem)` | 执行 `updateUserVariable` 更新流程。 |
+| `public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs)` | 执行 `delete` 删除流程。 |
+| `public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs)` | 执行 `deleteByUserId` 删除流程。 |
+| `public void deleteUserVariable(String userId, String scopeId, String varName)` | 执行 `deleteUserVariable` 删除流程。 |
+| `public Map<String, Object> get(String userId, String scopeId, String memId)` | 返回 `get` 的执行结果。 |
+| `public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK, Map<String, Object> kwargs)` | 执行 `search` 查询流程。 |
+| `public Map<String, String> queryVariable(String userId, String scopeId, String name, String sessionId)` | 执行 `queryVariable`。 |

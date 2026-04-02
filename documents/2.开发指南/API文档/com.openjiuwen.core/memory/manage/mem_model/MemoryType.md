@@ -1,37 +1,31 @@
 # com.openjiuwen.core.memory.manage.mem_model.MemoryType
 
-## enum MemoryType
+## 枚举 MemoryType
 
 ```java
 public enum MemoryType
 ```
 
-Types of memory data.
+`MemoryType` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
 
-## Enum Values
+## 枚举值
 
-| Value | Description |
+| 枚举值 | 说明 |
 | --- | --- |
-| `FRAGMENT_MEMORY` | fragment memory. |
-| `VARIABLE` | variable. |
-| `SUMMARY` | summary. |
-| `UNKNOWN` | unknown. |
+| `FRAGMENT_MEMORY` | 分片记忆。 |
+| `VARIABLE` | 变量记忆。 |
+| `SUMMARY` | 摘要记忆。 |
+| `UNKNOWN` | 未知类型。 |
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `value` | `String` | value. |
+| `value` | `String` | 原始值。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `MemoryType(String value)` | Create a new `MemoryType` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | Execute `getValue`. |
-| `public static MemoryType fromValue(String value)` | Execute `fromValue`. |
+| `public String getValue()` | 返回当前枚举对应的原始值。 |
+| `public static MemoryType fromValue(String value)` | 根据字符串值解析对应枚举。 |

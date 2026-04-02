@@ -1,32 +1,32 @@
 # com.openjiuwen.core.memory.manage.index.WriteManager
 
-## class WriteManager
+## 类 WriteManager
 
 ```java
 public class WriteManager
 ```
 
-Orchestrates memory write operations across all memory type managers.
+`WriteManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `MEMORY_LOGGER` | `LoggerProtocol` | memory logger. |
-| `managers` | `Map<String, BaseMemoryManager>` | managers. |
-| `memStore` | `UserMemStore` | mem store. |
+| `MEMORY_LOGGER` | `LoggerProtocol` | 记忆模块日志记录器。 |
+| `managers` | `Map<String, BaseMemoryManager>` | 字段 `managers`。 |
+| `memStore` | `UserMemStore` | 字段 `memStore`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public WriteManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore)` | Create a new `WriteManager` instance. |
+| `public WriteManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore)` | 创建 `WriteManager` 实例。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void addMemories(String userId, String scopeId, Map<String, ? extends List<? extends BaseMemoryUnit>> memories, Map.Entry<String, Model> llm, SemanticStore semanticStore)` | Add memories of different types in batch. |
-| `public void updateMemById(String userId, String scopeId, String memId, String memory, SemanticStore semanticStore)` | Update a memory by ID (determines type from store). |
-| `public void deleteMemById(String userId, String scopeId, String memId, SemanticStore semanticStore)` | Delete a memory by ID (determines type from store). |
-| `public void deleteMemByUserId(String userId, String scopeId, SemanticStore semanticStore)` | Delete all memories for a user across all types. |
+| `public void addMemories(String userId, String scopeId, Map<String, ? extends List<? extends BaseMemoryUnit>> memories, Map.Entry<String, Model> llm, SemanticStore semanticStore)` | 执行 `addMemories` 写入流程。 |
+| `public void updateMemById(String userId, String scopeId, String memId, String memory, SemanticStore semanticStore)` | 执行 `updateMemById` 更新流程。 |
+| `public void deleteMemById(String userId, String scopeId, String memId, SemanticStore semanticStore)` | 执行 `deleteMemById` 删除流程。 |
+| `public void deleteMemByUserId(String userId, String scopeId, SemanticStore semanticStore)` | 执行 `deleteMemByUserId` 删除流程。 |

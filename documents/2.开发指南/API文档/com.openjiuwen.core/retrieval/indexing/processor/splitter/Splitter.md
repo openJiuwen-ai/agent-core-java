@@ -1,21 +1,28 @@
 # com.openjiuwen.core.retrieval.indexing.processor.splitter.Splitter
 
-## class Splitter
+## 抽象类 Splitter
 
 ```java
 public abstract class Splitter implements Processor<List<Document>, List<TextChunk>>
 ```
 
-Text splitter abstraction.
+`Splitter` 是面向 `Document` 的切分抽象，与 `Chunker` 类似，但更强调句子和文本分割语义。
 
-## Methods
+## 受保护构造说明
 
-| Signature | Description |
-| --- | --- |
-| `public abstract List<String> splitText(String text)` | Split the input text into smaller segments. |
-| `public List<TextChunk> getNodesFromDocuments(List<Document> documents)` | Execute `getNodesFromDocuments`. |
-| `public List<TextChunk> process(List<Document> input, Map<String, Object> options)` | Process the input values and return transformed results. |
+`Splitter` 只暴露受保护构造器 `Splitter(int chunkSize, int chunkOverlap)`，供具体切分器在初始化时复用。
 
-## Notes
+会校验：
 
-- Related tests: `SentenceSplitterTest.java`.
+- `chunkSize > 0`
+- `chunkOverlap >= 0`
+- `chunkOverlap < chunkSize`
+
+## 抽象方法
+
+- `List<String> splitText(String text)`：切分单段文本。
+
+## 公开方法
+
+- `public List<TextChunk> getNodesFromDocuments(List<Document> documents)`：把切分结果包装成 `TextChunk`，并补入 `chunk_index`、`total_chunks`、`chunk_id` metadata。
+- `public List<TextChunk> process(List<Document> input, Map<String, Object> options)`：默认委托给 `getNodesFromDocuments(...)`。

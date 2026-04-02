@@ -1,26 +1,26 @@
 # com.openjiuwen.core.memory.config.MemoryEngineConfig
 
-## class MemoryEngineConfig
+## 类 MemoryEngineConfig
 
 ```java
 public class MemoryEngineConfig
 ```
 
-Memory engine configuration.
+该类定义全局记忆引擎的系统参数。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `defaultModelCfg` | `ModelRequestConfig` | default model cfg. |
-| `defaultModelClientCfg` | `ModelClientConfig` | default model client cfg. |
+| `defaultModelCfg` | `ModelRequestConfig` | 默认模型请求配置。 |
+| `defaultModelClientCfg` | `ModelClientConfig` | 默认模型客户端配置。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public void validateCryptoKey()` | Validate crypto key: must be empty or exactly 32 bytes. |
+| `public void validateCryptoKey()` | 校验 `cryptoKey` 的长度约束。 |
 
-## Notes
+## 使用说明
 
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类型通过 Lombok 生成 getter、setter 与 builder，文档仅列出显式声明的字段与公开方法。

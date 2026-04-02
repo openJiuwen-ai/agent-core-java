@@ -1,10 +1,10 @@
 # kv
 
-`com.openjiuwen.core.foundation.store.kv` contains the key-value store implementations used by short-lived or database-backed persistence.
+`com.openjiuwen.core.foundation.store.kv` 提供键值存储的内存实现与数据库实现，两者都对齐 `BaseKVStore` 的基础接口。
 
-## Core Types
+## 类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`DbBasedKVStore`](kv/DbBasedKVStore.md) | JDBC-backed KV store using a simple two-column table. |
-| [`InMemoryKVStore`](kv/InMemoryKVStore.md) | In-memory key-value store with optional expiry support. |
+| [`InMemoryKVStore`](kv/InMemoryKVStore.md) | 基于内存 `Map` 的键值存储，支持惰性过期清理。 |
+| [`DbBasedKVStore`](kv/DbBasedKVStore.md) | 基于 `BaseDbStore` 的 JDBC 键值存储。 |

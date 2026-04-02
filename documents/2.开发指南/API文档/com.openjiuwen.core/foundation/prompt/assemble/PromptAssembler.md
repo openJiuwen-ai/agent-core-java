@@ -6,36 +6,29 @@
 public class PromptAssembler
 ```
 
-Assembler that substitutes placeholders in a prompt template.
+模板装配器。它从模板内容中提取输入键，校验预置变量，并按占位符规则输出装配后的字符串或消息列表。
 
-## Fields
+## 构造方法
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `templateContent` | `Object` | `-` | Template content. |
-| `placeholderPrefix` | `final String` | `-` | Placeholder prefix. |
-| `placeholderSuffix` | `final String` | `-` | Placeholder suffix. |
-| `templateFormatters` | `final List<Variable>` | `-` | Template formatters. |
-| `variables` | `final Map<String, Variable>` | `-` | Variables. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix, Map<String, Variable> initialVariables)` | Construct a PromptAssembler. |
-| `public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix)` | Create a new `PromptAssembler` instance. |
+| `public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix, Map<String, Variable> initialVariables)` | 以模板内容、分隔符和预置变量初始化装配器。 |
+| `public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix)` | 不传预置变量的便捷构造。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public List<String> getInputKeys()` | Get all input keys needed for the template. |
-| `public Object promptAssemble(Map<String, Object> kwargs)` | Assemble the prompt by substituting placeholders with the given keyword arguments. |
-| `private List<Variable> buildFormatterList()` | Build the configured result. |
-| `private Map<String, Variable> buildVariablesWithVerify(Map<String, Variable> inputVariables)` | Build the configured result. |
-| `private void doUpdate(Map<String, Object> kwargs)` | Execute `doUpdate`. |
-| `private Object doFormat()` | Execute `doFormat`. |
+| `public List<String> getInputKeys()` | 返回当前模板需要的输入键，按出现顺序去重。 |
+| `public Object promptAssemble(Map<String, Object> kwargs)` | 执行占位符替换，返回装配后的 `String` 或 `List<BaseMessage>`。 |
 
-## Related Tests
+## 使用说明
+
+- 支持的模板内容为 `String` 或 `List<BaseMessage>`。
+- 对消息列表来说，只有字符串内容和首元素为 `Map` 的非空列表内容会被格式化。
+- 预置变量的名称必须已经在模板中出现，且值必须是 `Variable` 子类实例。
+- `promptAssemble` 会过滤无关键，并把缺失键补为原始占位符文本。
+
+## 相关测试
 
 - `PromptAssembleTest`

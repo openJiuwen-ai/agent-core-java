@@ -1,21 +1,15 @@
 # com.openjiuwen.core.workflow.WorkflowUtils
 
-## class WorkflowUtils
+## 类 WorkflowUtils
 
 ```java
 public final class WorkflowUtils
 ```
 
-Workflow-level helper utilities.
+`WorkflowUtils` 提供工作流级辅助方法。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private WorkflowUtils()` | Create a new `WorkflowUtils` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static String generateWorkflowKey(String workflowId, String workflowVersion)` | Execute `generateWorkflowKey`. |
+| `public static String generateWorkflowKey(String workflowId, String workflowVersion)` | 生成 `workflowId_workflowVersion` 形式的组合键。 |

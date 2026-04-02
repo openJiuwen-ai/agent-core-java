@@ -1,28 +1,14 @@
 # com.openjiuwen.core.retrieval.common.RetrievalValidation
 
-## class RetrievalValidation
+## 类 RetrievalValidation
 
 ```java
 public final class RetrievalValidation
 ```
 
-Shared retrieval validation helpers.
+retrieval 模块公共校验工具，集中校验空白字符串、正数、索引模式、距离度量、向量库类型与数据库名格式。
 
-## Constructors
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `private RetrievalValidation()` | Create a new `RetrievalValidation` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static final Set<String> INDEX_TYPES = Set.of("hybrid", "bm25", "vector")` | Execute `of`. |
-| `public static final Set<String> DISTANCE_METRICS = Set.of("cosine", "euclidean", "dot")` | Execute `of`. |
-| `public static final Set<String> STORE_TYPES = Set.of("milvus", "chroma", "pgvector")` | Execute `of`. |
-| `public static void requireNonBlank(String value, String field)` | Execute `requireNonBlank`. |
-| `} public static void requireNonNull(Object value, String field)` | Execute `requireNonNull`. |
-| `} public static void requirePositive(int value, String field, StatusCode status)` | Execute `requirePositive`. |
-| `} public static void requireNonNegative(int value, String field, StatusCode status)` | Execute `requireNonNegative`. |
-| `} public static String validateIndexType(String value, String field)` | Execute `validateIndexType`. |
+- 内置常量集合：`INDEX_TYPES`、`DISTANCE_METRICS`、`STORE_TYPES`。
+- `validateDatabaseName(...)` 允许空字符串，但非空时必须匹配 `^[A-Za-z0-9_]*$`。

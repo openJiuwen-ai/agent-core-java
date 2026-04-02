@@ -1,21 +1,17 @@
 # com.openjiuwen.core.memory.manage.update.MemoryActionItem
 
-## class MemoryActionItem
+## 类 MemoryActionItem
 
 ```java
 public class MemoryActionItem
 ```
 
-Represents a memory with its action status.
+`MemoryActionItem` 是 `com.openjiuwen.core.memory.manage.update` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `id` | `String` | id. |
-| `content` | `String` | content. |
-| `status` | `MemoryStatus` | status. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+| `id` | `String` | 字段 `id`。 |
+| `content` | `String` | 字段 `content`。 |
+| `status` | `MemoryStatus` | 字段 `status`。 |

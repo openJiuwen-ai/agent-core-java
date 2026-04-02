@@ -6,15 +6,17 @@
 public enum WorkflowLLMResponseType
 ```
 
-Response type for workflow LLM components.
+工作流 LLM 组件响应类型枚举。
+
+枚举值 `JSON`、`MARKDOWN`、`TEXT` 分别对应底层字符串 `json`、`markdown`、`text`，用于执行分支判断。
 
 ## Enum Constants
 
 | Value | Description |
 | --- | --- |
-| `JSON` | J s o n. |
-| `MARKDOWN` | M a r k d o w n. |
-| `TEXT` | T e x t. |
+| `JSON` | JSON 结构化响应。 |
+| `MARKDOWN` | Markdown 文本响应。 |
+| `TEXT` | 纯文本响应。 |
 
 ## Methods
 

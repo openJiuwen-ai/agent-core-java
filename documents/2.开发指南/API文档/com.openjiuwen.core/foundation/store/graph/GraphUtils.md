@@ -6,17 +6,16 @@
 public final class GraphUtils
 ```
 
-Graph store utility functions.
+图存储辅助工具类，当前提供按批切分迭代器的能力。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private GraphUtils()` | Create a new `GraphUtils` instance. |
+| `public static <T> Iterator<List<T>> batched(Iterable<T> iterable, int n, boolean strict)` | 按固定大小把可迭代对象切分为多批。 |
+| `public static <T> Iterator<List<T>> batched(Iterable<T> iterable, int n)` | 默认 `strict = false` 的便捷重载。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static <T> Iterator<List<T>> batched(Iterable<T> iterable, int n, boolean strict)` | Batch an iterable into fixed-size chunks. |
-| `public static <T> Iterator<List<T>> batched(Iterable<T> iterable, int n)` | Batch an iterable into fixed-size chunks (non-strict). |
+- `n` 必须大于等于 `1`。
+- 当 `strict = true` 且最后一批数量不足 `n` 时，会抛出 `IllegalArgumentException`。

@@ -6,7 +6,9 @@
 public final class JsonParser
 ```
 
-JSON parser for LLM response content.
+LLM 响应 JSON 解析工具。
+
+它会先清理 Markdown 代码块包裹，再使用 Jackson 把字符串解析为 `Map<String, Object>`；解析失败时会抛出组件参数错误。
 
 ## Methods
 

@@ -6,32 +6,16 @@
 public final class ChromaQueryDialect
 ```
 
-Query expression support for ChromaDB.
+Chroma 查询方言定义提供器。
 
-## Fields
+## 公开方法
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `OPERATOR_MAP` | `static final Map<String, String>` | `Map.of( "==", "$eq", "!=", "$nin", ">", "$gt", ">=", "$gte", "<", "$lt", "<=", "$lte" )` | Operator map. |
-
-## Constructors
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private ChromaQueryDialect()` | Create a new `ChromaQueryDialect` instance. |
+| `public static QueryLanguageDefinition definition()` | 返回 Chroma 查询方言定义。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static QueryLanguageDefinition definition()` | Execute `definition`. |
-| `static Map<String, Map<String, Object>> comparisonFilter(ComparisonExpr self)` | Execute `comparisonFilter`. |
-| `static Map<String, Map<String, Object>> rangeFilter(RangeExpr self)` | Execute `rangeFilter`. |
-| `static Map<String, Map<String, Object>> arithmeticFilter(ArithmeticExpr self)` | Execute `arithmeticFilter`. |
-| `static Map<String, Map<String, Object>> nullFilter(NullExpr self)` | Execute `nullFilter`. |
-| `static Map<String, Map<String, Object>> jsonFilter(JSONExpr self)` | Execute `jsonFilter`. |
-| `static Map<String, Map<String, Object>> arrayFilter(ArrayExpr self)` | Execute `arrayFilter`. |
-| `static Map<String, Map<String, Object>> logicalFilter(LogicalExpr self)` | Execute `logicalFilter`. |
-| `static Map<String, Map<String, Object>> textMatchFilter(MatchExpr self)` | Execute `textMatchFilter`. |
-| `private static Map<String, Object> combineFilters(String op, Map<String, Object> left, Map<String, Object> right)` | Execute `combineFilters`. |
-| `private static void raiseQueryError(String reason)` | Execute `raiseQueryError`. |
+- 该方言输出 `where` 与 `where_document` 两部分过滤结构。
+- 当前支持 comparison、`in`、`and/or`、文本匹配等表达式。
+- arithmetic、null check、JSON 嵌套字段与数组索引等表达式在当前实现中会被明确拒绝。

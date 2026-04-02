@@ -1,22 +1,16 @@
 # com.openjiuwen.core.retrieval.common.RetrievalExceptions
 
-## class RetrievalExceptions
+## 类 RetrievalExceptions
 
 ```java
 public final class RetrievalExceptions
 ```
 
-Helpers for building retrieval-related exceptions with concise call sites.
+retrieval 模块异常构造工具，统一创建带 `StatusCode` 的错误对象。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private RetrievalExceptions()` | Create a new `RetrievalExceptions` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public static BaseError error(StatusCode status, String message)` | Execute `error`. |
-| `public static ValidationError validation(String message)` | Execute `validation`. |
+| `public static BaseError error(StatusCode statusCode, String message)` | 创建带状态码与消息的错误对象。 |
+| `public static ValidationError validation(String reason)` | 创建检索模块参数校验异常。 |

@@ -6,7 +6,9 @@
 public class QuestionerStartState extends QuestionerState
 ```
 
-Questioner START state. fixed to `ExecutionStatus#START`. Transitions: can move to INTERACT or END.
+Questioner 状态机的起始态。
+
+该状态用于表示一次新的字段收集流程刚开始，后续可根据抽取结果进入交互态或直接结束。
 
 ## Constructors
 

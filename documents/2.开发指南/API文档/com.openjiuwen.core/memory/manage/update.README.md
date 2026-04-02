@@ -1,17 +1,17 @@
-# update
+﻿# update
 
-`com.openjiuwen.core.memory.manage.update` defines memory update actions, statuses, and conflict-check helpers before writes are applied.
+`com.openjiuwen.core.memory.manage.update` 提供记忆增量更新判定能力，负责描述检查结果、动作项与状态枚举，并通过 `MemUpdateChecker` 调用模型判断冗余或冲突。
 
-## Types
+## 核心类型
 
-| Type | Kind | Description |
-| --- | --- | --- |
-| [`CheckResult`](./update/CheckResult.md) | enum | Result of memory check operation. |
-| [`MemCheckItem`](./update/MemCheckItem.md) | class | Represents a single memory check result item. |
-| [`MemUpdateChecker`](./update/MemUpdateChecker.md) | class | Memory update checker for detecting redundancy and conflicts between memories. |
-| [`MemoryActionItem`](./update/MemoryActionItem.md) | class | Represents a memory with its action status. |
-| [`MemoryStatus`](./update/MemoryStatus.md) | enum | Status of memory action. |
+| 类型 | 说明 |
+| --- | --- |
+| [`CheckResult`](./update/CheckResult.md) | 检查结果枚举。 |
+| [`MemCheckItem`](./update/MemCheckItem.md) | 单条检查结果对象。 |
+| [`MemoryActionItem`](./update/MemoryActionItem.md) | 记忆更新动作对象。 |
+| [`MemoryStatus`](./update/MemoryStatus.md) | 动作状态枚举。 |
+| [`MemUpdateChecker`](./update/MemUpdateChecker.md) | 基于提示词和模型输出判断记忆冗余与冲突。 |
 
-## Notes
+## 相关测试
 
-- The current page also links the 5 direct public type page(s) defined in this package.
+- `MemUpdateCheckerTest`

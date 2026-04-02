@@ -1,35 +1,29 @@
 # com.openjiuwen.core.memory.manage.update.MemoryStatus
 
-## enum MemoryStatus
+## 枚举 MemoryStatus
 
 ```java
 public enum MemoryStatus
 ```
 
-Status of memory action.
+`MemoryStatus` 是 `com.openjiuwen.core.memory.manage.update` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
 
-## Enum Values
+## 枚举值
 
-| Value | Description |
+| 枚举值 | 说明 |
 | --- | --- |
-| `ADD` | add. |
-| `DELETE` | delete. |
+| `ADD` | 表示需要新增记忆。 |
+| `DELETE` | 表示需要删除记忆。 |
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `value` | `String` | value. |
+| `value` | `String` | 原始值。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `MemoryStatus(String value)` | Create a new `MemoryStatus` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public String getValue()` | Execute `getValue`. |
-| `public static MemoryStatus fromValue(String value)` | Execute `fromValue`. |
+| `public String getValue()` | 返回当前枚举对应的原始值。 |
+| `public static MemoryStatus fromValue(String value)` | 根据字符串值解析对应枚举。 |

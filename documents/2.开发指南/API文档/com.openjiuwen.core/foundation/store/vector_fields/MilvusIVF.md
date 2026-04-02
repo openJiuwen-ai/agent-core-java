@@ -6,32 +6,33 @@
 public class MilvusIVF extends MilvusVectorField
 ```
 
-Inverted File (IVF) index configuration for Milvus.
+Milvus IVF 索引配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `nlist` | `int` | `128` | Nlist. |
-| `nprobe` | `int` | `8` | Nprobe. |
-| `variant` | `String` | `"FLAT"` | Variant. |
-| `extraConstruct` | `Map<String, Object>` | `new HashMap<>()` | Extra construct. |
-| `extraSearch` | `Map<String, Object>` | `new HashMap<>()` | Extra search. |
+| `vectorField` | `String` | `"embedding"` | 向量字段名。 |
+| `nlist` | `int` | `128` | IVF 聚类数。 |
+| `nprobe` | `int` | `8` | 搜索探测数。 |
+| `variant` | `String` | `"FLAT"` | 变体，支持 `FLAT`、`SQ8`、`PQ`、`RABITQ`。 |
+| `extraConstruct` | `Map<String, Object>` | `{}` | 附加构建参数。 |
+| `extraSearch` | `Map<String, Object>` | `{}` | 附加搜索参数。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getIndexType()` | Return the index type. |
-| `public int getNlist()` | Return the nlist. |
-| `public void setNlist(int nlist)` | Set the nlist. |
-| `public int getNprobe()` | Return the nprobe. |
-| `public void setNprobe(int nprobe)` | Set the nprobe. |
-| `public String getVariant()` | Return the variant. |
-| `public void setVariant(String variant)` | Set the variant. |
-| `public Map<String, Object> getExtraConstruct()` | Return the extra construct. |
-| `public void setExtraConstruct(Map<String, Object> extraConstruct)` | Set the extra construct. |
-| `public Map<String, Object> getExtraSearch()` | Return the extra search. |
-| `public void setExtraSearch(Map<String, Object> extraSearch)` | Set the extra search. |
-| `public void validate()` | Validate extra_construct and extra_search parameters based on variant. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getIndexType()` | 返回索引类型 `ivf`。 |
+| `public int getNlist()` | 返回 `nlist`。 |
+| `public void setNlist(int nlist)` | 设置 `nlist`。 |
+| `public int getNprobe()` | 返回 `nprobe`。 |
+| `public void setNprobe(int nprobe)` | 设置 `nprobe`。 |
+| `public String getVariant()` | 返回变体名称。 |
+| `public void setVariant(String variant)` | 设置变体名称。 |
+| `public Map<String, Object> getExtraConstruct()` | 返回附加构建参数。 |
+| `public void setExtraConstruct(Map<String, Object> extraConstruct)` | 设置附加构建参数。 |
+| `public Map<String, Object> getExtraSearch()` | 返回附加搜索参数。 |
+| `public void setExtraSearch(Map<String, Object> extraSearch)` | 设置附加搜索参数。 |
+| `public void validate()` | 校验当前参数组合。 |
+| `public Map<String, Object> toDict(String stage)` | 按阶段导出参数。 |

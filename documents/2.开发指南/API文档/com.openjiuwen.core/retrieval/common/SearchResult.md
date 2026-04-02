@@ -1,38 +1,14 @@
 # com.openjiuwen.core.retrieval.common.SearchResult
 
-## class SearchResult
+## 类 SearchResult
 
 ```java
 public class SearchResult
 ```
 
-Raw search result.
+搜索层原始结果模型，保存结果标识、文本、分数与元数据。
 
-## Fields
+## 说明
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `String` | id. |
-| `text` | `String` | text. |
-| `score` | `double` | score. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public SearchResult()` | Create a new `SearchResult` instance. |
-| `public SearchResult(String id, String text, double score)` | Create a new `SearchResult` instance. |
-| `public SearchResult(String id, String text, double score, Map<String, Object> metadata)` | Create a new `SearchResult` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public void setId(String id)` | Update the id. |
-| `public void setText(String text)` | Update the text. |
-| `public void setMetadata(Map<String, Object> metadata)` | Update the metadata. |
-
-## Notes
-
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
-- Related tests: `InMemoryVectorStoreTest.java`, `MilvusVectorStoreTest.java`, `PGVectorStoreTest.java`, `RetrievalCoreTest.java`, `RetrieverDefaultMethodTest.java`.
+- `id` 不能为空白，`text` 不能为空。
+- `FusionUtils` 可直接对 `SearchResult` 列表执行 RRF 或加权融合。

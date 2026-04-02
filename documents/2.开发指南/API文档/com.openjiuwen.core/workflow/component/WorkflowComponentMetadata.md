@@ -1,21 +1,9 @@
 # com.openjiuwen.core.workflow.component.WorkflowComponentMetadata
 
-## class WorkflowComponentMetadata
+## 类 WorkflowComponentMetadata
 
 ```java
 public class WorkflowComponentMetadata
 ```
 
-Public workflow component metadata model.
-
-## Fields
-
-| Signature | Description |
-| --- | --- |
-| `private String nodeId` | Node id. |
-| `private String nodeType` | Node type. |
-| `private String nodeName` | Node name. |
-
-## Notes
-
-- This type uses Lombok-generated members; the page lists source-defined fields and explicit methods only.
+`WorkflowComponentMetadata` 保存节点元信息，包括 `nodeId`、`nodeType` 和 `nodeName`。

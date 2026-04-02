@@ -1,28 +1,15 @@
 # com.openjiuwen.core.retrieval.common.LoggingCallback
 
-## class LoggingCallback
+## 类 LoggingCallback
 
 ```java
 public class LoggingCallback extends BaseCallback
 ```
 
-Simple SLF4J-backed callback for batch progress.
+基于 SLF4J 的批处理进度日志回调。
 
-## Fields
+## 说明
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `total` | `final int` | total. |
-| `desc` | `final String` | desc. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `public LoggingCallback(int total, String desc)` | Create a new `LoggingCallback` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `public void onBatch(int startIdx, int endIdx, List<String> batch)` | Execute `onBatch`. |
+- 构造时接收总量与日志描述。
+- `desc` 为空白时会回退到默认值 `"Indexing"`。
+- `onBatch(...)` 会输出当前进度日志，并继承父类的调用计数逻辑。

@@ -6,7 +6,9 @@
 public class QuestionerInteractState extends QuestionerState
 ```
 
-Questioner USER_INTERACT state. fixed to `ExecutionStatus#USER_INTERACT`. Can only transition to END.
+Questioner 状态机的用户交互态。
+
+该状态表示组件已经向用户提出追问并等待下一轮回复；此时状态机会保留已抽取字段和当前问题文本，直至收到结束事件。
 
 ## Constructors
 

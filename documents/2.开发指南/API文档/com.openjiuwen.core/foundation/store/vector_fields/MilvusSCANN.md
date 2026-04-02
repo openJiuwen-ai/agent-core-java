@@ -6,28 +6,29 @@
 public class MilvusSCANN extends MilvusVectorField
 ```
 
-SCANN (Scalable Nearest Neighbors) index configuration for Milvus.
+Milvus SCANN 索引配置对象。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `nlist` | `int` | `128` | Nlist. |
-| `nprobe` | `int` | `8` | Nprobe. |
-| `withRawData` | `boolean` | `true` | With raw data. |
-| `reorderK` | `Integer` | `-` | Reorder k. |
+| `vectorField` | `String` | `"embedding"` | 向量字段名。 |
+| `nlist` | `int` | `128` | 聚类数。 |
+| `nprobe` | `int` | `8` | 搜索探测数。 |
+| `withRawData` | `boolean` | `true` | 是否保留原始数据。 |
+| `reorderK` | `Integer` | `null` | 搜索阶段重排数量。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getIndexType()` | Return the index type. |
-| `public int getNlist()` | Return the nlist. |
-| `public void setNlist(int nlist)` | Set the nlist. |
-| `public int getNprobe()` | Return the nprobe. |
-| `public void setNprobe(int nprobe)` | Set the nprobe. |
-| `public boolean isWithRawData()` | Return whether the with raw data is enabled. |
-| `public void setWithRawData(boolean withRawData)` | Set the with raw data. |
-| `public Integer getReorderK()` | Return the reorder k. |
-| `public void setReorderK(Integer reorderK)` | Set the reorder k. |
-| `public Map<String, Object> toDict(String stage)` | Execute `toDict`. |
+| `public String getIndexType()` | 返回索引类型 `scann`。 |
+| `public int getNlist()` | 返回 `nlist`。 |
+| `public void setNlist(int nlist)` | 设置 `nlist`。 |
+| `public int getNprobe()` | 返回 `nprobe`。 |
+| `public void setNprobe(int nprobe)` | 设置 `nprobe`。 |
+| `public boolean isWithRawData()` | 返回是否保留原始数据。 |
+| `public void setWithRawData(boolean withRawData)` | 设置是否保留原始数据。 |
+| `public Integer getReorderK()` | 返回重排数量。 |
+| `public void setReorderK(Integer reorderK)` | 设置重排数量。 |
+| `public Map<String, Object> toDict(String stage)` | 按阶段导出参数。 |

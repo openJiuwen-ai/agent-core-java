@@ -1,33 +1,33 @@
 # com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation
 
-## class AddScalarFieldOperation
+## 类 AddScalarFieldOperation
 
 ```java
-public class AddScalarFieldOperation extends BaseOperation
+public class AddScalarFieldOperation
 ```
 
-Add a scalar field to a vector data type.
+`AddScalarFieldOperation` 表示为向量数据类型新增一个标量字段。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `dataType` | `String` | data type. |
-| `fieldName` | `String` | field name. |
-| `fieldType` | `String` | field type. |
-| `defaultValue` | `Object` | default value. |
+| `dataType` | `String` | 目标向量数据类型。 |
+| `fieldName` | `String` | 新增字段名。 |
+| `fieldType` | `String` | 新增字段的数据类型。 |
+| `defaultValue` | `Object` | 字段默认值；可为 `null`。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public AddScalarFieldOperation(OperationMetadata metadata, String dataType, String fieldName, String fieldType, Object defaultValue)` | Create a new `AddScalarFieldOperation` instance. |
+| `public AddScalarFieldOperation(OperationMetadata metadata, String dataType, String fieldName, String fieldType, Object defaultValue)` | 创建一条新增标量字段操作。 |
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getDataType()` | Execute `getDataType`. |
-| `public String getFieldName()` | Execute `getFieldName`. |
-| `public String getFieldType()` | Execute `getFieldType`. |
-| `public Object getDefaultValue()` | Execute `getDefaultValue`. |
+| `public String getDataType()` | 返回目标数据类型。 |
+| `public String getFieldName()` | 返回字段名。 |
+| `public String getFieldType()` | 返回字段类型。 |
+| `public Object getDefaultValue()` | 返回默认值对象。 |

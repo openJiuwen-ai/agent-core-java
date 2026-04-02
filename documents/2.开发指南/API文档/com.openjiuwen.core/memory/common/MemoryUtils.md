@@ -1,29 +1,23 @@
 # com.openjiuwen.core.memory.common.MemoryUtils
 
-## class MemoryUtils
+## 类 MemoryUtils
 
 ```java
 public final class MemoryUtils
 ```
 
-Utility methods for memory module.
+`MemoryUtils` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private MemoryUtils()` | Create a new `MemoryUtils` instance. |
+| `public static String generateIdxName(String userId, String scopeId, String memType)` | 执行 `generateIdxName`。 |
+| `public static String parseMemTypeFromIdxName(String idxName)` | 执行 `parseMemTypeFromIdxName`。 |
+| `public static HitParseResult parseMemoryHitInfos(List<Map.Entry<String, Double>> hits)` | 执行 `parseMemoryHitInfos`。 |
 
-## Methods
+## 嵌套公开类型
 
-| Signature | Description |
-| --- | --- |
-| `public static String generateIdxName(String userId, String scopeId, String memType)` | Generate vector index name from user id, scope id and memory type. |
-| `public static String parseMemTypeFromIdxName(String idxName)` | Parse memory type from vector index name. |
-| `public static HitParseResult parseMemoryHitInfos(List<Map.Entry<String, Double>> hits)` | Parse memory hit infos from search results. |
-
-## Nested Public Types
-
-| Type | Signature | Description |
+| 类型 | 签名 | 说明 |
 | --- | --- | --- |
-| `HitParseResult` | `public static class HitParseResult` | Result of parsing memory hit infos. |
+| `HitParseResult` | `public static class HitParseResult` | `HitParseResult` 是本页声明的嵌套公开类型。 |

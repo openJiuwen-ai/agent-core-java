@@ -6,7 +6,9 @@
 public class LLMExecutableState
 ```
 
-State maintained by LLMExecutable for caching stream results.
+`LLMExecutable` 在流式调用时使用的缓存状态对象。
+
+它会持续累积分片内容，并在需要时把累计文本重新格式化为最终输出结果；`clear()` 会同时清空缓冲区与暂存结果。
 
 ## Methods
 

@@ -6,24 +6,25 @@
 public interface McpClient
 ```
 
-Abstract MCP client interface for communicating with MCP servers. Implementations (SSE, Stdio, etc.) handle the specific transport protocols.
+MCP 客户端统一接口，定义连接、断开、列出工具、调用工具与查询工具信息的最小能力集。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `boolean connect(int retryTimes, float timeout) throws Exception` | Connect to the MCP server. |
-| `default boolean connect() throws Exception` | Connect with defaults (1 retry, no timeout). |
-| `boolean disconnect(float timeout) throws Exception` | Disconnect from the MCP server. |
-| `default boolean disconnect() throws Exception` | Disconnect with no timeout. |
-| `List<Object> listTools(float timeout) throws Exception` | List all available tools on the MCP server. |
-| `default List<Object> listTools() throws Exception` | List tools with no timeout. |
-| `Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception` | Call a tool on the MCP server. |
-| `default Object callTool(String toolName, Map<String, Object> arguments) throws Exception` | Call a tool with no timeout. |
-| `Optional<Object> getToolInfo(String toolName, float timeout) throws Exception` | Get information about a specific tool. |
-| `default Optional<Object> getToolInfo(String toolName) throws Exception` | Get tool info with no timeout. |
-| `String getServerPath()` | Get the server path this client is connected to. |
+| `boolean connect(int retryTimes, float timeout) throws Exception` | 建立到 MCP 服务端的连接。 |
+| `default boolean connect() throws Exception` | 使用默认参数连接，重试 1 次且不设置超时。 |
+| `boolean disconnect(float timeout) throws Exception` | 断开连接。 |
+| `default boolean disconnect() throws Exception` | 使用无超时参数断开连接。 |
+| `List<Object> listTools(float timeout) throws Exception` | 列出服务端暴露的工具元数据。 |
+| `default List<Object> listTools() throws Exception` | 使用无超时参数列出工具。 |
+| `Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception` | 按工具名发起调用。 |
+| `default Object callTool(String toolName, Map<String, Object> arguments) throws Exception` | 使用无超时参数调用工具。 |
+| `Optional<Object> getToolInfo(String toolName, float timeout) throws Exception` | 查询单个工具信息。 |
+| `default Optional<Object> getToolInfo(String toolName) throws Exception` | 使用无超时参数查询工具信息。 |
+| `String getServerPath()` | 返回客户端对应的服务端路径。 |
 
-## Related Tests
+## 使用说明
 
-- `McpToolTest`
+- 默认重载全部基于 `McpServerConfig.NO_TIMEOUT`。
+- 各实现类可以选择 HTTP、stdio 或本地 OpenAPI 文件等不同传输/数据源形式。

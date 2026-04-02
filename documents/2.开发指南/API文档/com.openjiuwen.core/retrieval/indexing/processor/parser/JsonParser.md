@@ -1,20 +1,19 @@
 # com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser
 
-## class JsonParser
+## 类 JsonParser
 
 ```java
 public class JsonParser extends Parser
 ```
 
-JSON file parser that returns formatted JSON text when possible.
+`JsonParser` 读取 JSON 文件，并在可能的情况下用 Jackson 重新格式化为易读的缩进文本。
 
-## Methods
+## 公开方法
 
-| Signature | Description |
-| --- | --- |
-| `public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options)` | Execute `parse`. |
-| `public boolean supports(String doc)` | Execute `supports`. |
+- `parse(...)`：读取 UTF-8 文件内容；读取失败时返回空列表。
+- `supports(String doc)`：仅支持 `.json`。
 
-## Notes
+## 格式化规则
 
-- Related tests: `JsonParserTest.java`.
+- JSON 合法时，返回 pretty print 文本。
+- JSON 非法时，退回原始字符串，不额外抛错。

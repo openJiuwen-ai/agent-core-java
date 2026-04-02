@@ -6,15 +6,17 @@
 public enum MessageRole
 ```
 
-Role of a message in the LLM conversation.
+LLM 对话消息角色枚举。
+
+当前实现只定义 `USER`、`ASSISTANT` 和 `FUNCTION` 三种角色，供模板构造与消息序列化逻辑统一使用。
 
 ## Enum Constants
 
 | Value | Description |
 | --- | --- |
-| `USER` | U s e r. |
-| `ASSISTANT` | A s s i s t a n t. |
-| `FUNCTION` | F u n c t i o n. |
+| `USER` | 用户消息。 |
+| `ASSISTANT` | 助手消息。 |
+| `FUNCTION` | 函数调用相关消息。 |
 
 ## Methods
 

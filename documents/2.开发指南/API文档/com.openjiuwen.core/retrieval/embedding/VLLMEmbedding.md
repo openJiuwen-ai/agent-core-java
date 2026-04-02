@@ -1,31 +1,26 @@
 # com.openjiuwen.core.retrieval.embedding.VLLMEmbedding
 
-## class VLLMEmbedding
+## 类 VLLMEmbedding
 
 ```java
 public class VLLMEmbedding extends OpenAIEmbedding
 ```
 
-vLLM-compatible multimodal embedding client.
+vLLM 兼容多模态 embedding 客户端，通过 `extra_body.messages` 传递 system/user 消息。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public VLLMEmbedding(EmbeddingConfig config)` | Create a new `VLLMEmbedding` instance. |
-| `public VLLMEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders, int maxBatchSize, int maxConcurrent, Integer dimension, HttpClient httpClient)` | Create a new `VLLMEmbedding` instance. |
+| `public static Map<String, Object> parseMultimodalInput(MultimodalDocument document, Map<String, Object> options)` | 将多模态文档转换为 vLLM 请求参数。 |
+| `public CompletableFuture<List<Float>> embedMultimodal(MultimodalDocument document)` | 异步生成多模态向量。 |
+| `public CompletableFuture<List<Float>> embedMultimodal(Object input, Map<String, Object> options)` | 异步处理任意输入对象。 |
+| `public CompletableFuture<List<Float>> embedMultimodal(MultimodalDocument document, Map<String, Object> options)` | 异步处理带选项的多模态文档。 |
+| `public List<Float> embedMultimodalSync(MultimodalDocument document)` | 同步生成多模态向量。 |
+| `public List<Float> embedMultimodalSync(Object input, Map<String, Object> options)` | 同步处理任意输入对象。 |
+| `public List<Float> embedMultimodalSync(MultimodalDocument document, Map<String, Object> options)` | 同步处理带选项的多模态文档。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static Map<String, Object> parseMultimodalInput(MultimodalDocument document, Map<String, Object> options)` | Parse multimodal input. |
-| `public List<Float> embedMultimodal(Object input, Map<String, Object> options)` | Generate embeddings for multimodal. |
-| `Map<String, Object> kwargs = parseMultimodalInput(document, options)` | Parse multimodal input. |
-| `public List<Float> embedMultimodalSync(MultimodalDocument document)` | Generate embeddings for multimodal sync. |
-| `public List<Float> embedMultimodalSync(Object input, Map<String, Object> options)` | Generate embeddings for multimodal sync. |
-| `Map<String, Object> kwargs = parseMultimodalInput(document, options == null ? new LinkedHashMap<>() : options)` | Parse multimodal input. |
-
-## Notes
-
-- Related tests: `VLLMEmbeddingTest.java`.
+- 若 `options` 中未显式提供 `instruction` 键，会默认插入 `"Represent the user's input."`。
+- 测试确认：显式传入 `instruction = null` 时不会写入 system message。

@@ -1,23 +1,16 @@
 # com.openjiuwen.core.workflow.component.TemplateUtils
 
-## class TemplateUtils
+## 类 TemplateUtils
 
 ```java
-public class TemplateUtils
+public final class TemplateUtils
 ```
 
-Utility class for template operations: rendering and splitting.
+`TemplateUtils` 提供模板拆分与渲染辅助方法。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private TemplateUtils()` | Create a new `TemplateUtils` instance. |
-
-## Methods
-
-| Signature | Description |
-| --- | --- |
-| `private static final Pattern TEMPLATE_VAR_PATTERN = Pattern.compile()` | Compile the workflow graph into an executable graph. |
-| `public static String renderTemplate(String template, java.util.Map<String, Object> inputs)` | Render a template string with `{{variable`}} substitution. Uses safe substitution – missing keys are replaced with empty string. |
-| `public static List<String> renderTemplateToList(String template)` | Split template into a list of segments (static text and `{{variable`}} parts). Empty segments are filtered out. |
+| `public static String renderTemplate(String template, Map<String, Object> inputs)` | 以 `{{var}}` 语法渲染模板。 |
+| `public static List<String> renderTemplateToList(String template)` | 把模板拆成文本段与变量段列表。 |

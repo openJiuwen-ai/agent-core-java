@@ -1,21 +1,21 @@
 # com.openjiuwen.core.memory.MemInfo
 
-## class MemInfo
+## 类 MemInfo
 
 ```java
 public class MemInfo
 ```
 
-Memory information containing id, content, and type.
+该类表示单条记忆的基础信息。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `memId` | `.Default private String` | mem id. |
-| `content` | `.Default private String` | content. |
-| `type` | `.Default private MemoryType` | type. |
+| `memId` | `.Default private String` | 字段 `memId`。 |
+| `content` | `.Default private String` | 字段 `content`。 |
+| `type` | `.Default private MemoryType` | 字段 `type`。 |
 
-## Notes
+## 使用说明
 
-- Lombok annotations on this type generate boilerplate accessors/builders that are not listed individually.
+- 该类型通过 Lombok 生成构建器与访问器。

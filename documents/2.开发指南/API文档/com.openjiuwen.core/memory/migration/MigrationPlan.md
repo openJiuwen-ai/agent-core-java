@@ -1,35 +1,30 @@
 # com.openjiuwen.core.memory.migration.MigrationPlan
 
-## class MigrationPlan
+## 类 MigrationPlan
 
 ```java
 public final class MigrationPlan
 ```
 
-Global migration registries for SQL, vector, and KV operations.
+`MigrationPlan` 维护记忆迁移使用的三套全局注册表，分别对应 SQL、向量库与 KV 存储。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `SQL_REGISTRY` | `OperationRegistry` | sql registry. |
-| `VECTOR_REGISTRY` | `OperationRegistry` | vector registry. |
-| `KV_REGISTRY` | `OperationRegistry` | kv registry. |
+| `SQL_REGISTRY` | `OperationRegistry` | SQL 存储的全局迁移注册表。 |
+| `VECTOR_REGISTRY` | `OperationRegistry` | 向量存储的全局迁移注册表。 |
+| `KV_REGISTRY` | `OperationRegistry` | KV 存储的全局迁移注册表。 |
 
-## Constructors
+## 公开方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private MigrationPlan() {}` | Create a new `MigrationPlan` instance. |
+| `public static OperationRegistry getSqlRegistry()` | 返回 SQL 迁移注册表。 |
+| `public static OperationRegistry getVectorRegistry()` | 返回向量存储迁移注册表。 |
+| `public static OperationRegistry getKvRegistry()` | 返回 KV 迁移注册表。 |
 
-## Methods
+## 使用说明
 
-| Signature | Description |
-| --- | --- |
-| `public static OperationRegistry getSqlRegistry()` | Execute `getSqlRegistry`. |
-| `public static OperationRegistry getVectorRegistry()` | Execute `getVectorRegistry`. |
-| `public static OperationRegistry getKvRegistry()` | Execute `getKvRegistry`. |
-
-## Notes
-
-- Related tests: `MigrationPlanTest.java`
+- 该类只有静态访问入口，不提供公开构造方法。
+- `MigrationPlanTest` 验证了三个注册表可被清空、恢复，并能按版本区间查询操作。

@@ -1,23 +1,18 @@
 # processor
 
-`com.openjiuwen.core.retrieval.indexing.processor` contains the document-processing pipeline entry point plus child packages for chunking, extraction, parsing, and splitting.
+`com.openjiuwen.core.retrieval.indexing.processor` 提供 indexing 处理链中的基础处理器抽象，并拆分出 chunker、extractor、parser、splitter 四类子能力。
 
-## Modules
+## 类型
 
-| Module | Description |
-| --- | --- |
-| [`chunker`](./processor/chunker.README.md) | contains preprocessors and chunking strategies that transform raw text into retrieval-ready chunks. |
-| [`extractor`](./processor/extractor.README.md) | contains extractors that derive triples or other structured data during indexing. |
-| [`parser`](./processor/parser.README.md) | contains parsers for files, web pages, spreadsheets, images, PDFs, and other raw content sources. |
-| [`splitter`](./processor/splitter.README.md) | contains sentence-level and rule-based text splitters used by chunkers. |
-
-## Types
-
-| Type | Kind | Description |
+| 类型 | 类别 | 说明 |
 | --- | --- | --- |
-| [`Processor`](./processor/Processor.md) | `interface` | Generic retrieval processor abstraction. |
+| [`Processor`](./processor/Processor.md) | `interface` | 通用 `process(input, options)` 处理器接口。 |
 
-## Notes
+## 子包
 
-- This package page links the documented child packages in the current retrieval subtree.
-- The current page also links the 1 direct public type page(s) defined in this package.
+| 子包 | 说明 |
+| --- | --- |
+| [`chunker`](./processor/chunker.README.md) | 对 `Document` 做预处理并产出 `TextChunk`。 |
+| [`extractor`](./processor/extractor.README.md) | 从 `TextChunk` 中抽取 `Triple`。 |
+| [`parser`](./processor/parser.README.md) | 从文件或 URL 解析出 `Document`。 |
+| [`splitter`](./processor/splitter.README.md) | 以句子或窗口为单位切分 `Document`。 |
