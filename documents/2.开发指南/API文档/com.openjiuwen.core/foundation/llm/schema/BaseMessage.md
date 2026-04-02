@@ -1,34 +1,34 @@
 # com.openjiuwen.core.foundation.llm.schema.BaseMessage
 
-## class BaseMessage
+## 类 BaseMessage
 
 ```java
 public class BaseMessage
 ```
 
-Base message class for LLM conversation messages.
+定义对话消息的公共字段与基础能力。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `role` | `String` | Message role (system, user, assistant, tool). |
-| `content` | `Object` | Message content — either a plain string or a list of content parts. |
-| `name` | `String` | Optional name identifier for the message sender. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public BaseMessage(String role, String content)` | Create a message with role and string content. |
+| `private String role` | 保存 `role` 相关状态或配置。 |
+| `private Object content` | 保存文本或结构化内容。 |
+| `private String name` | 保存 `name` 相关状态或配置。 |
 
-## Methods
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getContentAsString()` | Get content as string. |
-| `public List<Object> getContentAsList()` | Get content as list (for multimodal messages). |
+| `public BaseMessage(String role, String content) {` | 构造 `BaseMessage` 实例。 |
 
-## Notes
+## 方法
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+| 签名 | 说明 |
+| --- | --- |
+| `public String getContentAsString() {` | 返回 `contentAsString` 属性。 |
+| `public List<Object> getContentAsList() {` | 返回 `contentAsList` 属性。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

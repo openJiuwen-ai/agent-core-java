@@ -1,25 +1,26 @@
 # com.openjiuwen.core.foundation.llm.schema.ModelConfig
 
-## record ModelConfig
+## 记录 ModelConfig
 
 ```java
-public record ModelConfig(
-        String modelProvider,
-        BaseModelInfo modelInfo
-)
+public record ModelConfig( String modelProvider, BaseModelInfo modelInfo )
 ```
 
-Model configuration combining provider info and model info.
+组合 provider 与 model 信息的轻量 record 配置对象。
 
-## Record Components
+## 记录组件
 
-| Component | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `String modelProvider` | Record component declared on `ModelConfig`. |
-| `BaseModelInfo modelInfo` | Record component declared on `ModelConfig`. |
+| `String modelProvider` | 保存 `modelProvider` 相关状态或配置。 |
+| `BaseModelInfo modelInfo` | 保存 `modelInfo` 相关状态或配置。 |
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public ModelConfig(String modelProvider)` | Create a new `ModelConfig` instance. |
+| `public ModelConfig(String modelProvider) {` | 构造 `ModelConfig` 实例。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

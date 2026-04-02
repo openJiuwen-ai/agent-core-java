@@ -6,24 +6,24 @@
 public class BaseCard
 ```
 
-`BaseCard` is the root card model used by card-like framework entities.
+`BaseCard` 是卡片类对象的基础父类，提供标识、名称、描述及浅复制能力。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `id` | `String` | random UUID hex | Unique identifier generated from a UUID with hyphens removed. |
-| `name` | `String` | `""` | Human-readable card name that also acts as the unique identifier within a namespace. |
-| `description` | `String` | `""` | Free-form description of the card's purpose or usage. |
+| `id` | `String` | 随机 UUID 去掉连字符后的字符串 | 唯一标识。 |
+| `name` | `String` | `""` | 卡片名称，也可作为命名空间中的唯一标识。 |
+| `description` | `String` | `""` | 卡片用途与功能说明。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public Object toolInfo()` | Extension hook for subclasses that want to expose tool-specific metadata; the base implementation returns `null`. |
-| `public BaseCard copy()` | Return a shallow copy that preserves `id`, `name`, and `description`. |
-| `public String toString()` | Render the card as `id=<id>,name=<name>`. |
+| `public Object toolInfo()` | 扩展点方法，默认返回 `null`，由子类按需覆写。 |
+| `public BaseCard copy()` | 创建当前对象的浅复制副本，仅复制 `id`、`name` 与 `description`。 |
+| `public String toString()` | 返回 `id=<id>,name=<name>` 形式的字符串。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard getters, setters, `equals`, `hashCode`, builder API, and the no-args / all-args constructors.
+- `@Data`、`@SuperBuilder`、`@NoArgsConstructor` 与 `@AllArgsConstructor` 会生成访问器、构建器和构造器。

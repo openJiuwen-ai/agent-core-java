@@ -1,37 +1,30 @@
 # com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient
 
-## class BaseModelClient
+## 类 BaseModelClient
 
 ```java
 public abstract class BaseModelClient
 ```
 
-LLM Model Client abstract base class.
+提供 provider 客户端的公共调用骨架，统一文本、流式与多模态生成接口。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `modelConfig` | `ModelRequestConfig` | Stored `modelConfig` value. |
-| `modelClientConfig` | `ModelClientConfig` | Stored `modelClientConfig` value. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `protected BaseModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig)` | Initialize the model client. |
+| `protected final ModelRequestConfig modelConfig` | 保存 `modelConfig` 配置。 |
+| `protected final ModelClientConfig modelClientConfig` | 保存 `modelClientConfig` 配置。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `protected String getClientName()` | Get client name for error messages. |
-| `protected void validateConfig()` | Validate configuration parameters. |
-| `protected List<Map<String, Object>> convertMessagesToDict(Object messages)` | Convert messages to a list of dicts in OpenAI format. |
-| `protected List<Map<String, Object>> convertToolsToDict(Object tools)` | Convert tools to OpenAI format. |
-| `protected Map<String, Object> buildRequestParams(Object messages, Object tools, Double temperature, Double topP, String model, String stop, Integer maxTokens, boolean stream, Map<String, Object> extraKwargs)` | Build OpenAI-compatible request parameters. |
-| `public abstract AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | Invoke the LLM (synchronous, blocking via virtual thread). |
-| `public abstract Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | Stream invoke the LLM. |
-| `public abstract ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception` | Generate an image from a text prompt. |
-| `public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception` | Generate speech audio from text. |
-| `public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception` | Generate video from a text prompt. |
+| `public abstract AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | 发起同步模型调用。 |
+| `public abstract Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | 发起流式模型调用。 |
+| `public abstract ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception` | 发起图像生成请求。 |
+| `public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception` | 发起语音生成请求。 |
+| `public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception` | 发起视频生成请求。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

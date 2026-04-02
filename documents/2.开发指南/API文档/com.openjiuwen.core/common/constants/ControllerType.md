@@ -6,23 +6,23 @@
 public enum ControllerType
 ```
 
-`ControllerType` normalizes the controller identifiers used by orchestration configuration and JSON payloads.
+`ControllerType` 定义控制器类型标识。
 
-## Enum Values
+## 枚举值
 
-| Value | Serialized Value | Description |
+| 枚举值 | 字符串值 | 说明 |
 | --- | --- | --- |
-| `REACT_CONTROLLER` | `"react"` | ReAct-style controller. |
-| `WORKFLOW_CONTROLLER` | `"workflow"` | Workflow-based controller. |
-| `UNDEFINED` | `"undefined"` | Fallback constant returned when the input token is unknown. |
+| `REACT_CONTROLLER` | `"react"` | ReAct 控制器。 |
+| `WORKFLOW_CONTROLLER` | `"workflow"` | 工作流控制器。 |
+| `UNDEFINED` | `"undefined"` | 未知输入的回退值。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getValue()` | Return the serialized controller token used for JSON output. |
-| `public static ControllerType fromValue(String value)` | Resolve an exact string token to the matching enum constant, or return `UNDEFINED` when there is no match. |
+| `public String getValue()` | 返回当前枚举的字符串值。 |
+| `public static ControllerType fromValue(String value)` | 解析字符串为枚举；无匹配项时返回 `UNDEFINED`。 |
 
-## Notes
+## 说明
 
-- `getValue()` is annotated with `@JsonValue`, and `fromValue(String)` is annotated with `@JsonCreator`.
+- `getValue()` 带有 `@JsonValue`，`fromValue(String)` 带有 `@JsonCreator`，便于 JSON 序列化与反序列化。

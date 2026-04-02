@@ -1,34 +1,36 @@
 # com.openjiuwen.core.foundation.llm.model_clients.OpenAiCompatibleModelClient
 
-## class OpenAiCompatibleModelClient
+## 类 OpenAiCompatibleModelClient
 
 ```java
 public class OpenAiCompatibleModelClient extends BaseModelClient
 ```
 
-Basic OpenAI-compatible HTTP client used by the built-in providers.
+复用 OpenAI Compatible 接口的通用 HTTP 调用逻辑与响应解析流程。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `MAPPER` | `ObjectMapper` | Stored `MAPPER` value. |
-| `httpClient` | `HttpClient` | Stored `httpClient` value. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig)` | Create a new `OpenAiCompatibleModelClient` instance. |
+| `private final HttpClient httpClient` | 保存 `httpClient` 相关状态或配置。 |
+| `private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk> {` | 保存 `AssistantMessageChunk` 相关状态或配置。 |
 
-## Methods
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `protected String getClientName()` | Return the `clientName` value. |
-| `protected void validateConfig()` | Execute `validateConfig`. |
-| `public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | Execute a non-streaming LLM request. |
-| `public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception` | Execute a streaming LLM request. |
-| `public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception` | Generate an image response. |
-| `public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception` | Generate a speech response. |
-| `public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception` | Generate a video response. |
+| `public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {` | 构造 `OpenAiCompatibleModelClient` 实例。 |
+
+## 方法
+
+| 签名 | 说明 |
+| --- | --- |
+| `public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception {` | 发起同步模型调用。 |
+| `public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP, String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs) throws Exception {` | 发起流式模型调用。 |
+| `public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception {` | 发起图像生成请求。 |
+| `public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception {` | 发起语音生成请求。 |
+| `public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {` | 发起视频生成请求。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

@@ -6,27 +6,32 @@
 public final class UserConfig
 ```
 
-`UserConfig` loads and caches the security-related runtime properties used by the common security helpers.
+`UserConfig` 负责读取敏感路径配置，并以单例形式缓存结果。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `DEFAULT_SENSITIVE_PATHS` | `List<String>` | built-in list | Default Unix and Windows sensitive prefixes used when no configuration file supplies `settings.sensitive_paths`. |
+| `DEFAULT_SENSITIVE_PATHS` | `List<String>` | 源码常量 | 默认敏感路径集合，包含常见 Linux 与 Windows 系统路径。 |
+| `instance` | `UserConfig` | `null` | 单例实例。 |
+| `configPath` | `Path` | `null` | 初始化前可设置的配置文件路径。 |
+| `sensitive` | `boolean` | `true` 或配置值 | 是否启用敏感路径检查。 |
+| `sensitivePaths` | `List<String>` | 延迟初始化 | 实际生效的敏感路径列表。 |
+| `properties` | `Properties` | 空配置 | 加载自外部配置文件的属性集合。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public static void setConfigPath(Path path)` | Register the properties / ini file that should be loaded by the singleton before first access. |
-| `public static UserConfig getConfig()` | Return the shared singleton instance, lazily loading properties from the configured file path. |
-| `public static boolean isSensitive()` | Return whether sensitive-mode logging / masking is enabled, with `IS_SENSITIVE=false` forcing a `false` result. |
-| `public static List<String> getSensitivePaths()` | Return the resolved sensitive-path list from the singleton instance. |
-| `public static void setSensitive(boolean isSensitive)` | Override the in-memory `sensitive` flag after the singleton has been created. |
-| `public List<String> getSensitivePathsList()` | Lazily parse `settings.sensitive_paths` as a comma-separated list, or fall back to `DEFAULT_SENSITIVE_PATHS`. |
-| `public static synchronized void reset()` | Clear the singleton and configured path, primarily for tests. |
+| `public static void setConfigPath(Path path)` | 在首次初始化前设置配置文件路径；若单例已创建则抛出 `IllegalStateException`。 |
+| `public static UserConfig getConfig()` | 返回单例配置实例。 |
+| `public static boolean isSensitive()` | 判断是否启用敏感检查；当环境变量 `IS_SENSITIVE=false` 时优先返回 `false`。 |
+| `public static List<String> getSensitivePaths()` | 返回当前配置解析出的敏感路径列表。 |
+| `public static void setSensitive(boolean isSensitive)` | 运行时修改敏感检查开关。 |
+| `public List<String> getSensitivePathsList()` | 延迟解析并返回敏感路径列表；未配置时回退到 `DEFAULT_SENSITIVE_PATHS`。 |
+| `public static synchronized void reset()` | 重置单例与配置路径，主要用于测试。 |
 
-## Notes
+## 说明
 
-- `setConfigPath` must be called before `getConfig()`; otherwise later attempts to change the config path fail with `IllegalStateException`.
-- The file-backed `settings.is_sensitive` property defaults to `true` when it is missing.
+- 配置文件存在且可读取时，会解析 `settings.is_sensitive` 与 `settings.sensitive_paths`。
+- `settings.sensitive_paths` 采用逗号分隔；空值会被过滤。

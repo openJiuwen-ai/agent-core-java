@@ -1,33 +1,32 @@
 # com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig
 
-## class ModelRequestConfig
+## 类 ModelRequestConfig
 
 ```java
 public class ModelRequestConfig
 ```
 
-Model request configuration (per-request parameters).
+描述 modelName、temperature、topP、maxTokens 等请求参数。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `modelName` | `String` | Stored `modelName` value. |
-| `temperature` | `Double` | Stored `temperature` value. |
-| `topP` | `Double` | Stored `topP` value. |
-| `maxTokens` | `Integer` | Stored `maxTokens` value. |
-| `stop` | `String` | Stored `stop` value. |
-| `user` | `String` | Stored `user` value. |
-| `seed` | `Integer` | Stored `seed` value. |
-| `extraFields` | `Map<String, Object>` | Extra fields that are not part of the standard config. |
-
-## Methods
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public Map<String, Object> getExtraFields()` | Return the `extraFields` value. |
-| `public void setExtraField(String key, Object value)` | Set the `extraField` value. |
+| `private String modelName =` | 保存 `modelName` 相关状态或配置。 |
+| `private Double temperature = 0.95` | 保存 `temperature` 相关状态或配置。 |
+| `private Double topP = 0.1` | 保存 `topP` 相关状态或配置。 |
+| `private Integer maxTokens` | 保存 `maxTokens` 相关状态或配置。 |
+| `private String stop` | 保存 `stop` 相关状态或配置。 |
+| `private String user` | 保存 `user` 相关状态或配置。 |
+| `private Integer seed` | 保存 `seed` 相关状态或配置。 |
 
-## Notes
+## 方法
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+| 签名 | 说明 |
+| --- | --- |
+| `public Map<String, Object> getExtraFields() {` | 返回 `extraFields` 属性。 |
+| `public void setExtraField(String key, Object value) {` | 设置 `extraField` 属性。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

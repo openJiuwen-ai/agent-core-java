@@ -1,26 +1,26 @@
 # com.openjiuwen.core.foundation.llm.schema.SystemMessage
 
-## class SystemMessage
+## 类 SystemMessage
 
 ```java
 public class SystemMessage extends BaseMessage
 ```
 
-Java API page for `SystemMessage`.
+表示 system 角色的提示消息。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public SystemMessage(String content)` | Create a new `SystemMessage` instance. |
-| `public SystemMessage(String content, String name)` | Create a new `SystemMessage` instance. |
+| `public SystemMessage(String content) {` | 构造 `SystemMessage` 实例。 |
+| `public SystemMessage(String content, String name) {` | 构造 `SystemMessage` 实例。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getRole()` | Return the `role` value. |
+| `public String getRole() {` | 返回 `role` 属性。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

@@ -1,19 +1,19 @@
 # com.openjiuwen.core.foundation.llm.schema.GenerationResponse
 
-## class GenerationResponse
+## 类 GenerationResponse
 
 ```java
 public class GenerationResponse
 ```
 
-Base generation response from LLM.
+封装文本或通用生成请求的响应数据。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `model` | `String` | Model used for generation. |
+| 声明 | 说明 |
+| --- | --- |
+| `private String model` | 保存 `model` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

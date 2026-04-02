@@ -1,23 +1,23 @@
 # com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse
 
-## class VideoGenerationResponse
+## 类 VideoGenerationResponse
 
 ```java
 public class VideoGenerationResponse extends GenerationResponse
 ```
 
-Java API page for `VideoGenerationResponse`.
+封装视频生成接口的响应数据。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `videoUrl` | `String` | URL of the generated video. |
-| `videoData` | `byte[]` | Binary video data. |
-| `duration` | `Double` | Duration in seconds. |
-| `resolution` | `String` | Video resolution (e.g., "1920x1080"). |
-| `format` | `String` | Video format (mp4, avi, etc.). |
+| 声明 | 说明 |
+| --- | --- |
+| `private String videoUrl` | 保存 `videoUrl` 相关状态或配置。 |
+| `private byte[] videoData` | 保存 `videoData` 相关状态或配置。 |
+| `private Double duration` | 保存 `duration` 相关状态或配置。 |
+| `private String resolution` | 保存 `resolution` 相关状态或配置。 |
+| `private String format =` | 保存 `format` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

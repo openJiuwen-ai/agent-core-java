@@ -1,21 +1,25 @@
 # com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories
 
-## class DefaultModelClientFactories
+## 类 DefaultModelClientFactories
 
 ```java
 public final class DefaultModelClientFactories
 ```
 
-Registers the built-in OpenAI-compatible model client factories.
+集中注册内置 provider 工厂，供 `Model` 的 SPI 注册表使用。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `registered` | `volatile boolean` | Stored `registered` value. |
-
-## Methods
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public static synchronized void ensureRegistered()` | Execute `ensureRegistered`. |
+| `private static volatile boolean registered` | 保存 `registered` 相关状态或配置。 |
+
+## 方法
+
+| 签名 | 说明 |
+| --- | --- |
+| `public static synchronized void ensureRegistered() {` | 确保内置 provider 工厂已注册到注册表。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

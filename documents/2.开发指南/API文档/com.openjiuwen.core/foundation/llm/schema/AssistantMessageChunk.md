@@ -1,19 +1,19 @@
 # com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk
 
-## class AssistantMessageChunk
+## 类 AssistantMessageChunk
 
 ```java
 public class AssistantMessageChunk extends AssistantMessage
 ```
 
-Java API page for `AssistantMessageChunk`.
+表示 assistant 流式输出的消息片段。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public AssistantMessageChunk merge(AssistantMessageChunk other)` | Merge another chunk into this one, combining content and tool call fragments. |
+| `public AssistantMessageChunk merge(AssistantMessageChunk other) {` | 执行 `merge` 公开能力。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

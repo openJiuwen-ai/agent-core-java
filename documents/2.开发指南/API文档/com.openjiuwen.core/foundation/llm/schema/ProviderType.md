@@ -1,35 +1,35 @@
 # com.openjiuwen.core.foundation.llm.schema.ProviderType
 
-## enum ProviderType
+## 枚举 ProviderType
 
 ```java
 public enum ProviderType
 ```
 
-Model client provider type enumeration.
+声明内置模型 provider 类型枚举。
 
-## Enum Values
+## 字段
 
-| Value | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `OpenAI` | Enum constant declared on `ProviderType`. |
-| `OpenRouter` | Enum constant declared on `ProviderType`. |
-| `SiliconFlow` | Enum constant declared on `ProviderType`. |
-| `DashScope` | Enum constant declared on `ProviderType`. |
+| `private final String value` | 保存 `value` 相关状态或配置。 |
 
-## Fields
+## 方法
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `value` | `String` | Stored `value` value. |
-
-## Methods
-
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getValue()` | Return the `value` value. |
-| `public static ProviderType fromValue(String value)` | Look up a provider type by its string value. |
+| `public String getValue() {` | 返回 `value` 属性。 |
+| `public static ProviderType fromValue(String value) {` | 执行 `fromValue` 公开能力。 |
 
-## Notes
+## 枚举值
 
-- `ModelClientConfigTest` verifies case-insensitive provider lookup and the invalid-provider failure path.
+| 名称 | 说明 |
+| --- | --- |
+| `OpenAI` | 枚举项 `OpenAI` 。 |
+| `OpenRouter` | 枚举项 `OpenRouter` 。 |
+| `SiliconFlow` | 枚举项 `SiliconFlow` 。 |
+| `DashScope` | 枚举项 `DashScope` 。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

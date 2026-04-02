@@ -1,22 +1,22 @@
 # com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse
 
-## class AudioGenerationResponse
+## 类 AudioGenerationResponse
 
 ```java
 public class AudioGenerationResponse extends GenerationResponse
 ```
 
-Java API page for `AudioGenerationResponse`.
+封装语音生成接口的响应数据。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `audioUrl` | `String` | URL of the generated audio. |
-| `audioData` | `byte[]` | Binary audio data. |
-| `duration` | `Double` | Duration in seconds. |
-| `format` | `String` | Audio format (mp3, wav, etc.). |
+| 声明 | 说明 |
+| --- | --- |
+| `private String audioUrl` | 保存 `audioUrl` 相关状态或配置。 |
+| `private byte[] audioData` | 保存 `audioData` 相关状态或配置。 |
+| `private Double duration` | 保存 `duration` 相关状态或配置。 |
+| `private String format =` | 保存 `format` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

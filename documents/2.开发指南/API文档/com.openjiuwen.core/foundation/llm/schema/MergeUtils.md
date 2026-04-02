@@ -1,27 +1,28 @@
 # com.openjiuwen.core.foundation.llm.schema.MergeUtils
 
-## class MergeUtils
+## 类 MergeUtils
 
 ```java
 public final class MergeUtils
 ```
 
-Utility class for merging streaming message chunks and parser content.
+提供消息片段或其他可合并对象的拼接辅助逻辑。
 
-## Nested Types
+## 嵌套类型
 
-| Declaration | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public interface Mergeable<T>` | Interface for objects that support merging (Java equivalent of Python's __add__). |
+| `public interface Mergeable<T> {` | 约定片段对象的可合并能力。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public static Object mergeParserContent(Object left, Object right)` | Intelligently merge parser_content fields. |
-| `public static Map<String, Object> mergeMaps(Map<String, Object> left, Map<String, Object> right)` | Recursively merge two maps. |
-| `public static <T> T mergeObjects(T left, T right)` | Merge two same-type POJO instances field-by-field using JavaBeans introspection. |
+| `public static Object mergeParserContent(Object left, Object right) {` | 执行 `mergeParserContent` 公开能力。 |
+| `public static Map<String, Object> mergeMaps(Map<String, Object> left, Map<String, Object> right) {` | 执行 `mergeMaps` 公开能力。 |
+| `public static <T> T mergeObjects(T left, T right) {` | 执行 `mergeObjects` 公开能力。 |
 
-## Notes
+## 说明
 
-- `MergeUtilsTest` covers recursive merge behavior for strings, lists, maps, and nested objects.
+- 所有签名均以当前 Java 源码为准。
+- `MergeUtilsTest` 覆盖可合并片段与空值场景。

@@ -1,32 +1,33 @@
 # com.openjiuwen.core.foundation.llm.model_clients.DashScopeModelClient
 
-## class DashScopeModelClient
+## 类 DashScopeModelClient
 
 ```java
 public class DashScopeModelClient extends OpenAiCompatibleModelClient
 ```
 
-Alibaba Cloud DashScope Model Client.
+面向 DashScope provider 的客户端实现。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `MAPPER` | `ObjectMapper` | Stored `MAPPER` value. |
-| `DASHSCOPE_VOICES` | `List<String>` | Stored `DASHSCOPE_VOICES` value. |
-| `multiModalHttpClient` | `HttpClient` | Stored `multiModalHttpClient` value. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public DashScopeModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig)` | Create a new `DashScopeModelClient` instance. |
+| `private final HttpClient multiModalHttpClient` | 保存 `multiModalHttpClient` 相关状态或配置。 |
 
-## Methods
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `protected String getClientName()` | Return the `clientName` value. |
-| `public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception` | Generate an image response. |
-| `public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception` | Generate a speech response. |
-| `public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception` | Generate a video response. |
+| `public DashScopeModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {` | 构造 `DashScopeModelClient` 实例。 |
+
+## 方法
+
+| 签名 | 说明 |
+| --- | --- |
+| `public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size, String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs) throws Exception {` | 发起图像生成请求。 |
+| `public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice, String languageType, Map<String, Object> kwargs) throws Exception {` | 发起语音生成请求。 |
+| `public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl, String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark, String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {` | 发起视频生成请求。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

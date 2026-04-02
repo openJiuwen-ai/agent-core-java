@@ -6,20 +6,20 @@
 public enum TaskType
 ```
 
-`TaskType` normalizes the task-routing identifiers used by agent execution.
+`TaskType` 定义任务路由中使用的任务类型标识。
 
-## Enum Values
+## 枚举值
 
-| Value | Serialized Value | Description |
+| 枚举值 | 字符串值 | 说明 |
 | --- | --- | --- |
-| `PLUGIN` | `"plugin"` | Plugin-backed task. |
-| `WORKFLOW` | `"workflow"` | Workflow-backed task. |
-| `MCP` | `"mcp"` | MCP-backed task. |
-| `UNDEFINED` | `"undefined"` | Fallback constant returned when the input token is unknown. |
+| `PLUGIN` | `"plugin"` | 插件任务。 |
+| `WORKFLOW` | `"workflow"` | 工作流任务。 |
+| `MCP` | `"mcp"` | MCP 任务。 |
+| `UNDEFINED` | `"undefined"` | 未知输入的回退值。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getValue()` | Return the serialized task token. |
-| `public static TaskType fromValue(String value)` | Resolve an exact string token to the matching enum constant, or return `UNDEFINED` when there is no match. |
+| `public String getValue()` | 返回当前枚举的字符串值。 |
+| `public static TaskType fromValue(String value)` | 解析字符串为枚举；无匹配项时返回 `UNDEFINED`。 |

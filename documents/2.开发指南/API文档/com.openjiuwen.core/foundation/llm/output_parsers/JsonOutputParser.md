@@ -1,27 +1,27 @@
 # com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser
 
-## class JsonOutputParser
+## 类 JsonOutputParser
 
 ```java
 public class JsonOutputParser extends BaseOutputParser
 ```
 
-JSON output parser that extracts JSON from LLM text output.
+从模型文本输出中提取 JSON 并转换为结构化结果。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `MAPPER` | `ObjectMapper` | Stored `MAPPER` value. |
-| `JSON_CODE_BLOCK` | `Pattern` | Stored `JSON_CODE_BLOCK` value. |
-
-## Methods
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public Object parse(Object inputs)` | Execute `parse`. |
-| `public Iterator<Object> streamParse(Iterator<?> streamingInputs)` | Execute `streamParse`. |
+| `private static class JsonStreamIterator implements Iterator<Object> {` | 保存 `Object` 相关状态或配置。 |
 
-## Notes
+## 方法
 
-- `JsonOutputParserTest` covers direct JSON parsing, fenced blocks, and incremental stream parsing.
+| 签名 | 说明 |
+| --- | --- |
+| `public Object parse(Object inputs) {` | 将模型输出解析为结构化结果。 |
+| `public Iterator<Object> streamParse(Iterator<?> streamingInputs) {` | 执行 `streamParse` 公开能力。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。
+- `JsonOutputParserTest` 覆盖 JSON 块提取、反序列化与异常路径。

@@ -1,16 +1,16 @@
 # constants
 
-`com.openjiuwen.core.common.constants` groups framework-wide string and integer constants plus the small enum types used to normalize controller and task selection.
+`com.openjiuwen.core.common.constants` 汇总框架共享常量与少量枚举类型，用于统一工作流键名、IR 字段名以及控制器、任务类型标识。
 
-## Core Types
+## 核心类型
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`Constant`](./constants/Constant.md) | Static holder for shared workflow keys, IR field names, and safe-execution limits. |
-| [`ControllerType`](./constants/ControllerType.md) | Enum for controller-mode identifiers such as `react` and `workflow`. |
-| [`TaskType`](./constants/TaskType.md) | Enum for task-routing identifiers such as `plugin`, `workflow`, and `mcp`. |
+| [`Constant`](./constants/Constant.md) | 定义跨模块复用的字符串键与安全上限常量。 |
+| [`ControllerType`](./constants/ControllerType.md) | 控制器类型枚举。 |
+| [`TaskType`](./constants/TaskType.md) | 任务类型枚举。 |
 
-## Notes
+## 说明
 
-- `Constant` is a pure utility holder with no instance state.
-- `ControllerType` and `TaskType` provide stable string round-tripping for configuration and JSON payloads.
+- `Constant` 不保存实例状态，仅作为静态常量入口。
+- `ControllerType` 与 `TaskType` 都提供字符串到枚举的解析入口，未知值会回退为 `UNDEFINED`。

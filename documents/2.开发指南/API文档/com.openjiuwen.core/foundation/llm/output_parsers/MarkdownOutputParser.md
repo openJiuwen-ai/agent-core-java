@@ -1,28 +1,26 @@
 # com.openjiuwen.core.foundation.llm.output_parsers.MarkdownOutputParser
 
-## class MarkdownOutputParser
+## 类 MarkdownOutputParser
 
 ```java
 public class MarkdownOutputParser extends BaseOutputParser
 ```
 
-Markdown output parser that extracts structured elements from LLM output.
+将模型 Markdown 输出解析为结构化元素集合。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `HEADER_PATTERN` | `Pattern` | Stored `HEADER_PATTERN` value. |
-| `CODE_BLOCK_PATTERN` | `Pattern` | Stored `CODE_BLOCK_PATTERN` value. |
-| `INLINE_CODE_PATTERN` | `Pattern` | Stored `INLINE_CODE_PATTERN` value. |
-| `IMAGE_PATTERN` | `Pattern` | Stored `IMAGE_PATTERN` value. |
-| `LINK_PATTERN` | `Pattern` | Stored `LINK_PATTERN` value. |
-| `UNORDERED_LIST_PATTERN` | `Pattern` | Stored `UNORDERED_LIST_PATTERN` value. |
-| `ORDERED_LIST_PATTERN` | `Pattern` | Stored `ORDERED_LIST_PATTERN` value. |
-
-## Methods
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public Object parse(Object inputs)` | Execute `parse`. |
-| `public Iterator<Object> streamParse(Iterator<?> streamingInputs)` | Execute `streamParse`. |
+| `private final class MarkdownStreamIterator implements Iterator<Object> {` | 保存 `Object` 相关状态或配置。 |
+
+## 方法
+
+| 签名 | 说明 |
+| --- | --- |
+| `public Object parse(Object inputs) {` | 将模型输出解析为结构化结果。 |
+| `public Iterator<Object> streamParse(Iterator<?> streamingInputs) {` | 执行 `streamParse` 公开能力。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

@@ -1,26 +1,25 @@
 # com.openjiuwen.core.foundation.llm.schema.BaseMessageChunk
 
-## class BaseMessageChunk
+## 类 BaseMessageChunk
 
 ```java
 public class BaseMessageChunk extends BaseMessage
 ```
 
-Java API page for `BaseMessageChunk`.
+定义消息片段的公共字段与合并基础。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public BaseMessageChunk(String role, Object content, String name)` | Create a new `BaseMessageChunk` instance. |
+| `public BaseMessageChunk(String role, Object content, String name) {` | 构造 `BaseMessageChunk` 实例。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public BaseMessageChunk merge(BaseMessageChunk other)` | Merge another chunk into this one (content concatenation). |
-| `protected static Object mergeContent(Object left, Object right)` | Merge content fields based on type compatibility. |
+| `public BaseMessageChunk merge(BaseMessageChunk other) {` | 执行 `merge` 公开能力。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

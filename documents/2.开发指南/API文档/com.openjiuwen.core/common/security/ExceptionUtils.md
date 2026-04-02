@@ -6,21 +6,15 @@
 public final class ExceptionUtils
 ```
 
-`ExceptionUtils` formats validation failures into short readable strings and unwraps nested exception chains.
+`ExceptionUtils` 提供异常链处理相关的静态工具方法。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private ExceptionUtils()` | Utility-class constructor; the type is not instantiable. |
+| `public static String formatValidationError(Throwable t)` | 将异常格式化为 `异常类型: 异常消息` 形式；当 `t` 为 `null` 时返回空字符串。 |
+| `public static Throwable getRootCause(Throwable t)` | 沿 `getCause()` 链一直向下查找，返回最深层且非自引用的根因异常。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static String formatValidationError(Throwable t)` | Return `"Type: message"` for the supplied exception, or an empty string when `t` is `null`. |
-| `public static Throwable getRootCause(Throwable t)` | Walk the `Throwable#getCause()` chain until it reaches the deepest non-self-referential cause. |
-
-## Notes
-
-- `formatValidationError` is the generic Java replacement for the Python-side validation-error formatter.
+- 该类型是纯工具类，源码仅保留私有构造器，不对外暴露实例化入口。

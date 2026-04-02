@@ -1,21 +1,21 @@
 # com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse
 
-## class ImageGenerationResponse
+## 类 ImageGenerationResponse
 
 ```java
 public class ImageGenerationResponse extends GenerationResponse
 ```
 
-Java API page for `ImageGenerationResponse`.
+封装图像生成接口的响应数据。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `images` | `List<String>` | List of generated image URLs. |
-| `imagesBase64` | `List<String>` | List of generated images in base64 encoding. |
-| `created` | `Integer` | Timestamp of creation. |
+| 声明 | 说明 |
+| --- | --- |
+| `private List<String> images` | 保存 `images` 相关状态或配置。 |
+| `private List<String> imagesBase64` | 保存 `imagesBase64` 相关状态或配置。 |
+| `private Integer created` | 保存 `created` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

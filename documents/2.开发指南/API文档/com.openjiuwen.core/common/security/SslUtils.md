@@ -6,24 +6,18 @@
 public final class SslUtils
 ```
 
-`SslUtils` builds strict or insecure SSL contexts and derives SSL verification settings from environment-driven runtime configuration.
+`SslUtils` 提供 HTTPS 场景下的 SSL 上下文构建与运行时 SSL 配置解析能力。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private SslUtils()` | Utility-class constructor; the type is not instantiable. |
+| `public static SSLContext createStrictSslContext(String sslCertPath)` | 创建严格模式的 `SSLContext`；当提供证书路径时，会校验 `SAFE_CERT_DIR`、文件范围与文件大小，再加载 CA 证书并初始化信任管理器。 |
+| `public static SSLContext createInsecureSslContext()` | 创建信任所有证书的 `SSLContext`，仅适用于显式关闭校验的场景。 |
+| `public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv, List<String> triggerValues, boolean urlIsHttps)` | 按环境变量或系统属性解析 SSL 校验开关与证书路径，返回 `[sslVerify, sslCertPath]`。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static SSLContext createStrictSslContext(String sslCertPath)` | Create a TLS 1.2 context, optionally loading a CA certificate from `sslCertPath` after validating that the file stays inside `SAFE_CERT_DIR` and is at most 1 MiB. |
-| `public static SSLContext createInsecureSslContext()` | Create a TLS 1.2 context backed by a trust manager that accepts every certificate. |
-| `public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv, List<String> triggerValues, boolean urlIsHttps)` | Return a two-element array of `[sslVerify, sslCertPath]`, using env vars / system properties to decide whether verification is disabled and which certificate path to expose. |
-
-## Notes
-
-- `createStrictSslContext` throws `COMMON_SSL_CONTEXT_INIT_FAILED` when the certificate path escapes the allowed directory, has an invalid size, or cannot be loaded.
-- `getSslConfig` treats non-HTTPS targets as `sslVerify = false` and does not read certificate settings for them.
-- The verify-switch comparison lowercases the runtime value before checking `triggerValues`.
+- 严格模式在 `sslCertPath` 不为 `null` 时会强制要求 `SAFE_CERT_DIR` 已配置，且证书文件真实路径必须位于允许目录下。
+- 证书文件大小必须大于 `0` 且不超过 `1MB`，否则会抛出 `COMMON_SSL_CONTEXT_INIT_FAILED`。
+- 当目标 URL 不是 HTTPS 时，`getSslConfig(...)` 直接返回 `false` 和 `null`。

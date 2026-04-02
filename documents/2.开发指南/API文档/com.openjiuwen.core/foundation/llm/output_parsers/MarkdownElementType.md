@@ -1,22 +1,26 @@
 # com.openjiuwen.core.foundation.llm.output_parsers.MarkdownElementType
 
-## class MarkdownElementType
+## 类 MarkdownElementType
 
 ```java
 public final class MarkdownElementType
 ```
 
-Markdown element type constants.
+定义 Markdown 解析过程使用的元素类型。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `HEADER` | `String` | Stored `HEADER` value. |
-| `CODE_BLOCK` | `String` | Stored `CODE_BLOCK` value. |
-| `INLINE_CODE` | `String` | Stored `INLINE_CODE` value. |
-| `LINK` | `String` | Stored `LINK` value. |
-| `IMAGE` | `String` | Stored `IMAGE` value. |
-| `TABLE` | `String` | Stored `TABLE` value. |
-| `LIST` | `String` | Stored `LIST` value. |
-| `TEXT` | `String` | Stored `TEXT` value. |
+| 声明 | 说明 |
+| --- | --- |
+| `public static final String HEADER =` | 保存 `HEADER` 相关状态或配置。 |
+| `public static final String CODE_BLOCK =` | 保存 `CODE_BLOCK` 相关状态或配置。 |
+| `public static final String INLINE_CODE =` | 保存 `INLINE_CODE` 相关状态或配置。 |
+| `public static final String LINK =` | 保存 `LINK` 相关状态或配置。 |
+| `public static final String IMAGE =` | 保存 `IMAGE` 相关状态或配置。 |
+| `public static final String TABLE =` | 保存 `TABLE` 相关状态或配置。 |
+| `public static final String LIST =` | 保存 `LIST` 相关状态或配置。 |
+| `public static final String TEXT =` | 保存 `TEXT` 相关状态或配置。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

@@ -6,41 +6,29 @@
 public final class Constant
 ```
 
-`Constant` is the central holder for shared workflow keys, IR field names, and safe-execution limits.
+`Constant` 汇总框架范围内共享的字符串键与安全上限常量。
 
-## IR Fields
+## 常量字段
 
-| Field | Type | Value | Description |
+| 字段 | 类型 | 值 | 说明 |
 | --- | --- | --- | --- |
-| `USER_FIELDS` | `String` | `"userFields"` | IR key for user-supplied fields. |
-| `QUERY` | `String` | `"query"` | IR key for the active query string. |
-| `SYSTEM_FIELDS` | `String` | `"systemFields"` | IR key for framework-managed system fields. |
+| `USER_FIELDS` | `String` | `"userFields"` | IR 中的用户字段键。 |
+| `QUERY` | `String` | `"query"` | 查询字段键。 |
+| `SYSTEM_FIELDS` | `String` | `"systemFields"` | IR 中的系统字段键。 |
+| `INTERACTION` | `String` | `"__interaction__"` | 工作流交互标记。 |
+| `INTERACTIVE_INPUT` | `String` | `"__interactive_input__"` | 节点抛出的动态交互输入标记。 |
+| `INPUTS_KEY` | `String` | `"inputs"` | 输入集合键名。 |
+| `CONFIG_KEY` | `String` | `"config"` | 配置集合键名。 |
+| `END_FRAME` | `String` | `"all streaming outputs finish"` | 全部流式输出结束标记。 |
+| `END_NODE_STREAM` | `String` | `"end node stream"` | 单节点流结束标记。 |
+| `LOOP_ID` | `String` | `"__sys_loop_id"` | 系统循环 ID 键。 |
+| `INDEX` | `String` | `"index"` | 索引键。 |
+| `FINISH_INDEX` | `String` | `"finish_index"` | 结束索引键。 |
+| `MAX_COLLECTION_SIZE` | `int` | `100000` | 集合安全上限。 |
+| `MAX_EXPRESSION_LENGTH` | `int` | `5000` | 表达式长度安全上限。 |
+| `MAX_AST_DEPTH` | `int` | `50` | AST 深度安全上限。 |
+| `NESTED_LOOP_DEPTH` | `int` | `1` | 嵌套循环深度上限。 |
 
-## Workflow Keys
+## 说明
 
-| Field | Type | Value | Description |
-| --- | --- | --- | --- |
-| `INTERACTION` | `String` | `"__interaction__"` | Workflow interaction marker. |
-| `INTERACTIVE_INPUT` | `String` | `"__interactive_input__"` | Dynamic input placeholder emitted by interactive nodes. |
-| `INPUTS_KEY` | `String` | `"inputs"` | Generic inputs-map key. |
-| `CONFIG_KEY` | `String` | `"config"` | Generic config-map key. |
-| `END_FRAME` | `String` | `"all streaming outputs finish"` | End-of-stream frame marker. |
-| `END_NODE_STREAM` | `String` | `"end node stream"` | Per-node stream completion marker. |
-| `LOOP_ID` | `String` | `"__sys_loop_id"` | System loop identifier key. |
-| `INDEX` | `String` | `"index"` | General index key. |
-| `FINISH_INDEX` | `String` | `"finish_index"` | Stream-finish index key. |
-
-## Safety Limits
-
-| Field | Type | Value | Description |
-| --- | --- | --- | --- |
-| `MAX_COLLECTION_SIZE` | `int` | `100000` | Maximum allowed collection size. |
-| `MAX_EXPRESSION_LENGTH` | `int` | `5000` | Maximum allowed expression length. |
-| `MAX_AST_DEPTH` | `int` | `50` | Maximum AST nesting depth. |
-| `NESTED_LOOP_DEPTH` | `int` | `1` | Maximum nested workflow-loop depth. |
-
-## Constructors
-
-| Signature | Description |
-| --- | --- |
-| `private Constant()` | Utility-class constructor; the type is not instantiable. |
+- 该类型仅包含静态常量，私有构造器用于阻止实例化。

@@ -6,20 +6,14 @@
 public final class IpUtils
 ```
 
-`IpUtils` discovers the local outbound IPv4 address using a UDP socket probe.
+`IpUtils` 用于探测当前进程对外通信时使用的本机 IPv4 地址。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private IpUtils()` | Utility-class constructor; the type is not instantiable. |
+| `public static String getLocalIp()` | 通过 UDP socket 连接 `8.8.8.8:80` 获取本机出口地址；若失败则返回 `127.0.0.1`。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static String getLocalIp()` | Connect a datagram socket to `8.8.8.8:80` and return the local interface address, or `127.0.0.1` when probing fails. |
-
-## Notes
-
-- The method excludes explicit loopback probing in the happy path and only falls back to loopback when socket setup fails.
+- 该实现不会真正发送业务数据，只利用 socket 连接过程确定本机网络接口地址。

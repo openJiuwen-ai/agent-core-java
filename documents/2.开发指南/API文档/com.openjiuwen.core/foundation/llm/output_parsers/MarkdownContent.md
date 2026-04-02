@@ -1,33 +1,26 @@
 # com.openjiuwen.core.foundation.llm.output_parsers.MarkdownContent
 
-## class MarkdownContent
+## 类 MarkdownContent
 
 ```java
 public class MarkdownContent
 ```
 
-Structured representation of Markdown content.
+表示 Markdown 解析后的内容容器，用于组装结构化元素列表。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `rawContent` | `String` | Stored `rawContent` value. |
-| `elements` | `List<MarkdownElement>` | Stored `elements` value. |
-| `headers` | `List<Map<String, Object>>` | Stored `headers` value. |
-| `codeBlocks` | `List<Map<String, Object>>` | Stored `codeBlocks` value. |
-| `links` | `List<Map<String, Object>>` | Stored `links` value. |
-| `images` | `List<Map<String, Object>>` | Stored `images` value. |
-| `tables` | `List<String>` | Stored `tables` value. |
-| `lists` | `List<String>` | Stored `lists` value. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public MarkdownContent()` | Create a new `MarkdownContent` instance. |
-| `public MarkdownContent(String rawContent)` | Create a new `MarkdownContent` instance. |
+| `private String rawContent =` | 保存文本或结构化内容。 |
 
-## Notes
+## 构造方法
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+| 签名 | 说明 |
+| --- | --- |
+| `public MarkdownContent() {` | 构造 `MarkdownContent` 实例。 |
+| `public MarkdownContent(String rawContent) {` | 构造 `MarkdownContent` 实例。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

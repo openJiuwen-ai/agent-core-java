@@ -1,23 +1,23 @@
 # com.openjiuwen.core.foundation.llm.output_parsers.MarkdownElement
 
-## class MarkdownElement
+## 类 MarkdownElement
 
 ```java
 public class MarkdownElement
 ```
 
-Single Markdown element with positional metadata.
+表示单个 Markdown 元素及其属性。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `type` | `String` | Stored `type` value. |
-| `content` | `Map<String, Object>` | Stored `content` value. |
-| `startPos` | `int` | Stored `startPos` value. |
-| `endPos` | `int` | Stored `endPos` value. |
-| `raw` | `String` | Stored `raw` value. |
+| 声明 | 说明 |
+| --- | --- |
+| `private String type` | 保存 `type` 相关状态或配置。 |
+| `private Map<String, Object> content` | 保存文本或结构化内容。 |
+| `private int startPos` | 保存 `startPos` 相关状态或配置。 |
+| `private int endPos` | 保存 `endPos` 相关状态或配置。 |
+| `private String raw` | 保存 `raw` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

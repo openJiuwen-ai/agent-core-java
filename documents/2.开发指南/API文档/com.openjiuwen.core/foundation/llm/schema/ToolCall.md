@@ -1,23 +1,23 @@
 # com.openjiuwen.core.foundation.llm.schema.ToolCall
 
-## class ToolCall
+## 类 ToolCall
 
 ```java
 public class ToolCall
 ```
 
-Represents a tool call from LLM output.
+表示模型输出中的工具调用请求。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `String` | Tool call ID. |
-| `type` | `String` | Tool call type (e.g., "function"). |
-| `name` | `String` | Tool name. |
-| `arguments` | `String` | Tool arguments as JSON string. |
-| `index` | `Integer` | Tool call index, used to distinguish multiple tool calls in a single response. |
+| 声明 | 说明 |
+| --- | --- |
+| `private String id` | 保存 `id` 标识。 |
+| `private String type =` | 保存 `type` 相关状态或配置。 |
+| `private String name` | 保存 `name` 相关状态或配置。 |
+| `private String arguments` | 保存 `arguments` 相关状态或配置。 |
+| `private Integer index` | 保存 `index` 相关状态或配置。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

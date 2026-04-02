@@ -1,32 +1,32 @@
 # com.openjiuwen.core.foundation.llm.schema.ToolMessage
 
-## class ToolMessage
+## 类 ToolMessage
 
 ```java
 public class ToolMessage extends BaseMessage
 ```
 
-Java API page for `ToolMessage`.
+表示 tool 角色返回的完整消息。
 
-## Fields
+## 字段
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `toolCallId` | `String` | The ID of the tool call this message is responding to. |
-
-## Constructors
-
-| Signature | Description |
+| 声明 | 说明 |
 | --- | --- |
-| `public ToolMessage(String content, String toolCallId)` | Create a new `ToolMessage` instance. |
-| `public ToolMessage(String content, String toolCallId, String name)` | Create a new `ToolMessage` instance. |
+| `private String toolCallId` | 保存 `toolCallId` 标识。 |
 
-## Methods
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getRole()` | Return the `role` value. |
+| `public ToolMessage(String content, String toolCallId) {` | 构造 `ToolMessage` 实例。 |
+| `public ToolMessage(String content, String toolCallId, String name) {` | 构造 `ToolMessage` 实例。 |
 
-## Notes
+## 方法
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+| 签名 | 说明 |
+| --- | --- |
+| `public String getRole() {` | 返回 `role` 属性。 |
+
+## 说明
+
+- 所有签名均以当前 Java 源码为准。

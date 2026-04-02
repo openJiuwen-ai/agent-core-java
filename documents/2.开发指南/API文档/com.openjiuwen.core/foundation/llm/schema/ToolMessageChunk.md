@@ -1,19 +1,19 @@
 # com.openjiuwen.core.foundation.llm.schema.ToolMessageChunk
 
-## class ToolMessageChunk
+## 类 ToolMessageChunk
 
 ```java
 public class ToolMessageChunk extends ToolMessage
 ```
 
-Java API page for `ToolMessageChunk`.
+表示 tool 角色流式输出的消息片段。
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public ToolMessageChunk merge(ToolMessageChunk other)` | Merge another tool message chunk into this one. |
+| `public ToolMessageChunk merge(ToolMessageChunk other) {` | 执行 `merge` 公开能力。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

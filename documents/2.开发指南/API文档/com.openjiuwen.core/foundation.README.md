@@ -1,16 +1,17 @@
 # foundation
 
-`com.openjiuwen.core.foundation` groups the low-level model, prompt templating, storage, and tool APIs that higher-level openJiuwen modules build on.
+`com.openjiuwen.core.foundation` 汇总 openJiuwen 基础能力层 API，当前包含 LLM、prompt、store 与 tool 等子模块。
 
-## Modules
+## 模块
 
-| Module | Description |
+| 模块 | 说明 |
 | --- | --- |
-| [`llm`](foundation/llm.README.md) | provider-backed model clients, output parsers, and message/config schema types. |
-| [`prompt`](foundation/prompt.README.md) | prompt templates, placeholder assembly, and variable wrappers for prompt construction. |
-| [`store`](foundation/store.README.md) | vector, graph, KV, object, and database-backed storage abstractions plus adapters. |
-| [`tool`](foundation/tool.README.md) | tool cards, local functions, MCP adapters, REST adapters, and schema extraction utilities. |
+| [`llm`](foundation/llm.README.md) | 统一模型调用入口与会话调度能力。 |
+| [`prompt`](foundation/prompt.README.md) | 提示模板与占位符组装能力。 |
+| [`store`](foundation/store.README.md) | 存储与检索相关 API 的组织入口。 |
+| [`tool`](foundation/tool.README.md) | 工具调用、MCP 与 REST schema 相关 API。 |
 
-## Notes
+## 说明
 
-- The documented foundation subtree currently covers `llm`, `prompt`, `store`, and `tool`.
+- foundation 层按领域拆分基础 API，各包 README 再继续链接到具体类型页面。
+- 当前 F01 巡检范围重点覆盖 `llm` 及其子包。

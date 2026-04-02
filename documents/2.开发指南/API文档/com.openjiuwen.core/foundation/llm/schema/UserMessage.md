@@ -1,26 +1,26 @@
 # com.openjiuwen.core.foundation.llm.schema.UserMessage
 
-## class UserMessage
+## 类 UserMessage
 
 ```java
 public class UserMessage extends BaseMessage
 ```
 
-Java API page for `UserMessage`.
+表示 user 角色的输入消息。
 
-## Constructors
+## 构造方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public UserMessage(String content)` | Create a new `UserMessage` instance. |
-| `public UserMessage(String content, String name)` | Create a new `UserMessage` instance. |
+| `public UserMessage(String content) {` | 构造 `UserMessage` 实例。 |
+| `public UserMessage(String content, String name) {` | 构造 `UserMessage` 实例。 |
 
-## Methods
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getRole()` | Return the `role` value. |
+| `public String getRole() {` | 返回 `role` 属性。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the standard accessors, equality helpers, and/or builder methods referenced by this type.
+- 所有签名均以当前 Java 源码为准。

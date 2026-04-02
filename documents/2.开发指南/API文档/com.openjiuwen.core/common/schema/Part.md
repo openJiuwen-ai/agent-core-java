@@ -6,16 +6,16 @@
 public class Part
 ```
 
-`Part` is a lightweight content fragment DTO used to carry typed content plus optional metadata.
+`Part` 表示工件或内容中的一个片段。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `type` | `String` | `null` | Logical part type, such as text or another caller-defined content category. |
-| `content` | `String` | `null` | Serialized content for the part. |
-| `metadata` | `Map<String, Object>` | `null` | Optional extra attributes associated with the part. |
+| `type` | `String` | `null` | 片段类型标识。 |
+| `content` | `String` | `null` | 片段正文。 |
+| `metadata` | `Map<String, Object>` | `null` | 片段附加元数据。 |
 
-## Notes
+## 说明
 
-- Lombok annotations generate the getters, setters, builder API, and the no-args / all-args constructors.
+- `@Data`、`@Builder`、`@NoArgsConstructor` 与 `@AllArgsConstructor` 会为该 DTO 生成访问器、构建器和构造器。

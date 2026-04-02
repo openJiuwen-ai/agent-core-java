@@ -6,51 +6,51 @@
 public class Param
 ```
 
-`Param` is an immutable parameter definition model that supports scalar, array, and object shapes.
+`Param` 表示不可变的参数定义，支持标量、数组和对象三类结构。
 
-## Fields
+## 字段
 
-| Field | Type | Default | Description |
+| 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `name` | `String` | required | Parameter name. |
-| `description` | `String` | required | Human-readable description. |
-| `type` | `ParamType` | required | Declared parameter kind. |
-| `required` | `boolean` | factory-supplied | Whether callers must provide the value. |
-| `defaultValue` | `Object` | `null` unless supplied | Default value for optional parameters. |
-| `items` | `Param` | `null` unless `ARRAY` | Item schema used only for array parameters. |
-| `properties` | `List<Param>` | `null` unless `OBJECT` | Child property definitions used only for object parameters. |
+| `name` | `String` | 必填 | 参数名。 |
+| `description` | `String` | 必填 | 参数描述。 |
+| `type` | `ParamType` | 必填 | 参数类型。 |
+| `required` | `boolean` | 工厂方法传入值 | 是否必填。 |
+| `defaultValue` | `Object` | `null` 或工厂方法传入值 | 默认值。 |
+| `items` | `Param` | 仅 `ARRAY` 使用 | 数组元素定义。 |
+| `properties` | `List<Param>` | 仅 `OBJECT` 使用 | 对象属性定义。 |
 
-## Accessors
+## 访问方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public String getName()` | Return the parameter name. |
-| `public String getDescription()` | Return the description. |
-| `public ParamType getType()` | Return the declared parameter type. |
-| `public boolean isRequired()` | Return whether the parameter is required. |
-| `public Object getDefaultValue()` | Return the default value. |
-| `public Param getItems()` | Return the nested item schema for array parameters. |
-| `public List<Param> getProperties()` | Return the nested property definitions for object parameters. |
-| `public String toString()` | Render a compact summary with name, type, and required flag. |
+| `public String getName()` | 返回参数名。 |
+| `public String getDescription()` | 返回参数描述。 |
+| `public ParamType getType()` | 返回参数类型。 |
+| `public boolean isRequired()` | 返回是否必填。 |
+| `public Object getDefaultValue()` | 返回默认值。 |
+| `public Param getItems()` | 返回数组元素定义。 |
+| `public List<Param> getProperties()` | 返回对象属性定义。 |
+| `public String toString()` | 返回包含名称、类型和必填标记的摘要字符串。 |
 
-## Factory Methods
+## 工厂方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `public static Param string(String name, String description, boolean required)` | Create a string parameter without a default. |
-| `public static Param string(String name, String description, boolean required, String defaultValue)` | Create a string parameter with a default value. |
-| `public static Param bool(String name, String description, boolean required)` | Create a boolean parameter without a default. |
-| `public static Param bool(String name, String description, boolean required, Boolean defaultValue)` | Create a boolean parameter with a default value. |
-| `public static Param integer(String name, String description, boolean required)` | Create an integer parameter without a default. |
-| `public static Param integer(String name, String description, boolean required, Integer defaultValue)` | Create an integer parameter with a default value. |
-| `public static Param number(String name, String description, boolean required)` | Create a floating-point parameter without a default. |
-| `public static Param number(String name, String description, boolean required, Double defaultValue)` | Create a floating-point parameter with a default value. |
-| `public static Param array(String name, String description, boolean required, Param items)` | Create an array parameter with a required item schema. |
-| `public static Param array(String name, String description, boolean required, Param items, Object defaultValue)` | Create an array parameter with an item schema and default value. |
-| `public static Param object(String name, String description, boolean required, List<Param> properties)` | Create an object parameter with child property definitions. |
-| `public static Param object(String name, String description, boolean required, List<Param> properties, Object defaultValue)` | Create an object parameter with child properties and a default value. |
+| `public static Param string(String name, String description, boolean required)` | 创建无默认值的字符串参数。 |
+| `public static Param string(String name, String description, boolean required, String defaultValue)` | 创建带默认值的字符串参数。 |
+| `public static Param bool(String name, String description, boolean required)` | 创建无默认值的布尔参数。 |
+| `public static Param bool(String name, String description, boolean required, Boolean defaultValue)` | 创建带默认值的布尔参数。 |
+| `public static Param integer(String name, String description, boolean required)` | 创建无默认值的整数参数。 |
+| `public static Param integer(String name, String description, boolean required, Integer defaultValue)` | 创建带默认值的整数参数。 |
+| `public static Param number(String name, String description, boolean required)` | 创建无默认值的数值参数。 |
+| `public static Param number(String name, String description, boolean required, Double defaultValue)` | 创建带默认值的数值参数。 |
+| `public static Param array(String name, String description, boolean required, Param items)` | 创建数组参数。 |
+| `public static Param array(String name, String description, boolean required, Param items, Object defaultValue)` | 创建带默认值的数组参数。 |
+| `public static Param object(String name, String description, boolean required, List<Param> properties)` | 创建对象参数。 |
+| `public static Param object(String name, String description, boolean required, List<Param> properties, Object defaultValue)` | 创建带默认值的对象参数。 |
 
-## Notes
+## 说明
 
-- Construction is validated immediately: `ARRAY` requires `items` and forbids `properties`, `OBJECT` requires `properties` and forbids `items`, and scalar types forbid both.
-- Invalid shape combinations throw `IllegalArgumentException` with the parameter name embedded in the error message.
+- 构造阶段会立即执行结构校验：`ARRAY` 必须提供 `items` 且不能提供 `properties`；`OBJECT` 必须提供 `properties` 且不能提供 `items`；其他类型两者都不能提供。
+- 结构不合法时会抛出 `IllegalArgumentException`，错误消息中包含参数名。

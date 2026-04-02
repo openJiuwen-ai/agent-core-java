@@ -6,25 +6,19 @@
 public final class UrlUtils
 ```
 
-`UrlUtils` validates outbound URLs, blocks private-address targets by default, and resolves proxy settings from the standard process environment.
+`UrlUtils` 提供 URL 合法性校验以及全局代理解析能力。
 
-## Constructors
+## 方法
 
-| Signature | Description |
+| 签名 | 说明 |
 | --- | --- |
-| `private UrlUtils()` | Utility-class constructor; the type is not instantiable. |
+| `public static void checkUrlIsValid(String url)` | 校验 URL 非空、协议为 `http`/`https`，并确保解析出的地址不是内网、本地回环、链路本地或任意本地地址；失败时抛出 `COMMON_URL_INPUT_INVALID`。 |
+| `public static String getGlobalProxyUrl(String url)` | 读取 `http_proxy`、`https_proxy`、`HTTP_PROXY`、`HTTPS_PROXY` 中的第一个可用代理；若命中 `NO_PROXY` 规则则返回 `null`。 |
+| `public static Map<String, String> getGlobalProxies(String url)` | 若存在全局代理，则同时返回 `http` 与 `https` 两个键对应的代理地址；否则返回 `null`。 |
+| `public static boolean shouldBypassProxy(String url)` | 根据 `NO_PROXY`/`no_proxy` 配置判断当前 URL 是否应跳过代理。 |
 
-## Methods
+## 说明
 
-| Signature | Description |
-| --- | --- |
-| `public static void checkUrlIsValid(String url)` | Require a non-empty `http://` or `https://` URL, resolve the hostname, and reject loopback/site-local/link-local/any-local targets unless SSRF protection is explicitly disabled. |
-| `public static String getGlobalProxyUrl(String url)` | Return the configured proxy URL from `http_proxy` / `https_proxy` / uppercase variants, unless `url` matches the NO_PROXY rules. |
-| `public static Map<String, String> getGlobalProxies(String url)` | Return a two-entry `http` / `https` proxy map when a global proxy applies, or `null` when proxying is bypassed. |
-| `public static boolean shouldBypassProxy(String url)` | Evaluate the URL hostname against the combined `NO_PROXY` / `no_proxy` allowlist. |
-
-## Notes
-
-- Placeholder segments like `{tenant}` are sanitized before URI parsing so templated URLs can still be validated.
-- `NO_PROXY` entries support exact hostnames, leading-dot suffix matches, wildcard `*`, direct IP matches, and CIDR ranges.
-- Setting env var or system property `SSRF_PROTECT_ENABLED=false` disables the internal-IP rejection path.
+- URL 校验前会把路径中的 `{placeholder}` 片段替换为固定占位符，再交给 `URI` 解析。
+- `NO_PROXY` 支持精确主机名、以 `.` 开头的域后缀、单个 IP 以及 CIDR 表达式。
+- 当 `SSRF_PROTECT_ENABLED` 被设置为 `false` 时，内网地址检查会被关闭。
