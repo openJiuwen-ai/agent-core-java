@@ -22,6 +22,8 @@ import java.util.Set;
  */
 public class TripleBeamSearch {
 
+    private static final float EPSILON = 1e-6f;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final Retriever retriever;
     private final int numBeams;
@@ -211,7 +213,7 @@ public class TripleBeamSearch {
             leftNorm += left.get(i) * left.get(i);
             rightNorm += right.get(i) * right.get(i);
         }
-        if (leftNorm == 0.0 || rightNorm == 0.0) {
+        if (Math.abs(leftNorm - 0.0) < EPSILON || Math.abs(rightNorm - 0.0) < EPSILON) {
             return 0.0;
         }
         return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
