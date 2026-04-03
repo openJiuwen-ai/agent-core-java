@@ -76,6 +76,25 @@ class SessionUtilsTest {
         }
 
         @Test
+        @DisplayName("updateDict updates existing list index")
+        void testUpdateDictExistingListIndex() {
+            Map<String, Object> source = new HashMap<>();
+            SessionUtils.updateDict(Map.of("a.b", List.of(1, 2, 3)), source);
+            SessionUtils.updateDict(Map.of("a.b[0]", 11), source);
+
+            assertEquals(Map.of("a", Map.of("b", List.of(11, 2, 3))), source);
+        }
+
+        @Test
+        @DisplayName("updateDict creates nested list index from path")
+        void testUpdateDictCreateNestedListIndex() {
+            Map<String, Object> source = new HashMap<>();
+            SessionUtils.updateDict(Map.of("a.b[0]", 11), source);
+
+            assertEquals(Map.of("a", Map.of("b", List.of(11))), source);
+        }
+
+        @Test
         @DisplayName("getBySchema with simple string key returns nested value")
         void testGetBySchemaString() {
             Map<String, Object> source = Map.of("a", Map.of("b", List.of(1, 2, 3)));
