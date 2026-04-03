@@ -214,10 +214,26 @@ public final class SessionUtils {
     public static void updateByKey(Object key, Object newValue, Object source) {
         if (source instanceof Map map) {
             Object existing = map.get(key);
-            if (existing instanceof Map && newValue instanceof Map) {
-                updateDict((Map<String, Object>) newValue, (Map<String, Object>) existing, false);
+            Object expandedValue = expandNestedStructure(newValue);
+            if (existing instanceof Map && expandedValue instanceof Map) {
+                updateDict((Map<String, Object>) expandedValue, (Map<String, Object>) existing, false);
             } else {
-                map.put(key, expandNestedStructure(newValue));
+                map.put(key, expandedValue);
+            }
+            return;
+        }
+        if (source instanceof List list && key instanceof Number number) {
+            int index = normalizeListIndex(number.intValue(), list.size());
+            if (index < 0 || index >= list.size()) {
+                return;
+            }
+
+            Object existing = list.get(index);
+            Object expandedValue = expandNestedStructure(newValue);
+            if (existing instanceof Map && expandedValue instanceof Map) {
+                updateDict((Map<String, Object>) expandedValue, (Map<String, Object>) existing, false);
+            } else {
+                list.set(index, expandedValue);
             }
         } else if (source instanceof List<?> list && key instanceof Integer index) {
             @SuppressWarnings("unchecked")
@@ -274,6 +290,10 @@ public final class SessionUtils {
             return result;
         }
         return data;
+    }
+
+    private static int normalizeListIndex(int index, int size) {
+        return index < 0 ? size + index : index;
     }
 
     /**

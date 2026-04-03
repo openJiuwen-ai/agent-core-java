@@ -1,0 +1,11 @@
+/**
+ * Backward-compatible entry point for the multi_workflow_agent_demo example.
+ */
+public final class WorkflowAgentExample {
+    private WorkflowAgentExample() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        WorkflowAgentExampleSupport.run(args);
+    }
+}

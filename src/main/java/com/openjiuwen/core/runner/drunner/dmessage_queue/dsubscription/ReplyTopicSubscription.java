@@ -79,7 +79,7 @@ public class ReplyTopicSubscription {
             throw new RuntimeException(
                     "[ReplyTopicSubscription] Too many collectors (" + maxConcurrency + ")");
         }
-        CollectorKey key = new CollectorKey(remoteId, messageId, requestId);
+        CollectorKey key = new CollectorKey(remoteId, messageId, normalizeRequestId(requestId));
         ResponseCollector collector = new ResponseCollector(messageId, remoteId, requestId, ttlSeconds);
         if (collectors.putIfAbsent(key, collector) != null) {
             throw new IllegalStateException("Collector already exists for " + key);
@@ -111,13 +111,21 @@ public class ReplyTopicSubscription {
     }
 
     private void onMessage(DmqResponseMessage message) {
-        CollectorKey key = new CollectorKey(message.getSenderId(), message.getMessageId(), message.getRequestId());
+        CollectorKey key = new CollectorKey(
+                message.getSenderId(),
+                message.getMessageId(),
+                normalizeRequestId(message.getRequestId())
+        );
         ResponseCollector collector = collectors.get(key);
         if (collector != null) {
             collector.putMessage(message);
         } else {
             logger.info("[ReplyTopicSubscription] No collector for {}, discard message", key);
         }
+    }
+
+    private String normalizeRequestId(String requestId) {
+        return requestId == null || requestId.isBlank() ? null : requestId;
     }
 
     /**

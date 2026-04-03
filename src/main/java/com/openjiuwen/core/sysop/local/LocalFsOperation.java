@@ -61,7 +61,7 @@ public class LocalFsOperation extends BaseFsOperation {
                 return buildFsErrorResult("File not found: " + filePath, ReadFileResult::new, null);
             }
 
-            Charset charset = Charset.forName(encoding);
+            Charset charset = resolveCharset(encoding);
             Object content;
             if ("bytes".equals(mode)) {
                 content = readBytesContent(filePath, chunkSize);
@@ -110,7 +110,7 @@ public class LocalFsOperation extends BaseFsOperation {
                 return results.iterator();
             }
 
-            Charset charset = Charset.forName(encoding);
+            Charset charset = resolveCharset(encoding);
             int effectiveChunkSize = chunkSize <= 0
                     ? FsConstants.DEFAULT_READ_STREAM_CHUNK_SIZE : chunkSize;
 
@@ -165,14 +165,14 @@ public class LocalFsOperation extends BaseFsOperation {
                 }
             } else {
                 // Text mode
-                String txt = content instanceof String s ? s : (content != null ? content.toString() : "");
+                String txt = extractTextContent(content);
                 if (prependNewline) {
                     txt = "\n" + txt;
                 }
                 if (appendNewline) {
                     txt = txt + "\n";
                 }
-                dataBytes = txt.getBytes(Charset.forName(encoding));
+                dataBytes = txt.getBytes(resolveCharset(encoding));
             }
 
             Files.write(filePath, dataBytes);
@@ -695,6 +695,32 @@ public class LocalFsOperation extends BaseFsOperation {
             lines.add(content.substring(start));
         }
         return lines;
+    }
+
+    private Charset resolveCharset(String encoding) {
+        if (encoding == null || encoding.isBlank()) {
+            return StandardCharsets.UTF_8;
+        }
+        return Charset.forName(encoding);
+    }
+
+    private String extractTextContent(Object content) {
+        if (content instanceof String strContent) {
+            return strContent;
+        }
+        if (content instanceof Map<?, ?> mapContent) {
+            Object value = mapContent.get("value");
+            if (value == null) {
+                value = mapContent.get("text");
+            }
+            if (value == null) {
+                value = mapContent.get("content");
+            }
+            if (value != null) {
+                return value.toString();
+            }
+        }
+        return content != null ? content.toString() : "";
     }
 
     private String readTextContent(Path filePath, Charset charset, Integer head, Integer tail,
