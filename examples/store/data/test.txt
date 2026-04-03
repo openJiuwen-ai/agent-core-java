@@ -1,0 +1,2 @@
+This is a sample file for the Java store example.
+It is uploaded into a local object-storage bucket and downloaded again.

@@ -24,6 +24,7 @@ import com.openjiuwen.core.workflow.condition.ExpressionCondition;
 import com.openjiuwen.core.workflow.condition.FuncCondition;
 import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -77,13 +78,16 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
                     maxLoopLimit = ((Number) envLimit).intValue();
                 }
 
-                if (loopInput.getLoopNumber() == null) {
+                Integer loopNumber = resolveLoopNumber(rawInputs instanceof Map
+                        ? (Map<String, Object>) rawInputs
+                        : null, loopInput.getLoopNumber());
+                if (loopNumber == null) {
                     throw new IllegalArgumentException("loop_number variable not found or is None");
                 }
-                if (loopInput.getLoopNumber() > maxLoopLimit) {
+                if (loopNumber > maxLoopLimit) {
                     throw new IllegalArgumentException("loop_number exceeds maximum limit " + maxLoopLimit);
                 }
-                condition = new NumberConditionInSession(loopInput.getLoopNumber());
+                condition = new NumberConditionInSession(loopNumber);
 
             } else if (LoopType.ALWAYS_TRUE.getValue().equals(loopType)) {
                 condition = new AlwaysTrue();
@@ -154,5 +158,51 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             current = current.getCause();
         }
         return false;
+    }
+
+    private static Integer resolveLoopNumber(Map<String, Object> rawInputs, Integer parsedLoopNumber) {
+        if (rawInputs == null || !rawInputs.containsKey("loop_number")) {
+            return parsedLoopNumber;
+        }
+
+        Object rawLoopNumber = rawInputs.get("loop_number");
+        if (rawLoopNumber == null) {
+            return null;
+        }
+        if (rawLoopNumber instanceof Number number) {
+            return parseIntegralNumber(number);
+        }
+        if (rawLoopNumber instanceof String text) {
+            return parseIntegralString(text);
+        }
+        throw new IllegalArgumentException("loop_number must be an integer");
+    }
+
+    private static Integer parseIntegralNumber(Number number) {
+        if (number instanceof Byte || number instanceof Short || number instanceof Integer || number instanceof Long) {
+            return number.intValue();
+        }
+        if (number instanceof java.math.BigInteger bigInteger) {
+            return bigInteger.intValueExact();
+        }
+
+        BigDecimal decimal = new BigDecimal(number.toString());
+        try {
+            return decimal.intValueExact();
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("loop_number must be an integer", e);
+        }
+    }
+
+    private static Integer parseIntegralString(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("loop_number must be an integer");
+        }
+        try {
+            return Integer.valueOf(trimmed);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("loop_number must be an integer", e);
+        }
     }
 }

@@ -3,12 +3,18 @@
  */
 package com.openjiuwen.core.graph.pregel;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Base message passed between Pregel nodes via channels.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Message}.
  */
-public class Message {
+public class Message implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final String sender;
     private final String target;

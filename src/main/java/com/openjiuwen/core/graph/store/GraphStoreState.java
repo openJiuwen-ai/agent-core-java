@@ -5,6 +5,8 @@ package com.openjiuwen.core.graph.store;
 
 import com.openjiuwen.core.graph.pregel.Message;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +18,10 @@ import java.util.Map;
  * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphState}.
  * Named {@code GraphStoreState} to avoid conflict with the graph node state class.
  */
-public class GraphStoreState {
+public class GraphStoreState implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final String ns;
     private final int step;
