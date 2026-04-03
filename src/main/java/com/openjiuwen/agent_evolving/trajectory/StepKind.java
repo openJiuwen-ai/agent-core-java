@@ -24,6 +24,9 @@ public enum StepKind {
         if (value == null || value.isBlank()) {
             return AGENT;
         }
+        if ("plugin".equalsIgnoreCase(value)) {
+            return TOOL;
+        }
         for (StepKind kind : values()) {
             if (kind.value.equalsIgnoreCase(value)) {
                 return kind;

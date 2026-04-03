@@ -17,7 +17,9 @@ import java.util.List;
  */
 public abstract class MemoryOptimizerBase extends BaseOptimizer {
 
-    protected String domain = "memory";
+    protected MemoryOptimizerBase() {
+        this.domain = "memory";
+    }
 
     /**
      * Default targets for memory optimizers.

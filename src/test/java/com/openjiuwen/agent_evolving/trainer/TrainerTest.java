@@ -1,13 +1,19 @@
 package com.openjiuwen.agent_evolving.trainer;
 
+import com.openjiuwen.agent_evolving.checkpointing.EvolveCheckpoint;
+import com.openjiuwen.agent_evolving.checkpointing.FileCheckpointStore;
 import com.openjiuwen.agent_evolving.dataset.Case;
 import com.openjiuwen.agent_evolving.dataset.CaseLoader;
 import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.agent_evolving.evaluator.BaseEvaluator;
+import com.openjiuwen.agent_evolving.trajectory.ExecutionSpec;
+import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agent_evolving.trajectory.TracerTrajectoryExtractor;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
 import com.openjiuwen.agent_evolving.updater.Updater;
 import com.openjiuwen.core.session.Session;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -15,10 +21,13 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TrainerTest {
@@ -56,6 +65,28 @@ class TrainerTest {
 
         assertEquals(1, predictions.size());
         assertTrue(String.valueOf(predictions.getFirst().get("error")).contains("boom"));
+    }
+
+    @Test
+    void predictPassesConversationIdAndUsesFreshSessionIds() {
+        Trainer trainer = new Trainer.Builder()
+                .updater(new RecordingUpdater())
+                .evaluator(new MatchingEvaluator())
+                .numParallel(1)
+                .build();
+        FakeAgent agent = new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "expected")));
+        CaseLoader cases = new CaseLoader(List.of(
+                new Case(Map.of("query", "question_0"), Map.of("answer", "expected"), "case_custom"),
+                new Case(Map.of("query", "question_1"), Map.of("answer", "expected"), "")
+        ));
+
+        PredictionResult prediction = trainer.predict(agent, cases);
+
+        assertEquals("case_custom", agent.invocationInputs.get(0).get("conversation_id"));
+        assertTrue(agent.invocationInputs.get(1).containsKey("conversation_id"));
+        assertEquals("", agent.invocationInputs.get(1).get("conversation_id"));
+        assertNotEquals("case_custom", prediction.predictions().getFirst().get("session_id"));
+        assertTrue(String.valueOf(prediction.predictions().get(1).get("session_id")).length() > 0);
     }
 
     @Test
@@ -131,6 +162,66 @@ class TrainerTest {
         assertEquals("good", operator.parameterValue);
     }
 
+    @Test
+    void forwardPropagatesTrajectoryExtractionErrors() {
+        Trainer trainer = new Trainer.Builder()
+                .updater(new RecordingUpdater())
+                .evaluator(new MatchingEvaluator())
+                .extractor(new TracerTrajectoryExtractor() {
+                    @Override
+                    public Trajectory extract(Object session, ExecutionSpec execution) {
+                        throw new IllegalStateException("extract boom");
+                    }
+                })
+                .build();
+        FakeAgent agent = new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "expected")));
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> trainer.forward(agent, loader("expected"))
+        );
+
+        assertTrue(String.valueOf(error.getMessage()).contains("extract boom"));
+    }
+
+    @Test
+    void resumeRestoresStartEpochWithoutChangingCurrentEpoch(@TempDir Path tempDir) {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        ResumeTrackingCallbacks callbacks = new ResumeTrackingCallbacks();
+        String resumePath = new FileCheckpointStore(tempDir.toString()).saveCheckpoint(
+                EvolveCheckpoint.builder()
+                        .version("v1")
+                        .runId("resume-run")
+                        .step(Map.of("epoch", 2, "batch", 0))
+                        .best(Map.of("best_score", 0.75))
+                        .operatorsState(Map.of("op_1", Map.of("system_prompt", "restored")))
+                        .updaterState(Map.of("marker", "resume"))
+                        .searcherState(Map.of())
+                        .lastMetrics(Map.of("current_epoch_score", 0.4))
+                        .build(),
+                "resume.json"
+        );
+        Trainer trainer = new Trainer.Builder()
+                .updater(updater)
+                .evaluator(evaluator)
+                .callbacks(callbacks)
+                .checkpointDir(tempDir.toString())
+                .resumeFrom(resumePath)
+                .build();
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = trainer.train(agent, loader("restored"), loader("restored"), 3, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("restored", operator.parameterValue);
+        assertEquals(Map.of("marker", "resume"), updater.loadedState);
+        assertEquals(2, callbacks.observedStartEpoch);
+        assertEquals(0, callbacks.observedCurrentEpoch);
+        assertEquals(1.0, callbacks.observedBestScore);
+    }
+
     private static Trainer.Builder builder(Updater updater, BaseEvaluator evaluator) {
         return new Trainer.Builder()
                 .updater(updater)
@@ -152,6 +243,7 @@ class TrainerTest {
 
     private static final class FakeAgent {
         private final Map<String, Object> operators;
+        private final List<Map<String, Object>> invocationInputs = new ArrayList<>();
         private boolean throwOnInvoke;
 
         private FakeAgent(Map<String, Object> operators) {
@@ -165,6 +257,11 @@ class TrainerTest {
         public Map<String, Object> invoke(Object input, Session session) {
             if (throwOnInvoke) {
                 throw new IllegalStateException("boom");
+            }
+            if (input instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typedInput = (Map<String, Object>) map;
+                invocationInputs.add(new LinkedHashMap<>(typedInput));
             }
             FakeOperator operator = (FakeOperator) operators.get("op_1");
             return Map.of(
@@ -210,6 +307,7 @@ class TrainerTest {
         private int updateCalls;
         private int lastTrajectoryCount;
         private int lastEvaluatedCount;
+        private Map<String, Object> loadedState = Map.of();
 
         @Override
         public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
@@ -238,6 +336,7 @@ class TrainerTest {
 
         @Override
         public void loadState(Map<String, Object> state) {
+            loadedState = state != null ? new LinkedHashMap<>(state) : Map.of();
         }
     }
 
@@ -286,6 +385,19 @@ class TrainerTest {
             epochEndCalls++;
             assertNotNull(progress);
             assertNotNull(evalInfo);
+        }
+    }
+
+    private static final class ResumeTrackingCallbacks extends Callbacks {
+        private int observedStartEpoch = -1;
+        private int observedCurrentEpoch = -1;
+        private double observedBestScore = -1.0;
+
+        @Override
+        public void onTrainBegin(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
+            observedStartEpoch = progress.getStartEpoch();
+            observedCurrentEpoch = progress.getCurrentEpoch();
+            observedBestScore = progress.getBestScore();
         }
     }
 }

@@ -54,6 +54,17 @@ public abstract class Metric {
     }
 
     /**
+     * Compute scores for batch of samples with empty additional context.
+     *
+     * @param predictions List of predictions
+     * @param labels      List of labels
+     * @return List of metric results
+     */
+    public List<Object> computeBatch(List<?> predictions, List<?> labels) {
+        return computeBatch(predictions, labels, new java.util.HashMap<>());
+    }
+
+    /**
      * Compute scores for batch of samples.
      *
      * @param predictions List of predictions

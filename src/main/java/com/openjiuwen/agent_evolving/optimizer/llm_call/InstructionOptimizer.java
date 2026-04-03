@@ -3,15 +3,25 @@
 
 package com.openjiuwen.agent_evolving.optimizer.llm_call;
 
+import com.openjiuwen.agent_evolving.TuneUtils;
+import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.agent_evolving.optimizer.TextualParameter;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.TuneUtils;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.foundation.prompt.assemble.PromptAssembler;
 
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Optimizes LLM prompts using textual gradients.
@@ -26,7 +36,16 @@ import java.util.regex.Pattern;
  */
 public class InstructionOptimizer extends LLMCallOptimizerBase {
 
-    private final Object model;  // Model instance
+    private static final String SYSTEM_PROMPT = "system_prompt";
+    private static final String USER_PROMPT = "user_prompt";
+    private static final String TOOLS_DESCRIPTION = "None";
+
+    private final Model model;
+    private final PromptTemplate promptInstructionOptimizeTemplate;
+    private final PromptTemplate promptInstructionOptimizeBothTemplate;
+    private final PromptTemplate createPromptTextualGradientTemplate;
+    private final PromptTemplate createBadCaseTemplate;
+    private final PromptTemplate placeholderRestoreTemplate;
 
     /**
      * Create instruction optimizer.
@@ -34,9 +53,28 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
      * @param modelConfig       LLM request configuration
      * @param modelClientConfig LLM client configuration
      */
-    public InstructionOptimizer(Object modelConfig, Object modelClientConfig) {
+    public InstructionOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        this(new Model(modelClientConfig, modelConfig));
+    }
+
+    InstructionOptimizer(Model model) {
         super();
-        this.model = null;  // Placeholder - actual implementation would create Model
+        this.model = Objects.requireNonNull(model, "model");
+        this.promptInstructionOptimizeTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_TEMPLATE)
+                .build();
+        this.promptInstructionOptimizeBothTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_BOTH_TEMPLATE)
+                .build();
+        this.createPromptTextualGradientTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.CREATE_PROMPT_TEXTUAL_GRADIENT_TEMPLATE)
+                .build();
+        this.createBadCaseTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.CREATE_BAD_CASE_TEMPLATE)
+                .build();
+        this.placeholderRestoreTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.PLACEHOLDER_RESTORE_TEMPLATE)
+                .build();
     }
 
     @Override
@@ -50,11 +88,11 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
             }
 
             String textualGradient = generateTextualGradient(op);
-            if (!isTargetFrozen(op, "system_prompt")) {
-                param.setGradient("system_prompt", textualGradient);
+            if (!isTargetFrozen(op, SYSTEM_PROMPT)) {
+                param.setGradient(SYSTEM_PROMPT, textualGradient);
             }
-            if (!isTargetFrozen(op, "user_prompt")) {
-                param.setGradient("user_prompt", textualGradient);
+            if (!isTargetFrozen(op, USER_PROMPT)) {
+                param.setGradient(USER_PROMPT, textualGradient);
             }
         }
     }
@@ -71,26 +109,26 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
                 continue;
             }
 
-            boolean hasSys = targets.contains("system_prompt") && !isTargetFrozen(op, "system_prompt");
-            boolean hasUsr = targets.contains("user_prompt") && !isTargetFrozen(op, "user_prompt");
+            boolean hasSys = targets.contains(SYSTEM_PROMPT) && !isTargetFrozen(op, SYSTEM_PROMPT);
+            boolean hasUsr = targets.contains(USER_PROMPT) && !isTargetFrozen(op, USER_PROMPT);
 
             if (hasSys && hasUsr) {
                 String[] result = optimizeBoth(op, param);
                 if (result[0] != null) {
-                    updates.put(opId, "system_prompt", result[0]);
+                    updates.put(opId, SYSTEM_PROMPT, result[0]);
                 }
                 if (result[1] != null) {
-                    updates.put(opId, "user_prompt", result[1]);
+                    updates.put(opId, USER_PROMPT, result[1]);
                 }
             } else if (hasSys) {
-                String val = optimizeSingle(op, param, "system_prompt");
-                if (val != null) {
-                    updates.put(opId, "system_prompt", val);
+                String value = optimizeSingle(op, param, SYSTEM_PROMPT);
+                if (value != null) {
+                    updates.put(opId, SYSTEM_PROMPT, value);
                 }
             } else if (hasUsr) {
-                String val = optimizeSingle(op, param, "user_prompt");
-                if (val != null) {
-                    updates.put(opId, "user_prompt", val);
+                String value = optimizeSingle(op, param, USER_PROMPT);
+                if (value != null) {
+                    updates.put(opId, USER_PROMPT, value);
                 }
             }
         }
@@ -98,109 +136,136 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         return updates.isEmpty() ? null : updates;
     }
 
-    private String generateTextualGradient(Object op) {
-        String systemPrompt = getPromptTemplate(op, "system_prompt");
-        String userPrompt = getPromptTemplate(op, "user_prompt");
-        String badCasesStr = formatBadCases();
-
-        // Build prompt for LLM
-        String prompt = buildGradientPrompt(systemPrompt, userPrompt, badCasesStr);
-
+    protected String invokeModel(List<?> messages) {
         try {
-            // In actual implementation, would call model.invoke
-            return "";  // Placeholder
+            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+            return response != null ? response.getContentAsString() : "";
         } catch (Exception e) {
-            return "";
+            throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    private String generateTextualGradient(Object op) {
+        PromptTemplate systemTemplate = getPromptTemplate(op, SYSTEM_PROMPT);
+        PromptTemplate userTemplate = getPromptTemplate(op, USER_PROMPT);
+        List<?> messages = createPromptTextualGradientTemplate.format(Map.of(
+                SYSTEM_PROMPT, TuneUtils.getContentStringFromTemplate(systemTemplate),
+                USER_PROMPT, TuneUtils.getContentStringFromTemplate(userTemplate),
+                "bad_cases", formatBadCases(),
+                "tools_description", TOOLS_DESCRIPTION
+        )).toMessages();
+        return invokeModel(messages);
     }
 
     private String[] optimizeBoth(Object op, TextualParameter param) {
-        String systemPrompt = getPromptTemplate(op, "system_prompt");
-        String userPrompt = getPromptTemplate(op, "user_prompt");
-        String gradient = param.getGradient("system_prompt");
-        String badCasesStr = formatBadCases();
+        PromptTemplate systemTemplate = getPromptTemplate(op, SYSTEM_PROMPT);
+        PromptTemplate userTemplate = getPromptTemplate(op, USER_PROMPT);
+        String systemPrompt = TuneUtils.getContentStringFromTemplate(systemTemplate);
+        String userPrompt = TuneUtils.getContentStringFromTemplate(userTemplate);
+        String gradient = nullToEmpty(param.getGradient(SYSTEM_PROMPT));
 
-        // Build prompt for LLM
-        String prompt = buildOptimizeBothPrompt(systemPrompt, userPrompt, gradient, badCasesStr);
+        List<?> messages = promptInstructionOptimizeBothTemplate.format(Map.of(
+                SYSTEM_PROMPT, systemPrompt,
+                USER_PROMPT, userPrompt,
+                "bad_cases", formatBadCases(),
+                "reflections_on_bad_cases", gradient,
+                "tools_description", TOOLS_DESCRIPTION
+        )).toMessages();
 
-        try {
-            // In actual implementation, would call model.invoke
-            String response = "";  // Placeholder
+        String response = invokeModel(messages);
+        String optimizedSystemPrompt = extractTag(response, "SYSTEM_PROMPT_OPTIMIZED");
+        String optimizedUserPrompt = extractTag(response, "USER_PROMPT_OPTIMIZED");
 
-            String sysPrompt = extractTag(response, "SYSTEM_PROMPT_OPTIMIZED");
-            String usrPrompt = extractTag(response, "USER_PROMPT_OPTIMIZED");
-
-            sysPrompt = sysPrompt != null ? restorePlaceholders(systemPrompt, sysPrompt) : null;
-            usrPrompt = usrPrompt != null ? restorePlaceholders(userPrompt, usrPrompt) : null;
-
-            return new String[]{sysPrompt, usrPrompt};
-        } catch (Exception e) {
-            return new String[]{null, null};
+        if (optimizedSystemPrompt != null) {
+            optimizedSystemPrompt = restorePlaceholders(systemPrompt, optimizedSystemPrompt);
         }
+        if (optimizedUserPrompt != null) {
+            optimizedUserPrompt = restorePlaceholders(userPrompt, optimizedUserPrompt);
+        }
+
+        return new String[]{optimizedSystemPrompt, optimizedUserPrompt};
     }
 
     private String optimizeSingle(Object op, TextualParameter param, String promptType) {
-        String targetPrompt = getPromptTemplate(op, promptType);
-        String gradient = param.getGradient(promptType);
-        String badCasesStr = formatBadCases();
+        PromptTemplate targetTemplate = getPromptTemplate(op, promptType);
+        String targetPrompt = TuneUtils.getContentStringFromTemplate(targetTemplate);
+        String gradient = nullToEmpty(param.getGradient(promptType));
 
-        // Build prompt for LLM
-        String prompt = buildOptimizeSinglePrompt(targetPrompt, gradient, badCasesStr);
+        List<?> messages = promptInstructionOptimizeTemplate.format(Map.of(
+                "prompt_instruction", targetPrompt,
+                "bad_cases", formatBadCases(),
+                "reflections_on_bad_cases", gradient,
+                "tools_description", TOOLS_DESCRIPTION
+        )).toMessages();
 
-        try {
-            // In actual implementation, would call model.invoke
-            String response = "";  // Placeholder
-
-            String optimized = extractTag(response, "PROMPT_OPTIMIZED");
-            if (optimized != null) {
-                optimized = restorePlaceholders(targetPrompt, optimized);
-            }
-
-            return optimized;
-        } catch (Exception e) {
-            return null;
+        String response = invokeModel(messages);
+        String optimized = extractTag(response, "PROMPT_OPTIMIZED");
+        if (optimized != null) {
+            return restorePlaceholders(targetPrompt, optimized);
         }
+        return null;
     }
 
     private String formatBadCases() {
-        StringBuilder sb = new StringBuilder();
-        for (EvaluatedCase evalCase : getBadCases()) {
-            sb.append("[question]: ").append(evalCase.getInputs()).append("\n");
-            sb.append("[expected answer]: ").append(evalCase.getLabel()).append("\n");
-            sb.append("[assistant answer]: ").append(evalCase.getAnswer()).append("\n");
-            sb.append("[reason]: ").append(evalCase.getReason()).append("\n");
-            sb.append("===\n");
+        StringJoiner joiner = new StringJoiner("");
+        for (EvaluatedCase evaluatedCase : getBadCases()) {
+            PromptTemplate formatted = createBadCaseTemplate.format(Map.of(
+                    "question", String.valueOf(evaluatedCase.getInputs()),
+                    "label", String.valueOf(evaluatedCase.getLabel()),
+                    "answer", String.valueOf(evaluatedCase.getAnswer()),
+                    "reason", String.valueOf(evaluatedCase.getReason())
+            ));
+            Object content = formatted.getContent();
+            if (content instanceof String text) {
+                joiner.add(text);
+            } else if (content != null) {
+                joiner.add(String.valueOf(content));
+            }
         }
-        return sb.toString();
+        return joiner.toString();
     }
 
     private String extractTag(String response, String tag) {
         Pattern pattern = Pattern.compile("<" + tag + ">(.*?)</" + tag + ">", Pattern.DOTALL);
-        Matcher matcher = pattern.matcher(response);
+        Matcher matcher = pattern.matcher(nullToEmpty(response));
         if (!matcher.find()) {
             return null;
         }
-        String content = matcher.group(1);
-        return content.replace("<prompt_base>", "").replace("</prompt_base>", "");
+        return matcher.group(1)
+                .replace("<prompt_base>", "")
+                .replace("</prompt_base>", "");
     }
 
     private String restorePlaceholders(String originalPrompt, String optimizedPrompt) {
-        // Simplified placeholder restoration
-        // In actual implementation, would use PromptAssembler
-        return optimizedPrompt;
+        List<String> originalKeys = new PromptAssembler(originalPrompt, "{{", "}}").getInputKeys();
+        List<String> optimizedKeys = new PromptAssembler(optimizedPrompt, "{{", "}}").getInputKeys();
+
+        LinkedHashSet<String> missing = new LinkedHashSet<>(originalKeys);
+        missing.removeAll(optimizedKeys);
+        if (missing.isEmpty()) {
+            return optimizedPrompt;
+        }
+
+        String restoredPrompt = invokeModel(placeholderRestoreTemplate.format(Map.of(
+                "original_prompt", originalPrompt,
+                "revised_prompt", optimizedPrompt,
+                "all_placeholders", originalKeys.toString(),
+                "missing_placeholders", missing.toString()
+        )).toMessages());
+
+        List<String> restoredKeys = new PromptAssembler(restoredPrompt, "{{", "}}").getInputKeys();
+        LinkedHashSet<String> stillMissing = new LinkedHashSet<>(originalKeys);
+        stillMissing.removeAll(restoredKeys);
+        if (!stillMissing.isEmpty()) {
+            String appendedPlaceholders = stillMissing.stream()
+                    .map(placeholder -> "{{" + placeholder + "}}")
+                    .collect(Collectors.joining("\n"));
+            return restoredPrompt + "\n" + appendedPlaceholders;
+        }
+        return restoredPrompt;
     }
 
-    // Prompt building methods (simplified)
-    private String buildGradientPrompt(String systemPrompt, String userPrompt, String badCases) {
-        return "";
-    }
-
-    private String buildOptimizeBothPrompt(String systemPrompt, String userPrompt, 
-                                           String gradient, String badCases) {
-        return "";
-    }
-
-    private String buildOptimizeSinglePrompt(String targetPrompt, String gradient, String badCases) {
-        return "";
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 }

@@ -25,6 +25,16 @@ class CaseLoaderTest {
     }
 
     @Test
+    void shuffleCasesMatchesPythonRandomOrder() {
+        List<Case> shuffled = CaseLoader.shuffleCases(makeCases(10), 42);
+
+        assertEquals(
+                List.of(7, 3, 2, 8, 5, 6, 9, 4, 0, 1),
+                shuffled.stream().map(caseData -> caseData.getInputs().get("id")).toList()
+        );
+    }
+
+    @Test
     void splitCasesRespectsRatioAndKeepsOriginalUntouched() {
         CaseLoader loader = new CaseLoader(makeCases(10));
 
@@ -33,6 +43,22 @@ class CaseLoaderTest {
         assertEquals(5, split[0].size());
         assertEquals(5, split[1].size());
         assertEquals(10, loader.size());
+    }
+
+    @Test
+    void loaderSplitMatchesPythonShuffleBeforeCut() {
+        CaseLoader loader = new CaseLoader(makeCases(10));
+
+        CaseLoader[] split = loader.split(0.5, 42);
+
+        assertEquals(
+                List.of(7, 3, 2, 8, 5),
+                split[0].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList()
+        );
+        assertEquals(
+                List.of(6, 9, 4, 0, 1),
+                split[1].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList()
+        );
     }
 
     @Test

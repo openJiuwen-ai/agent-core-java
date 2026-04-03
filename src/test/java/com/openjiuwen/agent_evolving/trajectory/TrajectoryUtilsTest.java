@@ -11,6 +11,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TrajectoryUtilsTest {
 
     @Test
+    void executionSpecTwoArgConstructorKeepsOptionalFieldsNull() {
+        ExecutionSpec spec = new ExecutionSpec("case_1", "exec_1");
+
+        assertEquals("case_1", spec.getCaseId());
+        assertEquals("exec_1", spec.getExecutionId());
+        assertEquals(null, spec.getSeed());
+        assertEquals(null, spec.getTags());
+    }
+
+    @Test
+    void trajectoryStepStringKindMapsPluginAliasToTool() {
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("plugin")
+                .operatorId("op_1")
+                .inputs(Map.of())
+                .outputs(Map.of())
+                .meta(Map.of())
+                .build();
+
+        assertEquals("tool", step.getKind());
+    }
+
+    @Test
     void iterStepsReturnsAllStepsWithoutFilters() {
         Trajectory trajectory = new Trajectory(
                 "case_1",

@@ -192,17 +192,7 @@ public class Trainer {
                     .executionId(executionId)
                     .build();
             Object session = predictionResult.sessions().get(i);
-            try {
-                trajectories.add(extractor.extract(session, execution));
-            } catch (Exception e) {
-                trajectories.add(Trajectory.builder()
-                        .caseId(caseData.getCaseId())
-                        .executionId(executionId)
-                        .traceId(null)
-                        .steps(List.of())
-                        .edges(null)
-                        .build());
-            }
+            trajectories.add(extractor.extract(session, execution));
         }
 
         return new ForwardResult(score, evaluated, trajectories, predictionResult.sessions());
@@ -318,7 +308,6 @@ public class Trainer {
         Map<String, Object> restored = checkpointManager.restore(agent, checkpoint);
         progress.setStartEpoch(intValue(restored, "start_epoch", intValue(restored, "startEpoch", 0)));
         progress.setBestScore(doubleValue(restored, "best_score", doubleValue(restored, "bestScore", 0.0)));
-        progress.setCurrentEpoch(progress.getStartEpoch());
 
         Map<String, Object> updaterState = checkpoint.getUpdaterState() != null ? checkpoint.getUpdaterState() : Map.of();
         updater.loadState(updaterState);
@@ -442,25 +431,20 @@ public class Trainer {
 
     private Callable<PredictionAndSession> buildPredictionTask(Object agent, Case caseData) {
         return () -> {
-            Object session = createSession(caseData.getCaseId());
+            Object session = createSession();
             Map<String, Object> prediction = invokeAgent(agent, caseData, session);
             return new PredictionAndSession(prediction, session);
         };
     }
 
-    private Object createSession(String sessionId) {
-        String effectiveSessionId = sessionId != null && !sessionId.isBlank()
-                ? sessionId
-                : UUID.randomUUID().toString();
-        return new AgentSession(effectiveSessionId);
+    private Object createSession() {
+        return new AgentSession(UUID.randomUUID().toString());
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> invokeAgent(Object agent, Case caseData, Object session) {
         Map<String, Object> inputs = new LinkedHashMap<>(caseData.getInputs());
-        if (caseData.getCaseId() != null && !caseData.getCaseId().isBlank()) {
-            inputs.put("conversation_id", caseData.getCaseId());
-        }
+        inputs.put("conversation_id", caseData.getCaseId());
         try {
             Object result;
             if (agent instanceof com.openjiuwen.core.singleagent.BaseAgent baseAgent && session instanceof Session typedSession) {

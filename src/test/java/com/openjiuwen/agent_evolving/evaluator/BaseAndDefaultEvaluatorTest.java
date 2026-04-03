@@ -10,6 +10,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,14 @@ class BaseAndDefaultEvaluatorTest {
     }
 
     @Test
+    void batchEvaluateRejectsEmptyInputLikePythonExecutor() {
+        RecordingEvaluator evaluator = new RecordingEvaluator();
+
+        assertThrows(IllegalArgumentException.class, () ->
+                evaluator.batchEvaluate(List.of(), List.of(), 1));
+    }
+
+    @Test
     void batchEvaluateRunsEachPrediction() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
@@ -47,7 +57,12 @@ class BaseAndDefaultEvaluatorTest {
         );
 
         assertEquals(2, result.size());
-        assertEquals(List.of("case_1", "case_2"), evaluator.seenCaseIds);
+        assertIterableEquals(
+            List.of("case_1", "case_2"),
+            result.stream().map(evaluatedCase -> evaluatedCase.getCaseData().getCaseId()).toList()
+        );
+        assertEquals(2, evaluator.seenCaseIds.size());
+        assertTrue(evaluator.seenCaseIds.containsAll(List.of("case_1", "case_2")));
     }
 
     @Test
@@ -102,7 +117,7 @@ class BaseAndDefaultEvaluatorTest {
     }
 
     private static final class RecordingEvaluator extends BaseEvaluator {
-        private final java.util.List<String> seenCaseIds = new java.util.ArrayList<>();
+        private final List<String> seenCaseIds = Collections.synchronizedList(new ArrayList<>());
 
         @Override
         public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {

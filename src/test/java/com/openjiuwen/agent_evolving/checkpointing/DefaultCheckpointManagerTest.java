@@ -19,6 +19,13 @@ class DefaultCheckpointManagerTest {
     }
 
     @Test
+    void constructorTreatsEmptyRunIdAsMissingLikePython() {
+        DefaultCheckpointManager manager = new DefaultCheckpointManager("", "v1", 1, true);
+
+        assertTrue(manager.getRunId() != null && !manager.getRunId().isEmpty());
+    }
+
+    @Test
     void buildCheckpointUsesSnakeCaseMetricKeys() {
         DefaultCheckpointManager manager = new DefaultCheckpointManager("run_2", "v1", 1, true);
         FakeAgent agent = new FakeAgent(Map.of(
@@ -35,6 +42,22 @@ class DefaultCheckpointManagerTest {
         assertEquals(0.8, checkpoint.getLastMetrics().get("current_epoch_score"));
         assertEquals("value", checkpoint.getOperatorsState().get("op_a").get("prompt"));
         assertEquals(7, checkpoint.getUpdaterState().get("step"));
+    }
+
+    @Test
+    void buildCheckpointCoercesNumericStringProgressValues() {
+        DefaultCheckpointManager manager = new DefaultCheckpointManager("run_strings", "v1", 1, true);
+
+        EvolveCheckpoint checkpoint = manager.buildCheckpoint(
+                new FakeAgent(Map.of()),
+                new FakeStringProgress("6", "14", "0.88", "0.81"),
+                Map.of()
+        );
+
+        assertEquals(6, checkpoint.getStep().get("epoch"));
+        assertEquals(14, checkpoint.getStep().get("batch"));
+        assertEquals(0.88, checkpoint.getBest().get("best_score"));
+        assertEquals(0.81, checkpoint.getLastMetrics().get("current_epoch_score"));
     }
 
     @Test
@@ -86,6 +109,30 @@ class DefaultCheckpointManagerTest {
         Map<String, Object> restored = manager.restore(agent, checkpoint);
 
         assertEquals(0.72, restored.get("best_score"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void restoreCoercesNumericStringEpochValues() {
+        DefaultCheckpointManager manager = new DefaultCheckpointManager("run_5", "v1", 1, true);
+        FakeAgent agent = new FakeAgent(Map.of());
+        Map<String, Integer> step = (Map<String, Integer>) (Map<?, ?>) new LinkedHashMap<>(Map.of("epoch", "7"));
+
+        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder()
+                .version("v1")
+                .runId("run_string_epoch")
+                .step(step)
+                .best(Map.of("best_score", 0.5))
+                .seed(null)
+                .operatorsState(Map.of())
+                .updaterState(Map.of())
+                .searcherState(Map.of())
+                .lastMetrics(Map.of())
+                .build();
+
+        Map<String, Object> restored = manager.restore(agent, checkpoint);
+
+        assertEquals(7, restored.get("start_epoch"));
     }
 
     static final class FakeAgent {
@@ -154,6 +201,36 @@ class DefaultCheckpointManagerTest {
         }
 
         public double getCurrentEpochScore() {
+            return currentEpochScore;
+        }
+    }
+
+    static final class FakeStringProgress {
+        private final String currentEpoch;
+        private final String currentBatchIter;
+        private final String bestScore;
+        private final String currentEpochScore;
+
+        FakeStringProgress(String currentEpoch, String currentBatchIter, String bestScore, String currentEpochScore) {
+            this.currentEpoch = currentEpoch;
+            this.currentBatchIter = currentBatchIter;
+            this.bestScore = bestScore;
+            this.currentEpochScore = currentEpochScore;
+        }
+
+        public String getCurrentEpoch() {
+            return currentEpoch;
+        }
+
+        public String getCurrentBatchIter() {
+            return currentBatchIter;
+        }
+
+        public String getBestScore() {
+            return bestScore;
+        }
+
+        public String getCurrentEpochScore() {
             return currentEpochScore;
         }
     }

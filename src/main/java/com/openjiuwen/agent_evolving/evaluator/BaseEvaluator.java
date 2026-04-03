@@ -63,11 +63,7 @@ public abstract class BaseEvaluator {
                 TuneConstant.MIN_PARALLEL_NUM,
                 TuneConstant.MAX_PARALLEL_NUM
         );
-        if (safeCases.isEmpty()) {
-            return List.of();
-        }
-
-        int workers = Math.max(1, Math.min(numParallel, safeCases.size()));
+        int workers = Math.min(numParallel, safeCases.size());
         ExecutorService executor = Executors.newFixedThreadPool(workers);
         try {
             List<Future<EvaluatedCase>> futures = new ArrayList<>(safeCases.size());

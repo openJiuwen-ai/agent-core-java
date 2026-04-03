@@ -17,7 +17,9 @@ import java.util.List;
  */
 public abstract class ToolOptimizerBase extends BaseOptimizer {
 
-    protected String domain = "tool";
+    protected ToolOptimizerBase() {
+        this.domain = "tool";
+    }
 
     /**
      * Default targets for tool optimizers.

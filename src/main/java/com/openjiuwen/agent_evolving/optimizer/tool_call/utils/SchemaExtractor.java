@@ -6,7 +6,7 @@ package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,10 +43,10 @@ public final class SchemaExtractor {
                         new TypeReference<Map<String, Object>>() {}
                 );
             } catch (Exception e) {
-                return new HashMap<>();
+                return new LinkedHashMap<>();
             }
         } else {
-            return new HashMap<>();
+            return new LinkedHashMap<>();
         }
 
         return extractSchemaRecursive(schemaMap);
@@ -54,10 +54,10 @@ public final class SchemaExtractor {
 
     private static Map<String, Object> extractSchemaRecursive(Map<String, Object> schemaDict) {
         if (schemaDict == null) {
-            return new HashMap<>();
+            return new LinkedHashMap<>();
         }
 
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : schemaDict.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();

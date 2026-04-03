@@ -43,7 +43,7 @@ public class DefaultCheckpointManager implements CheckpointManager {
             int saveEveryNEpochs,
             boolean saveOnImprove
     ) {
-        this.runId = runId != null ? runId : UUID.randomUUID().toString();
+        this.runId = runId != null && !runId.isEmpty() ? runId : UUID.randomUUID().toString();
         this.checkpointVersion = checkpointVersion != null ? checkpointVersion : "v1";
         this.saveEveryNEpochs = Math.max(saveEveryNEpochs, 1);
         this.saveOnImprove = saveOnImprove;
@@ -100,8 +100,8 @@ public class DefaultCheckpointManager implements CheckpointManager {
         restoreOperatorsState(agent, checkpoint.getOperatorsState());
 
         Map<String, Object> result = new HashMap<>();
-        Map<String, Integer> step = checkpoint.getStep();
-        int startEpoch = step != null ? step.getOrDefault("epoch", 0) : 0;
+        Map<?, ?> step = checkpoint.getStep();
+        int startEpoch = coerceToInt(step != null ? step.get("epoch") : null, 0);
         double bestScore = getBestScore(checkpoint.getBest());
         String restoredRunId = checkpoint.getRunId();
 
@@ -119,17 +119,7 @@ public class DefaultCheckpointManager implements CheckpointManager {
             return 0.0;
         }
         Object value = best.containsKey("best_score") ? best.get("best_score") : best.get("bestScore");
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof String stringValue) {
-            try {
-                return Double.parseDouble(stringValue);
-            } catch (NumberFormatException ignored) {
-                return 0.0;
-            }
-        }
-        return 0.0;
+        return coerceToDouble(value, 0.0);
     }
 
     /**
@@ -192,9 +182,7 @@ public class DefaultCheckpointManager implements CheckpointManager {
     private int getIntProperty(Object obj, String property, int defaultValue) {
         try {
             Object value = invokeMethod(obj, "get" + capitalize(property), Object.class);
-            if (value instanceof Number) {
-                return ((Number) value).intValue();
-            }
+            return coerceToInt(value, defaultValue);
         } catch (Exception e) {
             // Ignore
         }
@@ -204,11 +192,37 @@ public class DefaultCheckpointManager implements CheckpointManager {
     private double getDoubleProperty(Object obj, String property, double defaultValue) {
         try {
             Object value = invokeMethod(obj, "get" + capitalize(property), Object.class);
-            if (value instanceof Number) {
-                return ((Number) value).doubleValue();
-            }
+            return coerceToDouble(value, defaultValue);
         } catch (Exception e) {
             // Ignore
+        }
+        return defaultValue;
+    }
+
+    private int coerceToInt(Object value, int defaultValue) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String stringValue) {
+            try {
+                return Integer.parseInt(stringValue);
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    private double coerceToDouble(Object value, double defaultValue) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String stringValue) {
+            try {
+                return Double.parseDouble(stringValue);
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
         }
         return defaultValue;
     }
@@ -230,11 +244,27 @@ public class DefaultCheckpointManager implements CheckpointManager {
                 paramTypes[i / 2] = (Class<?>) args[i];
                 params[i / 2] = args[i + 1];
             }
-            java.lang.reflect.Method method = obj.getClass().getMethod(methodName, paramTypes);
+            java.lang.reflect.Method method = findMethod(obj.getClass(), methodName, paramTypes);
+            if (!method.canAccess(obj)) {
+                method.setAccessible(true);
+            }
             return (T) method.invoke(obj, params);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private java.lang.reflect.Method findMethod(Class<?> type, String methodName, Class<?>[] parameterTypes)
+            throws NoSuchMethodException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(methodName, parameterTypes);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchMethodException(methodName);
     }
 
     private String capitalize(String str) {

@@ -42,7 +42,9 @@ public final class CustomizedPipeline {
         String toolName = (String) tool.get("name");
 
         SimpleApiWrapper callApiFn;
-        if (toolCallable != null) {
+        if (config != null && config.containsKey("fn_call_path")) {
+            throw new UnsupportedOperationException("config based api wrapper is not implemented yet.");
+        } else if (toolCallable != null) {
             callApiFn = new SimpleApiWrapper(toolCallable, toolName, config);
         } else {
             throw new IllegalArgumentException("Either config or toolCallable must be provided.");

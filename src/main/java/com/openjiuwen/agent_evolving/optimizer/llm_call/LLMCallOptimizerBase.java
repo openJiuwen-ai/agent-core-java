@@ -4,6 +4,7 @@
 package com.openjiuwen.agent_evolving.optimizer.llm_call;
 
 import com.openjiuwen.agent_evolving.optimizer.BaseOptimizer;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
 import java.util.Arrays;
 import java.util.List;
@@ -18,7 +19,9 @@ import java.util.Map;
  */
 public abstract class LLMCallOptimizerBase extends BaseOptimizer {
 
-    protected String domain = "llm";
+    protected LLMCallOptimizerBase() {
+        this.domain = "llm";
+    }
 
     /**
      * Default targets for LLM optimizers.
@@ -51,20 +54,22 @@ public abstract class LLMCallOptimizerBase extends BaseOptimizer {
      *
      * @param op     Operator instance
      * @param target Target name
-     * @return Prompt content string
+     * @return Prompt template
      */
     @SuppressWarnings("unchecked")
-    protected String getPromptTemplate(Object op, String target) {
+    protected PromptTemplate getPromptTemplate(Object op, String target) {
         try {
             java.lang.reflect.Method method = op.getClass().getMethod("getState");
             Object state = method.invoke(op);
             if (state instanceof Map) {
                 Object content = ((Map<String, Object>) state).get(target);
-                return content != null ? String.valueOf(content) : "";
+                return PromptTemplate.builder()
+                        .content(content != null ? String.valueOf(content) : "")
+                        .build();
             }
         } catch (Exception e) {
             // Ignore
         }
-        return "";
+        return PromptTemplate.builder().content("").build();
     }
 }

@@ -15,6 +15,10 @@ public class ExecutionSpec {
     public ExecutionSpec() {
     }
 
+    public ExecutionSpec(String caseId, String executionId) {
+        this(caseId, executionId, null, null);
+    }
+
     public ExecutionSpec(String caseId, String executionId, Integer seed, Map<String, Object> tags) {
         this.caseId = caseId;
         this.executionId = executionId;

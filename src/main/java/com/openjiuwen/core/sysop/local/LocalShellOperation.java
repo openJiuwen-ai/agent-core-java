@@ -32,6 +32,8 @@ import java.util.Map;
 @Operation(name = "shell", mode = OperationMode.LOCAL, description = "local shell operation")
 public class LocalShellOperation extends BaseShellOperation {
 
+    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
+
     public LocalShellOperation(Object runConfig) {
         super("shell", OperationMode.LOCAL, "local shell operation", runConfig);
     }
@@ -50,6 +52,7 @@ public class LocalShellOperation extends BaseShellOperation {
 
         Path actualCwd = null;
         try {
+            int effectiveTimeout = normalizeTimeoutSeconds(timeout);
             actualCwd = resolveCwd(cwd);
 
             if (!checkAllowlist(command)) {
@@ -68,11 +71,11 @@ public class LocalShellOperation extends BaseShellOperation {
             String encoding = options != null && options.containsKey("encoding")
                     ? (String) options.get("encoding") : "utf-8";
             Charset charset = Charset.forName(encoding);
-            ProcessHandler handler = new ProcessHandler(process, 1024, charset, timeout);
+            ProcessHandler handler = new ProcessHandler(process, 1024, charset, effectiveTimeout);
             InvokeData invokeData = handler.invoke();
 
             if (invokeData.getException() instanceof InterruptedException) {
-                return buildCmdErrorResult("execution timeout after " + timeout + " seconds",
+                return buildCmdErrorResult("execution timeout after " + effectiveTimeout + " seconds",
                         ExecuteCmdData.builder()
                                 .command(command).cwd(actualCwd.toString())
                                 .exitCode(invokeData.getExitCode())
@@ -124,6 +127,7 @@ public class LocalShellOperation extends BaseShellOperation {
         }
 
         try {
+            int effectiveTimeout = normalizeTimeoutSeconds(timeout);
             Path actualCwd = resolveCwd(cwd);
 
             if (!checkAllowlist(command)) {
@@ -145,7 +149,7 @@ public class LocalShellOperation extends BaseShellOperation {
             String encoding = options != null && options.containsKey("encoding")
                     ? (String) options.get("encoding") : "utf-8";
             Charset charset = Charset.forName(encoding);
-            ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, timeout);
+                ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, effectiveTimeout);
             Iterator<StreamEvent> eventIterator = handler.stream();
 
             while (eventIterator.hasNext()) {
@@ -182,6 +186,10 @@ public class LocalShellOperation extends BaseShellOperation {
         } else {
             return new ProcessBuilder("/bin/sh", "-c", command);
         }
+    }
+
+    private int normalizeTimeoutSeconds(int timeout) {
+        return timeout > 0 ? timeout : DEFAULT_TIMEOUT_SECONDS;
     }
 
     /**

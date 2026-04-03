@@ -28,7 +28,12 @@ public class KVStorePipeline {
 
     /** Add a set operation to the pipeline. */
     public KVStorePipeline set(String key, Object value) {
-        operations.add(new Object[]{"set", key, value});
+        return set(key, value, null);
+    }
+
+    /** Add a set operation to the pipeline with an optional expiry in seconds. */
+    public KVStorePipeline set(String key, Object value, Integer expiry) {
+        operations.add(new Object[]{"set", key, value, expiry});
         return this;
     }
 

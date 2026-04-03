@@ -24,6 +24,24 @@ class TuneUtilsTest {
     }
 
     @Test
+    void tuneConstantMatchesPythonDefaultsAndBounds() {
+        assertAll(
+                () -> assertEquals(1, TuneConstant.DEFAULT_EXAMPLE_NUM),
+                () -> assertEquals(3, TuneConstant.DEFAULT_ITERATION_NUM),
+                () -> assertEquals(10, TuneConstant.DEFAULT_MAX_SAMPLED_EXAMPLE_NUM),
+                () -> assertEquals(1, TuneConstant.DEFAULT_PARALLEL_NUM),
+                () -> assertEquals(10, TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES),
+                () -> assertEquals(1.0f, TuneConstant.DEFAULT_EARLY_STOP_SCORE),
+                () -> assertEquals(1, TuneConstant.MIN_ITERATION_NUM),
+                () -> assertEquals(20, TuneConstant.MAX_ITERATION_NUM),
+                () -> assertEquals(1, TuneConstant.MIN_PARALLEL_NUM),
+                () -> assertEquals(20, TuneConstant.MAX_PARALLEL_NUM),
+                () -> assertEquals(0, TuneConstant.MIN_EXAMPLE_NUM),
+                () -> assertEquals(20, TuneConstant.MAX_EXAMPLE_NUM)
+        );
+    }
+
+    @Test
     void validateDigitalParameterRejectsOutOfRangeValues() {
         assertThrows(ValidationError.class,
                 () -> TuneUtils.validateDigitalParameter(-0.1, "param", 0.0, 1.0));
@@ -42,9 +60,30 @@ class TuneUtilsTest {
     }
 
     @Test
+    void parseJsonFromLlmResponseHandlesWhitespaceAndInvalidPayloads() {
+        assertEquals(
+                Map.of("key", "value"),
+                TuneUtils.parseJsonFromLlmResponse("```json  \n{\"key\": \"value\"}  \n```")
+        );
+        assertNull(TuneUtils.parseJsonFromLlmResponse("{\"key\": \"value\"}"));
+        assertNull(TuneUtils.parseJsonFromLlmResponse("```json\nnot valid json\n```"));
+        assertNull(TuneUtils.parseJsonFromLlmResponse("```json\n```"));
+    }
+
+    @Test
     void parseListFromLlmResponseReturnsOnlyLists() {
         assertEquals(List.of(1, 2, 3), TuneUtils.parseListFromLlmResponse("```list\n[1, 2, 3]\n```"));
         assertNull(TuneUtils.parseListFromLlmResponse("```list\n{\"key\": \"value\"}\n```"));
+    }
+
+    @Test
+    void parseListFromLlmResponseHandlesWhitespaceAndRejectsScalarPayloads() {
+        assertEquals(
+                List.of(1, 2, 3),
+                TuneUtils.parseListFromLlmResponse("```list  \n[1, 2, 3]  \n```")
+        );
+        assertNull(TuneUtils.parseListFromLlmResponse("[1, 2, 3]"));
+        assertNull(TuneUtils.parseListFromLlmResponse("```list\n42\n```"));
     }
 
     @Test
@@ -84,6 +123,19 @@ class TuneUtilsTest {
     }
 
     @Test
+    void getOutputStringFromMessageReturnsPlainContentWithoutToolCalls() {
+        assertEquals(
+                "assistant",
+                TuneUtils.getOutputStringFromMessage(AssistantMessage.builder().content("assistant").build())
+        );
+        assertEquals(
+                "user",
+                TuneUtils.getOutputStringFromMessage(UserMessage.builder().content("user").build())
+        );
+        assertEquals("", TuneUtils.getOutputStringFromMessage(null));
+    }
+
+    @Test
     void getContentStringFromTemplateJoinsMessageContents() {
         PromptTemplate template = PromptTemplate.builder()
                 .content(List.of(
@@ -93,5 +145,14 @@ class TuneUtilsTest {
                 .build();
 
         assertEquals("system\nuser", TuneUtils.getContentStringFromTemplate(template));
+    }
+
+    @Test
+    void getContentStringFromTemplateReturnsEmptyForEmptyTemplate() {
+        PromptTemplate template = PromptTemplate.builder()
+                .content(List.of())
+                .build();
+
+        assertEquals("", TuneUtils.getContentStringFromTemplate(template));
     }
 }

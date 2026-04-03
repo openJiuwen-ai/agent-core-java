@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -173,6 +174,54 @@ class TracerTrajectoryExtractorTest {
         assertEquals("node_llm", result.getSteps().getFirst().getNodeId());
     }
 
+    @Test
+    void extractSupportsPythonStyleFieldsAndPreservesNonMapErrors() {
+        PythonStyleSpan span = new PythonStyleSpan();
+        span.invoke_type = "plugin";
+        span.invoke_id = "inv_py";
+        span.llm_call_id = "llm_py";
+        span.error = "boom";
+        span.inputs = Map.of("inputs", Map.of("query", "python"));
+        span.outputs = Map.of("outputs", Map.of("answer", "java"));
+        span.start_time = LocalDateTime.of(2024, 1, 1, 8, 0, 0);
+        span.end_time = LocalDateTime.of(2024, 1, 1, 8, 0, 2);
+        span.meta_data = new LinkedHashMap<>(Map.of(
+                "agent_id", "agent_py",
+                "role", "assistant",
+                "node_id", "node_py",
+                "nested", new LinkedHashMap<>(Map.of("list", new ArrayList<>(List.of("a", "b"))))
+        ));
+
+        PythonStyleSpanManager manager = new PythonStyleSpanManager(List.of(span));
+        PythonStyleTracer tracer = new PythonStyleTracer("trace_py", manager);
+
+        Trajectory result = extractor.extract(new PythonStyleSession(tracer), new ExecutionSpec("case_py", "exec_py"));
+
+        assertEquals("trace_py", result.getTraceId());
+        assertEquals(1, result.getSteps().size());
+        TrajectoryStep step = result.getSteps().getFirst();
+        assertEquals("tool", step.getKind());
+        assertEquals("llm_py", step.getOperatorId());
+        assertEquals("agent_py", step.getAgentId());
+        assertEquals("assistant", step.getRole());
+        assertEquals("node_py", step.getNodeId());
+        assertEquals(Map.of("query", "python"), step.getInputs());
+        assertEquals(Map.of("answer", "java"), step.getOutputs());
+        assertEquals("boom", step.getError());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> nested = (Map<String, Object>) step.getMeta().get("nested");
+        @SuppressWarnings("unchecked")
+        List<String> nestedList = (List<String>) nested.get("list");
+        nestedList.add("mutated");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sourceNested = (Map<String, Object>) span.meta_data.get("nested");
+        @SuppressWarnings("unchecked")
+        List<String> sourceList = (List<String>) sourceNested.get("list");
+        assertEquals(List.of("a", "b"), sourceList);
+    }
+
     private static TraceAgentSpan agentSpan(String invokeId, String invokeType) {
         TraceAgentSpan span = new TraceAgentSpan("trace", invokeId, null);
         span.setInvokeId(invokeId);
@@ -274,5 +323,48 @@ class TracerTrajectoryExtractorTest {
             copy.setLlmCallId(llmCallId);
             return copy;
         }
+    }
+
+    private static final class PythonStyleSession {
+        private final Object tracer;
+
+        private PythonStyleSession(Object tracer) {
+            this.tracer = tracer;
+        }
+    }
+
+    private static final class PythonStyleTracer {
+        private final String _trace_id;
+        private final Object tracer_agent_span_manager;
+        private final Map<String, Object> tracer_workflow_span_manager_dict = Map.of();
+
+        private PythonStyleTracer(String traceId, Object spanManager) {
+            this._trace_id = traceId;
+            this.tracer_agent_span_manager = spanManager;
+        }
+    }
+
+    private static final class PythonStyleSpanManager {
+        private final List<Object> spans;
+
+        private PythonStyleSpanManager(List<Object> spans) {
+            this.spans = spans;
+        }
+
+        public Collection<Object> getAllSpans() {
+            return spans;
+        }
+    }
+
+    private static final class PythonStyleSpan {
+        private String invoke_type;
+        private String invoke_id;
+        private Object inputs;
+        private Object outputs;
+        private Object error;
+        private LocalDateTime start_time;
+        private LocalDateTime end_time;
+        private Map<String, Object> meta_data;
+        private String llm_call_id;
     }
 }

@@ -5,7 +5,9 @@ package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Base method class for tool optimization.
@@ -24,8 +26,7 @@ public abstract class BaseMethod {
      */
     public BaseMethod(Map<String, Object> config) {
         this.config = config != null ? config : Map.of();
-        this.verbose = this.config.containsKey("verbose") 
-                && Boolean.TRUE.equals(this.config.get("verbose"));
+        this.verbose = isTruthy(this.config.get("verbose"));
     }
 
     /**
@@ -56,18 +57,41 @@ Finally, organize your output in the following JSON format:
 You must strictly follow the output format. You can begin your task now.
 """, docStr, instruction, apiResponse);
 
-        // Call LLM API
+        Function<String, Object> verifyOutput = output -> {
+            Object parsed = FormatUtils.parseJson(output);
+            if (!(parsed instanceof Map<?, ?> outputJson)) {
+                throw new IllegalArgumentException("Output must be a dict.");
+            }
+            if (!outputJson.containsKey("answer")) {
+                throw new IllegalArgumentException("\"answer\" field is required.");
+            }
+            if (outputJson.containsKey("error")) {
+                throw new IllegalArgumentException(String.valueOf(outputJson.get("error")));
+            }
+            Object answer = outputJson.get("answer");
+            return answer == null ? "" : String.valueOf(answer).trim();
+        };
+
         String prompt = FormatUtils.formatPromptLlama("", userPrompt);
-        String output = RitsUtils.getRitsResponse(
+        Object output = invokeRitsResponse(
                 (String) config.get("gen_model_id"),
                 prompt,
-                (String) config.get("llm_api_key")
+                (String) config.get("llm_api_key"),
+                verifyOutput,
+                Map.of(
+                        "max_attempts", 15,
+                        "include_stop_sequence", false,
+                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>")
+                )
         );
 
         if (verbose) {
             Loggers.AGENT.info("Final LLM output: {}", output);
         }
-        return output;
+        if (output instanceof Map<?, ?> outputMap && outputMap.containsKey("error")) {
+            throw new IllegalArgumentException(String.valueOf(outputMap.get("error")));
+        }
+        return output == null ? "" : String.valueOf(output);
     }
 
     /**
@@ -86,5 +110,28 @@ You must strictly follow the output format. You can begin your task now.
      */
     public boolean isVerbose() {
         return verbose;
+    }
+
+    protected Object invokeRitsResponse(
+            String modelId,
+            String prompt,
+            String llmApiKey,
+            Function<String, Object> verifyFn,
+            Map<String, Object> kwargs
+    ) {
+        return RitsUtils.getRitsResponse(modelId, prompt, llmApiKey, verifyFn, verbose, kwargs);
+    }
+
+    private static boolean isTruthy(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof String text) {
+            return "true".equalsIgnoreCase(text) || "1".equals(text.trim());
+        }
+        return false;
     }
 }

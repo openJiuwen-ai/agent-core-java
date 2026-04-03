@@ -85,8 +85,7 @@ public class CaseLoader implements Iterable<Case> {
      */
     public static List<Case> shuffleCases(List<Case> cases, int seed) {
         List<Case> shuffled = new ArrayList<>(cases != null ? cases : Collections.emptyList());
-        Random rnd = new Random(seed);
-        Collections.shuffle(shuffled, rnd);
+        new PythonRandom(seed).shuffle(shuffled);
         return shuffled;
     }
 
@@ -109,5 +108,145 @@ public class CaseLoader implements Iterable<Case> {
         result[0] = new ArrayList<>(safeCases.subList(0, cut));
         result[1] = new ArrayList<>(safeCases.subList(cut, safeCases.size()));
         return result;
+    }
+
+    /**
+     * Mirrors Python's random.Random(seed).shuffle for deterministic cross-language parity.
+     */
+    private static final class PythonRandom {
+        private static final int N = 624;
+        private static final int M = 397;
+        private static final int MATRIX_A = 0x9908b0df;
+        private static final int UPPER_MASK = 0x80000000;
+        private static final int LOWER_MASK = 0x7fffffff;
+
+        private final int[] mt = new int[N];
+        private int index = N;
+
+        private PythonRandom(int seed) {
+            initByArray(seedWords(seed));
+        }
+
+        private static int[] seedWords(int seed) {
+            long normalized = Math.abs((long) seed);
+            return new int[]{(int) normalized};
+        }
+
+        private void initGenRand(int seed) {
+            mt[0] = seed;
+            for (int i = 1; i < N; i++) {
+                long previous = Integer.toUnsignedLong(mt[i - 1]);
+                long mixed = previous ^ (previous >>> 30);
+                mt[i] = (int) ((1812433253L * mixed + i) & 0xffffffffL);
+            }
+            index = N;
+        }
+
+        private void initByArray(int[] initKey) {
+            initGenRand(19650218);
+            int i = 1;
+            int j = 0;
+            int keyLength = initKey.length;
+            int loops = Math.max(N, keyLength);
+
+            for (int count = 0; count < loops; count++) {
+                long previous = Integer.toUnsignedLong(mt[i - 1]);
+                long mixed = previous ^ (previous >>> 30);
+                long current = Integer.toUnsignedLong(mt[i]);
+                long key = Integer.toUnsignedLong(initKey[j]);
+                mt[i] = (int) ((((current ^ (mixed * 1664525L)) + key + j)) & 0xffffffffL);
+                i++;
+                j++;
+                if (i >= N) {
+                    mt[0] = mt[N - 1];
+                    i = 1;
+                }
+                if (j >= keyLength) {
+                    j = 0;
+                }
+            }
+
+            for (int count = 0; count < N - 1; count++) {
+                long previous = Integer.toUnsignedLong(mt[i - 1]);
+                long mixed = previous ^ (previous >>> 30);
+                long current = Integer.toUnsignedLong(mt[i]);
+                mt[i] = (int) ((((current ^ (mixed * 1566083941L)) - i)) & 0xffffffffL);
+                i++;
+                if (i >= N) {
+                    mt[0] = mt[N - 1];
+                    i = 1;
+                }
+            }
+            mt[0] = 0x80000000;
+        }
+
+        private int nextInt32() {
+            if (index >= N) {
+                twist();
+            }
+
+            int y = mt[index++];
+            y ^= y >>> 11;
+            y ^= (y << 7) & 0x9d2c5680;
+            y ^= (y << 15) & 0xefc60000;
+            y ^= y >>> 18;
+            return y;
+        }
+
+        private void twist() {
+            for (int kk = 0; kk < N - M; kk++) {
+                long y = (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK)
+                        | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
+                mt[kk] = mt[kk + M] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            }
+            for (int kk = N - M; kk < N - 1; kk++) {
+                long y = (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK)
+                        | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
+                mt[kk] = mt[kk + (M - N)] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            }
+
+            long y = (Integer.toUnsignedLong(mt[N - 1]) & UPPER_MASK)
+                    | (Integer.toUnsignedLong(mt[0]) & LOWER_MASK);
+            mt[N - 1] = mt[M - 1] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            index = 0;
+        }
+
+        private long getRandBits(int bits) {
+            if (bits <= 0) {
+                return 0L;
+            }
+
+            int wordCount = (bits + 31) / 32;
+            long value = 0L;
+            int accumulatedBits = 0;
+
+            for (int i = 0; i < wordCount; i++) {
+                long word = Integer.toUnsignedLong(nextInt32());
+                int take = 32;
+                if (i == wordCount - 1 && bits % 32 != 0) {
+                    take = bits % 32;
+                    word >>>= (32 - take);
+                }
+                value |= word << accumulatedBits;
+                accumulatedBits += take;
+            }
+            return value;
+        }
+
+        private int randBelow(int boundExclusive) {
+            int bits = 32 - Integer.numberOfLeadingZeros(boundExclusive);
+            long candidate = getRandBits(bits);
+            while (candidate >= boundExclusive) {
+                candidate = getRandBits(bits);
+            }
+            return (int) candidate;
+        }
+
+        private <T> void shuffle(List<T> values) {
+            for (int i = values.size() - 1; i > 0; i--) {
+                int j = randBelow(i + 1);
+                Collections.swap(values, i, j);
+            }
+        }
     }
 }

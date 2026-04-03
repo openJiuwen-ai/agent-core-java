@@ -3,6 +3,7 @@
 
 package com.openjiuwen.agent_evolving.evaluator.metrics;
 
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -59,6 +60,6 @@ public class ExactMatchMetric extends Metric {
      * @return Normalized string
      */
     public static String normalize(String inputData) {
-        return String.valueOf(inputData).strip().toLowerCase().replaceAll("\\s+", " ");
+        return String.valueOf(inputData).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
     }
 }

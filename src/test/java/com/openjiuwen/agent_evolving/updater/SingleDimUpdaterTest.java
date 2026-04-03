@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -57,5 +58,28 @@ class SingleDimUpdaterTest {
         SingleDimUpdater updater = new SingleDimUpdater(optimizer);
 
         assertEquals(false, updater.requiresForwardData());
+    }
+
+    @Test
+    void updateHandlesEmptyTrajectories() {
+        BaseOptimizer optimizer = Mockito.mock(BaseOptimizer.class);
+        when(optimizer.step()).thenReturn(new Updates());
+
+        SingleDimUpdater updater = new SingleDimUpdater(optimizer);
+        Updates result = updater.update(List.of(), List.of(), Map.of());
+
+        Mockito.verify(optimizer, Mockito.never()).addTrajectory(any());
+        Mockito.verify(optimizer).backward(List.of());
+        Mockito.verify(optimizer).step();
+        assertEquals(0, result.size());
+    }
+
+    @Test
+    void getStateReturnsEmptyMapAndLoadStateIsNoOp() {
+        BaseOptimizer optimizer = Mockito.mock(BaseOptimizer.class);
+        SingleDimUpdater updater = new SingleDimUpdater(optimizer);
+
+        assertEquals(Map.of(), updater.getState());
+        assertDoesNotThrow(() -> updater.loadState(Map.of("ignored", "value")));
     }
 }

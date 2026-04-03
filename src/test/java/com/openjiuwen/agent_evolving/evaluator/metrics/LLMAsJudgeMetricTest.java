@@ -36,6 +36,13 @@ class LLMAsJudgeMetricTest {
         assertTrue(metric.isHigherIsBetter());
     }
 
+    @Test
+    void computeReturnsZeroWhenModelInvocationFails() {
+        StubLLMAsJudgeMetric metric = new StubLLMAsJudgeMetric(new RuntimeException("model error"));
+
+        assertEquals(0.0, metric.compute("prediction", "label", Map.of("question", "question")));
+    }
+
     private static AssistantMessage assistant(String content) {
         return AssistantMessage.builder().content(content).build();
     }

@@ -15,7 +15,7 @@ public class TrajectoryStep {
     private String nodeId;
     private Object inputs;
     private Object outputs;
-    private Map<String, Object> error;
+    private Object error;
     private Long startTimeMs;
     private Long endTimeMs;
     private Map<String, Object> meta;
@@ -32,7 +32,7 @@ public class TrajectoryStep {
                           String nodeId,
                           Object inputs,
                           Object outputs,
-                          Map<String, Object> error,
+                          Object error,
                           Long startTimeMs,
                           Long endTimeMs,
                           Map<String, Object> meta) {
@@ -56,7 +56,7 @@ public class TrajectoryStep {
                           String nodeId,
                           Object inputs,
                           Object outputs,
-                          Map<String, Object> error,
+                          Object error,
                           Long startTimeMs,
                           Long endTimeMs,
                           Map<String, Object> meta) {
@@ -80,8 +80,8 @@ public class TrajectoryStep {
     public void setInputs(Object inputs) { this.inputs = inputs; }
     public Object getOutputs() { return outputs; }
     public void setOutputs(Object outputs) { this.outputs = outputs; }
-    public Map<String, Object> getError() { return error; }
-    public void setError(Map<String, Object> error) { this.error = error; }
+    public Object getError() { return error; }
+    public void setError(Object error) { this.error = error; }
     public Long getStartTimeMs() { return startTimeMs; }
     public void setStartTimeMs(Long startTimeMs) { this.startTimeMs = startTimeMs; }
     public Long getEndTimeMs() { return endTimeMs; }
@@ -97,7 +97,7 @@ public class TrajectoryStep {
         private String nodeId;
         private Object inputs;
         private Object outputs;
-        private Map<String, Object> error;
+        private Object error;
         private Long startTimeMs;
         private Long endTimeMs;
         private Map<String, Object> meta;
@@ -113,7 +113,7 @@ public class TrajectoryStep {
         public Builder nodeId(String nodeId) { this.nodeId = nodeId; return this; }
         public Builder inputs(Object inputs) { this.inputs = inputs; return this; }
         public Builder outputs(Object outputs) { this.outputs = outputs; return this; }
-        public Builder error(Map<String, Object> error) { this.error = error; return this; }
+        public Builder error(Object error) { this.error = error; return this; }
         public Builder startTimeMs(Long startTimeMs) { this.startTimeMs = startTimeMs; return this; }
         public Builder endTimeMs(Long endTimeMs) { this.endTimeMs = endTimeMs; return this; }
         public Builder meta(Map<String, Object> meta) { this.meta = meta; return this; }

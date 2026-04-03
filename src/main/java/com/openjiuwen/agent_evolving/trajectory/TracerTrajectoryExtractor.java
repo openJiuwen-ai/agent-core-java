@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,20 +70,30 @@ public class TracerTrajectoryExtractor {
                 Method getter = session.getClass().getMethod("getTracer");
                 return getter.invoke(session);
             } catch (Exception ignore) {
-                return null;
+                return getFieldValue(session, "tracer");
             }
         }
     }
 
     @SuppressWarnings("unchecked")
     private List<Object> getAgentSpans(Object tracer) {
-        Object spanManager = getAttribute(tracer, List.of("tracerAgentSpanManager"), Object.class, null);
+        Object spanManager = getAttribute(
+                tracer,
+                List.of("tracerAgentSpanManager", "tracer_agent_span_manager"),
+                Object.class,
+                null
+        );
         return collectSpansFromManager(spanManager);
     }
 
     @SuppressWarnings("unchecked")
     private List<Object> getWorkflowSpans(Object tracer) {
-        Map<String, Object> managers = getAttribute(tracer, List.of("tracerWorkflowSpanManagerDict"), Map.class, Map.of());
+        Map<String, Object> managers = getAttribute(
+                tracer,
+                List.of("tracerWorkflowSpanManagerDict", "tracer_workflow_span_manager_dict"),
+                Map.class,
+                Map.of()
+        );
         List<Object> spans = new ArrayList<>();
         for (Object spanManager : managers.values()) {
             spans.addAll(collectSpansFromManager(spanManager));
@@ -95,14 +106,17 @@ public class TracerTrajectoryExtractor {
         if (spanManager == null) {
             return List.of();
         }
+        Object allSpans = invokeNoArgs(spanManager, "getAllSpans");
+        if (allSpans instanceof Collection<?> collection) {
+            List<Object> spans = new ArrayList<>(collection.size());
+            for (Object span : collection) {
+                spans.add(snapshotSpan(span));
+            }
+            return spans;
+        }
         try {
-            Field orderField = spanManager.getClass().getDeclaredField("order");
-            orderField.setAccessible(true);
-            List<String> order = (List<String>) orderField.get(spanManager);
-
-            Field spanMapField = spanManager.getClass().getDeclaredField("sessionSpans");
-            spanMapField.setAccessible(true);
-            Map<String, Object> spanMap = (Map<String, Object>) spanMapField.get(spanManager);
+            List<String> order = (List<String>) getRequiredFieldValue(spanManager, "order");
+            Map<String, Object> spanMap = (Map<String, Object>) getRequiredFieldValue(spanManager, "sessionSpans");
 
             List<Object> spans = new ArrayList<>();
             for (String invokeId : order != null ? order : List.<String>of()) {
@@ -127,12 +141,17 @@ public class TracerTrajectoryExtractor {
     }
 
     private String getTraceId(Object tracer) {
-        return getAttribute(tracer, List.of("traceId"), String.class, null);
+        return getAttribute(tracer, List.of("traceId", "_traceId", "_trace_id"), String.class, null);
     }
 
     @SuppressWarnings("unchecked")
     private StepResult buildAgentStep(Object span) {
-        Map<String, Object> baseMeta = getAttribute(span, List.of("metaData"), Map.class, new LinkedHashMap<>());
+        Map<String, Object> baseMeta = getAttribute(
+                span,
+                List.of("metaData", "meta_data"),
+                Map.class,
+                new LinkedHashMap<>()
+        );
         String operatorId = getOperatorId(span, baseMeta);
         String nodeId = getStringFromMap(baseMeta, "node_id", "component_id");
 
@@ -144,32 +163,32 @@ public class TracerTrajectoryExtractor {
                 .nodeId(nodeId)
                 .inputs(extractInputs(span))
                 .outputs(extractOutputs(span))
-                .error(getAttribute(span, List.of("error"), Map.class, null))
-                .startTimeMs(getTimeMs(span, "startTime"))
-                .endTimeMs(getTimeMs(span, "endTime"))
+                .error(getAttribute(span, List.of("error"), Object.class, null))
+                .startTimeMs(getTimeMs(span, "startTime", "start_time"))
+                .endTimeMs(getTimeMs(span, "endTime", "end_time"))
                 .meta(buildAgentMeta(span, baseMeta))
                 .build();
 
-        String invokeId = getAttribute(span, List.of("invokeId"), String.class, null);
+        String invokeId = getAttribute(span, List.of("invokeId", "invoke_id"), String.class, null);
         return new StepResult(step, invokeId);
     }
 
     private TrajectoryStep buildWorkflowStep(Object span) {
         String nodeId = firstNonBlank(
-                getAttribute(span, List.of("componentId"), String.class, null),
-                getAttribute(span, List.of("componentName"), String.class, null),
-                getAttribute(span, List.of("workflowName"), String.class, null)
+                getAttribute(span, List.of("componentId", "component_id"), String.class, null),
+                getAttribute(span, List.of("componentName", "component_name"), String.class, null),
+                getAttribute(span, List.of("workflowName", "workflow_name"), String.class, null)
         );
 
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("workflow_id", getAttribute(span, List.of("workflowId"), String.class, null));
-        meta.put("workflow_name", getAttribute(span, List.of("workflowName"), String.class, null));
-        meta.put("component_id", getAttribute(span, List.of("componentId"), String.class, null));
-        meta.put("component_name", getAttribute(span, List.of("componentName"), String.class, null));
-        meta.put("component_type", getAttribute(span, List.of("componentType"), String.class, null));
-        meta.put("loop_node_id", getAttribute(span, List.of("loopNodeId"), String.class, null));
-        meta.put("loop_index", getAttribute(span, List.of("loopIndex"), Object.class, null));
-        meta.put("parent_node_id", getAttribute(span, List.of("parentNodeId"), String.class, null));
+        meta.put("workflow_id", getAttribute(span, List.of("workflowId", "workflow_id"), String.class, null));
+        meta.put("workflow_name", getAttribute(span, List.of("workflowName", "workflow_name"), String.class, null));
+        meta.put("component_id", getAttribute(span, List.of("componentId", "component_id"), String.class, null));
+        meta.put("component_name", getAttribute(span, List.of("componentName", "component_name"), String.class, null));
+        meta.put("component_type", getAttribute(span, List.of("componentType", "component_type"), String.class, null));
+        meta.put("loop_node_id", getAttribute(span, List.of("loopNodeId", "loop_node_id"), String.class, null));
+        meta.put("loop_index", getAttribute(span, List.of("loopIndex", "loop_index"), Object.class, null));
+        meta.put("parent_node_id", getAttribute(span, List.of("parentNodeId", "parent_node_id"), String.class, null));
 
         return TrajectoryStep.builder()
                 .kind(StepKind.WORKFLOW)
@@ -179,15 +198,15 @@ public class TracerTrajectoryExtractor {
                 .nodeId(nodeId)
                 .inputs(extractInputs(span))
                 .outputs(extractOutputs(span))
-                .error(getAttribute(span, List.of("error"), Map.class, null))
-                .startTimeMs(getTimeMs(span, "startTime"))
-                .endTimeMs(getTimeMs(span, "endTime"))
+                .error(getAttribute(span, List.of("error"), Object.class, null))
+                .startTimeMs(getTimeMs(span, "startTime", "start_time"))
+                .endTimeMs(getTimeMs(span, "endTime", "end_time"))
                 .meta(meta)
                 .build();
     }
 
     private StepKind classifySpanKind(Object span) {
-        String invokeType = getAttribute(span, List.of("invokeType"), String.class, "");
+        String invokeType = getAttribute(span, List.of("invokeType", "invoke_type"), String.class, "");
         if ("plugin".equalsIgnoreCase(invokeType)) {
             return StepKind.TOOL;
         }
@@ -205,8 +224,8 @@ public class TracerTrajectoryExtractor {
 
     private String getOperatorId(Object span, Map<String, Object> meta) {
         return firstNonBlank(
-                getAttribute(span, List.of("operatorId"), String.class, null),
-                getAttribute(span, List.of("llmCallId"), String.class, null),
+                getAttribute(span, List.of("operatorId", "operator_id"), String.class, null),
+                getAttribute(span, List.of("llmCallId", "llm_call_id"), String.class, null),
                 getStringFromMap(meta, "operator_id"),
                 getAttribute(span, List.of("name"), String.class, null)
         );
@@ -232,13 +251,15 @@ public class TracerTrajectoryExtractor {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> buildAgentMeta(Object span, Map<String, Object> baseMeta) {
-        Map<String, Object> meta = new LinkedHashMap<>();
-        if (baseMeta != null) {
-            meta.putAll(baseMeta);
-        }
-        meta.put("invoke_id", getAttribute(span, List.of("invokeId"), String.class, null));
-        meta.put("parent_invoke_id", getAttribute(span, List.of("parentInvokeId"), String.class, null));
-        meta.put("child_invokes", getAttribute(span, List.of("childInvokesId"), List.class, null));
+        Map<String, Object> meta = deepCopyMap(baseMeta);
+        meta.put("invoke_id", getAttribute(span, List.of("invokeId", "invoke_id"), String.class, null));
+        meta.put("parent_invoke_id", getAttribute(span, List.of("parentInvokeId", "parent_invoke_id"), String.class, null));
+        meta.put("child_invokes", deepCopyValue(getAttribute(
+                span,
+                List.of("childInvokesId", "child_invokes_id"),
+                List.class,
+                null
+        )));
         return meta;
     }
 
@@ -283,9 +304,7 @@ public class TracerTrajectoryExtractor {
             } catch (Exception ignored) {
             }
             try {
-                Field field = obj.getClass().getDeclaredField(name);
-                field.setAccessible(true);
-                Object value = field.get(obj);
+                Object value = getRequiredFieldValue(obj, name);
                 if (value == null) {
                     continue;
                 }
@@ -296,6 +315,44 @@ public class TracerTrajectoryExtractor {
             }
         }
         return defaultValue;
+    }
+
+    private Object invokeNoArgs(Object obj, String methodName) {
+        try {
+            Method method = obj.getClass().getMethod(methodName);
+            return method.invoke(obj);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Object getRequiredFieldValue(Object obj, String fieldName) throws NoSuchFieldException, IllegalAccessException {
+        Field field = findField(obj.getClass(), fieldName);
+        field.setAccessible(true);
+        return field.get(obj);
+    }
+
+    private Object getFieldValue(Object obj, String fieldName) {
+        if (obj == null) {
+            return null;
+        }
+        try {
+            return getRequiredFieldValue(obj, fieldName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Field findField(Class<?> type, String fieldName) throws NoSuchFieldException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(fieldName);
     }
 
     private String getStringFromMap(Map<String, Object> map, String... keys) {
@@ -311,8 +368,8 @@ public class TracerTrajectoryExtractor {
         return null;
     }
 
-    private Long getTimeMs(Object obj, String fieldName) {
-        Object value = getAttribute(obj, List.of(fieldName), Object.class, null);
+    private Long getTimeMs(Object obj, String... fieldNames) {
+        Object value = getAttribute(obj, List.of(fieldNames), Object.class, null);
         if (value instanceof LocalDateTime localDateTime) {
             return localDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         }
@@ -320,6 +377,36 @@ public class TracerTrajectoryExtractor {
             return date.getTime();
         }
         return null;
+    }
+
+    private Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        if (source == null) {
+            return copy;
+        }
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            copy.put(entry.getKey(), deepCopyValue(entry.getValue()));
+        }
+        return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object deepCopyValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                copy.put(String.valueOf(entry.getKey()), deepCopyValue(entry.getValue()));
+            }
+            return copy;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            for (Object item : list) {
+                copy.add(deepCopyValue(item));
+            }
+            return copy;
+        }
+        return value;
     }
 
     private String capitalize(String fieldName) {
