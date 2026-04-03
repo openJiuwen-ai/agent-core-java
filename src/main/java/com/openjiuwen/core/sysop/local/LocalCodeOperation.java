@@ -33,6 +33,7 @@ import java.util.Map;
 @Operation(name = "code", mode = OperationMode.LOCAL, description = "local code operation")
 public class LocalCodeOperation extends BaseCodeOperation {
 
+    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     private static final int WINDOWS_CMD_LIMIT = 8000;
     private static final int UNIX_CMD_LIMIT = 100000;
 
@@ -59,7 +60,8 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
         String codeFilePath = null;
         try {
-            boolean forceFile = options != null && Boolean.TRUE.equals(options.get("force_file"));
+            int effectiveTimeout = normalizeTimeoutSeconds(timeout);
+            boolean forceFile = shouldForceFileExecution(language, code, options);
             String[] cmdAndPath = buildSubprocessCmd(code, language, forceFile);
             String[] cmd = parseCmd(cmdAndPath[0]);
             codeFilePath = cmdAndPath[1];
@@ -80,7 +82,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
             String encoding = options != null && options.containsKey("encoding")
                     ? (String) options.get("encoding") : "utf-8";
             Charset charset = Charset.forName(encoding);
-            ProcessHandler handler = new ProcessHandler(process, 1024, charset, timeout);
+            ProcessHandler handler = new ProcessHandler(process, 1024, charset, effectiveTimeout);
             InvokeData invokeData = handler.invoke();
 
             if (invokeData.getException() instanceof InterruptedException) {
@@ -89,7 +91,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
                 if (tmpPath != null) {
                     OperationUtils.deleteTmpFile(tmpPath);
                 }
-                return buildCodeErrorResult("execution timeout after " + timeout + " seconds",
+                return buildCodeErrorResult("execution timeout after " + effectiveTimeout + " seconds",
                         ExecuteCodeData.builder()
                                 .codeContent(code).language(language)
                                 .exitCode(invokeData.getExitCode())
@@ -151,7 +153,8 @@ public class LocalCodeOperation extends BaseCodeOperation {
             return results.iterator();
         }
 
-        boolean forceFile = options != null && Boolean.TRUE.equals(options.get("force_file"));
+        int effectiveTimeout = normalizeTimeoutSeconds(timeout);
+        boolean forceFile = shouldForceFileExecution(language, code, options);
         String[] cmdAndPath = buildSubprocessCmd(code, language, forceFile);
         String[] cmd = parseCmd(cmdAndPath[0]);
         String codeFilePath = cmdAndPath[1];
@@ -179,7 +182,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
             String encoding = options != null && options.containsKey("encoding")
                     ? (String) options.get("encoding") : "utf-8";
             Charset charset = Charset.forName(encoding);
-            ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, timeout);
+                ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, effectiveTimeout);
             Iterator<StreamEvent> eventIterator = handler.stream();
             final int[] idx = {chunkIndex};
 
@@ -231,6 +234,21 @@ public class LocalCodeOperation extends BaseCodeOperation {
     private int getDefaultCmdLimit() {
         return System.getProperty("os.name", "").toLowerCase().contains("win")
                 ? WINDOWS_CMD_LIMIT : UNIX_CMD_LIMIT;
+    }
+
+    private int normalizeTimeoutSeconds(int timeout) {
+        return timeout > 0 ? timeout : DEFAULT_TIMEOUT_SECONDS;
+    }
+
+    private boolean shouldForceFileExecution(String language, String code, Map<String, Object> options) {
+        if (options != null && Boolean.TRUE.equals(options.get("force_file"))) {
+            return true;
+        }
+        return "python".equals(language) && isWindows();
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
     /**
