@@ -48,9 +48,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(resolveTimeout(modelClientConfig.getTimeout()))
-                .build();
+        this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
     }
 
     @Override
@@ -164,10 +162,9 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         String body = MAPPER.writeValueAsString(params);
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(normalizedApiBase() + "/chat/completions"))
-                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
+        applyConfiguredHeaders(builder, true);
+        builder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         return builder.build();
     }
 

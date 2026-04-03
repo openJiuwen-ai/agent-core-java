@@ -63,8 +63,8 @@ public final class SessionUtils {
             return List.of();
         }
         List<Object> result = new ArrayList<>();
-        String[] parts = nestedKey.split("\\.");
-        Pattern indexPattern = Pattern.compile("\\[(-?\\d+)]|\\['([^']+)']");
+        String[] parts = nestedKey.split("\\.", -1);
+        Pattern indexPattern = Pattern.compile("\\[(-?\\d+)]|\\['([^']*)']");
         for (String part : parts) {
             if (part.contains("[")) {
                 String basePart = part.split("\\[")[0];
@@ -235,16 +235,30 @@ public final class SessionUtils {
             } else {
                 list.set(index, expandedValue);
             }
+        } else if (source instanceof List<?> list && key instanceof Integer index) {
+            @SuppressWarnings("unchecked")
+            List<Object> writableList = (List<Object>) list;
+            if (index >= 0 && index < writableList.size()) {
+                Object existing = writableList.get(index);
+                if (existing instanceof Map && newValue instanceof Map) {
+                    updateDict((Map<String, Object>) newValue, (Map<String, Object>) existing, false);
+                } else {
+                    writableList.set(index, expandNestedStructure(newValue));
+                }
+            }
         }
     }
 
     @SuppressWarnings("unchecked")
     public static void deleteByKey(Object key, Object source) {
-        if (key instanceof Integer) {
-            return;
-        }
         if (source instanceof Map map) {
             map.remove(key);
+        } else if (source instanceof List<?> list && key instanceof Integer index) {
+            @SuppressWarnings("unchecked")
+            List<Object> writableList = (List<Object>) list;
+            if (index >= 0 && index < writableList.size()) {
+                writableList.set(index, null);
+            }
         }
     }
 
@@ -264,8 +278,13 @@ public final class SessionUtils {
             for (Object entry : map.entrySet()) {
                 Map.Entry<String, Object> e = (Map.Entry<String, Object>) entry;
                 Object[] pathResult = rootToPath(e.getKey(), result, true);
-                if (pathResult[0] != null && pathResult[1] != null) {
-                    updateByKey(pathResult[0], e.getValue(), pathResult[1]);
+                Object expandedValue = expandNestedStructure(e.getValue());
+                if (pathResult[1] instanceof Map m) {
+                    m.put(pathResult[0], expandedValue);
+                } else if (pathResult[1] instanceof List<?> list && pathResult[0] instanceof Integer index) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> writableList = (List<Object>) list;
+                    writableList.set(index, expandedValue);
                 }
             }
             return result;

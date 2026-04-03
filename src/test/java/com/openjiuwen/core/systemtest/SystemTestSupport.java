@@ -92,6 +92,7 @@ abstract class SystemTestSupport {
                 .timeout(timeoutSeconds)
                 .maxRetries(2)
                 .verifySsl(ApiConfigLoader.getSslVerify())
+                .sslCert(ApiConfigLoader.getSslCert())
                 .build();
     }
 
@@ -112,6 +113,8 @@ abstract class SystemTestSupport {
                 .temperature(temperature)
                 .topP(0.9)
                 .timeout(60)
+                .verifySsl(ApiConfigLoader.getSslVerify())
+                .sslCert(ApiConfigLoader.getSslCert())
                 .build();
         return new ModelConfig(ApiConfigLoader.getModelProvider(), modelInfo);
     }
@@ -142,7 +145,9 @@ abstract class SystemTestSupport {
                         ApiConfigLoader.getApiKey(),
                         ApiConfigLoader.getApiBase(),
                         ApiConfigLoader.getModelName(),
-                        ApiConfigLoader.getSslVerify()
+                        ApiConfigLoader.getSslVerify(),
+                        ApiConfigLoader.getSslCert(),
+                        null
                 );
 
         config.getModelConfigObj().setTemperature(0.1);

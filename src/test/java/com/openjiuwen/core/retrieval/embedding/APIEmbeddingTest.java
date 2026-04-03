@@ -51,6 +51,16 @@ class APIEmbeddingTest {
     }
 
     @Test
+    void initDisablesSslVerificationWhenConfigured() {
+        EmbeddingConfig config = new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key");
+        config.setVerifySsl(false);
+
+        APIEmbedding model = new APIEmbedding(config);
+
+        assertEquals("", model.httpClient.sslParameters().getEndpointIdentificationAlgorithm());
+    }
+
+    @Test
     void embedQueryParsesEmbeddingResponseAndCachesDimension() throws Exception {
         HttpClient httpClient = mock(HttpClient.class);
         HttpResponse<String> response = mock(HttpResponse.class);

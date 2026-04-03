@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -176,6 +178,20 @@ class ModelClientConfigTest {
                     .extraField("custom_param", "custom_value")
                     .build();
             assertEquals("custom_value", cfg.getExtraFields().get("custom_param"));
+        }
+
+        @Test
+        @DisplayName("Config supports custom headers")
+        void testConfigHeaders() {
+            ModelClientConfig cfg = ModelClientConfig.builder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .apiKey("sk-test")
+                    .apiBase("http://localhost")
+                    .headers(Map.of("X-Test", "1", "X-Trace", "demo"))
+                    .build();
+            assertEquals("1", cfg.getHeaders().get("X-Test"));
+            assertEquals("demo", cfg.getHeaders().get("X-Trace"));
+            assertFalse(cfg.getExtraFields().containsKey("headers"));
         }
 
         @Test

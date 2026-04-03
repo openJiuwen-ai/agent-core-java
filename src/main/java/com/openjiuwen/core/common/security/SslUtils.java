@@ -8,6 +8,8 @@ import com.openjiuwen.core.common.exception.StatusCode;
 
 import javax.net.ssl.*;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -115,6 +117,40 @@ public final class SslUtils {
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
                     "failed to create insecure SSL context: " + e.getMessage(), null, e, null);
+        }
+    }
+
+    /**
+     * Configure SSL behavior for an {@link HttpClient.Builder} targeting the given URL.
+     *
+     * @param builder     client builder to configure
+     * @param targetUrl   request target URL
+     * @param verifySsl   whether to verify the remote certificate chain
+     * @param sslCertPath optional CA certificate path
+     */
+    public static void configureHttpClientSsl(HttpClient.Builder builder,
+                                              String targetUrl,
+                                              boolean verifySsl,
+                                              String sslCertPath) {
+        if (builder == null || targetUrl == null || targetUrl.isBlank()) {
+            return;
+        }
+
+        URI targetUri = URI.create(targetUrl);
+        if (!"https".equalsIgnoreCase(targetUri.getScheme())) {
+            return;
+        }
+
+        if (!verifySsl) {
+            builder.sslContext(createInsecureSslContext());
+            SSLParameters sslParameters = new SSLParameters();
+            sslParameters.setEndpointIdentificationAlgorithm("");
+            builder.sslParameters(sslParameters);
+            return;
+        }
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            builder.sslContext(createStrictSslContext(sslCertPath));
         }
     }
 

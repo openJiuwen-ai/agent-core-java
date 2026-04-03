@@ -43,7 +43,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
             Object right = entry.getValue();
 
             String leftRefStr = SessionUtils.extractOriginKey(left);
-            String[] keys = leftRefStr.split("\\.");
+            String[] keys = leftRefStr.split("\\.", -1);
 
             if (keys.length == 0) {
                 throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR,

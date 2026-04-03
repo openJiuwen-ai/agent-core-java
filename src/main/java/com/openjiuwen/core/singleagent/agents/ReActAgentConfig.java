@@ -112,6 +112,18 @@ public class ReActAgentConfig {
             String modelName,
             boolean verifySsl
     ) {
+        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, null, null);
+    }
+
+    public ReActAgentConfig configureModelClient(
+            String provider,
+            String apiKey,
+            String apiBase,
+            String modelName,
+            boolean verifySsl,
+            String sslCert,
+            Map<String, String> headers
+    ) {
         this.modelProvider = provider;
         this.apiKey = apiKey;
         this.apiBase = apiBase;
@@ -122,6 +134,8 @@ public class ReActAgentConfig {
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .verifySsl(verifySsl)
+                .sslCert(sslCert)
+                .headers(headers)
                 .build();
 
         if (this.modelConfigObj == null) {

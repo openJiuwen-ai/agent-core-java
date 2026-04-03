@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -45,12 +46,18 @@ public class BaseModelInfo {
     private boolean streaming = false;
 
     private int timeout = 60;
+    @JsonProperty("verify_ssl")
+    private boolean verifySsl = true;
+    @JsonProperty("ssl_cert")
+    private String sslCert;
+    private Map<String, String> headers = new LinkedHashMap<>();
 
     private Map<String, Object> extraFields = new HashMap<>();
 
     @Builder
     public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
-                         Boolean streaming, Integer timeout, Map<String, Object> extraFields) {
+                         Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert,
+                         Map<String, String> headers, Map<String, Object> extraFields) {
         this.apiKey = apiKey == null ? "" : apiKey;
         this.apiBase = apiBase;
         this.modelName = modelName == null ? "" : modelName;
@@ -58,6 +65,9 @@ public class BaseModelInfo {
         this.topP = topP == null ? 0.1 : topP;
         this.streaming = streaming != null && streaming;
         this.timeout = timeout == null ? 60 : validatePositive(timeout);
+        this.verifySsl = verifySsl == null || verifySsl;
+        this.sslCert = sslCert;
+        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
         this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
     }
 
@@ -80,6 +90,14 @@ public class BaseModelInfo {
 
     public void setExtraFields(Map<String, Object> extraFields) {
         this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
+    }
+
+    public Map<String, String> getHeaders() {
+        return new LinkedHashMap<>(headers);
+    }
+
+    public void setHeaders(Map<String, String> headers) {
+        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
     }
 
     private static int validatePositive(int value) {

@@ -30,6 +30,7 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{IsAlphabetic}\\p{IsDigit}_]+");
     private static final double BM25_K1 = 1.5;
     private static final double BM25_B = 0.75;
+    private static final float EPSILON = 1e-6f;
     private static final Map<String, Backend> DATABASES = new ConcurrentHashMap<>();
 
     private final Backend backend;
@@ -445,7 +446,7 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         double dot = dot(left, right);
         double leftNorm = Math.sqrt(dot(left, left));
         double rightNorm = Math.sqrt(dot(right, right));
-        if (leftNorm == 0.0 || rightNorm == 0.0) {
+        if (Math.abs(leftNorm - 0.0) < EPSILON || Math.abs(rightNorm - 0.0) < EPSILON) {
             return 0.0;
         }
         return dot / (leftNorm * rightNorm);
