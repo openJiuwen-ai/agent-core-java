@@ -1,3 +1,5 @@
+package examples.groups.hierarchical_group;
+
 /**
  * Entry point for the Java hierarchical group example.
  */

@@ -1,3 +1,5 @@
+package examples.groups.hierarchical_group;
+
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multiagent.legacy.GroupEvent;

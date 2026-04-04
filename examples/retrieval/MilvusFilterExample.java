@@ -1,3 +1,5 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;

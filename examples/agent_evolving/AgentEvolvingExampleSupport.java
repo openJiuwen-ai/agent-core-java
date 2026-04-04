@@ -1,3 +1,5 @@
+package examples.agent_evolving;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_evolving.dataset.Case;
@@ -14,6 +16,7 @@ import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.agents.ReActAgentEvolve;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
