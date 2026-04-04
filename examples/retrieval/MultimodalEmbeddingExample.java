@@ -1,3 +1,5 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.core.retrieval.embedding.VLLMEmbedding;
 

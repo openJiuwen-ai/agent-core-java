@@ -1,3 +1,5 @@
+package examples.interact;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +24,7 @@ import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.core.workflow.component.Start;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;

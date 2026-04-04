@@ -1,3 +1,5 @@
+package examples.workflow_agent;
+
 /**
  * Backward-compatible entry point for the multi_workflow_agent_demo example.
  */

@@ -1,3 +1,5 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.retrieval.reranker.StandardReranker;
 
 import java.util.List;
