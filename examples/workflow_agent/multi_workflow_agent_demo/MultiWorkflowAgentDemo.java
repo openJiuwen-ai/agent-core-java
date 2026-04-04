@@ -1,3 +1,7 @@
+package examples.workflow_agent.multi_workflow_agent_demo;
+
+import examples.workflow_agent.WorkflowAgentExampleSupport;
+
 /**
  * Recommended entry point aligned with the Python multi_workflow_agent_demo directory.
  */

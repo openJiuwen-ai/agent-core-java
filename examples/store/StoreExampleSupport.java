@@ -1,3 +1,5 @@
+package examples.store;
+
 import com.openjiuwen.core.foundation.store.object.LocalObjectStorageClient;
 
 import java.io.IOException;
