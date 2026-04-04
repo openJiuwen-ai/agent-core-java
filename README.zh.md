@@ -48,7 +48,7 @@ mvn clean install -DskipTests
 ### 样例
 
 让我们创建一个简单的WorkflowAgent，调用工作流处理金融场景业务：
-将examples文件夹拷贝至你的maven工程的src/main目录，即可运行样例代码
+将examples文件夹拷贝至你的maven工程的src/main目录，将examples内的apiconfig.json,apiconfig_example.json复制到工程的src/resources,即可运行样例代码
 
 ```java
 // 示例代码位于 examples/workflow_agent/WorkflowAgentExample.java
