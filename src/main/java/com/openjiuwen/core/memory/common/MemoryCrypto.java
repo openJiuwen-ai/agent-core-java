@@ -40,21 +40,21 @@ public final class MemoryCrypto {
         random.nextBytes(nonce);
 
         try {
-            GCMBlockCipher cipher = new GCMBlockCipher(new AESEngine());
-            AEADParameters params = new AEADParameters(new KeyParameter(key), BIT_LENGTH, nonce);
-            cipher.init(true, params);
-
             byte[] plaintextBytes = plaintext.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            byte[] output = new byte[cipher.getOutputSize(plaintextBytes.length)];
-            int len = cipher.processBytes(plaintextBytes, 0, plaintextBytes.length, output, 0);
-            cipher.doFinal(output, len);
+            AEADParameters params = new AEADParameters(new KeyParameter(key), BIT_LENGTH, nonce);
+            GCMBlockCipher memCipher = new GCMBlockCipher(new AESEngine());
+            memCipher.init(true, params);
+
+            byte[] memOutput = new byte[memCipher.getOutputSize(plaintextBytes.length)];
+            int resLen = memCipher.processBytes(plaintextBytes, 0, plaintextBytes.length, memOutput, 0);
+            memCipher.doFinal(memOutput, resLen);
 
             // output contains ciphertext + tag
-            int ciphertextLen = output.length - TAG_LENGTH;
+            int ciphertextLen = memOutput.length - TAG_LENGTH;
             byte[] ciphertext = new byte[ciphertextLen];
             byte[] tag = new byte[TAG_LENGTH];
-            System.arraycopy(output, 0, ciphertext, 0, ciphertextLen);
-            System.arraycopy(output, ciphertextLen, tag, 0, TAG_LENGTH);
+            System.arraycopy(memOutput, 0, ciphertext, 0, ciphertextLen);
+            System.arraycopy(memOutput, ciphertextLen, tag, 0, TAG_LENGTH);
 
             return new String[]{bytesToHex(ciphertext), bytesToHex(nonce), bytesToHex(tag)};
         } catch (Exception e) {

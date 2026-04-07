@@ -6,6 +6,7 @@ import java.util.List;
  * Basic vector similarity utilities used by the retrieval examples.
  */
 public final class VectorSimilarityUtils {
+    private static final float EPSILON = 1e-6f;
 
     private VectorSimilarityUtils() {
     }
@@ -15,6 +16,7 @@ public final class VectorSimilarityUtils {
         double dotProduct = 0.0;
         double leftNorm = 0.0;
         double rightNorm = 0.0;
+
         for (int index = 0; index < left.size(); index++) {
             double leftValue = left.get(index);
             double rightValue = right.get(index);
@@ -22,7 +24,7 @@ public final class VectorSimilarityUtils {
             leftNorm += leftValue * leftValue;
             rightNorm += rightValue * rightValue;
         }
-        if (leftNorm == 0.0 || rightNorm == 0.0) {
+        if (Math.abs(leftNorm) <= EPSILON || Math.abs(rightNorm) <= EPSILON) {
             return 0.0;
         }
         return dotProduct / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
