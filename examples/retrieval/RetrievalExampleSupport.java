@@ -1,3 +1,5 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
@@ -14,6 +16,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

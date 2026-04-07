@@ -1,9 +1,12 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.retrieval.query_rewriter.QueryRewriter;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.util.List;
 import java.util.Map;

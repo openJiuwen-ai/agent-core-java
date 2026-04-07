@@ -1,3 +1,5 @@
+package examples.groups.hierarchical_group;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.schema.DefaultResponse;
@@ -23,11 +25,11 @@ import com.openjiuwen.core.workflow.component.Start;
 import com.openjiuwen.core.workflow.component.llm.FieldInfo;
 import com.openjiuwen.core.workflow.component.llm.QuestionerComponent;
 import com.openjiuwen.core.workflow.component.llm.QuestionerConfig;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

@@ -1,3 +1,5 @@
+package examples.retrieval;
+
 import com.openjiuwen.core.retrieval.reranker.ChatReranker;
 
 import java.util.List;

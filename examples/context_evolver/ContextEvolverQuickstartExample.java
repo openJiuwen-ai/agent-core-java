@@ -1,3 +1,5 @@
+package examples.context_evolver;
+
 /**
  * Thin entry point for the Java Context Evolver quickstart example.
  */
