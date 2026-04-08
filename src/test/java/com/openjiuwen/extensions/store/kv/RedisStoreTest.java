@@ -142,11 +142,11 @@ class RedisStoreTest {
         }
 
         public List<Object> mget(String... keys) {
-            List<Object> values = new ArrayList<>(keys.length);
+            List<Object> valueList = new ArrayList<>(keys.length);
             for (String key : keys) {
-                values.add(get(key));
+                valueList.add(get(key));
             }
-            return values;
+            return valueList;
         }
 
         public List<String> scanIter(String pattern) {
