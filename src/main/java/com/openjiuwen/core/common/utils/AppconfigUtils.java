@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -37,6 +41,11 @@ public final class AppconfigUtils {
         return configCache;
     }
 
+    /**
+     * Gets the default IP address from the configuration.
+     *
+     * @return the default IP address string
+     */
     public static String getDefaultIp() {
         return load().get("DEFAULT_IP");
     }

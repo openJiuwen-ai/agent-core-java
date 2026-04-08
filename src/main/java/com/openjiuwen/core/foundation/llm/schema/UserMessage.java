@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import lombok.Data;
@@ -19,10 +20,21 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class UserMessage extends BaseMessage {
 
+    /**
+     * Creates a user message with the given content.
+     *
+     * @param content the message content
+     */
     public UserMessage(String content) {
         super("user", content);
     }
 
+    /**
+     * Creates a user message with the given content and name.
+     *
+     * @param content the message content
+     * @param name    the sender name
+     */
     public UserMessage(String content, String name) {
         this(content);
         setName(name);

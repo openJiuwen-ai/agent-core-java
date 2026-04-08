@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import lombok.Data;
@@ -21,6 +22,13 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 public class BaseMessageChunk extends BaseMessage {
 
+    /**
+     * Creates a base message chunk with the given role, content, and name.
+     *
+     * @param role    the message role
+     * @param content the message content
+     * @param name    the sender name
+     */
     public BaseMessageChunk(String role, Object content, String name) {
         super(role, content, name);
     }
@@ -45,6 +53,10 @@ public class BaseMessageChunk extends BaseMessage {
 
     /**
      * Merge content fields based on type compatibility.
+     *
+     * @param left  the left content to merge
+     * @param right the right content to merge
+     * @return the merged content
      */
     @SuppressWarnings("unchecked")
     protected static Object mergeContent(Object left, Object right) {

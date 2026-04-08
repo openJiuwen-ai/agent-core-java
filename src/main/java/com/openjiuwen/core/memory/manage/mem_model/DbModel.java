@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.memory.manage.mem_model;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -37,6 +38,8 @@ public final class DbModel {
 
     /**
      * Create memory tables if they don't exist.
+     *
+     * @param dbStore the database store instance to use for table creation
      */
     public static void createTables(BaseDbStore<?> dbStore) {
         Object engine = dbStore.getEngine();

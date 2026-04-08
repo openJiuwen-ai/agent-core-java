@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
@@ -91,6 +92,11 @@ public class ModelClientConfig {
 
     // ==================== Builder ====================
 
+    /**
+     * Creates a new builder for ModelClientConfig.
+     *
+     * @return a new Builder instance
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -158,6 +164,11 @@ public class ModelClientConfig {
             return this;
         }
 
+        /**
+         * Builds the ModelClientConfig instance.
+         *
+         * @return a new ModelClientConfig instance
+         */
         public ModelClientConfig build() {
             return new ModelClientConfig(this);
         }

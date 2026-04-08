@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
+
 package examples.retrieval;
 
 import com.openjiuwen.core.context.ModelContext;

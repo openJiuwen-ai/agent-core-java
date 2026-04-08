@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
 
 import java.util.Collections;
@@ -110,6 +111,9 @@ public final class StatusMapping {
 
     /**
      * Resolve the concrete exception class (as a factory) for the given status code.
+     *
+     * @param status the status code to resolve
+     * @return a factory function that creates the appropriate exception
      */
     public static Function<StatusCode, BaseError> resolveExceptionFactory(StatusCode status) {
         // 1. Manual override
@@ -135,6 +139,9 @@ public final class StatusMapping {
 
     /**
      * Build an exception for the given status code using resolution rules.
+     *
+     * @param status the status code
+     * @return a BaseError instance appropriate for the status
      */
     public static BaseError resolveException(StatusCode status) {
         return resolveExceptionFactory(status).apply(status);
@@ -142,6 +149,8 @@ public final class StatusMapping {
 
     /**
      * Generate full StatusCode → exception factory mapping for all status codes.
+     *
+     * @return an unmodifiable map of status codes to exception factories
      */
     public static Map<StatusCode, Function<StatusCode, BaseError>> buildStatusExceptionMap() {
         EnumMap<StatusCode, Function<StatusCode, BaseError>> mapping = new EnumMap<>(StatusCode.class);
