@@ -1,4 +1,3 @@
-// coding: utf-8
 /**
  * Subagents package - Provides sub-agent implementations for deep agents.
  *

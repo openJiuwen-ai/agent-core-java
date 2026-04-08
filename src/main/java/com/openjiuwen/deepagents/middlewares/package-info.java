@@ -1,4 +1,3 @@
-// coding: utf-8
 /**
  * Middlewares package - Provides middleware components for deep agent processing.
  *
