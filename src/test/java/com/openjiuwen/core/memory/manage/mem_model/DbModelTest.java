@@ -45,10 +45,11 @@ class DbModelTest {
         DbModel.createTables(dbStore);
 
         try (Connection connection = dbStore.getEngine().getConnection();
-             Statement statement = connection.createStatement()) {
-            ResultSet resultSet = statement.executeQuery(
-                    "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'"
-            );
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'"
+             )) {
+
             List<String> tableNames = new ArrayList<>();
             while (resultSet.next()) {
                 tableNames.add(resultSet.getString(1).toLowerCase());
