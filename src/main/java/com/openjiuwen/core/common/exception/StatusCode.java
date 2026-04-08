@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
 
 /**
@@ -418,6 +419,12 @@ public enum StatusCode {
     private final int code;
     private final String errmsg;
 
+    /**
+     * Creates a StatusCode with the given code and error message template.
+     *
+     * @param code   the integer error code
+     * @param errmsg the error message template with {placeholder} syntax
+     */
     StatusCode(int code, String errmsg) {
         this.code = code;
         this.errmsg = errmsg;
@@ -425,6 +432,8 @@ public enum StatusCode {
 
     /**
      * Return the integer error code.
+     *
+     * @return the error code
      */
     public int getCode() {
         return code;
@@ -432,6 +441,8 @@ public enum StatusCode {
 
     /**
      * Compatibility accessor for translated tests that still call Python-style {@code code()}.
+     *
+     * @return the error code
      */
     public int code() {
         return getCode();
@@ -439,6 +450,8 @@ public enum StatusCode {
 
     /**
      * Return the error message template (unformatted).
+     *
+     * @return the error message template
      */
     public String getErrmsg() {
         return errmsg;

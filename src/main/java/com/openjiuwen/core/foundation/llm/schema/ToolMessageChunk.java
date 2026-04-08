@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -24,6 +25,9 @@ public class ToolMessageChunk extends ToolMessage {
 
     /**
      * Merge another tool message chunk into this one.
+     *
+     * @param other the chunk to merge
+     * @return a new merged chunk
      */
     public ToolMessageChunk merge(ToolMessageChunk other) {
         if (other == null) {

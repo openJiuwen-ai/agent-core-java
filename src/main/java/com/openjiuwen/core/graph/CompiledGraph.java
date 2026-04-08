@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -29,6 +30,12 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     private final Pregel pregel;
     private final Checkpointer checkpointer;
 
+    /**
+     * Creates a CompiledGraph with the given Pregel engine and checkpointer.
+     *
+     * @param pregel      the Pregel execution engine
+     * @param checkpointer the checkpointer for state persistence
+     */
     public CompiledGraph(Pregel pregel, Checkpointer checkpointer) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
@@ -100,12 +107,24 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
         }
     }
 
+    /**
+     * Stream execution results.
+     *
+     * @param inputs  the input data
+     * @param session the execution session
+     * @return an iterator over stream results
+     */
     @Override
     public Iterator<Map<String, Object>> stream(Object inputs, BaseSession session) {
         // Stream not yet implemented
         return null;
     }
 
+    /**
+     * Interrupt the graph execution with a message.
+     *
+     * @param message the interrupt message
+     */
     @Override
     public void interrupt(Map<String, Object> message) {
         // No-op
