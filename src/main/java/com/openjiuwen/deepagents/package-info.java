@@ -1,4 +1,3 @@
-// coding: utf-8
 /**
  * Deep Agents package - Provides advanced agent orchestration capabilities.
  *
