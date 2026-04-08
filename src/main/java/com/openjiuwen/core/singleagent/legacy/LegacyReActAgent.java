@@ -141,14 +141,14 @@ public class LegacyReActAgent extends BaseAgent {
                 .getToolInfos(null, null, legacyConfig.getId(), TagMatchStrategy.ALL);
 
         // Legacy agent owns its own LLM configuration, matching Python's LegacyReActAgent._get_llm().
-        Model llm = getLlm(legacyConfig);
+        Model llmModel = getLlm(legacyConfig);
         String modelName = null;
         if (legacyConfig.getModel() != null && legacyConfig.getModel().modelInfo() != null) {
             modelName = legacyConfig.getModel().modelInfo().getModelName();
         }
         AssistantMessage llmOutput;
         try {
-            llmOutput = llm.invoke(
+            llmOutput = llmModel.invoke(
                     messages, toolInfos, null, null,
                     modelName, null, null, null, null, null
             );
