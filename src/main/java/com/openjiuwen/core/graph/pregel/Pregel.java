@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.pregel;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -28,11 +29,28 @@ public class Pregel {
     private final Store store;
     private final Consumer<PregelLoop> afterStep;
 
+    /**
+     * Creates a Pregel engine with default initial node.
+     *
+     * @param nodes      map of node names to PregelNode instances
+     * @param channels   list of channels for message passing
+     * @param store      state store for persistence
+     * @param afterStep  callback invoked after each super-step
+     */
     public Pregel(Map<String, PregelNode> nodes, List<Channel> channels,
                   Store store, Consumer<PregelLoop> afterStep) {
         this(nodes, channels, PregelConstants.START, store, afterStep);
     }
 
+    /**
+     * Creates a Pregel engine with a specified initial node.
+     *
+     * @param nodes      map of node names to PregelNode instances
+     * @param channels   list of channels for message passing
+     * @param initial    the initial node name
+     * @param store      state store for persistence
+     * @param afterStep  callback invoked after each super-step
+     */
     public Pregel(Map<String, PregelNode> nodes, List<Channel> channels,
                   String initial, Store store, Consumer<PregelLoop> afterStep) {
         this.nodes = nodes;
@@ -87,22 +105,47 @@ public class Pregel {
         }
     }
 
+    /**
+     * Gets the nodes in this Pregel graph.
+     *
+     * @return map of node names to PregelNode instances
+     */
     public Map<String, PregelNode> getNodes() {
         return nodes;
     }
 
+    /**
+     * Gets the channels in this Pregel graph.
+     *
+     * @return list of channels
+     */
     public List<Channel> getChannels() {
         return channels;
     }
 
+    /**
+     * Gets the initial node name.
+     *
+     * @return the initial node name
+     */
     public String getInitial() {
         return initial;
     }
 
+    /**
+     * Gets the state store.
+     *
+     * @return the store, or null
+     */
     public Store getStore() {
         return store;
     }
 
+    /**
+     * Gets the after-step callback.
+     *
+     * @return the callback, or null
+     */
     public Consumer<PregelLoop> getAfterStep() {
         return afterStep;
     }

@@ -1,6 +1,4 @@
 // coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
 /**
  * Subagents package - Provides sub-agent implementations for deep agents.
  *
@@ -11,4 +9,8 @@
  *
  * <p>Placeholder package - actual implementations to be added.
  */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
+
 package com.openjiuwen.deepagents.subagents;

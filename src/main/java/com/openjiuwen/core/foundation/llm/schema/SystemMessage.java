@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import lombok.Data;
@@ -19,10 +20,21 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class SystemMessage extends BaseMessage {
 
+    /**
+     * Creates a system message with the given content.
+     *
+     * @param content the message content
+     */
     public SystemMessage(String content) {
         super("system", content);
     }
 
+    /**
+     * Creates a system message with the given content and name.
+     *
+     * @param content the message content
+     * @param name    the sender name
+     */
     public SystemMessage(String content, String name) {
         this(content);
         setName(name);
