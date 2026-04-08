@@ -31,7 +31,7 @@ public class ImageCaptioner {
         this.llmClient = llmClient;
     }
 
-    public static String cpImage(String imageLoc) {
+    public String cpImage(String imageLoc) {
         String targetDir = System.getenv(SAVED_IMAGES_ENV);
         if (targetDir == null || targetDir.isBlank()) {
             targetDir = SAVED_IMAGE_DIR;
