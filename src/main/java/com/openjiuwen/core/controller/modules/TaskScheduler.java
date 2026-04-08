@@ -128,6 +128,12 @@ public class TaskScheduler {
                 Thread currentThread = Thread.currentThread();
                 ScheduledExecutorService watchdog = new ScheduledThreadPoolExecutor(1, r -> {
                     Thread t = new Thread(r, "task-timeout-" + taskId);
+                    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                        @Override
+                        public void uncaughtException(Thread t, Throwable e) {
+                            Loggers.CONTROLLER.error("executeTaskWrapper Error,Thread {} , {}", t.getName(),e.getMessage());
+                        }
+                    });
                     t.setDaemon(true);
                     return t;
                 });
@@ -521,6 +527,12 @@ public class TaskScheduler {
         running = true;
         scheduler = new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "task-scheduler");
+            t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread t, Throwable e) {
+                    Loggers.CONTROLLER.error("start Error,Thread {} , {}", t.getName(),e.getMessage());
+                }
+            });
             t.setDaemon(true);
             return t;
         });
