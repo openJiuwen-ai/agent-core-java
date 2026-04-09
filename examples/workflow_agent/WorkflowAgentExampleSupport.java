@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.workflow_agent;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.schema.DefaultResponse;
@@ -28,11 +34,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import examples.utils.SharedExampleApiConfigLoader;
 
 /**
  * Shared implementation for the Java multi_workflow_agent_demo entry points.
  */
-final class WorkflowAgentExampleSupport {
+public final class WorkflowAgentExampleSupport {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -47,7 +54,7 @@ final class WorkflowAgentExampleSupport {
     private WorkflowAgentExampleSupport() {
     }
 
-    static void run(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
         String conversationId = UUID.randomUUID().toString().substring(0, 8);
         WorkflowAgent agent = createAgent();
         agent.addWorkflows(List.of(

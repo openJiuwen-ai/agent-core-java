@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.context_evolver;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -14,6 +20,7 @@ import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
 import com.openjiuwen.extensions.context_evolver.service.AddMemoryRequest;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
 import com.openjiuwen.extensions.context_evolver.tool.WikipediaTool;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

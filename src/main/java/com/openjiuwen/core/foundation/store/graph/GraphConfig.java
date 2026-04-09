@@ -1,11 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.store.graph;
 
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -106,8 +109,9 @@ public class GraphConfig {
                 String[] hostPort = cleaned.split(":");
                 String host = hostPort[0];
                 int port = hostPort.length > 1 ? Integer.parseInt(hostPort[1].split("/")[0]) : 80;
-                try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress(host, port), (int) (this.timeout * 1000));
+                SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+                try (SSLSocket sslSocket = (SSLSocket) sslSocketFactory.createSocket(host, port)) {
+                    sslSocket.connect(new InetSocketAddress(host, port), (int) (this.timeout * 1000));
                 }
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE,

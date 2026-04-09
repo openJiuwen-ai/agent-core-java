@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.groups.hierarchical_group;
+
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multiagent.legacy.BaseGroupController;
 import com.openjiuwen.core.multiagent.legacy.GroupEvent;

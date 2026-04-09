@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.retrieval;
+
 import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;

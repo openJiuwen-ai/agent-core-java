@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
@@ -54,6 +55,21 @@ public class BaseModelInfo {
 
     private Map<String, Object> extraFields = new HashMap<>();
 
+    /**
+     * Creates a BaseModelInfo with the specified configuration.
+     *
+     * @param apiKey      the API key for authentication
+     * @param apiBase     the base URL for API requests
+     * @param modelName   the model name to use
+     * @param temperature the sampling temperature
+     * @param topP        the top-p sampling parameter
+     * @param streaming   whether to enable streaming
+     * @param timeout     the request timeout in seconds
+     * @param verifySsl   whether to verify SSL certificates
+     * @param sslCert     the SSL certificate path
+     * @param headers     additional HTTP headers
+     * @param extraFields additional extra fields
+     */
     @Builder
     public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
                          Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert,
@@ -84,18 +100,38 @@ public class BaseModelInfo {
         extraFields.put(key, value);
     }
 
+    /**
+     * Sets the request timeout.
+     *
+     * @param timeout the timeout in seconds, must be greater than 0
+     */
     public void setTimeout(int timeout) {
         this.timeout = validatePositive(timeout);
     }
 
+    /**
+     * Sets the extra fields.
+     *
+     * @param extraFields the extra fields map
+     */
     public void setExtraFields(Map<String, Object> extraFields) {
         this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
     }
 
+    /**
+     * Gets the HTTP headers.
+     *
+     * @return a copy of the headers map
+     */
     public Map<String, String> getHeaders() {
         return new LinkedHashMap<>(headers);
     }
 
+    /**
+     * Sets the HTTP headers.
+     *
+     * @param headers the headers map
+     */
     public void setHeaders(Map<String, String> headers) {
         this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
     }

@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.controller;
 
 import java.util.List;
@@ -67,24 +68,50 @@ public class ControllerConfig {
 
     // Builder pattern
 
+    /**
+     * Creates a default ControllerConfig instance.
+     *
+     * @return a new ControllerConfig with default values
+     */
     public static ControllerConfig defaultConfig() {
         return new ControllerConfig();
     }
 
     // Getters and setters
 
+    /**
+     * Gets the maximum number of concurrent tasks.
+     *
+     * @return the max concurrent tasks value
+     */
     public int getMaxConcurrentTasks() {
         return maxConcurrentTasks;
     }
 
+    /**
+     * Sets the maximum number of concurrent tasks.
+     *
+     * @param maxConcurrentTasks the max concurrent tasks value
+     */
     public void setMaxConcurrentTasks(int maxConcurrentTasks) {
         this.maxConcurrentTasks = maxConcurrentTasks;
     }
 
+    /**
+     * Gets the task scheduling interval.
+     *
+     * @return the schedule interval in seconds
+     */
     public double getScheduleInterval() {
         return scheduleInterval;
     }
 
+    /**
+     * Sets the task scheduling interval.
+     *
+     * @param scheduleInterval the schedule interval in seconds (must be >= 0.1)
+     * @throws IllegalArgumentException if scheduleInterval < 0.1
+     */
     public void setScheduleInterval(double scheduleInterval) {
         if (scheduleInterval < 0.1) {
             throw new IllegalArgumentException("scheduleInterval must be >= 0.1");

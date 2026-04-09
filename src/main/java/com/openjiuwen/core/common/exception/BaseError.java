@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -61,15 +62,31 @@ public class BaseError extends RuntimeException {
 
     /**
      * Convenience constructor with builder-style params.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message
+     * @param details optional additional details
+     * @param cause   optional root cause
      */
     public BaseError(StatusCode status, String msg, Object details, Throwable cause) {
         this(status, msg, details, cause, Collections.emptyMap());
     }
 
+    /**
+     * Creates a BaseError with status and template parameters.
+     *
+     * @param status the status code
+     * @param params template parameters for message rendering
+     */
     public BaseError(StatusCode status, Map<String, Object> params) {
         this(status, null, null, null, params);
     }
 
+    /**
+     * Creates a BaseError with status only.
+     *
+     * @param status the status code
+     */
     public BaseError(StatusCode status) {
         this(status, null, null, null, Collections.emptyMap());
     }
@@ -79,6 +96,10 @@ public class BaseError extends RuntimeException {
     /**
      * Render error message from StatusCode template in a safe manner.
      * Missing placeholders are replaced with {@code <missing:key>}.
+     *
+     * @param status the status code containing the message template
+     * @param params the parameters for template substitution
+     * @return the rendered message string
      */
     static String renderMessage(StatusCode status, Map<String, Object> params) {
         if (status == null || status.getErrmsg() == null || status.getErrmsg().isEmpty()) {
@@ -98,6 +119,10 @@ public class BaseError extends RuntimeException {
     /**
      * Safe template formatting. Placeholders use {@code {key}} syntax.
      * Missing keys are replaced with {@code <missing:key>}.
+     *
+     * @param template the message template with {key} placeholders
+     * @param params   the parameters for substitution
+     * @return the formatted string
      */
     static String formatTemplate(String template, Map<String, Object> params) {
         if (template == null || template.isEmpty()) {

@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.skill_use;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.ReActAgent;
@@ -7,6 +13,7 @@ import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import examples.utils.SharedExampleApiConfigLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

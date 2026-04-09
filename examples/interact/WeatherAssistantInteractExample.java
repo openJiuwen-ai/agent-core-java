@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.interact;
+
 /**
  * Java version of the Python examples/interact/weather_assistant_interact notebook.
  */

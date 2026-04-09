@@ -1,5 +1,6 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.dev_tools.tune.optimizer.adopt;
 
@@ -291,15 +292,15 @@ public class AdoptOptimizer extends BaseOptimizer {
         this.badCases = badCases;
         
         // Also get good cases
-        List<EvaluatedCase> goodCases = evaluatedCases.stream()
+        List<EvaluatedCase> goodCasesRes = evaluatedCases.stream()
                 .filter(c -> c.getScore() == 1.0f)
                 .collect(Collectors.toList());
         
-        if (goodCases.size() > DEFAULT_BAD_CASES_SAMPLE_NUM) {
-            Collections.shuffle(goodCases);
-            goodCases = goodCases.subList(0, DEFAULT_BAD_CASES_SAMPLE_NUM);
+        if (goodCasesRes.size() > DEFAULT_BAD_CASES_SAMPLE_NUM) {
+            Collections.shuffle(goodCasesRes);
+            goodCasesRes = goodCasesRes.subList(0, DEFAULT_BAD_CASES_SAMPLE_NUM);
         }
-        this.goodCases = goodCases;
+        this.goodCases = goodCasesRes;
         
         return badCases;
     }

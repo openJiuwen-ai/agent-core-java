@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.retrieval;
+
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.core.retrieval.embedding.VLLMEmbedding;
 

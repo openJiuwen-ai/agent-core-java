@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.reranker;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,6 +22,7 @@ import java.util.Map;
  */
 public class ChatReranker extends StandardReranker {
 
+    private static final float EPSILON = 1e-6f;
     private static final String CHAT_ENDPOINT = "/chat/completions";
     private static final String DOC_TEMPLATE = "<Document>: %s";
     private static final String SYSTEM_INSTRUCT =
@@ -129,6 +131,6 @@ public class ChatReranker extends StandardReranker {
             }
         }
         double total = yesScore + noScore;
-        return total == 0.0 ? 0.0 : yesScore / total;
+        return (Math.abs(total - 0.0)) < EPSILON ? 0.0 : yesScore / total;
     }
 }

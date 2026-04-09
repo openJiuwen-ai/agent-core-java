@@ -1,6 +1,3 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
 /**
  * Deep Agents package - Provides advanced agent orchestration capabilities.
  *
@@ -14,4 +11,8 @@
  *   <li>{@code tools} - Tool implementations for deep agents</li>
  * </ul>
  */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.deepagents;

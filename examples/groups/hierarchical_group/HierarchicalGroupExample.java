@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.groups.hierarchical_group;
+
 /**
  * Entry point for the Java hierarchical group example.
  */

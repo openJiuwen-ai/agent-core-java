@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -31,7 +32,7 @@ public class ImageCaptioner {
         this.llmClient = llmClient;
     }
 
-    public static String cpImage(String imageLoc) {
+    public String cpImage(String imageLoc) {
         String targetDir = System.getenv(SAVED_IMAGES_ENV);
         if (targetDir == null || targetDir.isBlank()) {
             targetDir = SAVED_IMAGE_DIR;

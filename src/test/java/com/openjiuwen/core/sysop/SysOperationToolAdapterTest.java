@@ -1,6 +1,4 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- */
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.sysop;
 
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -11,11 +9,14 @@ import com.openjiuwen.core.sysop.result.ListFilesResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -50,14 +51,17 @@ class SysOperationToolAdapterTest {
             assertInstanceOf(ListFilesResult.class, result);
             assertEquals(StatusCode.SUCCESS.getCode(), ((ListFilesResult) result).getCode());
         } finally {
-            Files.walk(workDir)
-                    .sorted(Comparator.reverseOrder())
-                    .forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (Exception ignored) {
-                        }
-                    });
+            try (Stream<Path> paths = Files.walk(workDir)) {
+                paths.sorted(Comparator.reverseOrder())
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (Exception ignored) {
+                            }
+                        });
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to walk directory", e);
+            }
         }
     }
 }

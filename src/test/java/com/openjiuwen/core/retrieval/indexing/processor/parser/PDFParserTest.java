@@ -1,6 +1,4 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- */
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -26,17 +24,17 @@ class PDFParserTest {
     @Test
     void parsePdfExtractsText() throws IOException {
         Path file = tempDir.resolve("sample.pdf");
-        try (PDDocument document = new PDDocument()) {
-            PDPage page = new PDPage();
-            document.addPage(page);
-            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
-                content.beginText();
-                content.setFont(PDType1Font.HELVETICA, 12);
-                content.newLineAtOffset(100, 700);
-                content.showText("Page 1 content");
-                content.endText();
+        try (PDDocument pdfDocument = new PDDocument()) {
+            PDPage pdfPage = new PDPage();
+            pdfDocument.addPage(pdfPage);
+            try (PDPageContentStream pdfStream = new PDPageContentStream(pdfDocument, pdfPage)) {
+                pdfStream.beginText();
+                pdfStream.setFont(PDType1Font.HELVETICA, 12);
+                pdfStream.newLineAtOffset(100, 700);
+                pdfStream.showText("Page 1 content");
+                pdfStream.endText();
             }
-            document.save(file.toFile());
+            pdfDocument.save(file.toFile());
         }
 
         PDFParser parser = new PDFParser();

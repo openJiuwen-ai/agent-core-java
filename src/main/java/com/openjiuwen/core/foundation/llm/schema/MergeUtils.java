@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import java.beans.Introspector;
@@ -27,6 +28,12 @@ public final class MergeUtils {
      * @param <T> the concrete type
      */
     public interface Mergeable<T> {
+        /**
+         * Merges this object with another of the same type.
+         *
+         * @param other the other object to merge with
+         * @return the merged result
+         */
         T mergeWith(T other);
     }
 
@@ -44,6 +51,10 @@ public final class MergeUtils {
      *   <li>If both are same-type POJOs, merge field-by-field via {@link #mergeObjects}</li>
      *   <li>Otherwise, return right (keep latest)</li>
      * </ul>
+     *
+     * @param left  the left content to merge
+     * @param right the right content to merge
+     * @return the merged content
      */
     @SuppressWarnings("unchecked")
     public static Object mergeParserContent(Object left, Object right) {
@@ -94,6 +105,10 @@ public final class MergeUtils {
      * <p>
      * For the same key: strings are concatenated, lists are concatenated,
      * maps are recursively merged, otherwise the right value wins.
+     *
+     * @param left  the left map to merge
+     * @param right the right map to merge
+     * @return the merged map
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> mergeMaps(Map<String, Object> left, Map<String, Object> right) {

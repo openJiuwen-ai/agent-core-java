@@ -1,6 +1,4 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- */
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.common.logging;
 
 import org.junit.jupiter.api.*;
@@ -270,18 +268,21 @@ class LogManagerTest {
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
                 results.add(new String[]{"10001", LoggingUtils.getSessionId()});
             });
+            t1.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
 
             Thread t2 = new Thread(() -> {
                 LoggingUtils.setSessionId("10002");
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
                 results.add(new String[]{"10002", LoggingUtils.getSessionId()});
             });
+            t2.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
 
             Thread t3 = new Thread(() -> {
                 LoggingUtils.setSessionId("10003");
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
                 results.add(new String[]{"10003", LoggingUtils.getSessionId()});
             });
+            t3.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
 
             t1.start();
             t2.start();
