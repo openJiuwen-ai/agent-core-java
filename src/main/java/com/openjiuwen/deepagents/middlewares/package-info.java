@@ -9,6 +9,8 @@
  *   <li>{@link TaskPlanningMiddleware} - Task planning middleware</li>
  * </ul>
  */
-/** Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.*/
+  /*
+   * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+   */
 
 package com.openjiuwen.deepagents.middlewares;

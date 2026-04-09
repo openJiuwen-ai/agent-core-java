@@ -11,6 +11,8 @@
  *   <li>{@code tools} - Tool implementations for deep agents</li>
  * </ul>
  */
-/** Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.*/
+  /*
+   * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+   */
 
 package com.openjiuwen.deepagents;
