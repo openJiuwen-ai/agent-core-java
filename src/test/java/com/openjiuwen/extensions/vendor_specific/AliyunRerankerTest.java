@@ -1,4 +1,4 @@
-/** Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.*/
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.extensions.vendor_specific;
 
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
