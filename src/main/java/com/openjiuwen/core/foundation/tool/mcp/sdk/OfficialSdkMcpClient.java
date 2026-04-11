@@ -163,14 +163,14 @@ public class OfficialSdkMcpClient implements McpClient {
                 builder = builder.requestTimeout(duration.get()).initializationTimeout(duration.get());
             }
             client = builder.build();
-        } catch (IllegalArgumentException | IllegalStateException exception) {
+        } catch (RuntimeException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.CONNECT, exception);
         }
 
         try {
             client.initialize();
-        } catch (IllegalArgumentException | IllegalStateException exception) {
+        } catch (RuntimeException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.INITIALIZE, exception);
         }
@@ -215,7 +215,7 @@ public class OfficialSdkMcpClient implements McpClient {
             return results;
         } catch (TransportException exception) {
             throw exception;
-        } catch (IllegalArgumentException | IllegalStateException exception) {
+        } catch (RuntimeException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.LIST_TOOLS, exception);
         }
