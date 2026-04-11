@@ -4,6 +4,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.runner.base.Ok;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -279,6 +281,28 @@ class ResourceMgrTest {
             List<String> tags = resourceMgr.getResourceTag("tagged_tool");
             assertNotNull(tags);
             assertTrue(tags.contains("my_tag"));
+        }
+
+        @Test
+        @DisplayName("addMcpServer facade accepts single config and config list shapes")
+        @SuppressWarnings("unchecked")
+        void testAddMcpServerAcceptsSingleAndListShapes() throws Exception {
+            Method normalizeServerConfigs = ResourceMgr.class.getDeclaredMethod("normalizeServerConfigs", Object.class);
+            normalizeServerConfigs.setAccessible(true);
+
+            McpServerConfig config = McpServerConfig.builder()
+                    .serverId("server-1")
+                    .serverName("demo")
+                    .serverPath("http://localhost:8930/mcp")
+                    .build();
+
+            List<McpServerConfig> single = (List<McpServerConfig>) normalizeServerConfigs.invoke(resourceMgr, config);
+            List<McpServerConfig> multiple = (List<McpServerConfig>) normalizeServerConfigs.invoke(resourceMgr, List.of(config));
+
+            assertEquals(1, single.size());
+            assertEquals("server-1", single.get(0).getServerId());
+            assertEquals(1, multiple.size());
+            assertEquals("server-1", multiple.get(0).getServerId());
         }
     }
 }

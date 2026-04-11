@@ -1,0 +1,343 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ */
+package com.openjiuwen.core.foundation.tool.mcp.sdk;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
+
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.client.transport.ServerParameters;
+import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.spec.McpClientTransport;
+import io.modelcontextprotocol.spec.McpSchema;
+
+import java.io.File;
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.StringJoiner;
+import java.util.concurrent.TimeoutException;
+
+/**
+ * Adapter that hides the official Java SDK behind the existing {@link McpClient} contract.
+ */
+public class OfficialSdkMcpClient implements McpClient {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private final McpServerConfig config;
+    private final OfficialMcpClientFactory.OfficialTransportConfig transportConfig;
+
+    private McpSyncClient client;
+
+    public OfficialSdkMcpClient(McpServerConfig config,
+                                OfficialMcpClientFactory.OfficialTransportConfig transportConfig) {
+        this.config = config;
+        this.transportConfig = transportConfig;
+    }
+
+    @Override
+    public boolean connect(int retryTimes, float timeout) {
+        if (client != null) {
+            return true;
+        }
+        try {
+            McpClientTransport transport = createTransport();
+            var builder = io.modelcontextprotocol.client.McpClient.sync(transport);
+            Duration duration = toDuration(timeout);
+            if (duration != null) {
+                builder = builder.requestTimeout(duration).initializationTimeout(duration);
+            }
+            client = builder.build();
+        } catch (Exception exception) {
+            cleanupClientQuietly();
+            throw transportFailure(ReadyStage.CONNECT, exception);
+        }
+
+        try {
+            client.initialize();
+        } catch (Exception exception) {
+            cleanupClientQuietly();
+            throw transportFailure(ReadyStage.INITIALIZE, exception);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean disconnect(float timeout) {
+        if (client == null) {
+            return true;
+        }
+        client.closeGracefully();
+        client = null;
+        return true;
+    }
+
+    @Override
+    public List<Object> listTools(float timeout) {
+        try {
+            List<Object> results = new ArrayList<>();
+            for (McpSchema.Tool tool : requireClient().listTools().tools()) {
+                results.add(McpToolCard.builder()
+                        .name(tool.name())
+                        .description(tool.description())
+                        .serverName(config.getServerName())
+                        .serverId(config.getServerId())
+                        .inputParams(toInputParams(tool.inputSchema()))
+                        .build());
+            }
+            return results;
+        } catch (TransportException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            cleanupClientQuietly();
+            throw transportFailure(ReadyStage.LIST_TOOLS, exception);
+        }
+    }
+
+    @Override
+    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+        McpSchema.CallToolResult result = requireClient().callTool(
+                new McpSchema.CallToolRequest(toolName, arguments == null ? Map.of() : arguments)
+        );
+        return OfficialMcpToolResultMapper.map(toolName, result);
+    }
+
+    @Override
+    public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
+        for (Object tool : listTools(timeout)) {
+            if (tool instanceof McpToolCard card && toolName.equals(card.getName())) {
+                return Optional.of(card);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public String getServerPath() {
+        return config.getServerPath();
+    }
+
+    private McpSyncClient requireClient() {
+        if (client == null) {
+            throw new IllegalStateException("MCP client is not connected: " + config.getServerPath());
+        }
+        return client;
+    }
+
+    private McpClientTransport createTransport() {
+        return switch (transportConfig.transportType()) {
+            case STDIO -> createStdioTransport();
+            case SSE -> createSseTransport();
+            case STREAMABLE_HTTP -> createStreamableHttpTransport();
+        };
+    }
+
+    private McpClientTransport createSseTransport() {
+        ParsedHttpTransportTarget target = parseHttpTarget(transportConfig.serverPath());
+        HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder();
+        for (Map.Entry<String, String> entry : transportConfig.authHeaders().entrySet()) {
+            requestBuilder.header(entry.getKey(), entry.getValue());
+        }
+        return HttpClientSseClientTransport.builder(target.baseUri())
+                .sseEndpoint(target.endpoint())
+                .requestBuilder(requestBuilder)
+                .build();
+    }
+
+    private McpClientTransport createStreamableHttpTransport() {
+        ParsedHttpTransportTarget target = parseHttpTarget(transportConfig.serverPath());
+        HttpRequest.Builder requestBuilder =  HttpRequest.newBuilder();
+        for (Map.Entry<String, String> entry : transportConfig.authHeaders().entrySet()) {
+            requestBuilder.header(entry.getKey(), entry.getValue());
+        }
+        return HttpClientStreamableHttpTransport.builder(target.baseUri())
+                .endpoint(target.endpoint())
+                .requestBuilder(requestBuilder)
+                .build();
+    }
+
+    private StdioClientTransport createStdioTransport() {
+        ServerParameters serverParameters = ServerParameters.builder(transportConfig.command())
+                .args(transportConfig.args())
+                .env(transportConfig.env())
+                .build();
+        return new StdioClientTransport(serverParameters, new JacksonMcpJsonMapper(new ObjectMapper())) {
+            @Override
+            protected ProcessBuilder getProcessBuilder() {
+                ProcessBuilder processBuilder = super.getProcessBuilder();
+                if (transportConfig.cwd() != null && !transportConfig.cwd().isBlank()) {
+                    processBuilder.directory(new File(transportConfig.cwd()));
+                }
+                return processBuilder;
+            }
+        };
+    }
+
+    private ParsedHttpTransportTarget parseHttpTarget(String serverPath) {
+        URI serverUri =URI.create(serverPath);
+        String endpoint = serverUri.getRawPath();
+        if (endpoint == null || endpoint.isBlank()) {
+            endpoint = "/";
+        }
+        return new ParsedHttpTransportTarget(buildBaseUri(serverUri), buildEndpointUri(endpoint, serverUri.getRawQuery()));
+    }
+
+    private String buildBaseUri(URI serverUri) {
+        try {
+            return new URI(serverUri.getScheme(), null, serverUri.getHost(), serverUri.getPort(), null, null, null)
+                    .toASCIIString();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Invalid MCP server URI: " + serverUri, exception);
+        }
+    }
+
+    private String buildEndpointUri(String path, String query) {
+        try {
+            return new URI(null, null, path, (query == null || query.isBlank()) ? null : query, null).toASCIIString();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Invalid MCP endpoint path: " + path, exception);
+        }
+    }
+
+    private Duration toDuration(float timeout) {
+        if (timeout == McpServerConfig.NO_TIMEOUT || timeout <= 0) {
+            return null;
+        }
+        return Duration.ofMillis((long) (timeout * 1000));
+    }
+
+    private Map<String, Object> toInputParams(Object inputSchema) {
+        if (inputSchema == null) {
+            return Map.of();
+        }
+        Map<String, Object> converted = OBJECT_MAPPER.convertValue(inputSchema, new TypeReference<>() {
+        });
+        return converted == null ? Map.of() : new LinkedHashMap<>(converted);
+    }
+
+    private TransportException transportFailure(ReadyStage stage, Exception exception) {
+        return new TransportException(
+                stage,
+                OfficialMcpClientFactory.normalizeClientType(config.getClientType()),
+                config.getServerId(),
+                config.getServerPath(),
+                isTimeout(exception),
+                exception
+        );
+    }
+
+    private void cleanupClientQuietly() {
+        if (client == null) {
+            return;
+        }
+        try {
+            client.closeGracefully();
+        } catch (Exception ignored) {
+            // Preserve the original transport failure.
+        } finally {
+            client = null;
+        }
+    }
+
+    private boolean isTimeout(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof TimeoutException) {
+                return true;
+            }
+            String simpleName = current.getClass().getSimpleName();
+            if (simpleName != null && simpleName.toLowerCase().contains("timeout")) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    static final class TransportException extends RuntimeException {
+
+        private final ReadyStage stage;
+        private final String clientType;
+        private final String serverId;
+        private final String serverPath;
+        private final boolean timeout;
+
+        TransportException(ReadyStage stage,
+                           String clientType,
+                           String serverId,
+                           String serverPath,
+                           boolean timeout,
+                           Throwable cause) {
+            super(buildMessage(stage, clientType, serverId, serverPath, timeout, cause), cause);
+            this.stage = stage;
+            this.clientType = clientType;
+            this.serverId = serverId;
+            this.serverPath = serverPath;
+            this.timeout = timeout;
+        }
+
+        ReadyStage getStage() {
+            return stage;
+        }
+
+        String getClientType() {
+            return clientType;
+        }
+
+        String getServerId() {
+            return serverId;
+        }
+
+        String getServerPath() {
+            return serverPath;
+        }
+
+        boolean isTimeout() {
+            return timeout;
+        }
+
+        private static String buildMessage(ReadyStage stage,
+                                           String clientType,
+                                           String serverId,
+                                           String serverPath,
+                                           boolean timeout,
+                                           Throwable cause) {
+            String detail = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()
+                    ? "unknown error"
+                    : cause.getMessage();
+            String timeoutSuffix = timeout ? " timeout=true" : "";
+            return "Official MCP transport failed at stage=" + stage
+                    + ", clientType=" + clientType
+                    + ", serverId=" + serverId
+                    + ", serverPath=" + serverPath
+                    + timeoutSuffix
+                    + ", reason=" + detail;
+        }
+    }
+
+    enum ReadyStage {
+        CONNECT,
+        INITIALIZE,
+        LIST_TOOLS
+    }
+
+    private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
+    }
+}
