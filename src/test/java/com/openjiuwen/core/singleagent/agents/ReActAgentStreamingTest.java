@@ -176,6 +176,53 @@ class ReActAgentStreamingTest {
         }
     }
 
+    @Test
+    void streamShouldEmitSingleFinalFrameWhenModelStreamThrows() throws Exception {
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingFailure(new RuntimeException("stream boom")));
+        AgentSessionApi session = AgentSessionApi.create("phase11-stream-runtime-failure", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "boom"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).hasSize(1);
+        OutputSchema terminal = outputs.get(0);
+        assertThat(terminal.getType()).isEqualTo("final");
+        Map<String, Object> payload = payload(terminal);
+        assertThat(payload).containsEntry("error", true);
+        assertThat(payload).containsEntry("status", "failed");
+        assertThat(payload).containsEntry("message", "stream boom");
+        assertThat(String.valueOf(payload.get("message"))).isNotBlank();
+    }
+
+    @Test
+    void streamShouldEmitSingleFinalFrameWhenMaxIterationsReached() throws Exception {
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModel(
+                chunk(
+                        "查",
+                        null,
+                        null,
+                        List.of(ToolCall.builder().id("tc-max").name(uniqueToolName("never-run-tool")).arguments("{}").build())
+                ),
+                chunk("", "stop", null, null)
+        ));
+        agent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        AgentSessionApi session = AgentSessionApi.create("phase11-stream-max-iterations", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "查到哪了"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).hasSize(2);
+        assertThat(outputs.get(0).getType()).isEqualTo("llm_output");
+        assertPayload(outputs.get(0), "查", "answer");
+
+        OutputSchema terminal = outputs.get(1);
+        assertThat(terminal.getType()).isEqualTo("final");
+        Map<String, Object> payload = payload(terminal);
+        assertThat(payload).containsEntry("error", true);
+        assertThat(payload).containsEntry("status", "failed");
+        assertThat(String.valueOf(payload.get("message"))).isNotBlank();
+        assertThat(outputs).filteredOn(output -> "final".equals(output.getType())).hasSize(1);
+        assertThat(outputs).noneMatch(output -> "error".equals(output.getType()));
+    }
+
     private static void assertPayload(OutputSchema output, String expectedOutput, String expectedResultType) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         Map<String, Object> payload = payload(output);
@@ -217,6 +264,13 @@ class ReActAgentStreamingTest {
                     }
                     return responses.get(index).iterator();
                 });
+        return model;
+    }
+
+    private static Model mockStreamingFailure(RuntimeException failure) throws Exception {
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
+                .thenThrow(failure);
         return model;
     }
 
