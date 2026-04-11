@@ -39,7 +39,6 @@ import java.util.concurrent.TimeoutException;
  * @since 0.1.7
  */
 public class OfficialSdkMcpClient implements McpClient {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final McpServerConfig config;
@@ -50,7 +49,7 @@ public class OfficialSdkMcpClient implements McpClient {
     /**
      * Creates an MCP client adapter for the provided server and transport config.
      *
-     * @param config MCP server config
+     * @param config          MCP server config
      * @param transportConfig normalized transport config
      */
     public OfficialSdkMcpClient(McpServerConfig config,
@@ -63,7 +62,7 @@ public class OfficialSdkMcpClient implements McpClient {
      * Connects and initializes the remote MCP server.
      *
      * @param retryTimes retry count placeholder from the shared contract
-     * @param timeout timeout in seconds
+     * @param timeout    timeout in seconds
      * @return {@code true} when the connection is ready
      */
     @Override
@@ -140,9 +139,9 @@ public class OfficialSdkMcpClient implements McpClient {
     /**
      * Calls a tool on the MCP server and normalizes the SDK response.
      *
-     * @param toolName tool name
+     * @param toolName  tool name
      * @param arguments tool arguments
-     * @param timeout timeout in seconds
+     * @param timeout   timeout in seconds
      * @return normalized tool result
      */
     @Override
@@ -158,7 +157,7 @@ public class OfficialSdkMcpClient implements McpClient {
      * Looks up a single tool card by name.
      *
      * @param toolName tool name
-     * @param timeout timeout in seconds
+     * @param timeout  timeout in seconds
      * @return matching tool card when present
      * @throws Exception when tool listing fails
      */
@@ -338,15 +337,15 @@ public class OfficialSdkMcpClient implements McpClient {
     private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
     }
 
-    private record TransportFailureContext(ReadyStage stage,
-                                           String clientType,
-                                           String serverId,
-                                           String serverPath,
-                                           boolean isTimeout) {
+    private record TransportFailureContext(
+            ReadyStage stage,
+            String clientType,
+            String serverId,
+            String serverPath,
+            boolean isTimeout) {
     }
 
     static final class TransportException extends RuntimeException {
-
         private final ReadyStage stage;
         private final String clientType;
         private final String serverId;

@@ -21,7 +21,6 @@ import java.util.StringJoiner;
  * @since 0.1.7
  */
 public final class OfficialMcpToolResultMapper {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private OfficialMcpToolResultMapper() {
