@@ -9,6 +9,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -25,6 +26,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.EventInputs;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
@@ -397,74 +399,296 @@ public class ReActAgent extends BaseAgent {
 
         } finally {
             // Fire AFTER_INVOKE
-            ctx.setInputs((com.openjiuwen.core.singleagent.rail.EventInputs) invokeLifecycleInputs);
+            ctx.setInputs((EventInputs) invokeLifecycleInputs);
             fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
         }
     }
 
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        AgentSessionApi agentSession = toAgentSession(session);
+        AgentSessionApi agentSession = toAgentSession(session, streamModes);
+        Session runtimeSession = session != null ? session : agentSession;
+        agentSession.preRun(inputs);
 
-        if (agentSession != null) {
-            agentSession.preRun(inputs);
-        }
+        startStreamProducer(() -> {
+            InvokeInputs invokeInputs = buildInvokeInputs(inputs);
+            AgentCallbackContext ctx = AgentCallbackContext.builder()
+                    .agent(this)
+                    .inputs(invokeInputs)
+                    .session(runtimeSession)
+                    .build();
+            Object invokeLifecycleInputs = ctx.getInputs();
 
-        List<Object> results = new ArrayList<>();
+            fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> finalResult = (Map<String, Object>) invoke(inputs, session);
-
-            // Write to session stream if available
-            if (agentSession != null) {
-                Map<String, Object> payload = new HashMap<>();
-                payload.put("output", finalResult);
-                payload.put("result_type", "answer");
-                agentSession.writeStream(new OutputSchema("answer", 0, payload));
+            try {
+                PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
+                runStreamLoop(ctx, prepared, runtimeSession, agentSession);
+            } catch (Throwable t) {
+                String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+                Loggers.AGENT.error("ReActAgent stream error: " + errorMsg);
+                invokeInputs.setResult(Map.of(
+                        "output", errorMsg,
+                        "result_type", "error"
+                ));
+                agentSession.writeStream(new OutputSchema("error", 0, Map.of(
+                        "output", errorMsg,
+                        "result_type", "error"
+                )));
+            } finally {
+                try {
+                    contextEngine.saveContexts(runtimeSession, null);
+                } finally {
+                    agentSession.postRun();
+                    ctx.setInputs((EventInputs) invokeLifecycleInputs);
+                    fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                }
             }
-        } catch (Exception e) {
-            Loggers.AGENT.error("ReActAgent stream error: " + e.getMessage());
-            Map<String, Object> errorResult = new HashMap<>();
-            errorResult.put("output", e.getMessage());
-            errorResult.put("result_type", "error");
-            if (agentSession != null) {
-                agentSession.writeStream(new OutputSchema("error", 0, errorResult));
-            }
-        } finally {
-            if (agentSession != null) {
-                contextEngine.saveContexts(session, null);
-                agentSession.postRun();
-            }
-        }
+        });
 
-        // Read from stream_iterator
-        if (agentSession != null) {
-            Iterator<Object> streamIter = agentSession.streamIterator();
-            while (streamIter.hasNext()) {
-                results.add(streamIter.next());
-            }
-        }
-
-        return results.iterator();
+        return agentSession.streamIterator();
     }
 
     /**
      * Convert a Session to AgentSessionApi.
      */
-    private AgentSessionApi toAgentSession(Session session) {
-        if (session == null) {
-            return null;
-        }
+    private AgentSessionApi toAgentSession(Session session, List<StreamMode> streamModes) {
         if (session instanceof AgentSessionApi asa) {
             return asa;
         }
-        return AgentSessionApi.create(session.getSessionId(), null, getCard());
+        String sessionId = session != null ? session.getSessionId() : null;
+        return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
+    }
+
+    private record PreparedExecution(
+            InvokeInputs invokeInputs,
+            ModelContext context,
+            List<BaseMessage> systemMessages,
+            List<ToolInfo> tools
+    ) {
     }
 
     private static boolean safeEquals(Object a, Object b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
         return a.equals(b);
+    }
+
+    /**
+     * Execute streaming LLM call with rail lifecycle events.
+     */
+    private AssistantMessage railedModelStreamCall(
+            AgentCallbackContext ctx,
+            AgentSessionApi agentSession,
+            int[] chunkIndexRef
+    ) {
+        return RailExecutor.execute(
+                ctx,
+                AgentCallbackEvent.BEFORE_MODEL_CALL,
+                AgentCallbackEvent.AFTER_MODEL_CALL,
+                AgentCallbackEvent.ON_MODEL_EXCEPTION,
+                () -> {
+                    Model model = getLlm();
+                    ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
+
+                    Iterator<AssistantMessageChunk> chunks = model.stream(
+                            inputs.getMessages(),
+                            inputs.getTools() != null && !inputs.getTools().isEmpty()
+                                    ? inputs.getTools() : null,
+                            null, null,
+                            config.getModelName(),
+                            null, null, null, null, null
+                    );
+
+                    AssistantMessageChunk mergedChunk = null;
+                    while (chunks.hasNext()) {
+                        AssistantMessageChunk chunk = chunks.next();
+                        if (chunk == null) {
+                            continue;
+                        }
+
+                        mergedChunk = mergedChunk == null ? chunk : mergedChunk.merge(chunk);
+
+                        String chunkText = normalizeChunkText(chunk.getContent());
+                        if (!chunkText.isEmpty() && agentSession != null) {
+                            agentSession.writeStream(new OutputSchema("llm_output", chunkIndexRef[0]++, Map.of(
+                                    "output", chunkText,
+                                    "result_type", "answer"
+                            )));
+                        }
+                    }
+
+                    AssistantMessageChunk finalChunk = mergedChunk != null
+                            ? mergedChunk
+                            : AssistantMessageChunk.builder().build();
+                    inputs.setResponse(finalChunk);
+                    return AssistantMessage.builder()
+                            .content(finalChunk.getContent())
+                            .toolCalls(finalChunk.getToolCalls())
+                            .usageMetadata(finalChunk.getUsageMetadata())
+                            .finishReason(finalChunk.getFinishReason())
+                            .parserContent(finalChunk.getParserContent())
+                            .reasoningContent(finalChunk.getReasoningContent())
+                            .build();
+                }
+        );
+    }
+
+    /**
+     * Prepare context and call model stream with rail lifecycle events.
+     */
+    private AssistantMessage callModelStream(
+            AgentCallbackContext ctx,
+            ModelContext context,
+            List<BaseMessage> systemMessages,
+            List<ToolInfo> tools,
+            AgentSessionApi agentSession,
+            int[] chunkIndexRef
+    ) {
+        var contextWindow = context.getContextWindow(
+                systemMessages,
+                tools != null ? tools : null,
+                (Integer) null,
+                (Integer) null
+        );
+
+        ctx.setInputs(ModelCallInputs.builder()
+                .messages(new ArrayList<>(contextWindow.getMessages()))
+                .tools(contextWindow.getToolList())
+                .build());
+
+        return railedModelStreamCall(ctx, agentSession, chunkIndexRef);
+    }
+
+    private InvokeInputs buildInvokeInputs(Object inputs) {
+        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
+            throw new IllegalArgumentException("Input must be Map with 'query' or String");
+        }
+
+        String query;
+        String conversationId = null;
+        if (inputs instanceof Map<?, ?> map) {
+            query = map.containsKey("query") ? String.valueOf(map.get("query")) : "";
+            conversationId = map.containsKey("conversation_id")
+                    ? String.valueOf(map.get("conversation_id")) : null;
+        } else {
+            query = (String) inputs;
+        }
+
+        if (query == null || query.isEmpty()) {
+            Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
+            throw new IllegalArgumentException("Input dict must contain 'query'");
+        }
+
+        return InvokeInputs.builder()
+                .query(query)
+                .conversationId(conversationId)
+                .build();
+    }
+
+    private PreparedExecution prepareExecution(AgentCallbackContext ctx, Session session) {
+        String userInput = ((InvokeInputs) ctx.getInputs()).getQuery();
+        if (userInput == null || userInput.isEmpty()) {
+            Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
+            throw new IllegalArgumentException("Input dict must contain 'query'");
+        }
+
+        ModelContext context = initContext(session);
+        ctx.setContext(context);
+        context.addMessages(new UserMessage(userInput));
+
+        List<BaseMessage> systemMessages = buildSystemMessages();
+        List<ToolInfo> tools = getAbilityManager().listToolInfo();
+        return new PreparedExecution((InvokeInputs) ctx.getInputs(), context, systemMessages, tools);
+    }
+
+    private List<BaseMessage> buildSystemMessages() {
+        List<BaseMessage> systemMessages = new ArrayList<>();
+        if (config.getPromptTemplate() != null) {
+            for (Map<String, String> msg : config.getPromptTemplate()) {
+                if ("system".equals(msg.get("role"))) {
+                    systemMessages.add(new SystemMessage(msg.get("content")));
+                }
+            }
+        }
+
+        if (!systemMessages.isEmpty() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
+            warnMissingSkillReadFileTool();
+            String skillPrompt = getSkillUtil().getSkillPrompt();
+            BaseMessage lastMsg = systemMessages.get(systemMessages.size() - 1);
+            lastMsg.setContent((lastMsg.getContent() != null ? lastMsg.getContent() : "") + "\n" + skillPrompt);
+        }
+        return systemMessages;
+    }
+
+    private void runStreamLoop(
+            AgentCallbackContext ctx,
+            PreparedExecution prepared,
+            Session session,
+            AgentSessionApi agentSession
+    ) {
+        int[] chunkIndexRef = new int[] {0};
+        for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
+            Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+
+            AssistantMessage aiMessage = callModelStream(
+                    ctx,
+                    prepared.context(),
+                    prepared.systemMessages(),
+                    prepared.tools(),
+                    agentSession,
+                    chunkIndexRef
+            );
+
+            prepared.context().addMessages(AssistantMessage.builder()
+                    .content(aiMessage.getContent())
+                    .toolCalls(aiMessage.getToolCalls())
+                    .build());
+
+            if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+                executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
+            } else {
+                prepared.invokeInputs().setResult(Map.of(
+                        "output", normalizeChunkText(aiMessage.getContent()),
+                        "result_type", "answer"
+                ));
+                if (agentSession != null) {
+                    agentSession.writeStream(new OutputSchema("answer", 0, Map.of(
+                            "output", "",
+                            "result_type", "answer",
+                            "status", "completed"
+                    )));
+                }
+                return;
+            }
+        }
+
+        Map<String, Object> errorResult = Map.of(
+                "output", "Max iterations reached without completion",
+                "result_type", "error"
+        );
+        prepared.invokeInputs().setResult(errorResult);
+        if (agentSession != null) {
+            agentSession.writeStream(new OutputSchema("error", 0, errorResult));
+        }
+    }
+
+    private void startStreamProducer(Runnable producer) {
+        try {
+            Thread.ofVirtual()
+                    .name("react-agent-stream-" + getCard().getId())
+                    .start(producer);
+            return;
+        } catch (UnsupportedOperationException | NoSuchMethodError ignored) {
+            // Fall back to a daemon platform thread below.
+        }
+
+        Thread worker = new Thread(producer, "react-agent-stream-" + getCard().getId());
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private String normalizeChunkText(Object content) {
+        return content == null ? "" : String.valueOf(content);
     }
 }
