@@ -431,10 +431,7 @@ public class ReActAgent extends BaseAgent {
                         "output", errorMsg,
                         "result_type", "error"
                 ));
-                agentSession.writeStream(new OutputSchema("error", 0, Map.of(
-                        "output", errorMsg,
-                        "result_type", "error"
-                )));
+                writeFailedFinal(agentSession, errorMsg);
             } finally {
                 try {
                     contextEngine.saveContexts(runtimeSession, null);
@@ -657,9 +654,7 @@ public class ReActAgent extends BaseAgent {
                 "result_type", "error"
         );
         prepared.invokeInputs().setResult(errorResult);
-        if (agentSession != null) {
-            agentSession.writeStream(new OutputSchema("error", 0, errorResult));
-        }
+        writeFailedFinal(agentSession, "Max iterations reached without completion");
     }
 
     private void startStreamProducer(Runnable producer) {
@@ -703,6 +698,17 @@ public class ReActAgent extends BaseAgent {
                 "output", "",
                 "result_type", "answer",
                 "status", "completed"
+        )));
+    }
+
+    private void writeFailedFinal(AgentSessionApi agentSession, String errorMsg) {
+        if (agentSession == null) {
+            return;
+        }
+        agentSession.writeStream(new OutputSchema("final", 0, Map.of(
+                "error", true,
+                "message", errorMsg,
+                "status", "failed"
         )));
     }
 }
