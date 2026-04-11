@@ -510,12 +510,7 @@ public class ReActAgent extends BaseAgent {
                         mergedChunk = mergedChunk == null ? chunk : mergedChunk.merge(chunk);
 
                         String chunkText = normalizeChunkText(chunk.getContent());
-                        if (!chunkText.isEmpty() && agentSession != null) {
-                            agentSession.writeStream(new OutputSchema("llm_output", chunkIndexRef[0]++, Map.of(
-                                    "output", chunkText,
-                                    "result_type", "answer"
-                            )));
-                        }
+                        writeIncrementalAnswerChunk(agentSession, chunkIndexRef, chunkText);
                     }
 
                     AssistantMessageChunk finalChunk = mergedChunk != null
@@ -645,20 +640,14 @@ public class ReActAgent extends BaseAgent {
                     .toolCalls(aiMessage.getToolCalls())
                     .build());
 
-            if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+            if (hasToolCalls(aiMessage)) {
                 executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
             } else {
                 prepared.invokeInputs().setResult(Map.of(
                         "output", normalizeChunkText(aiMessage.getContent()),
                         "result_type", "answer"
                 ));
-                if (agentSession != null) {
-                    agentSession.writeStream(new OutputSchema("answer", 0, Map.of(
-                            "output", "",
-                            "result_type", "answer",
-                            "status", "completed"
-                    )));
-                }
+                writeCompletedAnswerFrame(agentSession);
                 return;
             }
         }
@@ -690,5 +679,30 @@ public class ReActAgent extends BaseAgent {
 
     private String normalizeChunkText(Object content) {
         return content == null ? "" : String.valueOf(content);
+    }
+
+    private boolean hasToolCalls(AssistantMessage aiMessage) {
+        return aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
+    }
+
+    private void writeIncrementalAnswerChunk(AgentSessionApi agentSession, int[] chunkIndexRef, String chunkText) {
+        if (agentSession == null || chunkText.isEmpty()) {
+            return;
+        }
+        agentSession.writeStream(new OutputSchema("llm_output", chunkIndexRef[0]++, Map.of(
+                "output", chunkText,
+                "result_type", "answer"
+        )));
+    }
+
+    private void writeCompletedAnswerFrame(AgentSessionApi agentSession) {
+        if (agentSession == null) {
+            return;
+        }
+        agentSession.writeStream(new OutputSchema("answer", 0, Map.of(
+                "output", "",
+                "result_type", "answer",
+                "status", "completed"
+        )));
     }
 }
