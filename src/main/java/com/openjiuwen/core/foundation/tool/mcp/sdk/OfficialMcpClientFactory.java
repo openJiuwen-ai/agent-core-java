@@ -1,6 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool.mcp.sdk;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
