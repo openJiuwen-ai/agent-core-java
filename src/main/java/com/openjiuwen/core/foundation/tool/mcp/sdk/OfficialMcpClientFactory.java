@@ -19,23 +19,6 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class OfficialMcpClientFactory {
-    enum OfficialTransportType {
-        STDIO,
-        SSE,
-        STREAMABLE_HTTP
-    }
-
-    record OfficialTransportConfig(
-            OfficialTransportType transportType,
-            String serverPath,
-            String command,
-            List<String> args,
-            Map<String, String> env,
-            String cwd,
-            Map<String, String> authHeaders
-    ) {
-    }
-
     private OfficialMcpClientFactory() {
     }
 
@@ -153,5 +136,22 @@ public final class OfficialMcpClientFactory {
             return Map.of();
         }
         return Map.copyOf(new LinkedHashMap<>(source));
+    }
+
+    enum OfficialTransportType {
+        STDIO,
+        SSE,
+        STREAMABLE_HTTP
+    }
+
+    record OfficialTransportConfig(
+            OfficialTransportType transportType,
+            String serverPath,
+            String command,
+            List<String> args,
+            Map<String, String> env,
+            String cwd,
+            Map<String, String> authHeaders
+    ) {
     }
 }
