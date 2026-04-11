@@ -19,6 +19,17 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class OfficialMcpClientFactory {
+    record OfficialTransportConfig(
+            OfficialTransportType transportType,
+            String serverPath,
+            String command,
+            List<String> args,
+            Map<String, String> env,
+            String cwd,
+            Map<String, String> authHeaders
+    ) {
+    }
+
     private OfficialMcpClientFactory() {
     }
 
@@ -138,14 +149,4 @@ public final class OfficialMcpClientFactory {
         return Map.copyOf(new LinkedHashMap<>(source));
     }
 
-    record OfficialTransportConfig(
-            OfficialTransportType transportType,
-            String serverPath,
-            String command,
-            List<String> args,
-            Map<String, String> env,
-            String cwd,
-            Map<String, String> authHeaders
-    ) {
-    }
 }

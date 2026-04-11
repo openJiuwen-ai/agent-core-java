@@ -46,6 +46,91 @@ public class OfficialSdkMcpClient implements McpClient {
 
     private McpSyncClient client;
 
+    static final class ReadyStage {
+        static final String CONNECT = "CONNECT";
+
+        static final String INITIALIZE = "INITIALIZE";
+
+        static final String LIST_TOOLS = "LIST_TOOLS";
+
+        private ReadyStage() {
+        }
+    }
+
+    private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
+    }
+
+    private record TransportFailureContext(
+            String stage,
+            String clientType,
+            String serverId,
+            String serverPath,
+            boolean isTimeout) {
+    }
+
+    static final class TransportException extends RuntimeException {
+        private final String stage;
+        private final String clientType;
+        private final String serverId;
+        private final String serverPath;
+        private final boolean isTimeout;
+
+        TransportException(
+                String stage,
+                String clientType,
+                String serverId,
+                String serverPath,
+                boolean isTimeout,
+                Throwable cause) {
+            super(buildMessage(new TransportFailureContext(
+                    stage,
+                    clientType,
+                    serverId,
+                    serverPath,
+                    isTimeout
+            ), cause), cause);
+            this.stage = stage;
+            this.clientType = clientType;
+            this.serverId = serverId;
+            this.serverPath = serverPath;
+            this.isTimeout = isTimeout;
+        }
+
+        String getStage() {
+            return stage;
+        }
+
+        String getClientType() {
+            return clientType;
+        }
+
+        String getServerId() {
+            return serverId;
+        }
+
+        String getServerPath() {
+            return serverPath;
+        }
+
+        boolean isTimeout() {
+            return isTimeout;
+        }
+
+        private static String buildMessage(TransportFailureContext context,
+                                           Throwable cause) {
+            String detail = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()
+                    ? "unknown error"
+                    : cause.getMessage();
+            String timeoutSuffix = context.isTimeout() ? " timeout=true" : "";
+            return "Official MCP transport failed at stage=" + context.stage()
+                    + ", clientType=" + context.clientType()
+                    + ", serverId=" + context.serverId()
+                    + ", serverPath=" + context.serverPath()
+                    + timeoutSuffix
+                    + ", reason=" + detail;
+        }
+    }
+
     /**
      * Creates an MCP client adapter for the provided server and transport config.
      *
@@ -328,88 +413,4 @@ public class OfficialSdkMcpClient implements McpClient {
         return false;
     }
 
-    static final class ReadyStage {
-        static final String CONNECT = "CONNECT";
-
-        static final String INITIALIZE = "INITIALIZE";
-
-        static final String LIST_TOOLS = "LIST_TOOLS";
-
-        private ReadyStage() {
-        }
-    }
-
-    private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
-    }
-
-    private record TransportFailureContext(
-            String stage,
-            String clientType,
-            String serverId,
-            String serverPath,
-            boolean isTimeout) {
-    }
-
-    static final class TransportException extends RuntimeException {
-        private final String stage;
-        private final String clientType;
-        private final String serverId;
-        private final String serverPath;
-        private final boolean isTimeout;
-
-        TransportException(
-                String stage,
-                String clientType,
-                String serverId,
-                String serverPath,
-                boolean isTimeout,
-                Throwable cause) {
-            super(buildMessage(new TransportFailureContext(
-                    stage,
-                    clientType,
-                    serverId,
-                    serverPath,
-                    isTimeout
-            ), cause), cause);
-            this.stage = stage;
-            this.clientType = clientType;
-            this.serverId = serverId;
-            this.serverPath = serverPath;
-            this.isTimeout = isTimeout;
-        }
-
-        String getStage() {
-            return stage;
-        }
-
-        String getClientType() {
-            return clientType;
-        }
-
-        String getServerId() {
-            return serverId;
-        }
-
-        String getServerPath() {
-            return serverPath;
-        }
-
-        boolean isTimeout() {
-            return isTimeout;
-        }
-
-        private static String buildMessage(TransportFailureContext context,
-                                           Throwable cause) {
-            String detail = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()
-                    ? "unknown error"
-                    : cause.getMessage();
-            String timeoutSuffix = context.isTimeout() ? " timeout=true" : "";
-            return "Official MCP transport failed at stage=" + context.stage()
-                    + ", clientType=" + context.clientType()
-                    + ", serverId=" + context.serverId()
-                    + ", serverPath=" + context.serverPath()
-                    + timeoutSuffix
-                    + ", reason=" + detail;
-        }
-    }
 }
