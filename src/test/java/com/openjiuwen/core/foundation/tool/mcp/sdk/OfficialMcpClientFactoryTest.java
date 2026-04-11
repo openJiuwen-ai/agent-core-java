@@ -49,7 +49,7 @@ class OfficialMcpClientFactoryTest {
 
         OfficialMcpClientFactory.OfficialTransportConfig mapped = OfficialMcpClientFactory.map(config);
 
-        assertEquals(OfficialMcpClientFactory.OfficialTransportType.STDIO, mapped.transportType());
+        assertEquals(OfficialTransportType.STDIO, mapped.transportType());
         assertEquals("node", mapped.command());
         assertEquals(List.of("server.js", "--mode", "stdio"), mapped.args());
         assertEquals(Map.of("API_KEY", "demo"), mapped.env());

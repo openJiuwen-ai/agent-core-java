@@ -138,12 +138,6 @@ public final class OfficialMcpClientFactory {
         return Map.copyOf(new LinkedHashMap<>(source));
     }
 
-    enum OfficialTransportType {
-        STDIO,
-        SSE,
-        STREAMABLE_HTTP
-    }
-
     record OfficialTransportConfig(
             OfficialTransportType transportType,
             String serverPath,

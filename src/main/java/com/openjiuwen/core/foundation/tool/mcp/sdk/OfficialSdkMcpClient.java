@@ -285,7 +285,7 @@ public class OfficialSdkMcpClient implements McpClient {
         return converted == null ? Map.of() : new LinkedHashMap<>(converted);
     }
 
-    private TransportException transportFailure(ReadyStage stage, RuntimeException exception) {
+    private TransportException transportFailure(String stage, RuntimeException exception) {
         return new TransportException(
                 stage,
                 OfficialMcpClientFactory.normalizeClientType(config.getClientType()),
@@ -328,17 +328,22 @@ public class OfficialSdkMcpClient implements McpClient {
         return false;
     }
 
-    enum ReadyStage {
-        CONNECT,
-        INITIALIZE,
-        LIST_TOOLS
+    static final class ReadyStage {
+        static final String CONNECT = "CONNECT";
+
+        static final String INITIALIZE = "INITIALIZE";
+
+        static final String LIST_TOOLS = "LIST_TOOLS";
+
+        private ReadyStage() {
+        }
     }
 
     private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
     }
 
     private record TransportFailureContext(
-            ReadyStage stage,
+            String stage,
             String clientType,
             String serverId,
             String serverPath,
@@ -346,18 +351,19 @@ public class OfficialSdkMcpClient implements McpClient {
     }
 
     static final class TransportException extends RuntimeException {
-        private final ReadyStage stage;
+        private final String stage;
         private final String clientType;
         private final String serverId;
         private final String serverPath;
         private final boolean isTimeout;
 
-        TransportException(ReadyStage stage,
-                           String clientType,
-                           String serverId,
-                           String serverPath,
-                           boolean isTimeout,
-                           Throwable cause) {
+        TransportException(
+                String stage,
+                String clientType,
+                String serverId,
+                String serverPath,
+                boolean isTimeout,
+                Throwable cause) {
             super(buildMessage(new TransportFailureContext(
                     stage,
                     clientType,
@@ -372,7 +378,7 @@ public class OfficialSdkMcpClient implements McpClient {
             this.isTimeout = isTimeout;
         }
 
-        ReadyStage getStage() {
+        String getStage() {
             return stage;
         }
 
