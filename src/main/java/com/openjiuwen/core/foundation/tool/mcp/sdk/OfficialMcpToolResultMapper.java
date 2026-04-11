@@ -16,6 +16,8 @@ import java.util.StringJoiner;
 
 /**
  * Maps official SDK tool results to the stable runtime contract used by upper layers.
+ *
+ * @since 0.1.7
  */
 public final class OfficialMcpToolResultMapper {
 
@@ -24,6 +26,13 @@ public final class OfficialMcpToolResultMapper {
     private OfficialMcpToolResultMapper() {
     }
 
+    /**
+     * Normalizes the official SDK tool result to the runtime contract consumed by upper layers.
+     *
+     * @param toolName tool name
+     * @param result official SDK tool result
+     * @return normalized tool result payload
+     */
     public static Map<String, Object> map(String toolName, McpSchema.CallToolResult result) {
         List<Map<String, Object>> content = mapContent(result.content());
         LinkedHashMap<String, Object> normalized = new LinkedHashMap<>();

@@ -9,20 +9,52 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * Internal factory that keeps official Java SDK transport selection inside the MCP layer.
+ *
+ * @since 0.1.7
  */
 public final class OfficialMcpClientFactory {
+
+    enum OfficialTransportType {
+        STDIO,
+        SSE,
+        STREAMABLE_HTTP
+    }
+
+    record OfficialTransportConfig(
+            OfficialTransportType transportType,
+            String serverPath,
+            String command,
+            List<String> args,
+            Map<String, String> env,
+            String cwd,
+            Map<String, String> authHeaders
+    ) {
+    }
 
     private OfficialMcpClientFactory() {
     }
 
+    /**
+     * Creates an MCP client backed by the official Java SDK transport implementation.
+     *
+     * @param config MCP server config
+     * @return SDK-backed MCP client
+     */
     public static McpClient create(McpServerConfig config) {
         return new OfficialSdkMcpClient(config, map(config));
     }
 
+    /**
+     * Checks whether the client type is supported by the official SDK adapter.
+     *
+     * @param clientType client type from config
+     * @return {@code true} when supported
+     */
     public static boolean supports(String clientType) {
         return switch (normalizeClientType(clientType)) {
             case "stdio", "sse", "streamable_http" -> true;
@@ -30,11 +62,17 @@ public final class OfficialMcpClientFactory {
         };
     }
 
+    /**
+     * Normalizes aliases to the transport names used inside the MCP layer.
+     *
+     * @param clientType client type from config
+     * @return normalized transport name
+     */
     public static String normalizeClientType(String clientType) {
         if (clientType == null || clientType.isBlank()) {
             return "sse";
         }
-        String normalized = clientType.toLowerCase();
+        String normalized = clientType.toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "http", "streamable-http", "streamable_http" -> "streamable_http";
             default -> normalized;
@@ -115,22 +153,5 @@ public final class OfficialMcpClientFactory {
             return Map.of();
         }
         return Map.copyOf(new LinkedHashMap<>(source));
-    }
-
-    enum OfficialTransportType {
-        STDIO,
-        SSE,
-        STREAMABLE_HTTP
-    }
-
-    record OfficialTransportConfig(
-            OfficialTransportType transportType,
-            String serverPath,
-            String command,
-            List<String> args,
-            Map<String, String> env,
-            String cwd,
-            Map<String, String> authHeaders
-    ) {
     }
 }
