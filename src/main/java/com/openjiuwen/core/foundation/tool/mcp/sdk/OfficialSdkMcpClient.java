@@ -20,6 +20,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.File;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpRequest;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -54,6 +55,13 @@ public class OfficialSdkMcpClient implements McpClient {
     private record ParsedHttpTransportTarget(String baseUri, String endpoint) {
     }
 
+    private record TransportFailureContext(ReadyStage stage,
+                                           String clientType,
+                                           String serverId,
+                                           String serverPath,
+                                           boolean isTimeout) {
+    }
+
     static final class TransportException extends RuntimeException {
 
         private final ReadyStage stage;
@@ -68,7 +76,13 @@ public class OfficialSdkMcpClient implements McpClient {
                            String serverPath,
                            boolean isTimeout,
                            Throwable cause) {
-            super(buildMessage(stage, clientType, serverId, serverPath, isTimeout, cause), cause);
+            super(buildMessage(new TransportFailureContext(
+                    stage,
+                    clientType,
+                    serverId,
+                    serverPath,
+                    isTimeout
+            ), cause), cause);
             this.stage = stage;
             this.clientType = clientType;
             this.serverId = serverId;
@@ -96,20 +110,16 @@ public class OfficialSdkMcpClient implements McpClient {
             return isTimeout;
         }
 
-        private static String buildMessage(ReadyStage stage,
-                                           String clientType,
-                                           String serverId,
-                                           String serverPath,
-                                           boolean isTimeout,
+        private static String buildMessage(TransportFailureContext context,
                                            Throwable cause) {
             String detail = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()
                     ? "unknown error"
                     : cause.getMessage();
-            String timeoutSuffix = isTimeout ? " timeout=true" : "";
-            return "Official MCP transport failed at stage=" + stage
-                    + ", clientType=" + clientType
-                    + ", serverId=" + serverId
-                    + ", serverPath=" + serverPath
+            String timeoutSuffix = context.isTimeout() ? " timeout=true" : "";
+            return "Official MCP transport failed at stage=" + context.stage()
+                    + ", clientType=" + context.clientType()
+                    + ", serverId=" + context.serverId()
+                    + ", serverPath=" + context.serverPath()
                     + timeoutSuffix
                     + ", reason=" + detail;
         }
@@ -142,19 +152,19 @@ public class OfficialSdkMcpClient implements McpClient {
         try {
             McpClientTransport transport = createTransport();
             var builder = io.modelcontextprotocol.client.McpClient.sync(transport);
-            Duration duration = toDuration(timeout);
-            if (duration != null) {
-                builder = builder.requestTimeout(duration).initializationTimeout(duration);
+            Optional<Duration> duration = toDuration(timeout);
+            if (duration.isPresent()) {
+                builder = builder.requestTimeout(duration.get()).initializationTimeout(duration.get());
             }
             client = builder.build();
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.CONNECT, exception);
         }
 
         try {
             client.initialize();
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.INITIALIZE, exception);
         }
@@ -199,7 +209,7 @@ public class OfficialSdkMcpClient implements McpClient {
             return results;
         } catch (TransportException exception) {
             throw exception;
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             cleanupClientQuietly();
             throw transportFailure(ReadyStage.LIST_TOOLS, exception);
         }
@@ -215,8 +225,9 @@ public class OfficialSdkMcpClient implements McpClient {
      */
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+        Map<String, Object> normalizedArguments = arguments == null ? Map.of() : arguments;
         McpSchema.CallToolResult result = requireClient().callTool(
-                new McpSchema.CallToolRequest(toolName, arguments == null ? Map.of() : arguments)
+                new McpSchema.CallToolRequest(toolName, normalizedArguments)
         );
         return OfficialMcpToolResultMapper.map(toolName, result);
     }
@@ -321,7 +332,7 @@ public class OfficialSdkMcpClient implements McpClient {
         try {
             return new URI(serverUri.getScheme(), null, serverUri.getHost(), serverUri.getPort(), null, null, null)
                     .toASCIIString();
-        } catch (Exception exception) {
+        } catch (URISyntaxException exception) {
             throw new IllegalArgumentException("Invalid MCP server URI: " + serverUri, exception);
         }
     }
@@ -329,19 +340,19 @@ public class OfficialSdkMcpClient implements McpClient {
     private String buildEndpointUri(String path, String query) {
         try {
             return new URI(null, null, path, (query == null || query.isBlank()) ? null : query, null).toASCIIString();
-        } catch (Exception exception) {
+        } catch (URISyntaxException exception) {
             throw new IllegalArgumentException("Invalid MCP endpoint path: " + path, exception);
         }
     }
 
-    private Duration toDuration(float timeout) {
-        if (timeout == McpServerConfig.NO_TIMEOUT || timeout <= 0) {
-            return null;
+    private Optional<Duration> toDuration(float timeout) {
+        BigDecimal timeoutSeconds = BigDecimal.valueOf(timeout);
+        if (timeoutSeconds.compareTo(BigDecimal.valueOf(McpServerConfig.NO_TIMEOUT)) == 0
+                || timeoutSeconds.signum() <= 0) {
+            return Optional.empty();
         }
-        long timeoutMillis = new BigDecimal(Float.toString(timeout))
-                .movePointRight(3)
-                .longValue();
-        return Duration.ofMillis(timeoutMillis);
+        long timeoutMillis = timeoutSeconds.movePointRight(3).longValue();
+        return Optional.of(Duration.ofMillis(timeoutMillis));
     }
 
     private Map<String, Object> toInputParams(Object inputSchema) {
@@ -353,7 +364,7 @@ public class OfficialSdkMcpClient implements McpClient {
         return converted == null ? Map.of() : new LinkedHashMap<>(converted);
     }
 
-    private TransportException transportFailure(ReadyStage stage, Exception exception) {
+    private TransportException transportFailure(ReadyStage stage, RuntimeException exception) {
         return new TransportException(
                 stage,
                 OfficialMcpClientFactory.normalizeClientType(config.getClientType()),
@@ -370,7 +381,7 @@ public class OfficialSdkMcpClient implements McpClient {
         }
         try {
             client.closeGracefully();
-        } catch (Exception ignored) {
+        } catch (IllegalStateException ignored) {
             // Preserve the original transport failure.
         } finally {
             client = null;
