@@ -7,6 +7,10 @@ package com.openjiuwen.core.singleagent.agents;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -18,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -86,6 +92,90 @@ class ReActAgentStreamingTest {
         assertThat(finalPayload).containsEntry("output", "");
     }
 
+    @Test
+    void streamShouldPauseForToolRoundThenResumeAnswerOutput() throws Exception {
+        AtomicInteger toolExecutions = new AtomicInteger();
+        String toolName = uniqueToolName("lookup_tool");
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModelSequence(
+                List.of(
+                        List.of(
+                                chunk(
+                                        "查",
+                                        null,
+                                        "internal-thinking",
+                                        List.of(ToolCall.builder().id("tc-1").name(toolName).arguments("{}" ).build())
+                                ),
+                                chunk("", "stop", null, null)
+                        ),
+                        List.of(
+                                chunk("到", null, null, null),
+                                chunk("", "stop", null, null)
+                        )
+                )
+        ));
+        registerTool(agent, toolName, toolExecutions);
+        AgentSessionApi session = AgentSessionApi.create("phase11-stream-tool-round", null, agent.getCard());
+
+        List<OutputSchema> outputs;
+        try {
+            outputs = collect(agent.stream(Map.of("query", "查到什么了"), session, List.of(StreamMode.OUTPUT)));
+        } finally {
+            unregisterTool(toolName);
+        }
+
+        assertThat(toolExecutions).hasValue(1);
+        assertThat(outputs).hasSize(3);
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .containsExactly("llm_output", "llm_output", "answer");
+        assertPayload(outputs.get(0), "查", "answer");
+        assertPayload(outputs.get(1), "到", "answer");
+
+        Map<String, Object> finalPayload = payload(outputs.get(2));
+        assertThat(finalPayload).containsEntry("output", "");
+        assertThat(finalPayload).containsEntry("result_type", "answer");
+        assertThat(finalPayload).containsEntry("status", "completed");
+        assertThat(finalPayload).doesNotContainKeys("tool_calls", "reasoning_content");
+        assertThat(finalPayload.get("output")).isNotEqualTo("查到");
+    }
+
+    @Test
+    void streamToolRoundShouldNeverExposeToolCallsOrReasoningContent() throws Exception {
+        AtomicInteger toolExecutions = new AtomicInteger();
+        String toolName = uniqueToolName("hidden_lookup_tool");
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModelSequence(
+                List.of(
+                        List.of(
+                                chunk(
+                                        "查",
+                                        null,
+                                        "first-round-hidden",
+                                        List.of(ToolCall.builder().id("tc-hidden").name(toolName).arguments("{}" ).build())
+                                ),
+                                chunk("", "stop", null, null)
+                        ),
+                        List.of(
+                                chunk("到", null, "second-round-hidden", null),
+                                chunk("", "stop", null, null)
+                        )
+                )
+        ));
+        registerTool(agent, toolName, toolExecutions);
+        AgentSessionApi session = AgentSessionApi.create("phase11-stream-tool-hidden", null, agent.getCard());
+
+        List<OutputSchema> outputs;
+        try {
+            outputs = collect(agent.stream(Map.of("query", "查到什么了"), session, List.of(StreamMode.OUTPUT)));
+        } finally {
+            unregisterTool(toolName);
+        }
+
+        assertThat(toolExecutions).hasValue(1);
+        assertThat(outputs).hasSize(3);
+        for (OutputSchema output : outputs) {
+            assertThat(payload(output)).doesNotContainKeys("tool_calls", "reasoning_content");
+        }
+    }
+
     private static void assertPayload(OutputSchema output, String expectedOutput, String expectedResultType) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         Map<String, Object> payload = payload(output);
@@ -114,6 +204,43 @@ class ReActAgentStreamingTest {
         when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
                 .thenReturn(List.of(chunks).iterator());
         return model;
+    }
+
+    private static Model mockStreamingModelSequence(List<List<AssistantMessageChunk>> responses) throws Exception {
+        Model model = mock(Model.class);
+        AtomicInteger responseIndex = new AtomicInteger();
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
+                .thenAnswer(invocation -> {
+                    int index = responseIndex.getAndIncrement();
+                    if (index >= responses.size()) {
+                        return List.<AssistantMessageChunk>of().iterator();
+                    }
+                    return responses.get(index).iterator();
+                });
+        return model;
+    }
+
+    private static void registerTool(StreamingProbeAgent agent, String toolName, AtomicInteger toolExecutions) {
+        ToolCard card = ToolCard.builder()
+                .id(toolName)
+                .name(toolName)
+                .description("固定返回测试结果的工具")
+                .inputParams(Map.of("type", "object", "properties", Map.of()))
+                .build();
+        LocalFunction tool = new LocalFunction(card, inputs -> {
+            toolExecutions.incrementAndGet();
+            return "lookup-result";
+        });
+        agent.getAbilityManager().add(card);
+        Runner.resourceMgr().addTool(tool, null);
+    }
+
+    private static void unregisterTool(String toolName) {
+        Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
+    }
+
+    private static String uniqueToolName(String prefix) {
+        return prefix + "-" + UUID.randomUUID();
     }
 
     private static AssistantMessageChunk chunk(
