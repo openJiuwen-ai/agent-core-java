@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 /**
@@ -15,6 +16,11 @@ public record ModelConfig(
         String modelProvider,
         BaseModelInfo modelInfo
 ) {
+    /**
+     * Creates a ModelConfig with the given model provider and default model info.
+     *
+     * @param modelProvider the model provider name
+     */
     public ModelConfig(String modelProvider) {
         this(modelProvider, new BaseModelInfo());
     }

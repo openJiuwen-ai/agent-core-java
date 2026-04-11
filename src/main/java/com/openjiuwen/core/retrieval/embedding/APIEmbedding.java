@@ -1,11 +1,13 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
@@ -100,6 +102,12 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                     Thread thread = new Thread(runnable);
                     thread.setName("openjiuwen-embed");
                     thread.setDaemon(true);
+                    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                        @Override
+                        public void uncaughtException(Thread t, Throwable e) {
+                            Loggers.CONTROLLER.error("APIEmbedding Error,Thread {} , {}", t.getName(),e.getMessage());
+                        }
+                    });
                     return thread;
                 });
     }

@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,6 +98,11 @@ public class LongTermMemory {
     private LongTermMemory() {
     }
 
+    /**
+     * Gets the singleton instance of LongTermMemory.
+     *
+     * @return the LongTermMemory singleton instance
+     */
     public static LongTermMemory getInstance() {
         if (instance == null) {
             synchronized (LongTermMemory.class) {
@@ -119,6 +125,14 @@ public class LongTermMemory {
 
     // ========================= Store Registration =========================
 
+    /**
+     * Registers storage backends for the memory engine.
+     *
+     * @param kvStore        the key-value store for persistence
+     * @param vectorStore    the vector store for semantic search
+     * @param dbStore        the database store for structured data
+     * @param embeddingModel the embedding model for vectorization
+     */
     public void registerStore(BaseKVStore kvStore,
                               VectorStore vectorStore,
                               BaseDbStore<?> dbStore,
@@ -153,6 +167,11 @@ public class LongTermMemory {
 
     // ========================= Configuration =========================
 
+    /**
+     * Sets the system memory engine configuration.
+     *
+     * @param config the memory engine configuration
+     */
     public void setConfig(MemoryEngineConfig config) {
         if (kvStore == null || dbStore == null || vectorStore == null) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
@@ -187,6 +206,13 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * Sets the configuration for a specific scope.
+     *
+     * @param scopeId             the scope identifier
+     * @param memoryScopeConfig   the scope-specific memory configuration
+     * @return true if configuration was set successfully, false otherwise
+     */
     @SuppressWarnings("unchecked")
     public boolean setScopeConfig(String scopeId, MemoryScopeConfig memoryScopeConfig) {
         if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
@@ -216,6 +242,12 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * Gets the configuration for a specific scope.
+     *
+     * @param scopeId the scope identifier
+     * @return the scope configuration, or null if not found
+     */
     @SuppressWarnings("unchecked")
     public MemoryScopeConfig getScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
@@ -240,6 +272,12 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * Deletes the configuration for a specific scope.
+     *
+     * @param scopeId the scope identifier
+     * @return true if deletion was successful, false otherwise
+     */
     public boolean deleteScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
             return false;
@@ -259,6 +297,12 @@ public class LongTermMemory {
 
     // ========================= Memory Operations =========================
 
+    /**
+     * Deletes all memory data for a specific scope.
+     *
+     * @param scopeId the scope identifier
+     * @return true if deletion was successful, false otherwise
+     */
     public boolean deleteMemByScope(String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
             return false;

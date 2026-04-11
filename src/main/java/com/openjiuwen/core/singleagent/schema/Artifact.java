@@ -1,4 +1,7 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.singleagent.schema;
 
 import com.openjiuwen.core.common.schema.Part;

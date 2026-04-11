@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.dev_tools.tune.optimizer;
 
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;

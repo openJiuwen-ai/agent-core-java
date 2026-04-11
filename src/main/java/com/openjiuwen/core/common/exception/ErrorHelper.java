@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
 
 import java.util.Map;
@@ -20,6 +21,9 @@ public final class ErrorHelper {
     /**
      * Build exception instance without throwing.
      * Useful for deferred throw or wrapping.
+     *
+     * @param status the status code
+     * @return a BaseError instance
      */
     public static BaseError buildError(StatusCode status) {
         return StatusMapping.resolveException(status);
@@ -46,6 +50,13 @@ public final class ErrorHelper {
 
     /**
      * Build exception with custom message and details.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message
+     * @param details optional additional details
+     * @param cause   optional root cause
+     * @param params  template parameters for message rendering
+     * @return a BaseError instance with the specified details
      */
     public static BaseError buildError(StatusCode status, String msg, Object details,
                                        Throwable cause, Map<String, Object> params) {
@@ -58,6 +69,9 @@ public final class ErrorHelper {
 
     /**
      * Unified error raising — throws immediately.
+     *
+     * @param status the status code
+     * @throws BaseError always thrown with the given status
      */
     public static void raiseError(StatusCode status) {
         throw StatusMapping.resolveException(status);
@@ -65,6 +79,13 @@ public final class ErrorHelper {
 
     /**
      * Unified error raising with details — throws immediately.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message
+     * @param details optional additional details
+     * @param cause   optional root cause
+     * @param params  template parameters for message rendering
+     * @throws BaseError always thrown with the specified details
      */
     public static void raiseError(StatusCode status, String msg, Object details,
                                   Throwable cause, Map<String, Object> params) {
@@ -73,6 +94,9 @@ public final class ErrorHelper {
 
     /**
      * Raise a FrameworkError.
+     *
+     * @param status the status code
+     * @throws FrameworkError always thrown
      */
     public static void systemError(StatusCode status) {
         throw new FrameworkError(status);
@@ -80,6 +104,11 @@ public final class ErrorHelper {
 
     /**
      * Raise a FrameworkError with cause.
+     *
+     * @param status the status code
+     * @param cause  the root cause
+     * @param params template parameters for message rendering
+     * @throws FrameworkError always thrown
      */
     public static void systemError(StatusCode status, Throwable cause, Map<String, Object> params) {
         throw new FrameworkError(status, null, null, cause, params);
@@ -87,6 +116,9 @@ public final class ErrorHelper {
 
     /**
      * Raise a ValidationError.
+     *
+     * @param status the status code
+     * @throws ValidationError always thrown
      */
     public static void validateError(StatusCode status) {
         throw new ValidationError(status);
@@ -94,6 +126,11 @@ public final class ErrorHelper {
 
     /**
      * Raise a ValidationError with cause.
+     *
+     * @param status the status code
+     * @param cause  the root cause
+     * @param params template parameters for message rendering
+     * @throws ValidationError always thrown
      */
     public static void validateError(StatusCode status, Throwable cause, Map<String, Object> params) {
         throw new ValidationError(status, null, null, cause, params);
@@ -101,6 +138,9 @@ public final class ErrorHelper {
 
     /**
      * Raise a Termination.
+     *
+     * @param status the status code
+     * @throws Termination always thrown
      */
     public static void terminate(StatusCode status) {
         throw new Termination(status);
@@ -108,6 +148,10 @@ public final class ErrorHelper {
 
     /**
      * Raise a Termination with params.
+     *
+     * @param status the status code
+     * @param params template parameters for message rendering
+     * @throws Termination always thrown
      */
     public static void terminate(StatusCode status, Map<String, Object> params) {
         throw new Termination(status, params);

@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool;
 
 import com.openjiuwen.core.common.schema.BaseCard;
@@ -38,6 +39,8 @@ public class ToolCard extends BaseCard {
 
     /**
      * Build a {@link ToolInfo} descriptor for this tool card.
+     *
+     * @return a ToolInfo instance with name, description, and parameters
      */
     @Override
     public ToolInfo toolInfo() {

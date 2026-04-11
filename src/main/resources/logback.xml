@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
   Default Logback configuration for agent-core-java common module.
 -->
 <configuration scan="true" scanPeriod="30 seconds">

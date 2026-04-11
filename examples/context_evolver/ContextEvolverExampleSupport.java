@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package examples.context_evolver;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

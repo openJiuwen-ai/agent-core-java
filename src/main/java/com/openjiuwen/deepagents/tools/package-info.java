@@ -1,6 +1,3 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-
 /**
  * Tools package - Provides tool implementations for deep agents.
  *
@@ -11,4 +8,8 @@
  *
  * <p>Placeholder package - actual implementations to be added.
  */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.deepagents.tools;

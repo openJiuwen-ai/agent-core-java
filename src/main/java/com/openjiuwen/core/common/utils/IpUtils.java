@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.utils;
 
 import java.net.DatagramSocket;
@@ -24,8 +25,9 @@ public final class IpUtils {
      * @return local IP address string, or "127.0.0.1" on failure
      */
     public static String getLocalIp() {
+        String defaultIp = AppconfigUtils.getDefaultIp();
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.connect(new InetSocketAddress(InetAddress.getByName("8.8.8.8"), 80));
+            socket.connect(new InetSocketAddress(InetAddress.getByName(defaultIp), 80));
             return socket.getLocalAddress().getHostAddress();
         } catch (Exception e) {
             return "127.0.0.1";

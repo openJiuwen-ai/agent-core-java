@@ -1,6 +1,7 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -50,6 +51,8 @@ public class AssistantMessage extends BaseMessage {
 
     /**
      * Create an assistant message with string content.
+     *
+     * @param content the message content
      */
     public AssistantMessage(String content) {
         super("assistant", content);
@@ -105,6 +108,8 @@ public class AssistantMessage extends BaseMessage {
 
     /**
      * Convert this message to OpenAI-compatible dict format for API requests.
+     *
+     * @return a map containing the message in API format
      */
     public Map<String, Object> toApiFormat() {
         Map<String, Object> result = new LinkedHashMap<>();
