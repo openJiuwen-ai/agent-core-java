@@ -107,6 +107,18 @@ class ReActAgentSharedLoopStructureTest {
     }
 
     @Test
+    void invokeAndStreamShouldShareFinalizeExecutionLifecycleHelper() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("private void finalizeExecutionLifecycle(");
+        assertThat(reactAgentSource).contains("finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null, restoreInterrupt);");
+        assertThat(reactAgentSource).contains("finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession, restoreInterrupt);");
+        assertThat(reactAgentSource).doesNotContain("if (agentSession == null) {");
+        assertThat(reactAgentSource).contains("contextEngine.saveContexts(session, null);");
+        assertThat(reactAgentSource).contains("agentSession.postRun();");
+    }
+
+    @Test
     void invokeShouldTreatNullConversationIdAsMissingInsteadOfLiteralNull() throws Exception {
         ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
         AtomicReference<Session> capturedSession = new AtomicReference<>();

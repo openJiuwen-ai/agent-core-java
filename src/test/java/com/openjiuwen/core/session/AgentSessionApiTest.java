@@ -143,6 +143,22 @@ class AgentSessionApiTest {
             assertNotNull(iterator.next());
             assertFalse(iterator.hasNext());
         }
+
+        @Test
+        @DisplayName("postRun remains idempotent after stream close")
+        void testPostRunIsIdempotent() {
+            AgentSessionApi session = new AgentSessionApi("stream-post-run");
+            session.preRun(Map.of());
+            session.writeStream(Map.of("chunk", "value"));
+
+            session.postRun();
+            session.postRun();
+
+            Iterator<Object> iterator = session.streamIterator();
+            assertTrue(iterator.hasNext());
+            assertNotNull(iterator.next());
+            assertFalse(iterator.hasNext());
+        }
     }
 
     @Nested
