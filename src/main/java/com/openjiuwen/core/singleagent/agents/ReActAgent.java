@@ -24,6 +24,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -198,16 +199,16 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * Execute tool calls and commit tool messages into context.
+     * Execute tool calls and return structured execution facts.
      */
-    private void executeToolCall(
+    private List<AbilityManager.ToolExecutionEntry> executeToolCall(
             AgentCallbackContext ctx,
             List<?> toolCalls,
             Session session,
             ModelContext context
     ) {
         if (toolCalls == null || toolCalls.isEmpty()) {
-            return;
+            return List.of();
         }
 
         for (Object tc : toolCalls) {
@@ -220,13 +221,48 @@ public class ReActAgent extends BaseAgent {
             Loggers.AGENT.info("Executing tool: name=" + toolName + ", id=" + toolId);
         }
 
-        var results = getAbilityManager().execute(ctx, toolCalls, session, null);
+        return getAbilityManager().execute(ctx, toolCalls, session, null);
+    }
 
-        for (var entry : results) {
+    private TerminalOutcome interpretToolExecutionFacts(
+            List<AbilityManager.ToolExecutionEntry> toolFacts,
+            ModelContext context
+    ) {
+        if (toolFacts == null || toolFacts.isEmpty()) {
+            return null;
+        }
+
+        for (AbilityManager.ToolExecutionEntry entry : toolFacts) {
             if (entry.toolMessage() != null) {
                 context.addMessages(entry.toolMessage());
             }
+
+            if (entry.classification() == AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE) {
+                return buildInterruptPendingOutcome(resolveToolFactMessage(entry, "Execution interrupted"));
+            }
+
+            if (entry.classification() == AbilityManager.ToolExecutionClassification.ERROR) {
+                return buildFailureOutcome(resolveToolFactMessage(entry, "Tool execution failed"));
+            }
         }
+
+        return null;
+    }
+
+    private String resolveToolFactMessage(AbilityManager.ToolExecutionEntry entry, String defaultMessage) {
+        if (entry == null) {
+            return defaultMessage;
+        }
+        if (entry.errorMessage() != null && !entry.errorMessage().isBlank()) {
+            return entry.errorMessage();
+        }
+        if (entry.toolMessage() != null && entry.toolMessage().getContent() != null) {
+            String toolMessageContent = String.valueOf(entry.toolMessage().getContent());
+            if (!toolMessageContent.isBlank()) {
+                return toolMessageContent;
+            }
+        }
+        return defaultMessage;
     }
 
     /**
@@ -618,7 +654,16 @@ public class ReActAgent extends BaseAgent {
                         .build());
 
                 if (hasToolCalls(aiMessage)) {
-                    executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
+                    List<AbilityManager.ToolExecutionEntry> toolFacts = executeToolCall(
+                            ctx,
+                            aiMessage.getToolCalls(),
+                            session,
+                            prepared.context()
+                    );
+                    TerminalOutcome toolOutcome = interpretToolExecutionFacts(toolFacts, prepared.context());
+                    if (toolOutcome != null) {
+                        return toolOutcome;
+                    }
                 } else {
                     return buildSuccessOutcome(aiMessage);
                 }
