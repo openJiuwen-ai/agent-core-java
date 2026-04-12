@@ -279,8 +279,8 @@ class ReActAgentSharedLoopStructureTest {
 
         assertThat(reactAgentSource).contains("react_interrupt_state");
         assertThat(reactAgentSource).contains("getState(\"react_interrupt_state\")");
-        assertThat(reactAgentSource).contains("updateState(Map.of(\"react_interrupt_state\"");
-        assertThat(reactAgentSource).contains("updateState(Map.of(\"react_interrupt_state\", null))");
+        assertThat(reactAgentSource).contains("updateState(Map.of(REACT_INTERRUPT_STATE_KEY");
+        assertThat(reactAgentSource).contains("clearInterruptState(");
     }
 
     @Test

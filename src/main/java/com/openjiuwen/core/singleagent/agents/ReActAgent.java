@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
@@ -22,6 +23,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
@@ -35,6 +37,7 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +60,8 @@ import java.util.Map;
  * </ul>
  */
 public class ReActAgent extends BaseAgent {
+
+    private static final String REACT_INTERRUPT_STATE_KEY = "react_interrupt_state";
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -354,7 +359,7 @@ public class ReActAgent extends BaseAgent {
 
         try {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
-            TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null);
+            TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null, inputs);
             invokeInputs.setResult(terminalOutcome.invokeResult());
             restoreInterrupt = terminalOutcome.restoreInterrupt();
             return terminalOutcome.invokeResult();
@@ -387,7 +392,7 @@ public class ReActAgent extends BaseAgent {
                 fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
-                TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession);
+                TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession, inputs);
                 invokeInputs.setResult(terminalOutcome.invokeResult());
                 restoreInterrupt = terminalOutcome.restoreInterrupt();
                 writeTerminalOutcome(agentSession, terminalOutcome);
@@ -499,6 +504,209 @@ public class ReActAgent extends BaseAgent {
     ) {
     }
 
+    private record InterruptState(
+            int iteration,
+            String conversationId,
+            ToolCall pendingToolCall,
+            String interactionId,
+            String interruptMessage,
+            boolean resumeProducedTerminal
+    ) {
+    }
+
+    private record ResumeContinuation(int nextIteration, TerminalOutcome terminalOutcome) {
+    }
+
+    private ResumeContinuation continueInterruptedToolCall(
+            AgentCallbackContext ctx,
+            ModelContext context,
+            Session session,
+            AgentSessionApi stateSession,
+            InterruptState interruptState,
+            InteractiveInput resumeInput
+    ) {
+        ToolCall resumedToolCall = rebuildPendingToolCall(
+                interruptState.pendingToolCall(),
+                interruptState.interactionId(),
+                resolveResumeValue(resumeInput, interruptState.interactionId())
+        );
+        if (resumedToolCall == null) {
+            clearInterruptState(stateSession);
+            return new ResumeContinuation(0, buildFailureOutcome("missing interrupt state for resume"));
+        }
+
+        List<AbilityManager.ToolExecutionEntry> toolFacts = executeToolCall(ctx, List.of(resumedToolCall), session, context);
+        TerminalOutcome toolOutcome = interpretToolExecutionFacts(toolFacts, context);
+        if (toolOutcome == null) {
+            clearInterruptState(stateSession);
+            return new ResumeContinuation(interruptState.iteration() + 1, null);
+        }
+        if (toolOutcome.branch() == TerminalBranch.INTERRUPT_PENDING) {
+            persistInterruptState(stateSession, interruptState.iteration(), List.of(resumedToolCall), toolOutcome);
+            return new ResumeContinuation(
+                    interruptState.iteration(),
+                    buildInterruptPendingOutcome(
+                            resolveInterruptMessage(toolOutcome),
+                            interruptState.conversationId(),
+                            interruptState.interactionId()
+                    )
+            );
+        }
+        clearInterruptState(stateSession);
+        return new ResumeContinuation(interruptState.iteration(), toolOutcome);
+    }
+
+    private void persistInterruptState(
+            AgentSessionApi stateSession,
+            int iteration,
+            List<?> toolCalls,
+            TerminalOutcome terminalOutcome
+    ) {
+        if (stateSession == null) {
+            return;
+        }
+        ToolCall pendingToolCall = firstToolCall(toolCalls);
+        String interactionId = resolveInteractionId(toolCalls);
+        if (pendingToolCall == null && interactionId == null) {
+            return;
+        }
+        stateSession.updateState(Map.of(REACT_INTERRUPT_STATE_KEY, Map.of(
+                "iteration", iteration,
+                "conversationId", safeString(resolveConversationId(stateSession)),
+                "pendingToolCall", pendingToolCall,
+                "interactionId", safeString(interactionId),
+                "interruptMessage", resolveInterruptMessage(terminalOutcome),
+                "resumeProducedTerminal", false
+        )));
+    }
+
+    private InterruptState readInterruptState(AgentSessionApi stateSession) {
+        if (stateSession == null) {
+            return null;
+        }
+        Object rawState = stateSession.getState("react_interrupt_state");
+        if (!(rawState instanceof Map<?, ?> stateMap)) {
+            return null;
+        }
+        Object pendingToolCall = stateMap.get("pendingToolCall");
+        if (!(pendingToolCall instanceof ToolCall toolCall)) {
+            return null;
+        }
+        Object iteration = stateMap.get("iteration");
+        String conversationId = stringValue(stateMap.get("conversationId"));
+        String interactionId = stringValue(stateMap.get("interactionId"));
+        String interruptMessage = stringValue(stateMap.get("interruptMessage"));
+        boolean resumeProducedTerminal = Boolean.TRUE.equals(stateMap.get("resumeProducedTerminal"));
+        int safeIteration = iteration instanceof Number number ? number.intValue() : 0;
+        return new InterruptState(
+                safeIteration,
+                conversationId,
+                toolCall,
+                interactionId,
+                interruptMessage,
+                resumeProducedTerminal
+        );
+    }
+
+    private void clearInterruptState(AgentSessionApi stateSession) {
+        if (stateSession == null) {
+            return;
+        }
+        Map<String, Object> clearedState = new HashMap<>();
+        clearedState.put("react_interrupt_state", null);
+        stateSession.updateState(clearedState);
+    }
+
+    private InteractiveInput normalizeResumeInput(Object rawInputs) {
+        if (rawInputs instanceof InteractiveInput interactiveInput) {
+            return interactiveInput;
+        }
+        if (rawInputs == null || rawInputs instanceof Map<?, ?>) {
+            return null;
+        }
+        return new InteractiveInput(rawInputs);
+    }
+
+    private Object resolveResumeValue(InteractiveInput resumeInput, String interactionId) {
+        if (resumeInput == null) {
+            return null;
+        }
+        if (interactionId != null && resumeInput.getUserInputs() != null) {
+            Object interactionValue = resumeInput.getUserInputs().get(interactionId);
+            if (interactionValue != null) {
+                return interactionValue;
+            }
+        }
+        if (resumeInput.getRawInputs() != null) {
+            return resumeInput.getRawInputs();
+        }
+        if (resumeInput.getUserInputs() != null && resumeInput.getUserInputs().size() == 1) {
+            return resumeInput.getUserInputs().values().iterator().next();
+        }
+        return null;
+    }
+
+    private ToolCall rebuildPendingToolCall(ToolCall pendingToolCall, String interactionId, Object resumeValue) {
+        if (pendingToolCall == null || resumeValue == null) {
+            return null;
+        }
+        return ToolCall.builder()
+                .id(interactionId != null && !interactionId.isBlank() ? interactionId : pendingToolCall.getId())
+                .name(pendingToolCall.getName())
+                .arguments(String.valueOf(resumeValue))
+                .build();
+    }
+
+    private String resolveInterruptMessage(TerminalOutcome terminalOutcome) {
+        if (terminalOutcome == null || terminalOutcome.streamTerminal() == null
+                || !(terminalOutcome.streamTerminal().getPayload() instanceof Map<?, ?> payload)) {
+            return "Execution interrupted";
+        }
+        Object message = payload.get("message");
+        return message != null ? String.valueOf(message) : "Execution interrupted";
+    }
+
+    private ToolCall firstToolCall(List<?> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return null;
+        }
+        Object first = toolCalls.get(0);
+        return first instanceof ToolCall toolCall ? toolCall : null;
+    }
+
+    private String resolveInteractionId(List<?> toolCalls) {
+        ToolCall toolCall = firstToolCall(toolCalls);
+        return toolCall != null ? toolCall.getId() : null;
+    }
+
+    private String resolveConversationId(Session session) {
+        if (session == null || session.getSessionId() == null) {
+            return null;
+        }
+        String sessionId = session.getSessionId().trim();
+        return sessionId.isEmpty() ? null : sessionId;
+    }
+
+    private boolean matchesConversation(AgentSessionApi stateSession, String expectedConversationId) {
+        String actualConversationId = resolveConversationId(stateSession);
+        if (expectedConversationId == null || expectedConversationId.isBlank()) {
+            return actualConversationId == null || actualConversationId.isBlank();
+        }
+        return expectedConversationId.equals(actualConversationId);
+    }
+
+    private String safeString(String value) {
+        return value != null ? value : "";
+    }
+
+    private String stringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String stringValue = String.valueOf(value);
+        return stringValue.isBlank() ? null : stringValue;
+    }
+
     private static boolean safeEquals(Object a, Object b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
@@ -587,8 +795,12 @@ public class ReActAgent extends BaseAgent {
     }
 
     private InvokeInputs buildInvokeInputs(Object inputs) {
+        if (inputs instanceof InteractiveInput) {
+            return InvokeInputs.builder().build();
+        }
+
         if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
-            throw new IllegalArgumentException("Input must be Map with 'query' or String");
+            throw new IllegalArgumentException("Input must be Map with 'query', String, or InteractiveInput");
         }
 
         String query;
@@ -618,14 +830,11 @@ public class ReActAgent extends BaseAgent {
 
     private PreparedExecution prepareExecution(AgentCallbackContext ctx, Session session) {
         String userInput = ((InvokeInputs) ctx.getInputs()).getQuery();
-        if (userInput == null || userInput.isEmpty()) {
-            Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
-            throw new IllegalArgumentException("Input dict must contain 'query'");
-        }
-
         ModelContext context = initContext(session);
         ctx.setContext(context);
-        context.addMessages(new UserMessage(userInput));
+        if (userInput != null && !userInput.isEmpty()) {
+            context.addMessages(new UserMessage(userInput));
+        }
 
         List<BaseMessage> systemMessages = buildSystemMessages();
         List<ToolInfo> tools = getAbilityManager().listToolInfo();
@@ -655,12 +864,48 @@ public class ReActAgent extends BaseAgent {
             AgentCallbackContext ctx,
             PreparedExecution prepared,
             Session session,
-            AgentSessionApi agentSession
+            AgentSessionApi agentSession,
+            Object rawInputs
     ) {
         int[] chunkIndexRef = new int[] {0};
         StringBuilder visibleOutput = new StringBuilder();
+        AgentSessionApi stateSession = session instanceof AgentSessionApi agentStateSession ? agentStateSession : null;
         try {
-            for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
+            InterruptState interruptState = readInterruptState(stateSession);
+            if (interruptState == null && rawInputs instanceof InteractiveInput) {
+                return buildFailureOutcome("missing interrupt state for resume");
+            }
+
+            int startIteration = 0;
+            if (interruptState != null) {
+                InteractiveInput resumeInput = normalizeResumeInput(rawInputs);
+                if (resumeInput == null) {
+                    return buildInterruptPendingOutcome(
+                            interruptState.interruptMessage(),
+                            interruptState.conversationId(),
+                            interruptState.interactionId()
+                    );
+                }
+                if (!matchesConversation(stateSession, interruptState.conversationId())) {
+                    clearInterruptState(stateSession);
+                    return buildFailureOutcome("missing interrupt state for resume");
+                }
+
+                ResumeContinuation continuation = continueInterruptedToolCall(
+                        ctx,
+                        prepared.context(),
+                        session,
+                        stateSession,
+                        interruptState,
+                        resumeInput
+                );
+                if (continuation.terminalOutcome() != null) {
+                    return continuation.terminalOutcome();
+                }
+                startIteration = continuation.nextIteration();
+            }
+
+            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
                 Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
                 AssistantMessage aiMessage = agentSession == null
@@ -693,6 +938,14 @@ public class ReActAgent extends BaseAgent {
                     );
                     TerminalOutcome toolOutcome = interpretToolExecutionFacts(toolFacts, prepared.context());
                     if (toolOutcome != null) {
+                        if (toolOutcome.branch() == TerminalBranch.INTERRUPT_PENDING) {
+                            persistInterruptState(stateSession, iteration, aiMessage.getToolCalls(), toolOutcome);
+                            return buildInterruptPendingOutcome(
+                                    resolveInterruptMessage(toolOutcome),
+                                    resolveConversationId(session),
+                                    resolveInteractionId(aiMessage.getToolCalls())
+                            );
+                        }
                         return toolOutcome;
                     }
                 } else {
@@ -710,7 +963,9 @@ public class ReActAgent extends BaseAgent {
                         ? interruptedException.getMessage()
                         : "Execution interrupted";
                 Loggers.AGENT.warn("ReActAgent shared loop interrupted");
-                return buildInterruptPendingOutcome(interruptMsg);
+                persistInterruptState(stateSession, config.getMaxIterations(), List.of(),
+                        buildInterruptPendingOutcome(interruptMsg, resolveConversationId(session), null));
+                return buildInterruptPendingOutcome(interruptMsg, resolveConversationId(session), null);
             }
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
@@ -786,17 +1041,43 @@ public class ReActAgent extends BaseAgent {
     }
 
     private TerminalOutcome buildInterruptPendingOutcome(String message) {
+        return buildInterruptPendingOutcome(message, null, null);
+    }
+
+    private TerminalOutcome buildInterruptPendingOutcome(String message, String conversationId, String interactionId) {
+        Map<String, Object> invokePayload = new HashMap<>();
+        invokePayload.put("output", message);
+        invokePayload.put("result_type", "interrupt_pending");
+        if (conversationId != null && !conversationId.isBlank()) {
+            invokePayload.put("resume_supported", true);
+            invokePayload.put("conversation_id", conversationId);
+            if (interactionId != null && !interactionId.isBlank()) {
+                invokePayload.put("interaction", Map.of(
+                        "id", interactionId,
+                        "component_ids", List.of(interactionId)
+                ));
+            }
+        }
+
+        Map<String, Object> streamPayload = new HashMap<>();
+        streamPayload.put("message", message);
+        streamPayload.put("result_type", "interrupt_pending");
+        streamPayload.put("status", "interrupt_pending");
+        if (conversationId != null && !conversationId.isBlank()) {
+            streamPayload.put("resume_supported", true);
+            streamPayload.put("conversation_id", conversationId);
+            if (interactionId != null && !interactionId.isBlank()) {
+                streamPayload.put("interaction", Map.of(
+                        "id", interactionId,
+                        "component_ids", List.of(interactionId)
+                ));
+            }
+        }
+
         return new TerminalOutcome(
                 TerminalBranch.INTERRUPT_PENDING,
-                Map.of(
-                        "output", message,
-                        "result_type", "interrupt_pending"
-                ),
-                new OutputSchema("final", 0, Map.of(
-                        "message", message,
-                        "result_type", "interrupt_pending",
-                        "status", "interrupt_pending"
-                )),
+                invokePayload,
+                new OutputSchema("final", 0, streamPayload),
                 true
         );
     }

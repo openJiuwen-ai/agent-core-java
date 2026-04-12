@@ -403,6 +403,11 @@ public class LlmEventHandler extends EventHandler {
                     agentConfig.getId());
         } else {
             Map<String, Object> toolArgs = castArguments(getTaskArguments(task));
+            ToolCall toolCall = ToolCall.builder()
+                    .id(task.getTaskId())
+                    .name(toolName)
+                    .arguments(serializeTaskArguments(toolArgs))
+                    .build();
             Object toolResult;
             try {
                 toolResult = ((com.openjiuwen.core.foundation.tool.Tool) tool).invoke(toolArgs, Map.of());
@@ -411,8 +416,11 @@ public class LlmEventHandler extends EventHandler {
                         "error_msg", "Tool execution error: " + e.getMessage());
             }
             executionEntry = new AbilityManager.ToolExecutionEntry(
+                    toolCall,
                     toolResult,
-                    new ToolMessage(String.valueOf(toolResult), task.getTaskId())
+                    new ToolMessage(String.valueOf(toolResult), task.getTaskId()),
+                    AbilityManager.ToolExecutionClassification.SUCCESS,
+                    null
             );
         }
 

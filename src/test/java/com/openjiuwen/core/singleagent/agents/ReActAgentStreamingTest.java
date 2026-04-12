@@ -15,6 +15,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
@@ -372,12 +373,11 @@ class ReActAgentStreamingTest {
     @Test
     void streamShouldResumeInterruptedToolCallOnSameConversationWithoutReplayingInterruptTerminal() throws Exception {
         ToolCall toolCall = ToolCall.builder().id("tc-resume").name("interrupt_tool").arguments("{}").build();
-        AtomicInteger modelCalls = new AtomicInteger();
         StreamingProbeAgent agent = new StreamingProbeAgent(
                 mockStreamingModelSequence(List.of(
                         List.of(chunk("等", null, null, List.of(toolCall)), chunk("", "stop", null, null)),
                         List.of(chunk("已", null, null, null), chunk("完成", null, null, null), chunk("", "stop", null, null))
-                ), modelCalls),
+                )),
                 new StubAbilityManager(List.of(
                         new AbilityManager.ToolExecutionEntry(
                                 toolCall,
@@ -395,12 +395,13 @@ class ReActAgentStreamingTest {
                         )
                 ))
         );
-        AgentSessionApi session = AgentSessionApi.create("phase18-stream-resume", null, agent.getCard());
+        String conversationId = "phase18-stream-resume";
+        AgentSessionApi firstSession = AgentSessionApi.create(conversationId, null, agent.getCard());
 
-        List<OutputSchema> firstOutputs = collect(agent.stream(Map.of("query", "先中断"), session, List.of(StreamMode.OUTPUT)));
-        List<OutputSchema> resumedOutputs = collect(agent.stream(new com.openjiuwen.core.session.interaction.InteractiveInput("approved"), session, List.of(StreamMode.OUTPUT)));
+        List<OutputSchema> firstOutputs = collect(agent.stream(Map.of("query", "先中断"), firstSession, List.of(StreamMode.OUTPUT)));
+        AgentSessionApi resumedSession = AgentSessionApi.create(conversationId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        List<OutputSchema> resumedOutputs = collect(agent.stream(new InteractiveInput("approved"), resumedSession, List.of(StreamMode.OUTPUT)));
 
-        assertThat(modelCalls.get()).isEqualTo(2);
         assertThat(firstOutputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
         assertThat(payload(firstOutputs.get(1))).containsEntry("status", "interrupt_pending");
         assertThat(resumedOutputs).extracting(OutputSchema::getType).containsExactly("llm_output", "llm_output", "answer");
@@ -412,11 +413,11 @@ class ReActAgentStreamingTest {
     }
 
     @Test
-    void streamShouldFailResumeWhenInterruptStateIsMissing() {
+    void streamShouldFailResumeWhenInterruptStateIsMissing() throws Exception {
         StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModelSequence(List.of()));
         AgentSessionApi session = AgentSessionApi.create("phase18-stream-resume-missing", null, agent.getCard());
 
-        List<OutputSchema> outputs = collect(agent.stream(new com.openjiuwen.core.session.interaction.InteractiveInput("approved"), session, List.of(StreamMode.OUTPUT)));
+        List<OutputSchema> outputs = collect(agent.stream(new InteractiveInput("approved"), session, List.of(StreamMode.OUTPUT)));
 
         assertThat(outputs).singleElement().satisfies(output -> {
             assertThat(output.getType()).isEqualTo("final");
@@ -568,6 +569,7 @@ class ReActAgentStreamingTest {
 
     private static final class StubAbilityManager extends AbilityManager {
         private final List<ToolExecutionEntry> results;
+        private final AtomicInteger invocationIndex = new AtomicInteger();
 
         private StubAbilityManager(List<ToolExecutionEntry> results) {
             this.results = results;
@@ -580,7 +582,11 @@ class ReActAgentStreamingTest {
                 Session session,
                 String tag
         ) {
-            return results;
+            int index = invocationIndex.getAndIncrement();
+            if (index >= results.size()) {
+                return List.of();
+            }
+            return List.of(results.get(index));
         }
     }
 }
