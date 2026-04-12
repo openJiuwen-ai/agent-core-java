@@ -338,7 +338,7 @@ class ReActAgentStreamingTest {
         assertThat(payload(outputs.get(1)))
                 .containsEntry("status", "interrupt_pending")
                 .containsEntry("result_type", "interrupt_pending")
-                .containsEntry("message", "waiting");
+                .containsEntry("message", "Execution interrupted");
     }
 
     @Test

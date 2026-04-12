@@ -243,31 +243,15 @@ public class ReActAgent extends BaseAgent {
             }
 
             if (entry.classification() == AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE) {
-                return buildInterruptPendingOutcome(resolveToolFactMessage(entry, "Execution interrupted"));
+                return buildInterruptPendingOutcome("Execution interrupted");
             }
 
             if (entry.classification() == AbilityManager.ToolExecutionClassification.ERROR) {
-                return buildFailureOutcome(resolveToolFactMessage(entry, "Tool execution failed"));
+                return buildFailureOutcome("Tool execution failed");
             }
         }
 
         return null;
-    }
-
-    private String resolveToolFactMessage(AbilityManager.ToolExecutionEntry entry, String defaultMessage) {
-        if (entry == null) {
-            return defaultMessage;
-        }
-        if (entry.errorMessage() != null && !entry.errorMessage().isBlank()) {
-            return entry.errorMessage();
-        }
-        if (entry.toolMessage() != null && entry.toolMessage().getContent() != null) {
-            String toolMessageContent = String.valueOf(entry.toolMessage().getContent());
-            if (!toolMessageContent.isBlank()) {
-                return toolMessageContent;
-            }
-        }
-        return defaultMessage;
     }
 
     /**
@@ -959,13 +943,10 @@ public class ReActAgent extends BaseAgent {
         } catch (Exception e) {
             InterruptedException interruptedException = findInterruptedException(e);
             if (interruptedException != null) {
-                String interruptMsg = interruptedException.getMessage() != null
-                        ? interruptedException.getMessage()
-                        : "Execution interrupted";
                 Loggers.AGENT.warn("ReActAgent shared loop interrupted");
                 persistInterruptState(stateSession, config.getMaxIterations(), List.of(),
-                        buildInterruptPendingOutcome(interruptMsg, resolveConversationId(session), null));
-                return buildInterruptPendingOutcome(interruptMsg, resolveConversationId(session), null);
+                        buildInterruptPendingOutcome("Execution interrupted", resolveConversationId(session), null));
+                return buildInterruptPendingOutcome("Execution interrupted", resolveConversationId(session), null);
             }
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
