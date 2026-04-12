@@ -113,6 +113,25 @@ public class LlmAgentExecutionRegressionTest {
     }
 
     @Test
+    void llmAgentShouldPassSystemPromptIntoModelInvocation() {
+        LlmAgent agent = LlmAgent.createLlmAgent(
+                baseConfig("prompt-visible-agent", "SYSTEM_PROMPT_VISIBLE"),
+                List.of(),
+                List.of());
+        sessionIds.add("prompt-visible-session");
+
+        Map<String, Object> result = collectFinalPayload(Runner.runAgentStreaming(
+                agent,
+                Map.of("query", "系统提示词检查", "conversation_id", "prompt-visible-session"),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        assertEquals("system:SYSTEM_PROMPT_VISIBLE", result.get("output"));
+        assertEquals("answer", result.get("result_type"));
+    }
+
+    @Test
     public void concurrentAgentsKeepToolInventoriesSeparated() throws ExecutionException, InterruptedException {
         Logger controllerLogger = (Logger) LoggerFactory.getLogger("controller");
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -271,6 +290,11 @@ public class LlmAgentExecutionRegressionTest {
                                        Float timeout, Map<String, Object> kwargs) {
             List<MessageView> messageViews = toMessageViews(messages);
             boolean hasToolMessage = messageViews.stream().anyMatch(message -> "tool".equals(message.role));
+            String systemContent = messageViews.stream()
+                    .filter(message -> "system".equals(message.role))
+                    .reduce((left, right) -> right)
+                    .map(message -> message.content)
+                    .orElse("");
 
             if (tools instanceof List<?> toolInfos && !toolInfos.isEmpty() && !hasToolMessage) {
                 return AssistantMessage.builder()
@@ -298,6 +322,9 @@ public class LlmAgentExecutionRegressionTest {
                     .reduce((left, right) -> right)
                     .map(message -> message.content)
                     .orElse("");
+            if (userContent.contains("系统提示词检查")) {
+                return new AssistantMessage("system:" + systemContent);
+            }
             if (userContent.contains("最高的山")) {
                 return new AssistantMessage("珠穆朗玛峰");
             }

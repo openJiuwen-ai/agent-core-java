@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
@@ -62,6 +63,7 @@ import java.util.Map;
 public class ReActAgent extends BaseAgent {
 
     private static final String REACT_INTERRUPT_STATE_KEY = "react_interrupt_state";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -637,8 +639,21 @@ public class ReActAgent extends BaseAgent {
         return ToolCall.builder()
                 .id(interactionId != null && !interactionId.isBlank() ? interactionId : pendingToolCall.getId())
                 .name(pendingToolCall.getName())
-                .arguments(String.valueOf(resumeValue))
+                .arguments(serializeResumeArguments(resumeValue))
                 .build();
+    }
+
+    private String serializeResumeArguments(Object resumeValue) {
+        if (resumeValue instanceof String rawValue) {
+            return rawValue;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(resumeValue);
+        } catch (Exception e) {
+            Loggers.AGENT.warning("Failed to serialize resume arguments, falling back to string value: {}",
+                    e.getMessage());
+            return String.valueOf(resumeValue);
+        }
     }
 
     private String resolveInterruptMessage(TerminalOutcome terminalOutcome) {

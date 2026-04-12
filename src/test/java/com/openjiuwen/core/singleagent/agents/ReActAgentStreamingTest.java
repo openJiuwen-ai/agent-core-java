@@ -421,6 +421,51 @@ class ReActAgentStreamingTest {
     }
 
     @Test
+    void streamShouldPreserveStructuredResumePayloadWhenRebuildingToolCallArguments() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-resume-map").name("interrupt_tool").arguments("{}").build();
+        StubAbilityManager abilityManager = new StubAbilityManager(List.of(
+                new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        null,
+                        ToolMessage.builder().content("waiting").toolCallId("tc-resume-map").build(),
+                        AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
+                        "waiting"
+                ),
+                new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        "approved-result",
+                        ToolMessage.builder().content("approved-result").toolCallId("tc-resume-map").build(),
+                        AbilityManager.ToolExecutionClassification.SUCCESS,
+                        null
+                )
+        ));
+        StreamingProbeAgent agent = new StreamingProbeAgent(
+                mockStreamingModelSequence(List.of(
+                        List.of(chunk("等", null, null, List.of(toolCall)), chunk("", "stop", null, null)),
+                        List.of(chunk("好", null, null, null), chunk("", "stop", null, null))
+                )),
+                abilityManager
+        );
+
+        String conversationId = "phase18-stream-resume-structured";
+        AgentSessionApi firstSession = AgentSessionApi.create(conversationId, null, agent.getCard());
+        collect(agent.stream(Map.of("query", "先中断"), firstSession, List.of(StreamMode.OUTPUT)));
+
+        InteractiveInput resumeInput = new InteractiveInput();
+        resumeInput.update("tc-resume-map", Map.of(
+                "approved", true,
+                "payload", Map.of("x", 1)
+        ));
+        AgentSessionApi resumedSession = AgentSessionApi.create(conversationId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        collect(agent.stream(resumeInput, resumedSession, List.of(StreamMode.OUTPUT)));
+
+        assertThat(abilityManager.executedToolCalls()).hasSize(2);
+        assertThat(abilityManager.executedToolCalls().get(1).getArguments())
+                .contains("\"approved\":true")
+                .contains("\"payload\":{\"x\":1}");
+    }
+
+    @Test
     void streamShouldFailResumeWhenInterruptStateIsMissing() throws Exception {
         StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModelSequence(List.of()));
         AgentSessionApi session = AgentSessionApi.create("phase18-stream-resume-missing", null, agent.getCard());
@@ -578,6 +623,7 @@ class ReActAgentStreamingTest {
     private static final class StubAbilityManager extends AbilityManager {
         private final List<ToolExecutionEntry> results;
         private final AtomicInteger invocationIndex = new AtomicInteger();
+        private final List<ToolCall> executedToolCalls = new ArrayList<>();
 
         private StubAbilityManager(List<ToolExecutionEntry> results) {
             this.results = results;
@@ -590,11 +636,24 @@ class ReActAgentStreamingTest {
                 Session session,
                 String tag
         ) {
+            if (toolCall instanceof List<?> toolCalls) {
+                for (Object item : toolCalls) {
+                    if (item instanceof ToolCall typedToolCall) {
+                        executedToolCalls.add(typedToolCall);
+                    }
+                }
+            } else if (toolCall instanceof ToolCall typedToolCall) {
+                executedToolCalls.add(typedToolCall);
+            }
             int index = invocationIndex.getAndIncrement();
             if (index >= results.size()) {
                 return List.of();
             }
             return List.of(results.get(index));
+        }
+
+        private List<ToolCall> executedToolCalls() {
+            return executedToolCalls;
         }
     }
 }

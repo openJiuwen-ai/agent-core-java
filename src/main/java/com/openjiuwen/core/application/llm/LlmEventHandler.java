@@ -567,8 +567,14 @@ public class LlmEventHandler extends EventHandler {
 
         try {
             Model model = getModel();
+            var contextWindow = context.getContextWindow(
+                    systemMessages,
+                    tools.isEmpty() ? null : tools,
+                    null,
+                    null
+            );
             AssistantMessage llmOutput = model.invoke(
-                    context.getMessages(), tools.isEmpty() ? null : tools,
+                    contextWindow.getMessages(), contextWindow.getToolList(),
                     null, null, agentConfig.getModel().modelInfo().getModelName(),
                     null, null, null, null, null
             );
