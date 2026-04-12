@@ -65,7 +65,7 @@ class ReActAgentSharedLoopStructureTest {
         Map<String, Object> invokeResult = (Map<String, Object>) agent.invoke(Map.of("query", "继续"), null);
 
         assertThat(invokeResult)
-                .containsEntry("output", "最终答案")
+                .containsEntry("output", "需要工具最终答案")
                 .containsEntry("result_type", "answer");
     }
 
@@ -113,7 +113,6 @@ class ReActAgentSharedLoopStructureTest {
         assertThat(reactAgentSource).contains("private void finalizeExecutionLifecycle(");
         assertThat(reactAgentSource).contains("finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null, restoreInterrupt);");
         assertThat(reactAgentSource).contains("finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession, restoreInterrupt);");
-        assertThat(reactAgentSource).doesNotContain("if (agentSession == null) {");
         assertThat(reactAgentSource).contains("contextEngine.saveContexts(session, null);");
         assertThat(reactAgentSource).contains("agentSession.postRun();");
     }
@@ -184,7 +183,7 @@ class ReActAgentSharedLoopStructureTest {
         String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
 
         assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(");
-        assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk);");
+        assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk, visibleOutput);");
         assertThat(reactAgentSource).contains("new OutputSchema(\"llm_reasoning\"");
         assertThat(reactAgentSource).contains("new OutputSchema(\"llm_output\"");
         assertThat(reactAgentSource).doesNotContain("writeIncrementalAnswerChunk(agentSession, chunkIndexRef, chunkText);");

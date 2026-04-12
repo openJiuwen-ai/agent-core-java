@@ -511,7 +511,8 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage railedModelStreamCall(
             AgentCallbackContext ctx,
             AgentSessionApi agentSession,
-            int[] chunkIndexRef
+            int[] chunkIndexRef,
+            StringBuilder visibleOutput
     ) {
         return RailExecutor.execute(
                 ctx,
@@ -539,7 +540,7 @@ public class ReActAgent extends BaseAgent {
                         }
 
                         mergedChunk = mergedChunk == null ? chunk : mergedChunk.merge(chunk);
-                        writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk);
+                        writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk, visibleOutput);
                     }
 
                     AssistantMessageChunk finalChunk = mergedChunk != null
@@ -567,7 +568,8 @@ public class ReActAgent extends BaseAgent {
             List<BaseMessage> systemMessages,
             List<ToolInfo> tools,
             AgentSessionApi agentSession,
-            int[] chunkIndexRef
+            int[] chunkIndexRef,
+            StringBuilder visibleOutput
     ) {
         var contextWindow = context.getContextWindow(
                 systemMessages,
@@ -581,7 +583,7 @@ public class ReActAgent extends BaseAgent {
                 .tools(contextWindow.getToolList())
                 .build());
 
-        return railedModelStreamCall(ctx, agentSession, chunkIndexRef);
+        return railedModelStreamCall(ctx, agentSession, chunkIndexRef, visibleOutput);
     }
 
     private InvokeInputs buildInvokeInputs(Object inputs) {
@@ -656,6 +658,7 @@ public class ReActAgent extends BaseAgent {
             AgentSessionApi agentSession
     ) {
         int[] chunkIndexRef = new int[] {0};
+        StringBuilder visibleOutput = new StringBuilder();
         try {
             for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
                 Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
@@ -668,8 +671,13 @@ public class ReActAgent extends BaseAgent {
                                 prepared.systemMessages(),
                                 prepared.tools(),
                                 agentSession,
-                                chunkIndexRef
+                                chunkIndexRef,
+                                visibleOutput
                         );
+
+                if (agentSession == null) {
+                    visibleOutput.append(normalizeChunkText(aiMessage.getContent()));
+                }
 
                 prepared.context().addMessages(AssistantMessage.builder()
                         .content(aiMessage.getContent())
@@ -688,7 +696,7 @@ public class ReActAgent extends BaseAgent {
                         return toolOutcome;
                     }
                 } else {
-                    return buildSuccessOutcome(aiMessage);
+                    return buildSuccessOutcome(visibleOutput.toString());
                 }
             }
 
@@ -744,8 +752,8 @@ public class ReActAgent extends BaseAgent {
         return null;
     }
 
-    private TerminalOutcome buildSuccessOutcome(AssistantMessage aiMessage) {
-        String output = normalizeChunkText(aiMessage.getContent());
+    private TerminalOutcome buildSuccessOutcome(String fullVisibleOutput) {
+        String output = normalizeChunkText(fullVisibleOutput);
         return new TerminalOutcome(
                 TerminalBranch.SUCCESS,
                 Map.of(
@@ -796,7 +804,8 @@ public class ReActAgent extends BaseAgent {
     private void writeCanonicalStreamChunk(
             AgentSessionApi agentSession,
             int[] chunkIndexRef,
-            AssistantMessageChunk chunk
+            AssistantMessageChunk chunk,
+            StringBuilder visibleOutput
     ) {
         if (agentSession == null || chunk == null) {
             return;
@@ -813,6 +822,9 @@ public class ReActAgent extends BaseAgent {
         String chunkText = normalizeChunkText(chunk.getContent());
         if (chunkText.isEmpty()) {
             return;
+        }
+        if (visibleOutput != null) {
+            visibleOutput.append(chunkText);
         }
 
         agentSession.writeStream(new OutputSchema("llm_output", chunkIndexRef[0]++, Map.of(
