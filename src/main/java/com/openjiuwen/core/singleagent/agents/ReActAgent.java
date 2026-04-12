@@ -112,6 +112,9 @@ public class ReActAgent extends BaseAgent {
 
         // Reset skill if sys operation id changed
         if (!safeEquals(oldConfig.getSysOperationId(), newConfig.getSysOperationId())) {
+            if (newConfig.getSysOperationId() == null || newConfig.getSysOperationId().isBlank()) {
+                setSkillUtil(null);
+            }
             lazyInitSkill();
         }
 
