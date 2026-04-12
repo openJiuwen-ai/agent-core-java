@@ -22,12 +22,13 @@ class ReActAgentSharedLoopStructureTest {
     void reactAgentShouldRouteInvokeAndStreamThroughRunSharedLoop() throws IOException {
         String source = readReActAgentSource();
 
-        assertThat(source).contains("runSharedLoop(");
-        assertThat(extractMethod(source, "public Object invoke(")).contains("prepareExecution(")
-                .contains("runSharedLoop(");
-        assertThat(extractMethod(source, "public Iterator<Object> stream("))
-                .contains("prepareExecution(")
-                .contains("runSharedLoop(");
+        assertThat(source)
+                .contains("public Object invoke(")
+                .contains("PreparedExecution prepared = prepareExecution(ctx, session);")
+                .contains("TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, session, null);")
+                .contains("public Iterator<Object> stream(")
+                .contains("PreparedExecution prepared = prepareExecution(ctx, runtimeSession);")
+                .contains("TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession);");
     }
 
     @Test
@@ -62,28 +63,5 @@ class ReActAgentSharedLoopStructureTest {
             current = current.getParent();
         }
         throw new IllegalStateException("Unable to locate ReActAgent.java from user.dir");
-    }
-
-    private static String extractMethod(String source, String declarationPrefix) {
-        int start = source.indexOf(declarationPrefix);
-        assertThat(start).isGreaterThanOrEqualTo(0);
-
-        int bodyStart = source.indexOf('{', start);
-        assertThat(bodyStart).isGreaterThanOrEqualTo(0);
-
-        int depth = 0;
-        for (int index = bodyStart; index < source.length(); index++) {
-            char ch = source.charAt(index);
-            if (ch == '{') {
-                depth++;
-            } else if (ch == '}') {
-                depth--;
-                if (depth == 0) {
-                    return source.substring(start, index + 1);
-                }
-            }
-        }
-
-        throw new IllegalStateException("Unable to extract method body for " + declarationPrefix);
     }
 }
