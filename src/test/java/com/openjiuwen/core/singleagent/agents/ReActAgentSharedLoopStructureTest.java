@@ -191,6 +191,16 @@ class ReActAgentSharedLoopStructureTest {
     }
 
     @Test
+    void successOutcomeShouldUseAggregatedVisibleOutputInsteadOfLastAssistantContent() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("StringBuilder visibleOutput");
+        assertThat(reactAgentSource).contains("buildSuccessOutcome(visibleOutput.toString())");
+        assertThat(reactAgentSource).doesNotContain("return buildSuccessOutcome(aiMessage);");
+        assertThat(reactAgentSource).doesNotContain("String output = normalizeChunkText(aiMessage.getContent());");
+    }
+
+    @Test
     void invokeAndStreamShouldShareSuccessfulTerminalSemantics() throws Exception {
         ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("共", "享"));
 
