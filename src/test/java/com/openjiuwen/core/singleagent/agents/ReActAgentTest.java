@@ -139,6 +139,16 @@ class ReActAgentTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void testInvokeNullQueryValueThrows() {
+        Map<String, Object> inputs = new HashMap<>();
+        inputs.put("query", null);
+
+        assertThatThrownBy(() -> agent.invoke(inputs, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Input dict must contain 'query'");
+    }
+
     // ========== Rail Registration on ReActAgent (mirrors Python tests) ==========
 
     @Test

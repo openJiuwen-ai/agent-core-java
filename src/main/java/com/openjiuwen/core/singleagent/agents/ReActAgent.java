@@ -492,14 +492,15 @@ public class ReActAgent extends BaseAgent {
         String query;
         String conversationId = null;
         if (inputs instanceof Map<?, ?> map) {
-            query = map.containsKey("query") ? String.valueOf(map.get("query")) : "";
+            Object rawQuery = map.get("query");
+            query = rawQuery != null ? String.valueOf(rawQuery) : "";
             conversationId = map.containsKey("conversation_id")
                     ? String.valueOf(map.get("conversation_id")) : null;
         } else {
             query = (String) inputs;
         }
 
-        if (query == null || query.isEmpty()) {
+        if (query == null || query.isBlank()) {
             Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
             throw new IllegalArgumentException("Input dict must contain 'query'");
         }
