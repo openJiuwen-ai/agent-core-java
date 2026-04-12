@@ -208,6 +208,7 @@ class ReActAgentStreamingTest {
         assertThat(payload).containsEntry("status", "failed");
         assertThat(payload).containsEntry("message", "stream boom");
         assertThat(String.valueOf(payload.get("message"))).isNotBlank();
+        assertThat(payload).doesNotContainKeys("tool_calls", "reasoning_content");
     }
 
     @Test
@@ -236,6 +237,7 @@ class ReActAgentStreamingTest {
         assertThat(payload).containsEntry("error", true);
         assertThat(payload).containsEntry("status", "failed");
         assertThat(String.valueOf(payload.get("message"))).isNotBlank();
+        assertThat(payload).doesNotContainKeys("tool_calls", "reasoning_content");
         assertThat(outputs).filteredOn(output -> "final".equals(output.getType())).hasSize(1);
         assertThat(outputs).noneMatch(output -> "error".equals(output.getType()));
     }
