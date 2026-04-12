@@ -33,6 +33,7 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -290,31 +291,7 @@ public class ReActAgent extends BaseAgent {
 
     @Override
     public Object invoke(Object inputs, Session session) {
-        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
-            throw new IllegalArgumentException("Input must be Map with 'query' or String");
-        }
-
-        // Build typed InvokeInputs
-        String query;
-        String conversationId = null;
-        if (inputs instanceof Map<?, ?> map) {
-            query = map.containsKey("query") ? String.valueOf(map.get("query")) : "";
-            conversationId = map.containsKey("conversation_id")
-                    ? String.valueOf(map.get("conversation_id")) : null;
-        } else {
-            query = (String) inputs;
-        }
-
-        // Validate query early (match Python behavior)
-        if (query == null || query.isEmpty()) {
-            Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
-            throw new IllegalArgumentException("Input dict must contain 'query'");
-        }
-
-        InvokeInputs invokeInputs = InvokeInputs.builder()
-                .query(query)
-                .conversationId(conversationId)
-                .build();
+        InvokeInputs invokeInputs = buildInvokeInputs(inputs);
 
         // Create shared context for the entire invoke lifecycle
         AgentCallbackContext ctx = AgentCallbackContext.builder()
@@ -328,74 +305,8 @@ public class ReActAgent extends BaseAgent {
         fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         try {
-            // Extract user_input AFTER before_invoke so rail modifications take effect
-            String userInput = ((InvokeInputs) ctx.getInputs()).getQuery();
-            if (userInput == null || userInput.isEmpty()) {
-                Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
-                throw new IllegalArgumentException("Input dict must contain 'query'");
-            }
-
-            // Get or create model context
-            ModelContext context = initContext(session);
-            ctx.setContext(context);
-
-            // Add user message to context
-            context.addMessages(new UserMessage(userInput));
-
-            // Build system messages from prompt template
-            List<BaseMessage> systemMessages = new ArrayList<>();
-            if (config.getPromptTemplate() != null) {
-                for (Map<String, String> msg : config.getPromptTemplate()) {
-                    if ("system".equals(msg.get("role"))) {
-                        systemMessages.add(new SystemMessage(msg.get("content")));
-                    }
-                }
-            }
-
-            // Append skill prompt if available
-            if (!systemMessages.isEmpty() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
-                warnMissingSkillReadFileTool();
-                String skillPrompt = getSkillUtil().getSkillPrompt();
-                BaseMessage lastMsg = systemMessages.get(systemMessages.size() - 1);
-                lastMsg.setContent((lastMsg.getContent() != null ? lastMsg.getContent() : "") + "\n" + skillPrompt);
-            }
-
-            // Get tool info from ability_manager
-            List<ToolInfo> tools = getAbilityManager().listToolInfo();
-
-            // ReAct loop
-            for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info(
-                        "ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
-
-                // Model call (BEFORE/AFTER_MODEL_CALL hooks fire inside callModel)
-                AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
-
-                context.addMessages(AssistantMessage.builder()
-                        .content(aiMessage.getContent())
-                        .toolCalls(aiMessage.getToolCalls())
-                        .build());
-
-                if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
-                    // Tool execution (BEFORE/AFTER_TOOL_CALL hooks fire inside executeToolCall)
-                    executeToolCall(ctx, aiMessage.getToolCalls(), session, context);
-                } else {
-                    contextEngine.saveContexts(session, null);
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("output", aiMessage.getContent());
-                    result.put("result_type", "answer");
-                    invokeInputs.setResult(result);
-                    return result;
-                }
-            }
-
-            // Max iterations reached
-            contextEngine.saveContexts(session, null);
-            Map<String, Object> result = new HashMap<>();
-            result.put("output", "Max iterations reached without completion");
-            result.put("result_type", "error");
-            invokeInputs.setResult(result);
-            return result;
+            PreparedExecution prepared = prepareExecution(ctx, session);
+            return runSharedLoop(ctx, prepared, session, null);
 
         } finally {
             // Fire AFTER_INVOKE
@@ -423,7 +334,7 @@ public class ReActAgent extends BaseAgent {
 
             try {
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
-                runStreamLoop(ctx, prepared, runtimeSession, agentSession);
+                runSharedLoop(ctx, prepared, runtimeSession, agentSession);
             } catch (Throwable t) {
                 String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
                 Loggers.AGENT.error("ReActAgent stream error: " + errorMsg);
@@ -613,7 +524,7 @@ public class ReActAgent extends BaseAgent {
         return systemMessages;
     }
 
-    private void runStreamLoop(
+    private Object runSharedLoop(
             AgentCallbackContext ctx,
             PreparedExecution prepared,
             Session session,
@@ -623,14 +534,16 @@ public class ReActAgent extends BaseAgent {
         for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
             Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
-            AssistantMessage aiMessage = callModelStream(
-                    ctx,
-                    prepared.context(),
-                    prepared.systemMessages(),
-                    prepared.tools(),
-                    agentSession,
-                    chunkIndexRef
-            );
+            AssistantMessage aiMessage = agentSession == null
+                    ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
+                    : callModelStream(
+                            ctx,
+                            prepared.context(),
+                            prepared.systemMessages(),
+                            prepared.tools(),
+                            agentSession,
+                            chunkIndexRef
+                    );
 
             prepared.context().addMessages(AssistantMessage.builder()
                     .content(aiMessage.getContent())
@@ -640,21 +553,25 @@ public class ReActAgent extends BaseAgent {
             if (hasToolCalls(aiMessage)) {
                 executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
             } else {
-                prepared.invokeInputs().setResult(Map.of(
-                        "output", normalizeChunkText(aiMessage.getContent()),
-                        "result_type", "answer"
-                ));
-                writeCompletedAnswerFrame(agentSession);
-                return;
+                Map<String, Object> result = buildAnswerResult(aiMessage);
+                prepared.invokeInputs().setResult(result);
+                if (agentSession == null) {
+                    contextEngine.saveContexts(session, null);
+                } else {
+                    writeCompletedAnswerFrame(agentSession);
+                }
+                return result;
             }
         }
 
-        Map<String, Object> errorResult = Map.of(
-                "output", "Max iterations reached without completion",
-                "result_type", "error"
-        );
+        Map<String, Object> errorResult = buildMaxIterationsErrorResult();
         prepared.invokeInputs().setResult(errorResult);
-        writeFailedFinal(agentSession, "Max iterations reached without completion");
+        if (agentSession == null) {
+            contextEngine.saveContexts(session, null);
+        } else {
+            writeFailedFinal(agentSession, String.valueOf(errorResult.get("output")));
+        }
+        return errorResult;
     }
 
     private void startStreamProducer(Runnable producer) {
@@ -678,6 +595,20 @@ public class ReActAgent extends BaseAgent {
 
     private boolean hasToolCalls(AssistantMessage aiMessage) {
         return aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
+    }
+
+    private Map<String, Object> buildAnswerResult(AssistantMessage aiMessage) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("output", normalizeChunkText(aiMessage.getContent()));
+        result.put("result_type", "answer");
+        return result;
+    }
+
+    private Map<String, Object> buildMaxIterationsErrorResult() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("output", "Max iterations reached without completion");
+        result.put("result_type", "error");
+        return result;
     }
 
     private void writeIncrementalAnswerChunk(AgentSessionApi agentSession, int[] chunkIndexRef, String chunkText) {
