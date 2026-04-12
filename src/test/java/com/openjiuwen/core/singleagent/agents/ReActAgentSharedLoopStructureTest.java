@@ -33,6 +33,18 @@ class ReActAgentSharedLoopStructureTest {
         assertThat(source).doesNotContain("private void runStreamLoop(");
     }
 
+    @Test
+    void reactAgentShouldModelFormalTerminalOutcomesInOneSharedSource() throws IOException {
+        String source = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(source).contains("TerminalOutcome");
+        assertThat(source).contains("SUCCESS");
+        assertThat(source).contains("FAILURE");
+        assertThat(source).contains("INTERRUPT_PENDING");
+        assertThat(source).doesNotContain("writeCompletedAnswerFrame(");
+        assertThat(source).doesNotContain("writeFailedFinal(");
+    }
+
     private static String extractMethod(String source, String signature) {
         int start = source.indexOf(signature);
         assertThat(start).isGreaterThanOrEqualTo(0);
