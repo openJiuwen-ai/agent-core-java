@@ -593,6 +593,10 @@ public class ReActAgent extends BaseAgent {
             String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
             return buildFailureOutcome(errorMsg);
+        } finally {
+            if (agentSession == null) {
+                contextEngine.saveContexts(session, null);
+            }
         }
     }
 

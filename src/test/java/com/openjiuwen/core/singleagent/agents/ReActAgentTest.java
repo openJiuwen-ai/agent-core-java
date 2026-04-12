@@ -149,6 +149,23 @@ class ReActAgentTest {
                 .hasMessageContaining("Input dict must contain 'query'");
     }
 
+    @Test
+    void testInvokePersistsContextWhenSharedLoopFails() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("model boom"));
+        ReActAgent failingAgent = new ProbeReActAgent(model);
+        Session session = new TestSession("react-failure-session");
+
+        Object result = failingAgent.invoke(Map.of("query", "persist on failure"), session);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) result;
+
+        assertThat(payload).containsEntry("result_type", "error");
+        assertThat(payload).containsEntry("output", "model boom");
+        assertThat(session.getState("context")).isInstanceOf(Map.class);
+    }
+
     // ========== Rail Registration on ReActAgent (mirrors Python tests) ==========
 
     @Test
@@ -338,5 +355,23 @@ class ReActAgentTest {
                 .isInstanceOf(Exception.class);
 
         assertThat(agent.getAbilityManager().get("reload_original_context_messages")).isNotNull();
+    }
+
+    private static final class ProbeReActAgent extends ReActAgent {
+        private final Model model;
+
+        private ProbeReActAgent(Model model) {
+            super(AgentCard.builder()
+                    .id("probe-react-agent")
+                    .name("probe-react-agent")
+                    .description("probe react agent")
+                    .build());
+            this.model = model;
+        }
+
+        @Override
+        protected Model getLlm() {
+            return model;
+        }
     }
 }
