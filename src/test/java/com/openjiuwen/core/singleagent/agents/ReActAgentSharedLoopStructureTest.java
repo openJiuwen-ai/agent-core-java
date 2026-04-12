@@ -60,6 +60,10 @@ class ReActAgentSharedLoopStructureTest {
             if (Files.exists(current.resolve(REACT_AGENT_SOURCE))) {
                 return current;
             }
+            Path moduleRoot = current.resolve("agent-core-java");
+            if (Files.exists(moduleRoot.resolve(REACT_AGENT_SOURCE))) {
+                return moduleRoot;
+            }
             current = current.getParent();
         }
         throw new IllegalStateException("Unable to locate ReActAgent.java from user.dir");
