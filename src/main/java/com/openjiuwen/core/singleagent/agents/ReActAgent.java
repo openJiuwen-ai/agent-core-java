@@ -319,6 +319,9 @@ public class ReActAgent extends BaseAgent {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null);
             invokeInputs.setResult(terminalOutcome.invokeResult());
+            if (terminalOutcome.restoreInterrupt()) {
+                Thread.currentThread().interrupt();
+            }
             return terminalOutcome.invokeResult();
 
         } finally {
@@ -338,6 +341,7 @@ public class ReActAgent extends BaseAgent {
         startStreamProducer(() -> {
             AgentCallbackContext ctx = null;
             Object invokeLifecycleInputs = null;
+            boolean restoreInterrupt = false;
 
             try {
                 ctx = AgentCallbackContext.builder()
@@ -352,6 +356,7 @@ public class ReActAgent extends BaseAgent {
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
                 TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession);
                 invokeInputs.setResult(terminalOutcome.invokeResult());
+                restoreInterrupt = terminalOutcome.restoreInterrupt();
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } catch (Error e) {
                 throw e;
@@ -371,6 +376,9 @@ public class ReActAgent extends BaseAgent {
                     if (ctx != null && invokeLifecycleInputs instanceof EventInputs eventInputs) {
                         ctx.setInputs(eventInputs);
                         fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                    }
+                    if (restoreInterrupt) {
+                        Thread.currentThread().interrupt();
                     }
                 }
             }
@@ -425,7 +433,8 @@ public class ReActAgent extends BaseAgent {
     private record TerminalOutcome(
             TerminalBranch branch,
             Map<String, Object> invokeResult,
-            OutputSchema streamTerminal
+            OutputSchema streamTerminal,
+            boolean restoreInterrupt
     ) {
     }
 
@@ -619,8 +628,13 @@ public class ReActAgent extends BaseAgent {
         } catch (Error e) {
             throw e;
         } catch (Exception e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
+            InterruptedException interruptedException = findInterruptedException(e);
+            if (interruptedException != null) {
+                String interruptMsg = interruptedException.getMessage() != null
+                        ? interruptedException.getMessage()
+                        : "Execution interrupted";
+                Loggers.AGENT.warn("ReActAgent shared loop interrupted");
+                return buildInterruptPendingOutcome(interruptMsg);
             }
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
@@ -655,6 +669,17 @@ public class ReActAgent extends BaseAgent {
         return aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
     }
 
+    private InterruptedException findInterruptedException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException interruptedException) {
+                return interruptedException;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
     private TerminalOutcome buildSuccessOutcome(AssistantMessage aiMessage) {
         String output = normalizeChunkText(aiMessage.getContent());
         return new TerminalOutcome(
@@ -667,7 +692,8 @@ public class ReActAgent extends BaseAgent {
                         "output", output,
                         "result_type", "answer",
                         "status", "completed"
-                ))
+                )),
+                false
         );
     }
 
@@ -682,7 +708,8 @@ public class ReActAgent extends BaseAgent {
                         "error", true,
                         "message", errorMsg,
                         "status", "failed"
-                ))
+                )),
+                false
         );
     }
 
@@ -693,7 +720,12 @@ public class ReActAgent extends BaseAgent {
                         "output", message,
                         "result_type", "interrupt_pending"
                 ),
-                null
+                new OutputSchema("final", 0, Map.of(
+                        "message", message,
+                        "result_type", "interrupt_pending",
+                        "status", "interrupt_pending"
+                )),
+                true
         );
     }
 

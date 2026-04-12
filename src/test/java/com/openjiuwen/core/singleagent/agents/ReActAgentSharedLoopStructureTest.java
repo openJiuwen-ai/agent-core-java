@@ -132,6 +132,39 @@ class ReActAgentSharedLoopStructureTest {
         });
     }
 
+    @Test
+    void invokeShouldPreserveInterruptSemantics() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockInterruptedModel());
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> invokeResult = (Map<String, Object>) agent.invoke(Map.of("query", "中断"), null);
+
+            assertThat(invokeResult)
+                    .containsEntry("output", "Execution interrupted")
+                    .containsEntry("result_type", "interrupt_pending");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void streamShouldEmitInterruptPendingTerminalWhenSharedLoopInterrupted() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockInterruptedModel());
+        AgentSessionApi streamSession = AgentSessionApi.create("phase15-shared-loop-interrupt", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "中断"), streamSession, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).singleElement().satisfies(output -> {
+            assertThat(output.getType()).isEqualTo("final");
+            assertThat(payload(output))
+                    .containsEntry("message", "Execution interrupted")
+                    .containsEntry("result_type", "interrupt_pending")
+                    .containsEntry("status", "interrupt_pending");
+        });
+    }
+
     private static List<OutputSchema> collect(Iterator<Object> iterator) {
         List<OutputSchema> results = new ArrayList<>();
         while (iterator.hasNext()) {
@@ -171,6 +204,15 @@ class ReActAgentSharedLoopStructureTest {
                 .thenThrow(failure);
         when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
                 .thenThrow(failure);
+        return model;
+    }
+
+    private static Model mockInterruptedModel() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new InterruptedException("Execution interrupted"));
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
+                .thenThrow(new InterruptedException("Execution interrupted"));
         return model;
     }
 
