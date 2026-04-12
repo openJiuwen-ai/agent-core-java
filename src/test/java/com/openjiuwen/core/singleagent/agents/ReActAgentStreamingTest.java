@@ -61,9 +61,8 @@ class ReActAgentStreamingTest {
 
         Map<String, Object> finalPayload = payload(outputs.get(2));
         assertThat(finalPayload.get("result_type")).isEqualTo("answer");
-        assertThat(finalPayload).containsEntry("output", "");
+        assertThat(finalPayload).containsEntry("output", "你好");
         assertThat(finalPayload).containsEntry("status", "completed");
-        assertThat(finalPayload.get("output")).isNotEqualTo("你好");
         assertThat(finalPayload.get("output")).isNotInstanceOf(Map.class);
     }
 
@@ -150,11 +149,10 @@ class ReActAgentStreamingTest {
         assertPayload(outputs.get(1), "到", "answer");
 
         Map<String, Object> finalPayload = payload(outputs.get(2));
-        assertThat(finalPayload).containsEntry("output", "");
+        assertThat(finalPayload).containsEntry("output", "到");
         assertThat(finalPayload).containsEntry("result_type", "answer");
         assertThat(finalPayload).containsEntry("status", "completed");
         assertThat(finalPayload).doesNotContainKeys("tool_calls", "reasoning_content");
-        assertThat(finalPayload.get("output")).isNotEqualTo("查到");
     }
 
     @Test

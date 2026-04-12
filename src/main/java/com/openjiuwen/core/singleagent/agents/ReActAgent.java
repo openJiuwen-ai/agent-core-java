@@ -653,14 +653,15 @@ public class ReActAgent extends BaseAgent {
     }
 
     private TerminalOutcome buildSuccessOutcome(AssistantMessage aiMessage) {
+        String output = normalizeChunkText(aiMessage.getContent());
         return new TerminalOutcome(
                 TerminalBranch.SUCCESS,
                 Map.of(
-                        "output", normalizeChunkText(aiMessage.getContent()),
+                        "output", output,
                         "result_type", "answer"
                 ),
                 new OutputSchema("answer", 0, Map.of(
-                        "output", "",
+                        "output", output,
                         "result_type", "answer",
                         "status", "completed"
                 ))

@@ -69,6 +69,7 @@ class ReActAgentSharedLoopStructureTest {
         assertThat(payload(outputs.get(0))).containsEntry("output", "直");
         assertThat(payload(outputs.get(1))).containsEntry("output", "播");
         assertThat(payload(outputs.get(2)))
+                .containsEntry("output", "直播")
                 .containsEntry("result_type", "answer")
                 .containsEntry("status", "completed");
     }
@@ -88,6 +89,7 @@ class ReActAgentSharedLoopStructureTest {
         assertThat(outputs).extracting(OutputSchema::getType)
                 .containsExactly("llm_output", "llm_output", "answer");
         assertThat(payload(outputs.get(2)))
+                .containsEntry("output", "共享")
                 .containsEntry("result_type", "answer")
                 .containsEntry("status", "completed");
     }
