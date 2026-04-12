@@ -539,9 +539,7 @@ public class ReActAgent extends BaseAgent {
                         }
 
                         mergedChunk = mergedChunk == null ? chunk : mergedChunk.merge(chunk);
-
-                        String chunkText = normalizeChunkText(chunk.getContent());
-                        writeIncrementalAnswerChunk(agentSession, chunkIndexRef, chunkText);
+                        writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk);
                     }
 
                     AssistantMessageChunk finalChunk = mergedChunk != null
@@ -795,12 +793,30 @@ public class ReActAgent extends BaseAgent {
         );
     }
 
-    private void writeIncrementalAnswerChunk(AgentSessionApi agentSession, int[] chunkIndexRef, String chunkText) {
-        if (agentSession == null || chunkText.isEmpty()) {
+    private void writeCanonicalStreamChunk(
+            AgentSessionApi agentSession,
+            int[] chunkIndexRef,
+            AssistantMessageChunk chunk
+    ) {
+        if (agentSession == null || chunk == null) {
             return;
         }
+
+        String reasoningText = normalizeChunkText(chunk.getReasoningContent());
+        if (!reasoningText.isEmpty()) {
+            agentSession.writeStream(new OutputSchema("llm_reasoning", chunkIndexRef[0]++, Map.of(
+                    "content", reasoningText,
+                    "result_type", "answer"
+            )));
+        }
+
+        String chunkText = normalizeChunkText(chunk.getContent());
+        if (chunkText.isEmpty()) {
+            return;
+        }
+
         agentSession.writeStream(new OutputSchema("llm_output", chunkIndexRef[0]++, Map.of(
-                "output", chunkText,
+                "content", chunkText,
                 "result_type", "answer"
         )));
     }

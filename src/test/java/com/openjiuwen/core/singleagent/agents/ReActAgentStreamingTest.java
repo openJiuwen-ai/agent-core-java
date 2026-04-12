@@ -101,14 +101,19 @@ class ReActAgentStreamingTest {
 
         List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "A"), session, List.of(StreamMode.OUTPUT)));
 
-        assertThat(outputs).hasSize(2);
-        assertThat(outputs.get(0).getType()).isEqualTo("llm_output");
-        Map<String, Object> payload = payload(outputs.get(0));
+        assertThat(outputs).hasSize(3);
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .containsExactly("llm_reasoning", "llm_output", "answer");
+        assertThat(payload(outputs.get(0)))
+                .containsEntry("content", "hidden")
+                .containsEntry("result_type", "answer")
+                .doesNotContainKeys("output", "tool_calls", "reasoning_content");
+        Map<String, Object> payload = payload(outputs.get(1));
         assertThat(payload).containsEntry("content", "A");
         assertThat(payload).containsEntry("result_type", "answer");
         assertThat(payload).doesNotContainKeys("tool_calls", "reasoning_content");
 
-        Map<String, Object> finalPayload = payload(outputs.get(1));
+        Map<String, Object> finalPayload = payload(outputs.get(2));
         assertThat(finalPayload).doesNotContainKeys("tool_calls", "reasoning_content");
         assertThat(finalPayload).containsEntry("output", "A");
     }
@@ -169,13 +174,17 @@ class ReActAgentStreamingTest {
         }
 
         assertThat(toolExecutions).hasValue(1);
-        assertThat(outputs).hasSize(3);
+        assertThat(outputs).hasSize(4);
         assertThat(outputs).extracting(OutputSchema::getType)
-                .containsExactly("llm_output", "llm_output", "answer");
-        assertPayload(outputs.get(0), "查", "answer");
-        assertPayload(outputs.get(1), "到", "answer");
+                .containsExactly("llm_reasoning", "llm_output", "llm_output", "answer");
+        assertThat(payload(outputs.get(0)))
+                .containsEntry("content", "internal-thinking")
+                .containsEntry("result_type", "answer")
+                .doesNotContainKeys("output", "tool_calls", "reasoning_content");
+        assertPayload(outputs.get(1), "查", "answer");
+        assertPayload(outputs.get(2), "到", "answer");
 
-        Map<String, Object> finalPayload = payload(outputs.get(2));
+        Map<String, Object> finalPayload = payload(outputs.get(3));
         assertThat(finalPayload).containsEntry("output", "到");
         assertThat(finalPayload).containsEntry("result_type", "answer");
         assertThat(finalPayload).containsEntry("status", "completed");
@@ -214,7 +223,7 @@ class ReActAgentStreamingTest {
         }
 
         assertThat(toolExecutions).hasValue(1);
-        assertThat(outputs).hasSize(3);
+        assertThat(outputs).hasSize(5);
         for (OutputSchema output : outputs) {
             assertThat(payload(output)).doesNotContainKeys("tool_calls", "reasoning_content");
         }
