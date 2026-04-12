@@ -171,12 +171,23 @@ class ReActAgentSharedLoopStructureTest {
 
         assertThat(outputs).extracting(OutputSchema::getType)
                 .containsExactly("llm_output", "llm_output", "answer");
-        assertThat(payload(outputs.get(0))).containsEntry("output", "直");
-        assertThat(payload(outputs.get(1))).containsEntry("output", "播");
+        assertThat(payload(outputs.get(0))).containsEntry("content", "直");
+        assertThat(payload(outputs.get(1))).containsEntry("content", "播");
         assertThat(payload(outputs.get(2)))
                 .containsEntry("output", "直播")
                 .containsEntry("result_type", "answer")
                 .containsEntry("status", "completed");
+    }
+
+    @Test
+    void streamEmissionShouldUseSingleCanonicalHelperWithSharedChunkIndex() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(");
+        assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(agentSession, chunkIndexRef, chunk);");
+        assertThat(reactAgentSource).contains("new OutputSchema(\"llm_reasoning\"");
+        assertThat(reactAgentSource).contains("new OutputSchema(\"llm_output\"");
+        assertThat(reactAgentSource).doesNotContain("writeIncrementalAnswerChunk(agentSession, chunkIndexRef, chunkText);");
     }
 
     @Test

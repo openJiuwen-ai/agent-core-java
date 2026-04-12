@@ -104,13 +104,37 @@ class ReActAgentStreamingTest {
         assertThat(outputs).hasSize(2);
         assertThat(outputs.get(0).getType()).isEqualTo("llm_output");
         Map<String, Object> payload = payload(outputs.get(0));
-        assertThat(payload).containsEntry("output", "A");
+        assertThat(payload).containsEntry("content", "A");
         assertThat(payload).containsEntry("result_type", "answer");
         assertThat(payload).doesNotContainKeys("tool_calls", "reasoning_content");
 
         Map<String, Object> finalPayload = payload(outputs.get(1));
         assertThat(finalPayload).doesNotContainKeys("tool_calls", "reasoning_content");
         assertThat(finalPayload).containsEntry("output", "A");
+    }
+
+    @Test
+    void streamShouldEmitReasoningBeforeVisibleOutputWhenChunkContainsBoth() throws Exception {
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModel(
+                chunk("答案", null, "推理", null),
+                chunk("", "stop", null, null)
+        ));
+        AgentSessionApi session = AgentSessionApi.create("phase17-stream-reasoning-first", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "为什么"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).hasSize(3);
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .containsExactly("llm_reasoning", "llm_output", "answer");
+        assertThat(payload(outputs.get(0)))
+                .containsEntry("content", "推理")
+                .containsEntry("result_type", "answer")
+                .doesNotContainKeys("output", "tool_calls", "reasoning_content");
+        assertThat(payload(outputs.get(1)))
+                .containsEntry("content", "答案")
+                .containsEntry("result_type", "answer")
+                .doesNotContainKeys("output", "tool_calls", "reasoning_content");
+        assertThat(payload(outputs.get(2))).containsEntry("output", "答案");
     }
 
     @Test
@@ -299,9 +323,9 @@ class ReActAgentStreamingTest {
     private static void assertPayload(OutputSchema output, String expectedOutput, String expectedResultType) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         Map<String, Object> payload = payload(output);
-        assertThat(payload).containsEntry("output", expectedOutput);
+        assertThat(payload).containsEntry("content", expectedOutput);
         assertThat(payload).containsEntry("result_type", expectedResultType);
-        assertThat(payload).doesNotContainKeys("tool_calls", "reasoning_content");
+        assertThat(payload).doesNotContainKeys("output", "tool_calls", "reasoning_content");
     }
 
     @SuppressWarnings("unchecked")
