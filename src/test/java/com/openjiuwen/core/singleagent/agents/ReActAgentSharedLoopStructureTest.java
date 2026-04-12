@@ -98,6 +98,15 @@ class ReActAgentSharedLoopStructureTest {
     }
 
     @Test
+    void invokeAndStreamShouldUseSharedRuntimeSessionResolutionHelper() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("Session runtimeSession = resolveRuntimeSession(session, invokeInputs, null);");
+        assertThat(reactAgentSource).contains("Session runtimeSession = resolveRuntimeSession(session, invokeInputs, streamModes);");
+        assertThat(reactAgentSource).contains("return AgentSessionApi.create(normalizeConversationId(invokeInputs), null, getCard(), streamModes);");
+    }
+
+    @Test
     void invokeShouldTreatNullConversationIdAsMissingInsteadOfLiteralNull() throws Exception {
         ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
         AtomicReference<Session> capturedSession = new AtomicReference<>();
@@ -111,6 +120,34 @@ class ReActAgentSharedLoopStructureTest {
 
         assertThat(capturedSession.get()).isNotNull();
         assertThat(capturedSession.get().getSessionId()).isNotEqualTo("null");
+    }
+
+    @Test
+    void invokeShouldTreatLiteralNullConversationIdAsMissingInsteadOfDirtySessionId() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
+        AtomicReference<Session> capturedSession = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> capturedSession.set(ctx.getSession()), 10);
+
+        agent.invoke(Map.of("query", "会话", "conversation_id", "null"), null);
+
+        assertThat(capturedSession.get()).isNotNull();
+        assertThat(capturedSession.get().getSessionId()).isNotEqualTo("null");
+    }
+
+    @Test
+    void streamShouldTreatLiteralUndefinedConversationIdAsMissingInsteadOfDirtySessionId() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
+        AtomicReference<Session> capturedSession = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> capturedSession.set(ctx.getSession()), 10);
+
+        collect(agent.stream(
+                Map.of("query", "会话", "conversation_id", "undefined"),
+                null,
+                List.of(StreamMode.OUTPUT)
+        ));
+
+        assertThat(capturedSession.get()).isNotNull();
+        assertThat(capturedSession.get().getSessionId()).isNotEqualTo("undefined");
     }
 
     @Test
