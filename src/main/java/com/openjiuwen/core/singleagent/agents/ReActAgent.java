@@ -33,7 +33,6 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -305,7 +304,9 @@ public class ReActAgent extends BaseAgent {
 
         try {
             PreparedExecution prepared = prepareExecution(ctx, session);
-            return runSharedLoop(ctx, prepared, session, null);
+            TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, session, null);
+            invokeInputs.setResult(terminalOutcome.invokeResult());
+            return terminalOutcome.invokeResult();
 
         } finally {
             // Fire AFTER_INVOKE
@@ -321,34 +322,42 @@ public class ReActAgent extends BaseAgent {
         agentSession.preRun(inputs);
 
         startStreamProducer(() -> {
-            InvokeInputs invokeInputs = buildInvokeInputs(inputs);
-            AgentCallbackContext ctx = AgentCallbackContext.builder()
-                    .agent(this)
-                    .inputs(invokeInputs)
-                    .session(runtimeSession)
-                    .build();
-            Object invokeLifecycleInputs = ctx.getInputs();
-
-            fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
+            InvokeInputs invokeInputs = null;
+            AgentCallbackContext ctx = null;
+            Object invokeLifecycleInputs = null;
 
             try {
+                invokeInputs = buildInvokeInputs(inputs);
+                ctx = AgentCallbackContext.builder()
+                        .agent(this)
+                        .inputs(invokeInputs)
+                        .session(runtimeSession)
+                        .build();
+                invokeLifecycleInputs = ctx.getInputs();
+
+                fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
+
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
-                invokeInputs.setResult(runSharedLoop(ctx, prepared, runtimeSession, agentSession));
+                TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession);
+                invokeInputs.setResult(terminalOutcome.invokeResult());
+                writeTerminalOutcome(agentSession, terminalOutcome);
             } catch (Throwable t) {
                 String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
                 Loggers.AGENT.error("ReActAgent stream error: " + errorMsg);
-                invokeInputs.setResult(Map.of(
-                        "output", errorMsg,
-                        "result_type", "error"
-                ));
-                writeFailedFinal(agentSession, errorMsg);
+                TerminalOutcome terminalOutcome = buildFailureOutcome(errorMsg);
+                if (invokeInputs != null) {
+                    invokeInputs.setResult(terminalOutcome.invokeResult());
+                }
+                writeTerminalOutcome(agentSession, terminalOutcome);
             } finally {
                 try {
                     contextEngine.saveContexts(runtimeSession, null);
                 } finally {
                     agentSession.postRun();
-                    ctx.setInputs((EventInputs) invokeLifecycleInputs);
-                    fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                    if (ctx != null && invokeLifecycleInputs instanceof EventInputs eventInputs) {
+                        ctx.setInputs(eventInputs);
+                        fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                    }
                 }
             }
         });
@@ -372,6 +381,19 @@ public class ReActAgent extends BaseAgent {
             ModelContext context,
             List<BaseMessage> systemMessages,
             List<ToolInfo> tools
+    ) {
+    }
+
+    private enum TerminalBranch {
+        SUCCESS,
+        FAILURE,
+        INTERRUPT_PENDING
+    }
+
+    private record TerminalOutcome(
+            TerminalBranch branch,
+            Map<String, Object> invokeResult,
+            OutputSchema streamTerminal
     ) {
     }
 
@@ -523,54 +545,54 @@ public class ReActAgent extends BaseAgent {
         return systemMessages;
     }
 
-    private Map<String, Object> runSharedLoop(
+    private TerminalOutcome runSharedLoop(
             AgentCallbackContext ctx,
             PreparedExecution prepared,
             Session session,
             AgentSessionApi agentSession
     ) {
         int[] chunkIndexRef = new int[] {0};
-        for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
-            Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+        try {
+            for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
+                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
-            AssistantMessage aiMessage = agentSession == null
-                    ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
-                    : callModelStream(
-                            ctx,
-                            prepared.context(),
-                            prepared.systemMessages(),
-                            prepared.tools(),
-                            agentSession,
-                            chunkIndexRef
-                    );
+                AssistantMessage aiMessage = agentSession == null
+                        ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
+                        : callModelStream(
+                                ctx,
+                                prepared.context(),
+                                prepared.systemMessages(),
+                                prepared.tools(),
+                                agentSession,
+                                chunkIndexRef
+                        );
 
-            prepared.context().addMessages(AssistantMessage.builder()
-                    .content(aiMessage.getContent())
-                    .toolCalls(aiMessage.getToolCalls())
-                    .build());
+                prepared.context().addMessages(AssistantMessage.builder()
+                        .content(aiMessage.getContent())
+                        .toolCalls(aiMessage.getToolCalls())
+                        .build());
 
-            if (hasToolCalls(aiMessage)) {
-                executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
-            } else {
-                Map<String, Object> result = buildAnswerResult(aiMessage);
-                prepared.invokeInputs().setResult(result);
-                if (agentSession == null) {
-                    contextEngine.saveContexts(session, null);
+                if (hasToolCalls(aiMessage)) {
+                    executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
                 } else {
-                    writeCompletedAnswerFrame(agentSession);
+                    TerminalOutcome terminalOutcome = buildSuccessOutcome(aiMessage);
+                    if (agentSession == null) {
+                        contextEngine.saveContexts(session, null);
+                    }
+                    return terminalOutcome;
                 }
-                return result;
             }
-        }
 
-        Map<String, Object> errorResult = buildMaxIterationsErrorResult();
-        prepared.invokeInputs().setResult(errorResult);
-        if (agentSession == null) {
-            contextEngine.saveContexts(session, null);
-        } else {
-            writeFailedFinal(agentSession, String.valueOf(errorResult.get("output")));
+            TerminalOutcome terminalOutcome = buildFailureOutcome("Max iterations reached without completion");
+            if (agentSession == null) {
+                contextEngine.saveContexts(session, null);
+            }
+            return terminalOutcome;
+        } catch (Throwable t) {
+            String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
+            return buildFailureOutcome(errorMsg);
         }
-        return errorResult;
     }
 
     private void startStreamProducer(Runnable producer) {
@@ -596,18 +618,45 @@ public class ReActAgent extends BaseAgent {
         return aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
     }
 
-    private Map<String, Object> buildAnswerResult(AssistantMessage aiMessage) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("output", normalizeChunkText(aiMessage.getContent()));
-        result.put("result_type", "answer");
-        return result;
+    private TerminalOutcome buildSuccessOutcome(AssistantMessage aiMessage) {
+        return new TerminalOutcome(
+                TerminalBranch.SUCCESS,
+                Map.of(
+                        "output", normalizeChunkText(aiMessage.getContent()),
+                        "result_type", "answer"
+                ),
+                new OutputSchema("answer", 0, Map.of(
+                        "output", "",
+                        "result_type", "answer",
+                        "status", "completed"
+                ))
+        );
     }
 
-    private Map<String, Object> buildMaxIterationsErrorResult() {
-        Map<String, Object> result = new HashMap<>();
-        result.put("output", "Max iterations reached without completion");
-        result.put("result_type", "error");
-        return result;
+    private TerminalOutcome buildFailureOutcome(String errorMsg) {
+        return new TerminalOutcome(
+                TerminalBranch.FAILURE,
+                Map.of(
+                        "output", errorMsg,
+                        "result_type", "error"
+                ),
+                new OutputSchema("final", 0, Map.of(
+                        "error", true,
+                        "message", errorMsg,
+                        "status", "failed"
+                ))
+        );
+    }
+
+    private TerminalOutcome buildInterruptPendingOutcome(String message) {
+        return new TerminalOutcome(
+                TerminalBranch.INTERRUPT_PENDING,
+                Map.of(
+                        "output", message,
+                        "result_type", "interrupt_pending"
+                ),
+                null
+        );
     }
 
     private void writeIncrementalAnswerChunk(AgentSessionApi agentSession, int[] chunkIndexRef, String chunkText) {
@@ -620,25 +669,10 @@ public class ReActAgent extends BaseAgent {
         )));
     }
 
-    private void writeCompletedAnswerFrame(AgentSessionApi agentSession) {
-        if (agentSession == null) {
+    private void writeTerminalOutcome(AgentSessionApi agentSession, TerminalOutcome terminalOutcome) {
+        if (agentSession == null || terminalOutcome == null || terminalOutcome.streamTerminal() == null) {
             return;
         }
-        agentSession.writeStream(new OutputSchema("answer", 0, Map.of(
-                "output", "",
-                "result_type", "answer",
-                "status", "completed"
-        )));
-    }
-
-    private void writeFailedFinal(AgentSessionApi agentSession, String errorMsg) {
-        if (agentSession == null) {
-            return;
-        }
-        agentSession.writeStream(new OutputSchema("final", 0, Map.of(
-                "error", true,
-                "message", errorMsg,
-                "status", "failed"
-        )));
+        agentSession.writeStream(terminalOutcome.streamTerminal());
     }
 }
