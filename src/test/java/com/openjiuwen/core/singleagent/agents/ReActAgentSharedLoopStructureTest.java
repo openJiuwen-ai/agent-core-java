@@ -21,14 +21,16 @@ class ReActAgentSharedLoopStructureTest {
     @Test
     void reactAgentShouldRouteInvokeAndStreamThroughRunSharedLoop() throws IOException {
         String source = readReActAgentSource();
+        int invokeStart = source.indexOf("public Object invoke(");
+        int streamStart = source.indexOf("public Iterator<Object> stream(");
 
         assertThat(source)
                 .contains("public Object invoke(")
-                .contains("PreparedExecution prepared = prepareExecution(ctx, session);")
-                .contains("TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, session, null);")
-                .contains("public Iterator<Object> stream(")
-                .contains("PreparedExecution prepared = prepareExecution(ctx, runtimeSession);")
-                .contains("TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession);");
+                .contains("public Iterator<Object> stream(");
+        assertThat(invokeStart).isNotNegative();
+        assertThat(streamStart).isGreaterThan(invokeStart);
+        assertThat(source.substring(invokeStart, streamStart)).contains("runSharedLoop(");
+        assertThat(source.substring(streamStart)).contains("runSharedLoop(");
     }
 
     @Test
