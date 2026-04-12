@@ -205,7 +205,13 @@ public class ReActAgent extends BaseAgent {
         }
 
         for (Object tc : toolCalls) {
-            Loggers.AGENT.info("Executing tool: " + tc);
+            String toolName = null;
+            String toolId = null;
+            if (tc instanceof ToolCall toolCall) {
+                toolName = toolCall.getName();
+                toolId = toolCall.getId();
+            }
+            Loggers.AGENT.info("Executing tool: name=" + toolName + ", id=" + toolId);
         }
 
         var results = getAbilityManager().execute(ctx, toolCalls, session, null);
