@@ -4,8 +4,12 @@ package com.openjiuwen.core.singleagent;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,11 +26,88 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class AbilityManagerSupplementTest {
 
+    private static final AgentCallbackContext EMPTY_CALLBACK_CONTEXT = AgentCallbackContext.builder().build();
+
     private AbilityManager manager;
 
     @BeforeEach
     void setUp() {
         manager = new AbilityManager();
+    }
+
+    @Test
+    void executeSingleToolCallShouldReturnStructuredSuccessFact() {
+        String toolName = "structured-success-tool";
+        ToolCard toolCard = ToolCard.builder()
+                .id(toolName)
+                .name(toolName)
+                .description("returns structured success")
+                .inputParams(Map.of("type", "object", "properties", Map.of()))
+                .build();
+        manager.add(toolCard);
+        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of("status", "ok")), null);
+
+        try {
+            ToolCall toolCall = ToolCall.builder()
+                    .id("tc-success")
+                    .name(toolName)
+                    .arguments("{}")
+                    .build();
+
+            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(toolCall, null, null);
+
+            assertThat(entry.toolCall()).isSameAs(toolCall);
+            assertThat(entry.result()).isEqualTo(Map.of("status", "ok"));
+            assertThat(entry.toolMessage()).isNotNull();
+            assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-success");
+            assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.SUCCESS);
+            assertThat(entry.errorMessage()).isNull();
+        } finally {
+            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void executeShouldReturnStructuredErrorFactInsteadOfBareTuple() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("tc-error")
+                .name("missing-structured-tool")
+                .arguments("{}")
+                .build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, toolCall, null, null);
+
+        assertThat(results).singleElement().satisfies(entry -> {
+            assertThat(entry.toolCall()).isSameAs(toolCall);
+            assertThat(entry.result()).isNull();
+            assertThat(entry.toolMessage()).isNotNull();
+            assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-error");
+            assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
+            assertThat(entry.errorMessage()).contains("Ability execution error");
+        });
+    }
+
+    @Test
+    void toolExecutionEntryShouldAllowInterruptPendingCandidateFacts() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("tc-interrupt")
+                .name("interrupt-tool")
+                .arguments("{}")
+                .build();
+        ToolMessage toolMessage = ToolMessage.builder().content("waiting for resume").toolCallId("tc-interrupt").build();
+
+        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
+                toolCall,
+                null,
+                toolMessage,
+                AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
+                "waiting for resume"
+        );
+
+        assertThat(entry.toolCall()).isSameAs(toolCall);
+        assertThat(entry.toolMessage()).isSameAs(toolMessage);
+        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE);
+        assertThat(entry.errorMessage()).isEqualTo("waiting for resume");
     }
 
     // ========== WorkflowCard ==========
@@ -211,29 +292,20 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteWithEmptyList() {
-        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
-
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, List.of(), null, null);
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, List.of(), null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithInvalidToolCallType() {
-        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
-
         // Passing a string instead of ToolCall — normalizeToolCalls should log warning
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, "not a tool call", null, null);
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, "not a tool call", null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithNullToolCall() {
-        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
-
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, null, null, null);
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, null, null, null);
         assertThat(results).isEmpty();
     }
 
@@ -317,16 +389,35 @@ class AbilityManagerSupplementTest {
     @Test
     void testToolExecutionEntryCreation() {
         ToolMessage msg = ToolMessage.builder().content("result").toolCallId("tc-1").build();
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry("data", msg);
+        ToolCall toolCall = ToolCall.builder().id("tc-1").name("tool").arguments("{}").build();
+        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
+                toolCall,
+                "data",
+                msg,
+                AbilityManager.ToolExecutionClassification.SUCCESS,
+                null
+        );
 
+        assertThat(entry.toolCall()).isSameAs(toolCall);
         assertThat(entry.result()).isEqualTo("data");
         assertThat(entry.toolMessage()).isSameAs(msg);
+        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.SUCCESS);
+        assertThat(entry.errorMessage()).isNull();
     }
 
     @Test
     void testToolExecutionEntryNulls() {
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(null, null);
+        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
+                null,
+                null,
+                null,
+                AbilityManager.ToolExecutionClassification.ERROR,
+                "boom"
+        );
+        assertThat(entry.toolCall()).isNull();
         assertThat(entry.result()).isNull();
         assertThat(entry.toolMessage()).isNull();
+        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
+        assertThat(entry.errorMessage()).isEqualTo("boom");
     }
 }
