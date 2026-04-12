@@ -234,6 +234,10 @@ class ReActAgentStreamingTest {
         for (OutputSchema output : outputs) {
             assertThat(payload(output)).doesNotContainKeys("tool_calls", "reasoning_content");
         }
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .allMatch(type -> List.of("llm_reasoning", "llm_output", "answer", "final").contains(type));
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .doesNotContain("tool_call_started", "tool_result", "observation", "tool_delta");
     }
 
     @Test
@@ -307,7 +311,8 @@ class ReActAgentStreamingTest {
         assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
         assertThat(payload(outputs.get(1)))
                 .containsEntry("status", "failed")
-                .containsEntry("message", "tool failed");
+                .containsEntry("message", "Tool execution failed")
+                .doesNotContainKeys("tool_calls", "arguments", "raw_result", "observation", "reasoning_content");
     }
 
     @Test
@@ -358,7 +363,7 @@ class ReActAgentStreamingTest {
         assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
         assertThat(payload(outputs.get(1)))
                 .containsOnlyKeys("message", "result_type", "status", "resume_supported", "conversation_id", "interaction")
-                .containsEntry("message", "waiting")
+                .containsEntry("message", "Execution interrupted")
                 .containsEntry("result_type", "interrupt_pending")
                 .containsEntry("status", "interrupt_pending")
                 .containsEntry("resume_supported", true)
@@ -368,6 +373,9 @@ class ReActAgentStreamingTest {
         assertThat(interaction)
                 .containsEntry("id", "tc-interrupt-contract")
                 .containsEntry("component_ids", List.of("tc-interrupt-contract"));
+        assertThat(payload(outputs.get(1))).doesNotContainKeys(
+                "tool_calls", "arguments", "raw_result", "observation", "reasoning_content"
+        );
     }
 
     @Test

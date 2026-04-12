@@ -293,6 +293,17 @@ class ReActAgentSharedLoopStructureTest {
         assertThat(reactAgentSource).contains("new InteractiveInput(");
     }
 
+    @Test
+    void outwardVisibilityShouldStayOnCanonicalChunkAndTerminalWriters() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("writeCanonicalStreamChunk(");
+        assertThat(reactAgentSource).contains("writeTerminalOutcome(");
+        assertThat(reactAgentSource).doesNotContain("tool_call_started");
+        assertThat(reactAgentSource).doesNotContain("tool_result");
+        assertThat(reactAgentSource).doesNotContain("observation");
+    }
+
     private static List<OutputSchema> collect(Iterator<Object> iterator) {
         List<OutputSchema> results = new ArrayList<>();
         while (iterator.hasNext()) {
