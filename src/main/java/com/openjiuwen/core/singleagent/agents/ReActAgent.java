@@ -33,7 +33,6 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -334,7 +333,7 @@ public class ReActAgent extends BaseAgent {
 
             try {
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
-                runSharedLoop(ctx, prepared, runtimeSession, agentSession);
+                invokeInputs.setResult(runSharedLoop(ctx, prepared, runtimeSession, agentSession));
             } catch (Throwable t) {
                 String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
                 Loggers.AGENT.error("ReActAgent stream error: " + errorMsg);
@@ -524,7 +523,7 @@ public class ReActAgent extends BaseAgent {
         return systemMessages;
     }
 
-    private Object runSharedLoop(
+    private Map<String, Object> runSharedLoop(
             AgentCallbackContext ctx,
             PreparedExecution prepared,
             Session session,

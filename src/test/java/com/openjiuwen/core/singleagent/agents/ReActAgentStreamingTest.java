@@ -66,6 +66,23 @@ class ReActAgentStreamingTest {
     }
 
     @Test
+    void streamShouldStayOnStreamingEntryPathInsteadOfWrappingInvoke() throws Exception {
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModel(
+                chunk("直", null, null, null),
+                chunk("播", null, null, null),
+                chunk("", "stop", null, null)
+        ));
+        AgentSessionApi session = AgentSessionApi.create("phase15-stream-entry-path", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "直播"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .containsExactly("llm_output", "llm_output", "answer");
+        assertPayload(outputs.get(0), "直", "answer");
+        assertPayload(outputs.get(1), "播", "answer");
+    }
+
+    @Test
     void streamShouldHideToolCallsAndReasoningContentFromOutwardPayload() throws Exception {
         StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModel(
                 chunk(
