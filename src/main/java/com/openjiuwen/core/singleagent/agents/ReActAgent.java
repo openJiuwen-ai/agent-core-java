@@ -582,19 +582,11 @@ public class ReActAgent extends BaseAgent {
                 if (hasToolCalls(aiMessage)) {
                     executeToolCall(ctx, aiMessage.getToolCalls(), session, prepared.context());
                 } else {
-                    TerminalOutcome terminalOutcome = buildSuccessOutcome(aiMessage);
-                    if (agentSession == null) {
-                        contextEngine.saveContexts(session, null);
-                    }
-                    return terminalOutcome;
+                    return buildSuccessOutcome(aiMessage);
                 }
             }
 
-            TerminalOutcome terminalOutcome = buildFailureOutcome("Max iterations reached without completion");
-            if (agentSession == null) {
-                contextEngine.saveContexts(session, null);
-            }
-            return terminalOutcome;
+            return buildFailureOutcome("Max iterations reached without completion");
         } catch (Error e) {
             throw e;
         } catch (Exception e) {
