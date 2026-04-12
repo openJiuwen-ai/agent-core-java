@@ -347,6 +347,7 @@ public class ReActAgent extends BaseAgent {
                 .session(runtimeSession)
                 .build();
         Object invokeLifecycleInputs = ctx.getInputs();
+        boolean restoreInterrupt = false;
 
         // Fire BEFORE_INVOKE
         fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
@@ -355,15 +356,11 @@ public class ReActAgent extends BaseAgent {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null);
             invokeInputs.setResult(terminalOutcome.invokeResult());
-            if (terminalOutcome.restoreInterrupt()) {
-                Thread.currentThread().interrupt();
-            }
+            restoreInterrupt = terminalOutcome.restoreInterrupt();
             return terminalOutcome.invokeResult();
 
         } finally {
-            // Fire AFTER_INVOKE
-            ctx.setInputs((EventInputs) invokeLifecycleInputs);
-            fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+            finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null, restoreInterrupt);
         }
     }
 
@@ -405,18 +402,7 @@ public class ReActAgent extends BaseAgent {
                 }
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } finally {
-                try {
-                    contextEngine.saveContexts(runtimeSession, null);
-                } finally {
-                    agentSession.postRun();
-                    if (ctx != null && invokeLifecycleInputs instanceof EventInputs eventInputs) {
-                        ctx.setInputs(eventInputs);
-                        fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
-                    }
-                    if (restoreInterrupt) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
+                finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession, restoreInterrupt);
             }
         });
 
@@ -442,6 +428,32 @@ public class ReActAgent extends BaseAgent {
         }
         String sessionId = session != null ? session.getSessionId() : null;
         return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
+    }
+
+    private void finalizeExecutionLifecycle(
+            AgentCallbackContext ctx,
+            Object invokeLifecycleInputs,
+            Session session,
+            AgentSessionApi agentSession,
+            boolean restoreInterrupt
+    ) {
+        try {
+            contextEngine.saveContexts(session, null);
+        } finally {
+            try {
+                if (agentSession != null) {
+                    agentSession.postRun();
+                }
+            } finally {
+                if (ctx != null && invokeLifecycleInputs instanceof EventInputs eventInputs) {
+                    ctx.setInputs(eventInputs);
+                    fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                }
+                if (restoreInterrupt) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
     }
 
     private String normalizeConversationId(InvokeInputs invokeInputs) {
@@ -697,10 +709,6 @@ public class ReActAgent extends BaseAgent {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
             return buildFailureOutcome(errorMsg);
-        } finally {
-            if (agentSession == null) {
-                contextEngine.saveContexts(session, null);
-            }
         }
     }
 
