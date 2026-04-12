@@ -302,12 +302,13 @@ public class ReActAgent extends BaseAgent {
     @Override
     public Object invoke(Object inputs, Session session) {
         InvokeInputs invokeInputs = buildInvokeInputs(inputs);
+        Session runtimeSession = resolveRuntimeSession(session, invokeInputs, null);
 
         // Create shared context for the entire invoke lifecycle
         AgentCallbackContext ctx = AgentCallbackContext.builder()
                 .agent(this)
                 .inputs(invokeInputs)
-                .session(session)
+                .session(runtimeSession)
                 .build();
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -315,8 +316,8 @@ public class ReActAgent extends BaseAgent {
         fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         try {
-            PreparedExecution prepared = prepareExecution(ctx, session);
-            TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, session, null);
+            PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
+            TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null);
             invokeInputs.setResult(terminalOutcome.invokeResult());
             return terminalOutcome.invokeResult();
 
@@ -329,17 +330,16 @@ public class ReActAgent extends BaseAgent {
 
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        AgentSessionApi agentSession = toAgentSession(session, streamModes);
-        Session runtimeSession = session != null ? session : agentSession;
+        InvokeInputs invokeInputs = buildInvokeInputs(inputs);
+        Session runtimeSession = resolveRuntimeSession(session, invokeInputs, streamModes);
+        AgentSessionApi agentSession = toAgentSession(runtimeSession, streamModes);
         agentSession.preRun(inputs);
 
         startStreamProducer(() -> {
-            InvokeInputs invokeInputs = null;
             AgentCallbackContext ctx = null;
             Object invokeLifecycleInputs = null;
 
             try {
-                invokeInputs = buildInvokeInputs(inputs);
                 ctx = AgentCallbackContext.builder()
                         .agent(this)
                         .inputs(invokeInputs)
@@ -382,12 +382,30 @@ public class ReActAgent extends BaseAgent {
     /**
      * Convert a Session to AgentSessionApi.
      */
+    private Session resolveRuntimeSession(Session session, InvokeInputs invokeInputs, List<StreamMode> streamModes) {
+        if (session != null) {
+            return session;
+        }
+        return AgentSessionApi.create(normalizeConversationId(invokeInputs), null, getCard(), streamModes);
+    }
+
+    /**
+     * Convert a Session to AgentSessionApi.
+     */
     private AgentSessionApi toAgentSession(Session session, List<StreamMode> streamModes) {
         if (session instanceof AgentSessionApi asa) {
             return asa;
         }
         String sessionId = session != null ? session.getSessionId() : null;
         return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
+    }
+
+    private String normalizeConversationId(InvokeInputs invokeInputs) {
+        if (invokeInputs == null) {
+            return null;
+        }
+        String conversationId = invokeInputs.getConversationId();
+        return conversationId != null && !conversationId.isBlank() ? conversationId : null;
     }
 
     private record PreparedExecution(

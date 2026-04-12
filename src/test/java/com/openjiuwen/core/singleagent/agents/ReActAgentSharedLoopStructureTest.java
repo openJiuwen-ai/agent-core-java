@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.agents;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,6 +28,34 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ReActAgentSharedLoopStructureTest {
+
+    @Test
+    void invokeShouldBindConversationIdToRuntimeSessionWhenNoExplicitSession() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
+        AtomicReference<Session> capturedSession = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> capturedSession.set(ctx.getSession()), 10);
+
+        agent.invoke(Map.of("query", "会话", "conversation_id", "phase15-invoke-conversation"), null);
+
+        assertThat(capturedSession.get()).isNotNull();
+        assertThat(capturedSession.get().getSessionId()).isEqualTo("phase15-invoke-conversation");
+    }
+
+    @Test
+    void streamShouldBindConversationIdToRuntimeSessionWhenNoExplicitSession() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
+        AtomicReference<Session> capturedSession = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> capturedSession.set(ctx.getSession()), 10);
+
+        collect(agent.stream(
+                Map.of("query", "会话", "conversation_id", "phase15-stream-conversation"),
+                null,
+                List.of(StreamMode.OUTPUT)
+        ));
+
+        assertThat(capturedSession.get()).isNotNull();
+        assertThat(capturedSession.get().getSessionId()).isEqualTo("phase15-stream-conversation");
+    }
 
     @Test
     void streamShouldUseDedicatedStreamingPathWithoutCallingInvoke() throws Exception {
