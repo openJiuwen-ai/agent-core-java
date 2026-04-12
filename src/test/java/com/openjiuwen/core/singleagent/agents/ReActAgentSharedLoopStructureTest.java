@@ -7,6 +7,9 @@ package com.openjiuwen.core.singleagent.agents;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
@@ -15,6 +18,9 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -29,6 +35,39 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ReActAgentSharedLoopStructureTest {
+
+    @Test
+    void reactAgentShouldKeepPostToolInterpretationInsideSharedLoop() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+        String abilityManagerSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/AbilityManager.java"));
+
+        assertThat(reactAgentSource).contains("interpretToolExecutionFacts(");
+        assertThat(reactAgentSource).contains("buildInterruptPendingOutcome(");
+        assertThat(reactAgentSource).contains("ToolExecutionEntry");
+        assertThat(abilityManagerSource).doesNotContain("buildInterruptPendingOutcome(");
+    }
+
+    @Test
+    void invokeShouldContinueAfterSuccessfulToolFacts() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-continue").name("lookup").arguments("{}").build();
+        ProbeReActAgent agent = new ProbeReActAgent(
+                mockToolFollowUpModel(toolCall, "最终答案"),
+                new StubAbilityManager(List.of(new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        "lookup-result",
+                        ToolMessage.builder().content("lookup-result").toolCallId("tc-continue").build(),
+                        AbilityManager.ToolExecutionClassification.SUCCESS,
+                        null
+                )))
+        );
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> invokeResult = (Map<String, Object>) agent.invoke(Map.of("query", "继续"), null);
+
+        assertThat(invokeResult)
+                .containsEntry("output", "最终答案")
+                .containsEntry("result_type", "answer");
+    }
 
     @Test
     void invokeShouldBindConversationIdToRuntimeSessionWhenNoExplicitSession() throws Exception {
@@ -207,6 +246,17 @@ class ReActAgentSharedLoopStructureTest {
         return model;
     }
 
+    private static Model mockToolFollowUpModel(ToolCall toolCall, String finalAnswer) throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(AssistantMessage.builder().content("需要工具").toolCalls(List.of(toolCall)).build())
+                .thenReturn(AssistantMessage.builder().content(finalAnswer).build());
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
+                .thenReturn(successfulChunkStream("需", "要", "工", "具"))
+                .thenReturn(successfulChunkStream(finalAnswer));
+        return model;
+    }
+
     private static Model mockInterruptedModel() throws Exception {
         Model model = mock(Model.class);
         when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
@@ -218,19 +268,48 @@ class ReActAgentSharedLoopStructureTest {
 
     private static class ProbeReActAgent extends ReActAgent {
         private final Model model;
+        private final AbilityManager abilityManager;
 
         private ProbeReActAgent(Model model) {
+            this(model, null);
+        }
+
+        private ProbeReActAgent(Model model, AbilityManager abilityManager) {
             super(AgentCard.builder()
                     .id("shared-loop-probe-agent")
                     .name("shared-loop-probe-agent")
                     .description("shared loop probe agent")
                     .build());
             this.model = model;
+            this.abilityManager = abilityManager;
         }
 
         @Override
         protected Model getLlm() {
             return model;
+        }
+
+        @Override
+        public AbilityManager getAbilityManager() {
+            return abilityManager != null ? abilityManager : super.getAbilityManager();
+        }
+    }
+
+    private static final class StubAbilityManager extends AbilityManager {
+        private final List<ToolExecutionEntry> results;
+
+        private StubAbilityManager(List<ToolExecutionEntry> results) {
+            this.results = results;
+        }
+
+        @Override
+        public List<ToolExecutionEntry> execute(
+                com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx,
+                Object toolCall,
+                Session session,
+                String tag
+        ) {
+            return results;
         }
     }
 

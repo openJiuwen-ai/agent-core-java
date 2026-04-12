@@ -5,8 +5,10 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
@@ -15,6 +17,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
@@ -90,7 +93,7 @@ class ReActAgentStreamingTest {
                         "A",
                         null,
                         "hidden",
-                        List.of(ToolCall.builder().id("tc-1").name("secret_tool").arguments("{}").build())
+                        null
                 ),
                 chunk("", "stop", null, null)
         ));
@@ -107,7 +110,7 @@ class ReActAgentStreamingTest {
 
         Map<String, Object> finalPayload = payload(outputs.get(1));
         assertThat(finalPayload).doesNotContainKeys("tool_calls", "reasoning_content");
-        assertThat(finalPayload).containsEntry("output", "");
+        assertThat(finalPayload).containsEntry("output", "A");
     }
 
     @Test
@@ -242,6 +245,57 @@ class ReActAgentStreamingTest {
         assertThat(outputs).noneMatch(output -> "error".equals(output.getType()));
     }
 
+    @Test
+    void streamShouldEndWithSingleFailureTerminalWhenToolFactIsError() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-failure").name("failing_tool").arguments("{}").build();
+        StreamingProbeAgent agent = new StreamingProbeAgent(
+                mockStreamingModelSequence(List.of(
+                        List.of(chunk("查", null, null, List.of(toolCall)), chunk("", "stop", null, null))
+                )),
+                new StubAbilityManager(List.of(new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        null,
+                        ToolMessage.builder().content("tool failed").toolCallId("tc-failure").build(),
+                        AbilityManager.ToolExecutionClassification.ERROR,
+                        "tool failed"
+                )))
+        );
+        AgentSessionApi session = AgentSessionApi.create("phase16-stream-tool-failure", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "失败"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
+        assertThat(payload(outputs.get(1)))
+                .containsEntry("status", "failed")
+                .containsEntry("message", "tool failed");
+    }
+
+    @Test
+    void streamShouldEndWithSingleInterruptPendingTerminalWhenToolFactRequestsResume() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-interrupt").name("interrupt_tool").arguments("{}").build();
+        StreamingProbeAgent agent = new StreamingProbeAgent(
+                mockStreamingModelSequence(List.of(
+                        List.of(chunk("等", null, null, List.of(toolCall)), chunk("", "stop", null, null))
+                )),
+                new StubAbilityManager(List.of(new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        null,
+                        ToolMessage.builder().content("waiting").toolCallId("tc-interrupt").build(),
+                        AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
+                        "waiting"
+                )))
+        );
+        AgentSessionApi session = AgentSessionApi.create("phase16-stream-tool-interrupt", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "中断"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
+        assertThat(payload(outputs.get(1)))
+                .containsEntry("status", "interrupt_pending")
+                .containsEntry("result_type", "interrupt_pending")
+                .containsEntry("message", "waiting");
+    }
+
     private static void assertPayload(OutputSchema output, String expectedOutput, String expectedResultType) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         Map<String, Object> payload = payload(output);
@@ -334,14 +388,20 @@ class ReActAgentStreamingTest {
 
     private static final class StreamingProbeAgent extends ReActAgent {
         private final Model model;
+        private final AbilityManager abilityManager;
 
         private StreamingProbeAgent(Model model) {
+            this(model, null);
+        }
+
+        private StreamingProbeAgent(Model model, AbilityManager abilityManager) {
             super(AgentCard.builder()
                     .id("streaming-probe-agent")
                     .name("streaming-probe-agent")
                     .description("streaming probe agent")
                     .build());
             this.model = model;
+            this.abilityManager = abilityManager;
         }
 
         @Override
@@ -352,6 +412,29 @@ class ReActAgentStreamingTest {
         @Override
         protected Model getLlm() {
             return model;
+        }
+
+        @Override
+        public AbilityManager getAbilityManager() {
+            return abilityManager != null ? abilityManager : super.getAbilityManager();
+        }
+    }
+
+    private static final class StubAbilityManager extends AbilityManager {
+        private final List<ToolExecutionEntry> results;
+
+        private StubAbilityManager(List<ToolExecutionEntry> results) {
+            this.results = results;
+        }
+
+        @Override
+        public List<ToolExecutionEntry> execute(
+                com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx,
+                Object toolCall,
+                Session session,
+                String tag
+        ) {
+            return results;
         }
     }
 }
