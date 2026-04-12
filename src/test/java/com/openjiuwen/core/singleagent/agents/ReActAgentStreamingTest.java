@@ -18,6 +18,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -256,13 +258,15 @@ class ReActAgentStreamingTest {
     }
 
     private static List<OutputSchema> collect(Iterator<Object> iterator) {
-        List<OutputSchema> results = new ArrayList<>();
-        while (iterator.hasNext()) {
-            Object next = iterator.next();
-            assertThat(next).isInstanceOf(OutputSchema.class);
-            results.add((OutputSchema) next);
-        }
-        return results;
+        return assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+            List<OutputSchema> results = new ArrayList<>();
+            while (iterator.hasNext()) {
+                Object next = iterator.next();
+                assertThat(next).isInstanceOf(OutputSchema.class);
+                results.add((OutputSchema) next);
+            }
+            return results;
+        });
     }
 
     private static Model mockStreamingModel(AssistantMessageChunk... chunks) throws Exception {
