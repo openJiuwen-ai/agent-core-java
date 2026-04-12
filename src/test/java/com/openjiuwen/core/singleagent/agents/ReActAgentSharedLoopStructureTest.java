@@ -273,6 +273,26 @@ class ReActAgentSharedLoopStructureTest {
         });
     }
 
+    @Test
+    void sharedLoopShouldPersistAndClearReactInterruptStateForResume() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("react_interrupt_state");
+        assertThat(reactAgentSource).contains("getState(\"react_interrupt_state\")");
+        assertThat(reactAgentSource).contains("updateState(Map.of(\"react_interrupt_state\"");
+        assertThat(reactAgentSource).contains("updateState(Map.of(\"react_interrupt_state\", null))");
+    }
+
+    @Test
+    void sharedLoopResumeShouldReusePendingToolExecutionInsteadOfRestartingFreshModelPath() throws IOException {
+        String reactAgentSource = Files.readString(Path.of("src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java"));
+
+        assertThat(reactAgentSource).contains("missing interrupt state for resume");
+        assertThat(reactAgentSource).contains("executeToolCall(");
+        assertThat(reactAgentSource).contains("interpretToolExecutionFacts(");
+        assertThat(reactAgentSource).contains("new InteractiveInput(");
+    }
+
     private static List<OutputSchema> collect(Iterator<Object> iterator) {
         List<OutputSchema> results = new ArrayList<>();
         while (iterator.hasNext()) {

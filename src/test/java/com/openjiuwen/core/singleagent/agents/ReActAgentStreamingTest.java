@@ -335,6 +335,97 @@ class ReActAgentStreamingTest {
                 .containsEntry("message", "waiting");
     }
 
+    @Test
+    void streamInterruptPendingTerminalShouldExposeRecoverableResumePayload() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-interrupt-contract").name("interrupt_tool").arguments("{}").build();
+        StreamingProbeAgent agent = new StreamingProbeAgent(
+                mockStreamingModelSequence(List.of(
+                        List.of(chunk("等", null, null, List.of(toolCall)), chunk("", "stop", null, null))
+                )),
+                new StubAbilityManager(List.of(new AbilityManager.ToolExecutionEntry(
+                        toolCall,
+                        null,
+                        ToolMessage.builder().content("waiting").toolCallId("tc-interrupt-contract").build(),
+                        AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
+                        "waiting"
+                )))
+        );
+        AgentSessionApi session = AgentSessionApi.create("phase18-stream-interrupt-contract", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(Map.of("query", "中断"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
+        assertThat(payload(outputs.get(1)))
+                .containsOnlyKeys("message", "result_type", "status", "resume_supported", "conversation_id", "interaction")
+                .containsEntry("message", "waiting")
+                .containsEntry("result_type", "interrupt_pending")
+                .containsEntry("status", "interrupt_pending")
+                .containsEntry("resume_supported", true)
+                .containsEntry("conversation_id", "phase18-stream-interrupt-contract");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> interaction = (Map<String, Object>) payload(outputs.get(1)).get("interaction");
+        assertThat(interaction)
+                .containsEntry("id", "tc-interrupt-contract")
+                .containsEntry("component_ids", List.of("tc-interrupt-contract"));
+    }
+
+    @Test
+    void streamShouldResumeInterruptedToolCallOnSameConversationWithoutReplayingInterruptTerminal() throws Exception {
+        ToolCall toolCall = ToolCall.builder().id("tc-resume").name("interrupt_tool").arguments("{}").build();
+        AtomicInteger modelCalls = new AtomicInteger();
+        StreamingProbeAgent agent = new StreamingProbeAgent(
+                mockStreamingModelSequence(List.of(
+                        List.of(chunk("等", null, null, List.of(toolCall)), chunk("", "stop", null, null)),
+                        List.of(chunk("已", null, null, null), chunk("完成", null, null, null), chunk("", "stop", null, null))
+                ), modelCalls),
+                new StubAbilityManager(List.of(
+                        new AbilityManager.ToolExecutionEntry(
+                                toolCall,
+                                null,
+                                ToolMessage.builder().content("waiting").toolCallId("tc-resume").build(),
+                                AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
+                                "waiting"
+                        ),
+                        new AbilityManager.ToolExecutionEntry(
+                                toolCall,
+                                "approved-result",
+                                ToolMessage.builder().content("approved-result").toolCallId("tc-resume").build(),
+                                AbilityManager.ToolExecutionClassification.SUCCESS,
+                                null
+                        )
+                ))
+        );
+        AgentSessionApi session = AgentSessionApi.create("phase18-stream-resume", null, agent.getCard());
+
+        List<OutputSchema> firstOutputs = collect(agent.stream(Map.of("query", "先中断"), session, List.of(StreamMode.OUTPUT)));
+        List<OutputSchema> resumedOutputs = collect(agent.stream(new com.openjiuwen.core.session.interaction.InteractiveInput("approved"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(modelCalls.get()).isEqualTo(2);
+        assertThat(firstOutputs).extracting(OutputSchema::getType).containsExactly("llm_output", "final");
+        assertThat(payload(firstOutputs.get(1))).containsEntry("status", "interrupt_pending");
+        assertThat(resumedOutputs).extracting(OutputSchema::getType).containsExactly("llm_output", "llm_output", "answer");
+        assertThat(payload(resumedOutputs.get(2)))
+                .containsEntry("output", "已完成")
+                .containsEntry("result_type", "answer")
+                .containsEntry("status", "completed");
+        assertThat(resumedOutputs).noneMatch(output -> "final".equals(output.getType()));
+    }
+
+    @Test
+    void streamShouldFailResumeWhenInterruptStateIsMissing() {
+        StreamingProbeAgent agent = new StreamingProbeAgent(mockStreamingModelSequence(List.of()));
+        AgentSessionApi session = AgentSessionApi.create("phase18-stream-resume-missing", null, agent.getCard());
+
+        List<OutputSchema> outputs = collect(agent.stream(new com.openjiuwen.core.session.interaction.InteractiveInput("approved"), session, List.of(StreamMode.OUTPUT)));
+
+        assertThat(outputs).singleElement().satisfies(output -> {
+            assertThat(output.getType()).isEqualTo("final");
+            assertThat(payload(output))
+                    .containsEntry("status", "failed")
+                    .containsEntry("message", "missing interrupt state for resume");
+        });
+    }
+
     private static void assertPayload(OutputSchema output, String expectedOutput, String expectedResultType) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         Map<String, Object> payload = payload(output);
@@ -372,6 +463,22 @@ class ReActAgentStreamingTest {
         AtomicInteger responseIndex = new AtomicInteger();
         when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
                 .thenAnswer(invocation -> {
+                    int index = responseIndex.getAndIncrement();
+                    if (index >= responses.size()) {
+                        return List.<AssistantMessageChunk>of().iterator();
+                    }
+                    return responses.get(index).iterator();
+                });
+        return model;
+    }
+
+    private static Model mockStreamingModelSequence(List<List<AssistantMessageChunk>> responses, AtomicInteger callCounter)
+            throws Exception {
+        Model model = mock(Model.class);
+        AtomicInteger responseIndex = new AtomicInteger();
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), isNull(), any(), any()))
+                .thenAnswer(invocation -> {
+                    callCounter.incrementAndGet();
                     int index = responseIndex.getAndIncrement();
                     if (index >= responses.size()) {
                         return List.<AssistantMessageChunk>of().iterator();
