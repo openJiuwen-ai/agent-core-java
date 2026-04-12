@@ -236,7 +236,7 @@ public class AbilityManager implements ToolRegistry {
      * @param toolCall single tool call or list of tool calls
      * @param session  session instance
      * @param tag      optional tag
-     * @return list of (result, ToolMessage) tuples
+     * @return list of structured tool execution facts
      */
     public List<ToolExecutionEntry> execute(
             AgentCallbackContext ctx,
@@ -271,7 +271,14 @@ public class AbilityManager implements ToolRegistry {
                 if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
                     Object toolResult = inputs.getToolResult() != null ? inputs.getToolResult() : result.result();
                     ToolMessage toolMsg = inputs.getToolMsg() != null ? inputs.getToolMsg() : result.toolMessage();
-                    finalResults.add(new ToolExecutionEntry(toolResult, toolMsg));
+                    ToolCall effectiveToolCall = inputs.getToolCall() != null ? inputs.getToolCall() : result.toolCall();
+                    finalResults.add(new ToolExecutionEntry(
+                            effectiveToolCall,
+                            toolResult,
+                            toolMsg,
+                            result.classification(),
+                            result.errorMessage()
+                    ));
                 } else {
                     finalResults.add(result);
                 }
@@ -298,7 +305,13 @@ public class AbilityManager implements ToolRegistry {
                             .build();
                 }
 
-                finalResults.add(new ToolExecutionEntry(toolResult, toolMessage));
+                finalResults.add(new ToolExecutionEntry(
+                        singleToolCall,
+                        toolResult,
+                        toolMessage,
+                        classifyException(e),
+                        errorMsg
+                ));
             }
         }
 
@@ -427,7 +440,24 @@ public class AbilityManager implements ToolRegistry {
                 .toolCallId(toolCall.getId())
                 .build();
 
-        return new ToolExecutionEntry(result, toolMessage);
+        return new ToolExecutionEntry(toolCall, result, toolMessage, ToolExecutionClassification.SUCCESS, null);
+    }
+
+    private static ToolExecutionClassification classifyException(Throwable throwable) {
+        return findInterruptedException(throwable) != null
+                ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
+                : ToolExecutionClassification.ERROR;
+    }
+
+    private static InterruptedException findInterruptedException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException interruptedException) {
+                return interruptedException;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
@@ -461,10 +491,25 @@ public class AbilityManager implements ToolRegistry {
     /**
      * Result entry from tool execution.
      *
+     * @param toolCall       the effective tool call metadata
      * @param result      the raw result
      * @param toolMessage the tool message for LLM context
+     * @param classification raw execution classification, interpreted later by ReActAgent
+     * @param errorMessage optional execution error detail
      */
-    public record ToolExecutionEntry(Object result, ToolMessage toolMessage) {}
+    public record ToolExecutionEntry(
+            ToolCall toolCall,
+            Object result,
+            ToolMessage toolMessage,
+            ToolExecutionClassification classification,
+            String errorMessage
+    ) {}
+
+    public enum ToolExecutionClassification {
+        SUCCESS,
+        ERROR,
+        INTERRUPT_PENDING_CANDIDATE
+    }
 
     private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {
         if (toolInfoObj instanceof ToolInfo toolInfo) {
