@@ -449,7 +449,20 @@ public class ReActAgent extends BaseAgent {
             return null;
         }
         String conversationId = invokeInputs.getConversationId();
-        return conversationId != null && !conversationId.isBlank() ? conversationId : null;
+        if (conversationId == null) {
+            return null;
+        }
+
+        String normalized = conversationId.trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+
+        if ("null".equalsIgnoreCase(normalized) || "undefined".equalsIgnoreCase(normalized)) {
+            return null;
+        }
+
+        return normalized;
     }
 
     private record PreparedExecution(
