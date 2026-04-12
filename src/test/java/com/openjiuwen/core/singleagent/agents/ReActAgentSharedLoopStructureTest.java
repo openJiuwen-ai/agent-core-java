@@ -16,6 +16,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,22 @@ class ReActAgentSharedLoopStructureTest {
 
         assertThat(capturedSession.get()).isNotNull();
         assertThat(capturedSession.get().getSessionId()).isEqualTo("phase15-stream-conversation");
+    }
+
+    @Test
+    void invokeShouldTreatNullConversationIdAsMissingInsteadOfLiteralNull() throws Exception {
+        ProbeReActAgent agent = new ProbeReActAgent(mockSuccessfulModel("会", "话"));
+        AtomicReference<Session> capturedSession = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> capturedSession.set(ctx.getSession()), 10);
+
+        Map<String, Object> inputs = new HashMap<>();
+        inputs.put("query", "会话");
+        inputs.put("conversation_id", null);
+
+        agent.invoke(inputs, null);
+
+        assertThat(capturedSession.get()).isNotNull();
+        assertThat(capturedSession.get().getSessionId()).isNotEqualTo("null");
     }
 
     @Test

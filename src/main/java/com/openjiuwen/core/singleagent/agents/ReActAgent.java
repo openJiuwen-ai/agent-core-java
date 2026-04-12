@@ -526,8 +526,11 @@ public class ReActAgent extends BaseAgent {
         if (inputs instanceof Map<?, ?> map) {
             Object rawQuery = map.get("query");
             query = rawQuery != null ? String.valueOf(rawQuery) : "";
-            conversationId = map.containsKey("conversation_id")
-                    ? String.valueOf(map.get("conversation_id")) : null;
+            Object rawConversationId = map.get("conversation_id");
+            if (rawConversationId != null) {
+                String candidate = String.valueOf(rawConversationId);
+                conversationId = candidate.isBlank() ? null : candidate;
+            }
         } else {
             query = (String) inputs;
         }
