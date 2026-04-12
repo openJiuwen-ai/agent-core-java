@@ -94,7 +94,9 @@ public class ReActAgent extends BaseAgent {
         // Reset LLM if model config changed
         if (!safeEquals(oldConfig.getModelProvider(), newConfig.getModelProvider())
                 || !safeEquals(oldConfig.getApiKey(), newConfig.getApiKey())
-                || !safeEquals(oldConfig.getApiBase(), newConfig.getApiBase())) {
+                || !safeEquals(oldConfig.getApiBase(), newConfig.getApiBase())
+                || !safeEquals(oldConfig.getModelClientConfig(), newConfig.getModelClientConfig())
+                || !safeEquals(oldConfig.getModelConfigObj(), newConfig.getModelConfigObj())) {
             this.llm = null;
         }
 
