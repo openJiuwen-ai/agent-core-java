@@ -57,7 +57,7 @@ class LocalCodeOperationTest {
     private static boolean isPythonAvailable() {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return false;
-        String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python3";
+        String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, pythonExe);
             if (f.exists() && f.isFile() && f.canExecute()) return true;
