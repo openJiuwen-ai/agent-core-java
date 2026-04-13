@@ -44,16 +44,16 @@ public class ModelClientConfig {
         this.clientProvider = Objects.requireNonNull(builder.clientProvider, "clientProvider must not be null");
         this.apiKey = Objects.requireNonNull(builder.apiKey, "apiKey must not be null");
         this.apiBase = Objects.requireNonNull(builder.apiBase, "apiBase must not be null");
-        
+
         // Validate timeout - must be > 0 (matches Python Pydantic Field(gt=0))
         if (builder.timeout <= 0) {
             throw new IllegalArgumentException(
-                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout + ", input_type=" + 
-                    (builder.timeout == (int)builder.timeout ? "int" : "float") + "]");
+                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout + ", input_type=" +
+                            (builder.timeout == (int) builder.timeout ? "int" : "float") + "]");
         }
         this.timeout = builder.timeout;
         this.httpVersion = builder.httpVersion;
-        
+
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;
@@ -64,36 +64,56 @@ public class ModelClientConfig {
     // ==================== Getters ====================
 
     @JsonProperty("client_id")
-    public String getClientId() { return clientId; }
+    public String getClientId() {
+        return clientId;
+    }
 
     @JsonProperty("client_provider")
-    public String getClientProvider() { return clientProvider; }
+    public String getClientProvider() {
+        return clientProvider;
+    }
 
     @JsonProperty("api_key")
-    public String getApiKey() { return apiKey; }
+    public String getApiKey() {
+        return apiKey;
+    }
 
     @JsonProperty("api_base")
-    public String getApiBase() { return apiBase; }
+    public String getApiBase() {
+        return apiBase;
+    }
 
-    public double getTimeout() { return timeout; }
+    public double getTimeout() {
+        return timeout;
+    }
 
     @JsonProperty("http_version")
     public ModelHttpVersion getHttpVersion() { return httpVersion; }
 
     @JsonProperty("max_retries")
-    public int getMaxRetries() { return maxRetries; }
+    public int getMaxRetries() {
+        return maxRetries;
+    }
 
     @JsonProperty("verify_ssl")
-    public boolean isVerifySsl() { return verifySsl; }
+    public boolean isVerifySsl() {
+        return verifySsl;
+    }
 
     @JsonProperty("ssl_cert")
-    public String getSslCert() { return sslCert; }
+    public String getSslCert() {
+        return sslCert;
+    }
 
     @JsonProperty("headers")
-    public Map<String, String> getHeaders() { return new LinkedHashMap<>(headers); }
+    public Map<String, String> getHeaders() {
+        return new LinkedHashMap<>(headers);
+    }
 
     @JsonAnyGetter
-    public Map<String, Object> getExtraFields() { return extraFields; }
+    public Map<String, Object> getExtraFields() {
+        return extraFields;
+    }
 
     // ==================== Builder ====================
 
@@ -121,31 +141,55 @@ public class ModelClientConfig {
         private final Map<String, Object> extraFields = new HashMap<>();
 
         @JsonProperty("client_id")
-        public Builder clientId(String clientId) { this.clientId = clientId; return this; }
+        public Builder clientId(String clientId) {
+            this.clientId = clientId;
+            return this;
+        }
 
         @JsonProperty("client_provider")
-        public Builder clientProvider(String clientProvider) { this.clientProvider = clientProvider; return this; }
+        public Builder clientProvider(String clientProvider) {
+            this.clientProvider = clientProvider;
+            return this;
+        }
 
         @JsonProperty("api_key")
-        public Builder apiKey(String apiKey) { this.apiKey = apiKey; return this; }
+        public Builder apiKey(String apiKey) {
+            this.apiKey = apiKey;
+            return this;
+        }
 
         @JsonProperty("api_base")
-        public Builder apiBase(String apiBase) { this.apiBase = apiBase; return this; }
+        public Builder apiBase(String apiBase) {
+            this.apiBase = apiBase;
+            return this;
+        }
 
         @JsonProperty("timeout")
-        public Builder timeout(double timeout) { this.timeout = timeout; return this; }
+        public Builder timeout(double timeout) {
+            this.timeout = timeout;
+            return this;
+        }
 
         @JsonProperty("http_version")
         public Builder httpVersion(ModelHttpVersion httpVersion) { this.httpVersion = httpVersion; return this; }
 
         @JsonProperty("max_retries")
-        public Builder maxRetries(int maxRetries) { this.maxRetries = maxRetries; return this; }
+        public Builder maxRetries(int maxRetries) {
+            this.maxRetries = maxRetries;
+            return this;
+        }
 
         @JsonProperty("verify_ssl")
-        public Builder verifySsl(boolean verifySsl) { this.verifySsl = verifySsl; return this; }
+        public Builder verifySsl(boolean verifySsl) {
+            this.verifySsl = verifySsl;
+            return this;
+        }
 
         @JsonProperty("ssl_cert")
-        public Builder sslCert(String sslCert) { this.sslCert = sslCert; return this; }
+        public Builder sslCert(String sslCert) {
+            this.sslCert = sslCert;
+            return this;
+        }
 
         @JsonProperty("headers")
         public Builder headers(Map<String, ?> headers) {

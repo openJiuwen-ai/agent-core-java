@@ -11,6 +11,8 @@ import java.net.http.HttpClient;
 
 /**
  * Supported HTTP versions for model client connections.
+ *
+ * @since 0.1.7
  */
 public enum ModelHttpVersion {
     HTTP_1_1("HTTP_1_1", HttpClient.Version.HTTP_1_1),
@@ -33,10 +35,17 @@ public enum ModelHttpVersion {
         return jdkVersion;
     }
 
+    /**
+     * Convert a string to a {@link ModelHttpVersion}.
+     *
+     * @param value the string to convert
+     * @return the corresponding {@link ModelHttpVersion}
+     * @throws IllegalArgumentException if the string is null or blank
+     */
     @JsonCreator
     public static ModelHttpVersion fromValue(String value) {
         if (value == null || value.isBlank()) {
-            return null;
+            throw new IllegalArgumentException("Unsupported http_version: null");
         }
         return switch (value.trim().toUpperCase()) {
             case "HTTP_1_1", "HTTP/1.1", "1.1" -> HTTP_1_1;
