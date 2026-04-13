@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.*;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -49,6 +51,7 @@ public class QuestionerContextRegressionTest {
     private static final String AGENT_PROVIDER = "CtxAgentMirror";
     private static final String QUESTIONER_PROVIDER = "CtxQuestionMirror";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
+    private static final AtomicInteger AGENT_MODEL_INVOCATIONS = new AtomicInteger();
 
     private final Set<String> workflowIds = new HashSet<>();
     private final Set<String> sessionIds = new HashSet<>();
@@ -71,6 +74,7 @@ public class QuestionerContextRegressionTest {
         Runner.stop();
         Runner.setConfig(RunnerConfig.DEFAULT);
         CheckpointerFactory.setDefaultCheckpointer(new InMemoryCheckpointer());
+        AGENT_MODEL_INVOCATIONS.set(0);
         workflowIds.clear();
         sessionIds.clear();
     }
@@ -139,6 +143,120 @@ public class QuestionerContextRegressionTest {
                     "Agent context should have messages, got " + agentMessages.size());
             assertTrue(agentMessages.size() <= 20,
                     "With default max_rounds=10, buffer cap=20, got " + agentMessages.size());
+        }
+    }
+
+    @Test
+    public void interruptedTaskShouldWriteMockToolMessageBackIntoAgentContext() {
+        String sessionId = "agent_interrupt_tool_context";
+        sessionIds.add(sessionId);
+
+        Workflow flow = buildQuestionerWorkflow(
+                "questioner095_workflow", "workflow_1.0", "my_questioner095",
+                List.of(field("location", "地点")));
+
+        LlmAgent agent = LlmAgent.createLlmAgent(
+                agentConfig("ctx-agent-interrupt", 10,
+                        List.of(workflowSchema("questioner095_workflow", "my_questioner095", "workflow_1.0"))),
+                List.of(flow),
+                List.of());
+
+        List<OutputSchema> firstRound = collectChunks(runStreaming(agent, "test_llm_agent_095", sessionId));
+        assertFalse(firstRound.isEmpty(), "Initial round should emit stream output");
+
+        var agentContext = agent.getContextEngine().getContext(null, sessionId);
+        assertNotNull(agentContext, "Agent context should exist after interruption");
+
+        List<? extends BaseMessage> agentMessages = agentContext.getMessages(null, false);
+        assertTrue(agentMessages.stream().anyMatch(message -> "tool".equals(message.getRole())
+                        && "[INTERRUPTED - Waiting for user input]".equals(message.getContentAsString())),
+                "Interrupted task should write mock tool message into agent context");
+    }
+
+    @Test
+    public void parallelInterruptStateShouldRetainAllPendingComponentIds() {
+        String sessionId = "agent_parallel_interrupt_state";
+        sessionIds.add(sessionId);
+
+        Workflow flow = buildParallelQuestionerWorkflow(
+                "parallel_interrupt_workflow", "1.0", "parallel_interrupt_workflow");
+
+        LlmAgent agent = LlmAgent.createLlmAgent(
+                agentConfig("ctx-agent-parallel-state", 10,
+                        List.of(workflowSchema("parallel_interrupt_workflow", "parallel_interrupt_workflow", "1.0"))),
+                List.of(flow),
+                List.of());
+
+        AgentSessionApi session = AgentSessionApi.create(sessionId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        Map<String, Object> inputs = Map.of("query", "parallel interrupt");
+        session.preRun(inputs);
+        try {
+            List<OutputSchema> firstRound = collectChunks(agent.stream(inputs, session, List.of(StreamMode.OUTPUT)));
+            assertFalse(firstRound.isEmpty(), "Initial round should emit stream output");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> controllerState = (Map<String, Object>) session.getState("llm_controller");
+            assertNotNull(controllerState, "llm_controller state should exist after interruption");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> interruptedTasks = (Map<String, Object>) controllerState.get("interrupted_tasks");
+            assertNotNull(interruptedTasks, "interrupted_tasks should be stored");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> taskInfo = (Map<String, Object>) interruptedTasks.get("parallel_interrupt_workflow_1_0");
+            assertNotNull(taskInfo, "parallel workflow interruption state should be stored");
+
+            @SuppressWarnings("unchecked")
+            List<String> componentIds = (List<String>) taskInfo.get("component_ids");
+            assertEquals(Set.of("questioner", "questioner_2"), new HashSet<>(componentIds),
+                    "All pending interrupt component ids should be persisted for resume");
+        } finally {
+            session.postRun();
+        }
+    }
+
+    @Test
+    public void parallelInterruptResumeShouldFastPathAnyPendingComponentId() {
+        String sessionId = "agent_parallel_interrupt_resume";
+        sessionIds.add(sessionId);
+
+        Workflow flow = buildParallelQuestionerWorkflow(
+                "parallel_resume_workflow", "1.0", "parallel_resume_workflow");
+
+        LlmAgent agent = LlmAgent.createLlmAgent(
+                agentConfig("ctx-agent-parallel-resume", 10,
+                        List.of(workflowSchema("parallel_resume_workflow", "parallel_resume_workflow", "1.0"))),
+                List.of(flow),
+                List.of());
+
+        AGENT_MODEL_INVOCATIONS.set(0);
+        AgentSessionApi firstSession = AgentSessionApi.create(sessionId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        Map<String, Object> firstInputs = Map.of("query", "parallel resume");
+        firstSession.preRun(firstInputs);
+        String otherPendingComponentId;
+        try {
+            List<OutputSchema> firstRound = collectChunks(agent.stream(firstInputs, firstSession, List.of(StreamMode.OUTPUT)));
+            assertFalse(firstRound.isEmpty(), "Initial round should emit stream output");
+            assertEquals(1, AGENT_MODEL_INVOCATIONS.get(), "First round should plan exactly once");
+
+            String firstInteractionId = extractFirstInteractionId(firstRound);
+            otherPendingComponentId = "questioner".equals(firstInteractionId) ? "questioner_2" : "questioner";
+        } finally {
+            firstSession.postRun();
+        }
+
+        AgentSessionApi resumedSession = AgentSessionApi.create(sessionId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        InteractiveInput resumeInput = new InteractiveInput();
+        resumeInput.update(otherPendingComponentId, "海淀区");
+        Map<String, Object> resumeInputs = Map.of("query", resumeInput);
+        resumedSession.preRun(resumeInputs);
+        try {
+            List<OutputSchema> resumed = collectChunks(agent.stream(resumeInputs, resumedSession, List.of(StreamMode.OUTPUT)));
+            assertFalse(resumed.isEmpty(), "Resume round should emit stream output");
+            assertEquals(1, AGENT_MODEL_INVOCATIONS.get(),
+                    "Resume by a non-first pending component id should avoid replanning");
+        } finally {
+            resumedSession.postRun();
         }
     }
 
@@ -217,6 +335,46 @@ public class QuestionerContextRegressionTest {
         flow.addConnection("questioner", "interactive");
         flow.addConnection("interactive", "e");
         return flow;
+    }
+
+    private Workflow buildParallelQuestionerWorkflow(String id, String version, String name) {
+        WorkflowCard card = WorkflowCard.builder()
+                .id(id)
+                .version(version)
+                .name(name)
+                .description("parallel questioner test workflow")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of("query", Map.of("type", "string", "description", "用户输入")),
+                        "required", List.of("query")))
+                .build();
+        String workflowKey = id + "_" + version;
+        workflowIds.add(workflowKey);
+
+        Workflow flow = new Workflow(card);
+        flow.setStartComp("s", new Start(), Map.of("query", "${query}"), null);
+        flow.addWorkflowComp("questioner", directQuestioner("请问你的姓名是什么？"),
+                Map.of("query", "${s.query}"), null);
+        flow.addWorkflowComp("questioner_2", directQuestioner("请问你的地址是什么？"),
+                Map.of("query", "${s.query}"), null);
+        flow.setEndComp("e", new End(), Map.of(
+                "name", "${questioner.user_response}",
+                "address", "${questioner_2.user_response}"), null);
+        flow.addConnection("s", "questioner");
+        flow.addConnection("s", "questioner_2");
+        flow.addConnection("questioner", "e");
+        flow.addConnection("questioner_2", "e");
+        return flow;
+    }
+
+    private QuestionerComponent directQuestioner(String questionContent) {
+        QuestionerConfig questionerConfig = new QuestionerConfig();
+        questionerConfig.setModelClientConfig(questionerClientConfig());
+        questionerConfig.setModelConfig(questionerRequestConfig());
+        questionerConfig.setQuestionContent(questionContent);
+        questionerConfig.setExtractFieldsFromResponse(false);
+        questionerConfig.setWithChatHistory(false);
+        return new QuestionerComponent(questionerConfig);
     }
 
     private static FieldInfo field(String name, String description) {
@@ -315,6 +473,23 @@ public class QuestionerContextRegressionTest {
         return result;
     }
 
+    private static String extractFirstInteractionId(List<OutputSchema> outputs) {
+        for (OutputSchema output : outputs) {
+            if ("__interaction__".equals(output.getType()) && output.getPayload() != null) {
+                try {
+                    Object id = output.getPayload().getClass().getMethod("getId").invoke(output.getPayload());
+                    if (id instanceof String value) {
+                        return value;
+                    }
+                } catch (Exception e) {
+                    fail("Failed to read interaction id: " + e.getMessage());
+                }
+            }
+        }
+        fail("Expected at least one interaction output");
+        return "";
+    }
+
     // ==================== Interactive Component ====================
 
     /**
@@ -387,6 +562,7 @@ public class QuestionerContextRegressionTest {
                                        String model, Integer maxTokens, String stop,
                                        BaseOutputParser outputParser, Float timeout,
                                        Map<String, Object> kwargs) {
+            AGENT_MODEL_INVOCATIONS.incrementAndGet();
             List<MsgView> views = toViews(messages);
             boolean hasToolMessage = views.stream().anyMatch(v -> "tool".equals(v.role));
             String latestUserContent = views.stream()
@@ -445,6 +621,12 @@ public class QuestionerContextRegressionTest {
         }
 
         private static String resolveWorkflowName(String latestUserContent) {
+            if (latestUserContent.contains("parallel interrupt")) {
+                return "parallel_interrupt_workflow";
+            }
+            if (latestUserContent.contains("parallel resume")) {
+                return "parallel_resume_workflow";
+            }
             if (latestUserContent.contains("095")) {
                 return "my_questioner095";
             }

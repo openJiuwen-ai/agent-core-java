@@ -70,13 +70,13 @@ public class AbilityManager implements ToolRegistry {
 
     private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
-            tools.put(toolCard.getName(), toolCard);
+            tools.putIfAbsent(toolCard.getName(), toolCard);
         } else if (ability instanceof WorkflowCard wfCard) {
-            workflows.put(wfCard.getName(), wfCard);
+            workflows.putIfAbsent(wfCard.getName(), wfCard);
         } else if (ability instanceof AgentCard agentCard) {
-            agents.put(agentCard.getName(), agentCard);
+            agents.putIfAbsent(agentCard.getName(), agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
-            mcpServers.put(mcpConfig.getServerName(), mcpConfig);
+            mcpServers.putIfAbsent(mcpConfig.getServerName(), mcpConfig);
         } else {
             Loggers.AGENT.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
         }
@@ -364,18 +364,7 @@ public class AbilityManager implements ToolRegistry {
      */
     public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
         String toolName = toolCall.getName();
-
-        Map<String, Object> toolArgs;
-        try {
-            String args = toolCall.getArguments();
-            if (args != null && !args.isBlank()) {
-                toolArgs = MAPPER.readValue(args, new TypeReference<>() {});
-            } else {
-                toolArgs = Map.of();
-            }
-        } catch (Exception e) {
-            toolArgs = Map.of();
-        }
+        Map<String, Object> toolArgs = parseToolArguments(toolCall);
 
         Object result;
 
@@ -409,7 +398,8 @@ public class AbilityManager implements ToolRegistry {
             AgentCard agentCard = agents.get(toolName);
             String agentId = agentCard.getId() != null ? agentCard.getId() : agentCard.getName();
             try {
-                result = Runner.runAgent(agentId, toolArgs, adaptSubtaskSession(session), null);
+                Object childSession = adaptChildAgentSession(session, toolCall, agentCard, toolArgs);
+                result = Runner.runAgent(agentId, toolArgs, childSession, null);
             } catch (Exception e) {
                 String errorMsg = "Agent execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -441,6 +431,20 @@ public class AbilityManager implements ToolRegistry {
                 .build();
 
         return new ToolExecutionEntry(toolCall, result, toolMessage, ToolExecutionClassification.SUCCESS, null);
+    }
+
+    private static Map<String, Object> parseToolArguments(ToolCall toolCall) {
+        String args = toolCall.getArguments();
+        if (args == null || args.isBlank()) {
+            return Map.of();
+        }
+
+        try {
+            Map<String, Object> parsedArgs = MAPPER.readValue(args, new TypeReference<>() {});
+            return parsedArgs != null ? parsedArgs : Map.of();
+        } catch (Exception e) {
+            throw buildExecutionError(toolCall, "Malformed tool arguments JSON: " + e.getMessage());
+        }
     }
 
     private static ToolExecutionClassification classifyException(Throwable throwable) {
@@ -560,5 +564,29 @@ public class AbilityManager implements ToolRegistry {
             return session;
         }
         return session != null ? session.getSessionId() : null;
+    }
+
+    private Object adaptChildAgentSession(Session session,
+                                          ToolCall toolCall,
+                                          AgentCard agentCard,
+                                          Map<String, Object> toolArgs) {
+        if (!(session instanceof AgentSessionApi agentSession)) {
+            return adaptSubtaskSession(session);
+        }
+        String parentSessionId = agentSession.getSessionId();
+        String childSessionId = parentSessionId != null && toolCall.getId() != null
+                ? parentSessionId + ":" + toolCall.getId()
+                : parentSessionId;
+        if (childSessionId != null && !childSessionId.isBlank()) {
+            toolArgs.put("conversation_id", childSessionId);
+        }
+
+        AgentSessionApi childSession = AgentSessionApi.create(
+                childSessionId,
+                agentSession.getEnvs(),
+                agentCard
+        );
+        childSession.getInner().state().setState(agentSession.getInner().state().getState());
+        return childSession;
     }
 }

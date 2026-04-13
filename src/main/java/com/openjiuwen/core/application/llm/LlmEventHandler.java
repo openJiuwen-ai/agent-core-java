@@ -263,7 +263,7 @@ public class LlmEventHandler extends EventHandler {
                             task, session, currentAiMessage, remainingTasks,
                             lastResult.output, iteration
                     );
-                    return handleTaskInterrupted(state);
+                    return handleTaskInterrupted(state, context);
                 }
 
                 // Handle error
@@ -436,7 +436,7 @@ public class LlmEventHandler extends EventHandler {
 
     // ==================== Interruption Handling ====================
 
-    private Map<String, Object> handleTaskInterrupted(TaskInterruptionState interruptionState) {
+    private Map<String, Object> handleTaskInterrupted(TaskInterruptionState interruptionState, ModelContext context) {
         interruptTask(interruptionState);
 
         // Add mock tool message to context
@@ -444,6 +444,7 @@ public class LlmEventHandler extends EventHandler {
                 "[INTERRUPTED - Waiting for user input]",
                 interruptionState.getTask().getTaskId()
         );
+        context.addMessages(mockToolMsg);
         Loggers.CONTROLLER.info("Task interrupted, saved state for later resumption");
 
         List<Object> firstInterrupt = getFirstInterrupt(interruptionState.getInteractionData());
@@ -470,7 +471,7 @@ public class LlmEventHandler extends EventHandler {
                 "interrupted_tasks", k -> new HashMap<>());
 
         List<String> componentIds = extractComponentIdsFromInteractionData(
-            getFirstInterrupt(interruptionState.getInteractionData()));
+                interruptionState.getInteractionData());
         String stateKey = workflowId.replace('.', '_');
 
         Map<String, Object> taskInfo = new HashMap<>();

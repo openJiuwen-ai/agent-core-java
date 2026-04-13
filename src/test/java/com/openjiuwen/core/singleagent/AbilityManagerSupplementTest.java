@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -348,15 +349,29 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallInvalidJson() {
+        String toolName = "invalid-json-tool";
+        ToolCard toolCard = ToolCard.builder()
+                .id(toolName)
+                .name(toolName)
+                .description("used to verify malformed args fail fast")
+                .inputParams(Map.of("type", "object", "properties", Map.of()))
+                .build();
+        manager.add(toolCard);
+        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of("received", inputs)), null);
+
         ToolCall tc = ToolCall.builder()
                 .id("tc-4")
-                .name("nonexistent-tool")
+                .name(toolName)
                 .arguments("not json")
                 .build();
 
-        // Invalid JSON args should be handled gracefully, then fail on tool lookup
-        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
-                .isInstanceOf(AbilityExecutionError.class);
+        try {
+            assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                    .isInstanceOf(AbilityExecutionError.class)
+                    .hasMessageContaining("Malformed tool arguments JSON");
+        } finally {
+            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
+        }
     }
 
     @Test
@@ -382,6 +397,44 @@ class AbilityManagerSupplementTest {
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
                 .isInstanceOf(AbilityExecutionError.class)
                 .hasMessageContaining("MCP tool execution not yet implemented");
+    }
+
+    @Test
+    void executeSingleToolCallCreatesChildSessionForAgentAbilities() {
+        AgentCard childAgentCard = AgentCard.builder()
+                .id("child-agent-id")
+                .name("child-agent")
+                .description("child agent")
+                .build();
+        RecordingChildAgent childAgent = new RecordingChildAgent();
+        manager.add(childAgentCard);
+        Runner.resourceMgr().addAgent(childAgentCard, () -> childAgent, null);
+
+        AgentSessionApi parentSession = AgentSessionApi.create("parent-session", Map.of("ENV", "value"), null);
+        parentSession.updateState(Map.of("interrupt_auto_confirm", Map.of("read_file", true)));
+
+        try {
+            ToolCall tc = ToolCall.builder()
+                    .id("tc-child")
+                    .name("child-agent")
+                    .arguments("{\"query\":\"hello\"}")
+                    .build();
+
+            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(tc, parentSession, null);
+
+            assertThat(entry.result()).isEqualTo(Map.of(
+                    "session_id", "parent-session:tc-child",
+                    "conversation_id", "parent-session:tc-child",
+                    "state", Map.of("read_file", true)
+            ));
+            assertThat(childAgent.seenSession).isNotSameAs(parentSession);
+            assertThat(childAgent.seenSession.getSessionId()).isEqualTo("parent-session:tc-child");
+            assertThat(childAgent.seenInputs).containsEntry("conversation_id", "parent-session:tc-child");
+            assertThat(childAgent.seenSession.getState("interrupt_auto_confirm"))
+                    .isEqualTo(Map.of("read_file", true));
+        } finally {
+            Runner.resourceMgr().removeAgent(childAgentCard.getId(), null, TagMatchStrategy.ALL, true);
+        }
     }
 
     // ========== ToolExecutionEntry record ==========
@@ -419,5 +472,22 @@ class AbilityManagerSupplementTest {
         assertThat(entry.toolMessage()).isNull();
         assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
         assertThat(entry.errorMessage()).isEqualTo("boom");
+    }
+
+    private static final class RecordingChildAgent {
+        private AgentSessionApi seenSession;
+        private Map<String, Object> seenInputs;
+
+        private Map<String, Object> invoke(Object inputs, AgentSessionApi session) {
+            seenSession = session;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> inputMap = (Map<String, Object>) inputs;
+            seenInputs = inputMap;
+            return Map.of(
+                    "session_id", session.getSessionId(),
+                    "conversation_id", inputMap.get("conversation_id"),
+                    "state", session.getState("interrupt_auto_confirm")
+            );
+        }
     }
 }
