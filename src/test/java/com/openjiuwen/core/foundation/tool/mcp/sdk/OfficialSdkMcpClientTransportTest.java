@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.tool.mcp.sdk.support.LocalOfficialMcpHttpF
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -69,6 +70,41 @@ class OfficialSdkMcpClientTransportTest {
             assertEquals(OfficialSdkMcpClient.ReadyStage.INITIALIZE, exception.getStage());
             assertFalse(exception.getMessage().contains("SseClient"));
         }
+    }
+
+    @Test
+    @DisplayName("sse target parsing preserves nested base path for official transport")
+    void sseTargetParsingPreservesNestedBasePath() throws Exception {
+        OfficialSdkMcpClient client = new OfficialSdkMcpClient(baseHttpConfig("http://127.0.0.1:8080/root/api/sse", "sse"),
+                OfficialMcpClientFactory.map(baseHttpConfig("http://127.0.0.1:8080/root/api/sse", "sse")));
+
+        Method parseMethod = OfficialSdkMcpClient.class.getDeclaredMethod("parseHttpTarget", String.class);
+        parseMethod.setAccessible(true);
+        Object target = parseMethod.invoke(client, "http://127.0.0.1:8080/root/api/sse?token=test");
+
+        Method baseUriMethod = target.getClass().getDeclaredMethod("baseUri");
+        Method endpointMethod = target.getClass().getDeclaredMethod("endpoint");
+
+        assertEquals("http://127.0.0.1:8080/root/api/", baseUriMethod.invoke(target));
+        assertEquals("sse?token=test", endpointMethod.invoke(target));
+    }
+
+    @Test
+    @DisplayName("streamable http target parsing preserves nested base path for official transport")
+    void streamableHttpTargetParsingPreservesNestedBasePath() throws Exception {
+        OfficialSdkMcpClient client = new OfficialSdkMcpClient(
+                baseHttpConfig("http://127.0.0.1:8080/root/api/mcp", "streamable-http"),
+                OfficialMcpClientFactory.map(baseHttpConfig("http://127.0.0.1:8080/root/api/mcp", "streamable-http")));
+
+        Method parseMethod = OfficialSdkMcpClient.class.getDeclaredMethod("parseHttpTarget", String.class);
+        parseMethod.setAccessible(true);
+        Object target = parseMethod.invoke(client, "http://127.0.0.1:8080/root/api/mcp?token=test");
+
+        Method baseUriMethod = target.getClass().getDeclaredMethod("baseUri");
+        Method endpointMethod = target.getClass().getDeclaredMethod("endpoint");
+
+        assertEquals("http://127.0.0.1:8080/root/api/", baseUriMethod.invoke(target));
+        assertEquals("mcp?token=test", endpointMethod.invoke(target));
     }
 
     @Test
