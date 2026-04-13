@@ -324,19 +324,29 @@ public class OfficialSdkMcpClient implements McpClient {
 
     private ParsedHttpTransportTarget parseHttpTarget(String serverPath) {
         URI serverUri = URI.create(serverPath);
-        String endpoint = serverUri.getRawPath();
-        if (endpoint == null || endpoint.isBlank()) {
-            endpoint = "/";
+        String path = serverUri.getRawPath();
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            return new ParsedHttpTransportTarget(
+                    buildBaseUri(serverUri, "/"),
+                    buildEndpointUri(".", serverUri.getRawQuery())
+            );
+        }
+
+        int lastSlash = path.lastIndexOf('/');
+        String basePath = lastSlash >= 0 ? path.substring(0, lastSlash + 1) : "/";
+        String endpoint = path.substring(lastSlash + 1);
+        if (endpoint.isBlank()) {
+            endpoint = ".";
         }
         return new ParsedHttpTransportTarget(
-                buildBaseUri(serverUri),
+                buildBaseUri(serverUri, basePath),
                 buildEndpointUri(endpoint, serverUri.getRawQuery())
         );
     }
 
-    private String buildBaseUri(URI serverUri) {
+    private String buildBaseUri(URI serverUri, String path) {
         try {
-            return new URI(serverUri.getScheme(), null, serverUri.getHost(), serverUri.getPort(), null, null, null)
+            return new URI(serverUri.getScheme(), null, serverUri.getHost(), serverUri.getPort(), path, null, null)
                     .toASCIIString();
         } catch (URISyntaxException exception) {
             throw new IllegalArgumentException("Invalid MCP server URI: " + serverUri, exception);
