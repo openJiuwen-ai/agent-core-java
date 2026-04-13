@@ -26,11 +26,21 @@ public enum ModelHttpVersion {
         this.jdkVersion = jdkVersion;
     }
 
+    /**
+     * Get the string value of this {@link ModelHttpVersion}.
+     *
+     * @return the string value
+     */
     @JsonValue
     public String getValue() {
         return value;
     }
 
+    /**
+     * Get the JDK {@link HttpClient.Version} corresponding to this {@link ModelHttpVersion}.
+     *
+     * @return the JDK {@link HttpClient.Version}
+     */
     public HttpClient.Version toJdkVersion() {
         return jdkVersion;
     }
