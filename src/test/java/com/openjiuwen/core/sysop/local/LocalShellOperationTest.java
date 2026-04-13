@@ -58,6 +58,17 @@ class LocalShellOperationTest {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
+    private static boolean isPythonAvailable() {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) return false;
+        String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python3";
+        for (String dir : pathEnv.split(File.pathSeparator)) {
+            File f = new File(dir, pythonExe);
+            if (f.exists() && f.isFile() && f.canExecute()) return true;
+        }
+        return false;
+    }
+
     // ==================== executeCmd Test Cases ====================
 
     @Test
@@ -135,6 +146,10 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Shell command timeout")
     void testShellTimeout() {
+        if (!isPythonAvailable()){
+            System.out.println("Skipping testShellTimeout because python is not available.");
+            return;
+        }
         String cmd = "python -c \"import time; time.sleep(5)\"";
         ExecuteCmdResult res = shell().executeCmd(cmd, null, 1, null, null);
 
