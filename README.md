@@ -66,6 +66,23 @@ assistant> Transfer service completed, recorded transfer amount is 2000元.
 
 For more complete examples, please check the [examples/workflow_agent](examples/workflow_agent/) directory.
 
+### Model Connection Configuration
+
+When you build model connection settings directly with `ModelClientConfig` or `BaseModelInfo`, you can use `httpVersion` / `http_version` to control the HTTP version used by the underlying `HttpClient`.
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider("OpenAI")
+        .apiKey("sk-test")
+        .apiBase("https://your-api-base.example/v1")
+        .httpVersion(ModelHttpVersion.HTTP_1_1)
+        .build();
+```
+
+- If `httpVersion` is not set, the framework keeps the JDK `HttpClient` default negotiation behavior.
+- If a model endpoint only supports HTTP/1.1, set `httpVersion` to `ModelHttpVersion.HTTP_1_1` explicitly.
+- The example `apiconfig.json` template does not read `http_version` yet, so this option currently applies to code-based `ModelClientConfig` or `BaseModelInfo` construction.
+
 ## Architecture Design
 
 As the core engine of the openJiuwen architecture, **openJiuwen Core Java** has the following core capabilities:

@@ -32,6 +32,7 @@ public class ModelClientConfig {
     private final String apiKey;
     private final String apiBase;
     private final double timeout;
+    private final ModelHttpVersion httpVersion;
     private final int maxRetries;
     private final boolean verifySsl;
     private final String sslCert;
@@ -51,6 +52,7 @@ public class ModelClientConfig {
                     (builder.timeout == (int)builder.timeout ? "int" : "float") + "]");
         }
         this.timeout = builder.timeout;
+        this.httpVersion = builder.httpVersion;
         
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
@@ -74,6 +76,9 @@ public class ModelClientConfig {
     public String getApiBase() { return apiBase; }
 
     public double getTimeout() { return timeout; }
+
+    @JsonProperty("http_version")
+    public ModelHttpVersion getHttpVersion() { return httpVersion; }
 
     @JsonProperty("max_retries")
     public int getMaxRetries() { return maxRetries; }
@@ -108,6 +113,7 @@ public class ModelClientConfig {
         private String apiKey;
         private String apiBase;
         private double timeout = 60.0;
+        private ModelHttpVersion httpVersion;
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;
@@ -128,6 +134,9 @@ public class ModelClientConfig {
 
         @JsonProperty("timeout")
         public Builder timeout(double timeout) { this.timeout = timeout; return this; }
+
+        @JsonProperty("http_version")
+        public Builder httpVersion(ModelHttpVersion httpVersion) { this.httpVersion = httpVersion; return this; }
 
         @JsonProperty("max_retries")
         public Builder maxRetries(int maxRetries) { this.maxRetries = maxRetries; return this; }
