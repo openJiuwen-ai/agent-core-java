@@ -47,6 +47,8 @@ public class BaseModelInfo {
     private boolean streaming = false;
 
     private int timeout = 60;
+    @JsonProperty("http_version")
+    private ModelHttpVersion httpVersion;
     @JsonProperty("verify_ssl")
     private boolean verifySsl = true;
     @JsonProperty("ssl_cert")
@@ -65,6 +67,7 @@ public class BaseModelInfo {
      * @param topP        the top-p sampling parameter
      * @param streaming   whether to enable streaming
      * @param timeout     the request timeout in seconds
+     * @param httpVersion the preferred HTTP version for requests
      * @param verifySsl   whether to verify SSL certificates
      * @param sslCert     the SSL certificate path
      * @param headers     additional HTTP headers
@@ -72,7 +75,8 @@ public class BaseModelInfo {
      */
     @Builder
     public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
-                         Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert,
+                         Boolean streaming, Integer timeout, ModelHttpVersion httpVersion, Boolean verifySsl,
+                         String sslCert,
                          Map<String, String> headers, Map<String, Object> extraFields) {
         this.apiKey = apiKey == null ? "" : apiKey;
         this.apiBase = apiBase;
@@ -81,6 +85,7 @@ public class BaseModelInfo {
         this.topP = topP == null ? 0.1 : topP;
         this.streaming = streaming != null && streaming;
         this.timeout = timeout == null ? 60 : validatePositive(timeout);
+        this.httpVersion = httpVersion;
         this.verifySsl = verifySsl == null || verifySsl;
         this.sslCert = sslCert;
         this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);

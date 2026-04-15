@@ -86,6 +86,9 @@ public abstract class BaseModelClient {
     protected HttpClient buildHttpClient(double timeoutSeconds) {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(Math.max(1_000L, Math.round(timeoutSeconds * 1_000))));
+        if (modelClientConfig.getHttpVersion() != null) {
+            builder.version(modelClientConfig.getHttpVersion().toJdkVersion());
+        }
         SslUtils.configureHttpClientSsl(
                 builder,
                 modelClientConfig.getApiBase(),

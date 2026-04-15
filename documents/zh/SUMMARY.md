@@ -238,6 +238,7 @@
             - [MergeUtils](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/MergeUtils.md)
             - [ModelClientConfig](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/ModelClientConfig.md)
             - [ModelConfig](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/ModelConfig.md)
+            - [ModelHttpVersion](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/ModelHttpVersion.md)
             - [ModelRequestConfig](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/ModelRequestConfig.md)
             - [ProviderType](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/ProviderType.md)
             - [SystemMessage](2.开发指南/API文档/com.openjiuwen.core/foundation/llm/schema/SystemMessage.md)
