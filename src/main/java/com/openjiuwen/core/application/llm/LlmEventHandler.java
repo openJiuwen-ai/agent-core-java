@@ -634,6 +634,7 @@ public class LlmEventHandler extends EventHandler {
                 .apiKey(modelInfo.getApiKey())
                 .apiBase(modelInfo.getApiBase())
                 .timeout(modelInfo.getTimeout())
+                .httpVersion(modelInfo.getHttpVersion())
                 .verifySsl(modelInfo.isVerifySsl())
                 .sslCert(modelInfo.getSslCert())
                 .headers(modelInfo.getHeaders())

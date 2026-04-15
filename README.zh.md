@@ -68,6 +68,23 @@ assistant> 转账服务完成，记录的转账金额为 2000元。
 
 更多完整示例请查看[examples/workflow_agent](examples/workflow_agent/)目录。
 
+### 模型连接配置说明
+
+当你直接通过 `ModelClientConfig` 或 `BaseModelInfo` 组装模型连接参数时，可以使用 `httpVersion` / `http_version` 控制底层 `HttpClient` 的 HTTP 版本。
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider("OpenAI")
+        .apiKey("sk-test")
+        .apiBase("https://your-api-base.example/v1")
+        .httpVersion(ModelHttpVersion.HTTP_1_1)
+        .build();
+```
+
+- 默认不设置 `httpVersion`，保持 JDK `HttpClient` 的默认协商行为。
+- 当部分模型服务端只支持 HTTP/1.1 时，可显式设置为 `ModelHttpVersion.HTTP_1_1`。
+- 当前示例目录下的 `apiconfig.json` 模板还不读取 `http_version`，该配置项适用于代码方式构造 `ModelClientConfig` 或 `BaseModelInfo` 的场景。
+
 ## 架构设计
 
 **openJiuwen Core Java**作为openJiuwen架构的核心引擎，核心能力包括：

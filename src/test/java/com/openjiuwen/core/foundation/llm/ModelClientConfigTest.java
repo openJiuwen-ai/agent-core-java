@@ -2,7 +2,9 @@
 package com.openjiuwen.core.foundation.llm;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
+import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -118,6 +120,35 @@ class ModelClientConfigTest {
                     .timeout(120.0)
                     .build();
             assertEquals(120.0, cfg.getTimeout());
+        }
+
+        @Test
+        @DisplayName("Config allows custom http version")
+        void testConfigCustomHttpVersion() {
+            ModelClientConfig cfg = ModelClientConfig.builder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .apiKey("sk-test")
+                    .apiBase("http://localhost")
+                    .httpVersion(ModelHttpVersion.HTTP_1_1)
+                    .build();
+            assertEquals(ModelHttpVersion.HTTP_1_1, cfg.getHttpVersion());
+        }
+
+        @Test
+        @DisplayName("BaseModelInfo preserves custom http version")
+        void testBaseModelInfoCustomHttpVersion() {
+            BaseModelInfo modelInfo = BaseModelInfo.builder()
+                    .apiBase("http://localhost")
+                    .httpVersion(ModelHttpVersion.HTTP_2)
+                    .build();
+            assertEquals(ModelHttpVersion.HTTP_2, modelInfo.getHttpVersion());
+        }
+
+        @Test
+        @DisplayName("ModelHttpVersion accepts legacy string aliases")
+        void testModelHttpVersionAliases() {
+            assertEquals(ModelHttpVersion.HTTP_1_1, ModelHttpVersion.fromValue("HTTP/1.1"));
+            assertEquals(ModelHttpVersion.HTTP_2, ModelHttpVersion.fromValue("2"));
         }
 
         @Test

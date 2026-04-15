@@ -229,6 +229,7 @@ public class LegacyReActAgent extends BaseAgent {
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
+                    .httpVersion(modelInfo.getHttpVersion())
                     .verifySsl(false)
                     .build();
 
@@ -275,6 +276,7 @@ public class LegacyReActAgent extends BaseAgent {
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
+                    .httpVersion(modelInfo.getHttpVersion())
                     .verifySsl(false)
                     .build());
             config.setModelConfigObj(ModelRequestConfig.builder()
