@@ -50,7 +50,8 @@ class LocalCodeOperationTest {
         String nodeExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "node.exe" : "node";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, nodeExe);
-            if (f.exists() && f.isFile() && f.canExecute()) return true;
+            if (f.exists() && f.isFile() && f.canExecute())
+                return true;
         }
         return false;
     }
@@ -59,12 +60,9 @@ class LocalCodeOperationTest {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return false;
         String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python";
-        String python3Exe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python3.exe" : "python3";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, pythonExe);
             if (f.exists() && f.isFile() && f.canExecute()) return true;
-            File f3 = new File(dir, python3Exe);
-            if (f3.exists() && f3.isFile() && f3.canExecute()) return true;
         }
         return false;
     }

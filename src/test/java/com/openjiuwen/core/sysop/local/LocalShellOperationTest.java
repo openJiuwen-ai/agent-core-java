@@ -63,12 +63,10 @@ class LocalShellOperationTest {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return false;
         String pythonExe = isWindows() ? "python.exe" : "python";
-        String python3Exe = isWindows() ? "python3.exe" : "python3";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute()) return true;
-            File f3 = new File(dir, python3Exe);
-            if (f3.exists() && f3.isFile() && f3.canExecute()) return true;
+            if (f.exists() && f.isFile() && f.canExecute())
+                return true;
         }
         return false;
     }
