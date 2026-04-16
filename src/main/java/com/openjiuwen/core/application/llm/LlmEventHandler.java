@@ -79,6 +79,12 @@ public class LlmEventHandler extends EventHandler {
     private final boolean enableMemory;
     private final LongTermMemory longTermMemoryInstance;
 
+    /**
+     * Create an event handler for an LLM agent.
+     *
+     * @param agentConfig agent configuration
+     * @param contextEngine context engine used to build model context
+     */
     public LlmEventHandler(LlmAgentConfig agentConfig, ContextEngine contextEngine) {
         this.agentConfig = agentConfig;
         this.appContextEngine = contextEngine;
@@ -94,6 +100,12 @@ public class LlmEventHandler extends EventHandler {
 
     // ==================== EventHandler Implementation ====================
 
+    /**
+     * Handle user input events and enter the ReAct execution flow.
+     *
+     * @param inputs event handler inputs
+     * @return controller output payload
+     */
     @Override
     public Map<String, Object> handleInput(EventHandlerInput inputs) {
         Event event = inputs.getEvent();
@@ -140,7 +152,9 @@ public class LlmEventHandler extends EventHandler {
     }
 
     /**
-     * Set prompt template on the config.
+     * Update the prompt template stored on the agent config.
+     *
+     * @param promptTemplate prompt template messages
      */
     public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
         agentConfig.setPromptTemplate(promptTemplate);

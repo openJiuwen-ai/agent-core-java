@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -213,6 +214,12 @@ public class AbilityManager implements ToolRegistry {
 
     // ========== ToolRegistry interface ==========
 
+    /**
+     * Update the description of a registered tool card.
+     *
+     * @param toolName tool name
+     * @param description new tool description
+     */
     @Override
     public void setToolDescription(String toolName, String description) {
         ToolCard toolCard = tools.get(toolName);
@@ -441,9 +448,10 @@ public class AbilityManager implements ToolRegistry {
         }
 
         try {
-            Map<String, Object> parsedArgs = MAPPER.readValue(args, new TypeReference<>() {});
+            Map<String, Object> parsedArgs = MAPPER.readValue(args, new TypeReference<>() {
+            });
             return parsedArgs != null ? parsedArgs : Map.of();
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw buildExecutionError(toolCall, "Malformed tool arguments JSON: " + e.getMessage());
         }
     }
@@ -516,10 +524,10 @@ public class AbilityManager implements ToolRegistry {
      * Result entry from tool execution.
      *
      * @param toolCall       the effective tool call metadata
-     * @param result      the raw result
-     * @param toolMessage the tool message for LLM context
+     * @param result         the raw result
+     * @param toolMessage    the tool message for LLM context
      * @param classification raw execution classification, interpreted later by ReActAgent
-     * @param errorMessage optional execution error detail
+     * @param errorMessage   optional execution error detail
      */
     public record ToolExecutionEntry(
             ToolCall toolCall,
@@ -527,8 +535,12 @@ public class AbilityManager implements ToolRegistry {
             ToolMessage toolMessage,
             ToolExecutionClassification classification,
             String errorMessage
-    ) {}
+    ) {
+    }
 
+    /**
+     * Classification of a single tool execution outcome.
+     */
     public enum ToolExecutionClassification {
         SUCCESS,
         ERROR,

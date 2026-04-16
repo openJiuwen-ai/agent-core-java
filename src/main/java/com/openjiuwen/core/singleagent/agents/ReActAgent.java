@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
@@ -70,6 +70,11 @@ public class ReActAgent extends BaseAgent {
     private ContextEngine contextEngine;
     private Model llm;
 
+    /**
+     * Create a ReAct agent with the given card metadata.
+     *
+     * @param card agent metadata card
+     */
     public ReActAgent(AgentCard card) {
         super(card);
         this.config = createDefaultConfig();
@@ -87,10 +92,21 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    /**
+     * Create the default config used before external configuration is applied.
+     *
+     * @return default ReAct agent config
+     */
     protected ReActAgentConfig createDefaultConfig() {
         return ReActAgentConfig.builder().build();
     }
 
+    /**
+     * Apply a new agent configuration.
+     *
+     * @param configObj config object, expected to be {@link ReActAgentConfig}
+     * @return current agent instance
+     */
     @Override
     public BaseAgent configure(Object configObj) {
         if (!(configObj instanceof ReActAgentConfig newConfig)) {
@@ -131,11 +147,21 @@ public class ReActAgent extends BaseAgent {
         return this;
     }
 
+    /**
+     * Return the current agent configuration.
+     *
+     * @return current config object
+     */
     @Override
     public Object getConfig() {
         return config;
     }
 
+    /**
+     * Return the context engine currently used by this agent.
+     *
+     * @return active context engine
+     */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
@@ -327,6 +353,13 @@ public class ReActAgent extends BaseAgent {
         return context;
     }
 
+    /**
+     * Run the agent in non-streaming mode.
+     *
+     * @param inputs invoke inputs
+     * @param session runtime session, or null to create one automatically
+     * @return invoke result payload
+     */
     @Override
     public Object invoke(Object inputs, Session session) {
         InvokeInputs invokeInputs = buildInvokeInputs(inputs);
@@ -356,6 +389,14 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    /**
+     * Run the agent in streaming mode.
+     *
+     * @param inputs invoke inputs
+     * @param session runtime session, or null to create one automatically
+     * @param streamModes enabled stream modes
+     * @return iterator over streamed output items
+     */
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
         InvokeInputs invokeInputs = buildInvokeInputs(inputs);
@@ -383,9 +424,8 @@ public class ReActAgent extends BaseAgent {
                 invokeInputs.setResult(terminalOutcome.invokeResult());
                 restoreInterrupt = terminalOutcome.restoreInterrupt();
                 writeTerminalOutcome(agentSession, terminalOutcome);
-            } catch (Error e) {
-                throw e;
             } catch (Exception e) {
+                // 该场景仅适合捕获通用异常
                 String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 Loggers.AGENT.error("ReActAgent stream error: " + errorMsg);
                 TerminalOutcome terminalOutcome = buildFailureOutcome(errorMsg);
@@ -654,7 +694,7 @@ public class ReActAgent extends BaseAgent {
         }
         try {
             return OBJECT_MAPPER.writeValueAsString(resumeValue);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             Loggers.AGENT.warning("Failed to serialize resume arguments, falling back to string value: {}",
                     e.getMessage());
             return String.valueOf(resumeValue);
@@ -958,8 +998,6 @@ public class ReActAgent extends BaseAgent {
             }
 
             return buildFailureOutcome("Max iterations reached without completion");
-        } catch (Error e) {
-            throw e;
         } catch (Exception e) {
             Optional<InterruptedException> interruptedException = findInterruptedException(e);
             if (interruptedException.isPresent()) {
