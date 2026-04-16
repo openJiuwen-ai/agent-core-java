@@ -46,6 +46,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -111,18 +112,27 @@ public class LlmEventHandler extends EventHandler {
         }
     }
 
+    /**
+     * 这里不改成 Optional，因为 EventHandler 的继承契约已将该覆写方法固定为返回 Map。
+     */
     @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Task interaction received");
         return null;
     }
 
+    /**
+     * 这里不改成 Optional，因为 EventHandler 的继承契约已将该覆写方法固定为返回 Map。
+     */
     @Override
     public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Task completion received");
         return null;
     }
 
+    /**
+     * 这里不改成 Optional，因为 EventHandler 的继承契约已将该覆写方法固定为返回 Map。
+     */
     @Override
     public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Task failed received");
@@ -159,7 +169,7 @@ public class LlmEventHandler extends EventHandler {
         InteractiveInput interactiveInput = extractInteractiveInput(event);
         if (interactiveInput != null && interactiveInput.getUserInputs() != null
                 && !interactiveInput.getUserInputs().isEmpty()) {
-            ResumeResult resume = findInterruptedTaskByNodeId(interactiveInput, session);
+            ResumeResult resume = findInterruptedTaskByNodeId(interactiveInput, session).orElse(null);
             if (resume != null) {
                 Loggers.CONTROLLER.info(
                         "Resuming interrupted workflow from InteractiveInput, "
@@ -194,13 +204,13 @@ public class LlmEventHandler extends EventHandler {
 
         // Check for workflow task resumption
         int initialIteration = 1;
-        Task workflowTask = resolveWorkflowFromTasks(planResult.tasks);
-        if (workflowTask != null) {
-            ResumeResult resume = findInterruptedTask(workflowTask, session);
+        Optional<Task> workflowTask = resolveWorkflowFromTasks(planResult.tasks);
+        if (workflowTask.isPresent()) {
+            ResumeResult resume = findInterruptedTask(workflowTask.get(), session).orElse(null);
             if (resume != null) {
                 Loggers.CONTROLLER.info(
                         "Resuming interrupted workflow task: {}, last iteration: {}",
-                        workflowTask.getDescription(), resume.savedIteration
+                        workflowTask.get().getDescription(), resume.savedIteration
                 );
 
                 if (planResult.llmOutput.getToolCalls() != null
@@ -330,7 +340,7 @@ public class LlmEventHandler extends EventHandler {
     }
 
     private TaskExecutionResult executeWorkflowTask(Task task, AgentSessionApi session, ModelContext context) {
-        String workflowId = getWorkflowIdFromTask(task);
+        String workflowId = getWorkflowIdFromTask(task).orElse(null);
         if (workflowId == null || workflowId.isBlank()) {
             throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
                     "error_msg", "workflow '" + task.getDescription() + "' is not registered");
@@ -369,7 +379,7 @@ public class LlmEventHandler extends EventHandler {
 
     private TaskExecutionResult executePluginTask(Task task, AgentSessionApi session, ModelContext context) {
         String toolName = task.getDescription();
-        String toolId = findPluginIdByName(toolName);
+        String toolId = findPluginIdByName(toolName).orElse(null);
         String resolvedToolId = toolId != null ? toolId : toolName;
 
         Object tool = Runner.resourceMgr().getTool(resolvedToolId);
@@ -655,21 +665,21 @@ public class LlmEventHandler extends EventHandler {
     // ==================== Resumption Helpers ====================
 
     @SuppressWarnings("unchecked")
-    private ResumeResult findInterruptedTaskByNodeId(InteractiveInput interactiveInput,
+    private Optional<ResumeResult> findInterruptedTaskByNodeId(InteractiveInput interactiveInput,
                                                      AgentSessionApi session) {
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
         if (state == null) {
-            return null;
+            return Optional.empty();
         }
 
         Map<String, Object> interruptedTasks = (Map<String, Object>) state.get("interrupted_tasks");
         if (interruptedTasks == null || interruptedTasks.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         List<String> nodeIds = new ArrayList<>(interactiveInput.getUserInputs().keySet());
         if (nodeIds.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         Loggers.CONTROLLER.info("Looking for interrupted task with node_ids={}", nodeIds);
@@ -691,33 +701,33 @@ public class LlmEventHandler extends EventHandler {
                         (List<Map<String, Object>>) taskInfo.get("remaining_tasks"));
                 Integer savedIteration = (Integer) taskInfo.get("iteration");
 
-                return new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds);
+                return Optional.of(new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     @SuppressWarnings("unchecked")
-    private ResumeResult findInterruptedTask(Task workflowTask, AgentSessionApi session) {
+    private Optional<ResumeResult> findInterruptedTask(Task workflowTask, AgentSessionApi session) {
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
         if (state == null) {
-            return null;
+            return Optional.empty();
         }
 
         Map<String, Object> interruptedTasks = (Map<String, Object>) state.get("interrupted_tasks");
         if (interruptedTasks == null) {
-            return null;
+            return Optional.empty();
         }
 
-        String workflowId = getWorkflowIdFromSchema(workflowTask.getDescription());
-        if (workflowId == null) {
-            return null;
+        Optional<String> workflowId = getWorkflowIdFromSchema(workflowTask.getDescription());
+        if (workflowId.isEmpty()) {
+            return Optional.empty();
         }
 
-        String stateKey = workflowId.replace('.', '_');
+        String stateKey = workflowId.get().replace('.', '_');
         Map<String, Object> taskInfo = (Map<String, Object>) interruptedTasks.get(stateKey);
         if (taskInfo == null) {
-            return null;
+            return Optional.empty();
         }
 
         Loggers.CONTROLLER.info("Found interrupted task for {} (key: {})", workflowTask.getDescription(), stateKey);
@@ -728,7 +738,7 @@ public class LlmEventHandler extends EventHandler {
         Integer savedIteration = (Integer) taskInfo.get("iteration");
         List<String> componentIds = (List<String>) taskInfo.getOrDefault("component_ids", List.of());
 
-        return new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds);
+        return Optional.of(new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds));
     }
 
     // ==================== Stream Helpers ====================
@@ -816,6 +826,9 @@ public class LlmEventHandler extends EventHandler {
         return "";
     }
 
+    /**
+     * 这里不改成 Optional，因为兼容性回归测试会通过反射直接校验该私有方法返回 InteractiveInput 实例本身。
+     */
     private InteractiveInput extractInteractiveInput(Event event) {
         Map<String, Object> inputMap = extractInputMap(event);
         Object directInteractiveInput = inputMap.get("interactive_input");
@@ -855,14 +868,14 @@ public class LlmEventHandler extends EventHandler {
                 }
             }
         }
-        return findPluginIdByName(targetName);
+        return findPluginIdByName(targetName).orElse(null);
     }
 
-    private String getWorkflowIdFromTask(Task task) {
+    private Optional<String> getWorkflowIdFromTask(Task task) {
         if (task.getMetadata() != null) {
             Object targetId = task.getMetadata().get("target_id");
             if (targetId instanceof String s && !s.isEmpty()) {
-                return s;
+                return Optional.of(s);
             }
         }
         // Fallback: construct from schema
@@ -870,43 +883,39 @@ public class LlmEventHandler extends EventHandler {
         return getWorkflowIdFromSchema(targetName);
     }
 
-    private String getWorkflowIdFromSchema(String workflowName) {
+    private Optional<String> getWorkflowIdFromSchema(String workflowName) {
         if (agentConfig.getWorkflows() != null) {
             for (WorkflowSchema ws : agentConfig.getWorkflows()) {
                 if (ws.getName().equals(workflowName)) {
-                    return ws.getId() + "_" + ws.getVersion();
+                    return Optional.of(ws.getId() + "_" + ws.getVersion());
                 }
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private String ensureWorkflowId(Task task) {
-        String id = getWorkflowIdFromTask(task);
-        if (id != null) {
-            return id;
-        }
-        return "unknown";
+        return getWorkflowIdFromTask(task).orElse("unknown");
     }
 
-    private String findPluginIdByName(String toolName) {
+    private Optional<String> findPluginIdByName(String toolName) {
         if (agentConfig.getPlugins() != null) {
             for (PluginSchema ps : agentConfig.getPlugins()) {
                 if (toolName.equals(ps.getName())) {
-                    return ps.getId();
+                    return Optional.of(ps.getId());
                 }
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private Task resolveWorkflowFromTasks(List<Task> tasks) {
+    private Optional<Task> resolveWorkflowFromTasks(List<Task> tasks) {
         for (Task task : tasks) {
             if ("workflow".equals(task.getTaskType())) {
-                return task;
+                return Optional.of(task);
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private boolean isWorkflowInterrupted(Object result) {
@@ -1147,7 +1156,7 @@ public class LlmEventHandler extends EventHandler {
         if (!(event instanceof InputEvent inputEvent)) {
             return Map.of();
         }
-        Object primaryInput = extractPrimaryInput(inputEvent);
+        Object primaryInput = extractPrimaryInput(inputEvent).orElse(null);
         if (primaryInput instanceof Map<?, ?> map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> typedMap = (Map<String, Object>) map;
@@ -1156,18 +1165,18 @@ public class LlmEventHandler extends EventHandler {
         return Map.of();
     }
 
-    private Object extractPrimaryInput(InputEvent event) {
+    private Optional<Object> extractPrimaryInput(InputEvent event) {
         if (event == null || event.getInputData() == null || event.getInputData().isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         DataFrame firstInput = event.getInputData().get(0);
         if (firstInput instanceof DataFrame.TextDataFrame textDataFrame) {
-            return textDataFrame.text();
+            return Optional.of(textDataFrame.text());
         }
         if (firstInput instanceof DataFrame.JsonDataFrame jsonDataFrame) {
-            return jsonDataFrame.data();
+            return Optional.of(jsonDataFrame.data());
         }
-        return firstInput;
+        return Optional.of(firstInput);
     }
 
     private void setTaskArguments(Task task, Object arguments) {

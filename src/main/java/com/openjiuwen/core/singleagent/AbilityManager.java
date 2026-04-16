@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -86,6 +87,8 @@ public class AbilityManager implements ToolRegistry {
     /**
      * Remove an ability by name.
      *
+     * <p>这里不改成 Optional，因为这是对外兼容 API，现有调用方仍通过原始 null 返回值来判断“未找到”。
+     *
      * @param name ability name
      * @return removed ability, or null if not found
      */
@@ -130,6 +133,9 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get an ability Card by name.
+     *
+     * <p>这里不改成 Optional，因为这是跨多种能力类型的对外查询入口，当前用原始 Object 做桥接，
+     * 修改签名会扩大兼容性影响面。
      *
      * @param name ability name
      * @return ability card, or null
@@ -372,10 +378,8 @@ public class AbilityManager implements ToolRegistry {
         if (tools.containsKey(toolName)) {
             ToolCard toolCard = tools.get(toolName);
             String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
-            Tool tool = getToolFromResourceMgr(toolId, tag);
-            if (tool == null) {
-                throw buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId);
-            }
+            Tool tool = getToolFromResourceMgr(toolId, tag)
+                    .orElseThrow(() -> buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId));
             try {
                 result = tool.invoke(toolArgs, Map.of());
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
@@ -409,10 +413,8 @@ public class AbilityManager implements ToolRegistry {
             throw buildExecutionError(toolCall, "MCP tool execution not yet implemented: " + toolName);
         } else {
             // Fallback: try resource_mgr by name
-            Tool tool = getToolFromResourceMgr(toolName, tag);
-            if (tool == null) {
-                throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
-            }
+            Tool tool = getToolFromResourceMgr(toolName, tag)
+                    .orElseThrow(() -> buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName));
             try {
                 result = tool.invoke(toolArgs, Map.of());
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
@@ -447,7 +449,7 @@ public class AbilityManager implements ToolRegistry {
     }
 
     private static ToolExecutionClassification classifyException(Throwable throwable) {
-        return findInterruptedException(throwable) != null
+        return findInterruptedException(throwable).isPresent()
                 ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
                 : ToolExecutionClassification.ERROR;
     }
@@ -471,15 +473,15 @@ public class AbilityManager implements ToolRegistry {
         return result.getClass().getSimpleName();
     }
 
-    private static InterruptedException findInterruptedException(Throwable throwable) {
+    private static Optional<InterruptedException> findInterruptedException(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
             if (current instanceof InterruptedException interruptedException) {
-                return interruptedException;
+                return Optional.of(interruptedException);
             }
             current = current.getCause();
         }
-        return null;
+        return Optional.empty();
     }
 
     private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
@@ -570,13 +572,16 @@ public class AbilityManager implements ToolRegistry {
         appendToolInfo(toolInfos, tool.getCard().toolInfo());
     }
 
-    private Tool getToolFromResourceMgr(String toolId, String tag) {
+    private Optional<Tool> getToolFromResourceMgr(String toolId, String tag) {
         Object toolObj = tag != null && !tag.isBlank()
                 ? Runner.resourceMgr().getTool(toolId, tag, TagMatchStrategy.ALL)
                 : Runner.resourceMgr().getTool(toolId);
-        return toolObj instanceof Tool tool ? tool : null;
+        return toolObj instanceof Tool tool ? Optional.of(tool) : Optional.empty();
     }
 
+    /**
+     * 这里不改成 Optional，因为 Runner 的工作流执行链路仍要求传入原始 session 对象或 null。
+     */
     private Object adaptSubtaskSession(Session session) {
         if (session instanceof AgentSessionApi) {
             return session;
