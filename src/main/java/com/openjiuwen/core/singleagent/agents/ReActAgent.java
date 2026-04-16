@@ -372,7 +372,6 @@ public class ReActAgent extends BaseAgent {
                 .session(runtimeSession)
                 .build();
         Object invokeLifecycleInputs = ctx.getInputs();
-        boolean restoreInterrupt = false;
 
         // Fire BEFORE_INVOKE
         fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
@@ -381,11 +380,10 @@ public class ReActAgent extends BaseAgent {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null, inputs);
             invokeInputs.setResult(terminalOutcome.invokeResult());
-            restoreInterrupt = terminalOutcome.restoreInterrupt();
             return terminalOutcome.invokeResult();
 
         } finally {
-            finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null, restoreInterrupt);
+            finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null);
         }
     }
 
@@ -407,7 +405,6 @@ public class ReActAgent extends BaseAgent {
         startStreamProducer(() -> {
             AgentCallbackContext ctx = null;
             Object invokeLifecycleInputs = null;
-            boolean restoreInterrupt = false;
 
             try {
                 ctx = AgentCallbackContext.builder()
@@ -422,7 +419,6 @@ public class ReActAgent extends BaseAgent {
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
                 TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession, inputs);
                 invokeInputs.setResult(terminalOutcome.invokeResult());
-                restoreInterrupt = terminalOutcome.restoreInterrupt();
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } catch (Exception e) {
                 // 该场景仅适合捕获通用异常
@@ -434,7 +430,7 @@ public class ReActAgent extends BaseAgent {
                 }
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } finally {
-                finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession, restoreInterrupt);
+                finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession);
             }
         });
 
@@ -466,8 +462,7 @@ public class ReActAgent extends BaseAgent {
             AgentCallbackContext ctx,
             Object invokeLifecycleInputs,
             Session session,
-            AgentSessionApi agentSession,
-            boolean restoreInterrupt
+            AgentSessionApi agentSession
     ) {
         try {
             contextEngine.saveContexts(session, null);
@@ -480,9 +475,6 @@ public class ReActAgent extends BaseAgent {
                 if (ctx != null && invokeLifecycleInputs instanceof EventInputs eventInputs) {
                     ctx.setInputs(eventInputs);
                     fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
-                }
-                if (restoreInterrupt) {
-                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -526,8 +518,7 @@ public class ReActAgent extends BaseAgent {
     private record TerminalOutcome(
             TerminalBranch branch,
             Map<String, Object> invokeResult,
-            OutputSchema streamTerminal,
-            boolean restoreInterrupt
+            OutputSchema streamTerminal
     ) {
     }
 
@@ -999,6 +990,7 @@ public class ReActAgent extends BaseAgent {
 
             return buildFailureOutcome("Max iterations reached without completion");
         } catch (Exception e) {
+            // 此处确实只适合捕获基础异常
             Optional<InterruptedException> interruptedException = findInterruptedException(e);
             if (interruptedException.isPresent()) {
                 Loggers.AGENT.warn("ReActAgent shared loop interrupted");
@@ -1013,18 +1005,31 @@ public class ReActAgent extends BaseAgent {
     }
 
     private void startStreamProducer(Runnable producer) {
+        String workerName = "react-agent-stream-" + getCard().getId();
+        Thread.UncaughtExceptionHandler uncaughtExceptionHandler = createStreamProducerExceptionHandler();
         try {
             Thread.ofVirtual()
-                    .name("react-agent-stream-" + getCard().getId())
+                    .name(workerName)
+                    .uncaughtExceptionHandler(uncaughtExceptionHandler)
                     .start(producer);
             return;
         } catch (UnsupportedOperationException | NoSuchMethodError ignored) {
             // Fall back to a daemon platform thread below.
         }
 
-        Thread worker = new Thread(producer, "react-agent-stream-" + getCard().getId());
+        Thread worker = new Thread(producer, workerName);
         worker.setDaemon(true);
+        worker.setUncaughtExceptionHandler(uncaughtExceptionHandler);
         worker.start();
+    }
+
+    private Thread.UncaughtExceptionHandler createStreamProducerExceptionHandler() {
+        return (thread, throwable) -> Loggers.AGENT.error(
+                "ReActAgent stream producer crashed, thread={}, agentId={}",
+                thread.getName(),
+                getCard().getId(),
+                throwable
+        );
     }
 
     private String normalizeChunkText(Object content) {
@@ -1058,8 +1063,7 @@ public class ReActAgent extends BaseAgent {
                         "output", output,
                         "result_type", "answer",
                         "status", "completed"
-                )),
-                false
+                ))
         );
     }
 
@@ -1074,8 +1078,7 @@ public class ReActAgent extends BaseAgent {
                         "error", true,
                         "message", errorMsg,
                         "status", "failed"
-                )),
-                false
+                ))
         );
     }
 
@@ -1116,8 +1119,7 @@ public class ReActAgent extends BaseAgent {
         return new TerminalOutcome(
                 TerminalBranch.INTERRUPT_PENDING,
                 invokePayload,
-                new OutputSchema("final", 0, streamPayload),
-                true
+                new OutputSchema("final", 0, streamPayload)
         );
     }
 
