@@ -1,6 +1,10 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
 package com.openjiuwen.core.singleagent;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -15,6 +19,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -63,6 +68,42 @@ class AbilityManagerSupplementTest {
             assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-success");
             assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.SUCCESS);
             assertThat(entry.errorMessage()).isNull();
+        } finally {
+            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void executeSingleToolCallShouldLogOnlySanitizedResultSummary() {
+        String toolName = "sanitized-log-tool";
+        ToolCard toolCard = ToolCard.builder()
+                .id(toolName)
+                .name(toolName)
+                .description("returns secret result")
+                .inputParams(Map.of("type", "object", "properties", Map.of()))
+                .build();
+        manager.add(toolCard);
+        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of(
+                "token", "secret-value",
+                "nested", Map.of("password", "hidden")
+        )), null);
+
+        ListAppender<ILoggingEvent> appender = attachToolAppender();
+        try {
+            ToolCall toolCall = ToolCall.builder()
+                    .id("tc-sanitized-log")
+                    .name(toolName)
+                    .arguments("{}")
+                    .build();
+
+            manager.executeSingleToolCall(toolCall, null, null);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("Tool result summary: Map(keys=[token, nested])")
+                            .doesNotContain("secret-value")
+                            .doesNotContain("hidden"));
         } finally {
             Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
         }
@@ -489,5 +530,14 @@ class AbilityManagerSupplementTest {
                     "state", session.getState("interrupt_auto_confirm")
             );
         }
+    }
+
+    private ListAppender<ILoggingEvent> attachToolAppender() {
+        Logger logger = (Logger) LoggerFactory.getLogger("tool");
+        logger.setLevel(Level.INFO);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
     }
 }

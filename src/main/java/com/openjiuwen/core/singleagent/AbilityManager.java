@@ -28,6 +28,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -377,8 +378,7 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = tool.invoke(toolArgs, Map.of());
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -415,8 +415,7 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = tool.invoke(toolArgs, Map.of());
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -451,6 +450,25 @@ public class AbilityManager implements ToolRegistry {
         return findInterruptedException(throwable) != null
                 ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
                 : ToolExecutionClassification.ERROR;
+    }
+
+    private static String summarizeForLog(Object result) {
+        if (result == null) {
+            return "null";
+        }
+        if (result instanceof Map<?, ?> resultMap) {
+            return "Map(keys=" + resultMap.keySet() + ")";
+        }
+        if (result instanceof Collection<?> collection) {
+            return result.getClass().getSimpleName() + "(size=" + collection.size() + ")";
+        }
+        if (result.getClass().isArray()) {
+            return result.getClass().getComponentType().getSimpleName() + "[](length=" + java.lang.reflect.Array.getLength(result) + ")";
+        }
+        if (result instanceof CharSequence text) {
+            return result.getClass().getSimpleName() + "(length=" + text.length() + ")";
+        }
+        return result.getClass().getSimpleName();
     }
 
     private static InterruptedException findInterruptedException(Throwable throwable) {
