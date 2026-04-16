@@ -1014,13 +1014,11 @@ public class ReActAgent extends BaseAgent {
                     .start(producer);
             return;
         } catch (UnsupportedOperationException | NoSuchMethodError ignored) {
-            // Fall back to a daemon platform thread below.
+            throw new IllegalStateException(
+                    "ReActAgent streaming requires virtual threads, but the current runtime does not support them.",
+                    ignored
+            );
         }
-
-        Thread worker = new Thread(producer, workerName);
-        worker.setDaemon(true);
-        worker.setUncaughtExceptionHandler(uncaughtExceptionHandler);
-        worker.start();
     }
 
     private Thread.UncaughtExceptionHandler createStreamProducerExceptionHandler() {
