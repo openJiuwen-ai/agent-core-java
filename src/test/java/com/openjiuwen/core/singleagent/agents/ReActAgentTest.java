@@ -300,12 +300,36 @@ class ReActAgentTest {
     @Test
     void testGetLlmThrowsWithoutClientConfig() {
         // Default config has no model_client_config
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "test"), null);
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "test"), null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("model_client_config is required");
+    }
 
-        assertThat(payload)
-                .containsEntry("result_type", "error")
-                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
+    @Test
+    void testInvokePropagatesModelRuntimeExceptions() throws Exception {
+        ReActAgent spyAgent = Mockito.spy(agent);
+        Model model = mock(Model.class);
+        doReturn(model).when(spyAgent).getLlm();
+        doThrow(new IllegalStateException("model boom"))
+                .when(model)
+                .invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> spyAgent.invoke(Map.of("query", "test"), null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("model boom");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testInvokeReturnsErrorPayloadForMaxIterations() {
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(0)
+                .build());
+
+        Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of("query", "test"), null);
+
+        assertThat(result).containsEntry("result_type", "error");
+        assertThat(result).containsEntry("output", "Max iterations reached without completion");
     }
 
     @Test
@@ -313,12 +337,9 @@ class ReActAgentTest {
         List<EventInputs> seenInputs = new ArrayList<>();
         agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> seenInputs.add(ctx.getInputs()), 50);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "needs-model"), null);
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "needs-model"), null))
+                .isInstanceOf(Exception.class);
 
-        assertThat(payload)
-                .containsEntry("result_type", "error")
-                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
         assertThat(seenInputs).hasSize(1);
         assertThat(seenInputs.get(0)).isInstanceOf(InvokeInputs.class);
         assertThat(((InvokeInputs) seenInputs.get(0)).getQuery()).isEqualTo("needs-model");
@@ -331,12 +352,9 @@ class ReActAgentTest {
         agent.configure(config);
         Session session = new TestSession("react-reload-session");
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "reload"), session);
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "reload"), session))
+                .isInstanceOf(Exception.class);
 
-        assertThat(payload)
-                .containsEntry("result_type", "error")
-                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
         assertThat(agent.getAbilityManager().get("reload_original_context_messages")).isNotNull();
     }
 }

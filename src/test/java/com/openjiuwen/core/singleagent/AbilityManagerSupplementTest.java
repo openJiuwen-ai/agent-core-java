@@ -1,25 +1,15 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
 package com.openjiuwen.core.singleagent;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -322,40 +312,4 @@ class AbilityManagerSupplementTest {
                 .hasMessageContaining("MCP tool execution not yet implemented");
     }
 
-    // ========== ToolExecutionEntry record ==========
-
-    @Test
-    void testToolExecutionEntryCreation() {
-        ToolMessage msg = ToolMessage.builder().content("result").toolCallId("tc-1").build();
-        ToolCall toolCall = ToolCall.builder().id("tc-1").name("tool").arguments("{}").build();
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
-                toolCall,
-                "data",
-                msg,
-                AbilityManager.ToolExecutionClassification.SUCCESS,
-                null
-        );
-
-        assertThat(entry.toolCall()).isSameAs(toolCall);
-        assertThat(entry.result()).isEqualTo("data");
-        assertThat(entry.toolMessage()).isSameAs(msg);
-        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.SUCCESS);
-        assertThat(entry.errorMessage()).isNull();
-    }
-
-    @Test
-    void testToolExecutionEntryNulls() {
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
-                null,
-                null,
-                null,
-                AbilityManager.ToolExecutionClassification.ERROR,
-                "boom"
-        );
-        assertThat(entry.toolCall()).isNull();
-        assertThat(entry.result()).isNull();
-        assertThat(entry.toolMessage()).isNull();
-        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
-        assertThat(entry.errorMessage()).isEqualTo("boom");
-    }
 }

@@ -1,9 +1,6 @@
 /* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.foundation.tool.mcp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.schema.McpToolInfo;
 
 import org.junit.jupiter.api.DisplayName;
@@ -11,7 +8,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,8 +19,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python: tests/unit_tests/core/foundation/tool/test_streamable_http_client.py
  */
 class McpToolTest {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // ============================== McpServerConfig tests ==============================
 

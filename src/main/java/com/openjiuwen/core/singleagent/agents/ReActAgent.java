@@ -381,6 +381,9 @@ public class ReActAgent extends BaseAgent {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null, inputs);
             restoreInterrupt = captureAndClearInterrupt();
+            if (terminalOutcome.failureCause() != null) {
+                rethrowInvokeException(terminalOutcome.failureCause());
+            }
             invokeInputs.setResult(terminalOutcome.invokeResult());
             return terminalOutcome.invokeResult();
 
@@ -535,7 +538,8 @@ public class ReActAgent extends BaseAgent {
     private record TerminalOutcome(
             TerminalBranch branch,
             Map<String, Object> invokeResult,
-            OutputSchema streamTerminal
+            OutputSchema streamTerminal,
+            Throwable failureCause
     ) {
     }
 
@@ -1018,8 +1022,18 @@ public class ReActAgent extends BaseAgent {
             }
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
-            return buildFailureOutcome(errorMsg);
+            return buildFailureOutcome(errorMsg, e);
         }
+    }
+
+    private void rethrowInvokeException(Throwable throwable) {
+        if (throwable instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (throwable instanceof Error error) {
+            throw error;
+        }
+        throw new RuntimeException(throwable);
     }
 
     private void startStreamProducer(Runnable producer) {
@@ -1079,11 +1093,16 @@ public class ReActAgent extends BaseAgent {
                         "output", output,
                         "result_type", "answer",
                         "status", "completed"
-                ))
+                )),
+                null
         );
     }
 
     private TerminalOutcome buildFailureOutcome(String errorMsg) {
+        return buildFailureOutcome(errorMsg, null);
+    }
+
+    private TerminalOutcome buildFailureOutcome(String errorMsg, Throwable failureCause) {
         return new TerminalOutcome(
                 TerminalBranch.FAILURE,
                 Map.of(
@@ -1094,7 +1113,8 @@ public class ReActAgent extends BaseAgent {
                         "error", true,
                         "message", errorMsg,
                         "status", "failed"
-                ))
+                )),
+                failureCause
         );
     }
 
@@ -1135,7 +1155,8 @@ public class ReActAgent extends BaseAgent {
         return new TerminalOutcome(
                 TerminalBranch.INTERRUPT_PENDING,
                 invokePayload,
-                new OutputSchema("final", 0, streamPayload)
+                new OutputSchema("final", 0, streamPayload),
+                null
         );
     }
 
