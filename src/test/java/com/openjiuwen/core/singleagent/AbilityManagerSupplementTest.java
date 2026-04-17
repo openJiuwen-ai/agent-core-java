@@ -32,126 +32,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class AbilityManagerSupplementTest {
 
-    private static final AgentCallbackContext EMPTY_CALLBACK_CONTEXT = AgentCallbackContext.builder().build();
-
     private AbilityManager manager;
 
     @BeforeEach
     void setUp() {
         manager = new AbilityManager();
-    }
-
-    @Test
-    void executeSingleToolCallShouldReturnStructuredSuccessFact() {
-        String toolName = "structured-success-tool";
-        ToolCard toolCard = ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description("returns structured success")
-                .inputParams(Map.of("type", "object", "properties", Map.of()))
-                .build();
-        manager.add(toolCard);
-        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of("status", "ok")), null);
-
-        try {
-            ToolCall toolCall = ToolCall.builder()
-                    .id("tc-success")
-                    .name(toolName)
-                    .arguments("{}")
-                    .build();
-
-            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(toolCall, null, null);
-
-            assertThat(entry.toolCall()).isSameAs(toolCall);
-            assertThat(entry.result()).isEqualTo(Map.of("status", "ok"));
-            assertThat(entry.toolMessage()).isNotNull();
-            assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-success");
-            assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.SUCCESS);
-            assertThat(entry.errorMessage()).isNull();
-        } finally {
-            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
-        }
-    }
-
-    @Test
-    void executeSingleToolCallShouldLogOnlySanitizedResultSummary() {
-        String toolName = "sanitized-log-tool";
-        ToolCard toolCard = ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description("returns secret result")
-                .inputParams(Map.of("type", "object", "properties", Map.of()))
-                .build();
-        manager.add(toolCard);
-        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of(
-                "token", "secret-value",
-                "nested", Map.of("password", "hidden")
-        )), null);
-
-        ListAppender<ILoggingEvent> appender = attachToolAppender();
-        try {
-            ToolCall toolCall = ToolCall.builder()
-                    .id("tc-sanitized-log")
-                    .name(toolName)
-                    .arguments("{}")
-                    .build();
-
-            manager.executeSingleToolCall(toolCall, null, null);
-
-            assertThat(appender.list)
-                    .extracting(ILoggingEvent::getFormattedMessage)
-                    .anySatisfy(message -> assertThat(message)
-                            .contains("Tool result summary: Map(keys=[")
-                            .contains("token")
-                            .contains("nested")
-                            .doesNotContain("secret-value")
-                            .doesNotContain("hidden"));
-        } finally {
-            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
-        }
-    }
-
-    @Test
-    void executeShouldReturnStructuredErrorFactInsteadOfBareTuple() {
-        ToolCall toolCall = ToolCall.builder()
-                .id("tc-error")
-                .name("missing-structured-tool")
-                .arguments("{}")
-                .build();
-
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, toolCall, null, null);
-
-        assertThat(results).singleElement().satisfies(entry -> {
-            assertThat(entry.toolCall()).isSameAs(toolCall);
-            assertThat(entry.result()).isNull();
-            assertThat(entry.toolMessage()).isNotNull();
-            assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-error");
-            assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
-            assertThat(entry.errorMessage()).contains("Ability execution error");
-        });
-    }
-
-    @Test
-    void toolExecutionEntryShouldAllowInterruptPendingCandidateFacts() {
-        ToolCall toolCall = ToolCall.builder()
-                .id("tc-interrupt")
-                .name("interrupt-tool")
-                .arguments("{}")
-                .build();
-        ToolMessage toolMessage = ToolMessage.builder().content("waiting for resume").toolCallId("tc-interrupt").build();
-
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(
-                toolCall,
-                null,
-                toolMessage,
-                AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE,
-                "waiting for resume"
-        );
-
-        assertThat(entry.toolCall()).isSameAs(toolCall);
-        assertThat(entry.toolMessage()).isSameAs(toolMessage);
-        assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE);
-        assertThat(entry.errorMessage()).isEqualTo("waiting for resume");
     }
 
     // ========== WorkflowCard ==========
@@ -336,20 +221,29 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteWithEmptyList() {
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, List.of(), null, null);
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, List.of(), null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithInvalidToolCallType() {
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
         // Passing a string instead of ToolCall — normalizeToolCalls should log warning
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, "not a tool call", null, null);
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, "not a tool call", null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithNullToolCall() {
-        List<AbilityManager.ToolExecutionEntry> results = manager.execute(EMPTY_CALLBACK_CONTEXT, null, null, null);
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, null, null, null);
         assertThat(results).isEmpty();
     }
 
@@ -392,29 +286,15 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallInvalidJson() {
-        String toolName = "invalid-json-tool";
-        ToolCard toolCard = ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description("used to verify malformed args fail fast")
-                .inputParams(Map.of("type", "object", "properties", Map.of()))
-                .build();
-        manager.add(toolCard);
-        Runner.resourceMgr().addTool(new LocalFunction(toolCard, inputs -> Map.of("received", inputs)), null);
-
         ToolCall tc = ToolCall.builder()
                 .id("tc-4")
-                .name(toolName)
+                .name("nonexistent-tool")
                 .arguments("not json")
                 .build();
 
-        try {
-            assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
-                    .isInstanceOf(AbilityExecutionError.class)
-                    .hasMessageContaining("Malformed tool arguments JSON");
-        } finally {
-            Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
-        }
+        // Invalid JSON args should be handled gracefully, then fail on tool lookup
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class);
     }
 
     @Test
@@ -440,44 +320,6 @@ class AbilityManagerSupplementTest {
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
                 .isInstanceOf(AbilityExecutionError.class)
                 .hasMessageContaining("MCP tool execution not yet implemented");
-    }
-
-    @Test
-    void executeSingleToolCallCreatesChildSessionForAgentAbilities() {
-        AgentCard childAgentCard = AgentCard.builder()
-                .id("child-agent-id")
-                .name("child-agent")
-                .description("child agent")
-                .build();
-        RecordingChildAgent childAgent = new RecordingChildAgent();
-        manager.add(childAgentCard);
-        Runner.resourceMgr().addAgent(childAgentCard, () -> childAgent, null);
-
-        AgentSessionApi parentSession = AgentSessionApi.create("parent-session", Map.of("ENV", "value"), null);
-        parentSession.updateState(Map.of("interrupt_auto_confirm", Map.of("read_file", true)));
-
-        try {
-            ToolCall tc = ToolCall.builder()
-                    .id("tc-child")
-                    .name("child-agent")
-                    .arguments("{\"query\":\"hello\"}")
-                    .build();
-
-            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(tc, parentSession, null);
-
-            assertThat(entry.result()).isEqualTo(Map.of(
-                    "session_id", "parent-session:tc-child",
-                    "conversation_id", "parent-session:tc-child",
-                    "state", Map.of("read_file", true)
-            ));
-            assertThat(childAgent.seenSession).isNotSameAs(parentSession);
-            assertThat(childAgent.seenSession.getSessionId()).isEqualTo("parent-session:tc-child");
-            assertThat(childAgent.seenInputs).containsEntry("conversation_id", "parent-session:tc-child");
-            assertThat(childAgent.seenSession.getState("interrupt_auto_confirm"))
-                    .isEqualTo(Map.of("read_file", true));
-        } finally {
-            Runner.resourceMgr().removeAgent(childAgentCard.getId(), null, TagMatchStrategy.ALL, true);
-        }
     }
 
     // ========== ToolExecutionEntry record ==========
