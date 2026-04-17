@@ -1,130 +1,152 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.schema.Param;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.tool_call.ToolExecutionResult;
+import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.drunner.remoteclient.RemoteAgent;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.RailExecutor;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.lang.reflect.Method;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Agent Ability Manager.
- * 
- * <p>Manages available ability Cards for an Agent (metadata only, no instances).
- * 
- * <p><strong>Responsibilities:</strong>
+ *
+ * <p>Responsibilities:
  * <ul>
- *   <li>Store available ability Cards for Agent</li>
+ *   <li>Store available ability Cards for Agent (metadata only, no instances)</li>
  *   <li>Provide add/remove/query interfaces for abilities</li>
  *   <li>Convert Cards to ToolInfo for LLM usage</li>
  *   <li>Execute ability calls (get instances from ResourceManager)</li>
  * </ul>
- * 
- * <p>Python reference: {@code agent-core/openjiuwen/core/single_agent/agent.py}
  */
-public class AbilityManager {
-    
-    private static final LoggerProtocol logger = Loggers.AGENT;
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-    
-    private final Map<String, ToolCard> tools;
-    private final Map<String, WorkflowCard> workflows;
-    private final Map<String, AgentCard> agents;
-    private final Map<String, McpServerConfig> mcpServers;
-    
+public class AbilityManager implements ToolRegistry {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private final Map<String, ToolCard> tools = new ConcurrentHashMap<>();
+    private final Map<String, WorkflowCard> workflows = new ConcurrentHashMap<>();
+    private final Map<String, AgentCard> agents = new ConcurrentHashMap<>();
+    private final Map<String, McpServerConfig> mcpServers = new ConcurrentHashMap<>();
+
     /**
-     * Creates a new AbilityManager.
-     */
-    public AbilityManager() {
-        this.tools = new LinkedHashMap<>();
-        this.workflows = new LinkedHashMap<>();
-        this.agents = new LinkedHashMap<>();
-        this.mcpServers = new LinkedHashMap<>();
-    }
-    
-    /**
-     * Adds an ability.
+     * Add an ability.
      *
-     * @param ability the ability Card to add (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
+     * @param ability the ability card to add (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
      */
     public void add(Object ability) {
+        if (ability instanceof List<?> list) {
+            for (Object item : list) {
+                addSingle(item);
+            }
+        } else {
+            addSingle(ability);
+        }
+    }
+
+    private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
             tools.put(toolCard.getName(), toolCard);
-        } else if (ability instanceof WorkflowCard workflowCard) {
-            workflows.put(workflowCard.getName(), workflowCard);
+        } else if (ability instanceof WorkflowCard wfCard) {
+            workflows.put(wfCard.getName(), wfCard);
         } else if (ability instanceof AgentCard agentCard) {
             agents.put(agentCard.getName(), agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
         } else {
-            logger.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
+            Loggers.AGENT.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
         }
     }
-    
+
     /**
-     * Removes an ability by name.
+     * Remove an ability by name.
      *
-     * @param name the ability name to remove
-     * @return the removed ability Card, or empty if not found
+     * @param name ability name
+     * @return removed ability, or null if not found
      */
-    public Optional<Object> remove(String name) {
-        if (tools.containsKey(name)) {
-            return Optional.of(tools.remove(name));
+    public Object remove(String name) {
+        Object removed = tools.remove(name);
+        if (removed == null) {
+            removed = workflows.remove(name);
         }
-        if (workflows.containsKey(name)) {
-            return Optional.of(workflows.remove(name));
+        if (removed == null) {
+            removed = agents.remove(name);
         }
-        if (agents.containsKey(name)) {
-            return Optional.of(agents.remove(name));
+        if (removed == null) {
+            McpServerConfig mcpServer = mcpServers.remove(name);
+            if (mcpServer != null) {
+                String serverId = mcpServer.getServerId();
+                List<String> toRemove = new ArrayList<>();
+                for (Map.Entry<String, ToolCard> entry : tools.entrySet()) {
+                    if (entry.getValue().getId() != null && entry.getValue().getId().startsWith(serverId + ".")) {
+                        toRemove.add(entry.getKey());
+                    }
+                }
+                toRemove.forEach(tools::remove);
+                removed = mcpServer;
+            }
         }
-        if (mcpServers.containsKey(name)) {
-            return Optional.of(mcpServers.remove(name));
-        }
-        return Optional.empty();
+        return removed;
     }
-    
+
     /**
-     * Gets an ability Card by name.
+     * Remove abilities by name list.
      *
-     * @param name the ability name
-     * @return the ability Card, or empty if not found
+     * @param names ability names
+     * @return list of removed abilities
      */
-    public Optional<Object> get(String name) {
-        if (tools.containsKey(name)) {
-            return Optional.of(tools.get(name));
+    public List<Object> remove(List<String> names) {
+        List<Object> result = new ArrayList<>();
+        for (String name : names) {
+            result.add(remove(name));
         }
-        if (workflows.containsKey(name)) {
-            return Optional.of(workflows.get(name));
-        }
-        if (agents.containsKey(name)) {
-            return Optional.of(agents.get(name));
-        }
-        if (mcpServers.containsKey(name)) {
-            return Optional.of(mcpServers.get(name));
-        }
-        return Optional.empty();
+        return result;
     }
-    
+
     /**
-     * Lists all ability Cards.
+     * Get an ability Card by name.
      *
-     * @return list of all ability Cards in order: tools, workflows, agents, mcpServers
+     * @param name ability name
+     * @return ability card, or null
+     */
+    public Object get(String name) {
+        Object result = tools.get(name);
+        if (result != null) return result;
+        result = workflows.get(name);
+        if (result != null) return result;
+        result = agents.get(name);
+        if (result != null) return result;
+        return mcpServers.get(name);
+    }
+
+    /**
+     * List all ability Cards.
+     *
+     * @return all abilities
      */
     public List<Object> list() {
         List<Object> abilities = new ArrayList<>();
@@ -134,293 +156,364 @@ public class AbilityManager {
         abilities.addAll(mcpServers.values());
         return abilities;
     }
-    
-    /**
-     * Gets the list of ToolInfo for LLM usage.
-     *
-     * @param names optional filter by ability names (null means all)
-     * @param mcpServerName optional filter by MCP server name (null means all)
-     * @return future containing list of ToolInfo objects
-     */
-    public CompletableFuture<List<ToolInfo>> listToolInfo(List<String> names, String mcpServerName) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<ToolInfo> toolInfos = new ArrayList<>();
-            
-            // Convert ToolCards to ToolInfo
-            for (Map.Entry<String, ToolCard> entry : tools.entrySet()) {
-                if (names == null || names.contains(entry.getKey())) {
-                    ToolCard toolCard = entry.getValue();
-                    Object params = toolCard.getInputParams() != null
-                        ? toolCard.getInputParams() : Map.of();
-                    toolInfos.add(new ToolInfo(
-                        toolCard.getName(),
-                        toolCard.getDescription() != null ? toolCard.getDescription() : "",
-                        params
-                    ));
-                }
-            }
-            
-            // Convert WorkflowCards to ToolInfo
-            for (Map.Entry<String, WorkflowCard> entry : workflows.entrySet()) {
-                if (names == null || names.contains(entry.getKey())) {
-                    WorkflowCard workflowCard = entry.getValue();
-                    Object params = workflowCard.getInputParams() != null
-                        ? workflowCard.getInputParams() : Map.of();
-                    toolInfos.add(new ToolInfo(
-                        workflowCard.getName(),
-                        workflowCard.getDescription() != null ? workflowCard.getDescription() : "",
-                        params
-                    ));
-                }
-            }
-            
-            // Convert AgentCards to ToolInfo
-            for (Map.Entry<String, AgentCard> entry : agents.entrySet()) {
-                if (names == null || names.contains(entry.getKey())) {
-                    AgentCard agentCard = entry.getValue();
-                    Map<String, Object> params = buildParametersSchema(agentCard.getAgentInputParams());
-                    toolInfos.add(new ToolInfo(
-                        agentCard.getName(),
-                        agentCard.getDescription() != null ? agentCard.getDescription() : "",
-                        params
-                    ));
-                }
-            }
-            
-            // Handle MCP servers - get tool infos from Runner.resource_mgr
-            for (Map.Entry<String, McpServerConfig> entry : mcpServers.entrySet()) {
-                String serverName = entry.getKey();
-                McpServerConfig mcpServer = entry.getValue();
-                String mcpServerId = mcpServer.getServerId();
-                if (names == null) {
-                    try {
-                        List<ToolInfo> mcpToolInfos = Runner.getResourceMgr()
-                            .getMcpToolInfos(null, mcpServerId, null, null, null, false, false);
-                        for (ToolInfo mcpTool : mcpToolInfos) {
-                            String mcpToolName = mcpTool.name();
-                            String mcpToolId = mcpServerId + "." + serverName + "." + mcpToolName;
-                            tools.put(mcpTool.name(), new ToolCard(mcpToolId, mcpToolName,
-                                mcpTool.description(), mcpTool.parameters()));
-                            toolInfos.add(mcpTool);
-                        }
-                    } catch (Exception e) {
-                        logger.error("Failed to get MCP tool infos for server " + serverName
-                            + ": " + e.getMessage());
-                    }
-                }
-            }
-            
-            return toolInfos;
-        });
-    }
-    
-    /**
-     * Gets the list of ToolInfo for LLM usage (without MCP server filter).
-     *
-     * @param names optional filter by ability names (null means all)
-     * @return future containing list of ToolInfo objects
-     */
-    public CompletableFuture<List<ToolInfo>> listToolInfo(List<String> names) {
-        return listToolInfo(names, null);
-    }
-    
-    /**
-     * Executes an ability call.
-     *
-     * <p>Gets instance from Runner.resource_mgr by card info, executes and returns result.
-     *
-     * @param toolCall the tool call from LLM
-     * @param session the session instance
-     * @return future containing the execution result
-     */
-    @SuppressWarnings("unchecked")
-    public CompletableFuture<ExecutionResult> execute(ToolCall toolCall, Session session) {
-        return CompletableFuture.supplyAsync(() -> {
-            String toolName = toolCall.getName();
-            
-            // Parse arguments
-            Map<String, Object> toolArgs = parseArguments(toolCall.getArguments());
-            
-            Object result = null;
-            String errorMsg = null;
-            
-            // Check ability type and execute accordingly
-            if (tools.containsKey(toolName)) {
-                // Execute Tool - get instance from Runner.resource_mgr
-                ToolCard toolCard = tools.get(toolName);
-                String toolId = (toolCard.getId() != null && !toolCard.getId().isEmpty())
-                    ? toolCard.getId() : toolCard.getName();
-                Object toolObj = Runner.getResourceMgr().getTool(toolId, null, null);
-                if (toolObj instanceof Tool<?, ?> tool) {
-                    try {
-                        result = ((Tool<Object, Object>) tool).invoke(toolArgs, null).join();
-                    } catch (Exception e) {
-                        errorMsg = "Tool execution error: " + e.getMessage();
-                        logger.error(errorMsg);
-                    }
-                } else {
-                    errorMsg = "Tool instance not found in resource_mgr: " + toolId;
-                    logger.error(errorMsg);
-                }
-                
-            } else if (workflows.containsKey(toolName)) {
-                // Execute Workflow - get instance from Runner.resource_mgr
-                WorkflowCard workflowCard = workflows.get(toolName);
-                String workflowId = (workflowCard.getId() != null && !workflowCard.getId().isEmpty())
-                    ? workflowCard.getId() : workflowCard.getName();
-                try {
-                    Object workflowObj = Runner.getResourceMgr()
-                        .getWorkflow(workflowId, null, null).join();
-                    if (workflowObj != null) {
-                        // Use reflection to call invoke(inputs, session) on workflow instance
-                        Method invokeMethod = workflowObj.getClass().getMethod(
-                            "invoke", Object.class, Session.class);
-                        Object invokeResult = invokeMethod.invoke(workflowObj, toolArgs, session);
-                        if (invokeResult instanceof CompletableFuture<?> future) {
-                            result = future.join();
-                        } else {
-                            result = invokeResult;
-                        }
-                    } else {
-                        errorMsg = "Workflow instance not found in resource_mgr: " + workflowId;
-                    }
-                } catch (Exception e) {
-                    errorMsg = "Workflow execution error: " + e.getMessage();
-                    logger.error(errorMsg);
-                }
-                
-            } else if (agents.containsKey(toolName)) {
-                // Execute sub-Agent - get instance from Runner.resource_mgr
-                AgentCard agentCard = agents.get(toolName);
-                String agentId = (agentCard.getId() != null && !agentCard.getId().isEmpty())
-                    ? agentCard.getId() : agentCard.getName();
-                try {
-                    Object agentObj = Runner.getResourceMgr()
-                        .getAgent(agentId, null, null).join();
-                    if (agentObj != null) {
-                        if (agentObj instanceof BaseAgent baseAgent) {
-                            result = baseAgent.invoke(toolArgs, session).join();
-                        } else if (agentObj instanceof RemoteAgent remoteAgent) {
-                            result = remoteAgent.invoke(
-                                toolArgs instanceof Map ? (Map<String, Object>) toolArgs : Map.of(),
-                                null);
-                        } else {
-                            errorMsg = "Unknown agent type: " + agentObj.getClass().getName();
-                        }
-                    } else {
-                        errorMsg = "Agent instance not found in resource_mgr: " + agentId;
-                    }
-                } catch (Exception e) {
-                    errorMsg = "Agent execution error: " + e.getMessage();
-                    logger.error(errorMsg);
-                }
-                
-            } else if (mcpServers.containsKey(toolName)) {
-                // Execute MCP tool
-                // TODO: Get MCP tool from MCP server
-                errorMsg = "MCP tool execution not yet implemented: " + toolName;
-                
-            } else {
-                // Fallback: try to get tool from Runner.resource_mgr by name
-                Object toolObj = Runner.getResourceMgr().getTool(toolName, null, null);
-                if (toolObj instanceof Tool<?, ?> tool) {
-                    try {
-                        result = ((Tool<Object, Object>) tool).invoke(toolArgs, null).join();
-                    } catch (Exception e) {
-                        errorMsg = "Tool execution error: " + e.getMessage();
-                        logger.error(errorMsg);
-                    }
-                } else {
-                    errorMsg = "Ability not found in resource_mgr: " + toolName;
-                }
-            }
-            
-            // Build ToolMessage
-            String content = result != null ? String.valueOf(result) : (errorMsg != null ? errorMsg : "");
-            ToolMessage toolMessage = new ToolMessage(toolCall.getId(), content);
-            return new ExecutionResult(result, toolMessage);
-        });
-    }
-    
-    /**
-     * Parses tool arguments from string or map.
-     */
-    private Map<String, Object> parseArguments(String arguments) {
-        if (arguments == null || arguments.isEmpty()) {
-            return new HashMap<>();
-        }
-        try {
-            return objectMapper.readValue(arguments, Map.class);
-        } catch (JsonProcessingException e) {
-            logger.warning("Failed to parse tool arguments: " + e.getMessage());
-            return new HashMap<>();
-        }
-    }
-    
-    /**
-     * Builds parameters schema from list of Param objects.
-     */
-    private Map<String, Object> buildParametersSchema(List<Param> params) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
-        
-        if (params != null) {
-            for (Param param : params) {
-                Map<String, Object> propSchema = new LinkedHashMap<>();
-                propSchema.put("type", param.getType() != null ? param.getType().getValue() : "string");
-                propSchema.put("description", param.getDescription() != null ? param.getDescription() : "");
-                properties.put(param.getName(), propSchema);
-                
-                if (param.isRequired()) {
-                    required.add(param.getName());
-                }
-            }
-        }
-        
-        schema.put("properties", properties);
-        schema.put("required", required);
-        return schema;
-    }
-    
-    // Getters for internal maps (for testing)
-    
-    /**
-     * Gets the tools map (for testing).
-     */
-    public Map<String, ToolCard> getTools() {
-        return tools;
-    }
-    
-    /**
-     * Gets the workflows map (for testing).
-     */
-    public Map<String, WorkflowCard> getWorkflows() {
-        return workflows;
-    }
-    
-    /**
-     * Gets the agents map (for testing).
-     */
-    public Map<String, AgentCard> getAgents() {
-        return agents;
-    }
-    
-    /**
-     * Gets the MCP servers map (for testing).
-     */
-    public Map<String, McpServerConfig> getMcpServers() {
-        return mcpServers;
-    }
-    
-    /**
-     * Result of ability execution.
-     *
-     * @param result the execution result (null if error)
-     * @param toolMessage the tool message to return to LLM
-     */
-    public record ExecutionResult(Object result, ToolMessage toolMessage) {}
-}
 
+    /**
+     * Get ToolInfo list (for LLM usage).
+     *
+     * @return list of ToolInfo objects
+     */
+    public List<ToolInfo> listToolInfo() {
+        return listToolInfo(null, null);
+    }
+
+    /**
+     * Get ToolInfo list (for LLM usage) with optional name/server filtering.
+     *
+     * @param names         optional tool names to include
+     * @param mcpServerName optional MCP server name to include
+     * @return list of ToolInfo objects
+     */
+    public List<ToolInfo> listToolInfo(List<String> names, String mcpServerName) {
+        List<ToolInfo> toolInfos = new ArrayList<>();
+
+        for (ToolCard toolCard : tools.values()) {
+            if (names == null || names.contains(toolCard.getName())) {
+                appendToolInfo(toolInfos, toolCard.toolInfo());
+            }
+        }
+
+        for (WorkflowCard wfCard : workflows.values()) {
+            if (names == null || names.contains(wfCard.getName())) {
+                appendToolInfo(toolInfos, wfCard.toolInfo());
+            }
+        }
+
+        for (AgentCard agentCard : agents.values()) {
+            if (names == null || names.contains(agentCard.getName())) {
+                appendToolInfo(toolInfos, agentCard.toolInfo());
+            }
+        }
+
+        for (McpServerConfig mcpServer : mcpServers.values()) {
+            if (mcpServerName != null && !mcpServerName.equals(mcpServer.getServerName())) {
+                continue;
+            }
+            appendMcpToolInfos(toolInfos, names, mcpServer);
+        }
+
+        return toolInfos;
+    }
+
+    // ========== ToolRegistry interface ==========
+
+    @Override
+    public void setToolDescription(String toolName, String description) {
+        ToolCard toolCard = tools.get(toolName);
+        if (toolCard != null) {
+            toolCard.setDescription(description);
+        }
+    }
+
+    /**
+     * Execute a single tool call for use as a ToolExecutor.
+     *
+     * @param toolCallObj the tool call object
+     * @param session     the session
+     * @return the execution result
+     */
+    public ToolExecutionResult executeAsToolExecutor(Object toolCallObj, Session session) {
+        if (toolCallObj instanceof ToolCall tc) {
+            ToolExecutionEntry entry = executeSingleToolCall(tc, session, null);
+            return new ToolExecutionResult(entry.result(), entry.toolMessage());
+        }
+        return new ToolExecutionResult(null, null);
+    }
+
+    /**
+     * Execute ability call(s) with per-tool rail hooks.
+     *
+     * @param ctx      shared callback context
+     * @param toolCall single tool call or list of tool calls
+     * @param session  session instance
+     * @param tag      optional tag
+     * @return list of (result, ToolMessage) tuples
+     */
+    public List<ToolExecutionEntry> execute(
+            AgentCallbackContext ctx,
+            Object toolCall,
+            Session session,
+            String tag
+    ) {
+        List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
+        if (toolCalls.isEmpty()) {
+            return List.of();
+        }
+
+        List<ToolExecutionEntry> finalResults = new ArrayList<>();
+
+        for (ToolCall singleToolCall : toolCalls) {
+            AgentCallbackContext toolCtx = AgentCallbackContext.builder()
+                    .agent(ctx.getAgent())
+                    .inputs(ToolCallInputs.builder()
+                            .toolCall(singleToolCall)
+                            .toolName(singleToolCall.getName())
+                            .toolArgs(singleToolCall.getArguments())
+                            .build())
+                    .config(ctx.getConfig())
+                    .session(session)
+                    .context(ctx.getContext())
+                    .extra(ctx.getExtra())
+                    .build();
+
+            try {
+                ToolExecutionEntry result = railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
+
+                if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
+                    Object toolResult = inputs.getToolResult() != null ? inputs.getToolResult() : result.result();
+                    ToolMessage toolMsg = inputs.getToolMsg() != null ? inputs.getToolMsg() : result.toolMessage();
+                    finalResults.add(new ToolExecutionEntry(toolResult, toolMsg));
+                } else {
+                    finalResults.add(result);
+                }
+            } catch (Exception e) {
+                String errorMsg = "Ability execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
+
+                Object toolResult = null;
+                ToolMessage toolMessage = null;
+
+                if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
+                    toolResult = inputs.getToolResult();
+                    toolMessage = inputs.getToolMsg();
+                }
+
+                if (toolMessage == null && e instanceof AbilityExecutionError aee) {
+                    toolMessage = aee.getToolMessage();
+                }
+
+                if (toolMessage == null) {
+                    toolMessage = ToolMessage.builder()
+                            .content(errorMsg)
+                            .toolCallId(singleToolCall.getId())
+                            .build();
+                }
+
+                finalResults.add(new ToolExecutionEntry(toolResult, toolMessage));
+            }
+        }
+
+        return finalResults;
+    }
+
+    /**
+     * Execute one tool call under rail lifecycle events.
+     */
+    private ToolExecutionEntry railedExecuteSingleToolCall(
+            AgentCallbackContext ctx,
+            ToolCall toolCall,
+            Session session,
+            String tag
+    ) {
+        return RailExecutor.execute(
+                ctx,
+                AgentCallbackEvent.BEFORE_TOOL_CALL,
+                AgentCallbackEvent.AFTER_TOOL_CALL,
+                AgentCallbackEvent.ON_TOOL_EXCEPTION,
+                () -> {
+                    if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        if (inputs.getToolName() != null && !inputs.getToolName().isEmpty()) {
+                            toolCall.setName(inputs.getToolName());
+                        }
+                        if (inputs.getToolArgs() != null) {
+                            toolCall.setArguments(
+                                    inputs.getToolArgs() instanceof String s ? s : MAPPER.writeValueAsString(inputs.getToolArgs())
+                            );
+                        }
+                    }
+
+                    ToolExecutionEntry result = executeSingleToolCall(toolCall, session, tag);
+
+                    if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        inputs.setToolCall(toolCall);
+                        inputs.setToolName(toolCall.getName());
+                        inputs.setToolArgs(toolCall.getArguments());
+                        inputs.setToolResult(result.result());
+                        inputs.setToolMsg(result.toolMessage());
+                    }
+
+                    return result;
+                }
+        );
+    }
+
+    /**
+     * Execute a single tool call by dispatching to the appropriate handler.
+     */
+    public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
+        String toolName = toolCall.getName();
+
+        Map<String, Object> toolArgs;
+        try {
+            String args = toolCall.getArguments();
+            if (args != null && !args.isBlank()) {
+                toolArgs = MAPPER.readValue(args, new TypeReference<>() {});
+            } else {
+                toolArgs = Map.of();
+            }
+        } catch (Exception e) {
+            toolArgs = Map.of();
+        }
+
+        Object result;
+
+        if (tools.containsKey(toolName)) {
+            ToolCard toolCard = tools.get(toolName);
+            String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
+            Tool tool = getToolFromResourceMgr(toolId, tag);
+            if (tool == null) {
+                throw buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId);
+            }
+            try {
+                result = tool.invoke(toolArgs, Map.of());
+                // Log tool result to match Python behavior
+                Loggers.TOOL.info("Tool result: " + result);
+            } catch (Exception e) {
+                String errorMsg = "Tool execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        } else if (workflows.containsKey(toolName)) {
+            WorkflowCard workflowCard = workflows.get(toolName);
+            String workflowId = workflowCard.getId() != null ? workflowCard.getId() : workflowCard.getName();
+            try {
+                result = Runner.runWorkflow(workflowId, toolArgs, adaptSubtaskSession(session), null);
+            } catch (Exception e) {
+                String errorMsg = "Workflow execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        } else if (agents.containsKey(toolName)) {
+            AgentCard agentCard = agents.get(toolName);
+            String agentId = agentCard.getId() != null ? agentCard.getId() : agentCard.getName();
+            try {
+                result = Runner.runAgent(agentId, toolArgs, adaptSubtaskSession(session), null);
+            } catch (Exception e) {
+                String errorMsg = "Agent execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        } else if (mcpServers.containsKey(toolName)) {
+            throw buildExecutionError(toolCall, "MCP tool execution not yet implemented: " + toolName);
+        } else {
+            // Fallback: try resource_mgr by name
+            Tool tool = getToolFromResourceMgr(toolName, tag);
+            if (tool == null) {
+                throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
+            }
+            try {
+                result = tool.invoke(toolArgs, Map.of());
+                // Log tool result to match Python behavior
+                Loggers.TOOL.info("Tool result: " + result);
+            } catch (Exception e) {
+                String errorMsg = "Tool execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        }
+
+        String content = String.valueOf(result);
+        ToolMessage toolMessage = ToolMessage.builder()
+                .content(content)
+                .toolCallId(toolCall.getId())
+                .build();
+
+        return new ToolExecutionEntry(result, toolMessage);
+    }
+
+    private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
+        return new AbilityExecutionError(
+                StatusCode.AGENT_TOOL_EXECUTION_ERROR,
+                message,
+                ToolMessage.builder()
+                        .content(message)
+                        .toolCallId(toolCall.getId())
+                        .build()
+        );
+    }
+
+    private static List<ToolCall> normalizeToolCalls(Object toolCall) {
+        List<ToolCall> result = new ArrayList<>();
+        if (toolCall instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof ToolCall tc) {
+                    result.add(tc);
+                }
+            }
+        } else if (toolCall instanceof ToolCall tc) {
+            result.add(tc);
+        } else {
+            Loggers.AGENT.warning("execute ability input tool call is invalid: " +
+                    (toolCall != null ? toolCall.getClass().getName() : "null"));
+        }
+        return result;
+    }
+
+    /**
+     * Result entry from tool execution.
+     *
+     * @param result      the raw result
+     * @param toolMessage the tool message for LLM context
+     */
+    public record ToolExecutionEntry(Object result, ToolMessage toolMessage) {}
+
+    private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {
+        if (toolInfoObj instanceof ToolInfo toolInfo) {
+            toolInfos.add(toolInfo);
+        }
+    }
+
+    private void appendMcpToolInfos(List<ToolInfo> toolInfos, List<String> names, McpServerConfig mcpServer) {
+        try {
+            Object mcpTools = Runner.resourceMgr().getMcpTool(
+                    names,
+                    mcpServer.getServerId(),
+                    mcpServer.getServerName(),
+                    null,
+                    TagMatchStrategy.ALL,
+                    true
+            );
+            if (mcpTools instanceof List<?> toolList) {
+                for (Object toolObj : toolList) {
+                    cacheMcpToolInfo(toolInfos, toolObj);
+                }
+            } else {
+                cacheMcpToolInfo(toolInfos, mcpTools);
+            }
+        } catch (Exception e) {
+            Loggers.AGENT.warning("Failed to list MCP tool infos for server " + mcpServer.getServerName()
+                    + ": " + e.getMessage());
+        }
+    }
+
+    private void cacheMcpToolInfo(List<ToolInfo> toolInfos, Object toolObj) {
+        if (!(toolObj instanceof Tool tool) || tool.getCard() == null) {
+            return;
+        }
+        tools.put(tool.getCard().getName(), tool.getCard());
+        appendToolInfo(toolInfos, tool.getCard().toolInfo());
+    }
+
+    private Tool getToolFromResourceMgr(String toolId, String tag) {
+        Object toolObj = tag != null && !tag.isBlank()
+                ? Runner.resourceMgr().getTool(toolId, tag, TagMatchStrategy.ALL)
+                : Runner.resourceMgr().getTool(toolId);
+        return toolObj instanceof Tool tool ? tool : null;
+    }
+
+    private Object adaptSubtaskSession(Session session) {
+        if (session instanceof AgentSessionApi) {
+            return session;
+        }
+        return session != null ? session.getSessionId() : null;
+    }
+}

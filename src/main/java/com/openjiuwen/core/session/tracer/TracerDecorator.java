@@ -1,1016 +1,366 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.tracer;
 
-import java.util.ArrayList;
+import com.openjiuwen.core.session.internal.AgentSession;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
- * Decorator utilities for wrapping objects with trace functionality.
- * 
- * <p>Provides methods to decorate models, tools, and workflows with trace
- * capabilities for monitoring their execution.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Tracer decorator utilities for wrapping model, tool, and workflow invocations with trace spans.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.tracer.decorator} module.
+ * In Java, dynamic proxying replaces Python's dynamic class wrapping.
  */
 public final class TracerDecorator {
-    
+
     private TracerDecorator() {
-        // Utility class, prevent instantiation
     }
-    
+
     /**
-     * Checks if an object should be decorated with trace functionality.
-     * 
-     * @param obj the object to check
-     * @param session the agent session
-     * @return true if the object should be decorated
+     * Check if the object+session combination should be decorated with trace.
      */
-    private static boolean shouldDecorate(Object obj, AgentSession session) {
-        return obj != null && 
-               session != null && 
-               session.tracer() != null && 
-               session.span() != null;
-    }
-    
-    /**
-     * Decorates a model with trace functionality.
-     * 
-     * <p>Wraps the model's invoke and stream methods to emit trace events.
-     * 
-     * @param <T> the model type
-     * @param model the model to decorate
-     * @param agentSession the agent session
-     * @return the decorated model wrapper
-     */
-    public static <T> TracedModel<T> decorateModelWithTrace(T model, AgentSession agentSession) {
-        if (!shouldDecorate(model, agentSession)) {
-            return new TracedModel<>(model, null, null);
+    private static boolean shouldDecorate(Object obj, Object session) {
+        if (obj == null || session == null) {
+            return false;
         }
-        
-        String modelName;
         try {
-            // Try to get model name from config
-            Object config = model.getClass().getMethod("getConfig").invoke(model);
-            Object modelConfig = config.getClass().getMethod("getModelConfig").invoke(config);
-            Object nameObj = modelConfig.getClass().getMethod("getModelName").invoke(modelConfig);
-            modelName = nameObj != null ? nameObj.toString() : model.getClass().getSimpleName();
+            Method tracerMethod = session.getClass().getMethod("tracer");
+            Object tracer = tracerMethod.invoke(session);
+            if (tracer == null) {
+                return false;
+            }
+            Method spanMethod = session.getClass().getMethod("span");
+            return spanMethod != null;
         } catch (Exception e) {
-            modelName = model.getClass().getSimpleName();
+            return false;
         }
-        
+    }
+
+    /**
+     * Decorate a model with trace. Wraps invoke/stream calls with trace span recording.
+     *
+     * @param model        the model object
+     * @param agentSession the agent session API (expects an _inner field or getInner method)
+     * @param <T>          the model type
+     * @return the wrapped model, or original if tracing is not applicable
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T decorateModelWithTrace(T model, Object agentSession) {
+        Object innerSession = getInnerSession(agentSession);
+        if (!shouldDecorate(model, innerSession)) {
+            return model;
+        }
+
+        String modelName = getClassName(model);
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", modelName);
         instanceInfo.put("type", "llm");
-        
-        return new TracedModel<>(model, agentSession, instanceInfo);
+
+        return createTracingProxy(model, innerSession, InvokeType.LLM, instanceInfo);
     }
-    
+
     /**
-     * Decorates a tool with trace functionality.
-     * 
-     * <p>Wraps the tool's invoke method to emit trace events.
-     * 
-     * @param <T> the tool type
-     * @param tool the tool to decorate
-     * @param agentSession the agent session
-     * @return the decorated tool wrapper
+     * Decorate a tool with trace. Wraps invoke calls with trace span recording.
+     *
+     * @param tool         the tool object
+     * @param agentSession the agent session API
+     * @param <T>          the tool type
+     * @return the wrapped tool, or original if tracing is not applicable
      */
-    public static <T> TracedTool<T> decorateToolWithTrace(T tool, AgentSession agentSession) {
-        if (!shouldDecorate(tool, agentSession)) {
-            return new TracedTool<>(tool, null, null);
+    @SuppressWarnings("unchecked")
+    public static <T> T decorateToolWithTrace(T tool, Object agentSession) {
+        Object innerSession = getInnerSession(agentSession);
+        if (!shouldDecorate(tool, innerSession)) {
+            return tool;
         }
-        
-        String toolName;
-        try {
-            Object nameObj = tool.getClass().getMethod("getName").invoke(tool);
-            toolName = nameObj != null ? nameObj.toString() : tool.getClass().getSimpleName();
-        } catch (Exception e) {
-            toolName = tool.getClass().getSimpleName();
-        }
-        
+
+        String toolName = getCardName(tool);
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", toolName);
         instanceInfo.put("type", "tool");
-        
-        return new TracedTool<>(tool, agentSession, instanceInfo);
+
+        return createTracingProxy(tool, innerSession, InvokeType.PLUGIN, instanceInfo);
     }
-    
+
     /**
-     * Decorates a workflow with trace functionality.
-     * 
-     * <p>Wraps the workflow's invoke and stream methods to emit trace events.
-     * 
-     * @param <T> the workflow type
-     * @param workflow the workflow to decorate
-     * @param agentSession the agent session
-     * @return the decorated workflow wrapper
+     * Decorate a workflow with trace. Wraps invoke/stream calls with trace span recording.
+     *
+     * @param workflow     the workflow object
+     * @param agentSession the agent session API
+     * @param <T>          the workflow type
+     * @return the wrapped workflow, or original if tracing is not applicable
      */
-    public static <T> TracedWorkflow<T> decorateWorkflowWithTrace(T workflow, AgentSession agentSession) {
-        if (!shouldDecorate(workflow, agentSession)) {
-            return new TracedWorkflow<>(workflow, null, null);
-        }
-        
-        Map<String, Object> metadata = new HashMap<>();
-        String workflowName;
-        try {
-            Object card = workflow.getClass().getMethod("getCard").invoke(workflow);
-            if (card != null) {
-                Object id = card.getClass().getMethod("getId").invoke(card);
-                Object name = card.getClass().getMethod("getName").invoke(card);
-                Object desc = card.getClass().getMethod("getDescription").invoke(card);
-                Object version = card.getClass().getMethod("getVersion").invoke(card);
-                
-                metadata.put("id", id);
-                metadata.put("name", name);
-                metadata.put("description", desc);
-                metadata.put("version", version);
-                
-                workflowName = name != null ? name.toString() : workflow.getClass().getSimpleName();
-            } else {
-                workflowName = workflow.getClass().getSimpleName();
-            }
-        } catch (Exception e) {
-            workflowName = workflow.getClass().getSimpleName();
-        }
-        
-        Map<String, Object> instanceInfo = new HashMap<>();
-        instanceInfo.put("class_name", workflowName);
-        instanceInfo.put("type", "workflow");
-        instanceInfo.put("metadata", metadata);
-        
-        return new TracedWorkflow<>(workflow, agentSession, instanceInfo);
-    }
-    
-    /**
-     * Creates a synchronous trace wrapper for a function.
-     * 
-     * @param <T> the function return type
-     * @param func the function to wrap
-     * @param session the agent session
-     * @param invokeType the invoke type
-     * @param instanceInfo the instance info
-     * @param index the argument index for inputs (default 1)
-     * @param inputsFieldName the field name for inputs in kwargs (default "inputs")
-     * @return the wrapped function
-     */
-    public static <T> Function<Object[], T> trace(
-            Function<Object[], T> func,
-            AgentSession session,
-            InvokeType invokeType,
-            Map<String, Object> instanceInfo,
-            int index,
-            String inputsFieldName) {
-        
-        return args -> {
-            Tracer tracer = session.tracer();
-            TraceAgentSpan span = null;
-            
-            try {
-                TraceAgentSpan agentSpan = session.span();
-                span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-                
-                // Get inputs
-                Object inputs = null;
-                if (args != null && args.length > index) {
-                    inputs = args[index];
-                }
-                
-                Map<String, Object> inputsMap = new HashMap<>();
-                inputsMap.put("inputs", inputs);
-                
-                // Trigger start event synchronously
-                Map<String, Object> startKwargs = new HashMap<>();
-                startKwargs.put("span", span);
-                startKwargs.put("inputs", inputsMap);
-                startKwargs.put("instance_info", instanceInfo);
-                
-                tracer.syncTrigger("tracer_agent", "on" + capitalize(invokeType.getValue()) + "Start", startKwargs);
-                
-                // Execute function (skip first argument which is usually 'self')
-                Object[] funcArgs = new Object[args.length - 1];
-                System.arraycopy(args, 1, funcArgs, 0, args.length - 1);
-                T result = func.apply(funcArgs);
-                
-                // Trigger end event
-                Map<String, Object> outputsMap = new HashMap<>();
-                outputsMap.put("outputs", result);
-                
-                Map<String, Object> endKwargs = new HashMap<>();
-                endKwargs.put("span", span);
-                endKwargs.put("outputs", outputsMap);
-                
-                tracer.syncTrigger("tracer_agent", "on" + capitalize(invokeType.getValue()) + "End", endKwargs);
-                
-                return result;
-            } catch (Exception error) {
-                // Trigger error event
-                Map<String, Object> errorKwargs = new HashMap<>();
-                errorKwargs.put("span", span);
-                errorKwargs.put("error", error);
-                
-                tracer.syncTrigger("tracer_agent", "on" + capitalize(invokeType.getValue()) + "Error", errorKwargs);
-                throw error;
-            }
-        };
-    }
-    
-    /**
-     * Creates an asynchronous trace wrapper for a function.
-     * 
-     * @param <T> the function return type
-     * @param func the function to wrap
-     * @param session the agent session
-     * @param invokeType the invoke type
-     * @param instanceInfo the instance info
-     * @param index the argument index for inputs (default 1)
-     * @param inputsFieldName the field name for inputs in kwargs (default "inputs")
-     * @return the wrapped async function
-     */
-    public static <T> Function<Object[], CompletableFuture<T>> asyncTrace(
-            Function<Object[], CompletableFuture<T>> func,
-            AgentSession session,
-            InvokeType invokeType,
-            Map<String, Object> instanceInfo,
-            int index,
-            String inputsFieldName) {
-        
-        return args -> {
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            // Get inputs
-            Object inputs = null;
-            if (args != null && args.length > index) {
-                inputs = args[index];
-            }
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            // Trigger start event
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            String eventPrefix = "on" + capitalize(invokeType.getValue());
-            
-            return tracer.trigger("tracer_agent", eventPrefix + "Start", startKwargs)
-                .thenCompose(v -> {
-                    // Execute function (skip first argument which is usually 'self')
-                    Object[] funcArgs = new Object[args.length - 1];
-                    System.arraycopy(args, 1, funcArgs, 0, args.length - 1);
-                    
-                    // For LLM invoke type, add tracer record data callback
-                    if (invokeType == InvokeType.LLM) {
-                        // Add tracer_record_data function to kwargs if applicable
-                        // This would be passed through the args/kwargs mechanism
-                    }
-                    
-                    return func.apply(funcArgs);
-                })
-                .thenCompose(result -> {
-                    // Trigger end event
-                    Map<String, Object> outputsMap = new HashMap<>();
-                    outputsMap.put("outputs", result);
-                    
-                    Map<String, Object> endKwargs = new HashMap<>();
-                    endKwargs.put("span", span);
-                    endKwargs.put("outputs", outputsMap);
-                    
-                    return tracer.trigger("tracer_agent", eventPrefix + "End", endKwargs)
-                        .thenApply(v -> result);
-                })
-                .exceptionally(error -> {
-                    // Trigger error event
-                    Map<String, Object> errorKwargs = new HashMap<>();
-                    errorKwargs.put("span", span);
-                    errorKwargs.put("error", error);
-                    
-                    tracer.syncTrigger("tracer_agent", eventPrefix + "Error", errorKwargs);
-                    
-                    if (error instanceof RuntimeException) {
-                        throw (RuntimeException) error;
-                    }
-                    throw new RuntimeException(error);
-                });
-        };
-    }
-    
-    /**
-     * Creates a synchronous stream trace wrapper for a function.
-     * 
-     * @param <T> the item type
-     * @param func the function to wrap
-     * @param session the agent session
-     * @param invokeType the invoke type
-     * @param instanceInfo the instance info
-     * @param index the argument index for inputs (default 1)
-     * @param inputsFieldName the field name for inputs in kwargs (default "inputs")
-     * @return the wrapped stream function
-     */
-    public static <T> Function<Object[], Iterator<T>> traceStream(
-            Function<Object[], Iterator<T>> func,
-            AgentSession session,
-            InvokeType invokeType,
-            Map<String, Object> instanceInfo,
-            int index,
-            String inputsFieldName) {
-        
-        return args -> {
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            // Get inputs
-            Object inputs = null;
-            if (args != null && args.length > index) {
-                inputs = args[index];
-            }
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            // Trigger start event
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            String eventPrefix = "on" + capitalize(invokeType.getValue());
-            tracer.syncTrigger("tracer_agent", eventPrefix + "Start", startKwargs);
-            
-            try {
-                // Execute function (skip first argument which is usually 'self')
-                Object[] funcArgs = new Object[args.length - 1];
-                System.arraycopy(args, 1, funcArgs, 0, args.length - 1);
-                Iterator<T> result = func.apply(funcArgs);
-                
-                List<T> results = new ArrayList<>();
-                
-                // Create a wrapping iterator that collects results
-                return new Iterator<T>() {
-                    @Override
-                    public boolean hasNext() {
-                        boolean hasNext = result.hasNext();
-                        if (!hasNext) {
-                            // Trigger end event when iterator is exhausted
-                            Map<String, Object> outputsMap = new HashMap<>();
-                            outputsMap.put("outputs", results);
-                            
-                            Map<String, Object> endKwargs = new HashMap<>();
-                            endKwargs.put("span", span);
-                            endKwargs.put("outputs", outputsMap);
-                            
-                            tracer.syncTrigger("tracer_agent", eventPrefix + "End", endKwargs);
-                        }
-                        return hasNext;
-                    }
-                    
-                    @Override
-                    public T next() {
-                        T item = result.next();
-                        results.add(item);
-                        return item;
-                    }
-                };
-            } catch (Exception error) {
-                // Trigger error event
-                Map<String, Object> errorKwargs = new HashMap<>();
-                errorKwargs.put("span", span);
-                errorKwargs.put("error", error);
-                
-                tracer.syncTrigger("tracer_agent", eventPrefix + "Error", errorKwargs);
-                throw error;
-            }
-        };
-    }
-    
-    /**
-     * Creates an asynchronous stream trace wrapper for a function.
-     * 
-     * @param <T> the item type
-     * @param func the function to wrap
-     * @param session the agent session
-     * @param invokeType the invoke type
-     * @param instanceInfo the instance info
-     * @param index the argument index for inputs (default 1)
-     * @param inputsFieldName the field name for inputs in kwargs (default "inputs")
-     * @return the wrapped async stream function
-     */
-    public static <T> Function<Object[], AsyncIterator<T>> asyncTraceStream(
-            Function<Object[], AsyncIterator<T>> func,
-            AgentSession session,
-            InvokeType invokeType,
-            Map<String, Object> instanceInfo,
-            int index,
-            String inputsFieldName) {
-        
-        return args -> {
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            // Get inputs
-            Object inputs = null;
-            if (args != null && args.length > index) {
-                inputs = args[index];
-            }
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            // Trigger start event
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            String eventPrefix = "on" + capitalize(invokeType.getValue());
-            
-            // Start tracing
-            tracer.trigger("tracer_agent", eventPrefix + "Start", startKwargs).join();
-            
-            // Execute function (skip first argument which is usually 'self')
-            Object[] funcArgs = new Object[args.length - 1];
-            System.arraycopy(args, 1, funcArgs, 0, args.length - 1);
-            
-            // For LLM invoke type, add tracer record data callback
-            AsyncIterator<T> result = func.apply(funcArgs);
-            List<T> results = new ArrayList<>();
-            
-            // Return a wrapping async iterator
-            return new AsyncIterator<T>() {
-                @Override
-                public CompletableFuture<Boolean> hasNext() {
-                    return result.hasNext().thenCompose(hasNext -> {
-                        if (!hasNext) {
-                            // Trigger end event when iterator is exhausted
-                            Map<String, Object> outputsMap = new HashMap<>();
-                            outputsMap.put("outputs", results);
-                            
-                            Map<String, Object> endKwargs = new HashMap<>();
-                            endKwargs.put("span", span);
-                            endKwargs.put("outputs", outputsMap);
-                            
-                            return tracer.trigger("tracer_agent", eventPrefix + "End", endKwargs)
-                                .thenApply(v -> false);
-                        }
-                        return CompletableFuture.completedFuture(true);
-                    }).exceptionally(error -> {
-                        // Trigger error event
-                        Map<String, Object> errorKwargs = new HashMap<>();
-                        errorKwargs.put("span", span);
-                        errorKwargs.put("error", error);
-                        
-                        tracer.syncTrigger("tracer_agent", eventPrefix + "Error", errorKwargs);
-                        
-                        if (error instanceof RuntimeException) {
-                            throw (RuntimeException) error;
-                        }
-                        throw new RuntimeException(error);
-                    });
-                }
-                
-                @Override
-                public CompletableFuture<T> next() {
-                    return result.next().thenApply(item -> {
-                        results.add(item);
-                        return item;
-                    });
-                }
-            };
-        };
-    }
-    
-    /**
-     * Capitalizes the first letter of a string.
-     */
-    private static String capitalize(String str) {
-        if (str == null || str.isEmpty()) {
-            return str;
-        }
-        return Character.toUpperCase(str.charAt(0)) + str.substring(1);
-    }
-    
-    /**
-     * Interface for agent session operations used by tracer decorator.
-     */
-    public interface AgentSession {
-        
-        /**
-         * Gets the tracer instance.
-         * 
-         * @return the tracer, or null if tracing is disabled
-         */
-        Tracer tracer();
-        
-        /**
-         * Gets the current agent span.
-         * 
-         * @return the current span
-         */
-        TraceAgentSpan span();
-    }
-    
-    /**
-     * Interface for async iteration.
-     * 
-     * @param <T> the item type
-     */
-    public interface AsyncIterator<T> {
-        
-        /**
-         * Checks if there are more items.
-         * 
-         * @return a CompletableFuture resolving to true if more items exist
-         */
-        CompletableFuture<Boolean> hasNext();
-        
-        /**
-         * Gets the next item.
-         * 
-         * @return a CompletableFuture resolving to the next item
-         */
-        CompletableFuture<T> next();
-    }
-    
-    /**
-     * Wrapper for traced model operations.
-     * 
-     * @param <T> the underlying model type
-     */
-    public static class TracedModel<T> {
-        
-        private final T model;
-        private final AgentSession session;
-        private final Map<String, Object> instanceInfo;
-        
-        /**
-         * Creates a new TracedModel.
-         * 
-         * @param model the underlying model
-         * @param session the agent session
-         * @param instanceInfo the instance info for tracing
-         */
-        public TracedModel(T model, AgentSession session, Map<String, Object> instanceInfo) {
-            this.model = model;
-            this.session = session;
-            this.instanceInfo = instanceInfo;
-        }
-        
-        /**
-         * Gets the underlying model.
-         * 
-         * @return the model
-         */
-        public T getModel() {
-            return model;
-        }
-        
-        /**
-         * Invokes the model with tracing.
-         * 
-         * @param messages the messages to send
-         * @param kwargs additional arguments
-         * @return a CompletableFuture with the result
-         */
-        @SuppressWarnings("unchecked")
-        public CompletableFuture<Object> invoke(Object messages, Map<String, Object> kwargs) {
-            if (session == null || instanceInfo == null) {
-                // No tracing, just invoke directly
-                try {
-                    Object result = model.getClass().getMethod("invoke", Object.class, Map.class)
-                        .invoke(model, messages, kwargs);
-                    if (result instanceof CompletableFuture) {
-                        return (CompletableFuture<Object>) result;
-                    }
-                    return CompletableFuture.completedFuture(result);
-                } catch (Exception e) {
-                    return CompletableFuture.failedFuture(e);
-                }
-            }
-            
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", messages);
-            
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            return tracer.trigger("tracer_agent", "onLlmStart", startKwargs)
-                .thenCompose(v -> {
-                    try {
-                        // Add tracer record callback to kwargs
-                        Map<String, Object> callKwargs = kwargs != null ? new HashMap<>(kwargs) : new HashMap<>();
-                        
-                        Object result = model.getClass().getMethod("invoke", Object.class, Map.class)
-                            .invoke(model, messages, callKwargs);
-                        
-                        if (result instanceof CompletableFuture) {
-                            return (CompletableFuture<Object>) result;
-                        }
-                        return CompletableFuture.completedFuture(result);
-                    } catch (Exception e) {
-                        return CompletableFuture.failedFuture(e);
-                    }
-                })
-                .thenCompose(result -> {
-                    Map<String, Object> outputsMap = new HashMap<>();
-                    outputsMap.put("outputs", result);
-                    
-                    Map<String, Object> endKwargs = new HashMap<>();
-                    endKwargs.put("span", span);
-                    endKwargs.put("outputs", outputsMap);
-                    
-                    return tracer.trigger("tracer_agent", "onLlmEnd", endKwargs)
-                        .thenApply(v -> result);
-                })
-                .exceptionally(error -> {
-                    Map<String, Object> errorKwargs = new HashMap<>();
-                    errorKwargs.put("span", span);
-                    errorKwargs.put("error", error);
-                    
-                    tracer.syncTrigger("tracer_agent", "onLlmError", errorKwargs);
-                    
-                    if (error instanceof RuntimeException) {
-                        throw (RuntimeException) error;
-                    }
-                    throw new RuntimeException(error);
-                });
-        }
-        
-        /**
-         * Streams from the model with tracing.
-         * 
-         * @param messages the messages to send
-         * @param kwargs additional arguments
-         * @return an iterator over the stream results
-         */
-        public Iterator<Object> stream(Object messages, Map<String, Object> kwargs) {
-            if (session == null || instanceInfo == null) {
-                // No tracing, just stream directly
-                try {
-                    @SuppressWarnings("unchecked")
-                    Iterator<Object> result = (Iterator<Object>) model.getClass()
-                        .getMethod("stream", Object.class, Map.class)
-                        .invoke(model, messages, kwargs);
-                    return result;
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", messages);
-            
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            tracer.syncTrigger("tracer_agent", "onLlmStart", startKwargs);
-            
-            try {
-                @SuppressWarnings("unchecked")
-                Iterator<Object> result = (Iterator<Object>) model.getClass()
-                    .getMethod("stream", Object.class, Map.class)
-                    .invoke(model, messages, kwargs);
-                
-                List<Object> results = new ArrayList<>();
-                
-                return new Iterator<Object>() {
-                    @Override
-                    public boolean hasNext() {
-                        boolean hasNext = result.hasNext();
-                        if (!hasNext) {
-                            Map<String, Object> outputsMap = new HashMap<>();
-                            outputsMap.put("outputs", results);
-                            
-                            Map<String, Object> endKwargs = new HashMap<>();
-                            endKwargs.put("span", span);
-                            endKwargs.put("outputs", outputsMap);
-                            
-                            tracer.syncTrigger("tracer_agent", "onLlmEnd", endKwargs);
-                        }
-                        return hasNext;
-                    }
-                    
-                    @Override
-                    public Object next() {
-                        Object item = result.next();
-                        results.add(item);
-                        return item;
-                    }
-                };
-            } catch (Exception error) {
-                Map<String, Object> errorKwargs = new HashMap<>();
-                errorKwargs.put("span", span);
-                errorKwargs.put("error", error);
-                
-                tracer.syncTrigger("tracer_agent", "onLlmError", errorKwargs);
-                throw new RuntimeException(error);
-            }
-        }
-    }
-    
-    /**
-     * Wrapper for traced tool operations.
-     * 
-     * @param <T> the underlying tool type
-     */
-    public static class TracedTool<T> {
-        
-        private final T tool;
-        private final AgentSession session;
-        private final Map<String, Object> instanceInfo;
-        
-        /**
-         * Creates a new TracedTool.
-         * 
-         * @param tool the underlying tool
-         * @param session the agent session
-         * @param instanceInfo the instance info for tracing
-         */
-        public TracedTool(T tool, AgentSession session, Map<String, Object> instanceInfo) {
-            this.tool = tool;
-            this.session = session;
-            this.instanceInfo = instanceInfo;
-        }
-        
-        /**
-         * Gets the underlying tool.
-         * 
-         * @return the tool
-         */
-        public T getTool() {
-            return tool;
-        }
-        
-        /**
-         * Invokes the tool with tracing.
-         * 
-         * @param inputs the tool inputs
-         * @return a CompletableFuture with the result
-         */
-        @SuppressWarnings("unchecked")
-        public CompletableFuture<Object> invoke(Object inputs) {
-            if (session == null || instanceInfo == null) {
-                try {
-                    Object result = tool.getClass().getMethod("invoke", Object.class).invoke(tool, inputs);
-                    if (result instanceof CompletableFuture) {
-                        return (CompletableFuture<Object>) result;
-                    }
-                    return CompletableFuture.completedFuture(result);
-                } catch (Exception e) {
-                    return CompletableFuture.failedFuture(e);
-                }
-            }
-            
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            return tracer.trigger("tracer_agent", "onPluginStart", startKwargs)
-                .thenCompose(v -> {
-                    try {
-                        Object result = tool.getClass().getMethod("invoke", Object.class).invoke(tool, inputs);
-                        if (result instanceof CompletableFuture) {
-                            return (CompletableFuture<Object>) result;
-                        }
-                        return CompletableFuture.completedFuture(result);
-                    } catch (Exception e) {
-                        return CompletableFuture.failedFuture(e);
-                    }
-                })
-                .thenCompose(result -> {
-                    Map<String, Object> outputsMap = new HashMap<>();
-                    outputsMap.put("outputs", result);
-                    
-                    Map<String, Object> endKwargs = new HashMap<>();
-                    endKwargs.put("span", span);
-                    endKwargs.put("outputs", outputsMap);
-                    
-                    return tracer.trigger("tracer_agent", "onPluginEnd", endKwargs)
-                        .thenApply(v -> result);
-                })
-                .exceptionally(error -> {
-                    Map<String, Object> errorKwargs = new HashMap<>();
-                    errorKwargs.put("span", span);
-                    errorKwargs.put("error", error);
-                    
-                    tracer.syncTrigger("tracer_agent", "onPluginError", errorKwargs);
-                    
-                    if (error instanceof RuntimeException) {
-                        throw (RuntimeException) error;
-                    }
-                    throw new RuntimeException(error);
-                });
-        }
-    }
-    
-    /**
-     * Wrapper for traced workflow operations.
-     * 
-     * @param <T> the underlying workflow type
-     */
-    public static class TracedWorkflow<T> {
-        
-        private final T workflow;
-        private final AgentSession session;
-        private final Map<String, Object> instanceInfo;
-        
-        /**
-         * Creates a new TracedWorkflow.
-         * 
-         * @param workflow the underlying workflow
-         * @param session the agent session
-         * @param instanceInfo the instance info for tracing
-         */
-        public TracedWorkflow(T workflow, AgentSession session, Map<String, Object> instanceInfo) {
-            this.workflow = workflow;
-            this.session = session;
-            this.instanceInfo = instanceInfo;
-        }
-        
-        /**
-         * Gets the underlying workflow.
-         * 
-         * @return the workflow
-         */
-        public T getWorkflow() {
+    @SuppressWarnings("unchecked")
+    public static <T> T decorateWorkflowWithTrace(T workflow, Object agentSession) {
+        Object innerSession = getInnerSession(agentSession);
+        if (!shouldDecorate(workflow, innerSession)) {
             return workflow;
         }
-        
-        /**
-         * Invokes the workflow with tracing.
-         * 
-         * @param inputs the workflow inputs
-         * @return a CompletableFuture with the result
-         */
-        @SuppressWarnings("unchecked")
-        public CompletableFuture<Object> invoke(Object inputs) {
-            if (session == null || instanceInfo == null) {
-                try {
-                    Object result = workflow.getClass().getMethod("invoke", Object.class).invoke(workflow, inputs);
-                    if (result instanceof CompletableFuture) {
-                        return (CompletableFuture<Object>) result;
+
+        String wfName = getCardName(workflow);
+        Map<String, Object> instanceInfo = new HashMap<>();
+        instanceInfo.put("class_name", wfName);
+        instanceInfo.put("type", "workflow");
+
+        // Try to collect metadata from card
+        try {
+            Method cardMethod = workflow.getClass().getMethod("getCard");
+            Object card = cardMethod.invoke(workflow);
+            if (card != null) {
+                Map<String, Object> metadata = new HashMap<>();
+                tryPutField(metadata, "id", card);
+                tryPutField(metadata, "name", card);
+                tryPutField(metadata, "description", card);
+                tryPutField(metadata, "version", card);
+                instanceInfo.put("metadata", metadata);
+            }
+        } catch (Exception ignored) {
+            // no card — skip metadata
+        }
+
+        return createTracingProxy(workflow, innerSession, InvokeType.WORKFLOW, instanceInfo);
+    }
+
+    /**
+     * Synchronous trace wrapper around a function-like call.
+     * Mirrors Python's {@code trace()}.
+     *
+     * @param session      the agent session (must expose tracer() and span())
+     * @param invokeType   the type of invocation
+     * @param instanceInfo descriptive info about the invoked instance
+     * @param callable     the callable to wrap (args -> result)
+     * @param args         the input arguments
+     * @param kwargs       the keyword-style arguments
+     * @return the invocation result
+     */
+    public static Object trace(Object session, InvokeType invokeType,
+                               Map<String, Object> instanceInfo,
+                               BiFunction<Object[], Map<String, Object>, Object> callable,
+                               Object[] args, Map<String, Object> kwargs) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return callable.apply(args, kwargs);
+        }
+        TraceAgentSpan span = null;
+        try {
+            Span agentSpan = getSpan(session);
+            span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
+
+            Map<String, Object> triggerKwargs = new HashMap<>();
+            triggerKwargs.put("span", span);
+            triggerKwargs.put("inputs", Map.of("inputs", args != null && args.length > 0 ? args[0] : new HashMap<>()));
+            triggerKwargs.put("instance_info", instanceInfo);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                    "on_" + invokeType.getValue() + "_start", triggerKwargs);
+
+            Object result = callable.apply(args, kwargs);
+
+            Map<String, Object> endKwargs = new HashMap<>();
+            endKwargs.put("span", span);
+            endKwargs.put("outputs", Map.of("outputs", result));
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                    "on_" + invokeType.getValue() + "_end", endKwargs);
+
+            return result;
+        } catch (Exception error) {
+            Map<String, Object> errorKwargs = new HashMap<>();
+            errorKwargs.put("span", span);
+            errorKwargs.put("error", error);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                    "on_" + invokeType.getValue() + "_error", errorKwargs);
+            throw error;
+        }
+    }
+
+    // ---- private helpers ----
+
+    private static Object getInnerSession(Object agentSession) {
+        if (agentSession == null) {
+            return null;
+        }
+        if (agentSession instanceof AgentSession
+                || (hasMethod(agentSession, "tracer") && hasMethod(agentSession, "span"))) {
+            return agentSession;
+        }
+        try {
+            Method getInner = agentSession.getClass().getMethod("getInner");
+            return getInner.invoke(agentSession);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean hasMethod(Object obj, String methodName) {
+        try {
+            obj.getClass().getMethod(methodName);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    private static Tracer getTracer(Object session) {
+        try {
+            Method tracerMethod = session.getClass().getMethod("tracer");
+            Object result = tracerMethod.invoke(session);
+            return result instanceof Tracer ? (Tracer) result : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Span getSpan(Object session) {
+        try {
+            Method spanMethod = session.getClass().getMethod("span");
+            Object result = spanMethod.invoke(session);
+            return result instanceof Span ? (Span) result : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String getClassName(Object obj) {
+        try {
+            Method configMethod = obj.getClass().getMethod("getConfig");
+            Object config = configMethod.invoke(obj);
+            if (config != null) {
+                Method modelConfigMethod = config.getClass().getMethod("getModelConfig");
+                Object modelConfig = modelConfigMethod.invoke(config);
+                if (modelConfig != null) {
+                    Method nameMethod = modelConfig.getClass().getMethod("getModelName");
+                    Object name = nameMethod.invoke(modelConfig);
+                    if (name != null) {
+                        return name.toString();
                     }
-                    return CompletableFuture.completedFuture(result);
-                } catch (Exception e) {
-                    return CompletableFuture.failedFuture(e);
                 }
             }
-            
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            return tracer.trigger("tracer_agent", "onWorkflowStart", startKwargs)
-                .thenCompose(v -> {
-                    try {
-                        Object result = workflow.getClass().getMethod("invoke", Object.class).invoke(workflow, inputs);
-                        if (result instanceof CompletableFuture) {
-                            return (CompletableFuture<Object>) result;
-                        }
-                        return CompletableFuture.completedFuture(result);
-                    } catch (Exception e) {
-                        return CompletableFuture.failedFuture(e);
-                    }
-                })
-                .thenCompose(result -> {
-                    Map<String, Object> outputsMap = new HashMap<>();
-                    outputsMap.put("outputs", result);
-                    
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return obj.getClass().getSimpleName();
+    }
+
+    private static String getCardName(Object obj) {
+        try {
+            Method cardMethod = obj.getClass().getMethod("getCard");
+            Object card = cardMethod.invoke(obj);
+            if (card != null) {
+                Method nameMethod = card.getClass().getMethod("getName");
+                Object name = nameMethod.invoke(card);
+                if (name != null) {
+                    return name.toString();
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return obj.getClass().getSimpleName();
+    }
+
+    private static void tryPutField(Map<String, Object> map, String field, Object obj) {
+        try {
+            String getter = "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1);
+            Method method = obj.getClass().getMethod(getter);
+            Object value = method.invoke(obj);
+            if (value != null) {
+                map.put(field, value);
+            }
+        } catch (Exception ignored) {
+            // skip
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T createTracingProxy(T original, Object session,
+                                             InvokeType invokeType,
+                                             Map<String, Object> instanceInfo) {
+        Class<?>[] interfaces = original.getClass().getInterfaces();
+        if (interfaces.length == 0) {
+            // Cannot proxy non-interface types; return original
+            return original;
+        }
+
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return original;
+        }
+
+        Object proxy = Proxy.newProxyInstance(
+                original.getClass().getClassLoader(),
+                interfaces,
+                new TracingInvocationHandler(original, session, tracer, invokeType, instanceInfo));
+
+        return (T) proxy;
+    }
+
+    /**
+     * Dynamic invocation handler that wraps "invoke" and "stream" methods with tracing.
+     */
+    private static class TracingInvocationHandler implements InvocationHandler {
+        private final Object target;
+        private final Object session;
+        private final Tracer tracer;
+        private final InvokeType invokeType;
+        private final Map<String, Object> instanceInfo;
+
+        TracingInvocationHandler(Object target, Object session, Tracer tracer,
+                                 InvokeType invokeType, Map<String, Object> instanceInfo) {
+            this.target = target;
+            this.session = session;
+            this.tracer = tracer;
+            this.invokeType = invokeType;
+            this.instanceInfo = instanceInfo;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            String methodName = method.getName();
+
+            // Only trace "invoke" and "stream" methods
+            if ("invoke".equals(methodName) || "stream".equals(methodName)) {
+                TraceAgentSpan span = null;
+                try {
+                    Span agentSpan = getSpan(session);
+                    span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
+
+                    Map<String, Object> startKwargs = new HashMap<>();
+                    startKwargs.put("span", span);
+                    startKwargs.put("inputs", Map.of("inputs",
+                            args != null && args.length > 0 ? args[0] : new HashMap<>()));
+                    startKwargs.put("instance_info", instanceInfo);
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                            "on_" + invokeType.getValue() + "_start", startKwargs);
+
+                    Object result = method.invoke(target, args);
+
                     Map<String, Object> endKwargs = new HashMap<>();
                     endKwargs.put("span", span);
-                    endKwargs.put("outputs", outputsMap);
-                    
-                    return tracer.trigger("tracer_agent", "onWorkflowEnd", endKwargs)
-                        .thenApply(v -> result);
-                })
-                .exceptionally(error -> {
+                    endKwargs.put("outputs", Map.of("outputs", result));
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                            "on_" + invokeType.getValue() + "_end", endKwargs);
+
+                    return result;
+                } catch (Exception error) {
+                    Throwable cause = error.getCause() != null ? error.getCause() : error;
                     Map<String, Object> errorKwargs = new HashMap<>();
                     errorKwargs.put("span", span);
-                    errorKwargs.put("error", error);
-                    
-                    tracer.syncTrigger("tracer_agent", "onWorkflowError", errorKwargs);
-                    
-                    if (error instanceof RuntimeException) {
-                        throw (RuntimeException) error;
-                    }
-                    throw new RuntimeException(error);
-                });
-        }
-        
-        /**
-         * Streams from the workflow with tracing.
-         * 
-         * @param inputs the workflow inputs
-         * @return an iterator over the stream results
-         */
-        public Iterator<Object> stream(Object inputs) {
-            if (session == null || instanceInfo == null) {
-                try {
-                    @SuppressWarnings("unchecked")
-                    Iterator<Object> result = (Iterator<Object>) workflow.getClass()
-                        .getMethod("stream", Object.class)
-                        .invoke(workflow, inputs);
-                    return result;
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    errorKwargs.put("error", cause);
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
+                            "on_" + invokeType.getValue() + "_error", errorKwargs);
+                    throw cause;
                 }
             }
-            
-            Tracer tracer = session.tracer();
-            TraceAgentSpan agentSpan = session.span();
-            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-            
-            Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("inputs", inputs);
-            
-            Map<String, Object> startKwargs = new HashMap<>();
-            startKwargs.put("span", span);
-            startKwargs.put("inputs", inputsMap);
-            startKwargs.put("instance_info", instanceInfo);
-            
-            tracer.syncTrigger("tracer_agent", "onWorkflowStart", startKwargs);
-            
-            try {
-                @SuppressWarnings("unchecked")
-                Iterator<Object> result = (Iterator<Object>) workflow.getClass()
-                    .getMethod("stream", Object.class)
-                    .invoke(workflow, inputs);
-                
-                List<Object> results = new ArrayList<>();
-                
-                return new Iterator<Object>() {
-                    @Override
-                    public boolean hasNext() {
-                        boolean hasNext = result.hasNext();
-                        if (!hasNext) {
-                            Map<String, Object> outputsMap = new HashMap<>();
-                            outputsMap.put("outputs", results);
-                            
-                            Map<String, Object> endKwargs = new HashMap<>();
-                            endKwargs.put("span", span);
-                            endKwargs.put("outputs", outputsMap);
-                            
-                            tracer.syncTrigger("tracer_agent", "onWorkflowEnd", endKwargs);
-                        }
-                        return hasNext;
-                    }
-                    
-                    @Override
-                    public Object next() {
-                        Object item = result.next();
-                        results.add(item);
-                        return item;
-                    }
-                };
-            } catch (Exception error) {
-                Map<String, Object> errorKwargs = new HashMap<>();
-                errorKwargs.put("span", span);
-                errorKwargs.put("error", error);
-                
-                tracer.syncTrigger("tracer_agent", "onWorkflowError", errorKwargs);
-                throw new RuntimeException(error);
-            }
+
+            // All other methods delegate directly
+            return method.invoke(target, args);
         }
     }
 }
-

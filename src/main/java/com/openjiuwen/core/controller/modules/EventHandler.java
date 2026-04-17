@@ -1,46 +1,37 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.contextengine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
-import com.openjiuwen.core.singleagent.AbilityManager;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Abstract base class for event handlers.
- *
- * <p>Defines the event handling interface. Different types of controllers need
+ * <p>
+ * Defines the event handling interface. Different types of controllers need
  * to implement different event handlers.
- *
- * <p>Main responsibilities:
+ * <p>
+ * Main responsibilities:
  * <ul>
- *   <li>handle input events (handleInput)</li>
- *   <li>handle task interaction events (handleTaskInteraction)</li>
- *   <li>handle task completion events (handleTaskCompletion)</li>
- *   <li>handle task failure events (handleTaskFailed)</li>
+ *   <li>Handle input events ({@link #handleInput})</li>
+ *   <li>Handle task interaction events ({@link #handleTaskInteraction})</li>
+ *   <li>Handle task completion events ({@link #handleTaskCompletion})</li>
+ *   <li>Handle task failure events ({@link #handleTaskFailed})</li>
  * </ul>
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code EventHandler(ABC)}.
  */
 public abstract class EventHandler {
 
-    private ControllerConfig config;
-    private ContextEngine contextEngine;
-    private AbilityManager abilityManager;
-    private TaskManager taskManager;
-    private TaskScheduler taskScheduler;
-
-    /**
-     * Default constructor. All dependencies are initialized to null
-     * and must be injected via property setters.
-     */
-    protected EventHandler() {
-    }
-
-    // Getters and Setters for dependency injection
+    protected ControllerConfig config;
+    protected ContextEngine contextEngine;
+    protected Object abilityManager;
+    protected TaskManager taskManager;
+    protected TaskScheduler taskScheduler;
 
     public ControllerConfig getConfig() {
         return config;
@@ -58,11 +49,11 @@ public abstract class EventHandler {
         this.contextEngine = contextEngine;
     }
 
-    public AbilityManager getAbilityManager() {
+    public Object getAbilityManager() {
         return abilityManager;
     }
 
-    public void setAbilityManager(AbilityManager abilityManager) {
+    public void setAbilityManager(Object abilityManager) {
         this.abilityManager = abilityManager;
     }
 
@@ -86,32 +77,31 @@ public abstract class EventHandler {
      * Handle input events.
      *
      * @param inputs event handler input containing event and session information
-     * @return future containing response data (nullable)
+     * @return response data, or null
      */
-    public abstract CompletableFuture<Map<String, Object>> handleInput(EventHandlerInput inputs);
+    public abstract Map<String, Object> handleInput(EventHandlerInput inputs);
 
     /**
      * Handle task interaction events.
      *
      * @param inputs event handler input containing event and session information
-     * @return future containing response data (nullable)
+     * @return response data, or null
      */
-    public abstract CompletableFuture<Map<String, Object>> handleTaskInteraction(EventHandlerInput inputs);
+    public abstract Map<String, Object> handleTaskInteraction(EventHandlerInput inputs);
 
     /**
      * Handle task completion events.
      *
      * @param inputs event handler input containing event and session information
-     * @return future containing response data (nullable)
+     * @return response data, or null
      */
-    public abstract CompletableFuture<Map<String, Object>> handleTaskCompletion(EventHandlerInput inputs);
+    public abstract Map<String, Object> handleTaskCompletion(EventHandlerInput inputs);
 
     /**
      * Handle task failure events.
      *
      * @param inputs event handler input containing event and session information
-     * @return future containing response data (nullable)
+     * @return response data, or null
      */
-    public abstract CompletableFuture<Map<String, Object>> handleTaskFailed(EventHandlerInput inputs);
+    public abstract Map<String, Object> handleTaskFailed(EventHandlerInput inputs);
 }
-

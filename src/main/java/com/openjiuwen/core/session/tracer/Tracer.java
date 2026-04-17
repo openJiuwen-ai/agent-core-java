@@ -1,139 +1,109 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.tracer;
 
-import com.openjiuwen.core.session.callback.BaseHandler;
 import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tracer for managing trace spans during session execution.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Central tracer coordinating agent and workflow span managers.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.tracer.tracer.Tracer}.
  */
 public class Tracer {
-    
+
     private final String traceId;
     private final SpanManager tracerAgentSpanManager;
-    private final Map<String, SpanManager> tracerWorkflowSpanManagerDict = new HashMap<>();
+    private final Map<String, SpanManager> tracerWorkflowSpanManagerDict = new ConcurrentHashMap<>();
     private CallbackManager callbackManager;
     private StreamWriterManager streamWriterManager;
-    
-    /**
-     * Creates a new Tracer.
-     */
+
     public Tracer() {
         this.traceId = UUID.randomUUID().toString();
         this.tracerAgentSpanManager = new SpanManager(traceId);
     }
-    
+
     /**
-     * Initializes the tracer with stream writer and callback managers.
-     * 
+     * Initialize the tracer with stream and callback managers.
+     *
      * @param streamWriterManager the stream writer manager
-     * @param callbackManager the callback manager
+     * @param callbackManager     the callback manager
      */
     public void init(StreamWriterManager streamWriterManager, CallbackManager callbackManager) {
-        // Create trace agent handler
-        TraceAgentHandler traceAgentHandler = new TraceAgentHandler(callbackManager, streamWriterManager, 
-                                                                     tracerAgentSpanManager);
-        
-        // Create parent workflow span manager and handler
-        SpanManager parentTracerWorkflowSpanManager = new SpanManager(traceId);
-        TraceWorkflowHandler traceWorkflowHandler = new TraceWorkflowHandler(callbackManager, streamWriterManager, 
-                                                                              parentTracerWorkflowSpanManager);
-        
-        tracerWorkflowSpanManagerDict.put("", parentTracerWorkflowSpanManager);
-        
-        // Register handlers
-        Map<String, BaseHandler> agentHandlerMap = new HashMap<>();
-        agentHandlerMap.put(TracerHandlerName.TRACE_AGENT.getValue(), traceAgentHandler);
-        callbackManager.register(agentHandlerMap);
-        
-        Map<String, BaseHandler> workflowHandlerMap = new HashMap<>();
-        workflowHandlerMap.put(TracerHandlerName.TRACER_WORKFLOW.getValue(), traceWorkflowHandler);
-        callbackManager.register(workflowHandlerMap);
-        
-        this.callbackManager = callbackManager;
         this.streamWriterManager = streamWriterManager;
+        this.callbackManager = callbackManager;
+
+        TraceAgentHandler agentHandler = new TraceAgentHandler(
+                callbackManager, streamWriterManager, tracerAgentSpanManager);
+
+        SpanManager parentWorkflowSpanManager = new SpanManager(traceId);
+        TraceWorkflowHandler workflowHandler = new TraceWorkflowHandler(
+                callbackManager, streamWriterManager, parentWorkflowSpanManager);
+
+        tracerWorkflowSpanManagerDict.put("", parentWorkflowSpanManager);
+
+        Map<String, com.openjiuwen.core.session.callback.BaseHandler> agentMap = new HashMap<>();
+        agentMap.put(TracerHandlerName.TRACE_AGENT.getValue(), agentHandler);
+        callbackManager.register(agentMap);
+
+        Map<String, com.openjiuwen.core.session.callback.BaseHandler> workflowMap = new HashMap<>();
+        workflowMap.put(TracerHandlerName.TRACER_WORKFLOW.getValue(), workflowHandler);
+        callbackManager.register(workflowMap);
     }
-    
+
     /**
-     * Registers a workflow span manager for a parent node.
-     * 
+     * Register a workflow span manager for a parent node.
+     *
      * @param parentNodeId the parent node ID
      */
     public void registerWorkflowSpanManager(String parentNodeId) {
-        SpanManager tracerWorkflowSpanManager = new SpanManager(traceId, parentNodeId);
-        tracerWorkflowSpanManagerDict.put(parentNodeId, tracerWorkflowSpanManager);
-        
-        // Create and register handler for this workflow span manager
-        TraceWorkflowHandler traceWorkflowHandler = new TraceWorkflowHandler(callbackManager, streamWriterManager, 
-                                                                              tracerWorkflowSpanManager);
-        
-        Map<String, BaseHandler> handlerMap = new HashMap<>();
-        handlerMap.put(TracerHandlerName.TRACER_WORKFLOW.getValue() + "." + parentNodeId, traceWorkflowHandler);
+        SpanManager spanManager = new SpanManager(traceId, parentNodeId);
+        tracerWorkflowSpanManagerDict.put(parentNodeId, spanManager);
+
+        TraceWorkflowHandler handler = new TraceWorkflowHandler(
+                callbackManager, streamWriterManager, spanManager);
+
+        Map<String, com.openjiuwen.core.session.callback.BaseHandler> handlerMap = new HashMap<>();
+        handlerMap.put(TracerHandlerName.TRACER_WORKFLOW.getValue() + "." + parentNodeId, handler);
         callbackManager.register(handlerMap);
     }
-    
+
     /**
-     * Gets a workflow span by invoke ID and parent node ID.
-     * 
-     * @param invokeId the invoke ID
-     * @param parentNodeId the parent node ID
-     * @return the span, or null if not found
+     * Get a workflow span by invoke ID and parent node ID.
      */
-    public Span getWorkflowSpan(String invokeId, String parentNodeId) {
-        SpanManager workflowSpanManager = tracerWorkflowSpanManagerDict.get(parentNodeId);
-        if (workflowSpanManager == null) {
+    public TraceWorkflowSpan getWorkflowSpan(String invokeId, String parentNodeId) {
+        SpanManager manager = tracerWorkflowSpanManagerDict.get(parentNodeId);
+        if (manager == null) {
             return null;
         }
-        return workflowSpanManager.getSpan(invokeId);
+        Span span = manager.getSpan(invokeId);
+        return span instanceof TraceWorkflowSpan ? (TraceWorkflowSpan) span : null;
     }
-    
+
     /**
-     * Triggers an event on a handler.
-     * 
+     * Trigger a tracer event through the callback manager.
+     *
      * @param handlerClassName the handler class name
-     * @param eventName the event name
-     * @param kwargs the event arguments
-     * @return a CompletableFuture that completes when the event is triggered
+     * @param eventName        the event name
+     * @param kwargs           the event arguments
      */
-    public CompletableFuture<Void> trigger(String handlerClassName, String eventName, Map<String, Object> kwargs) {
+    public void trigger(String handlerClassName, String eventName, Map<String, Object> kwargs) {
         String parentNodeId = kwargs != null ? (String) kwargs.get("parent_node_id") : null;
         if (parentNodeId != null && !parentNodeId.isEmpty()) {
-            handlerClassName = handlerClassName + "." + parentNodeId;
+            handlerClassName += "." + parentNodeId;
         }
-        
-        if (callbackManager != null) {
-            return callbackManager.trigger(handlerClassName, eventName, kwargs);
-        }
-        return CompletableFuture.completedFuture(null);
+        callbackManager.trigger(handlerClassName, eventName, kwargs);
     }
-    
+
     /**
-     * Synchronously triggers an event on a handler.
-     * 
-     * @param handlerClassName the handler class name
-     * @param eventName the event name
-     * @param kwargs the event arguments
-     */
-    public void syncTrigger(String handlerClassName, String eventName, Map<String, Object> kwargs) {
-        trigger(handlerClassName, eventName, kwargs).join();
-    }
-    
-    /**
-     * Removes a workflow span by invoke ID and parent node ID.
-     * 
-     * @param invokeId the invoke ID
-     * @param parentNodeId the parent node ID
+     * Pop (remove) a workflow span.
      */
     public void popWorkflowSpan(String invokeId, String parentNodeId) {
         SpanManager manager = tracerWorkflowSpanManagerDict.get(parentNodeId);
@@ -141,50 +111,16 @@ public class Tracer {
             manager.popSpan(invokeId);
         }
     }
-    
-    /**
-     * Gets the trace ID.
-     * 
-     * @return the trace ID
-     */
+
     public String getTraceId() {
         return traceId;
     }
-    
-    /**
-     * Gets the agent span manager.
-     * 
-     * @return the agent span manager
-     */
+
     public SpanManager getTracerAgentSpanManager() {
         return tracerAgentSpanManager;
     }
-    
-    /**
-     * Gets the workflow span manager dictionary.
-     * 
-     * @return the workflow span manager dictionary
-     */
+
     public Map<String, SpanManager> getTracerWorkflowSpanManagerDict() {
         return tracerWorkflowSpanManagerDict;
     }
-    
-    /**
-     * Gets the callback manager.
-     * 
-     * @return the callback manager
-     */
-    public CallbackManager getCallbackManager() {
-        return callbackManager;
-    }
-    
-    /**
-     * Gets the stream writer manager.
-     * 
-     * @return the stream writer manager
-     */
-    public StreamWriterManager getStreamWriterManager() {
-        return streamWriterManager;
-    }
 }
-

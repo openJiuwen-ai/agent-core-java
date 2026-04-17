@@ -1,10 +1,8 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.common;
-
-import com.openjiuwen.core.common.utils.Pair;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,90 +10,72 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Memory utility functions.
- * Corresponds to Python: common/base.py
+ * Utility methods for memory module.
  */
 public final class MemoryUtils {
 
     private MemoryUtils() {
-        // Utility class, prevent instantiation
     }
 
     /**
-     * Generate vector index name.
-     *
-     * @param usrId user ID
-     * @param scopeId scope ID
-     * @param memType memory type
-     * @return generated index name
+     * Generate vector index name from user id, scope id and memory type.
      */
-    public static String generateIdxName(String usrId, String scopeId, String memType) {
-        return String.format("uid_%s_gid_%s_mtype_%s", usrId, scopeId, memType);
+    public static String generateIdxName(String userId, String scopeId, String memType) {
+        return String.format("uid_%s_gid_%s_mtype_%s", userId, scopeId, memType);
+    }
+
+    /**
+     * Parse memory type from vector index name.
+     */
+    public static String parseMemTypeFromIdxName(String idxName) {
+        String[] parts = idxName.split("_");
+        return parts[parts.length - 1];
     }
 
     /**
      * Parse memory hit infos from search results.
      *
      * @param hits list of (id, score) pairs
-     * @return parsed result containing ids list and scores map
-     * @throws IllegalArgumentException if hits contain null pairs
+     * @return tuple of (ids list, scores map)
      */
-    public static ParsedHitResult parseMemoryHitInfos(List<Pair<String, Double>> hits) {
-        if (hits == null || hits.isEmpty()) {
-            return new ParsedHitResult(new ArrayList<>(), new HashMap<>());
-        }
-
-        try {
-            List<String> ids = new ArrayList<>();
-            Map<String, Double> scores = new HashMap<>();
-
-            for (Pair<String, Double> hit : hits) {
-                if (hit == null) {
-                    throw new IllegalArgumentException("Hit pair cannot be null");
-                }
-                ids.add(hit.getKey());
-                scores.put(hit.getKey(), hit.getValue());
-            }
-
-            return new ParsedHitResult(ids, scores);
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to parse memory hit infos: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Parsed hit result record.
-     *
-     * @param ids list of IDs in order
-     * @param scores map of ID to score
-     */
-    public record ParsedHitResult(List<String> ids, Map<String, Double> scores) {
-    }
-
-    /**
-     * Parse memory hit infos from search results into a Pair.
-     *
-     * @param hits list of (id, score) pairs
-     * @return Pair containing (ids list, scores map)
-     */
-    public static Pair<List<String>, Map<String, Double>> parseMemoryHitInfosAsPair(List<Pair<String, Double>> hits) {
-        if (hits == null || hits.isEmpty()) {
-            return new Pair<>(new ArrayList<>(), new HashMap<>());
-        }
-
+    public static HitParseResult parseMemoryHitInfos(List<Map.Entry<String, Double>> hits) {
         List<String> ids = new ArrayList<>();
         Map<String, Double> scores = new HashMap<>();
-
-        for (Pair<String, Double> hit : hits) {
-            if (hit != null) {
+        if (hits != null) {
+            for (Map.Entry<String, Double> hit : hits) {
                 ids.add(hit.getKey());
                 scores.put(hit.getKey(), hit.getValue());
             }
         }
+        return new HitParseResult(ids, scores);
+    }
 
-        return new Pair<>(ids, scores);
+    /**
+     * Result of parsing memory hit infos.
+     */
+    public static class HitParseResult {
+        private final List<String> ids;
+        private final Map<String, Double> scores;
+
+        public HitParseResult(List<String> ids, Map<String, Double> scores) {
+            this.ids = ids;
+            this.scores = scores;
+        }
+
+        public List<String> getIds() {
+            return ids;
+        }
+
+        public List<String> ids() {
+            return ids;
+        }
+
+        public Map<String, Double> getScores() {
+            return scores;
+        }
+
+        public Map<String, Double> scores() {
+            return scores;
+        }
     }
 }
-

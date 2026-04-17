@@ -1,109 +1,91 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.state;
 
-import com.openjiuwen.core.session.SessionUtils;
+import com.openjiuwen.core.session.utils.SessionUtils;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * In-memory implementation of StateLike.
- * 
- * <p>Stores state in a HashMap and provides deep copy semantics for all read operations.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code InMemoryStateLike}.
  */
 public class InMemoryStateLike implements StateLike {
-    
-    /**
-     * Internal state storage.
-     */
-    protected Map<String, Object> state;
-    
-    /**
-     * Creates a new empty InMemoryStateLike.
-     */
+
+    private Map<String, Object> state;
+
     public InMemoryStateLike() {
         this.state = new HashMap<>();
     }
-    
-    @Override
-    public Object get(Object key) {
-        Object result = SessionUtils.getBySchema(key, this.state);
-        return deepCopy(result);
+
+    public InMemoryStateLike(Map<String, Object> initialState) {
+        this.state = initialState != null ? new HashMap<>(initialState) : new HashMap<>();
     }
-    
+
     @Override
-    public Object getByPrefix(Object key, String nestedPrefix) {
-        Object result = SessionUtils.getBySchema(key, this.state, nestedPrefix);
-        return deepCopy(result);
+    public synchronized Object get(Object key) {
+        return deepCopy(SessionUtils.getBySchema(key, state));
     }
-    
+
     @Override
-    public <T> T getByTransformer(Transformer<T> transformer) {
-        return transformer.transform(new MapReadableState(this.state));
+    public synchronized Object getByPrefix(Object key, String nestedPrefix) {
+        return deepCopy(SessionUtils.getBySchema(key, state, nestedPrefix, true));
     }
-    
+
     @Override
-    public void update(Map<String, Object> data) {
-        Map<String, Object> copiedData = SessionUtils.deepCopyMap(data);
-        SessionUtils.updateDict(copiedData, this.state);
+    public synchronized Object getByTransformer(Function<Object, Object> transformer) {
+        return transformer.apply(state);
     }
-    
+
     @Override
-    public Map<String, Object> getState() {
-        return SessionUtils.deepCopyMap(this.state);
+    public synchronized void update(Map<String, Object> data) {
+        SessionUtils.updateDict(deepCopyMap(data), state);
     }
-    
+
     @Override
-    public void setState(Map<String, Object> state) {
-        if (state != null && !state.isEmpty()) {
-            this.state = state;
+    public synchronized Map<String, Object> getState() {
+        return deepCopyMap(state);
+    }
+
+    @Override
+    public synchronized void setState(Map<String, Object> newState) {
+        if (newState != null) {
+            this.state = newState;
         }
     }
-    
-    /**
-     * Creates a deep copy of an object.
-     * 
-     * @param obj the object to copy
-     * @return a deep copy of the object
-     */
+
     @SuppressWarnings("unchecked")
-    private Object deepCopy(Object obj) {
+    private static Object deepCopy(Object obj) {
         if (obj == null) {
             return null;
         }
-        if (obj instanceof Map) {
-            return SessionUtils.deepCopyMap((Map<String, Object>) obj);
+        if (obj instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new HashMap<>();
+            for (var entry : map.entrySet()) {
+                copy.put(String.valueOf(entry.getKey()), deepCopy(entry.getValue()));
+            }
+            return copy;
         }
-        if (obj instanceof java.util.List) {
-            return SessionUtils.deepCopyList((java.util.List<Object>) obj);
+        if (obj instanceof java.util.List<?> list) {
+            var copy = new java.util.ArrayList<>();
+            for (var item : list) {
+                copy.add(deepCopy(item));
+            }
+            return copy;
         }
         return obj;
     }
-    
-    /**
-     * Simple wrapper to provide ReadableStateLike interface over a Map.
-     */
-    private static class MapReadableState implements ReadableStateLike {
-        private final Map<String, Object> data;
-        
-        MapReadableState(Map<String, Object> data) {
-            this.data = data;
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        if (source == null) {
+            return new HashMap<>();
         }
-        
-        @Override
-        public Object get(Object key) {
-            return SessionUtils.getBySchema(key, this.data);
-        }
-        
-        @Override
-        public Object getByPrefix(Object key, String nestedPrefix) {
-            return SessionUtils.getBySchema(key, this.data, nestedPrefix);
-        }
+        return (Map<String, Object>) deepCopy(source);
     }
 }
-

@@ -1,248 +1,240 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.exception;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Framework unified exception base class
- * 
- * <p>Key design points:
+ * Framework unified exception base class.
+ *
+ * <p>Key design points:</p>
  * <ul>
- *   <li>StatusCode is the primary semantic identifier</li>
+ *   <li>{@link StatusCode} is the primary semantic identifier</li>
  *   <li>Exception type represents control / recovery semantics</li>
  *   <li>Message rendering is template-based and lazy-safe</li>
  * </ul>
- * 
- * @since 0.1.4
+ *
+ * <p>Mirrors Python's {@code BaseError} class.</p>
  */
 public class BaseError extends RuntimeException {
-    
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    
-    protected StatusCode status;
-    protected int code;
-    protected Map<String, Object> params;
-    protected Object details;
-    protected Throwable causeException;
-    protected String templateMessage;
-    protected String customMessage;
-    protected boolean recoverable;
-    protected boolean fatal;
-    
+
+    private final StatusCode status;
+    private final int code;
+    private final Map<String, Object> params;
+    private final Object details;
+    private final String templateMessage;
+    private final String message;
+
+    /** Whether this error is recoverable (can be retried). */
+    private final boolean recoverable;
+
+    /** Whether this error is fatal (must abort execution). */
+    private final boolean fatal;
+
     /**
-     * Constructor
-     * 
+     * Construct a new BaseError.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message (overrides template)
+     * @param details optional additional details
+     * @param cause   optional root cause
+     * @param params  template parameters for message rendering
+     */
+    public BaseError(StatusCode status, String msg, Object details, Throwable cause,
+                     Map<String, Object> params) {
+        super(msg != null ? msg : renderMessage(status, params), cause);
+        this.status = status;
+        this.code = status.getCode();
+        this.params = params != null ? Collections.unmodifiableMap(new HashMap<>(params)) : Collections.emptyMap();
+        this.details = details;
+        this.templateMessage = renderMessage(status, params);
+        this.message = msg != null ? msg : this.templateMessage;
+        this.recoverable = defaultRecoverable();
+        this.fatal = defaultFatal();
+    }
+
+    /**
+     * Convenience constructor with builder-style params.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message
+     * @param details optional additional details
+     * @param cause   optional root cause
+     */
+    public BaseError(StatusCode status, String msg, Object details, Throwable cause) {
+        this(status, msg, details, cause, Collections.emptyMap());
+    }
+
+    /**
+     * Creates a BaseError with status and template parameters.
+     *
+     * @param status the status code
+     * @param params template parameters for message rendering
+     */
+    public BaseError(StatusCode status, Map<String, Object> params) {
+        this(status, null, null, null, params);
+    }
+
+    /**
+     * Creates a BaseError with status only.
+     *
      * @param status the status code
      */
     public BaseError(StatusCode status) {
-        this(status, null, null, null, null);
+        this(status, null, null, null, Collections.emptyMap());
     }
-    
+
+    // ======================== Template rendering ========================
+
     /**
-     * Full constructor
-     * 
-     * @param status the status code
-     * @param msg custom message (optional)
-     * @param details additional details (optional)
-     * @param cause the cause exception (optional)
-     * @param params template parameters (optional)
+     * Render error message from StatusCode template in a safe manner.
+     * Missing placeholders are replaced with {@code <missing:key>}.
+     *
+     * @param status the status code containing the message template
+     * @param params the parameters for template substitution
+     * @return the rendered message string
      */
-    public BaseError(
-            StatusCode status,
-            String msg,
-            Object details,
-            Throwable cause,
-            Map<String, Object> params) {
-        super(cause);
-        
-        this.status = status != null ? status : StatusCode.ERROR;
-        this.code = this.status.getCode();
-        this.params = params != null ? new HashMap<>(params) : new HashMap<>();
-        this.details = details;
-        this.causeException = cause;
-        this.customMessage = msg != null ? msg : "";
-        this.templateMessage = renderMessage();
-        this.recoverable = false;
-        this.fatal = false;
-    }
-    
-    /**
-     * Render message from template with parameters
-     * 
-     * @return the rendered message
-     */
-    protected String renderMessage() {
-        try {
-            return formatTemplate(status.getMessage(), params);
-        } catch (Exception e) {
-            return status.getMessage();
-        }
-    }
-    
-    /**
-     * Format a template string with parameters
-     * 
-     * @param template the message template
-     * @param params the parameters to substitute
-     * @return the formatted message
-     */
-    protected static String formatTemplate(String template, Map<String, Object> params) {
-        if (template == null || template.isEmpty()) {
+    static String renderMessage(StatusCode status, Map<String, Object> params) {
+        if (status == null || status.getErrmsg() == null || status.getErrmsg().isEmpty()) {
             return "";
         }
-        
+        String template = status.getErrmsg();
         if (params == null || params.isEmpty()) {
             return template;
         }
-        
-        String result = template;
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            String placeholder = "{" + entry.getKey() + "}";
-            String value;
-            
-            if (entry.getValue() == null) {
-                value = "null";
-            } else {
-                value = entry.getValue().toString();
-            }
-            
-            result = result.replace(placeholder, value);
+        try {
+            return formatTemplate(template, params);
+        } catch (Exception e) {
+            return template;
         }
-        
-        // Replace any remaining placeholders with <missing:key>
-        result = result.replaceAll("\\{([^}]+)\\}", "<missing:$1>");
-        
-        return result;
     }
-    
+
     /**
-     * Convert to Map for structured output
-     * 
-     * @return a Map representation
+     * Safe template formatting. Placeholders use {@code {key}} syntax.
+     * Missing keys are replaced with {@code <missing:key>}.
+     *
+     * @param template the message template with {key} placeholders
+     * @param params   the parameters for substitution
+     * @return the formatted string
+     */
+    static String formatTemplate(String template, Map<String, Object> params) {
+        if (template == null || template.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(template.length() * 2);
+        int i = 0;
+        while (i < template.length()) {
+            char c = template.charAt(i);
+            if (c == '{') {
+                int end = template.indexOf('}', i + 1);
+                if (end > i) {
+                    String key = template.substring(i + 1, end);
+                    if (params.containsKey(key)) {
+                        Object val = params.get(key);
+                        sb.append(val != null ? val.toString() : "null");
+                    } else {
+                        sb.append("<missing:").append(key).append('>');
+                    }
+                    i = end + 1;
+                } else {
+                    sb.append(c);
+                    i++;
+                }
+            } else {
+                sb.append(c);
+                i++;
+            }
+        }
+        return sb.toString();
+    }
+
+    // ======================== Structured output ========================
+
+    /**
+     * Standard structured output for API / RPC / logging.
+     *
+     * @return a map representation of this error
      */
     public Map<String, Object> toMap() {
-        Map<String, Object> map = new LinkedHashMap<>();
+        Map<String, Object> map = new HashMap<>();
         map.put("code", code);
         map.put("status", status.name());
         map.put("message", templateMessage);
         map.put("params", params);
-        map.put("raw_message", customMessage);
+        map.put("raw_message", message);
         map.put("details", details);
         return map;
     }
-    
+
     /**
-     * Convert to JSON string
-     * 
-     * @return a JSON representation
+     * Serialize this error to a JSON string.
+     *
+     * @return JSON representation of the error
      */
     public String toJson() {
         try {
-            return OBJECT_MAPPER.writeValueAsString(toMap());
+            return new ObjectMapper().writeValueAsString(toMap());
         } catch (JsonProcessingException e) {
-            return String.format("{\"code\": %d, \"message\": \"%s\"}", code, templateMessage);
+            return toString();
         }
     }
-    
-    @Override
-    public String toString() {
-        if (customMessage.isEmpty()) {
-            return String.format("[%d] %s", code, templateMessage);
-        }
-        return String.format("[%d] %s %s", code, templateMessage, customMessage);
-    }
-    
-    @Override
-    public String getMessage() {
-        return toString();
-    }
-    
-    // Getters
-    
+
+    // ======================== Accessors ========================
+
     public StatusCode getStatus() {
         return status;
     }
-    
+
     public int getCode() {
         return code;
     }
-    
+
     public Map<String, Object> getParams() {
-        return Collections.unmodifiableMap(params);
+        return params;
     }
-    
+
     public Object getDetails() {
         return details;
     }
-    
-    public String getCustomMessage() {
-        return customMessage;
-    }
-    
+
     public String getTemplateMessage() {
         return templateMessage;
     }
-    
+
+    @Override
+    public String getMessage() {
+        return message;
+    }
+
     public boolean isRecoverable() {
         return recoverable;
     }
-    
+
     public boolean isFatal() {
         return fatal;
     }
-    
-    // Builder for convenient construction
-    
-    public static Builder builder(StatusCode status) {
-        return new Builder(status);
+
+    @Override
+    public String toString() {
+        return "[" + code + "] " + message;
     }
-    
-    public static class Builder {
-        private final StatusCode status;
-        private String msg;
-        private Object details;
-        private Throwable cause;
-        private final Map<String, Object> params = new HashMap<>();
-        
-        public Builder(StatusCode status) {
-            this.status = status;
-        }
-        
-        public Builder msg(String msg) {
-            this.msg = msg;
-            return this;
-        }
-        
-        public Builder details(Object details) {
-            this.details = details;
-            return this;
-        }
-        
-        public Builder cause(Throwable cause) {
-            this.cause = cause;
-            return this;
-        }
-        
-        public Builder param(String key, Object value) {
-            this.params.put(key, value);
-            return this;
-        }
-        
-        public Builder params(Map<String, Object> params) {
-            this.params.putAll(params);
-            return this;
-        }
-        
-        public BaseError build() {
-            return new BaseError(status, msg, details, cause, params);
-        }
-        
-        public void raise() {
-            throw build();
-        }
+
+    // ======================== Subclass overrides ========================
+
+    /** Subclasses override to define default recoverability. */
+    protected boolean defaultRecoverable() {
+        return false;
+    }
+
+    /** Subclasses override to define default fatality. */
+    protected boolean defaultFatal() {
+        return false;
     }
 }
-

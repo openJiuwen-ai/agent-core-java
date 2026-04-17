@@ -1,90 +1,44 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * Tool call representation.
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/tool_call.py
+ * Represents a tool call from LLM output.
+ * <p>
+ * Mirrors Python's {@code ToolCall} model from the foundation LLM schema.
+ *
+ * @see <a href="https://platform.openai.com/docs/api-reference/chat/object">OpenAI Tool Call</a>
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolCall {
+
+    /** Tool call ID. */
     private String id;
-    private String type;
+
+    /** Tool call type (e.g., "function"). */
+    @Builder.Default
+    private String type = "function";
+
+    /** Tool name. */
     private String name;
+
+    /** Tool arguments as JSON string. */
     private String arguments;
+
+    /** Tool call index, used to distinguish multiple tool calls in a single response. */
+    @JsonProperty("index")
     private Integer index;
-
-    public ToolCall() {
-    }
-
-    public ToolCall(String type, String name, String arguments, String id) {
-        this.type = type;
-        this.name = name;
-        this.arguments = arguments;
-        this.id = id;
-    }
-
-    public ToolCall(String id, String type, String name, String arguments, Integer index) {
-        this.id = id;
-        this.type = type;
-        this.name = name;
-        this.arguments = arguments;
-        this.index = index;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getArguments() {
-        return arguments;
-    }
-
-    public void setArguments(String arguments) {
-        this.arguments = arguments;
-    }
-
-    public Integer getIndex() {
-        return index;
-    }
-
-    public void setIndex(Integer index) {
-        this.index = index;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        ToolCall toolCall = (ToolCall) o;
-        return java.util.Objects.equals(id, toolCall.id) &&
-                java.util.Objects.equals(type, toolCall.type) &&
-                java.util.Objects.equals(name, toolCall.name) &&
-                java.util.Objects.equals(arguments, toolCall.arguments) &&
-                java.util.Objects.equals(index, toolCall.index);
-    }
-
-    @Override
-    public int hashCode() {
-        return java.util.Objects.hash(id, type, name, arguments, index);
-    }
 }
-

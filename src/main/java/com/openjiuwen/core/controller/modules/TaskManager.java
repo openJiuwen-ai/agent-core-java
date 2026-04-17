@@ -1,63 +1,44 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Task Manager.
- *
- * <p>Responsible for task CRUD operations, status management, priority management,
- * and hierarchical relationship management.
+ * Task manager responsible for task CRUD, status management,
+ * priority management, and hierarchical relationship management.
+ * <p>
  * Provides efficient index structures for fast task queries.
- *
- * <p>Index Structure:
- * <ul>
- *   <li>priorityIndex: Priority index for fast task lookup by priority</li>
- *   <li>parentToChildren: Parent-to-children relationship index</li>
- *   <li>childToParent: Child-to-parent relationship index</li>
- *   <li>rootTasks: Root task set for fast root task lookup</li>
- * </ul>
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code TaskManager}.
  */
 public class TaskManager {
 
     private ControllerConfig config;
-    private final Map<String, Task> tasks = new LinkedHashMap<>();
-
-    // Priority index: priority -> List[task_id]
+    private final Map<String, Task> tasks = new HashMap<>();
     private final Map<Integer, List<String>> priorityIndex = new HashMap<>();
-
-    // Parent-to-children: parent_task_id -> Set[child_task_id]
     private final Map<String, Set<String>> parentToChildren = new HashMap<>();
-
-    // Child-to-parent: child_task_id -> parent_task_id
     private final Map<String, String> childToParent = new HashMap<>();
-
-    // Root task set
-    private final Set<String> rootTasks = new LinkedHashSet<>();
-
-    // Lock for thread safety
+    private final Set<String> rootTasks = new HashSet<>();
     private final ReentrantLock lock = new ReentrantLock();
 
-    /**
-     * Constructor.
-     *
-     * @param config the controller configuration
-     */
     public TaskManager(ControllerConfig config) {
         this.config = config;
     }
-
-    // ==================== Property access ====================
 
     public ControllerConfig getConfig() {
         return config;
@@ -68,44 +49,29 @@ public class TaskManager {
     }
 
     /**
-     * Direct access to internal tasks map (for test inspection).
-     */
-    public Map<String, Task> getTasks() {
-        return tasks;
-    }
-
-    public Map<Integer, List<String>> getPriorityIndex() {
-        return priorityIndex;
-    }
-
-    public Map<String, Set<String>> getParentToChildren() {
-        return parentToChildren;
-    }
-
-    public Map<String, String> getChildToParent() {
-        return childToParent;
-    }
-
-    public Set<String> getRootTasks() {
-        return rootTasks;
-    }
-
-    // ==================== State Management ====================
-
-    /**
-     * Gets the task manager state.
-     *
-     * @return a copy of the current state
+     * Get task manager state for serialization.
      */
     public TaskManagerState getState() {
         lock.lock();
         try {
+            Map<String, Task> tasksCopy = new HashMap<>();
+            for (var entry : tasks.entrySet()) {
+                tasksCopy.put(entry.getKey(), entry.getValue().copy());
+            }
+            Map<Integer, List<String>> priorityCopy = new HashMap<>();
+            for (var entry : priorityIndex.entrySet()) {
+                priorityCopy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+            Map<String, Set<String>> parentChildCopy = new HashMap<>();
+            for (var entry : parentToChildren.entrySet()) {
+                parentChildCopy.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
             return new TaskManagerState(
-                new LinkedHashMap<>(tasks),
-                deepCopyPriorityIndex(),
-                deepCopyParentToChildren(),
-                new HashMap<>(childToParent),
-                new LinkedHashSet<>(rootTasks)
+                    tasksCopy,
+                    priorityCopy,
+                    parentChildCopy,
+                    new HashMap<>(childToParent),
+                    new HashSet<>(rootTasks)
             );
         } finally {
             lock.unlock();
@@ -113,29 +79,23 @@ public class TaskManager {
     }
 
     /**
-     * Loads the task manager state.
-     *
-     * @param state the state to load
+     * Load task manager state.
      */
     public void loadState(TaskManagerState state) {
         lock.lock();
         try {
             tasks.clear();
             tasks.putAll(state.getTasks());
-
             priorityIndex.clear();
-            for (Map.Entry<Integer, List<String>> entry : state.getPriorityIndex().entrySet()) {
+            for (var entry : state.getPriorityIndex().entrySet()) {
                 priorityIndex.put(entry.getKey(), new ArrayList<>(entry.getValue()));
             }
-
             parentToChildren.clear();
-            for (Map.Entry<String, Set<String>> entry : state.getParentToChildren().entrySet()) {
+            for (var entry : state.getParentToChildren().entrySet()) {
                 parentToChildren.put(entry.getKey(), new HashSet<>(entry.getValue()));
             }
-
             childToParent.clear();
             childToParent.putAll(state.getChildrenToParent());
-
             rootTasks.clear();
             rootTasks.addAll(state.getRootTasks());
         } finally {
@@ -144,7 +104,7 @@ public class TaskManager {
     }
 
     /**
-     * Clears all task manager state.
+     * Clear all task manager state.
      */
     public void clearState() {
         lock.lock();
@@ -162,40 +122,33 @@ public class TaskManager {
     // ==================== Task CRUD Operations ====================
 
     /**
-     * Add a single task.
-     *
-     * @param task the task to add
+     * Add task(s) to task queue.
      */
     public void addTask(Task task) {
         addTask(List.of(task));
     }
 
     /**
-     * Add multiple tasks.
-     *
-     * @param taskList the tasks to add
+     * Add tasks to task queue.
      */
     public void addTask(List<Task> taskList) {
         lock.lock();
         try {
             for (Task t : taskList) {
                 if (tasks.containsKey(t.getTaskId())) {
-                    throw ErrorBuilder.build(
-                        StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                        null, null, null,
-                        Map.of("error_msg", t.getTaskId() + " already exists!")
-                    );
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                            "error_msg", t.getTaskId() + " already exists!");
                 }
-
-                // Deep copy task (clone by rebuilding)
-                tasks.put(t.getTaskId(), copyTask(t));
+                tasks.put(t.getTaskId(), t.copy());
 
                 // Update priority index
-                priorityIndex.computeIfAbsent(t.getPriority(), k -> new ArrayList<>()).add(t.getTaskId());
+                priorityIndex.computeIfAbsent(t.getPriority(), k -> new ArrayList<>())
+                        .add(t.getTaskId());
 
-                // Update hierarchical relationship index
+                // Update hierarchical relationships
                 if (t.getParentTaskId() != null) {
-                    parentToChildren.computeIfAbsent(t.getParentTaskId(), k -> new HashSet<>()).add(t.getTaskId());
+                    parentToChildren.computeIfAbsent(t.getParentTaskId(), k -> new HashSet<>())
+                            .add(t.getTaskId());
                     childToParent.put(t.getTaskId(), t.getParentTaskId());
                     rootTasks.remove(t.getTaskId());
                 } else {
@@ -208,28 +161,77 @@ public class TaskManager {
     }
 
     /**
-     * Query tasks.
+     * Query tasks based on filter.
      *
-     * @param taskFilter the filter criteria (null returns all tasks)
-     * @return list of matching tasks
+     * @param taskFilter filter criteria, null returns all tasks
+     * @return list of matching tasks (deep copies)
      */
     public List<Task> getTask(TaskFilter taskFilter) {
         lock.lock();
         try {
             if (taskFilter == null) {
-                return new ArrayList<>(tasks.values());
+                return copyTasks(new ArrayList<>(tasks.values()));
             }
 
-            // Check for "highest" priority in get_task
-            if (taskFilter.isPriorityHighest()) {
-                throw ErrorBuilder.build(
-                    StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                    null, null, null,
-                    Map.of("error_msg", "Priority 'highest' is not supported in get_task, use pop_task instead")
-                );
+            Set<String> candidateIds = new HashSet<>();
+            boolean hasPrimaryFilter = false;
+
+            // Query by task_id
+            if (taskFilter.getTaskId() != null) {
+                hasPrimaryFilter = true;
+                candidateIds.addAll(taskFilter.getTaskIdList());
             }
 
-            return filterTasks(taskFilter);
+            // Query by session_id
+            if (taskFilter.getSessionId() != null) {
+                hasPrimaryFilter = true;
+                for (Task t : tasks.values()) {
+                    if (taskFilter.getSessionId().equals(t.getSessionId())) {
+                        candidateIds.add(t.getTaskId());
+                    }
+                }
+            }
+
+            // Query by priority
+            if (taskFilter.getPriority() != null) {
+                hasPrimaryFilter = true;
+                if (taskFilter.isHighestPriority()) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                            "error_msg", "Priority 'highest' is not supported in getTask, use popTask instead");
+                }
+                Integer p = taskFilter.getPriorityAsInt();
+                if (p != null && priorityIndex.containsKey(p)) {
+                    candidateIds.addAll(priorityIndex.get(p));
+                }
+            }
+
+            // Query by is_root
+            if (taskFilter.isRoot()) {
+                hasPrimaryFilter = true;
+                candidateIds.addAll(rootTasks);
+            }
+
+            // If no primary filters, check all tasks if status/userId filters exist
+            if (!hasPrimaryFilter && (taskFilter.getStatus() != null || taskFilter.getUserId() != null)) {
+                candidateIds.addAll(tasks.keySet());
+            }
+
+            List<Task> result = filterCandidates(candidateIds, taskFilter);
+
+            // Handle with_children
+            if (taskFilter.isWithChildren()) {
+                Set<String> childrenIds = new HashSet<>();
+                for (Task task : result) {
+                    collectAllChildren(task.getTaskId(), childrenIds);
+                }
+                for (String cid : childrenIds) {
+                    if (tasks.containsKey(cid)) {
+                        result.add(tasks.get(cid));
+                    }
+                }
+            }
+
+            return copyTasks(result);
         } finally {
             lock.unlock();
         }
@@ -237,107 +239,102 @@ public class TaskManager {
 
     /**
      * Pop tasks (query and remove).
-     *
-     * @param taskFilter the filter criteria (cannot be null)
-     * @return list of matching tasks (already removed)
      */
     public List<Task> popTask(TaskFilter taskFilter) {
         if (taskFilter == null) {
-            throw ErrorBuilder.build(
-                StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                null, null, null,
-                Map.of("error_msg", "task_filter cannot be None in pop_task")
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                    "error_msg", "taskFilter cannot be null in popTask");
         }
 
         lock.lock();
         try {
-            // Handle "highest" priority
-            Integer resolvedPriority = taskFilter.getPriority();
-            boolean useHighest = taskFilter.isPriorityHighest();
-            if (useHighest) {
+            // Handle highest priority
+            if (taskFilter.isHighestPriority()) {
                 if (priorityIndex.isEmpty()) {
                     return List.of();
                 }
-                resolvedPriority = Collections.max(priorityIndex.keySet());
+                // Rebuild filter with actual max priority
+                int maxPriority = priorityIndex.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
+                taskFilter = TaskFilter.builder()
+                        .priority(maxPriority)
+                        .status(taskFilter.getStatus())
+                        .build();
             }
 
-            // Create a resolved filter for actual querying
-            List<Task> resultTasks = filterTasksWithResolvedPriority(taskFilter, resolvedPriority, useHighest);
+            // Get matching tasks
+            List<Task> result = getTaskInternal(taskFilter);
 
-            // Collect IDs to remove
-            Set<String> taskIdsToRemove = new HashSet<>();
-            for (Task t : resultTasks) {
-                taskIdsToRemove.add(t.getTaskId());
+            // Collect all task IDs to remove
+            Set<String> removeIds = new HashSet<>();
+            for (Task t : result) {
+                removeIds.add(t.getTaskId());
             }
+
+            List<Task> toReturn = copyTasks(result);
 
             // Remove tasks
-            removeTasksInternal(taskIdsToRemove);
+            for (String tid : removeIds) {
+                removeTaskInternal(tid, removeIds);
+            }
 
-            return resultTasks;
+            return toReturn;
         } finally {
             lock.unlock();
         }
     }
 
     /**
-     * Update a single task.
-     *
-     * @param task the task to update
-     * @return true if updated, false if not found
+     * Update task(s).
      */
     public boolean updateTask(Task task) {
         return updateTask(List.of(task));
     }
 
     /**
-     * Update multiple tasks.
-     *
-     * @param taskList the tasks to update
-     * @return true if all updated, false if any not found
+     * Update tasks.
      */
     public boolean updateTask(List<Task> taskList) {
         lock.lock();
         try {
             boolean allSuccess = true;
-
             for (Task t : taskList) {
                 if (!tasks.containsKey(t.getTaskId())) {
                     allSuccess = false;
                     continue;
                 }
-
                 Task oldTask = tasks.get(t.getTaskId());
 
-                // Update task
                 tasks.put(t.getTaskId(), t);
 
                 // Update priority index
-                List<String> oldPriorityList = priorityIndex.get(oldTask.getPriority());
-                if (oldPriorityList != null) {
-                    oldPriorityList.remove(t.getTaskId());
+                if (oldTask.getPriority() != t.getPriority()) {
+                    List<String> oldList = priorityIndex.get(oldTask.getPriority());
+                    if (oldList != null) {
+                        oldList.remove(t.getTaskId());
+                    }
                 }
-                List<String> newPriorityList = priorityIndex.get(t.getPriority());
-                if (newPriorityList == null || !newPriorityList.contains(t.getTaskId())) {
-                    priorityIndex.computeIfAbsent(t.getPriority(), k -> new ArrayList<>()).add(t.getTaskId());
+                priorityIndex.computeIfAbsent(t.getPriority(), k -> new ArrayList<>());
+                if (!priorityIndex.get(t.getPriority()).contains(t.getTaskId())) {
+                    priorityIndex.get(t.getPriority()).add(t.getTaskId());
                 }
 
-                // Update hierarchical relationship
+                // Update hierarchical relationships if parent changed
                 String oldParent = oldTask.getParentTaskId();
                 String newParent = t.getParentTaskId();
-                if (!Objects.equals(oldParent, newParent)) {
-                    // Remove from old parent
+                if (!java.util.Objects.equals(oldParent, newParent)) {
+                    // Remove old relationship
                     if (oldParent != null) {
-                        Set<String> oldChildren = parentToChildren.get(oldParent);
-                        if (oldChildren != null) {
-                            oldChildren.remove(t.getTaskId());
+                        Set<String> children = parentToChildren.get(oldParent);
+                        if (children != null) {
+                            children.remove(t.getTaskId());
                         }
                         childToParent.remove(t.getTaskId());
                     }
 
-                    // Add to new parent
+                    // Add new relationship
                     if (newParent != null) {
-                        parentToChildren.computeIfAbsent(newParent, k -> new HashSet<>()).add(t.getTaskId());
+                        parentToChildren.computeIfAbsent(newParent, k -> new HashSet<>())
+                                .add(t.getTaskId());
                         childToParent.put(t.getTaskId(), newParent);
                         rootTasks.remove(t.getTaskId());
                     } else {
@@ -346,7 +343,6 @@ public class TaskManager {
                     }
                 }
             }
-
             return allSuccess;
         } finally {
             lock.unlock();
@@ -354,59 +350,43 @@ public class TaskManager {
     }
 
     /**
-     * Remove tasks.
-     *
-     * @param taskFilter the filter criteria (cannot be null)
+     * Remove tasks based on filter.
      */
     public void removeTask(TaskFilter taskFilter) {
         if (taskFilter == null) {
-            throw ErrorBuilder.build(
-                StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                null, null, null,
-                Map.of("error_msg", "task_filter cannot be None in remove_task")
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                    "error_msg", "taskFilter cannot be null in removeTask");
+        }
+        if (taskFilter.isHighestPriority()) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                    "error_msg", "Priority 'highest' is not supported in removeTask");
         }
 
         lock.lock();
         try {
-            // Check for "highest" in remove_task
-            if (taskFilter.isPriorityHighest()) {
-                throw ErrorBuilder.build(
-                    StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                    null, null, null,
-                    Map.of("error_msg", "Priority 'highest' is not supported in remove_task")
-                );
-            }
-
-            List<Task> tasksToRemove = filterTasks(taskFilter);
-            Set<String> taskIdsToRemove = new HashSet<>();
+            List<Task> tasksToRemove = getTaskInternal(taskFilter);
+            Set<String> removeIds = new HashSet<>();
             for (Task t : tasksToRemove) {
-                taskIdsToRemove.add(t.getTaskId());
+                removeIds.add(t.getTaskId());
             }
-
-            removeTasksInternal(taskIdsToRemove);
+            for (String tid : removeIds) {
+                removeTaskInternal(tid, removeIds);
+            }
         } finally {
             lock.unlock();
         }
     }
 
     /**
-     * Get child tasks.
-     *
-     * @param taskId      the parent task ID
-     * @param isRecursive whether to recursively get all descendants
-     * @return list of child tasks
+     * Get child tasks for a single task ID.
      */
     public List<Task> getChildTask(String taskId, boolean isRecursive) {
         return getChildTask(List.of(taskId), isRecursive);
     }
 
     /**
-     * Get child tasks for multiple parents.
-     *
-     * @param taskIds     the parent task IDs
-     * @param isRecursive whether to recursively get all descendants
-     * @return list of child tasks
+     * Get child tasks for multiple task IDs.
+     * Mirrors Python's support for {@code task_id: Union[str, List[str]]}.
      */
     public List<Task> getChildTask(List<String> taskIds, boolean isRecursive) {
         lock.lock();
@@ -421,11 +401,10 @@ public class TaskManager {
                     }
                 }
             }
-
             List<Task> result = new ArrayList<>();
             for (String cid : childrenIds) {
                 if (tasks.containsKey(cid)) {
-                    result.add(tasks.get(cid));
+                    result.add(tasks.get(cid).copy());
                 }
             }
             return result;
@@ -434,70 +413,49 @@ public class TaskManager {
         }
     }
 
-    // ==================== Status Management ====================
+    // ==================== Task Status Management ====================
 
     /**
-     * Update task status for a single task.
-     *
-     * @param taskId    the task ID
-     * @param newStatus the new status
+     * Update task status.
      */
     public void updateTaskStatus(String taskId, TaskStatus newStatus) {
-        updateTaskStatus(List.of(taskId), newStatus, false, false);
+        updateTaskStatus(List.of(taskId), newStatus, false, false, null);
     }
 
     /**
-     * Update task status for multiple tasks.
-     *
-     * @param taskIds   the task IDs
-     * @param newStatus the new status
+     * Update task status with error message.
      */
-    public void updateTaskStatus(List<String> taskIds, TaskStatus newStatus) {
-        updateTaskStatus(taskIds, newStatus, false, false);
+    public void updateTaskStatus(String taskId, TaskStatus newStatus, String errorMessage) {
+        updateTaskStatus(List.of(taskId), newStatus, false, false, errorMessage);
     }
 
     /**
-     * Update task status with child task support.
-     *
-     * @param taskId       the task ID
-     * @param newStatus    the new status
-     * @param withChildren whether to also update children
-     * @param isRecursive  whether to recursively update
-     */
-    public void updateTaskStatus(String taskId, TaskStatus newStatus,
-                                  boolean withChildren, boolean isRecursive) {
-        updateTaskStatus(List.of(taskId), newStatus, withChildren, isRecursive);
-    }
-
-    /**
-     * Update task status with full options.
-     *
-     * @param taskIds      the task IDs
-     * @param newStatus    the new status
-     * @param withChildren whether to also update children
-     * @param isRecursive  whether to recursively update
+     * Update task status for a list of task IDs.
+     * Mirrors Python's support for {@code task_id: Union[str, List[str]]}.
      */
     public void updateTaskStatus(List<String> taskIds, TaskStatus newStatus,
-                                  boolean withChildren, boolean isRecursive) {
+                                 boolean withChildren, boolean isRecursive, String errorMessage) {
         lock.lock();
         try {
-            Set<String> allTaskIds = new LinkedHashSet<>(taskIds);
+            Set<String> allTaskIds = new HashSet<>(taskIds);
 
             if (withChildren) {
                 for (String tid : taskIds) {
                     if (isRecursive) {
                         collectAllChildren(tid, allTaskIds);
-                    } else {
-                        if (parentToChildren.containsKey(tid)) {
-                            allTaskIds.addAll(parentToChildren.get(tid));
-                        }
+                    } else if (parentToChildren.containsKey(tid)) {
+                        allTaskIds.addAll(parentToChildren.get(tid));
                     }
                 }
             }
 
             for (String tid : allTaskIds) {
-                if (tasks.containsKey(tid)) {
-                    tasks.get(tid).setStatus(newStatus);
+                Task task = tasks.get(tid);
+                if (task != null) {
+                    task.setStatus(newStatus);
+                    if (newStatus == TaskStatus.FAILED) {
+                        task.setErrorMessage(errorMessage != null ? errorMessage : "Task execution failed");
+                    }
                 }
             }
         } finally {
@@ -505,72 +463,40 @@ public class TaskManager {
         }
     }
 
-    // ==================== Priority Management ====================
+    // ==================== Task Priority Management ====================
 
     /**
-     * Set task priority.
-     *
-     * @param taskId      the task ID
-     * @param newPriority the new priority
-     */
-    public void setPriority(String taskId, int newPriority) {
-        setPriority(List.of(taskId), newPriority, false, false);
-    }
-
-    /**
-     * Set task priority (string version).
-     *
-     * @param taskId      the task ID
-     * @param newPriority the new priority as string
-     */
-    public void setPriority(String taskId, String newPriority) {
-        setPriority(List.of(taskId), Integer.parseInt(newPriority), false, false);
-    }
-
-    /**
-     * Set task priority with child support.
-     *
-     * @param taskId       the task ID
-     * @param newPriority  the new priority
-     * @param withChildren whether to also update children
-     * @param isRecursive  whether to recursively update
+     * Set task priority for a single task ID.
      */
     public void setPriority(String taskId, int newPriority,
-                             boolean withChildren, boolean isRecursive) {
+                            boolean withChildren, boolean isRecursive) {
         setPriority(List.of(taskId), newPriority, withChildren, isRecursive);
     }
 
     /**
-     * Set task priority with full options.
-     *
-     * @param taskIds      the task IDs
-     * @param newPriority  the new priority
-     * @param withChildren whether to also update children
-     * @param isRecursive  whether to recursively update
+     * Set task priority for a list of task IDs.
+     * Mirrors Python's support for {@code task_id: Union[str, List[str]]}.
      */
     public void setPriority(List<String> taskIds, int newPriority,
-                             boolean withChildren, boolean isRecursive) {
+                            boolean withChildren, boolean isRecursive) {
         lock.lock();
         try {
-            Set<String> allTaskIds = new LinkedHashSet<>(taskIds);
+            Set<String> allTaskIds = new HashSet<>(taskIds);
 
             if (withChildren) {
                 for (String tid : taskIds) {
                     if (isRecursive) {
                         collectAllChildren(tid, allTaskIds);
-                    } else {
-                        if (parentToChildren.containsKey(tid)) {
-                            allTaskIds.addAll(parentToChildren.get(tid));
-                        }
+                    } else if (parentToChildren.containsKey(tid)) {
+                        allTaskIds.addAll(parentToChildren.get(tid));
                     }
                 }
             }
 
             for (String tid : allTaskIds) {
-                if (tasks.containsKey(tid)) {
-                    Task task = tasks.get(tid);
+                Task task = tasks.get(tid);
+                if (task != null) {
                     int oldPriority = task.getPriority();
-
                     task.setPriority(newPriority);
 
                     if (oldPriority != newPriority) {
@@ -587,11 +513,8 @@ public class TaskManager {
         }
     }
 
-    // ==================== Private Helper Methods ====================
+    // ==================== Internal helpers ====================
 
-    /**
-     * Recursively collect all child task IDs.
-     */
     private void collectAllChildren(String parentId, Set<String> childrenSet) {
         Set<String> children = parentToChildren.get(parentId);
         if (children != null) {
@@ -603,173 +526,126 @@ public class TaskManager {
     }
 
     /**
-     * Internal method to filter tasks based on criteria.
-     * Caller must hold the lock.
+     * Internal getTask (no lock, caller holds lock).
      */
-    private List<Task> filterTasks(TaskFilter filter) {
-        return filterTasksWithResolvedPriority(filter, filter.getPriority(), false);
-    }
-
-    /**
-     * Internal method to filter tasks with optional resolved priority.
-     * Caller must hold the lock.
-     */
-    private List<Task> filterTasksWithResolvedPriority(TaskFilter filter,
-                                                        Integer resolvedPriority,
-                                                        boolean wasHighest) {
-        Set<String> candidateIds = new LinkedHashSet<>();
-
-        // Query by task_id
-        if (filter.getTaskId() != null) {
-            candidateIds.add(filter.getTaskId());
-        }
-        if (filter.getTaskIds() != null) {
-            candidateIds.addAll(filter.getTaskIds());
+    private List<Task> getTaskInternal(TaskFilter taskFilter) {
+        if (taskFilter == null) {
+            return new ArrayList<>(tasks.values());
         }
 
-        // Query by session_id
-        if (filter.getSessionId() != null) {
+        Set<String> candidateIds = new HashSet<>();
+        boolean hasPrimaryFilter = false;
+
+        if (taskFilter.getTaskId() != null) {
+            hasPrimaryFilter = true;
+            candidateIds.addAll(taskFilter.getTaskIdList());
+        }
+        if (taskFilter.getSessionId() != null) {
+            hasPrimaryFilter = true;
             for (Task t : tasks.values()) {
-                if (filter.getSessionId().equals(t.getSessionId())) {
+                if (taskFilter.getSessionId().equals(t.getSessionId())) {
                     candidateIds.add(t.getTaskId());
                 }
             }
         }
-
-        // Query by priority
-        if (resolvedPriority != null) {
-            List<String> byPriority = priorityIndex.get(resolvedPriority);
-            if (byPriority != null) {
-                candidateIds.addAll(byPriority);
+        if (taskFilter.getPriority() != null && !taskFilter.isHighestPriority()) {
+            hasPrimaryFilter = true;
+            Integer p = taskFilter.getPriorityAsInt();
+            if (p != null && priorityIndex.containsKey(p)) {
+                candidateIds.addAll(priorityIndex.get(p));
             }
         }
-
-        // Query by is_root
-        if (filter.isRoot()) {
+        if (taskFilter.isRoot()) {
+            hasPrimaryFilter = true;
             candidateIds.addAll(rootTasks);
         }
-
-        // If no primary filters, but status/userId, check all
-        boolean hasPrimary = (filter.getTaskId() != null || filter.getTaskIds() != null
-            || filter.getSessionId() != null || resolvedPriority != null
-            || wasHighest || filter.isRoot());
-        if (!hasPrimary && (filter.getStatus() != null || filter.getUserId() != null)) {
-            candidateIds = new LinkedHashSet<>(tasks.keySet());
+        if (!hasPrimaryFilter && (taskFilter.getStatus() != null || taskFilter.getUserId() != null)) {
+            candidateIds.addAll(tasks.keySet());
         }
 
-        // Apply secondary filters
-        List<Task> resultTasks = new ArrayList<>();
+        List<Task> result = filterCandidates(candidateIds, taskFilter);
+
+        if (taskFilter.isWithChildren()) {
+            Set<String> childrenIds = new HashSet<>();
+            for (Task task : result) {
+                collectAllChildren(task.getTaskId(), childrenIds);
+            }
+            for (String cid : childrenIds) {
+                if (tasks.containsKey(cid)) {
+                    result.add(tasks.get(cid));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private List<Task> filterCandidates(Set<String> candidateIds, TaskFilter filter) {
+        List<Task> result = new ArrayList<>();
         for (String tid : candidateIds) {
             Task task = tasks.get(tid);
-            if (task == null) continue;
-
-            if (filter.getStatus() != null && task.getStatus() != filter.getStatus()) continue;
+            if (task == null) {
+                continue;
+            }
+            if (filter.getStatus() != null && task.getStatus() != filter.getStatus()) {
+                continue;
+            }
             if (filter.getUserId() != null) {
                 Map<String, Object> meta = task.getMetadata();
-                if (meta == null || !filter.getUserId().equals(meta.get("user_id"))) continue;
-            }
-
-            resultTasks.add(task);
-        }
-
-        // Handle with_children
-        if (filter.isWithChildren()) {
-            Set<String> childIds = new LinkedHashSet<>();
-            for (Task t : resultTasks) {
-                if (parentToChildren.containsKey(t.getTaskId())) {
-                    collectAllChildren(t.getTaskId(), childIds);
+                if (meta == null || !filter.getUserId().equals(meta.get("user_id"))) {
+                    continue;
                 }
             }
-            for (String cid : childIds) {
-                Task child = tasks.get(cid);
-                if (child != null) {
-                    resultTasks.add(child);
+            result.add(task);
+        }
+        return result;
+    }
+
+    private void removeTaskInternal(String tid, Set<String> allRemoveIds) {
+        Task task = tasks.get(tid);
+        if (task == null) {
+            return;
+        }
+
+        // Remove from priority index
+        List<String> priorityList = priorityIndex.get(task.getPriority());
+        if (priorityList != null) {
+            priorityList.remove(tid);
+        }
+
+        // Remove from hierarchical relationships
+        if (task.getParentTaskId() != null) {
+            Set<String> siblings = parentToChildren.get(task.getParentTaskId());
+            if (siblings != null) {
+                siblings.remove(tid);
+            }
+            childToParent.remove(tid);
+        } else {
+            rootTasks.remove(tid);
+        }
+
+        // Promote children to root if parent is being removed
+        Set<String> children = parentToChildren.get(tid);
+        if (children != null) {
+            for (String childId : new HashSet<>(children)) {
+                if (!allRemoveIds.contains(childId) && tasks.containsKey(childId)) {
+                    Task childTask = tasks.get(childId);
+                    childTask.setParentTaskId(null);
+                    rootTasks.add(childId);
+                    childToParent.remove(childId);
                 }
             }
+            parentToChildren.remove(tid);
         }
 
-        return resultTasks;
+        tasks.remove(tid);
     }
 
-    /**
-     * Internal method to remove tasks and update indices.
-     * Caller must hold the lock.
-     */
-    private void removeTasksInternal(Set<String> taskIdsToRemove) {
-        for (String tid : new ArrayList<>(taskIdsToRemove)) {
-            Task task = tasks.get(tid);
-            if (task == null) continue;
-
-            // Remove from priority index
-            List<String> pList = priorityIndex.get(task.getPriority());
-            if (pList != null) {
-                pList.remove(tid);
-            }
-
-            // Remove from hierarchical relationship
-            if (task.getParentTaskId() != null) {
-                Set<String> siblings = parentToChildren.get(task.getParentTaskId());
-                if (siblings != null) {
-                    siblings.remove(tid);
-                }
-                childToParent.remove(tid);
-            } else {
-                rootTasks.remove(tid);
-            }
-
-            // Promote children to root
-            Set<String> children = parentToChildren.get(tid);
-            if (children != null) {
-                for (String childId : new ArrayList<>(children)) {
-                    if (!taskIdsToRemove.contains(childId)) {
-                        Task childTask = tasks.get(childId);
-                        if (childTask != null) {
-                            childTask.setParentTaskId(null);
-                            rootTasks.add(childId);
-                            childToParent.remove(childId);
-                        }
-                    }
-                }
-                parentToChildren.remove(tid);
-            }
-
-            // Remove task
-            tasks.remove(tid);
+    private List<Task> copyTasks(List<Task> taskList) {
+        List<Task> copies = new ArrayList<>(taskList.size());
+        for (Task t : taskList) {
+            copies.add(t.copy());
         }
-    }
-
-    /**
-     * Copy a task (shallow copy for now).
-     */
-    private Task copyTask(Task t) {
-        return Task.builder(t.getSessionId(), t.getTaskId(), t.getTaskType())
-            .description(t.getDescription())
-            .priority(t.getPriority())
-            .inputs(t.getInputs())
-            .outputs(t.getOutputs())
-            .status(t.getStatus())
-            .parentTaskId(t.getParentTaskId())
-            .contextId(t.getContextId())
-            .inputRequiredFields(t.getInputRequiredFields())
-            .errorMessage(t.getErrorMessage())
-            .metadata(t.getMetadata() != null ? new HashMap<>(t.getMetadata()) : null)
-            .build();
-    }
-
-    private Map<Integer, List<String>> deepCopyPriorityIndex() {
-        Map<Integer, List<String>> copy = new HashMap<>();
-        for (Map.Entry<Integer, List<String>> entry : priorityIndex.entrySet()) {
-            copy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        return copy;
-    }
-
-    private Map<String, Set<String>> deepCopyParentToChildren() {
-        Map<String, Set<String>> copy = new HashMap<>();
-        for (Map.Entry<String, Set<String>> entry : parentToChildren.entrySet()) {
-            copy.put(entry.getKey(), new HashSet<>(entry.getValue()));
-        }
-        return copy;
+        return copies;
     }
 }
-

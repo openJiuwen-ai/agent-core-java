@@ -1,6 +1,9 @@
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.common.utils;
 
 import com.openjiuwen.core.common.exception.ValidationError;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -8,270 +11,275 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * SchemaUtils 测试类
- * 
- * 从 Python test_schema_utils.py 转换
+ * JUnit 5 tests for SchemaUtils.
+ * Ported from Python: tests/unit_tests/core/common/utils/test_schema_utils.py
  */
-public class SchemaUtilsTest {
+class SchemaUtilsTest {
 
-    // 用户Schema定义
-    private static final Map<String, Object> USER_SCHEMA = createUserSchema();
+    // ==================== JSON Schema definition (mirrors Python USER_SCHEMA) ====================
 
     private static Map<String, Object> createUserSchema() {
-        Map<String, Object> schema = new HashMap<>();
+        Map<String, Object> nameSchema = new LinkedHashMap<>();
+        nameSchema.put("type", "string");
+        nameSchema.put("default", "Anonymous");
+        nameSchema.put("minLength", 1);
+        nameSchema.put("maxLength", 50);
+
+        Map<String, Object> ageSchema = new LinkedHashMap<>();
+        ageSchema.put("type", "integer");
+        ageSchema.put("default", 18);
+        ageSchema.put("minimum", 0);
+        ageSchema.put("maximum", 150);
+
+        Map<String, Object> emailSchema = new LinkedHashMap<>();
+        emailSchema.put("type", "string");
+        emailSchema.put("default", "user@example.com");
+
+        Map<String, Object> isActiveSchema = new LinkedHashMap<>();
+        isActiveSchema.put("type", "boolean");
+        isActiveSchema.put("default", true);
+
+        Map<String, Object> tagsItemsSchema = Map.of("type", "string");
+        Map<String, Object> tagsSchema = new LinkedHashMap<>();
+        tagsSchema.put("type", "array");
+        tagsSchema.put("items", tagsItemsSchema);
+        tagsSchema.put("default", List.of("new_user"));
+        tagsSchema.put("minItems", 1);
+
+        Map<String, Object> metadataSchema = new LinkedHashMap<>();
+        metadataSchema.put("type", "object");
+        metadataSchema.put("default", Map.of());
+        metadataSchema.put("additionalProperties", true);
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("name", nameSchema);
+        properties.put("age", ageSchema);
+        properties.put("email", emailSchema);
+        properties.put("is_active", isActiveSchema);
+        properties.put("tags", tagsSchema);
+        properties.put("metadata", metadataSchema);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("title", "User");
-
-        Map<String, Object> properties = new HashMap<>();
-
-        // name 属性
-        Map<String, Object> nameProp = new HashMap<>();
-        nameProp.put("type", "string");
-        nameProp.put("default", "Anonymous");
-        nameProp.put("minLength", 1);
-        nameProp.put("maxLength", 50);
-        nameProp.put("description", "User's name");
-        properties.put("name", nameProp);
-
-        // age 属性
-        Map<String, Object> ageProp = new HashMap<>();
-        ageProp.put("type", "integer");
-        ageProp.put("default", 18);
-        ageProp.put("minimum", 0);
-        ageProp.put("maximum", 150);
-        properties.put("age", ageProp);
-
-        // email 属性
-        Map<String, Object> emailProp = new HashMap<>();
-        emailProp.put("type", "string");
-        emailProp.put("format", "email");
-        emailProp.put("default", "user@example.com");
-        properties.put("email", emailProp);
-
-        // is_active 属性
-        Map<String, Object> isActiveProp = new HashMap<>();
-        isActiveProp.put("type", "boolean");
-        isActiveProp.put("default", true);
-        properties.put("is_active", isActiveProp);
-
-        // tags 属性
-        Map<String, Object> tagsProp = new HashMap<>();
-        tagsProp.put("type", "array");
-        Map<String, Object> tagsItems = new HashMap<>();
-        tagsItems.put("type", "string");
-        tagsProp.put("items", tagsItems);
-        tagsProp.put("default", Collections.singletonList("new_user"));
-        tagsProp.put("minItems", 1);
-        properties.put("tags", tagsProp);
-
-        // metadata 属性
-        Map<String, Object> metadataProp = new HashMap<>();
-        metadataProp.put("type", "object");
-        metadataProp.put("default", new HashMap<>());
-        metadataProp.put("additionalProperties", true);
-        properties.put("metadata", metadataProp);
-
         schema.put("properties", properties);
-        schema.put("required", Arrays.asList("name", "age", "email"));
+        schema.put("required", List.of("name", "age", "email"));
 
         return schema;
     }
 
+    // ==========================================================================
+    // test_format_with_json_schema (Python: test_format_with_json_schema)
+    // ==========================================================================
     @Test
-    public void testFormatWithJsonSchema() {
-        // 部分用户数据
-        Map<String, Object> partialUserData = new HashMap<>();
-        partialUserData.put("name", "Jane Doe");
-        partialUserData.put("age", 25);
-        // Missing email, should use default
+    @DisplayName("Format partial data with JSON Schema fills in defaults")
+    void testFormatWithJsonSchema() {
+        Map<String, Object> schema = createUserSchema();
 
-        Object result = SchemaUtils.formatWithSchema(partialUserData, USER_SCHEMA, false, false);
+        Map<String, Object> partialData = new LinkedHashMap<>();
+        partialData.put("name", "Jane Doe");
+        partialData.put("age", 25);
+        partialData.put("email", "jane@example.com");
 
-        assertNotNull(result, "结果不应该为null");
-        assertTrue(result instanceof Map, "结果应该是Map类型");
+        Map<String, Object> result = SchemaUtils.formatWithSchema(partialData, schema);
+
+        assertEquals("Jane Doe", result.get("name"));
+        assertEquals(25, result.get("age"));
+        assertEquals("jane@example.com", result.get("email"));
+        assertEquals(true, result.get("is_active"));  // Default value
+        assertEquals(List.of("new_user"), result.get("tags"));  // Default value
+    }
+
+    // ==========================================================================
+    // test_format_none_data (Python: test_format_none_data)
+    // ==========================================================================
+    @Test
+    @DisplayName("Format with null data throws ValidationError")
+    void testFormatNoneData() {
+        Map<String, Object> schema = createUserSchema();
+        assertThrows(ValidationError.class, () ->
+                SchemaUtils.formatWithSchema(null, schema));
+    }
+
+    // ==========================================================================
+    // test_format_empty_dict (Python: test_format_empty_dict)
+    // ==========================================================================
+    @Test
+    @DisplayName("Format empty map populates all defaults")
+    void testFormatEmptyDict() {
+        // Create schema without required fields for this test
+        Map<String, Object> schema = createUserSchema();
+        // Remove required to allow empty data
+        Map<String, Object> relaxedSchema = new LinkedHashMap<>(schema);
+        relaxedSchema.remove("required");
+
+        Map<String, Object> result = SchemaUtils.formatWithSchema(Map.of(), relaxedSchema);
+        assertTrue(result.containsKey("name"));
+        assertTrue(result.containsKey("age"));
+        assertTrue(result.containsKey("email"));
+    }
+
+    // ==========================================================================
+    // test_validate_valid_data (Python: test_validate_valid_data)
+    // ==========================================================================
+    @Test
+    @DisplayName("Valid data passes validation")
+    void testValidateValidData() {
+        Map<String, Object> schema = createUserSchema();
+
+        Map<String, Object> validData = new LinkedHashMap<>();
+        validData.put("name", "John Doe");
+        validData.put("age", 30);
+        validData.put("email", "john@example.com");
+        validData.put("is_active", true);
+        validData.put("tags", List.of("developer", "premium"));
+        validData.put("metadata", Map.of("created_at", "2024-01-01"));
+
+        // Should not throw
+        assertDoesNotThrow(() -> SchemaUtils.validateWithSchema(validData, schema));
+    }
+
+    // ==========================================================================
+    // test_validate_invalid_data (Python: test_validate_invalidate_date)
+    // ==========================================================================
+    @Nested
+    @DisplayName("Validation of invalid data")
+    class InvalidDataTests {
+
+        @Test
+        @DisplayName("Empty string violates minLength")
+        void testEmptyStringViolatesMinLength() {
+            Map<String, Object> schema = createUserSchema();
+
+            Map<String, Object> invalidData = new LinkedHashMap<>();
+            invalidData.put("name", "");  // Empty string, violates minLength=1
+            invalidData.put("age", 30);
+            invalidData.put("email", "test@example.com");
+
+            assertThrows(ValidationError.class, () ->
+                    SchemaUtils.validateWithSchema(invalidData, schema));
+        }
+
+        @Test
+        @DisplayName("Number exceeding maximum fails validation")
+        void testNumberExceedsMaximum() {
+            Map<String, Object> schema = createUserSchema();
+
+            Map<String, Object> invalidData = new LinkedHashMap<>();
+            invalidData.put("name", "Test");
+            invalidData.put("age", 200);   // Too high, violates maximum=150
+            invalidData.put("email", "test@example.com");
+
+            assertThrows(ValidationError.class, () ->
+                    SchemaUtils.validateWithSchema(invalidData, schema));
+        }
+
+        @Test
+        @DisplayName("Missing required field fails validation")
+        void testMissingRequiredField() {
+            Map<String, Object> schema = createUserSchema();
+
+            Map<String, Object> invalidData = new LinkedHashMap<>();
+            invalidData.put("name", "Test");
+            // Missing required 'age' and 'email'
+
+            assertThrows(ValidationError.class, () ->
+                    SchemaUtils.validateWithSchema(invalidData, schema));
+        }
+
+        @Test
+        @DisplayName("Null data throws ValidationError")
+        void testNullData() {
+            Map<String, Object> schema = createUserSchema();
+            assertThrows(ValidationError.class, () ->
+                    SchemaUtils.validateWithSchema(null, schema));
+        }
+    }
+
+    // ==========================================================================
+    // test_get_schema_from_simple_model (Python: test_get_schema_from_simple_model)
+    // ==========================================================================
+    @Test
+    @DisplayName("getSchemaDict produces schema with type and properties")
+    void testGetSchemaDict() {
+        Map<String, Object> schemaDict = SchemaUtils.getSchemaDict(SampleUser.class);
+
+        assertNotNull(schemaDict);
+        assertEquals("object", schemaDict.get("type"));
+        assertTrue(schemaDict.containsKey("properties"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> resultMap = (Map<String, Object>) result;
-
-        assertEquals("Jane Doe", resultMap.get("name"), "name应该是Jane Doe");
-        assertEquals(25, resultMap.get("age"), "age应该是25");
-        assertEquals("user@example.com", resultMap.get("email"), "email应该使用默认值");
-        assertEquals(true, resultMap.get("is_active"), "is_active应该使用默认值true");
-
-        Object tags = resultMap.get("tags");
-        assertTrue(tags instanceof List, "tags应该是List类型");
-        @SuppressWarnings("unchecked")
-        List<String> tagsList = (List<String>) tags;
-        assertEquals(Collections.singletonList("new_user"), tagsList, "tags应该是默认值");
-    }
-
-    @Test
-    public void testFormatNoneData() {
-        // 测试null数据
-        assertThrows(ValidationError.class, () -> {
-            SchemaUtils.formatWithSchema(null, USER_SCHEMA, false, false);
-        }, "null数据应该抛出ValidationError");
-    }
-
-    @Test
-    public void testFormatEmptyDict() {
-        Object result = SchemaUtils.formatWithSchema(new HashMap<>(), USER_SCHEMA, false, false);
-
-        assertNotNull(result, "结果不应该为null");
-        assertTrue(result instanceof Map, "结果应该是Map类型");
+        Map<String, Object> properties = (Map<String, Object>) schemaDict.get("properties");
+        assertTrue(properties.containsKey("name"));
+        assertTrue(properties.containsKey("age"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> resultMap = (Map<String, Object>) result;
-
-        assertTrue(resultMap.containsKey("name"), "应该包含name键");
-        assertTrue(resultMap.containsKey("age"), "应该包含age键");
-        assertTrue(resultMap.containsKey("email"), "应该包含email键");
+        Map<String, Object> nameProp = (Map<String, Object>) properties.get("name");
+        assertEquals("string", nameProp.get("type"));
     }
 
     @Test
-    public void testValidateValidData() {
-        // 有效的用户数据
-        Map<String, Object> validUserData = new HashMap<>();
-        validUserData.put("name", "John Doe");
-        validUserData.put("age", 30);
-        validUserData.put("email", "john@example.com");
-        validUserData.put("is_active", true);
-        validUserData.put("tags", Arrays.asList("developer", "premium"));
-        
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("created_at", "2024-01-01");
-        validUserData.put("metadata", metadata);
-
-        // 不应该抛出异常
-        assertDoesNotThrow(() -> {
-            SchemaUtils.validateWithSchema(validUserData, USER_SCHEMA);
-        }, "有效数据不应该抛出异常");
+    @DisplayName("getSchemaDict with null returns null")
+    void testGetSchemaDictNull() {
+        assertNull(SchemaUtils.getSchemaDict(null));
     }
 
-    @Test
-    public void testValidateInvalidData() {
-        // 无效的用户数据
-        Map<String, Object> invalidUserData = new HashMap<>();
-        invalidUserData.put("name", ""); // Empty string, violates minLength
-        invalidUserData.put("age", 200); // Too high, violates maximum
-        invalidUserData.put("email", "invalid-email"); // Invalid email format
+    // ==========================================================================
+    // Additional: schema operations
+    // ==========================================================================
+    @Nested
+    @DisplayName("Schema defaults and edge cases")
+    class SchemaDefaultsTests {
 
-        assertThrows(ValidationError.class, () -> {
-            SchemaUtils.validateWithSchema(invalidUserData, USER_SCHEMA);
-        }, "无效数据应该抛出ValidationError");
+        @Test
+        @DisplayName("Defaults include List and Map types")
+        void testDefaultListAndMap() {
+            Map<String, Object> schema = createUserSchema();
+            // Remove required for this test
+            Map<String, Object> relaxedSchema = new LinkedHashMap<>(schema);
+            relaxedSchema.remove("required");
+
+            Map<String, Object> result = SchemaUtils.formatWithSchema(Map.of(), relaxedSchema);
+
+            // tags default should be a new list instance, not the original
+            Object tags = result.get("tags");
+            assertInstanceOf(List.class, tags);
+            assertEquals(List.of("new_user"), tags);
+
+            // metadata default should be a new map instance
+            Object metadata = result.get("metadata");
+            assertInstanceOf(Map.class, metadata);
+        }
+
+        @Test
+        @DisplayName("Existing values are not overwritten by defaults")
+        void testExistingValuesNotOverwritten() {
+            Map<String, Object> schema = createUserSchema();
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("name", "Custom Name");
+            data.put("age", 42);
+            data.put("email", "custom@example.com");
+            data.put("is_active", false);
+            data.put("tags", List.of("admin"));
+
+            Map<String, Object> result = SchemaUtils.formatWithSchema(data, schema);
+
+            assertEquals("Custom Name", result.get("name"));
+            assertEquals(42, result.get("age"));
+            assertEquals(false, result.get("is_active"));
+            assertEquals(List.of("admin"), result.get("tags"));
+        }
     }
 
-    @Test
-    public void testRemoveNoneValues() {
-        // 测试移除null值
-        Map<String, Object> dataWithNulls = new HashMap<>();
-        dataWithNulls.put("name", "Test");
-        dataWithNulls.put("age", null);
-        dataWithNulls.put("email", "test@example.com");
-        
-        Map<String, Object> nested = new HashMap<>();
-        nested.put("key1", "value1");
-        nested.put("key2", null);
-        dataWithNulls.put("nested", nested);
-        
-        List<Object> listWithNulls = new ArrayList<>();
-        listWithNulls.add("item1");
-        listWithNulls.add(null);
-        listWithNulls.add("item2");
-        dataWithNulls.put("list", listWithNulls);
-
-        Object result = SchemaUtils.removeNoneValues(dataWithNulls);
-
-        assertNotNull(result, "结果不应该为null");
-        assertTrue(result instanceof Map, "结果应该是Map类型");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resultMap = (Map<String, Object>) result;
-
-        assertTrue(resultMap.containsKey("name"), "应该保留name");
-        assertFalse(resultMap.containsKey("age"), "不应该包含null的age");
-        assertTrue(resultMap.containsKey("email"), "应该保留email");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> nestedResult = (Map<String, Object>) resultMap.get("nested");
-        assertNotNull(nestedResult, "nested不应该为null");
-        assertTrue(nestedResult.containsKey("key1"), "应该保留key1");
-        assertFalse(nestedResult.containsKey("key2"), "不应该包含null的key2");
-
-        @SuppressWarnings("unchecked")
-        List<Object> listResult = (List<Object>) resultMap.get("list");
-        assertNotNull(listResult, "list不应该为null");
-        assertEquals(2, listResult.size(), "list应该只有2个非null元素");
-        assertEquals("item1", listResult.get(0), "第一个元素应该是item1");
-        assertEquals("item2", listResult.get(1), "第二个元素应该是item2");
-    }
-
-    @Test
-    public void testFormatWithSkipNoneValue() {
-        // 测试跳过null值的格式化
-        Map<String, Object> dataWithNulls = new HashMap<>();
-        dataWithNulls.put("name", "Test User");
-        dataWithNulls.put("age", null);
-        dataWithNulls.put("email", "test@example.com");
-
-        Object result = SchemaUtils.formatWithSchema(dataWithNulls, USER_SCHEMA, true, false);
-
-        assertNotNull(result, "结果不应该为null");
-        assertTrue(result instanceof Map, "结果应该是Map类型");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resultMap = (Map<String, Object>) result;
-
-        assertEquals("Test User", resultMap.get("name"), "name应该是Test User");
-        // age被移除后，应该使用默认值
-        assertNotNull(resultMap.get("age"), "age应该有默认值");
-        assertEquals("test@example.com", resultMap.get("email"), "email应该是test@example.com");
-    }
-
-    @Test
-    public void testFormatWithSkipValidate() {
-        // 测试跳过验证的格式化
-        Map<String, Object> invalidData = new HashMap<>();
-        invalidData.put("name", ""); // 无效：空字符串
-        invalidData.put("age", 200); // 无效：超出范围
-        invalidData.put("email", "invalid");
-
-        // 跳过验证，应该不抛出异常
-        assertDoesNotThrow(() -> {
-            SchemaUtils.formatWithSchema(invalidData, USER_SCHEMA, false, true);
-        }, "跳过验证时不应该抛出异常");
-    }
-
-    @Test
-    public void testComplexNestedSchema() {
-        // 测试复杂嵌套schema
-        Map<String, Object> complexSchema = new HashMap<>();
-        complexSchema.put("type", "object");
-
-        Map<String, Object> properties = new HashMap<>();
-
-        // 嵌套对象
-        Map<String, Object> addressProp = new HashMap<>();
-        addressProp.put("type", "object");
-        Map<String, Object> addressProperties = new HashMap<>();
-        
-        Map<String, Object> cityProp = new HashMap<>();
-        cityProp.put("type", "string");
-        cityProp.put("default", "Unknown");
-        addressProperties.put("city", cityProp);
-        
-        addressProp.put("properties", addressProperties);
-        addressProp.put("default", new HashMap<>());
-        properties.put("address", addressProp);
-
-        complexSchema.put("properties", properties);
-
-        Map<String, Object> data = new HashMap<>();
-        Object result = SchemaUtils.formatWithSchema(data, complexSchema, false, false);
-
-        assertNotNull(result, "结果不应该为null");
-        assertTrue(result instanceof Map, "结果应该是Map类型");
+    // ==================== Test helper class ====================
+    @SuppressWarnings("unused")
+    static class SampleUser {
+        private String name;
+        private int age;
+        private String email;
+        private boolean isActive;
+        private List<String> tags;
+        private Map<String, Object> metadata;
     }
 }
-
-

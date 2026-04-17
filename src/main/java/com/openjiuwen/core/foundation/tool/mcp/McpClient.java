@@ -1,139 +1,107 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.mcp;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * MCP客户端接口
- * 
- * <p>定义MCP（Model Context Protocol）客户端的标准接口。
- * MCP协议用于LLM与外部工具服务器之间的通信。
- *
- * <p><b>实现说明：</b>
- * 当前为接口定义，具体实现类包括：
- * <ul>
- *   <li>SseClient - 基于Server-Sent Events的客户端</li>
- *   <li>StdioClient - 基于标准输入输出的客户端</li>
- *   <li>OpenApiClient - 基于OpenAPI规范的客户端</li>
- *   <li>PlaywrightClient - 基于浏览器自动化的客户端</li>
- * </ul>
- *
- * @author OpenJiuwen
- * @since 2026-01-30
+ * Abstract MCP client interface for communicating with MCP servers.
+ * <p>
+ * Mirrors Python's {@code McpClient} ABC. Implementations (SSE, Stdio, etc.)
+ * handle the specific transport protocols.
  */
 public interface McpClient {
-    
+
     /**
-     * 无超时限制常量（对应Python的NO_TIMEOUT = -1）
-     */
-    Duration NO_TIMEOUT = Duration.ofSeconds(-1);
-    
-    /**
-     * 连接到MCP服务器
+     * Connect to the MCP server.
      *
-     * @param retryTimes 重试次数
-     * @param timeout 连接超时时间，使用NO_TIMEOUT表示无限等待
-     * @return CompletableFuture，完成时返回连接是否成功
+     * @param retryTimes number of connection retry attempts
+     * @param timeout    connection timeout in seconds; use {@link McpServerConfig#NO_TIMEOUT} for no timeout
+     * @return true if connection succeeded
+     * @throws Exception if connection fails after all retries
      */
-    CompletableFuture<Boolean> connect(int retryTimes, Duration timeout);
-    
+    boolean connect(int retryTimes, float timeout) throws Exception;
+
     /**
-     * 连接到MCP服务器（默认重试1次）
-     *
-     * @param timeout 连接超时时间
-     * @return CompletableFuture，完成时返回连接是否成功
+     * Connect with defaults (1 retry, no timeout).
      */
-    default CompletableFuture<Boolean> connect(Duration timeout) {
-        return connect(1, timeout);
+    default boolean connect() throws Exception {
+        return connect(1, McpServerConfig.NO_TIMEOUT);
     }
-    
+
     /**
-     * 断开与MCP服务器的连接
+     * Disconnect from the MCP server.
      *
-     * @param timeout 断开超时时间，使用NO_TIMEOUT表示无限等待
-     * @return CompletableFuture，完成时返回断开是否成功
+     * @param timeout disconnect timeout in seconds
+     * @return true if disconnection succeeded
+     * @throws Exception if disconnection fails
      */
-    CompletableFuture<Boolean> disconnect(Duration timeout);
-    
+    boolean disconnect(float timeout) throws Exception;
+
     /**
-     * 列出所有可用的MCP工具
-     *
-     * @param timeout 请求超时时间，使用NO_TIMEOUT表示无限等待
-     * @return CompletableFuture，完成时返回工具列表
+     * Disconnect with no timeout.
      */
-    CompletableFuture<List<McpToolCard>> listTools(Duration timeout);
-    
-    /**
-     * 调用指定的MCP工具
-     *
-     * @param toolName 工具名称
-     * @param arguments 工具参数
-     * @param timeout 调用超时时间，使用NO_TIMEOUT表示无限等待
-     * @return CompletableFuture，完成时返回工具执行结果
-     */
-    CompletableFuture<Object> callTool(String toolName, Map<String, Object> arguments, Duration timeout);
-    
-    /**
-     * 获取指定工具的信息
-     *
-     * @param toolName 工具名称
-     * @param timeout 请求超时时间，使用NO_TIMEOUT表示无限等待
-     * @return CompletableFuture，完成时返回工具信息，如果工具不存在则返回Optional.empty()
-     */
-    CompletableFuture<Optional<McpToolCard>> getToolInfo(String toolName, Duration timeout);
-    
-    /**
-     * 简化版调用工具方法（使用默认超时）
-     *
-     * @param toolName 工具名称
-     * @param inputs 工具参数
-     * @return 工具执行结果
-     * @throws Exception 如果调用失败
-     */
-    default Object callTool(String toolName, Map<String, Object> inputs) throws Exception {
-        try {
-            return callTool(toolName, inputs, NO_TIMEOUT).get();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to call tool: " + toolName, e);
-        }
+    default boolean disconnect() throws Exception {
+        return disconnect(McpServerConfig.NO_TIMEOUT);
     }
-    
+
     /**
-     * 简化版列出工具方法（使用默认超时）
+     * List all available tools on the MCP server.
      *
-     * @return 工具列表
-     * @throws Exception 如果列表获取失败
+     * @param timeout operation timeout in seconds
+     * @return list of tool metadata
+     * @throws Exception if the operation fails
      */
-    default Map<String, Object> listTools() throws Exception {
-        try {
-            List<McpToolCard> tools = listTools(NO_TIMEOUT).get();
-            return Map.of("tools", tools);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to list tools", e);
-        }
-    }
-    
+    List<Object> listTools(float timeout) throws Exception;
+
     /**
-     * 检查MCP客户端是否已连接
+     * List tools with no timeout.
+     */
+    default List<Object> listTools() throws Exception {
+        return listTools(McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
+     * Call a tool on the MCP server.
      *
-     * @return 如果已连接返回true，否则返回false
+     * @param toolName  name of the tool to call
+     * @param arguments arguments to pass to the tool
+     * @param timeout   operation timeout in seconds
+     * @return the tool execution result
+     * @throws Exception if the call fails
      */
-    default boolean isConnected() {
-        return false;
-    }
-    
+    Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception;
+
     /**
-     * 关闭MCP客户端连接（同步版本）
+     * Call a tool with no timeout.
      */
-    default void close() {
-        try {
-            disconnect(NO_TIMEOUT).get();
-        } catch (Exception e) {
-            // Ignore exceptions on close
-        }
+    default Object callTool(String toolName, Map<String, Object> arguments) throws Exception {
+        return callTool(toolName, arguments, McpServerConfig.NO_TIMEOUT);
     }
+
+    /**
+     * Get information about a specific tool.
+     *
+     * @param toolName name of the tool
+     * @param timeout  operation timeout in seconds
+     * @return tool info, or empty if not found
+     * @throws Exception if the operation fails
+     */
+    Optional<Object> getToolInfo(String toolName, float timeout) throws Exception;
+
+    /**
+     * Get tool info with no timeout.
+     */
+    default Optional<Object> getToolInfo(String toolName) throws Exception {
+        return getToolInfo(toolName, McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
+     * Get the server path this client is connected to.
+     */
+    String getServerPath();
 }

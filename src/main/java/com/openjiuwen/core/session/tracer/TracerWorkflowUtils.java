@@ -1,470 +1,297 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.tracer;
 
-import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.session.SessionUtils;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.utils.SessionUtils;
+import com.openjiuwen.core.workflow.WorkflowConfig;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Utility class for workflow tracing operations.
- * 
- * <p>Provides static methods for tracing workflow lifecycle events including
- * start, component begin/end, inputs/outputs, and errors.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.tracer.workflow_tracer.TracerWorkflowUtils}.
  */
 public final class TracerWorkflowUtils {
-    
+
     private TracerWorkflowUtils() {
-        // Utility class, prevent instantiation
     }
-    
-    /**
-     * Gets workflow metadata from session.
-     * 
-     * @param session the workflow session
-     * @return the workflow metadata map
-     */
-    public static Map<String, Object> getWorkflowMetadata(WorkflowSession session) {
-        String executableId = session.workflowId();
-        Object workflowConfig = session.config() != null ? session.config().getWorkflowConfig(executableId) : null;
-        Object workflowMetadata = null;
-        if (workflowConfig != null) {
-            try {
-                // Try to get card from workflow config
-                workflowMetadata = workflowConfig.getClass().getMethod("getCard").invoke(workflowConfig);
-            } catch (Exception e) {
-                // Ignore reflection errors
+
+    private static Map<String, Object> getWorkflowMetadata(BaseSession session) {
+        String workflowId = "";
+        if (session instanceof WorkflowSession) {
+            workflowId = ((WorkflowSession) session).workflowId();
+        } else if (session instanceof NodeSession) {
+            workflowId = ((NodeSession) session).workflowId();
+        }
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("workflow_id", workflowId);
+        metadata.put("workflow_version", "");
+        metadata.put("workflow_name", "");
+
+        if (session.config() != null) {
+            Object workflowConfig = session.config().getWorkflowConfig(workflowId);
+            if (workflowConfig instanceof WorkflowConfig config && config.getCard() != null) {
+                metadata.put("workflow_version", config.getCard().getVersion());
+                metadata.put("workflow_name", config.getCard().getName());
             }
         }
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("workflow_id", executableId);
-        
-        String version = "";
-        String name = "";
-        if (workflowMetadata != null) {
-            try {
-                Object versionObj = workflowMetadata.getClass().getMethod("getVersion").invoke(workflowMetadata);
-                version = versionObj != null ? versionObj.toString() : "";
-                Object nameObj = workflowMetadata.getClass().getMethod("getName").invoke(workflowMetadata);
-                name = nameObj != null ? nameObj.toString() : "";
-            } catch (Exception e) {
-                // Ignore reflection errors
+
+        return metadata;
+    }
+
+    private static Map<String, Object> getComponentMetadata(BaseSession session) {
+        Map<String, Object> metadata = new HashMap<>();
+
+        if (session instanceof NodeSession) {
+            NodeSession ns = (NodeSession) session;
+            metadata.put("component_id", ns.nodeId());
+            metadata.put("component_name", ns.nodeId());
+            metadata.put("component_type", ns.nodeType());
+            metadata.put("workflow_id", ns.workflowId());
+
+            // Check loop state
+            Object loopId = session.state().getGlobal(SessionConstants.LOOP_ID);
+            if (loopId != null) {
+                String loopIdStr = loopId.toString();
+                Object index = session.state().getGlobal(
+                        loopIdStr + SessionUtils.NESTED_PATH_SPLIT + SessionConstants.INDEX);
+                metadata.put("loop_node_id", loopIdStr);
+                metadata.put("loop_index", index);
             }
         }
-        result.put("workflow_version", version);
-        result.put("workflow_name", name);
-        
-        return result;
+
+        return metadata;
     }
-    
-    /**
-     * Gets component metadata from session.
-     * 
-     * @param session the workflow session
-     * @return the component metadata map
-     */
-    public static Map<String, Object> getComponentMetadata(WorkflowSession session) {
-        Map<String, Object> componentMetadata = new HashMap<>();
-        componentMetadata.put("component_id", session.nodeId());
-        componentMetadata.put("component_name", session.nodeId());
-        componentMetadata.put("component_type", session.nodeType());
-        componentMetadata.put("workflow_id", session.workflowId());
-        
-        Object state = session.state();
-        String loopId = null;
-        if (state != null) {
-            try {
-                loopId = (String) state.getClass().getMethod("getGlobal", String.class)
-                    .invoke(state, Constant.LOOP_ID);
-            } catch (Exception e) {
-                // Ignore reflection errors
-            }
-        }
-        
-        if (loopId == null) {
-            return componentMetadata;
-        }
-        
-        Object index = null;
-        try {
-            String indexKey = loopId + SessionUtils.NESTED_PATH_SPLIT + Constant.INDEX;
-            index = state.getClass().getMethod("getGlobal", String.class).invoke(state, indexKey);
-        } catch (Exception e) {
-            // Ignore reflection errors
-        }
-        
-        componentMetadata.put("loop_node_id", loopId);
-        componentMetadata.put("loop_index", index);
-        
-        return componentMetadata;
+
+    private static Tracer getTracer(BaseSession session) {
+        Object tracer = session.tracer();
+        return tracer instanceof Tracer ? (Tracer) tracer : null;
     }
-    
+
+    private static String getExecutableId(BaseSession session) {
+        if (session instanceof NodeSession) {
+            return ((NodeSession) session).executableId();
+        }
+        return session.sessionId();
+    }
+
+    private static String getParentId(BaseSession session) {
+        if (session instanceof NodeSession) {
+            return ((NodeSession) session).parentId();
+        }
+        return "";
+    }
+
     /**
-     * Traces workflow start event.
-     * 
-     * @param session the workflow session
-     * @param inputs the workflow inputs
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace workflow start event.
      */
-    public static CompletableFuture<Void> traceWorkflowStart(WorkflowSession session, Map<String, Object> inputs) {
-        Tracer tracer = session.tracer();
+    public static void traceWorkflowStart(BaseSession session, Object inputs) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
+        String workflowId = "";
+        if (session instanceof WorkflowSession) {
+            workflowId = ((WorkflowSession) session).workflowId();
+        }
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", session.workflowId());
+        kwargs.put("invoke_id", workflowId);
         kwargs.put("parent_node_id", "");
         kwargs.put("metadata", getWorkflowMetadata(session));
         kwargs.put("inputs", inputs);
         kwargs.put("need_send", true);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onCallStart", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_start", kwargs);
     }
-    
+
     /**
-     * Traces component begin event.
-     * 
-     * @param session the workflow session
-     * @param sourceIds the source node IDs
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component begin event.
      */
-    public static CompletableFuture<Void> traceComponentBegin(WorkflowSession session, List<String> sourceIds) {
-        Tracer tracer = session.tracer();
+    public static void traceComponentBegin(BaseSession session, java.util.List<String> sourceIds) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("source_ids", sourceIds);
         kwargs.put("metadata", getComponentMetadata(session));
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onCallStart", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_start", kwargs);
     }
-    
+
     /**
-     * Traces component inputs event.
-     * 
-     * @param session the workflow session
-     * @param inputs the component inputs
-     * @param send whether to send the trace data
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component inputs.
      */
-    public static CompletableFuture<Void> traceComponentInputs(WorkflowSession session, Map<String, Object> inputs, 
-                                                                boolean send) {
-        Tracer tracer = session.tracer();
+    public static void traceComponentInputs(BaseSession session, Map<String, Object> inputs, boolean send) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("inputs", inputs);
         kwargs.put("need_send", send);
         kwargs.put("component_metadata", getComponentMetadata(session));
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onPreInvoke", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_pre_invoke", kwargs);
     }
-    
+
     /**
-     * Traces component stream input event.
-     * 
-     * @param session the workflow session
-     * @param chunk the input chunk
-     * @param send whether to send the trace data
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component stream input.
      */
-    public static CompletableFuture<Void> traceComponentStreamInput(WorkflowSession session, Object chunk, 
-                                                                     boolean send) {
-        Tracer tracer = session.tracer();
-        if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+    public static void traceComponentStreamInput(BaseSession session, Object chunk, boolean send) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null || chunk instanceof String) {
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
-        // Skip if chunk is a string
-        if (chunk instanceof String) {
-            return CompletableFuture.completedFuture(null);
-        }
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("need_send", send);
         kwargs.put("chunk", chunk);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onPreStream", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_pre_stream", kwargs);
     }
-    
+
     /**
-     * Traces component outputs event.
-     * 
-     * @param session the workflow session
-     * @param outputs the component outputs
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component outputs.
      */
-    public static CompletableFuture<Void> traceComponentOutputs(WorkflowSession session, Map<String, Object> outputs) {
-        Tracer tracer = session.tracer();
+    public static void traceComponentOutputs(BaseSession session, Object outputs) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("outputs", outputs);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onPostInvoke", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_post_invoke", kwargs);
     }
-    
+
     /**
-     * Traces component stream output event.
-     * 
-     * @param session the workflow session
-     * @param chunk the output chunk
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component stream output.
      */
-    public static CompletableFuture<Void> traceComponentStreamOutput(WorkflowSession session, Object chunk) {
-        Tracer tracer = session.tracer();
-        if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+    public static void traceComponentStreamOutput(BaseSession session, Object chunk) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null || chunk instanceof String) {
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
-        // Skip if chunk is a string
-        if (chunk instanceof String) {
-            return CompletableFuture.completedFuture(null);
-        }
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("chunk", chunk);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onPostStream", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_post_stream", kwargs);
     }
-    
+
     /**
-     * Traces workflow done event.
-     * 
-     * @param session the workflow session
-     * @param outputs the workflow outputs
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace workflow done event.
      */
-    public static CompletableFuture<Void> traceWorkflowDone(WorkflowSession session, Map<String, Object> outputs) {
-        Tracer tracer = session.tracer();
+    public static void traceWorkflowDone(BaseSession session, Object outputs) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
-        String executableId = session.workflowId();
-        String parentId = "";
-        
+        String workflowId = "";
+        if (session instanceof WorkflowSession) {
+            workflowId = ((WorkflowSession) session).workflowId();
+        }
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", executableId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", workflowId);
+        kwargs.put("parent_node_id", "");
         kwargs.put("outputs", outputs);
         kwargs.put("metadata", getWorkflowMetadata(session));
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onCallDone", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_done", kwargs);
     }
-    
+
     /**
-     * Traces component done event.
-     * 
-     * @param session the workflow session
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace component done event.
      */
-    public static CompletableFuture<Void> traceComponentDone(WorkflowSession session) {
-        Tracer tracer = session.tracer();
+    public static void traceComponentDone(BaseSession session) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
-        String executableId = session.executableId();
-        String parentId = session.parentId();
-        
+        String executableId = getExecutableId(session);
+        String parentId = getParentId(session);
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("invoke_id", executableId);
         kwargs.put("parent_node_id", parentId);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onCallDone", kwargs)
-            .thenRun(() -> {
-                Object state = session.state();
-                String loopId = null;
-                if (state != null) {
-                    try {
-                        loopId = (String) state.getClass().getMethod("getGlobal", String.class)
-                            .invoke(state, Constant.LOOP_ID);
-                    } catch (Exception e) {
-                        // Ignore reflection errors
-                    }
-                }
-                
-                if (loopId != null) {
-                    tracer.popWorkflowSpan(executableId, parentId);
-                }
-            });
-    }
-    
-    /**
-     * Traces invoke data event.
-     * 
-     * @param session the workflow session
-     * @param data the trace data
-     * @return a CompletableFuture that completes when tracing is done
-     */
-    public static CompletableFuture<Void> trace(WorkflowSession session, Map<String, Object> data) {
-        Tracer tracer = session.tracer();
-        if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_done", kwargs);
+
+        // Pop span if in a loop
+        Object loopId = session.state().getGlobal(SessionConstants.LOOP_ID);
+        if (loopId != null) {
+            tracer.popWorkflowSpan(executableId, parentId);
         }
-        
-        String invokeId = session.executableId();
-        String parentId = session.parentId();
-        
+    }
+
+    /**
+     * General trace data.
+     */
+    public static void trace(BaseSession session, Map<String, Object> data) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return;
+        }
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", invokeId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("on_invoke_data", data);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onInvoke", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_invoke", kwargs);
     }
-    
+
     /**
-     * Traces error event.
-     * 
-     * @param session the workflow session
-     * @param error the error that occurred
-     * @return a CompletableFuture that completes when tracing is done
+     * Trace an error.
      */
-    public static CompletableFuture<Void> traceError(WorkflowSession session, Exception error) {
-        Tracer tracer = session.tracer();
+    public static void traceError(BaseSession session, Exception error) {
+        Tracer tracer = getTracer(session);
         if (tracer == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
-        
         if (error == null) {
-            throw new JiuWenBaseException(
-                StatusCode.ERROR.getCode(),
-                "trace error failed: error is None");
+            throw new IllegalArgumentException("trace_error's error must not be null");
         }
-        
-        String invokeId = session.executableId();
-        String parentId = session.parentId();
-        
         Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("invoke_id", invokeId);
-        kwargs.put("parent_node_id", parentId);
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("exception", error);
-        
-        return tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "onInvoke", kwargs);
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_invoke", kwargs);
     }
-    
+
     /**
-     * Interface for workflow session operations used by tracer utilities.
-     * 
-     * <p>This interface defines the contract for accessing session information
-     * needed for workflow tracing.
+     * Trace component interactive inputs.
      */
-    public interface WorkflowSession {
-        
-        /**
-         * Gets the tracer instance.
-         * 
-         * @return the tracer, or null if tracing is disabled
-         */
-        Tracer tracer();
-        
-        /**
-         * Gets the workflow ID.
-         * 
-         * @return the workflow ID
-         */
-        String workflowId();
-        
-        /**
-         * Gets the executable ID (current node execution ID).
-         * 
-         * @return the executable ID
-         */
-        String executableId();
-        
-        /**
-         * Gets the parent node ID.
-         * 
-         * @return the parent node ID
-         */
-        String parentId();
-        
-        /**
-         * Gets the current node ID.
-         * 
-         * @return the node ID
-         */
-        String nodeId();
-        
-        /**
-         * Gets the current node type.
-         * 
-         * @return the node type
-         */
-        String nodeType();
-        
-        /**
-         * Gets the session state.
-         * 
-         * @return the state object
-         */
-        Object state();
-        
-        /**
-         * Gets the session configuration.
-         * 
-         * @return the configuration object
-         */
-        WorkflowConfig config();
+    public static void traceComponentInteractiveInputs(BaseSession session, Object inputs,
+                                                        boolean send) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return;
+        }
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("invoke_id", getExecutableId(session));
+        kwargs.put("parent_node_id", getParentId(session));
+        kwargs.put("inputs", inputs);
+        kwargs.put("need_send", send);
+        kwargs.put("component_metadata", getComponentMetadata(session));
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_interact", kwargs);
     }
-    
+
     /**
-     * Interface for workflow configuration.
+     * Register a dedicated workflow span manager for nested workflow tracing.
      */
-    public interface WorkflowConfig {
-        
-        /**
-         * Gets the workflow configuration for the given workflow ID.
-         * 
-         * @param workflowId the workflow ID
-         * @return the workflow configuration object
-         */
-        Object getWorkflowConfig(String workflowId);
+    public static void registerWorkflowSpanManager(BaseSession session) {
+        Tracer tracer = getTracer(session);
+        if (tracer == null) {
+            return;
+        }
+        tracer.registerWorkflowSpanManager(getExecutableId(session));
     }
 }
-

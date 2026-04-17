@@ -1,59 +1,53 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 
 /**
- * Abstract interface for session state storage.
- * 
- * <p>Provides methods for saving, recovering, and clearing session state.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/checkpointer/storage.py - Storage
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Abstract storage for saving/recovering session state.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.checkpointer.base.Storage}.
  */
-public interface Storage {
-    
+public abstract class Storage {
+
     /**
-     * Saves the session state.
+     * Save the session state.
      *
-     * @param session the base session containing state to save
+     * @param session the session to save
      */
-    void save(BaseSession session);
-    
+    public abstract void save(BaseSession session);
+
     /**
-     * Recovers session state.
+     * Recover the session state.
      *
-     * @param session the base session to recover state into
-     * @param inputs the interactive input, or null for basic recovery
+     * @param session the session to recover into
+     * @param inputs  optional interactive input for resumed execution
      */
-    void recover(BaseSession session, InteractiveInput inputs);
-    
+    public abstract void recover(BaseSession session, InteractiveInput inputs);
+
     /**
-     * Recovers session state without interactive input.
-     *
-     * @param session the base session to recover state into
+     * Recover session state without interactive input.
      */
-    default void recover(BaseSession session) {
+    public void recover(BaseSession session) {
         recover(session, null);
     }
-    
+
     /**
-     * Clears stored state for the given identifier.
+     * Clear stored state for the given ID.
      *
-     * @param id the identifier (agent ID or workflow ID)
+     * @param id the session/workflow/agent ID
      */
-    void clear(String id);
-    
+    public abstract void clear(String id);
+
     /**
-     * Checks if state exists for the given session.
+     * Check if state exists for the given session.
      *
-     * @param session the base session to check
-     * @return true if state exists, false otherwise
+     * @param session the session
+     * @return true if state exists
      */
-    boolean exists(BaseSession session);
+    public abstract boolean exists(BaseSession session);
 }

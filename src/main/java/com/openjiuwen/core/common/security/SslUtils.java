@@ -1,233 +1,189 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.security;
 
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
 import javax.net.ssl.*;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.List;
 
 /**
- * SSL/TLS工具类
- * 
- * <p>提供严格的SSL上下文配置、证书加载等功能。
- * 
- * @author OpenJiuwen
- * @since 2026-01-29
+ * SSL utilities — creates strict SSL contexts for secure HTTPS communication.
+ * <p>
+ * Enforces TLS 1.2+ with strong cipher suites, mirroring the Python implementation.
  */
-public class SslUtils {
+public final class SslUtils {
 
     private SslUtils() {
-        // Utility class
     }
 
     /**
-     * SSL配置类
+     * Create a strict {@link SSLContext} optionally loading a CA certificate.
+     *
+     * @param sslCertPath path to the CA cert file (PEM), or null
+     * @return configured SSLContext
      */
-    public static class SslConfig {
-        private final boolean sslVerify;
-        private final String sslCert;
-
-        public SslConfig(boolean sslVerify, String sslCert) {
-            this.sslVerify = sslVerify;
-            this.sslCert = sslCert;
-        }
-
-        public boolean isSslVerify() {
-            return sslVerify;
-        }
-
-        public String getSslCert() {
-            return sslCert;
-        }
-    }
-
-    /**
-     * 创建SSL适配器
-     * 
-     * <p>注意：Java版本不提供此方法，因为HTTP客户端（OkHttp/HttpClient）的SSL配置方式不同。
-     * 请直接使用 {@link #createStrictSslContext(String)} 创建SSLContext，
-     * 然后配置到您的HTTP客户端中。
-     * 
-     * @param verifySwitchEnv SSL验证开关环境变量名
-     * @param sslCertEnv SSL证书路径环境变量名
-     * @param triggerValue 触发关闭验证的值列表
-     * @return SSL上下文，如果不需要SSL验证则返回null
-     * @deprecated 建议直接使用 {@link #getSslConfig} 和 {@link #createStrictSslContext}
-     */
-    @Deprecated
-    public static SSLContext createSslAdapter(String verifySwitchEnv, String sslCertEnv, List<String> triggerValue) {
-        SslConfig config = getSslConfig(verifySwitchEnv, sslCertEnv, triggerValue, true);
-        if (config.isSslVerify()) {
-            return createStrictSslContext(config.getSslCert());
-        }
-        return null;
-    }
-
-    /**
-     * 获取SSL配置
-     * 
-     * @param verifySwitchEnv SSL验证开关环境变量名
-     * @param sslCertEnv SSL证书路径环境变量名
-     * @param triggerValue 触发关闭验证的值列表
-     * @param urlIsHttps URL是否为HTTPS
-     * @return SSL配置
-     */
-    public static SslConfig getSslConfig(String verifySwitchEnv, String sslCertEnv, 
-                                         List<String> triggerValue, boolean urlIsHttps) {
-        if (!urlIsHttps) {
-            return new SslConfig(false, null);
-        }
-
-        boolean isSslVerifyOff = boolEnv(verifySwitchEnv, triggerValue);
-        String sslCert = System.getenv(sslCertEnv);
-
-        if (isSslVerifyOff) {
-            return new SslConfig(false, null);
-        }
-
-        if (sslCert == null) {
-            java.util.Map<String, Object> params = new java.util.HashMap<>();
-            params.put("error_msg", "when " + verifySwitchEnv + "=true, must provide ssl cert " + sslCertEnv);
-            throw new JiuWenBaseException(
-                StatusCode.COMMON_SSL_CERT_INVALID.getCode(),
-                StatusCode.COMMON_SSL_CERT_INVALID.formatMessage(params)
-            );
-        }
-
-        return new SslConfig(true, sslCert);
-    }
-
-    /**
-     * 创建严格的SSL上下文
-     * 
-     * @param sslCert 证书文件路径
-     * @return SSL上下文
-     */
-    public static SSLContext createStrictSslContext(String sslCert) {
+    public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
-            SSLContext ctx = SSLContext.getInstance("TLS");
-            
-            // Initialize with default trust manager if no cert provided
-            if (sslCert == null || sslCert.isEmpty()) {
+            SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+
+            if (sslCertPath != null) {
+                Path certPath = Path.of(sslCertPath).toRealPath();
+
+                // Validate cert directory
+                String safeCertDir = System.getenv("SAFE_CERT_DIR");
+                if (safeCertDir == null || safeCertDir.isBlank()) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "SAFE_CERT_DIR is not set", null, null, null);
+                }
+                Path safePrefix = Path.of(safeCertDir).toRealPath();
+                if (!certPath.startsWith(safePrefix)) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "certificate path is outside the allowed directory", null, null, null);
+                }
+
+                // Validate file size
+                long size = Files.size(certPath);
+                if (size == 0 || size > 1024 * 1024) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "file size is invalid", null, null, null);
+                }
+
+                // Load the CA certificate
+                CertificateFactory cf = CertificateFactory.getInstance("X.509");
+                X509Certificate caCert;
+                try (InputStream is = Files.newInputStream(certPath)) {
+                    caCert = (X509Certificate) cf.generateCertificate(is);
+                }
+
+                KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+                ks.load(null, null);
+                ks.setCertificateEntry("ca", caCert);
+
+                TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+                    TrustManagerFactory.getDefaultAlgorithm());
+                tmf.init(ks);
+
+                ctx.init(null, tmf.getTrustManagers(), null);
+            } else {
                 ctx.init(null, null, null);
-                return ctx;
             }
-
-            // Load certificate
-            Path certPath = Paths.get(sslCert);
-            if (!Files.isRegularFile(certPath)) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "certificate file does not exist",
-                    null
-                );
-            }
-
-            String realCertPath = certPath.toRealPath().toString();
-            
-            // Check if cert is in safe directory
-            String safeCertDir = System.getenv("SAFE_CERT_DIR");
-            if (safeCertDir == null || safeCertDir.isEmpty()) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "SAFE_CERT_DIR is not set",
-                    null
-                );
-            }
-
-            String safePrefix = Paths.get(safeCertDir).toRealPath().toString();
-            if (!realCertPath.startsWith(safePrefix)) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "certificate path is outside the allowed directory",
-                    null
-                );
-            }
-
-            // Check file attributes
-            BasicFileAttributes attrs = Files.readAttributes(certPath, BasicFileAttributes.class);
-            if (!attrs.isRegularFile()) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "file path is invalid",
-                    null
-                );
-            }
-
-            long size = attrs.size();
-            if (size == 0 || size > 1024 * 1024) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "file size is invalid",
-                    null
-                );
-            }
-
-            // Read certificate
-            byte[] certBytes = Files.readAllBytes(certPath);
-            if (certBytes.length == 0) {
-                ExceptionUtils.raiseException(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "file content is empty",
-                    null
-                );
-            }
-
-            // Load certificate into trust manager
-            CertificateFactory cf = CertificateFactory.getInstance("X.509");
-            X509Certificate certificate = (X509Certificate) cf.generateCertificate(
-                new ByteArrayInputStream(certBytes)
-            );
-
-            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            keyStore.load(null, null);
-            keyStore.setCertificateEntry("ca", certificate);
-
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm()
-            );
-            tmf.init(keyStore);
-
-            ctx.init(null, tmf.getTrustManagers(), null);
 
             return ctx;
-        } catch (JiuWenBaseException e) {
+        } catch (com.openjiuwen.core.common.exception.BaseError e) {
             throw e;
         } catch (Exception e) {
-            ExceptionUtils.raiseException(
-                StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                "failed to create SSL context: " + e.getMessage(),
-                e
-            );
-            return null; // unreachable
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                "failed to create SSL context: " + e.getMessage(), null, e, null);
         }
     }
 
     /**
-     * 解析布尔环境变量
-     * 
-     * @param name 环境变量名
-     * @param triggerValue 触发值列表
-     * @return 环境变量值是否在触发值列表中
+     * Create an insecure SSL context that trusts every certificate.
+     * Intended only for explicit verify=false scenarios to mirror Python behaviour.
      */
-    private static boolean boolEnv(String name, List<String> triggerValue) {
-        String value = System.getenv(name);
-        if (value == null) {
-            value = System.getProperty(name);
+    public static SSLContext createInsecureSslContext() {
+        try {
+            TrustManager[] trustAllManagers = new TrustManager[]{
+                    new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                        }
+                    }
+            };
+            SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+            ctx.init(null, trustAllManagers, new SecureRandom());
+            return ctx;
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "failed to create insecure SSL context: " + e.getMessage(), null, e, null);
         }
-        if (value == null) {
-            return false;
+    }
+
+    /**
+     * Configure SSL behavior for an {@link HttpClient.Builder} targeting the given URL.
+     *
+     * @param builder     client builder to configure
+     * @param targetUrl   request target URL
+     * @param verifySsl   whether to verify the remote certificate chain
+     * @param sslCertPath optional CA certificate path
+     */
+    public static void configureHttpClientSsl(HttpClient.Builder builder,
+                                              String targetUrl,
+                                              boolean verifySsl,
+                                              String sslCertPath) {
+        if (builder == null || targetUrl == null || targetUrl.isBlank()) {
+            return;
         }
-        return triggerValue.contains(value.trim().toLowerCase());
+
+        URI targetUri = URI.create(targetUrl);
+        if (!"https".equalsIgnoreCase(targetUri.getScheme())) {
+            return;
+        }
+
+        if (!verifySsl) {
+            builder.sslContext(createInsecureSslContext());
+            SSLParameters sslParameters = new SSLParameters();
+            sslParameters.setEndpointIdentificationAlgorithm("");
+            builder.sslParameters(sslParameters);
+            return;
+        }
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            builder.sslContext(createStrictSslContext(sslCertPath));
+        }
+    }
+
+    /**
+     * Get SSL config based on environment variables.
+     *
+     * @param verifySwitchEnv env var name for verify switch
+     * @param sslCertEnv      env var name for cert path
+     * @param triggerValues   values that disable SSL verification
+     * @param urlIsHttps      whether the target URL uses HTTPS
+     * @return two-element array: [sslVerify, sslCertPath] (Boolean and String)
+     */
+    public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv,
+                                        java.util.List<String> triggerValues, boolean urlIsHttps) {
+        if (!urlIsHttps) {
+            return new Object[]{false, null};
+        }
+        String envValue = readEnvOrProperty(verifySwitchEnv);
+        boolean isOff = envValue != null && triggerValues.contains(envValue.trim().toLowerCase());
+        if (isOff) {
+            return new Object[]{false, null};
+        }
+        String sslCert = readEnvOrProperty(sslCertEnv);
+        return new Object[]{true, sslCert};
+    }
+
+    private static String readEnvOrProperty(String key) {
+        String envValue = System.getenv(key);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue;
+        }
+        String propertyValue = System.getProperty(key);
+        return propertyValue != null && !propertyValue.isBlank() ? propertyValue : null;
     }
 }
-

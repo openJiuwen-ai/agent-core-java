@@ -1,51 +1,34 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
 import com.openjiuwen.core.controller.schema.Event;
-import com.openjiuwen.core.session.Session;
-
-import java.util.Objects;
+import com.openjiuwen.core.session.AgentSessionApi;
 
 /**
  * Input data model for event handlers.
- *
- * <p>Contains event and session information that is passed to event handlers.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Contains event and session information that is passed to event handlers.
+ * <p>
+ * Mirrors Python's {@code EventHandlerInput(BaseModel)}.
  */
 public class EventHandlerInput {
 
     private final Event event;
-    private final Session session;
+    private final AgentSessionApi session;
 
-    /**
-     * Constructor.
-     *
-     * @param event   the event object
-     * @param session the session object
-     */
-    public EventHandlerInput(Event event, Session session) {
-        this.event = Objects.requireNonNull(event, "event must not be null");
-        this.session = Objects.requireNonNull(session, "session must not be null");
+    public EventHandlerInput(Event event, AgentSessionApi session) {
+        this.event = event;
+        this.session = session;
     }
 
-    /**
-     * Gets the event.
-     *
-     * @return the event
-     */
     public Event getEvent() {
         return event;
     }
 
-    /**
-     * Gets the session.
-     *
-     * @return the session
-     */
-    public Session getSession() {
+    public AgentSessionApi getSession() {
         return session;
     }
 }
-

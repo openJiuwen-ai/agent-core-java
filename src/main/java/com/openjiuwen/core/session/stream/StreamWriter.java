@@ -1,119 +1,93 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.stream;
 
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 /**
- * Writes stream data to a StreamEmitter with schema validation.
- * 
- * @param <T> the input type
+ * Stream writer that validates and writes stream data to a StreamEmitter.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.stream.writer.StreamWriter}.
+ *
  * @param <S> the schema type
- * @author OpenJiuwen
- * @since 1.0.0
  */
-public class StreamWriter<T, S> {
-    
-    private static final LoggerProtocol logger = LogManager.getLogger("session");
-    
-    protected final StreamEmitter streamEmitter;
-    protected final Function<Map<String, Object>, S> schemaValidator;
-    protected final String schemaTypeName;
-    
+public class StreamWriter<S extends StreamSchema> {
+
+    private final StreamEmitter streamEmitter;
+    private final Class<S> schemaType;
+    private final Function<Map<String, Object>, S> validator;
+
     /**
-     * Creates a new StreamWriter.
-     * 
-     * @param streamEmitter the stream emitter
-     * @param schemaValidator function to validate and convert data to schema
-     * @param schemaTypeName the schema type name for error messages
-     * @throws IllegalArgumentException if streamEmitter is null
+     * Create a new StreamWriter.
+     *
+     * @param streamEmitter the emitter to write to
+     * @param schemaType    the schema class
+     * @param validator     function to validate/convert a map to the schema type
      */
-    public StreamWriter(StreamEmitter streamEmitter, 
-                       Function<Map<String, Object>, S> schemaValidator, 
-                       String schemaTypeName) {
+    public StreamWriter(StreamEmitter streamEmitter, Class<S> schemaType, Function<Map<String, Object>, S> validator) {
         if (streamEmitter == null) {
-            throw new IllegalArgumentException("stream_emitter can not be None");
+            throw new IllegalArgumentException("streamEmitter cannot be null");
         }
         this.streamEmitter = streamEmitter;
-        this.schemaValidator = schemaValidator;
-        this.schemaTypeName = schemaTypeName;
+        this.schemaType = schemaType;
+        this.validator = validator;
     }
-    
+
     /**
-     * Writes stream data.
-     * 
-     * @param streamData the data to write
-     * @return a CompletableFuture that completes when the data is written
-     * @throws JiuWenBaseException if validation fails or data is null
+     * Write stream data. Validates and emits the data.
+     *
+     * @param streamData the data to write (either a schema instance or a map)
      */
     @SuppressWarnings("unchecked")
-    public CompletableFuture<Void> write(T streamData) {
+    public void write(Object streamData) {
         if (streamData == null) {
-            return CompletableFuture.failedFuture(
-                new JiuWenBaseException(
-                    StatusCode.STREAM_WRITER_WRITE_FAILED.getCode(), 
-                    StatusCode.STREAM_WRITER_WRITE_FAILED.formatMessage(
-                        Map.of("reason", "can not write None"))));
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR,
+                    "stream_type", schemaType.getSimpleName(),
+                    "reason", "stream data is null");
         }
-        
+
+        S validatedData;
         try {
-            S validatedData = schemaValidator.apply((Map<String, Object>) streamData);
-            return doWrite(validatedData);
-        } catch (IllegalArgumentException e) {
-            return CompletableFuture.failedFuture(
-                new JiuWenBaseException(
-                    StatusCode.STREAM_WRITER_WRITE_SCHEMA_FAILED.getCode(),
-                    StatusCode.STREAM_WRITER_WRITE_SCHEMA_FAILED.formatMessage(
-                        Map.of("detail", "Data validation failed for schema " + schemaTypeName))));
+            if (schemaType.isInstance(streamData)) {
+                validatedData = schemaType.cast(streamData);
+            } else if (streamData instanceof Map) {
+                validatedData = validator.apply((Map<String, Object>) streamData);
+            } else {
+                throw new IllegalArgumentException(
+                        "stream data must be " + schemaType.getSimpleName() + " or Map, got " + streamData.getClass().getSimpleName());
+            }
         } catch (Exception e) {
-            return CompletableFuture.failedFuture(
-                new JiuWenBaseException(
-                    StatusCode.STREAM_WRITER_WRITE_FAILED.getCode(),
-                    StatusCode.STREAM_WRITER_WRITE_FAILED.formatMessage(
-                        Map.of("reason", e.getMessage()))));
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR,
+                    "stream_type", schemaType.getSimpleName(),
+                    "reason", e.getMessage());
+        }
+
+        try {
+            doWrite(validatedData);
+        } catch (Exception error) {
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_ERROR,
+                    "reason", error.getMessage());
         }
     }
-    
+
     /**
-     * Performs the actual write operation.
-     * 
+     * Perform the actual write. Can be overridden by subclasses.
+     *
      * @param validatedData the validated data
-     * @return a CompletableFuture that completes when the data is written
      */
-    protected CompletableFuture<Void> doWrite(S validatedData) {
+    protected void doWrite(S validatedData) {
         if (streamEmitter != null && !streamEmitter.isClosed()) {
-            return streamEmitter.emit(validatedData);
+            streamEmitter.emit(validatedData);
         } else {
-            logger.warning("discard message [{}], because stream emitter has already been closed",
-                validatedData);
-            return CompletableFuture.completedFuture(null);
+            Loggers.SESSION.warning("Stream message discarded, emitter already closed, dataType={}",
+                    validatedData.getClass().getSimpleName());
         }
-    }
-    
-    /**
-     * Gets the stream emitter.
-     * 
-     * @return the stream emitter
-     */
-    public StreamEmitter getStreamEmitter() {
-        return streamEmitter;
-    }
-    
-    /**
-     * Gets the schema type name.
-     * 
-     * @return the schema type name
-     */
-    public String getSchemaTypeName() {
-        return schemaTypeName;
     }
 }
-

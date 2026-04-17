@@ -1,55 +1,47 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.service_api;
 
 /**
- * API参数位置枚举（基于OpenAPI规范）
- * 
- * @author OpenJiuwen
- * @since 2026-01-29
+ * API parameter locations based on OpenAPI specification.
+ * <p>
+ * Mirrors Python's {@code APIParamLocation} enum.
  */
 public enum ApiParamLocation {
-    /**
-     * Query参数（URL中，如 ?key=value）
-     */
+
+    /** Query parameters in URL (e.g., ?key=value). */
     QUERY("query"),
-    
-    /**
-     * Path参数（URL中，如 /users/{id}）
-     */
+
+    /** Path parameters in URL (e.g., /users/{id}). */
     PATH("path"),
-    
-    /**
-     * Body参数（请求体）
-     */
+
+    /** Request body parameters. */
     BODY("body"),
-    
-    /**
-     * Header参数（HTTP头）
-     */
+
+    /** HTTP header parameters. */
     HEADER("header");
-    
+
     private final String value;
-    
+
     ApiParamLocation(String value) {
         this.value = value;
     }
-    
+
     public String getValue() {
         return value;
     }
-    
+
     /**
-     * 从字符串值获取枚举
-     * 
-     * @param value 字符串值
-     * @return 对应的枚举值
+     * Parse a location string (case-insensitive).
      */
-    public static ApiParamLocation fromValue(String value) {
-        for (ApiParamLocation location : values()) {
-            if (location.value.equalsIgnoreCase(value)) {
-                return location;
+    public static ApiParamLocation fromString(String text) {
+        for (ApiParamLocation loc : values()) {
+            if (loc.value.equalsIgnoreCase(text)) {
+                return loc;
             }
         }
-        throw new IllegalArgumentException("Unknown API param location: " + value);
+        return BODY;
     }
 }
-

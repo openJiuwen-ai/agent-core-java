@@ -1,57 +1,33 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.contextengine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.session.AgentSessionApi;
 
 import java.util.Iterator;
 
 /**
- * Task executor abstract base class.
- *
- * <p>Defines the task execution interface. Different task types need to implement
- * different TaskExecutors.
- *
- * <p>Main responsibilities:
- * <ul>
- *   <li>Execute tasks ({@link #executeAbility})</li>
- *   <li>Check whether a task can be paused ({@link #canPause})</li>
- *   <li>Pause tasks ({@link #pause})</li>
- *   <li>Check whether a task can be canceled ({@link #canCancel})</li>
- *   <li>Cancel tasks ({@link #cancel})</li>
- * </ul>
- *
- * <p>Python reference: {@code modules/task_scheduler.py::TaskExecutor}
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Abstract base class for task executors.
+ * <p>
+ * Defines the interface for executing tasks. Different logical task types
+ * should implement their own specialized {@code TaskExecutor} subclasses.
+ * <p>
+ * Mirrors Python's {@code TaskExecutor(ABC)}.
  */
 public abstract class TaskExecutor {
 
-    /** Controller configuration. */
     protected final ControllerConfig config;
-
-    /** Ability manager. */
-    protected final AbilityManager abilityManager;
-
-    /** Context engine. */
+    protected final Object abilityManager;
     protected final ContextEngine contextEngine;
-
-    /** Task manager. */
     protected final TaskManager taskManager;
-
-    /** Event queue. */
     protected final EventQueue eventQueue;
 
-    /**
-     * Constructs a TaskExecutor with the given dependencies.
-     *
-     * @param dependencies the task executor dependencies
-     */
-    protected TaskExecutor(TaskExecutorDependencies dependencies) {
+    public TaskExecutor(TaskExecutorDependencies dependencies) {
         this.config = dependencies.getConfig();
         this.abilityManager = dependencies.getAbilityManager();
         this.contextEngine = dependencies.getContextEngine();
@@ -60,64 +36,57 @@ public abstract class TaskExecutor {
     }
 
     /**
-     * Execute task.
+     * Execute a task and return output chunks.
      *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @return an iterator over output chunks generated during task execution
+     * @param taskId  task identifier
+     * @param session session object
+     * @return iterator of output chunks produced during execution
      */
-    public abstract Iterator<ControllerOutputChunk> executeAbility(String taskId, Session session);
+    public abstract Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi session);
 
     /**
      * Check whether the task can be paused.
      *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @return a result pair: [canPause, reason]; reason is empty if canPause is true
+     * @param taskId  task identifier
+     * @param session session object
+     * @return a two-element result: [canPause, reasonIfNot]
      */
-    public abstract PauseResult canPause(String taskId, Session session);
+    public abstract PauseCheckResult canPause(String taskId, AgentSessionApi session);
 
     /**
-     * Pause task.
+     * Pause the given task.
      *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @return true if the task was successfully paused
+     * @param taskId  task identifier
+     * @param session session object
+     * @return whether the pause operation succeeded
      */
-    public abstract boolean pause(String taskId, Session session);
+    public abstract boolean pause(String taskId, AgentSessionApi session);
 
     /**
      * Check whether the task can be canceled.
      *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @return a result pair: [canCancel, reason]; reason is empty if canCancel is true
+     * @param taskId  task identifier
+     * @param session session object
+     * @return a two-element result: [canCancel, reasonIfNot]
      */
-    public abstract CancelResult canCancel(String taskId, Session session);
+    public abstract CancelCheckResult canCancel(String taskId, AgentSessionApi session);
 
     /**
-     * Cancel task.
+     * Cancel the given task.
      *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @return true if the task was successfully canceled
+     * @param taskId  task identifier
+     * @param session session object
+     * @return whether the cancel operation succeeded
      */
-    public abstract boolean cancel(String taskId, Session session);
+    public abstract boolean cancel(String taskId, AgentSessionApi session);
 
     /**
-     * Result of a "can pause" check.
-     *
-     * @param canPause whether the task can be paused
-     * @param reason   the reason if it cannot be paused (empty string if it can)
+     * Result of a pause-ability check.
      */
-    public record PauseResult(boolean canPause, String reason) {}
+    public record PauseCheckResult(boolean canPause, String reason) {}
 
     /**
-     * Result of a "can cancel" check.
-     *
-     * @param canCancel whether the task can be canceled
-     * @param reason    the reason if it cannot be canceled (empty string if it can)
+     * Result of a cancel-ability check.
      */
-    public record CancelResult(boolean canCancel, String reason) {}
+    public record CancelCheckResult(boolean canCancel, String reason) {}
 }
-

@@ -1,136 +1,86 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.singleagent.schema;
 
-import com.openjiuwen.core.common.schema.Param;
 import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * Agent card data class.
- * 
- * <p>Defines the metadata and configuration for an agent, including
- * input and output parameter specifications.
+ * Mirrors Python's {@code AgentCard} in {@code single_agent/schema/agent_card.py}.
+ *
+ * <p>{@code inputParams} and {@code outputParams} accept either a
+ * {@code Map<String, Object>} (raw JSON-schema style) <b>or</b> a
+ * {@code Class<?>} (model/schema type) to align with the Python
+ * {@code dict[str, Any] | Type[BaseModel]} union.</p>
  */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class AgentCard extends BaseCard {
-    
-    private List<Param> outputParams;
-    
+
     /**
-     * Creates an empty agent card.
+     * Input parameter schema — may be a {@code Map<String, Object>} <b>or</b>
+     * a {@code Class<?>} representing a model type.
      */
-    public AgentCard() {
-        super();
-        this.outputParams = new ArrayList<>();
-    }
-    
+    private Object inputParams;
+
     /**
-     * Creates an agent card with the specified name and description.
-     *
-     * @param name the agent name
-     * @param description the agent description
+     * Output parameter schema — same typing rules as {@link #inputParams}.
      */
-    public AgentCard(String name, String description) {
-        super(name, description);
-        this.outputParams = new ArrayList<>();
-    }
-    
+    private Object outputParams;
+
     /**
-     * Creates an agent card with full details.
-     *
-     * @param id the agent ID (if null, auto-generated)
-     * @param name the agent name
-     * @param description the agent description
-     * @param inputParams the input parameters
-     */
-    public AgentCard(String id, String name, String description, List<Param> inputParams) {
-        super(id, name, description, inputParams);
-        this.outputParams = new ArrayList<>();
-    }
-    
-    /**
-     * Gets the input parameters.
-     *
-     * @return the list of input parameters
+     * Resolve the given parameter holder to a {@code Map} suitable for
+     * tool-info / JSON-schema contexts.
      */
     @SuppressWarnings("unchecked")
-    public List<Param> getAgentInputParams() {
-        Object params = getInputParams();
-        if (params instanceof List) {
-            return (List<Param>) params;
+    private static Map<String, Object> resolveParams(Object params) {
+        if (params == null) {
+            return Map.of();
         }
-        return new ArrayList<>();
-    }
-    
-    /**
-     * Sets the input parameters.
-     *
-     * @param inputParams the input parameters
-     */
-    public void setAgentInputParams(List<Param> inputParams) {
-        this.inputParams = inputParams != null ? inputParams : new ArrayList<>();
-    }
-    
-    /**
-     * Gets the output parameters.
-     *
-     * @return the list of output parameters
-     */
-    public List<Param> getOutputParams() {
-        return outputParams;
-    }
-    
-    /**
-     * Sets the output parameters.
-     *
-     * @param outputParams the output parameters
-     */
-    public void setOutputParams(List<Param> outputParams) {
-        this.outputParams = outputParams != null ? outputParams : new ArrayList<>();
-    }
-    
-    /**
-     * Adds an input parameter.
-     *
-     * @param param the parameter to add
-     * @return this card for chaining
-     */
-    @SuppressWarnings("unchecked")
-    public AgentCard addInputParam(Param param) {
-        if (param != null) {
-            if (this.inputParams == null) {
-                this.inputParams = new ArrayList<Param>();
-            }
-            ((List<Param>) this.inputParams).add(param);
+        if (params instanceof Map) {
+            return (Map<String, Object>) params;
         }
-        return this;
-    }
-    
-    /**
-     * Adds an output parameter.
-     *
-     * @param param the parameter to add
-     * @return this card for chaining
-     */
-    public AgentCard addOutputParam(Param param) {
-        if (param != null) {
-            this.outputParams.add(param);
+        if (params instanceof Class<?> cls) {
+            // Return a minimal descriptor so callers can identify the schema type.
+            return Map.of("$javaClass", cls.getName());
         }
-        return this;
+        return Map.of();
     }
-    
+
+    /**
+     * Get input params as a {@code Map}. If a {@code Class<?>} was stored,
+     * it is resolved to a minimal map descriptor.
+     */
+    public Map<String, Object> getInputParamsAsMap() {
+        return resolveParams(inputParams);
+    }
+
+    /**
+     * Get output params as a {@code Map}.
+     */
+    public Map<String, Object> getOutputParamsAsMap() {
+        return resolveParams(outputParams);
+    }
+
     @Override
     public Object toolInfo() {
-        Map<String, Object> info = new HashMap<>();
-        info.put("id", getId());
-        info.put("name", getName());
-        info.put("description", getDescription());
-        info.put("type", "agent");
-        info.put("inputParams", getAgentInputParams());
-        info.put("outputParams", getOutputParams());
-        return info;
+        return ToolInfo.builder()
+                .name(getName())
+                .description(getDescription())
+                .parameters(getInputParamsAsMap())
+                .build();
     }
 }

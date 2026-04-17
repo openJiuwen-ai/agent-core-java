@@ -1,147 +1,87 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.security;
 
-import java.io.File;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 路径安全检查器
- * 
- * <p>使用单例模式，检测路径是否为敏感系统路径，防止路径遍历攻击。
- * 
- * @author OpenJiuwen
- * @since 2026-01-29
+ * Path checker — singleton that determines whether a file path is sensitive.
+ * <p>
+ * Thread-safe singleton using double-checked locking.
  */
-public class PathChecker {
+public final class PathChecker {
 
-    private final Set<String> sensitivePaths;
+    private static volatile PathChecker instance;
+
+    private final Set<String> sensitivePaths = new HashSet<>();
 
     private PathChecker() {
-        this.sensitivePaths = new HashSet<>();
         loadConfig();
     }
 
-    /**
-     * Bill Pugh单例模式
-     */
-    private static class Holder {
-        private static final PathChecker INSTANCE = new PathChecker();
-    }
-
-    /**
-     * 获取PathChecker单例实例
-     * 
-     * @return PathChecker实例
-     */
+    /** Get or create the singleton instance. */
     public static PathChecker getInstance() {
-        return Holder.INSTANCE;
-    }
-
-    /**
-     * 加载敏感路径配置
-     */
-    private void loadConfig() {
-        sensitivePaths.clear();
-        
-        try {
-            List<String> paths = UserConfig.getSensitivePaths();
-            for (String path : paths) {
-                if (path != null && !path.isEmpty()) {
-                    try {
-                        String normalizedPath = new File(path.trim()).getCanonicalPath();
-                        sensitivePaths.add(normalizedPath);
-                    } catch (Exception e) {
-                        // If normalization fails, add as-is
-                        sensitivePaths.add(path.trim());
-                    }
+        if (instance == null) {
+            synchronized (PathChecker.class) {
+                if (instance == null) {
+                    instance = new PathChecker();
                 }
             }
+        }
+        return instance;
+    }
+
+    private void loadConfig() {
+        sensitivePaths.clear();
+        List<String> paths;
+        try {
+            paths = UserConfig.getSensitivePaths();
         } catch (Exception e) {
-            // Fallback to default sensitive paths
-            loadDefaultSensitivePaths();
+            paths = UserConfig.DEFAULT_SENSITIVE_PATHS;
+        }
+        for (String p : paths) {
+            if (p == null || p.isBlank()) {
+                continue;
+            }
+            try {
+                String normalized = Path.of(p.trim()).toAbsolutePath().normalize().toString();
+                sensitivePaths.add(normalized);
+            } catch (Exception e) {
+                sensitivePaths.add(p.trim());
+            }
         }
     }
 
     /**
-     * 加载默认敏感路径列表
+     * Check if a path is sensitive.
+     *
+     * @param path path string to check
+     * @return true if path starts with any configured sensitive path
      */
-    private void loadDefaultSensitivePaths() {
-        sensitivePaths.add("/etc/passwd");
-        sensitivePaths.add("/etc/shadow");
-        sensitivePaths.add("/etc/hosts");
-        sensitivePaths.add("/etc/hostname");
-        sensitivePaths.add("/etc/ssh/");
-        sensitivePaths.add("/proc/");
-        sensitivePaths.add("/sys/");
-        sensitivePaths.add("/dev/");
-        sensitivePaths.add("C:\\Windows\\System32\\");
-        sensitivePaths.add("C:\\Windows\\SysWOW64\\");
-        sensitivePaths.add("C:\\Windows\\System\\");
-    }
-
-    /**
-     * 检查路径是否为敏感路径
-     * 
-     * @param path 要检查的路径（String类型）
-     * @return 如果是敏感路径返回true，否则返回false
-     */
-    public boolean isSensitivePath(String path) {
-        if (path == null || path.isEmpty()) {
+    public boolean checkSensitive(String path) {
+        if (path == null || path.isBlank()) {
             return false;
         }
-        
         try {
-            String normalizedPath = new File(path).getAbsolutePath();
-            
-            for (String sensitivePath : sensitivePaths) {
-                if (normalizedPath.startsWith(sensitivePath)) {
+            String normalized = Path.of(path).toAbsolutePath().normalize().toString();
+            for (String sensitive : sensitivePaths) {
+                if (normalized.startsWith(sensitive)) {
                     return true;
                 }
             }
             return false;
         } catch (Exception e) {
-            // If path is invalid, consider it sensitive for safety
-            return true;
+            return true; // Fail-closed
         }
     }
 
-    /**
-     * 检查路径是否为敏感路径
-     * 
-     * @param path 要检查的路径（Path类型）
-     * @return 如果是敏感路径返回true，否则返回false
-     */
-    public boolean isSensitivePath(Path path) {
-        if (path == null) {
-            return false;
-        }
-        return isSensitivePath(path.toString());
-    }
-
-    /**
-     * 静态便捷方法：检查路径是否为敏感路径
-     * 
-     * <p>对应Python版本的模块级函数 is_sensitive_path(path)
-     * 
-     * @param path 要检查的路径
-     * @return 如果是敏感路径返回true，否则返回false
-     */
-    public static boolean checkSensitivePath(String path) {
-        return getInstance().isSensitivePath(path);
-    }
-
-    /**
-     * 静态便捷方法：检查路径是否为敏感路径
-     * 
-     * <p>对应Python版本的模块级函数 is_sensitive_path(path)
-     * 
-     * @param path 要检查的路径
-     * @return 如果是敏感路径返回true，否则返回false
-     */
-    public static boolean checkSensitivePath(Path path) {
-        return getInstance().isSensitivePath(path);
+    /** Convenience static method. */
+    public static boolean isSensitivePath(String path) {
+        return getInstance().checkSensitive(path);
     }
 }
-

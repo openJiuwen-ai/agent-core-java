@@ -1,15 +1,27 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
 /**
- * 模型配置Record类。
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/mode_info.py - ModelConfig (dataclass)
- * 
- * @param modelProvider 模型提供商标识
- * @param modelInfo 模型信息配置
+ * Model configuration combining provider info and model info.
+ * <p>
+ * Mirrors Python's {@code ModelConfig} dataclass.
+ *
+ * @param modelProvider the model provider name (e.g., "OpenAI", "DashScope")
+ * @param modelInfo     the detailed model connection info
  */
 public record ModelConfig(
-    String modelProvider,
-    BaseModelInfo modelInfo
-) {}
-
+        String modelProvider,
+        BaseModelInfo modelInfo
+) {
+    /**
+     * Creates a ModelConfig with the given model provider and default model info.
+     *
+     * @param modelProvider the model provider name
+     */
+    public ModelConfig(String modelProvider) {
+        this(modelProvider, new BaseModelInfo());
+    }
+}

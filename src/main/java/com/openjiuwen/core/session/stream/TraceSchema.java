@@ -1,34 +1,60 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.workflow.WorkflowChunk;
+
+import java.util.Map;
+
 /**
- * Schema for trace stream data.
- * 
- * @param type the trace type
- * @param payload the trace payload
- * @author OpenJiuwen
- * @since 1.0.0
+ * Trace stream schema.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.stream.base.TraceSchema}.
  */
-public record TraceSchema(String type, Object payload) {
-    
+public class TraceSchema implements WorkflowChunk {
+
+    private String type;
+    private Object payload;
+
+    public TraceSchema() {
+    }
+
+    public TraceSchema(String type, Object payload) {
+        this.type = type;
+        this.payload = payload;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public Object getPayload() {
+        return payload;
+    }
+
+    public void setPayload(Object payload) {
+        this.payload = payload;
+    }
+
     /**
-     * Creates a TraceSchema from a map.
-     * 
+     * Validate data from a map.
+     *
      * @param data the data map
-     * @return the TraceSchema
-     * @throws IllegalArgumentException if required fields are missing
+     * @return a validated TraceSchema instance
      */
-    public static TraceSchema fromMap(java.util.Map<String, Object> data) {
-        if (!data.containsKey("type") || !data.containsKey("payload")) {
-            throw new IllegalArgumentException("TraceSchema requires type and payload fields");
+    public static TraceSchema fromMap(Map<String, Object> data) {
+        if (data == null) {
+            throw new IllegalArgumentException("data is null");
         }
-        
-        String type = data.get("type").toString();
-        Object payload = data.get("payload");
-        
-        return new TraceSchema(type, payload);
+        TraceSchema schema = new TraceSchema();
+        schema.setType((String) data.get("type"));
+        schema.setPayload(data.get("payload"));
+        return schema;
     }
 }
-

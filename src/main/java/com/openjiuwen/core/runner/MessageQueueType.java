@@ -1,10 +1,11 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.runner;
 
 /**
- * 消息队列类型枚举
- * 
- * 对应Python: runner_config.py - MessageQueueType
+ * Message queue type enumeration.
  */
 public enum MessageQueueType {
     PULSAR("pulsar"),
@@ -19,20 +20,4 @@ public enum MessageQueueType {
     public String getValue() {
         return value;
     }
-
-    /**
-     * 根据字符串值获取枚举
-     * 
-     * @param value 字符串值
-     * @return 对应的枚举，如果不存在返回null
-     */
-    public static MessageQueueType fromValue(String value) {
-        for (MessageQueueType type : values()) {
-            if (type.value.equals(value)) {
-                return type;
-            }
-        }
-        return null;
-    }
 }
-

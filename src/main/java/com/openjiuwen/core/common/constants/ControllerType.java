@@ -1,49 +1,42 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.constants;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Controller type enumeration
- * 
- * <p>Defines the types of controllers available in the agent system.
- * 
- * @since 0.1.4
+ * Controller type enumeration.
+ *
+ * <p>Defines the supported controller types for agent orchestration.</p>
  */
 public enum ControllerType {
-    
-    /** ReAct controller type */
+
     REACT_CONTROLLER("react"),
-    
-    /** Workflow controller type */
     WORKFLOW_CONTROLLER("workflow"),
-    
-    /** Undefined controller type */
     UNDEFINED("undefined");
-    
+
     private final String value;
-    
+
     ControllerType(String value) {
         this.value = value;
     }
-    
-    /**
-     * Gets the string value of this controller type
-     * 
-     * @return the string value
-     */
+
+    @JsonValue
     public String getValue() {
         return value;
     }
-    
+
     /**
-     * Gets ControllerType from string value
-     * 
-     * @param value the string value
-     * @return the corresponding ControllerType, or UNDEFINED if not found
+     * Parse a string value into the corresponding {@link ControllerType}.
+     *
+     * @param value the string representation
+     * @return the matching enum constant, or {@link #UNDEFINED} if no match
      */
+    @JsonCreator
     public static ControllerType fromValue(String value) {
-        if (value == null) {
-            return UNDEFINED;
-        }
         for (ControllerType type : values()) {
             if (type.value.equals(value)) {
                 return type;
@@ -51,10 +44,4 @@ public enum ControllerType {
         }
         return UNDEFINED;
     }
-    
-    @Override
-    public String toString() {
-        return value;
-    }
 }
-

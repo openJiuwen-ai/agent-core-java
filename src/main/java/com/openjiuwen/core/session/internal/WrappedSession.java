@@ -1,65 +1,149 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.stream.StreamWriter;
+
+import java.util.Map;
 
 /**
- * Abstract base class for wrapped sessions.
- * 
- * <p>Wraps a BaseSession and provides access to configuration methods.
- * Subclasses should implement the remaining Session interface methods.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/internal/wrapper.py - WrappedSession
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Abstract wrapped session providing convenience accessors around a {@link BaseSession}.
+ * <p>
+ * Subclasses implement the abstract methods to define state access, streaming, and tracing behavior.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.wrapper.WrappedSession}.
  */
-public abstract class WrappedSession implements Session {
-    
-    /**
-     * The wrapped inner session.
-     */
+public abstract class WrappedSession {
+
     protected final BaseSession inner;
-    
-    /**
-     * Creates a new WrappedSession.
-     * 
-     * @param inner the inner session to wrap
-     */
+
     protected WrappedSession(BaseSession inner) {
         this.inner = inner;
     }
-    
-    @Override
+
+    /**
+     * Get workflow config for the given workflow ID.
+     */
     public Object getWorkflowConfig(String workflowId) {
-        if (inner.getConfig() != null) {
-            return inner.getConfig().getWorkflowConfig(workflowId);
-        }
-        return null;
+        return inner.config() != null ? inner.config().getWorkflowConfig(workflowId) : null;
     }
-    
-    @Override
-    public Object getAgentConfig() {
-        if (inner.getConfig() != null) {
-            return inner.getConfig().getAgentConfig();
-        }
-        return null;
+
+    /**
+     * Get agent config.
+     */
+    @SuppressWarnings("unchecked")
+    public Config.MetadataLike getAgentConfig() {
+        return inner.config() != null ? (Config.MetadataLike) inner.config().getAgentConfig() : null;
     }
-    
-    @Override
+
+    /**
+     * Get environment variable from config.
+     */
     public Object getEnv(String key) {
-        if (inner.getConfig() != null) {
-            return inner.getConfig().getEnv(key);
-        }
-        return null;
+        return inner.config() != null ? inner.config().getEnv(key) : null;
     }
-    
-    @Override
-    public BaseSession getBase() {
+
+    /**
+     * Get the underlying base session.
+     */
+    public BaseSession base() {
         return inner;
     }
-}
 
+    /**
+     * Get the executable ID for this wrapped session.
+     */
+    public abstract String executableId();
+
+    /**
+     * Get the session ID.
+     */
+    public abstract String sessionId();
+
+    /**
+     * Get user ID (default empty).
+     */
+    public String userId() {
+        return "";
+    }
+
+    /**
+     * Update the session state.
+     */
+    public abstract void updateState(Map<String, Object> data);
+
+    /**
+     * Get session state by key.
+     */
+    public abstract Object getState(Object key);
+
+    /**
+     * Update global state.
+     */
+    public abstract void updateGlobalState(Map<String, Object> data);
+
+    /**
+     * Get global state by key.
+     */
+    public abstract Object getGlobalState(Object key);
+
+    /**
+     * Get output stream writer.
+     */
+    public abstract StreamWriter<?> streamWriter();
+
+    /**
+     * Get custom stream writer.
+     */
+    public abstract StreamWriter<?> customWriter();
+
+    /**
+     * Write data to the output stream.
+     */
+    public abstract void writeStream(Object data);
+
+    /**
+     * Write data to the custom stream.
+     */
+    public abstract void writeCustomStream(Map<String, Object> data);
+
+    /**
+     * Trace data.
+     */
+    public abstract void trace(Map<String, Object> data);
+
+    /**
+     * Trace an error.
+     */
+    public abstract void traceError(Exception error);
+
+    /**
+     * Trigger an interaction.
+     */
+    public abstract void interact(Object value);
+
+    /**
+     * Post-run hook (default no-op).
+     */
+    public void postRun() {
+        // no-op
+    }
+
+    /**
+     * Pre-run hook (default no-op).
+     */
+    public void preRun(Map<String, Object> kwargs) {
+        // no-op
+    }
+
+    /**
+     * Release session resources (default no-op).
+     */
+    public void release(String sessionId) {
+        // no-op
+    }
+}

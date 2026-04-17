@@ -1,36 +1,46 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * 工具消息块类，用于流式响应。
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/message_chunk.py - ToolMessageChunk
+ * Streaming tool message chunk.
+ * <p>
+ * Mirrors Python's {@code ToolMessageChunk} model.
  */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolMessageChunk extends ToolMessage {
 
-    public ToolMessageChunk() {
-        super();
-    }
-
-    public ToolMessageChunk(String toolCallId, String content) {
-        super(toolCallId, content);
-    }
-
     /**
-     * 合并两个工具消息块。
+     * Merge another tool message chunk into this one.
+     *
+     * @param other the chunk to merge
+     * @return a new merged chunk
      */
     public ToolMessageChunk merge(ToolMessageChunk other) {
         if (other == null) {
             return this;
         }
+        return ToolMessageChunk.builder()
+                .role("tool")
+                .content(orEmpty(this.getContentAsString()) + orEmpty(other.getContentAsString()))
+                .toolCallId(other.getToolCallId() != null ? other.getToolCallId() : this.getToolCallId())
+                .build();
+    }
 
-        String thisContent = getContent() != null ? getContent().toString() : "";
-        String otherContent = other.getContent() != null ? other.getContent().toString() : "";
-        String combinedContent = thisContent + otherContent;
-
-        // toolCallId使用other的值（如果有的话）
-        String toolCallId = other.getToolCallId() != null ? other.getToolCallId() : getToolCallId();
-
-        return new ToolMessageChunk(toolCallId, combinedContent);
+    private static String orEmpty(String s) {
+        return s != null ? s : "";
     }
 }
-

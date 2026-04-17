@@ -1,257 +1,223 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.mcp.client;
 
-import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.ServerParameters;
-import io.modelcontextprotocol.client.transport.StdioClientTransport;
-import io.modelcontextprotocol.spec.McpSchema;
 
-import java.time.Duration;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Stdio（标准输入输出）传输协议的MCP客户端
- *
- * <p>使用标准输入输出与MCP服务器子进程通信。
- * 基于MCP Java SDK的{@code StdioClientTransport}实现。
- *
- * <p>对应Python: stdio_client.py - StdioClient
- *
- * @author OpenJiuwen
- * @since 2026-01-30
+ * Stdio transport MCP client using content-length framed JSON-RPC.
  */
 public class StdioClient implements McpClient {
 
-    private static final LoggerProtocol logger = LogManager.getLogger("StdioClient");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final String serverPath;
-    private final String name;
-    private final Map<String, Object> params;
-    private McpSyncClient mcpSyncClient;
-    private boolean connected = false;
-    private boolean isDisconnected = false;
+    private final McpServerConfig config;
+    private final AtomicLong requestCounter = new AtomicLong();
 
-    /**
-     * 构造Stdio客户端
-     *
-     * @param serverPath 服务器路径
-     * @param name 客户端名称
-     * @param params 连接参数（command, args, env, cwd, encoding_error_handler）
-     */
-    public StdioClient(String serverPath, String name, Map<String, Object> params) {
-        this.serverPath = serverPath;
-        this.name = name;
-        this.params = params != null ? new HashMap<>(params) : new HashMap<>();
-    }
+    private Process process;
+    private BufferedInputStream stdout;
+    private BufferedOutputStream stdin;
 
-    /**
-     * 构造Stdio客户端（无额外参数）
-     */
-    public StdioClient(String serverPath, String name) {
-        this(serverPath, name, null);
+    public StdioClient(McpServerConfig config) {
+        this.config = config;
     }
 
     @Override
-    public CompletableFuture<Boolean> connect(int retryTimes, Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // 从参数中构建ServerParameters
-                String command = (String) params.getOrDefault("command", serverPath);
-                @SuppressWarnings("unchecked")
-                List<String> args = (List<String>) params.getOrDefault("args", List.of());
-                @SuppressWarnings("unchecked")
-                Map<String, String> env = (Map<String, String>) params.getOrDefault("env", null);
-
-                // 构建MCP SDK的ServerParameters
-                ServerParameters.Builder builder = ServerParameters.builder(command);
-                if (args != null && !args.isEmpty()) {
-                    builder.args(args);
-                }
-                if (env != null && !env.isEmpty()) {
-                    builder.env(env);
-                }
-                ServerParameters serverParams = builder.build();
-
-                // 创建Stdio传输和MCP客户端
-                StdioClientTransport transport = new StdioClientTransport(serverParams);
-                mcpSyncClient = io.modelcontextprotocol.client.McpClient.sync(transport).build();
-                mcpSyncClient.initialize();
-                connected = true;
-                isDisconnected = false;
-                logger.info("Stdio client connected successfully");
-                return true;
-            } catch (Exception e) {
-                logger.error("Stdio connection failed: " + e.getMessage());
-                try {
-                    disconnect(timeout).get();
-                } catch (Exception ignored) {
-                    // ignore cleanup errors
-                }
-                return false;
+    public boolean connect(int retryTimes, float timeout) throws Exception {
+        String command = config.getParams().containsKey("command")
+                ? String.valueOf(config.getParams().get("command"))
+                : config.getServerPath();
+        ProcessBuilder processBuilder = new ProcessBuilder();
+        List<String> commandLine = new ArrayList<>();
+        commandLine.add(command);
+        Object argsObj = config.getParams().get("args");
+        if (argsObj instanceof List<?> args) {
+            for (Object arg : args) {
+                commandLine.add(String.valueOf(arg));
             }
-        });
+        }
+        processBuilder.command(commandLine);
+        Object envObj = config.getParams().get("env");
+        if (envObj instanceof Map<?, ?> env) {
+            for (Map.Entry<?, ?> entry : env.entrySet()) {
+                processBuilder.environment().put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        Object cwd = config.getParams().get("cwd");
+        if (cwd != null) {
+            processBuilder.directory(new java.io.File(String.valueOf(cwd)));
+        }
+
+        this.process = processBuilder.start();
+        this.stdout = new BufferedInputStream(process.getInputStream());
+        this.stdin = new BufferedOutputStream(process.getOutputStream());
+        try {
+            request("initialize", Map.of(
+                    "protocolVersion", "2024-11-05",
+                    "clientInfo", Map.of("name", "agent-core-java", "version", "0.1.7"),
+                    "capabilities", Map.of()
+            ), timeout);
+        } catch (Exception ignored) {
+            // Some local MCP servers do not require an explicit initialize response.
+        }
+        return true;
     }
 
     @Override
-    public CompletableFuture<Boolean> disconnect(Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (isDisconnected) {
-                logger.info("Stdio client already disconnected");
-                return true;
-            }
-            try {
-                if (mcpSyncClient != null) {
-                    mcpSyncClient.close();
-                    mcpSyncClient = null;
-                }
-                isDisconnected = true;
-                connected = false;
-                logger.info("Stdio client disconnected successfully");
-                return true;
-            } catch (Exception e) {
-                // 处理CancelledError/RuntimeError等异常情况
-                logger.info("Stdio client disconnected (with cleanup): " + e.getMessage());
-                mcpSyncClient = null;
-                isDisconnected = true;
-                connected = false;
-                return true;
-            }
-        });
+    public boolean disconnect(float timeout) throws Exception {
+        if (stdin != null) {
+            stdin.close();
+        }
+        if (stdout != null) {
+            stdout.close();
+        }
+        if (process != null) {
+            process.destroy();
+            process.waitFor(1, TimeUnit.SECONDS);
+        }
+        return true;
     }
 
     @Override
-    public CompletableFuture<List<McpToolCard>> listTools(Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (mcpSyncClient == null) {
-                throw new RuntimeException("Not connected to Stdio server");
-            }
-            try {
-                McpSchema.ListToolsResult toolsResponse = mcpSyncClient.listTools();
-                List<McpToolCard> toolsList = new ArrayList<>();
-                for (McpSchema.Tool tool : toolsResponse.tools()) {
-                    McpToolCard card = new McpToolCard(
-                            tool.name(),
-                            tool.description() != null ? tool.description() : "",
-                            tool.inputSchema() != null ? convertJsonSchema(tool.inputSchema()) : Map.of()
-                    );
-                    card.setServerName(name);
-                    toolsList.add(card);
-                }
-                logger.info("Retrieved " + toolsList.size() + " tools from Stdio server");
-                return toolsList;
-            } catch (Exception e) {
-                logger.error("Failed to list tools via Stdio: " + e.getMessage());
-                throw new RuntimeException("Failed to list tools via Stdio", e);
-            }
-        });
-    }
-
-    @Override
-    public CompletableFuture<Object> callTool(String toolName, Map<String, Object> arguments, Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (mcpSyncClient == null) {
-                throw new RuntimeException("Not connected to Stdio server");
-            }
-            try {
-                logger.info("Calling tool '" + toolName + "' via Stdio with arguments: " + arguments);
-                McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(toolName, arguments);
-                McpSchema.CallToolResult toolResult = mcpSyncClient.callTool(request);
-
-                // 提取文本内容（与Python一致：取最后一个content的text）
-                String resultContent = extractTextContent(toolResult);
-                logger.info("Tool '" + toolName + "' call completed via Stdio");
-                return resultContent;
-            } catch (Exception e) {
-                logger.error("Tool call failed via Stdio: " + e.getMessage());
-                throw new RuntimeException("Tool call failed via Stdio", e);
-            }
-        });
-    }
-
-    @Override
-    public CompletableFuture<Optional<McpToolCard>> getToolInfo(String toolName, Duration timeout) {
-        return listTools(timeout).thenApply(tools -> {
-            for (McpToolCard tool : tools) {
-                if (toolName.equals(tool.getName())) {
-                    logger.debug("Found tool info for '" + toolName + "' via Stdio");
-                    return Optional.of(tool);
+    public List<Object> listTools(float timeout) throws Exception {
+        Map<String, Object> result = request("tools/list", Map.of(), timeout);
+        List<Object> tools = new ArrayList<>();
+        Object rawTools = result.get("tools");
+        if (rawTools instanceof List<?> list) {
+            for (Object raw : list) {
+                if (raw instanceof Map<?, ?> map) {
+                    Object name = map.get("name");
+                    Object description = map.get("description");
+                    tools.add(McpToolCard.builder()
+                            .name(name != null ? String.valueOf(name) : "")
+                            .description(description != null ? String.valueOf(description) : "")
+                            .serverName(config.getServerName())
+                            .serverId(config.getServerId())
+                            .inputParams(castMap(map.get("inputSchema")))
+                            .build());
                 }
             }
-            logger.warning("Tool '" + toolName + "' not found via Stdio");
-            return Optional.empty();
-        });
+        }
+        return tools;
     }
 
     @Override
-    public boolean isConnected() {
-        return connected && mcpSyncClient != null;
+    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        return request("tools/call", Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
     }
 
-    /**
-     * 获取服务器路径
-     */
+    @Override
+    public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
+        for (Object tool : listTools(timeout)) {
+            if (tool instanceof McpToolCard card && toolName.equals(card.getName())) {
+                return Optional.of(card);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public String getServerPath() {
-        return serverPath;
+        return config.getServerPath();
     }
 
-    /**
-     * 获取客户端名称
-     */
-    public String getName() {
-        return name;
+    private synchronized Map<String, Object> request(String method, Map<String, Object> params, float timeout) throws Exception {
+        long requestId = requestCounter.incrementAndGet();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("jsonrpc", "2.0");
+        body.put("id", requestId);
+        body.put("method", method);
+        body.put("params", params);
+        writeFrame(MAPPER.writeValueAsBytes(body));
+
+        while (true) {
+            Map<String, Object> frame = readFrame();
+            Object responseId = frame.get("id");
+            if (!(responseId instanceof Number number) || number.longValue() != requestId) {
+                continue;
+            }
+            if (frame.containsKey("error")) {
+                throw new IllegalStateException(String.valueOf(frame.get("error")));
+            }
+            Object result = frame.get("result");
+            if (result instanceof Map<?, ?> map) {
+                return castMap(map);
+            }
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put("result", result);
+            return wrapped;
+        }
     }
 
-    // ==================== 内部方法 ====================
-
-    /**
-     * 从CallToolResult提取文本内容
-     */
-    private String extractTextContent(McpSchema.CallToolResult toolResult) {
-        if (toolResult.content() == null || toolResult.content().isEmpty()) {
-            return null;
-        }
-        McpSchema.Content lastContent = toolResult.content().get(toolResult.content().size() - 1);
-        if (lastContent instanceof McpSchema.TextContent textContent) {
-            return textContent.text();
-        }
-        return null;
+    private void writeFrame(byte[] jsonBytes) throws Exception {
+        String header = "Content-Length: " + jsonBytes.length + "\r\n\r\n";
+        stdin.write(header.getBytes(StandardCharsets.UTF_8));
+        stdin.write(jsonBytes);
+        stdin.flush();
     }
 
-    /**
-     * 将MCP SDK的JsonSchema转换为Map
-     */
-    private Map<String, Object> convertJsonSchema(McpSchema.JsonSchema jsonSchema) {
-        Map<String, Object> schemaMap = new HashMap<>();
-        if (jsonSchema.type() != null) {
-            schemaMap.put("type", jsonSchema.type());
+    private Map<String, Object> readFrame() throws Exception {
+        int contentLength = -1;
+        String line;
+        while (!(line = readHeaderLine()).isEmpty()) {
+            String lower = line.toLowerCase();
+            if (lower.startsWith("content-length:")) {
+                contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
+            }
         }
-        if (jsonSchema.properties() != null) {
-            schemaMap.put("properties", jsonSchema.properties());
+        if (contentLength < 0) {
+            throw new IllegalStateException("Missing Content-Length in stdio MCP response");
         }
-        if (jsonSchema.required() != null) {
-            schemaMap.put("required", jsonSchema.required());
-        }
-        if (jsonSchema.additionalProperties() != null) {
-            schemaMap.put("additionalProperties", jsonSchema.additionalProperties());
-        }
-        return schemaMap;
+        byte[] body = stdout.readNBytes(contentLength);
+        return MAPPER.readValue(body, new TypeReference<>() {
+        });
     }
 
-    /**
-     * 仅用于测试：注入mock McpSyncClient
-     */
-    void setMcpSyncClientForTest(McpSyncClient client) {
-        this.mcpSyncClient = client;
-        this.connected = (client != null);
-        this.isDisconnected = (client == null);
+    private String readHeaderLine() throws Exception {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int current;
+        while ((current = stdout.read()) != -1) {
+            if (current == '\r') {
+                int next = stdout.read();
+                if (next == '\n') {
+                    break;
+                }
+                buffer.write(current);
+                buffer.write(next);
+                continue;
+            }
+            buffer.write(current);
+        }
+        return buffer.toString(StandardCharsets.UTF_8);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 }

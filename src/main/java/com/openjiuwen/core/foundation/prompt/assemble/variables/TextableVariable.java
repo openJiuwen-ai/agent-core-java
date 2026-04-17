@@ -1,28 +1,30 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.prompt.assemble.variables;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.logging.LogEventType;
-import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 
-import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Variable class for processing string-type placeholders.
  * <p>
- * TextableVariable parses a text template containing placeholders (e.g., "{{name}}") and supports
- * nested placeholder access (e.g., "{{user.name}}"). It can replace placeholders with actual values
- * during the update process.
- * </p>
- * 
- * <p>Converted from Python: agent-core/openjiuwen/core/foundation/prompt/assemble/variables/textable.py</p>
+ * Mirrors Python's {@code TextableVariable}.
  */
 public class TextableVariable extends Variable {
-    private static final LoggerProtocol promptLogger = LogManager.getLogger("prompt");
+
+    private static final Logger LOG = LoggerFactory.getLogger(TextableVariable.class);
 
     private final String text;
     private final String prefix;
@@ -30,144 +32,70 @@ public class TextableVariable extends Variable {
     private final List<String> placeholders;
 
     /**
-     * Constructs a TextableVariable with the specified text and placeholder delimiters.
+     * Construct a new TextableVariable.
      *
      * @param text   the template text containing placeholders
-     * @param name   the name of this variable
-     * @param prefix the left delimiter for placeholders (e.g., "{{")
-     * @param suffix the right delimiter for placeholders (e.g., "}}")
-     * @throws BaseError if a placeholder is empty or malformed
+     * @param name   variable name
+     * @param prefix placeholder prefix (default "{{")
+     * @param suffix placeholder suffix (default "}}")
      */
     public TextableVariable(String text, String name, String prefix, String suffix) {
-        super(name, null); // Will be set after parsing placeholders
+        super(name, List.of());
         this.text = text;
         this.prefix = prefix;
         this.suffix = suffix;
 
         // Parse placeholders from text
-        String regexPattern = Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix);
-        Pattern pattern = Pattern.compile(regexPattern);
+        Pattern pattern = Pattern.compile(
+                Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix));
+        LinkedHashSet<String> uniquePlaceholders = new LinkedHashSet<>();
         Matcher matcher = pattern.matcher(text);
-
-        this.placeholders = new ArrayList<>();
         while (matcher.find()) {
             String placeholder = matcher.group(1).strip();
             if (placeholder.isEmpty()) {
-                throw new BaseError(
-                    StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                    "placeholders cannot be empty string",
-                    null, null, null
-                );
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
+                        "error_msg", "placeholders cannot be empty string");
             }
-            if (!placeholders.contains(placeholder)) {
-                placeholders.add(placeholder);
-            }
+            uniquePlaceholders.add(placeholder);
         }
+        this.placeholders = new ArrayList<>(uniquePlaceholders);
 
-        // Extract input keys from placeholders (get the first part before '.')
-        List<String> inputKeys = new ArrayList<>();
-        for (String placeholder : placeholders) {
+        // Build input keys (top-level segment before '.')
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        for (String placeholder : this.placeholders) {
             String inputKey = placeholder.split("\\.")[0];
-            if (!inputKeys.contains(inputKey)) {
-                inputKeys.add(inputKey);
-            }
+            keys.add(inputKey);
         }
-
-        // Set input keys via reflection workaround (since we need to set it after construction)
-        try {
-            java.lang.reflect.Field field = Variable.class.getDeclaredField("inputKeys");
-            field.setAccessible(true);
-            field.set(this, inputKeys);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to set inputKeys", e);
-        }
+        this.inputKeys = new ArrayList<>(keys);
     }
 
-    /**
-     * Gets the original text template.
-     *
-     * @return the text template
-     */
-    public String getText() {
-        return text;
-    }
-
-    /**
-     * Gets the list of placeholders found in the text.
-     *
-     * @return the list of placeholders
-     */
-    public List<String> getPlaceholders() {
-        return Collections.unmodifiableList(placeholders);
-    }
-
-    /**
-     * Replaces placeholders in the text with passed-in key-values and updates the value.
-     * <p>
-     * Supports nested placeholder access like "user.name" where it will navigate through
-     * the object hierarchy to retrieve the value.
-     * </p>
-     *
-     * @param kwargs the arguments passed in as key-value pairs for updating the variable
-     * @throws BaseError if placeholder parsing fails
-     */
     @Override
     public void update(Map<String, Object> kwargs) {
-        String formattedText = text;
-        
+        String formattedText = this.text;
         for (String placeholder : placeholders) {
-            Object value = kwargs;
-            
+            Object val = kwargs;
             try {
-                // Navigate through nested path (e.g., "user.name" -> kwargs["user"]["name"])
                 for (String node : placeholder.split("\\.")) {
-                    if (value instanceof Map) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> map = (Map<String, Object>) value;
-                        value = map.get(node);
+                    if (val instanceof Map<?, ?> m) {
+                        val = m.get(node);
                     } else {
-                        // Try to get field value via reflection
-                        try {
-                            java.lang.reflect.Field field = value.getClass().getDeclaredField(node);
-                            field.setAccessible(true);
-                            value = field.get(value);
-                        } catch (NoSuchFieldException e) {
-                            // Try getter method
-                            String getterName = "get" + Character.toUpperCase(node.charAt(0)) + node.substring(1);
-                            java.lang.reflect.Method method = value.getClass().getMethod(getterName);
-                            value = method.invoke(value);
-                        }
+                        // Attempt reflection as a last resort
+                        var field = val.getClass().getMethod(
+                                "get" + node.substring(0, 1).toUpperCase() + node.substring(1));
+                        val = field.invoke(val);
                     }
                 }
             } catch (Exception e) {
-                throw new BaseError(
-                    StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                    "error parsing the placeholder `" + placeholder + "`",
-                    null, e, null
-                );
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
+                        "error_msg", "error parsing the placeholder `" + placeholder + "`");
             }
-
-            // Convert non-string values to string
-            if (!(value instanceof String || value instanceof Integer || 
-                  value instanceof Float || value instanceof Double || 
-                  value instanceof Boolean)) {
-                Map<String, Object> metadata = new HashMap<>();
-                metadata.put("placeholder", placeholder);
-                promptLogger.info(
-                    "Converting non-string value using str(). Please check if the style is describe.",
-                    LogEventType.AGENT_START,
-                    kwargs,
-                    getValue(),
-                    metadata
-                );
+            if (!(val instanceof String || val instanceof Number || val instanceof Boolean)) {
+                LOG.info("Converting non-string value to String via toString(). " +
+                        "Placeholder: {}", placeholder);
             }
-
-            // Replace placeholder in text
             String placeholderStr = prefix + placeholder + suffix;
-            formattedText = formattedText.replace(placeholderStr, String.valueOf(value));
+            formattedText = formattedText.replace(placeholderStr, String.valueOf(val));
         }
-
-        setValue(formattedText);
+        this.value = formattedText;
     }
 }
-

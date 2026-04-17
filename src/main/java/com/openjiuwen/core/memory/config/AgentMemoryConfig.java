@@ -1,65 +1,41 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.config;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.schema.Param;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Agent memory configuration.
- * Corresponds to Python: config/config.py - AgentMemoryConfig
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AgentMemoryConfig {
 
-    private final List<Param> memVariables;
-    private final boolean enableLongTermMem;
+    @Builder.Default
+    @JsonProperty("mem_variables")
+    private List<Param> memVariables = new ArrayList<>();
 
-    private AgentMemoryConfig(Builder builder) {
-        this.memVariables = builder.memVariables != null ? new ArrayList<>(builder.memVariables) : new ArrayList<>();
-        this.enableLongTermMem = builder.enableLongTermMem;
-    }
+    @Builder.Default
+    @JsonProperty("enable_long_term_mem")
+    private boolean enableLongTermMem = true;
 
-    public List<Param> getMemVariables() {
-        return new ArrayList<>(memVariables);
-    }
+    @Builder.Default
+    @JsonProperty("enable_fragment_memory")
+    private boolean enableFragmentMemory = true;
 
-    public boolean isEnableLongTermMem() {
-        return enableLongTermMem;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        private List<Param> memVariables = new ArrayList<>();
-        private boolean enableLongTermMem = true;
-
-        public Builder memVariables(List<Param> memVariables) {
-            this.memVariables = memVariables;
-            return this;
-        }
-
-        public Builder enableLongTermMem(boolean enableLongTermMem) {
-            this.enableLongTermMem = enableLongTermMem;
-            return this;
-        }
-
-        public AgentMemoryConfig build() {
-            return new AgentMemoryConfig(this);
-        }
-    }
-
-    @Override
-    public String toString() {
-        return "AgentMemoryConfig{" +
-               "memVariables=" + memVariables.size() +
-               ", enableLongTermMem=" + enableLongTermMem +
-               '}';
-    }
+    @Builder.Default
+    @JsonProperty("enable_summary_memory")
+    private boolean enableSummaryMemory = true;
 }
-

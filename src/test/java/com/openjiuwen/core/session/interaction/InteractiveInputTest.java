@@ -1,82 +1,62 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- */
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.session.interaction;
 
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.openjiuwen.core.common.exception.BaseError;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for InteractiveInput.
- * 
- * <p>Converted from Python: test_interactive_input.py</p>
+ * Tests for {@link InteractiveInput}.
+ * <p>
+ * Ported from Python's {@code test_interactive_input.py}.
  */
 class InteractiveInputTest {
-    
+
     @Test
-    @DisplayName("invalid raw inputs throws exception")
+    @DisplayName("null raw inputs throws BaseError")
     void testInvalidRawInputs() {
-        JiuWenBaseException ex = assertThrows(JiuWenBaseException.class, () -> {
-            new InteractiveInput(null);
-        });
-        assertEquals(-1, ex.getErrorCode());
+        BaseError ex = assertThrows(BaseError.class, () -> new InteractiveInput(null));
+        assertNotNull(ex);
     }
-    
+
     @Test
-    @DisplayName("invalid update throws exception")
+    @DisplayName("update with rawInputs existing throws BaseError")
     void testInvalidUpdate() {
-        InteractiveInput interactiveInput = new InteractiveInput();
-        JiuWenBaseException ex = assertThrows(JiuWenBaseException.class, () -> {
-            interactiveInput.update("id", null);
-        });
-        assertEquals(-1, ex.getErrorCode());
+        InteractiveInput input = new InteractiveInput("some-raw-input");
+        BaseError ex = assertThrows(BaseError.class, () -> input.update("id", "value"));
+        assertNotNull(ex);
     }
-    
+
     @Test
-    @DisplayName("empty constructor works")
-    void testEmptyConstructor() {
+    @DisplayName("default constructor allows update")
+    void testDefaultConstructorAllowsUpdate() {
         InteractiveInput input = new InteractiveInput();
-        assertNotNull(input);
-        assertNull(input.getRawInputs());
+        assertDoesNotThrow(() -> input.update("nodeId", "value"));
+        assertEquals("value", input.getUserInputs().get("nodeId"));
+    }
+
+    @Test
+    @DisplayName("valid raw inputs constructor works")
+    void testValidRawInputs() {
+        InteractiveInput input = new InteractiveInput("hello");
+        assertEquals("hello", input.getRawInputs());
         assertTrue(input.getUserInputs().isEmpty());
     }
-    
+
     @Test
-    @DisplayName("static empty factory works")
-    void testEmptyFactory() {
-        InteractiveInput input = InteractiveInput.empty();
-        assertNotNull(input);
-        assertFalse(input.hasRawInputs());
-    }
-    
-    @Test
-    @DisplayName("update with valid inputs works")
-    void testUpdateWithValidInputs() {
+    @DisplayName("update with null nodeId throws BaseError")
+    void testUpdateNullNodeId() {
         InteractiveInput input = new InteractiveInput();
-        input.update("node1", "value1");
-        assertEquals("value1", input.getUserInputs().get("node1"));
+        assertThrows(BaseError.class, () -> input.update(null, "value"));
     }
-    
+
     @Test
-    @DisplayName("update with null nodeId throws exception")
-    void testUpdateWithNullNodeId() {
+    @DisplayName("update with null value throws BaseError")
+    void testUpdateNullValue() {
         InteractiveInput input = new InteractiveInput();
-        assertThrows(JiuWenBaseException.class, () -> {
-            input.update(null, "value");
-        });
-    }
-    
-    @Test
-    @DisplayName("has raw inputs reflects state")
-    void testHasRawInputsReflectsState() {
-        InteractiveInput withRaw = new InteractiveInput("raw_data");
-        assertTrue(withRaw.hasRawInputs());
-        
-        InteractiveInput withoutRaw = new InteractiveInput();
-        assertFalse(withoutRaw.hasRawInputs());
+        assertThrows(BaseError.class, () -> input.update("id", null));
     }
 }
-

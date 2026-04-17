@@ -1,47 +1,70 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.store;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
+
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * 图状态存储的包装实现类。
- * 
- * <p>将存储操作委托给底层的 Store 实现。
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/graph/store/base.py - GraphStore
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Decorator around {@link Store} that adds logging for graph state operations.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphStore}.
  */
 public class GraphStore implements Store {
-    
-    private final Store saver;
-    
-    /**
-     * 构造一个 GraphStore 对象。
-     *
-     * @param saver 底层的存储实现
-     */
-    public GraphStore(Store saver) {
-        this.saver = saver;
+
+    private static final LoggerProtocol logger = Loggers.GRAPH;
+
+    private final Store delegate;
+
+    public GraphStore(Store delegate) {
+        this.delegate = delegate;
     }
-    
+
     @Override
-    public CompletableFuture<Optional<GraphState>> get(String sessionId, String ns) {
-        return saver.get(sessionId, ns);
+    public Optional<GraphStoreState> get(String sessionId, String ns) {
+        try {
+            Optional<GraphStoreState> state = delegate.get(sessionId, ns);
+            if (state.isEmpty()) {
+                logger.debug("Not found graph state for session, sessionId={}, ns={}", sessionId, ns);
+            }
+            return state;
+        } catch (Exception e) {
+            logger.error("Failed to get graph state, sessionId={}, ns={}", sessionId, ns, e);
+            throw e;
+        }
     }
-    
+
     @Override
-    public CompletableFuture<Void> save(String sessionId, String ns, GraphState state) {
-        return saver.save(sessionId, ns, state);
+    public void save(String sessionId, String ns, GraphStoreState state) {
+        logger.debug("Begin to save graph state of super-step[{}], sessionId={}, ns={}",
+                state.getStep(), sessionId, ns);
+        try {
+            delegate.save(sessionId, ns, state);
+            logger.debug("Succeed to save graph state of super-step[{}], sessionId={}, ns={}",
+                    state.getStep(), sessionId, ns);
+        } catch (Exception e) {
+            logger.error("Failed to save graph state of super-step[{}], sessionId={}, ns={}",
+                    state.getStep(), sessionId, ns, e);
+            throw e;
+        }
     }
-    
+
     @Override
-    public CompletableFuture<Void> delete(String sessionId, String ns) {
-        return saver.delete(sessionId, ns);
+    public void delete(String sessionId, String ns) {
+        logger.debug("Begin to delete {} graph states for session, sessionId={}",
+                ns != null ? ns : "all", sessionId);
+        try {
+            delegate.delete(sessionId, ns);
+            logger.debug("Succeed to delete {} graph states for session, sessionId={}",
+                    ns != null ? ns : "all", sessionId);
+        } catch (Exception e) {
+            logger.error("Failed to delete {} graph states for session, sessionId={}",
+                    ns != null ? ns : "all", sessionId, e);
+            throw e;
+        }
     }
 }
-

@@ -1,95 +1,81 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.tracer.Tracer;
-
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Proxy implementation of BaseSession that delegates to another session.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Proxy session that delegates all calls to an underlying stub session.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.session.ProxySession}.
  */
-public class ProxySession implements BaseSession {
-    
+public class ProxySession extends BaseSession {
+
     private BaseSession stub;
-    
-    /**
-     * Creates a new ProxySession.
-     */
+
     public ProxySession() {
-        this.stub = null;
+        this(null);
     }
-    
-    /**
-     * Creates a new ProxySession with a stub.
-     * 
-     * @param stub the stub session to delegate to
-     */
+
     public ProxySession(BaseSession stub) {
         this.stub = stub;
     }
-    
+
     /**
-     * Sets the stub session.
-     * 
-     * @param stub the stub session
+     * Set the underlying session implementation.
+     *
+     * @param stub the session to delegate to
      */
     public void setSession(BaseSession stub) {
         this.stub = stub;
     }
-    
-    @Override
-    public Config getConfig() {
-        return stub != null ? stub.getConfig() : null;
+
+    /**
+     * Get the underlying session implementation.
+     *
+     * @return the stub session
+     */
+    public BaseSession getStub() {
+        return stub;
     }
-    
+
     @Override
-    public State getState() {
-        return stub != null ? stub.getState() : null;
+    public Config config() {
+        return stub.config();
     }
-    
+
     @Override
-    public Tracer getTracer() {
-        return stub != null ? stub.getTracer() : null;
+    public State state() {
+        return stub.state();
     }
-    
+
     @Override
-    public StreamWriterManager getStreamWriterManager() {
-        return stub != null ? stub.getStreamWriterManager() : null;
+    public Object tracer() {
+        return stub.tracer();
     }
-    
+
     @Override
-    public CallbackManager getCallbackManager() {
-        return stub != null ? stub.getCallbackManager() : null;
+    public StreamWriterManager streamWriterManager() {
+        return stub.streamWriterManager();
     }
-    
+
     @Override
-    public String getSessionId() {
-        return stub != null ? stub.getSessionId() : null;
+    public CallbackManager callbackManager() {
+        return stub.callbackManager();
     }
-    
+
     @Override
-    public Checkpointer getCheckpointer() {
-        return stub != null ? stub.getCheckpointer() : null;
+    public String sessionId() {
+        return stub.sessionId();
     }
-    
+
     @Override
-    public Object getActorManager() {
-        return stub != null ? stub.getActorManager() : null;
-    }
-    
-    @Override
-    public CompletableFuture<Void> close() {
-        return stub != null ? stub.close() : CompletableFuture.completedFuture(null);
+    public Object checkpointer() {
+        return stub.checkpointer();
     }
 }
-

@@ -1,91 +1,111 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * Task Filter.
- *
- * <p>Used to filter tasks in getTask, removeTask, and popTask methods.
+ * Task filter for querying tasks.
+ * <p>
  * All fields are optional and can be combined for complex filtering.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code TaskFilter(BaseModel)}.
  */
 public class TaskFilter {
 
-    /** Single task ID filter. */
-    private final String taskId;
-    /** List of task IDs filter. */
-    private final List<String> taskIds;
-    /** Session ID filter. */
-    private final String sessionId;
-    /** User ID filter (looked up in metadata). */
-    private final String userId;
-    /** Priority filter (integer value). */
-    private final Integer priority;
-    /** Whether priority is "highest" (special sentinel). */
-    private final boolean priorityHighest;
-    /** Task status filter. */
-    private final TaskStatus status;
-    /** Whether to include child tasks. */
-    private final boolean withChildren;
-    /** Whether to only query root tasks. */
-    private final boolean isRoot;
+    private Object taskId;       // String or List<String>
+    private String sessionId;
+    private String userId;
+    private Object priority;     // Integer or "highest"
+    private TaskStatus status;
+    private boolean withChildren;
+    private boolean isRoot;
 
-    private TaskFilter(TaskFilterBuilder builder) {
-        this.taskId = builder.taskId;
-        this.taskIds = builder.taskIds;
-        this.sessionId = builder.sessionId;
-        this.userId = builder.userId;
-        this.priority = builder.priority;
-        this.priorityHighest = builder.priorityHighest;
-        this.status = builder.status;
-        this.withChildren = builder.withChildren;
-        this.isRoot = builder.isRoot;
-
-        // Validate that at least one filter parameter is set
-        boolean allEmpty = (taskId == null && taskIds == null && sessionId == null
-            && userId == null && priority == null && !priorityHighest
-            && status == null && !isRoot);
-        if (allEmpty) {
-            throw ErrorBuilder.build(
-                StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                null, null, null,
-                Map.of("error_msg", "At least one filter parameter (task_id, session_id, "
-                    + "user_id, priority, status, or is_root) must be provided")
-            );
-        }
+    private TaskFilter() {
     }
 
     /**
-     * Creates a new builder.
-     *
-     * @return a new TaskFilterBuilder
+     * Validate that at least one filter parameter is provided.
      */
-    public static TaskFilterBuilder builder() {
-        return new TaskFilterBuilder();
+    private void validate() {
+        boolean allEmpty = taskId == null
+                && sessionId == null
+                && userId == null
+                && priority == null
+                && status == null
+                && !isRoot;
+        if (allEmpty) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
+                    "error_msg", "At least one filter parameter must be provided");
+        }
+    }
+
+    // Static factory methods for common filters
+
+    public static TaskFilter byTaskId(String taskId) {
+        TaskFilter f = new TaskFilter();
+        f.taskId = taskId;
+        return f;
+    }
+
+    public static TaskFilter byTaskIds(List<String> taskIds) {
+        TaskFilter f = new TaskFilter();
+        f.taskId = taskIds;
+        return f;
+    }
+
+    public static TaskFilter bySessionId(String sessionId) {
+        TaskFilter f = new TaskFilter();
+        f.sessionId = sessionId;
+        return f;
+    }
+
+    public static TaskFilter byStatus(TaskStatus status) {
+        TaskFilter f = new TaskFilter();
+        f.status = status;
+        return f;
+    }
+
+    public static TaskFilter byRoot() {
+        TaskFilter f = new TaskFilter();
+        f.isRoot = true;
+        return f;
+    }
+
+    public static TaskFilter byHighestPriority() {
+        TaskFilter f = new TaskFilter();
+        f.priority = "highest";
+        return f;
+    }
+
+    /**
+     * General-purpose builder.
+     */
+    public static Builder builder() {
+        return new Builder();
     }
 
     // Getters
 
-    /**
-     * Gets the single task ID (or null if list-based).
-     */
-    public String getTaskId() {
-        return taskId;
+    @SuppressWarnings("unchecked")
+    public List<String> getTaskIdList() {
+        if (taskId == null) {
+            return null;
+        }
+        if (taskId instanceof String s) {
+            return List.of(s);
+        }
+        return (List<String>) taskId;
     }
 
-    /**
-     * Gets the list of task IDs (or null if single-based).
-     */
-    public List<String> getTaskIds() {
-        return taskIds;
+    public Object getTaskId() {
+        return taskId;
     }
 
     public String getSessionId() {
@@ -96,12 +116,19 @@ public class TaskFilter {
         return userId;
     }
 
-    public Integer getPriority() {
+    public Object getPriority() {
         return priority;
     }
 
-    public boolean isPriorityHighest() {
-        return priorityHighest;
+    public Integer getPriorityAsInt() {
+        if (priority instanceof Integer i) {
+            return i;
+        }
+        return null;
+    }
+
+    public boolean isHighestPriority() {
+        return "highest".equals(priority);
     }
 
     public TaskStatus getStatus() {
@@ -119,70 +146,57 @@ public class TaskFilter {
     /**
      * Builder for TaskFilter.
      */
-    public static class TaskFilterBuilder {
-        private String taskId;
-        private List<String> taskIds;
-        private String sessionId;
-        private String userId;
-        private Integer priority;
-        private boolean priorityHighest = false;
-        private TaskStatus status;
-        private boolean withChildren = false;
-        private boolean isRoot = false;
+    public static class Builder {
+        private final TaskFilter filter = new TaskFilter();
 
-        public TaskFilterBuilder taskId(String taskId) {
-            this.taskId = taskId;
+        public Builder taskId(String taskId) {
+            filter.taskId = taskId;
             return this;
         }
 
-        public TaskFilterBuilder taskIds(List<String> taskIds) {
-            this.taskIds = taskIds;
+        public Builder taskIds(List<String> taskIds) {
+            filter.taskId = taskIds;
             return this;
         }
 
-        public TaskFilterBuilder sessionId(String sessionId) {
-            this.sessionId = sessionId;
+        public Builder sessionId(String sessionId) {
+            filter.sessionId = sessionId;
             return this;
         }
 
-        public TaskFilterBuilder userId(String userId) {
-            this.userId = userId;
+        public Builder userId(String userId) {
+            filter.userId = userId;
             return this;
         }
 
-        public TaskFilterBuilder priority(int priority) {
-            this.priority = priority;
+        public Builder priority(int priority) {
+            filter.priority = priority;
             return this;
         }
 
-        public TaskFilterBuilder priorityHighest() {
-            this.priorityHighest = true;
+        public Builder highestPriority() {
+            filter.priority = "highest";
             return this;
         }
 
-        public TaskFilterBuilder status(TaskStatus status) {
-            this.status = status;
+        public Builder status(TaskStatus status) {
+            filter.status = status;
             return this;
         }
 
-        public TaskFilterBuilder withChildren(boolean withChildren) {
-            this.withChildren = withChildren;
+        public Builder withChildren(boolean withChildren) {
+            filter.withChildren = withChildren;
             return this;
         }
 
-        public TaskFilterBuilder isRoot(boolean isRoot) {
-            this.isRoot = isRoot;
+        public Builder isRoot(boolean isRoot) {
+            filter.isRoot = isRoot;
             return this;
         }
 
-        /**
-         * Builds and validates the TaskFilter.
-         *
-         * @return the validated TaskFilter
-         */
         public TaskFilter build() {
-            return new TaskFilter(this);
+            filter.validate();
+            return filter;
         }
     }
 }
-

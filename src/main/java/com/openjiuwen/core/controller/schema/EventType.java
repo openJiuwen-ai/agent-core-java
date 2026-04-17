@@ -1,19 +1,21 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
 /**
- * Event Type Enumeration.
- *
- * <p>Defines all supported event types:
+ * Event type enumeration.
+ * <p>
+ * Defines all supported event types:
  * <ul>
- *   <li>INPUT: User input event</li>
- *   <li>TASK_INTERACTION: Task interaction event (requires user interaction during task execution)</li>
- *   <li>TASK_COMPLETION: Task completion event</li>
- *   <li>TASK_FAILED: Task failed event</li>
+ *   <li>INPUT - user input event</li>
+ *   <li>TASK_INTERACTION - task interaction event</li>
+ *   <li>TASK_COMPLETION - task completion event</li>
+ *   <li>TASK_FAILED - task failed event</li>
  * </ul>
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code EventType(str, Enum)}.
  */
 public enum EventType {
 
@@ -28,29 +30,21 @@ public enum EventType {
         this.value = value;
     }
 
-    /**
-     * Gets the string value of the event type.
-     *
-     * @return the event type value
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * Returns the EventType from its string value.
-     *
-     * @param value the string value
-     * @return the corresponding EventType
-     * @throws IllegalArgumentException if value is not recognized
-     */
     public static EventType fromValue(String value) {
         for (EventType type : values()) {
             if (type.value.equals(value)) {
                 return type;
             }
         }
-        throw new IllegalArgumentException("Unknown EventType value: " + value);
+        throw new IllegalArgumentException("Unknown EventType: " + value);
+    }
+
+    @Override
+    public String toString() {
+        return value;
     }
 }
-

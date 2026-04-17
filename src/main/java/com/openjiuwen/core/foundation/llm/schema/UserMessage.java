@@ -1,59 +1,48 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
-/**
- * User message class.
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/message.py
- */
-public class UserMessage extends BaseMessage {
-    public UserMessage() {
-        super();
-        setRole("user");
-    }
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
+/**
+ * User message in an LLM conversation.
+ * <p>
+ * Mirrors Python's {@code UserMessage} model.
+ */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class UserMessage extends BaseMessage {
+
+    /**
+     * Creates a user message with the given content.
+     *
+     * @param content the message content
+     */
     public UserMessage(String content) {
         super("user", content);
     }
 
     /**
-     * 静态工厂方法，便于快速创建UserMessage。
+     * Creates a user message with the given content and name.
      *
-     * @param content 消息内容
-     * @return 新的UserMessage实例
+     * @param content the message content
+     * @param name    the sender name
      */
-    public static UserMessage of(String content) {
-        return new UserMessage(content);
-    }
-
     public UserMessage(String content, String name) {
-        super("user", content, name);
+        this(content);
+        setName(name);
     }
 
-    /**
-     * Builder类
-     */
-    public static class Builder {
-        private Object content;
-        private String name;
-
-        public Builder content(Object content) {
-            this.content = content;
-            return this;
-        }
-
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public UserMessage build() {
-            UserMessage message = new UserMessage();
-            message.setContent(content);
-            if (name != null) {
-                message.setName(name);
-            }
-            return message;
-        }
+    @Override
+    public String getRole() {
+        String r = super.getRole();
+        return r != null ? r : "user";
     }
 }
-

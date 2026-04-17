@@ -1,265 +1,207 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.tracer.Tracer;
-import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
+import com.openjiuwen.core.workflow.WorkflowConfig;
+import com.openjiuwen.core.workflow.WorkflowSpec;
+
+import java.util.Map;
 
 /**
- * Node session implementation for managing node execution context within a workflow.
- * 
- * <p>Each node in a workflow has its own NodeSession that manages node-specific
- * state while delegating common operations to the parent session.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/internal/workflow.py - NodeSession
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Node session representing a workflow node's scoped session.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.NodeSession}.
  */
-public class NodeSession implements BaseSession, TracerWorkflowUtils.WorkflowSession {
-    
+public class NodeSession extends BaseSession {
+
     private final String nodeId;
     private final String nodeType;
-    private final String parentId;
     private final String executableId;
-    private final State state;
-    private final BaseSession session;
-    protected String workflowId;
-    protected int workflowNestingDepth;
-    protected String mainWorkflowId;
-    
-    /**
-     * Creates a new NodeSession.
-     * 
-     * @param session the parent session (WorkflowSession or NodeSession)
-     * @param nodeId the node ID
-     */
-    public NodeSession(BaseSession session, String nodeId) {
-        this(session, nodeId, null);
-    }
-    
-    /**
-     * Creates a new NodeSession with a node type.
-     * 
-     * @param session the parent session (WorkflowSession or NodeSession)
-     * @param nodeId the node ID
-     * @param nodeType the node type (can be null)
-     */
-    public NodeSession(BaseSession session, String nodeId, String nodeType) {
+    private final String parentId;
+    private final State stateField;
+    private final BaseSession parentSession;
+    private final String workflowId;
+    private final int workflowNestingDepth;
+    private final String mainWorkflowId;
+    private final boolean skipTrace;
+
+    public NodeSession(BaseSession session, String nodeId, String nodeType, boolean skipTrace) {
         this.nodeId = nodeId;
         this.nodeType = nodeType;
-        this.parentId = SessionHelper.createParentId(session);
-        this.executableId = SessionHelper.createExecutableId(nodeId, this.parentId);
-        this.state = session.getState().createNodeState(this.executableId, this.parentId);
-        this.session = session;
-        
-        // Extract workflow information from parent session
-        if (session instanceof WorkflowSession ws) {
-            this.workflowId = ws.getWorkflowId();
-            this.workflowNestingDepth = ws.getWorkflowNestingDepth();
-            this.mainWorkflowId = ws.getMainWorkflowId();
-        } else if (session instanceof NodeSession ns) {
-            this.workflowId = ns.getWorkflowId();
-            this.workflowNestingDepth = ns.getWorkflowNestingDepth();
-            this.mainWorkflowId = ns.getMainWorkflowId();
+        this.skipTrace = skipTrace;
+
+        String pId = createParentId(session);
+        String eId = createExecutableId(nodeId, pId);
+
+        this.parentId = pId;
+        this.executableId = eId;
+        this.parentSession = session;
+
+        // Create node-scoped state from parent
+        if (session.state() instanceof com.openjiuwen.core.session.state.WorkflowStateCollection) {
+            this.stateField = ((com.openjiuwen.core.session.state.WorkflowStateCollection) session.state())
+                    .createNodeState(eId, pId);
         } else {
-            this.workflowId = "";
+            this.stateField = session.state();
+        }
+
+        if (session instanceof NodeSession nodeSession) {
+            this.workflowId = nodeSession.workflowId();
+            this.workflowNestingDepth = nodeSession.workflowNestingDepth();
+            this.mainWorkflowId = nodeSession.mainWorkflowId();
+        } else if (session instanceof WorkflowSession workflowSession) {
+            this.workflowId = workflowSession.workflowId();
+            this.workflowNestingDepth = workflowSession.workflowNestingDepth();
+            this.mainWorkflowId = workflowSession.mainWorkflowId();
+        } else {
+            this.workflowId = session.sessionId();
             this.workflowNestingDepth = 0;
-            this.mainWorkflowId = "";
+            this.mainWorkflowId = session.sessionId();
         }
     }
-    
-    /**
-     * Gets the node ID.
-     * 
-     * @return the node ID
-     */
-    public String getNodeId() {
+
+    public NodeSession(BaseSession session, String nodeId, String nodeType) {
+        this(session, nodeId, nodeType, false);
+    }
+
+    public NodeSession(BaseSession session, String nodeId) {
+        this(session, nodeId, null, false);
+    }
+
+    public String nodeId() {
         return nodeId;
     }
-    
-    /**
-     * Gets the node type.
-     * 
-     * @return the node type
-     */
-    public String getNodeType() {
+
+    public String nodeType() {
         return nodeType;
     }
-    
-    /**
-     * Gets the executable ID.
-     * 
-     * @return the executable ID
-     */
-    public String getExecutableId() {
+
+    public String executableId() {
         return executableId;
     }
-    
-    /**
-     * Gets the parent ID.
-     * 
-     * @return the parent ID
-     */
-    public String getParentId() {
+
+    public String parentId() {
         return parentId;
     }
-    
-    /**
-     * Gets the workflow ID.
-     * 
-     * @return the workflow ID
-     */
-    public String getWorkflowId() {
+
+    public String workflowId() {
         return workflowId;
     }
-    
-    /**
-     * Gets the main workflow ID.
-     * 
-     * @return the main workflow ID
-     */
-    public String getMainWorkflowId() {
+
+    public String mainWorkflowId() {
         return mainWorkflowId;
     }
-    
-    /**
-     * Gets the workflow nesting depth.
-     * 
-     * @return the workflow nesting depth
-     */
-    public int getWorkflowNestingDepth() {
+
+    public int workflowNestingDepth() {
         return workflowNestingDepth;
     }
-    
+
+    public BaseSession parent() {
+        return parentSession;
+    }
+
     @Override
-    public Object getActorManager() {
-        if (session instanceof WorkflowSession ws) {
-            return ws.getActorManager();
-        } else if (session instanceof NodeSession ns) {
-            return ns.getActorManager();
+    public Config config() {
+        return parentSession.config();
+    }
+
+    @Override
+    public State state() {
+        return stateField;
+    }
+
+    @Override
+    public Object tracer() {
+        return parentSession.tracer();
+    }
+
+    @Override
+    public StreamWriterManager streamWriterManager() {
+        return parentSession.streamWriterManager();
+    }
+
+    @Override
+    public CallbackManager callbackManager() {
+        return parentSession.callbackManager();
+    }
+
+    @Override
+    public String sessionId() {
+        return parentSession.sessionId();
+    }
+
+    @Override
+    public Object checkpointer() {
+        return parentSession.checkpointer();
+    }
+
+    /**
+     * Whether this node session should skip trace operations.
+     * Mirrors Python's {@code NodeSession.skip_trace()}.
+     */
+    public boolean skipTrace() {
+        return skipTrace;
+    }
+
+    /**
+     * Get the actor manager from the parent session.
+     * Mirrors Python's {@code NodeSession.actor_manager()}.
+     */
+    public Object actorManager() {
+        return parentSession.actorManager();
+    }
+
+    /**
+     * Get node-specific config from workflow config.
+     * Mirrors Python: workflow_config.spec.comp_configs.get(self._node_id)
+     * Uses Map-based traversal since WorkflowConfig is not yet typed in Java.
+     */
+    @SuppressWarnings("unchecked")
+    public Object nodeConfig() {
+        Object workflowConfig = config().getWorkflowConfig(workflowId);
+        if (workflowConfig instanceof WorkflowConfig typedConfig) {
+            WorkflowSpec spec = typedConfig.getSpec();
+            return spec != null ? spec.getCompConfigs().get(nodeId) : null;
         }
-        return session.getActorManager();
-    }
-    
-    /**
-     * Gets the parent session.
-     * 
-     * @return the parent session
-     */
-    public BaseSession getParent() {
-        return session;
-    }
-    
-    @Override
-    public Tracer getTracer() {
-        return session.getTracer();
-    }
-    
-    @Override
-    public State getState() {
-        return state;
-    }
-    
-    @Override
-    public Config getConfig() {
-        return session.getConfig();
-    }
-    
-    @Override
-    public StreamWriterManager getStreamWriterManager() {
-        return session.getStreamWriterManager();
-    }
-    
-    @Override
-    public CallbackManager getCallbackManager() {
-        return session.getCallbackManager();
-    }
-    
-    @Override
-    public String getSessionId() {
-        return session.getSessionId();
-    }
-    
-    @Override
-    public Checkpointer getCheckpointer() {
-        // NodeSession doesn't have its own checkpointer
-        return null;
-    }
-    
-    /**
-     * Gets the node configuration from the workflow configuration.
-     * 
-     * @return the node configuration, or null if not found
-     */
-    public Object getNodeConfig() {
-        Object workflowConfig = getConfig().getWorkflowConfig(getWorkflowId());
-        if (workflowConfig != null) {
-            try {
-                // Try to get spec.comp_configs.get(nodeId)
-                var specMethod = workflowConfig.getClass().getMethod("getSpec");
-                Object spec = specMethod.invoke(workflowConfig);
-                if (spec != null) {
-                    var compConfigsMethod = spec.getClass().getMethod("getCompConfigs");
-                    Object compConfigs = compConfigsMethod.invoke(spec);
-                    if (compConfigs instanceof java.util.Map<?, ?> map) {
-                        return map.get(nodeId);
-                    }
+        if (workflowConfig instanceof Map<?, ?> configMap) {
+            Object spec = configMap.get("spec");
+            if (spec instanceof WorkflowSpec typedSpec) {
+                return typedSpec.getCompConfigs().get(nodeId);
+            }
+            if (spec instanceof Map<?, ?> specMap) {
+                Object compConfigs = specMap.get("compConfigs");
+                if (compConfigs == null) {
+                    compConfigs = specMap.get("comp_configs");
                 }
-            } catch (Exception e) {
-                // Ignore reflection errors
+                if (compConfigs instanceof Map<?, ?> compConfigsMap) {
+                    return compConfigsMap.get(nodeId);
+                }
             }
         }
         return null;
     }
-    
-    // ========== TracerWorkflowUtils.WorkflowSession interface methods ==========
-    
-    @Override
-    public Tracer tracer() {
-        return getTracer();
+
+    // ---- Static Helpers ----
+
+    private static String createParentId(BaseSession session) {
+        if (session instanceof NodeSession) {
+            return ((NodeSession) session).executableId();
+        }
+        return "";
     }
-    
-    @Override
-    public String workflowId() {
-        return getWorkflowId();
-    }
-    
-    @Override
-    public String executableId() {
-        return getExecutableId();
-    }
-    
-    @Override
-    public String parentId() {
-        return getParentId();
-    }
-    
-    @Override
-    public String nodeId() {
-        return getNodeId();
-    }
-    
-    @Override
-    public String nodeType() {
-        return getNodeType();
-    }
-    
-    @Override
-    public Object state() {
-        return getState();
-    }
-    
-    @Override
-    public TracerWorkflowUtils.WorkflowConfig config() {
-        return workflowId -> getConfig().getWorkflowConfig(workflowId);
+
+    private static String createExecutableId(String nodeId, String parentId) {
+        if (parentId != null && !parentId.isEmpty()) {
+            return parentId + "." + nodeId;
+        }
+        return nodeId;
     }
 }
-

@@ -1,166 +1,127 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.manage.index;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.utils.Pair;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.memory.manage.memmodel.BaseMemoryUnit;
-import com.openjiuwen.core.memory.manage.memmodel.UserMemStore;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Manager for writing memory operations, dispatching to appropriate memory managers.
- * <p>
- * Corresponds to Python: manage/index/write_manager.py
+ * Orchestrates memory write operations across all memory type managers.
  */
 public class WriteManager {
 
-    private static final LoggerProtocol logger = Loggers.MEMORY;
+    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     private final Map<String, BaseMemoryManager> managers;
     private final UserMemStore memStore;
 
-    /**
-     * Initialize WriteManager.
-     *
-     * @param managers Map of memory type to their corresponding managers
-     * @param memStore The user memory store
-     */
     public WriteManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore) {
         this.managers = managers;
         this.memStore = memStore;
     }
 
     /**
-     * Add memory units by dispatching to appropriate managers.
-     *
-     * @param memUnits List of memory units to add
-     * @param llm      Optional LLM info as Pair of (name, Model)
-     * @return CompletableFuture that completes when all operations are done
+     * Add memories of different types in batch.
      */
-    public CompletableFuture<Void> addMem(List<BaseMemoryUnit> memUnits, Pair<String, Model> llm) {
-        AtomicBoolean hasInnerException = new AtomicBoolean(false);
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        for (BaseMemoryUnit memUnit : memUnits) {
-            String memType = memUnit.getMemType().getValue();
+    public void addMemories(String userId, String scopeId,
+                             Map<String, ? extends List<? extends BaseMemoryUnit>> memories,
+                             Map.Entry<String, Model> llm,
+                             SemanticStore semanticStore) {
+        if (memories == null || memories.isEmpty()) {
+            MEMORY_LOGGER.debug("[{}] No memory units to add", LogEventType.MEMORY_STORE);
+            return;
+        }
+        for (Map.Entry<String, ? extends List<? extends BaseMemoryUnit>> entry : memories.entrySet()) {
+            String memType = entry.getKey();
+            List<? extends BaseMemoryUnit> units = entry.getValue();
             if (managers.containsKey(memType)) {
-                CompletableFuture<Void> future = managers.get(memType).add(memUnit, llm)
-                        .exceptionally(e -> {
-                            logger.error("Failed to add {}, error: {}", memType, e.getMessage());
-                            hasInnerException.set(true);
-                            return null;
-                        });
-                futures.add(future);
+                try {
+                    Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
+                    managers.get(memType).addMemories(userId, scopeId, units, llm, kwargs);
+                } catch (Exception e) {
+                    MEMORY_LOGGER.error("[{}] Failed to add mem, type={}, error={}",
+                            LogEventType.MEMORY_STORE, memType, e.getMessage());
+                    throw e;
+                }
             } else {
-                logger.warning("Unsupported memory type: {}", memType);
+                MEMORY_LOGGER.warn("[{}] Unsupported memory type: {}",
+                        LogEventType.MEMORY_STORE, memType);
             }
         }
-
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenRun(() -> {
-                    if (hasInnerException.get()) {
-                        throw ErrorBuilder.build(
-                                StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                                "memory engine add mem has exception"
-                        );
-                    }
-                });
     }
 
     /**
-     * Update memory by its ID.
-     *
-     * @param userId  The user ID
-     * @param scopeId The scope ID
-     * @param memId   The memory ID
-     * @param memory  The new memory content
-     * @return CompletableFuture that completes when the operation is done
+     * Update a memory by ID (determines type from store).
      */
-    public CompletableFuture<Void> updateMemById(String userId, String scopeId, String memId, String memory) {
-        return getMemTypeFromStore(userId, scopeId, memId)
-                .thenCompose(memType -> {
-                    if (memType == null) {
-                        logger.warning("Skipping this update due to failure in getting memory type, " +
-                                "mem_id:{}, user_id:{}, scope_id:{}", memId, userId, scopeId);
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    return managers.get(memType).update(userId, scopeId, memId, memory)
-                            .thenApply(v -> null);
-                });
-    }
-
-    /**
-     * Delete memory by its ID.
-     *
-     * @param userId  The user ID
-     * @param scopeId The scope ID
-     * @param memId   The memory ID
-     * @return CompletableFuture that completes when the operation is done
-     */
-    public CompletableFuture<Void> deleteMemById(String userId, String scopeId, String memId) {
-        return getMemTypeFromStore(userId, scopeId, memId)
-                .thenCompose(memType -> {
-                    if (memType == null) {
-                        logger.warning("Skipping this deletion due to failure in getting memory type, " +
-                                "mem_id:{}, user_id:{}, scope_id:{}", memId, userId, scopeId);
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    return managers.get(memType).delete(userId, scopeId, memId)
-                            .thenApply(v -> null);
-                });
-    }
-
-    /**
-     * Delete all memory for a user.
-     *
-     * @param userId  The user ID
-     * @param scopeId The scope ID
-     * @return CompletableFuture that completes when all operations are done
-     */
-    public CompletableFuture<Void> deleteMemByUserId(String userId, String scopeId) {
-        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
-        for (String manager : managers.keySet()) {
-            futures.add(managers.get(manager).deleteByUserId(userId, scopeId));
+    public void updateMemById(String userId, String scopeId, String memId, String memory,
+                               SemanticStore semanticStore) {
+        String memType = getMemTypeFromStore(userId, scopeId, memId);
+        if (memType == null) {
+            MEMORY_LOGGER.warn("[{}] Skipping update, cannot determine mem_type. memId={}",
+                    LogEventType.MEMORY_STORE, memId);
+            return;
         }
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
+        managers.get(memType).update(userId, scopeId, memId, memory, kwargs);
     }
 
-    private CompletableFuture<String> getMemTypeFromStore(String userId, String scopeId, String memId) {
-        return memStore.get(userId, scopeId, memId)
-                .thenApply(data -> {
-                    if (data == null) {
-                        logger.warning("Nonexistent memory, mem_id:{}, user_id:{}, scope_id:{}", memId, userId, scopeId);
-                        return null;
-                    }
-                    if (!data.containsKey("mem_type")) {
-                        logger.warning("The mem_type field doesn't exist, mem_id:{}, user_id:{}, scope_id:{}",
-                                memId, userId, scopeId);
-                        return null;
-                    }
-                    String memType = (String) data.get("mem_type");
-                    if (!managers.containsKey(memType)) {
-                        logger.warning("Unsupported mem_type:{}, mem_id:{}, user_id:{}, scope_id:{}",
-                                memType, memId, userId, scopeId);
-                        return null;
-                    }
-                    return memType;
-                })
-                .exceptionally(e -> {
-                    logger.error("Failed to get memory: {}", e.getMessage());
-                    return null;
-                });
+    /**
+     * Delete a memory by ID (determines type from store).
+     */
+    public void deleteMemById(String userId, String scopeId, String memId,
+                               SemanticStore semanticStore) {
+        String memType = getMemTypeFromStore(userId, scopeId, memId);
+        if (memType == null) {
+            MEMORY_LOGGER.warn("[{}] Skipping deletion, cannot determine mem_type. memId={}",
+                    LogEventType.MEMORY_STORE, memId);
+            return;
+        }
+        Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
+        managers.get(memType).delete(userId, scopeId, memId, kwargs);
+    }
+
+    /**
+     * Delete all memories for a user across all types.
+     */
+    public void deleteMemByUserId(String userId, String scopeId, SemanticStore semanticStore) {
+        Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
+        for (BaseMemoryManager manager : managers.values()) {
+            manager.deleteByUserId(userId, scopeId, kwargs);
+        }
+    }
+
+    private String getMemTypeFromStore(String userId, String scopeId, String memId) {
+        Map<String, Object> data;
+        try {
+            data = memStore.get(userId, scopeId, memId);
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to get memory. memId={}, error={}",
+                    LogEventType.MEMORY_STORE, memId, e.getMessage());
+            return null;
+        }
+        if (data == null) {
+            MEMORY_LOGGER.warn("[{}] Nonexistent memory. memId={}", LogEventType.MEMORY_STORE, memId);
+            return null;
+        }
+        if (!data.containsKey("mem_type")) {
+            MEMORY_LOGGER.warn("[{}] mem_type field missing. memId={}", LogEventType.MEMORY_STORE, memId);
+            return null;
+        }
+        String memType = String.valueOf(data.get("mem_type"));
+        if (!managers.containsKey(memType)) {
+            MEMORY_LOGGER.warn("[{}] Unsupported mem_type={}. memId={}", LogEventType.MEMORY_STORE, memType, memId);
+            return null;
+        }
+        return memType;
     }
 }
-

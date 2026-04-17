@@ -1,34 +1,30 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.state;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * State collection for agent sessions.
- * 
- * <p>Manages global state, agent state, and trace state for an agent.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Agent state collection managing global and agent state partitions.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.state.agent_state.StateCollection}.
  */
-public class AgentStateCollection extends State {
-    
+public class AgentStateCollection implements State {
+
     private final InMemoryStateLike globalState;
     private final InMemoryStateLike agentState;
-    private final Map<String, Object> traceState;
-    
-    /**
-     * Creates a new AgentStateCollection.
-     */
+    private Map<String, Object> traceState;
+
     public AgentStateCollection() {
         this.globalState = new InMemoryStateLike();
         this.agentState = new InMemoryStateLike();
         this.traceState = new HashMap<>();
     }
-    
+
     @Override
     public Object get(Object key) {
         if (key == null) {
@@ -36,22 +32,22 @@ public class AgentStateCollection extends State {
         }
         return agentState.get(key);
     }
-    
+
     @Override
     public void update(Map<String, Object> data) {
         agentState.update(data);
     }
-    
+
     @Override
     public void updateTrace(Object span) {
-        // No-op in agent state
+        // Placeholder for trace updates
     }
-    
+
     @Override
     public void updateGlobal(Map<String, Object> data) {
         globalState.update(data);
     }
-    
+
     @Override
     public Object getGlobal(Object key) {
         if (key == null) {
@@ -59,91 +55,47 @@ public class AgentStateCollection extends State {
         }
         return globalState.get(key);
     }
-    
+
     @Override
     public Map<String, Object> getState() {
         Map<String, Object> result = new HashMap<>();
-        result.put(StateConstants.GLOBAL_STATE_KEY, globalState.getState());
-        result.put(StateConstants.AGENT_STATE_KEY, agentState.getState());
+        result.put(State.GLOBAL_STATE_KEY, globalState.getState());
+        result.put(State.AGENT_STATE_KEY, agentState.getState());
         return result;
     }
-    
+
     @Override
     public void setState(Map<String, Object> state) {
         if (state == null) {
             return;
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> globalStateData = (Map<String, Object>) state.get(StateConstants.GLOBAL_STATE_KEY);
-        globalState.setState(globalStateData);
-        
-        @SuppressWarnings("unchecked")
-        Map<String, Object> agentStateData = (Map<String, Object>) state.get(StateConstants.AGENT_STATE_KEY);
-        agentState.setState(agentStateData);
+        Object gs = state.get(State.GLOBAL_STATE_KEY);
+        if (gs instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> gsMap = (Map<String, Object>) gs;
+            globalState.setState(gsMap);
+        }
+        Object as = state.get(State.AGENT_STATE_KEY);
+        if (as instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> asMap = (Map<String, Object>) as;
+            agentState.setState(asMap);
+        }
     }
-    
+
     /**
-     * Gets the global state instance.
-     * 
-     * @return the global state instance
+     * Get the internal global state object.
      */
-    public InMemoryStateLike getGlobalStateInstance() {
+    public InMemoryStateLike getGlobalStateLike() {
         return globalState;
     }
-    
-    /**
-     * Gets the global state as a State object.
-     * 
-     * @return the global state
-     */
-    public State getGlobalState() {
-        return new State() {
-            @Override
-            public Object get(Object key) {
-                if (key == null) {
-                    return globalState.getState();
-                }
-                return globalState.get(key);
-            }
-            
-            @Override
-            public void update(Map<String, Object> data) {
-                globalState.update(data);
-            }
-            
-            @Override
-            public void updateTrace(Object span) {}
-            
-            @Override
-            public void updateGlobal(Map<String, Object> data) {
-                globalState.update(data);
-            }
-            
-            @Override
-            public Object getGlobal(Object key) {
-                return get(key);
-            }
-            
-            @Override
-            public Map<String, Object> getState() {
-                return globalState.getState();
-            }
-            
-            @Override
-            public void setState(Map<String, Object> state) {
-                globalState.setState(state);
-            }
-            
-            @Override
-            public Map<String, Object> getData() {
-                return globalState.getState();
-            }
-        };
-    }
-    
+
     @Override
-    public Map<String, Object> getData() {
-        return getState();
+    public Map<String, Object> dump() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("global_state", globalState.getState());
+        result.put("agent_state", agentState.getState());
+        result.put("trace_state", traceState);
+        return result;
     }
 }
-

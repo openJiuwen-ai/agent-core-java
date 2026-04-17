@@ -1,93 +1,97 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Controller Output.
- *
- * <p>Batch processing output result, containing type, data list, and input event ID.
- * Used for non-streaming output scenarios, returning all results at once.
- *
- * <p>Supports two data modes:
- * <ul>
- *   <li>Chunk list: {@link #getChunks()} returns a list of {@link ControllerOutputChunk}</li>
- *   <li>Dictionary data: {@link #getDictData()} returns a Map</li>
- * </ul>
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Controller output for batch processing.
+ * <p>
+ * Batch processing output result, containing type, data list, and input event ID.
+ * <p>
+ * Mirrors Python's {@code ControllerOutput(BaseModel)}.
+ * <p>
+ * The {@code type} field is a String to support both {@link EventType} values
+ * and special constants like {@link ControllerOutputPayload#TASK_PROCESSING}.
+ * The {@code data} field can be either a list of {@link ControllerOutputChunk}
+ * or a {@link Map} (matching Python's {@code List[ControllerOutputChunk] | Dict}).
  */
 public class ControllerOutput {
 
-    private final String type;
-    private final List<ControllerOutputChunk> chunks;
-    private final Map<String, Object> dictData;
-    private final String inputEventId;
+    private String type;
+    private Object data;  // List<ControllerOutputChunk> or Map
+    private String inputEventId;
 
-    /**
-     * Constructor with chunk list data.
-     *
-     * @param type         the output type
-     * @param chunks       the output chunks
-     * @param inputEventId the associated input event ID (can be null)
-     */
-    public ControllerOutput(String type, List<ControllerOutputChunk> chunks, String inputEventId) {
-        this.type = type;
-        this.chunks = chunks;
-        this.dictData = null;
-        this.inputEventId = inputEventId;
+    public ControllerOutput() {
     }
 
-    /**
-     * Constructor with dict data.
-     *
-     * @param type         the output type
-     * @param dictData     the dictionary data
-     * @param inputEventId the associated input event ID (can be null)
-     */
-    public ControllerOutput(String type, Map<String, Object> dictData, String inputEventId) {
-        this.type = type;
-        this.chunks = null;
-        this.dictData = dictData;
-        this.inputEventId = inputEventId;
+    public ControllerOutput(EventType type, List<ControllerOutputChunk> data) {
+        this.type = type.getValue();
+        this.data = data;
     }
 
-    /**
-     * Gets the output type.
-     *
-     * @return the type string
-     */
+    public ControllerOutput(String type, Object data) {
+        this.type = type;
+        this.data = data;
+    }
+
     public String getType() {
         return type;
     }
 
-    /**
-     * Gets the output chunks (if data is chunk-based).
-     *
-     * @return the chunks list, or null if dict-based
-     */
-    public List<ControllerOutputChunk> getChunks() {
-        return chunks;
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public void setType(EventType type) {
+        this.type = type.getValue();
     }
 
     /**
-     * Gets the dictionary data (if data is dict-based).
-     *
-     * @return the dict data, or null if chunk-based
+     * Get data as raw object (can be List or Map).
      */
-    public Map<String, Object> getDictData() {
-        return dictData;
+    public Object getData() {
+        return data;
     }
 
     /**
-     * Gets the associated input event ID.
+     * Get data as a list of ControllerOutputChunk.
      *
-     * @return the input event ID, or null
+     * @return list of chunks, or null if data is not a list
      */
+    @SuppressWarnings("unchecked")
+    public List<ControllerOutputChunk> getDataAsChunks() {
+        if (data instanceof List<?>) {
+            return (List<ControllerOutputChunk>) data;
+        }
+        return null;
+    }
+
+    /**
+     * Get data as a Map.
+     *
+     * @return map, or null if data is not a map
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDataAsMap() {
+        if (data instanceof Map<?, ?>) {
+            return (Map<String, Object>) data;
+        }
+        return null;
+    }
+
+    public void setData(Object data) {
+        this.data = data;
+    }
+
     public String getInputEventId() {
         return inputEventId;
     }
-}
 
+    public void setInputEventId(String inputEventId) {
+        this.inputEventId = inputEventId;
+    }
+}

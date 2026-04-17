@@ -1,75 +1,67 @@
-// -*- coding: UTF-8 -*-
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Channel抽象类表示Pregel图中的通道
+ * Abstract channel for message passing between Pregel nodes.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Channel}.
+ * Channels buffer messages and determine when a node is ready to execute.
  */
 public abstract class Channel {
+
     private final String name;
 
-    /**
-     * 构造一个Channel对象
-     *
-     * @param name 通道名称
-     */
-    public Channel(String name) {
+    protected Channel(String name) {
         this.name = name;
     }
 
     /**
-     * 获取通道的键
-     *
-     * @return 通道键
+     * Get the routing key for this channel.
+     * By default, uses the channel name.
      */
     public String getKey() {
         return name;
     }
 
     /**
-     * 获取节点名称
-     *
-     * @return 节点名称
+     * Get the node name this channel belongs to.
      */
     public String getNodeName() {
         return name;
     }
 
     /**
-     * 检查通道是否就绪
-     *
-     * @return 如果通道就绪则返回true
+     * Check whether the channel has received enough messages to trigger execution.
      */
     public abstract boolean isReady();
 
     /**
-     * 接受消息
+     * Accept an incoming message.
      *
-     * @param msg 要接受的消息
+     * @param msg the message to accept
+     * @return true if the channel state changed
      */
-    public abstract void accept(Message msg);
+    public abstract boolean accept(Message msg);
 
     /**
-     * 消费通道数据
-     * 返回节点函数的可消费输入并重置内部快照
-     *
-     * @return 可消费的数据
+     * Consume the buffered messages and reset the channel.
      */
-    public abstract Object consume();
+    public abstract void consume();
 
     /**
-     * 获取当前快照
+     * Create a snapshot of the current channel state for persistence.
      *
-     * @return 快照数据
+     * @return serializable snapshot, or null
      */
     public abstract Object snapshot();
 
     /**
-     * 从快照恢复状态
+     * Restore channel state from a snapshot.
      *
-     * @param snapshot 快照数据
+     * @param snapshotData the snapshot data
      */
-    public abstract void restore(Object snapshot);
+    public abstract void restore(Object snapshotData);
 }
-

@@ -1,38 +1,26 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.state;
 
 import java.util.Map;
+import java.util.function.Function;
 
 /**
- * Interface for full state operations.
- * 
- * <p>Combines readable and recoverable state operations with update capability
- * and transformer-based querying.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Mutable state interface with read/write capabilities.
+ * <p>
+ * Mirrors Python's {@code StateLike}.
  */
-public interface StateLike extends ReadableStateLike, RecoverableStateLike {
-    
+public interface StateLike extends ReadableState, RecoverableState {
+
     /**
-     * Updates the state with the given data.
-     * 
-     * <p>Keys in the update map can be nested paths (e.g., "a.b.c").
-     * Values of null will delete the corresponding key.
-     * 
-     * @param data the update data
+     * Update state with the given data.
      */
     void update(Map<String, Object> data);
-    
-    /**
-     * Gets a value using a transformer function.
-     * 
-     * @param <T> the type of the result
-     * @param transformer the transformer to apply
-     * @return the transformation result
-     */
-    <T> T getByTransformer(Transformer<T> transformer);
-}
 
+    /**
+     * Get value via transformer function.
+     */
+    Object getByTransformer(Function<Object, Object> transformer);
+}

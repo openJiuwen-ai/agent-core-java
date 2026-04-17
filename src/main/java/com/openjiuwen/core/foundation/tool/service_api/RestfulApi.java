@@ -1,346 +1,327 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.service_api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.exception.ErrorBuilder;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.apache.hc.core5.util.Timeout;
+import com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry;
 
 import javax.net.ssl.SSLContext;
-import java.io.IOException;
+import javax.net.ssl.SSLParameters;
+import java.net.InetSocketAddress;
+
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.time.Duration;
+import java.util.List;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.Stream;
+import java.net.ProxySelector;
+import java.util.StringJoiner;
 
 /**
- * RESTful API工具
- * 
- * <p>封装HTTP请求功能，支持GET/POST方法，支持SSL配置和代理。
- * 
- * @author OpenJiuwen
- * @since 2026-01-30
+ * RESTful API tool that executes HTTP requests.
+ * <p>
+ * Mirrors Python's {@code RestfulApi} class. Uses JDK {@link HttpClient} instead of aiohttp.
  */
-public class RestfulApi extends Tool<Map<String, Object>, Object> {
-    
+public class RestfulApi extends Tool {
+
     private static final String RESTFUL_SSL_VERIFY = "RESTFUL_SSL_VERIFY";
     private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
-    
+
     private final String url;
     private final String method;
-    private final float timeout;
+    private final double timeout;
     private final int maxResponseByteSize;
     private final ApiParamMapper apiParamMapper;
-    private final ObjectMapper objectMapper;
-    
+
     /**
-     * 构造RESTful API工具
-     * 
-     * @param card RESTful API卡片
+     * Construct a new RestfulApi tool.
+     *
+     * @param card the RestfulApiCard configuration
      */
     public RestfulApi(RestfulApiCard card) {
         super(card);
+        validateCard(card);
         this.url = card.getUrl();
-        this.method = card.getMethod();
+        this.method = card.getMethod().toUpperCase();
         this.timeout = card.getTimeout();
         this.maxResponseByteSize = card.getMaxResponseByteSize();
         this.apiParamMapper = new ApiParamMapper(
-            card.getInputParams(),
-            card.getQueries(),
-            card.getHeaders(),
-            card.getPaths()
-        );
-        this.objectMapper = new ObjectMapper();
+                card.getInputParams(),
+                card.getQueries(),
+                card.getHeaders(),
+                card.getPaths());
     }
-    
+
+    /**
+     * Validate RestfulApiCard URL and method.
+     * Mirrors Python's field_validator('method') and field_validator('url').
+     */
+    private static void validateCard(RestfulApiCard card) {
+        // Validate method
+        String method = card.getMethod();
+        if (method == null || !RestfulApiCard.SUPPORTED_METHODS.contains(method.toUpperCase())) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason", "unsupported method: " + method + ", only accepts: " + RestfulApiCard.SUPPORTED_METHODS);
+        }
+        // Validate URL
+        String url = card.getUrl();
+        if (url == null || url.isBlank()) {
+            // Python parity: empty URL is accepted at construction time and fails during invoke.
+            return;
+        }
+
+        try {
+            UrlUtils.checkUrlIsValid(url);
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason", "invalid url: " + url);
+        }
+    }
+
+
+
     @Override
-    public CompletableFuture<Object> invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> {
-            float finalTimeout = this.timeout;
-            try {
-                // 格式化输入参数
-                Map<String, Object> formattedInputs = inputs;
-                if (card.getInputParams() != null) {
-                    boolean skipNoneValue = (boolean) kwargs.getOrDefault("skip_none_value", false);
-                    boolean skipValidate = (boolean) kwargs.getOrDefault("skip_inputs_validate", false);
-                    
-                    Object formatted = SchemaUtils.formatWithSchema(
-                        inputs,
-                        card.getInputParams(),
-                        skipNoneValue,
-                        skipValidate
-                    );
-                    if (formatted instanceof Map) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> formattedMap = (Map<String, Object>) formatted;
-                        formattedInputs = formattedMap;
-                    }
-                }
-                
-                // 映射参数到各个位置
-                Map<ApiParamLocation, Map<String, Object>> mapResults = apiParamMapper.map(
-                    formattedInputs,
-                    ApiParamLocation.BODY
-                );
-                
-                // 获取自定义timeout
-                if (kwargs.containsKey("timeout")) {
-                    finalTimeout = ((Number) kwargs.get("timeout")).floatValue();
-                }
-                
-                // 获取自定义响应大小限制
-                int finalMaxSize = kwargs.containsKey("max_response_byte_size") ?
-                    ((Number) kwargs.get("max_response_byte_size")).intValue() :
-                    this.maxResponseByteSize;
-                
-                // 执行请求
-                return executeRequest(mapResults, finalTimeout, finalMaxSize);
-                
-            } catch (TimeoutException e) {
-                Map<String, Object> params = Map.of(
-                    "interface", "invoke",
-                    "timeout", finalTimeout,
-                    "card", card.toString()
-                );
-                throw ErrorBuilder.build(StatusCode.TOOL_RESTFUL_API_TIMEOUT, null, null, e, params);
-            } catch (IOException e) {
-                Map<String, Object> params = Map.of(
-                    "interface", "invoke",
-                    "reason", e.getMessage(),
-                    "card", card.toString()
-                );
-                throw ErrorBuilder.build(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR, null, null, e, params);
-            } catch (Exception e) {
-                if (e instanceof com.openjiuwen.core.common.exception.JiuWenBaseException) {
-                    throw (com.openjiuwen.core.common.exception.JiuWenBaseException) e;
-                }
-                Map<String, Object> params = Map.of(
-                    "interface", "invoke",
-                    "reason", e.getMessage(),
-                    "card", card.toString()
-                );
-                throw ErrorBuilder.build(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR, null, null, e, params);
+    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        double finalTimeout = this.timeout;
+        try {
+            // Schema validation: format inputs against inputParams if defined
+            Map<String, Object> validatedInputs = inputs;
+            Map<String, Object> inputParams = card.getInputParams();
+            if (inputParams != null && !inputParams.isEmpty()) {
+                boolean skipNoneValue = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_none_value"));
+                boolean skipValidate = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_inputs_validate"));
+                validatedInputs = SchemaUtils.formatWithSchema(inputs, inputParams, skipNoneValue, skipValidate);
+            }
+            Map<ApiParamLocation, Map<String, Object>> mapResults =
+                    apiParamMapper.map(validatedInputs, ApiParamLocation.BODY);
+            if (kwargs != null && kwargs.containsKey("timeout")) {
+                finalTimeout = ((Number) kwargs.get("timeout")).doubleValue();
+            }
+            int maxSize = this.maxResponseByteSize;
+            if (kwargs != null && kwargs.containsKey("max_response_byte_size")) {
+                maxSize = ((Number) kwargs.get("max_response_byte_size")).intValue();
+            }
+            boolean raiseForStatus = kwargs == null || kwargs.getOrDefault("raise_for_status", true) != Boolean.FALSE;
+            return executeRequest(mapResults, finalTimeout, maxSize, raiseForStatus);
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_TIMEOUT,
+                    "method", "invoke", "timeout", String.valueOf(finalTimeout), "card", card.toString());
+        } catch (BaseError e) {
+            throw e;
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR,
+                    "method", "invoke", "reason", e.getMessage(), "card", card.toString());
+        }
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", card.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> executeRequest(Map<ApiParamLocation, Map<String, Object>> mapResults,
+                                               double timeoutSec,
+                                               int maxResponseByteSize,
+                                               boolean raiseForStatus) throws Exception {
+        // Build URL with path params
+        String resolvedUrl = this.url;
+        Map<String, Object> pathParams = mapResults.getOrDefault(ApiParamLocation.PATH, Map.of());
+        for (var entry : pathParams.entrySet()) {
+            resolvedUrl = resolvedUrl.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+        }
+
+        // Append query params
+        Map<String, Object> queryParams = mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of());
+        resolvedUrl = appendQueryParams(resolvedUrl, queryParams);
+
+        // Build request
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(resolvedUrl))
+                .timeout(Duration.ofMillis((long) (timeoutSec * 1000)));
+
+        // Set headers
+        Map<String, Object> headers = mapResults.getOrDefault(ApiParamLocation.HEADER, Map.of());
+        for (var entry : headers.entrySet()) {
+            requestBuilder.header(entry.getKey(), String.valueOf(entry.getValue()));
+        }
+
+        // Set body / method
+        Map<String, Object> bodyParams = mapResults.getOrDefault(ApiParamLocation.BODY, Map.of());
+        if ("GET".equalsIgnoreCase(method)) {
+            // For GET, body params go as additional query params
+            resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
+            requestBuilder.uri(URI.create(resolvedUrl));
+            requestBuilder.GET();
+        } else {
+            // POST: serialize body as JSON
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String jsonBody = mapper.writeValueAsString(bodyParams);
+            requestBuilder.header("Content-Type", "application/json");
+            requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+        }
+
+        HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);
+
+        HttpResponse<byte[]> response = client.send(requestBuilder.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+
+        byte[] content = response.body();
+        if (content != null && content.length > maxResponseByteSize) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT,
+                    "method", "invoke",
+                    "max_length", String.valueOf(maxResponseByteSize),
+                    "actual_length", String.valueOf(content.length),
+                    "card", card.toString());
+        }
+
+        if (raiseForStatus && (response.statusCode() < 200 || response.statusCode() >= 400)) {
+            String reason = reasonPhrase(response.statusCode());
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR,
+                    "method", "invoke",
+                    "code", String.valueOf(response.statusCode()),
+                    "reason", reason,
+                    "card", card.toString());
+        }
+
+        return formatResponse(response, content);
+    }
+
+    private Map<String, Object> formatResponse(HttpResponse<byte[]> response, byte[] content) {
+        Map<String, String> responseHeaders = new LinkedHashMap<>();
+        response.headers().map().forEach((k, v) -> {
+            if (!v.isEmpty()) {
+                responseHeaders.put(k, v.getFirst());
             }
         });
-    }
-    
-    @Override
-    public Stream<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        Map<String, Object> params = Map.of("card", card.toString());
-        throw ErrorBuilder.build(StatusCode.TOOL_STREAM_NOT_SUPPORTED, null, null, null, params);
-    }
-    
-    /**
-     * 执行HTTP请求
-     */
-    private Object executeRequest(
-            Map<ApiParamLocation, Map<String, Object>> mapResults,
-            float timeout,
-            int maxResponseSize) throws IOException, TimeoutException {
-        
-        // 构建URL（包含path和query参数）
-        String finalUrl = buildUrl(mapResults);
-        
-        // 创建HTTP客户端
-        CloseableHttpClient httpClient = createHttpClient(timeout);
-        
+
+        int statusCode = response.statusCode();
         try {
-            // 创建请求
-            HttpUriRequestBase request = createRequest(finalUrl, mapResults);
-            
-            // 执行请求
-            try (CloseableHttpResponse response = httpClient.execute(request)) {
-                int statusCode = response.getCode();
-                
-                // 检查HTTP状态码
-                if (statusCode >= 400) {
-                    Map<String, Object> params = Map.of(
-                        "interface", "invoke",
-                        "code", statusCode,
-                        "reason", response.getReasonPhrase(),
-                        "card", card.toString()
-                    );
-                    throw ErrorBuilder.build(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR, null, null, null, params);
-                }
-                
-                // 读取响应
-                return parseResponse(response, maxResponseSize);
+            Object parsed = ParserRegistry.getInstance().parse(responseHeaders, content, statusCode);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("code", statusCode);
+            result.put("data", parsed);
+            result.put("url", response.uri().toString());
+            result.put("headers", responseHeaders);
+            String reason = reasonPhrase(statusCode);
+            result.put("reason", reason);
+            if (statusCode >= 200 && statusCode < 300) {
+                result.put("message", "success");
+            } else {
+                result.put("message", reason);
             }
-        } finally {
-            httpClient.close();
+            return result;
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR,
+                    "reason", e.getMessage(), "card", card.toString());
         }
     }
-    
-    /**
-     * 构建完整URL（包含path参数替换和query参数）
-     */
-    private String buildUrl(Map<ApiParamLocation, Map<String, Object>> mapResults) {
-        String finalUrl = this.url;
-        
-        // 替换path参数（支持<>或{}作为占位符）
-        Map<String, Object> pathParams = mapResults.get(ApiParamLocation.PATH);
-        if (pathParams != null && !pathParams.isEmpty()) {
-            for (Map.Entry<String, Object> entry : pathParams.entrySet()) {
-                String value = String.valueOf(entry.getValue());
-                // 先尝试<>格式（避免URI解析器拒绝{}）
-                String placeholder1 = "<" + entry.getKey() + ">";
-                if (finalUrl.contains(placeholder1)) {
-                    finalUrl = finalUrl.replace(placeholder1, value);
-                } else {
-                    // 回退到{}格式
-                    String placeholder2 = "{" + entry.getKey() + "}";
-                    finalUrl = finalUrl.replace(placeholder2, value);
-                }
-            }
-        }
-        
-        // 添加query参数
-        Map<String, Object> queryParams = mapResults.get(ApiParamLocation.QUERY);
-        if (queryParams != null && !queryParams.isEmpty()) {
-            StringBuilder queryString = new StringBuilder();
-            for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
-                if (queryString.length() > 0) {
-                    queryString.append("&");
-                }
-                queryString.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8));
-                queryString.append("=");
-                queryString.append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
-            }
-            finalUrl = finalUrl + "?" + queryString;
-        }
-        
-        return finalUrl;
+
+    private HttpClient buildHttpClient(String resolvedUrl, double timeoutSec) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
+
+        configureProxy(builder, resolvedUrl);
+        configureSsl(builder, resolvedUrl);
+        return builder.build();
     }
-    
-    /**
-     * 创建HTTP客户端
-     */
-    private CloseableHttpClient createHttpClient(float timeout) {
+
+    private void configureProxy(HttpClient.Builder builder, String resolvedUrl) {
+        String proxyUrl = UrlUtils.getGlobalProxyUrl(resolvedUrl);
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            return;
+        }
         try {
-            // SSL配置
-            SslUtils.SslConfig sslConfig = SslUtils.getSslConfig(
+            URI proxyUri = URI.create(proxyUrl);
+            int port = proxyUri.getPort();
+            if (proxyUri.getHost() == null || port <= 0) {
+                return;
+            }
+            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), port)));
+        } catch (Exception ignored) {
+            // Keep default direct connection when proxy parsing fails.
+        }
+    }
+
+    private void configureSsl(HttpClient.Builder builder, String resolvedUrl) {
+        URI resolvedUri = URI.create(resolvedUrl);
+        boolean isHttps = "https".equalsIgnoreCase(resolvedUri.getScheme());
+        if (!isHttps) {
+            return;
+        }
+
+        Object[] sslConfig = SslUtils.getSslConfig(
                 RESTFUL_SSL_VERIFY,
                 RESTFUL_SSL_CERT,
-                java.util.List.of("false"),
-                this.url.startsWith("https")
-            );
-            
-            // 创建连接管理器
-            var connectionManagerBuilder = PoolingHttpClientConnectionManagerBuilder.create();
-            
-            if (sslConfig.isSslVerify()) {
-                SSLContext sslContext = SslUtils.createStrictSslContext(sslConfig.getSslCert());
-                SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
-                connectionManagerBuilder.setSSLSocketFactory(sslSocketFactory);
-            }
-            
-            // 请求配置（超时）
-            RequestConfig requestConfig = RequestConfig.custom()
-                .setResponseTimeout(Timeout.ofSeconds((long) timeout))
-                .setConnectionRequestTimeout(Timeout.ofSeconds((long) timeout))
-                .build();
-            
-            // 创建HTTP客户端Builder
-            var httpClientBuilder = HttpClients.custom()
-                .setConnectionManager(connectionManagerBuilder.build())
-                .setDefaultRequestConfig(requestConfig);
-            
-            // 代理配置
-            String proxyUrl = UrlUtils.getGlobalProxyUrl(this.url);
-            if (proxyUrl != null && !proxyUrl.isEmpty()) {
-                try {
-                    org.apache.hc.core5.http.HttpHost proxy = org.apache.hc.core5.http.HttpHost.create(proxyUrl);
-                    httpClientBuilder.setProxy(proxy);
-                } catch (Exception e) {
-                    // 如果代理配置失败，记录警告但继续执行
-                    System.err.println("Failed to configure proxy: " + e.getMessage());
-                }
-            }
-            
-            return httpClientBuilder.build();
-                
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create HTTP client", e);
+                List.of("false", "0", "off"),
+                true);
+        boolean sslVerify = (Boolean) sslConfig[0];
+        String sslCertPath = (String) sslConfig[1];
+
+        if (!sslVerify) {
+            builder.sslContext(SslUtils.createInsecureSslContext());
+            SSLParameters sslParameters = new SSLParameters();
+            sslParameters.setEndpointIdentificationAlgorithm("");
+            builder.sslParameters(sslParameters);
+            return;
+        }
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
+            builder.sslContext(sslContext);
         }
     }
-    
-    /**
-     * 创建HTTP请求
-     */
-    private HttpUriRequestBase createRequest(
-            String url,
-            Map<ApiParamLocation, Map<String, Object>> mapResults) throws IOException {
-        
-        HttpUriRequestBase request;
-        Map<String, Object> bodyParams = mapResults.get(ApiParamLocation.BODY);
-        
-        if ("GET".equals(this.method)) {
-            request = new HttpGet(URI.create(url));
-            // GET请求的body参数作为query参数（已在buildUrl中处理）
-        } else {
-            HttpPost postRequest = new HttpPost(URI.create(url));
-            // POST请求的body参数作为JSON body
-            if (bodyParams != null && !bodyParams.isEmpty()) {
-                String jsonBody = objectMapper.writeValueAsString(bodyParams);
-                postRequest.setEntity(new StringEntity(jsonBody, org.apache.hc.core5.http.ContentType.APPLICATION_JSON));
-            }
-            request = postRequest;
+
+    private static String appendQueryParams(String url, Map<String, Object> queryParams) {
+        if (queryParams == null || queryParams.isEmpty()) {
+            return url;
         }
-        
-        // 设置headers
-        Map<String, Object> headers = mapResults.get(ApiParamLocation.HEADER);
-        if (headers != null && !headers.isEmpty()) {
-            for (Map.Entry<String, Object> entry : headers.entrySet()) {
-                request.setHeader(entry.getKey(), String.valueOf(entry.getValue()));
-            }
+        StringJoiner joiner = new StringJoiner("&");
+        for (var entry : queryParams.entrySet()) {
+            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                    + "=" + URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
         }
-        
-        return request;
+        return url + (url.contains("?") ? "&" : "?") + joiner;
     }
-    
-    /**
-     * 解析响应
-     */
-    private Object parseResponse(CloseableHttpResponse response, int maxSize) throws IOException {
-        byte[] content = EntityUtils.toByteArray(response.getEntity());
-        
-        // 检查响应大小
-        if (content.length > maxSize) {
-            Map<String, Object> params = Map.of(
-                "interface", "invoke",
-                "max_length", maxSize,
-                "actual_length", content.length,
-                "card", card.toString()
-            );
-            throw ErrorBuilder.build(StatusCode.TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT, null, null, null, params);
-        }
-        
-        // 解析JSON响应
-        String responseText = new String(content, StandardCharsets.UTF_8);
-        try {
-            return objectMapper.readValue(responseText, Object.class);
-        } catch (Exception e) {
-            // 如果不是JSON，返回原始字符串
-            return responseText;
-        }
+
+    private static String reasonPhrase(int statusCode) {
+        return switch (statusCode) {
+            case 200 -> "OK";
+            case 201 -> "Created";
+            case 202 -> "Accepted";
+            case 204 -> "No Content";
+            case 400 -> "Bad Request";
+            case 401 -> "Unauthorized";
+            case 402 -> "Payment Required";
+            case 403 -> "Forbidden";
+            case 404 -> "Not Found";
+            case 405 -> "Method Not Allowed";
+            case 408 -> "Request Timeout";
+            case 409 -> "Conflict";
+            case 413 -> "Payload Too Large";
+            case 415 -> "Unsupported Media Type";
+            case 422 -> "Unprocessable Entity";
+            case 429 -> "Too Many Requests";
+            case 500 -> "Internal Server Error";
+            case 502 -> "Bad Gateway";
+            case 503 -> "Service Unavailable";
+            case 504 -> "Gateway Timeout";
+            default -> "HTTP " + statusCode;
+        };
     }
 }
-

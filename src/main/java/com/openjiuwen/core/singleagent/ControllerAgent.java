@@ -1,302 +1,228 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.contextengine.ContextEngine;
-import com.openjiuwen.core.contextengine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
-import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * ControllerAgent.
- * 
+ * Controller-based Agent implementation.
+ *
  * <p>Agent implementation built on top of Controller, used to handle complex
  * event-driven tasks. Supports advanced features such as task scheduling and
- * event handling.
- * 
- * <p>Python reference: {@code agent-core/openjiuwen/core/single_agent/agent.py::ControllerAgent}
+ * event handling.</p>
  */
 public class ControllerAgent extends BaseAgent {
-    
-    private static final LoggerProtocol logger = Loggers.AGENT;
-    
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private ControllerConfig config;
-    private ContextEngine contextEngine;
     private final Controller controller;
-    
-    /**
-     * Initializes ControllerAgent.
-     *
-     * @param card the agent card defining the Agent identity and capabilities
-     * @param controller the Controller instance responsible for event handling and task scheduling
-     */
+    private ContextEngine contextEngine;
+
     public ControllerAgent(AgentCard card, Controller controller) {
-        this(card, controller, null);
+        this(card, controller, null, null);
     }
-    
-    /**
-     * Initializes ControllerAgent.
-     *
-     * @param card the agent card defining the Agent identity and capabilities
-     * @param controller the Controller instance responsible for event handling and task scheduling
-     * @param config the controller configuration (optional, defaults will be used if null)
-     */
+
     public ControllerAgent(AgentCard card, Controller controller, ControllerConfig config) {
+        this(card, controller, config, null);
+    }
+
+    protected ControllerAgent(AgentCard card, Controller controller, ControllerConfig config,
+                              ContextEngineConfig contextEngineConfig) {
         super(card);
-        this.config = config != null ? config : createDefaultConfig();
-        this.contextEngine = new ContextEngine(ContextEngineConfig.defaults());
+        this.config = config != null ? config : new ControllerConfig();
+        this.contextEngine = new ContextEngine(
+                contextEngineConfig != null ? contextEngineConfig : ContextEngineConfig.builder().build());
         this.controller = controller;
         initializeController();
     }
-    
-    /**
-     * Initializes controller.
-     * 
-     * <p>Pass Agent configuration, abilities, context engine and other
-     * information to the Controller to ensure it can access all Agent
-     * capabilities.
-     */
+
     private void initializeController() {
         controller.init(
-            card,
-            config,
-            abilityManager,
-            contextEngine,
-            null  // message queue (optional)
+                getCard(),
+                config,
+                getAbilityManager(),
+                contextEngine
         );
     }
-    
-    /**
-     * Creates default configuration.
-     *
-     * @return default ControllerConfig
-     */
-    private ControllerConfig createDefaultConfig() {
-        return new ControllerConfig();
-    }
-    
-    /**
-     * Sets configuration.
-     *
-     * @param configObj configuration object (ControllerConfig or Map)
-     * @return this agent for chaining
-     */
+
     @Override
-    public BaseAgent configure(Object configObj) {
-        if (configObj instanceof ControllerConfig controllerConfig) {
-            this.config = controllerConfig;
-        } else if (configObj instanceof Map<?, ?> configMap) {
-            // Merge map config with existing config using builder
-            ControllerConfig.Builder builder = ControllerConfig.builder();
-            if (configMap.containsKey("maxConcurrentTasks")) {
-                builder.maxConcurrentTasks((Integer) configMap.get("maxConcurrentTasks"));
-            }
-            if (configMap.containsKey("scheduleInterval")) {
-                builder.scheduleInterval(((Number) configMap.get("scheduleInterval")).doubleValue());
-            }
-            if (configMap.containsKey("taskTimeout")) {
-                builder.taskTimeout(((Number) configMap.get("taskTimeout")).doubleValue());
-            }
-            if (configMap.containsKey("intentConfidenceThreshold")) {
-                builder.intentConfidenceThreshold(
-                    ((Number) configMap.get("intentConfidenceThreshold")).doubleValue());
-            }
-            this.config = builder.build();
-        } else {
-            this.config = (ControllerConfig) configObj;
+    public BaseAgent configure(Object config) {
+        if (config instanceof ControllerConfig cc) {
+            this.config = cc;
+        } else if (config instanceof Map<?, ?> configMap) {
+            this.config = mergeControllerConfig(configMap);
         }
         controller.setConfig(this.config);
         return this;
     }
-    
-    /**
-     * Gets the controller.
-     *
-     * @return the controller
-     */
+
+    @Override
+    public Object getConfig() {
+        return config;
+    }
+
     public Controller getController() {
         return controller;
     }
-    
-    /**
-     * Gets the context engine.
-     *
-     * @return the context engine
-     */
+
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
-    
+
     /**
-     * Gets the current configuration.
+     * Release session resources.
      *
-     * @return the controller config
+     * @param sessionId session ID
      */
-    public ControllerConfig getConfig() {
-        return config;
-    }
-    
-    /**
-     * Releases session resources.
-     *
-     * @param sessionId the session ID
-     * @return future that completes when resources are released
-     */
-    public CompletableFuture<Void> releaseSession(String sessionId) {
-        if (controller.getEventQueue() != null) {
-            controller.getEventQueue().unsubscribe(card.getId(), sessionId);
+    public void releaseSession(String sessionId) {
+        if (controller != null && controller.getEventQueue() != null) {
+            controller.getEventQueue().unsubscribe(getCard().getId(), sessionId);
         }
-        return CompletableFuture.runAsync(() -> {
-            try {
-                Runner.release(sessionId);
-            } catch (Exception e) {
-                logger.error("Failed to release session " + sessionId + ": " + e.getMessage());
-            }
-        });
+        Runner.release(sessionId);
     }
-    
+
     /**
-     * Batch execution using controller.
-     *
-     * @param inputs user input, supports:
-     *               - String: used directly as user input text
-     *               - Map: dict containing user input
-     *               - InputEvent: pre-constructed input event object
-     * @param session session object
-     * @return future containing ControllerOutput
-     * @throws JiuWenBaseException if session is null or controller error occurs
+     * Convert a Session to AgentSessionApi.
      */
-    @Override
-    public CompletableFuture<Object> invoke(Object inputs, Session session) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                if (controller == null) {
-                    throw new RuntimeException(
-                        getClass().getSimpleName() + " has no controller, "
-                        + "subclass should create controller before invocation"
-                    );
-                }
-                
-                if (session == null) {
-                    throw new JiuWenBaseException(
-                        StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR.getCode(),
-                        "session is required"
-                    );
-                }
-                
-                // Convert inputs to InputEvent
-                InputEvent inputEvent = convertToInputEvent(inputs);
-                
-                // Call controller.invoke
-                return controller.invoke(inputEvent, session, null).join();
-                
-            } catch (JiuWenBaseException e) {
-                throw e;
-            } catch (Exception e) {
-                logger.error("ControllerAgent invoke error: " + e.getMessage());
-                throw new JiuWenBaseException(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR.getCode(),
-                    e.getMessage()
-                );
-            }
-        });
-    }
-    
-    /**
-     * Stream execution using controller.
-     *
-     * @param inputs user input
-     * @param session session object (optional)
-     * @param streamModes stream output modes (optional)
-     * @return future containing an iterator over ControllerOutputChunk
-     * @throws JiuWenBaseException if session is null or controller error occurs
-     */
-    @Override
-    public CompletableFuture<Iterator<Object>> stream(
-            Object inputs, Session session, List<StreamMode> streamModes) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                if (controller == null) {
-                    throw new RuntimeException(
-                        getClass().getSimpleName() + " has no controller, "
-                        + "subclass should create controller before invocation"
-                    );
-                }
-                
-                if (session == null) {
-                    throw new JiuWenBaseException(
-                        StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR.getCode(),
-                        "session is required"
-                    );
-                }
-                
-                // Convert inputs to InputEvent
-                InputEvent inputEvent = convertToInputEvent(inputs);
-                
-                // Forward directly to Controller.stream()
-                Iterator<ControllerOutputChunk> chunkIterator = controller.stream(
-                    inputEvent, session, streamModes, null
-                );
-                
-                // Wrap as Iterator<Object> for compatibility with BaseAgent interface
-                return new Iterator<Object>() {
-                    @Override
-                    public boolean hasNext() {
-                        return chunkIterator.hasNext();
-                    }
-                    
-                    @Override
-                    public Object next() {
-                        return chunkIterator.next();
-                    }
-                };
-                
-            } catch (JiuWenBaseException e) {
-                throw e;
-            } catch (Exception e) {
-                logger.error("ControllerAgent stream error: " + e.getMessage());
-                throw new JiuWenBaseException(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR.getCode(),
-                    e.getMessage()
-                );
-            }
-        });
-    }
-    
-    /**
-     * Converts raw input to InputEvent.
-     *
-     * @param inputs the raw input (String, Map, or InputEvent)
-     * @return the InputEvent
-     */
-    private InputEvent convertToInputEvent(Object inputs) {
-        if (inputs instanceof InputEvent inputEvent) {
-            return inputEvent;
-        } else if (inputs instanceof String userInput) {
-            return InputEvent.fromUserInput(userInput);
-        } else if (inputs instanceof Map<?, ?> inputMap) {
-            Object userInput = inputMap.get("user_input");
-            if (userInput != null) {
-                return InputEvent.fromUserInput(String.valueOf(userInput));
-            }
-            return InputEvent.fromUserInput(inputMap.toString());
-        } else {
-            return InputEvent.fromUserInput(String.valueOf(inputs));
+    private AgentSessionApi toAgentSession(Session session) {
+        if (session instanceof AgentSessionApi asa) {
+            return asa;
         }
+        return AgentSessionApi.create(session.getSessionId(), null, getCard());
+    }
+
+    @Override
+    public ControllerOutput invoke(Object inputs, Session session) {
+        if (controller == null) {
+            throw new RuntimeException(
+                    this.getClass().getSimpleName() + " has no controller, "
+                            + "subclass should create controller before invocation"
+            );
+        }
+
+        if (session == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "session is required"
+            );
+        }
+
+        InputEvent inputEvent = InputEvent.fromUserInput(inputs);
+
+        try {
+            AgentSessionApi agentSession = toAgentSession(session);
+            return controller.invoke(inputEvent, agentSession);
+        } catch (BaseError e) {
+            throw e;
+        } catch (RuntimeException e) {
+            Loggers.AGENT.error("ControllerAgent invoke error: " + e.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", e.getMessage()
+            );
+        }
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        if (controller == null) {
+            throw new RuntimeException(
+                    this.getClass().getSimpleName() + " has no controller"
+            );
+        }
+
+        if (session == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "session is required"
+            );
+        }
+
+        InputEvent inputEvent = InputEvent.fromUserInput(inputs);
+
+        try {
+            AgentSessionApi agentSession = toAgentSession(session);
+            Iterator<Object> controllerStream = controller.stream(inputEvent, agentSession, streamModes);
+            return controllerStream;
+        } catch (BaseError e) {
+            throw e;
+        } catch (RuntimeException e) {
+            Loggers.AGENT.error("ControllerAgent stream error: " + e.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", e.getMessage()
+            );
+        }
+    }
+
+    private ControllerConfig mergeControllerConfig(Map<?, ?> configMap) {
+        ControllerConfig merged = new ControllerConfig();
+        copyControllerConfig(this.config, merged);
+
+        try {
+            Map<String, PropertyDescriptor> descriptors = new java.util.HashMap<>();
+            for (PropertyDescriptor descriptor : Introspector.getBeanInfo(ControllerConfig.class).getPropertyDescriptors()) {
+                descriptors.put(descriptor.getName(), descriptor);
+            }
+
+            for (Map.Entry<?, ?> entry : configMap.entrySet()) {
+                String propertyName = String.valueOf(entry.getKey());
+                PropertyDescriptor descriptor = descriptors.get(propertyName);
+                if (descriptor == null || descriptor.getWriteMethod() == null) {
+                    Loggers.AGENT.warning("Ignoring unknown ControllerConfig property: " + propertyName);
+                    continue;
+                }
+
+                Object convertedValue = MAPPER.convertValue(entry.getValue(), descriptor.getPropertyType());
+                descriptor.getWriteMethod().invoke(merged, convertedValue);
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to merge ControllerConfig from map", e);
+        }
+
+        return merged;
+    }
+
+    private static void copyControllerConfig(ControllerConfig source, ControllerConfig target) {
+        if (source == null) {
+            return;
+        }
+        target.setMaxConcurrentTasks(source.getMaxConcurrentTasks());
+        target.setScheduleInterval(source.getScheduleInterval());
+        target.setTaskTimeout(source.getTaskTimeout());
+        target.setDefaultTaskPriority(source.getDefaultTaskPriority());
+        target.setEnableTaskPersistence(source.isEnableTaskPersistence());
+        target.setEventQueueSize(source.getEventQueueSize());
+        target.setEventTimeout(source.getEventTimeout());
+        target.setEnableIntentRecognition(source.isEnableIntentRecognition());
+        target.setIntentLlmId(source.getIntentLlmId());
+        target.setIntentConfidenceThreshold(source.getIntentConfidenceThreshold());
+        target.setIntentTypeList(source.getIntentTypeList());
     }
 }
-

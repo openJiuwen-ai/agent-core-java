@@ -1,287 +1,172 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.internal;
 
+import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
-import com.openjiuwen.core.session.config.DefaultConfig;
-import com.openjiuwen.core.session.state.InMemoryWorkflowState;
 import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.Tracer;
-import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Workflow session implementation for managing workflow execution context.
- * 
- * <p>Implements both BaseSession and TracerWorkflowUtils.WorkflowSession interfaces
- * to provide workflow-specific session management with tracing support.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/internal/workflow.py - WorkflowSession
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Internal workflow session implementation.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.WorkflowSession}.
  */
-public class WorkflowSession implements BaseSession, TracerWorkflowUtils.WorkflowSession {
-    
-    private final String sessionId;
+public class WorkflowSession extends BaseSession {
+
+    private final String sessionIdField;
     private final BaseSession parent;
-    private final Config config;
-    private Tracer tracer;
-    private final State state;
-    private final CallbackManager callbackManager;
-    private StreamWriterManager streamWriterManager;
-    private Object actorManager;
+    private final Config configField;
+    private State stateField;
+    private final CallbackManager callbackManagerField;
+    private StreamWriterManager streamWriterManagerField;
+    private Object tracerField;
+    private ActorManager actorManagerField;
     private String workflowId;
-    
-    /**
-     * Creates a new WorkflowSession with default values.
-     */
-    public WorkflowSession() {
-        this("", null, null, null, null);
+
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId, State state,
+                           CallbackManager callbackManager) {
+        this.workflowId = workflowId != null ? workflowId : "";
+        this.parent = parent;
+
+        if (parent != null) {
+            this.sessionIdField = sessionId != null ? sessionId : parent.sessionId();
+            this.configField = parent.config();
+            this.tracerField = parent.tracer();
+        } else {
+            this.sessionIdField = sessionId != null ? sessionId : UUID.randomUUID().toString().replace("-", "");
+            this.configField = new Config();
+            this.tracerField = null;
+        }
+
+        this.stateField = state != null ? state : InMemoryState.create();
+        this.callbackManagerField = callbackManager != null ? callbackManager : new CallbackManager();
+        this.streamWriterManagerField = null;
+        this.actorManagerField = null;
     }
-    
-    /**
-     * Creates a new WorkflowSession with a workflow ID.
-     * 
-     * @param workflowId the workflow ID
-     */
-    public WorkflowSession(String workflowId) {
-        this(workflowId, null, null, null, null);
-    }
-    
-    /**
-     * Creates a new WorkflowSession with a parent session.
-     * 
-     * @param workflowId the workflow ID
-     * @param parent the parent session
-     */
+
     public WorkflowSession(String workflowId, BaseSession parent) {
         this(workflowId, parent, null, null, null);
     }
-    
-    /**
-     * Creates a new WorkflowSession with all parameters.
-     * 
-     * @param workflowId the workflow ID
-     * @param parent the parent session
-     * @param sessionId the session ID (can be null)
-     * @param state the state (can be null)
-     * @param callbackManager the callback manager (can be null)
-     */
-    public WorkflowSession(String workflowId, BaseSession parent, String sessionId, 
-                           State state, CallbackManager callbackManager) {
-        this.parent = parent;
-        this.workflowId = workflowId != null ? workflowId : "";
-        
-        if (parent != null) {
-            this.sessionId = sessionId != null ? sessionId : parent.getSessionId();
-            this.config = parent.getConfig();
-            this.tracer = parent.getTracer();
-        } else {
-            this.sessionId = sessionId != null ? sessionId : UUID.randomUUID().toString().replace("-", "");
-            this.config = new DefaultConfig();
-            this.tracer = null;
-        }
-        
-        this.state = state != null ? state : new InMemoryWorkflowState();
-        this.callbackManager = callbackManager != null ? callbackManager : new CallbackManager();
-        this.streamWriterManager = null;
-        this.actorManager = null;
+
+    public WorkflowSession(String workflowId) {
+        this(workflowId, null, null, null, null);
     }
-    
+
     /**
-     * Sets the stream writer manager.
-     * 
-     * <p>Once set, the stream writer manager cannot be changed.
-     * 
-     * @param streamWriterManager the stream writer manager
+     * Compatibility constructor for translated tests that only need an empty
+     * workflow session with generated identifiers.
      */
+    public WorkflowSession() {
+        this(null, null, null, null, null);
+    }
+
+    /**
+     * Compatibility factory mirroring the Python-style helper.
+     */
+    public static WorkflowSession create() {
+        return new WorkflowSession();
+    }
+
+    /**
+     * Compatibility factory for translated tests that want to control sessionId.
+     */
+    public static WorkflowSession create(String sessionId) {
+        return new WorkflowSession(null, null, sessionId, null, null);
+    }
+
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
-        if (this.streamWriterManager != null) {
-            return;
+        if (this.streamWriterManagerField == null) {
+            this.streamWriterManagerField = streamWriterManager;
         }
-        this.streamWriterManager = streamWriterManager;
     }
-    
-    /**
-     * Sets the tracer.
-     * 
-     * @param tracer the tracer
-     */
-    public void setTracer(Tracer tracer) {
-        this.tracer = tracer;
+
+    public void setTracer(Object tracer) {
+        this.tracerField = tracer;
     }
-    
-    /**
-     * Sets the actor manager.
-     * 
-     * <p>Once set, the actor manager cannot be changed.
-     * 
-     * @param actorManager the actor manager
-     */
-    public void setActorManager(Object actorManager) {
-        if (this.actorManager != null) {
-            return;
+
+    public void setActorManager(ActorManager actorManager) {
+        if (this.actorManagerField == null) {
+            this.actorManagerField = actorManager;
         }
-        this.actorManager = actorManager;
     }
-    
-    /**
-     * Sets the workflow ID.
-     * 
-     * @param workflowId the workflow ID
-     */
+
     public void setWorkflowId(String workflowId) {
         this.workflowId = workflowId;
     }
-    
-    @Override
-    public Object getActorManager() {
-        return actorManager;
-    }
-    
-    @Override
-    public Config getConfig() {
-        return config;
-    }
-    
-    @Override
-    public State getState() {
-        return state;
-    }
-    
-    @Override
-    public Tracer getTracer() {
-        return tracer;
-    }
-    
-    @Override
-    public StreamWriterManager getStreamWriterManager() {
-        return streamWriterManager;
-    }
-    
-    @Override
-    public CallbackManager getCallbackManager() {
-        return callbackManager;
-    }
-    
-    @Override
-    public String getSessionId() {
-        return sessionId;
-    }
-    
-    @Override
-    public Checkpointer getCheckpointer() {
-        if (parent != null) {
-            return parent.getCheckpointer();
-        }
-        return null;
-    }
-    
-    /**
-     * Gets the workflow ID.
-     * 
-     * @return the workflow ID
-     */
-    public String getWorkflowId() {
+
+    public String workflowId() {
         return workflowId;
     }
-    
-    /**
-     * Gets the main workflow ID.
-     * 
-     * @return the main workflow ID (same as workflow ID for top-level workflows)
-     */
-    public String getMainWorkflowId() {
-        return getWorkflowId();
+
+    public String mainWorkflowId() {
+        return workflowId;
     }
-    
-    /**
-     * Gets the workflow nesting depth.
-     * 
-     * @return 0 for top-level workflows
-     */
-    public int getWorkflowNestingDepth() {
+
+    public int workflowNestingDepth() {
         return 0;
     }
-    
-    @Override
-    public CompletableFuture<Void> close() {
-        if (actorManager != null) {
-            try {
-                // Try to call shutdown() method on actor manager
-                var method = actorManager.getClass().getMethod("shutdown");
-                Object result = method.invoke(actorManager);
-                if (result instanceof CompletableFuture<?> future) {
-                    return future.thenApply(v -> null);
-                }
-            } catch (Exception e) {
-                // Ignore reflection errors
-            }
-        }
-        return CompletableFuture.completedFuture(null);
-    }
-    
-    /**
-     * Gets the parent session.
-     * 
-     * @return the parent session
-     */
-    public BaseSession getParent() {
+
+    public BaseSession parent() {
         return parent;
     }
-    
-    // ========== TracerWorkflowUtils.WorkflowSession interface methods ==========
-    
-    @Override
-    public Tracer tracer() {
-        return getTracer();
+
+    public ActorManager actorManager() {
+        return actorManagerField;
     }
-    
+
     @Override
-    public String workflowId() {
-        return getWorkflowId();
+    public Config config() {
+        return configField;
     }
-    
+
     @Override
-    public String executableId() {
-        // For WorkflowSession, executable ID is the workflow ID
-        return getWorkflowId();
+    public State state() {
+        return stateField;
     }
-    
+
     @Override
-    public String parentId() {
-        // Top-level workflow has no parent
-        return "";
+    public Object tracer() {
+        return tracerField;
     }
-    
+
     @Override
-    public String nodeId() {
-        // WorkflowSession doesn't have a node ID
-        return "";
+    public StreamWriterManager streamWriterManager() {
+        return streamWriterManagerField;
     }
-    
+
     @Override
-    public String nodeType() {
-        // WorkflowSession doesn't have a node type
-        return "";
+    public CallbackManager callbackManager() {
+        return callbackManagerField;
     }
-    
+
     @Override
-    public Object state() {
-        return getState();
+    public String sessionId() {
+        return sessionIdField;
     }
-    
+
     @Override
-    public TracerWorkflowUtils.WorkflowConfig config() {
-        return workflowId -> getConfig().getWorkflowConfig(workflowId);
+    public Object checkpointer() {
+        if (parent != null) {
+            return parent.checkpointer();
+        }
+        return CheckpointerFactory.getCheckpointer();
+    }
+
+    @Override
+    public void close() {
+        if (actorManagerField != null) {
+            actorManagerField.shutdown();
+        }
     }
 }
-

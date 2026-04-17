@@ -1,228 +1,219 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.SessionModule;
 import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.AgentStateCollection;
-import com.openjiuwen.core.session.state.InMemoryCommitState;
-import com.openjiuwen.core.session.state.InMemoryWorkflowState;
+import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.tracer.Span;
+import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 
+import java.util.List;
+import java.util.Map;
+
 /**
- * Agent session implementation for managing agent execution context.
- * 
- * <p>Provides full session management including state, tracer, stream writing,
- * callback management, and checkpointing for agent execution.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/internal/agent.py - AgentSession
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Agent session providing full session lifecycle for an agent execution.
+ * <p>
+ * Manages configuration, state (AgentStateCollection), stream emitter/writer,
+ * callback manager, tracer, and checkpointer.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.agent.AgentSession}.
  */
-public class AgentSession implements BaseSession {
-    
+public class AgentSession extends BaseSession {
+
     private final String sessionId;
-    private final Config config;
-    private final AgentStateCollection state;
-    private final StreamWriterManager streamWriterManager;
-    private final CallbackManager callbackManager;
-    private final Tracer tracer;
-    private final Checkpointer checkpointer;
-    private final Span agentSpan;
+    private final Config configField;
+    private final AgentStateCollection stateField;
+    private final StreamWriterManager streamWriterManagerField;
+    private final CallbackManager callbackManagerField;
+    private final Tracer tracerField;
+    private final Checkpointer checkpointerField;
+    private final TraceAgentSpan agentSpan;
     private final Object card;
-    
+
     /**
-     * Creates a new AgentSession with a session ID.
-     * 
-     * @param sessionId the session ID
+     * Create a new AgentSession.
+     *
+     * @param sessionId    the unique session identifier
+     * @param config       the session config (nullable)
+     * @param checkpointer an explicit checkpointer, or null to use factory default
+     * @param card         the agent card (nullable)
      */
-    public AgentSession(String sessionId) {
-        this(sessionId, null, null, null);
+    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card) {
+        this(sessionId, config, checkpointer, card, null);
     }
-    
+
     /**
-     * Creates a new AgentSession with a session ID and config.
-     * 
-     * @param sessionId the session ID
-     * @param config the configuration
+     * Create a new AgentSession with explicit stream modes.
+     *
+     * @param sessionId    the unique session identifier
+     * @param config       the session config (nullable)
+     * @param checkpointer an explicit checkpointer, or null to use factory default
+     * @param card         the agent card (nullable)
+     * @param streamModes  explicit enabled stream modes, null to use defaults
      */
-    public AgentSession(String sessionId, Config config) {
-        this(sessionId, config, null, null);
+    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card,
+                        List<StreamMode> streamModes) {
+        this.sessionId = sessionId;
+        this.configField = config;
+        this.stateField = new AgentStateCollection();
+        this.streamWriterManagerField = new StreamWriterManager(new StreamEmitter(), streamModes);
+        this.callbackManagerField = new CallbackManager();
+
+        Tracer tracer = new Tracer();
+        tracer.init(this.streamWriterManagerField, this.callbackManagerField);
+        this.tracerField = tracer;
+
+        this.checkpointerField = checkpointer != null
+                ? checkpointer
+                : CheckpointerFactory.getCheckpointer();
+
+        this.agentSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
+        this.card = card;
     }
-    
+
     /**
-     * Creates a new AgentSession with a session ID, config, and checkpointer.
-     * 
-     * @param sessionId the session ID
-     * @param config the configuration
-     * @param checkpointer the checkpointer
+     * Convenience constructor without card.
      */
     public AgentSession(String sessionId, Config config, Checkpointer checkpointer) {
         this(sessionId, config, checkpointer, null);
     }
-    
+
     /**
-     * Creates a new AgentSession with all parameters.
-     * 
-     * @param sessionId the session ID
-     * @param config the configuration (can be null)
-     * @param checkpointer the checkpointer (can be null)
-     * @param card the agent card (can be null)
+     * Convenience constructor with defaults.
      */
-    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card) {
-        this.sessionId = sessionId;
-        this.config = config;
-        this.state = new AgentStateCollection();
-        this.streamWriterManager = new StreamWriterManager(new StreamEmitter());
-        this.callbackManager = new CallbackManager();
-        
-        // Initialize tracer
-        Tracer tracerInstance = new Tracer();
-        tracerInstance.init(this.streamWriterManager, this.callbackManager);
-        this.tracer = tracerInstance;
-        
-        // Use default checkpointer if not provided
-        this.checkpointer = checkpointer != null ? checkpointer : SessionModule.getDefaultInMemoryCheckpointer();
-        
-        // Create agent span
-        this.agentSpan = this.tracer != null 
-            ? this.tracer.getTracerAgentSpanManager().createAgentSpan() 
-            : null;
-        
-        this.card = card;
+    public AgentSession(String sessionId, Config config) {
+        this(sessionId, config, null, null);
     }
-    
-    @Override
-    public Config getConfig() {
-        return config;
-    }
-    
-    @Override
-    public State getState() {
-        return state;
-    }
-    
-    @Override
-    public Tracer getTracer() {
-        return tracer;
-    }
-    
+
     /**
-     * Gets the agent span.
-     * 
-     * @return the agent span
+     * Compatibility constructor for translated tests.
      */
-    public Span getSpan() {
-        return agentSpan;
+    public AgentSession(String sessionId) {
+        this(sessionId, new Config(), null, null);
     }
-    
+
     @Override
-    public StreamWriterManager getStreamWriterManager() {
-        return streamWriterManager;
+    public Config config() {
+        return configField;
     }
-    
+
     @Override
-    public CallbackManager getCallbackManager() {
-        return callbackManager;
+    public State state() {
+        return stateField;
     }
-    
+
     @Override
-    public String getSessionId() {
+    public Object tracer() {
+        return tracerField;
+    }
+
+    /**
+     * Get the tracer (typed).
+     */
+    public Tracer tracerTyped() {
+        return tracerField;
+    }
+
+    @Override
+    public StreamWriterManager streamWriterManager() {
+        return streamWriterManagerField;
+    }
+
+    @Override
+    public CallbackManager callbackManager() {
+        return callbackManagerField;
+    }
+
+    @Override
+    public String sessionId() {
         return sessionId;
     }
-    
+
     @Override
-    public Checkpointer getCheckpointer() {
-        return checkpointer;
+    public Object checkpointer() {
+        return checkpointerField;
     }
-    
+
     /**
-     * Creates a workflow session from this agent session.
-     * 
-     * <p>The workflow session inherits the global state from this agent session.
-     * 
-     * @return the new workflow session
+     * Get the checkpointer (typed).
      */
+    public Checkpointer checkpointerTyped() {
+        return checkpointerField;
+    }
+
+    /**
+     * Get the agent span for this session.
+     */
+    public TraceAgentSpan span() {
+        return agentSpan;
+    }
+
+    /**
+     * Create a workflow session from this agent session.
+     * <p>
+     * The workflow session shares the agent's global state.
+     *
+     * @return a new WorkflowSession
+     */
+    @SuppressWarnings("unchecked")
     public WorkflowSession createWorkflowSession() {
-        // Create InMemoryWorkflowState with the global state wrapped in InMemoryCommitState
-        InMemoryWorkflowState workflowState = new InMemoryWorkflowState(
-            new InMemoryCommitState(state.getGlobalStateInstance())
-        );
-        
-        return new WorkflowSession("", this, sessionId, workflowState, null);
+        Map<String, Object> globalData = (Map<String, Object>) stateField.getGlobal(null);
+        WorkflowCommitState workflowState = InMemoryState.create(null, globalData, null, null, null);
+        return new WorkflowSession(null, this, this.sessionId, workflowState, null);
     }
-    
+
     /**
-     * Gets the agent ID.
-     * 
-     * <p>First tries to get the ID from the agent config, then falls back to the card.
-     * 
-     * @return the agent ID, or null if not available
+     * Get the agent ID from config or card.
+     *
+     * @return agent ID
      */
-    public String getAgentId() {
-        Object agentConfig = config != null ? config.getAgentConfig() : null;
-        if (agentConfig != null) {
-            try {
-                var idMethod = agentConfig.getClass().getMethod("getId");
-                Object id = idMethod.invoke(agentConfig);
-                if (id != null) {
-                    return id.toString();
-                }
-            } catch (Exception e) {
-                // Try 'id' field directly
-                try {
-                    var idField = agentConfig.getClass().getField("id");
-                    Object id = idField.get(agentConfig);
-                    if (id != null) {
-                        return id.toString();
-                    }
-                } catch (Exception ignored) {
-                    // Ignore
-                }
+    public String agentId() {
+        if (configField != null) {
+            Object agentConfig = configField.getAgentConfig();
+            if (agentConfig instanceof Config.MetadataLike meta && meta.getId() != null) {
+                return meta.getId();
             }
         }
-        
-        // Fall back to card
-        if (card != null) {
-            try {
-                var idMethod = card.getClass().getMethod("getId");
-                Object id = idMethod.invoke(card);
-                if (id != null) {
-                    return id.toString();
-                }
-            } catch (Exception e) {
-                // Try 'id' field directly
-                try {
-                    var idField = card.getClass().getField("id");
-                    Object id = idField.get(card);
-                    if (id != null) {
-                        return id.toString();
-                    }
-                } catch (Exception ignored) {
-                    // Ignore
-                }
-            }
+        // Fallback to card
+        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
+            return baseCard.getId();
         }
-        
         return null;
     }
-    
+
     /**
-     * Gets the agent card.
-     * 
-     * @return the agent card
+     * Get the agent name from the card.
+     *
+     * @return agent name or null
      */
-    public Object getCard() {
-        return card;
+    public String agentName() {
+        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
+            return baseCard.getName();
+        }
+        return null;
+    }
+
+    /**
+     * Get the agent description from the card.
+     *
+     * @return agent description or null
+     */
+    public String agentDescription() {
+        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
+            return baseCard.getDescription();
+        }
+        return null;
     }
 }
-

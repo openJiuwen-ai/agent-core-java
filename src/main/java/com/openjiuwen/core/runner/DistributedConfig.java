@@ -1,27 +1,43 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.runner;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * 分布式配置
- * 
- * 对应Python: runner_config.py - DistributedConfig
+ * Distributed system configuration.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class DistributedConfig {
-    
+
+    @Builder.Default
     private double requestTimeout = 30.0;
+
+    @Builder.Default
     private int maxRequestConcurrency = 10000;
+
+    @Builder.Default
     private MessageQueueConfig messageQueueConfig = new MessageQueueConfig();
+
+    @Builder.Default
     private String agentTopicTemplate = "openjiuwen.single_agent.{agent_id}.{version}";
+
+    @Builder.Default
     private String replyTopicTemplate = "openjiuwen.reply.runner.{instance_id}";
 
-    public DistributedConfig() {
-    }
-
     /**
-     * 获取带环境前缀的Agent主题模板
-     * 
-     * @param envPrefix 环境前缀
-     * @return 主题模板字符串
+     * Get agent topic template with environment prefix.
+     *
+     * @param envPrefix Optional environment prefix
+     * @return Topic template with prefix
      */
     public String getAgentTopicTemplate(String envPrefix) {
         if (envPrefix != null && !envPrefix.isEmpty()) {
@@ -31,10 +47,10 @@ public class DistributedConfig {
     }
 
     /**
-     * 获取带环境前缀的回复主题模板
-     * 
-     * @param envPrefix 环境前缀
-     * @return 主题模板字符串
+     * Get reply topic template with environment prefix.
+     *
+     * @param envPrefix Optional environment prefix
+     * @return Topic template with prefix
      */
     public String getReplyTopicTemplate(String envPrefix) {
         if (envPrefix != null && !envPrefix.isEmpty()) {
@@ -42,47 +58,4 @@ public class DistributedConfig {
         }
         return replyTopicTemplate;
     }
-
-    // Getters and Setters
-
-    public double getRequestTimeout() {
-        return requestTimeout;
-    }
-
-    public void setRequestTimeout(double requestTimeout) {
-        this.requestTimeout = requestTimeout;
-    }
-
-    public int getMaxRequestConcurrency() {
-        return maxRequestConcurrency;
-    }
-
-    public void setMaxRequestConcurrency(int maxRequestConcurrency) {
-        this.maxRequestConcurrency = maxRequestConcurrency;
-    }
-
-    public MessageQueueConfig getMessageQueueConfig() {
-        return messageQueueConfig;
-    }
-
-    public void setMessageQueueConfig(MessageQueueConfig messageQueueConfig) {
-        this.messageQueueConfig = messageQueueConfig;
-    }
-
-    public String getAgentTopicTemplate() {
-        return agentTopicTemplate;
-    }
-
-    public void setAgentTopicTemplate(String agentTopicTemplate) {
-        this.agentTopicTemplate = agentTopicTemplate;
-    }
-
-    public String getReplyTopicTemplate() {
-        return replyTopicTemplate;
-    }
-
-    public void setReplyTopicTemplate(String replyTopicTemplate) {
-        this.replyTopicTemplate = replyTopicTemplate;
-    }
 }
-

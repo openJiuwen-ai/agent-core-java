@@ -1,244 +1,207 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Intent Data Model.
- *
- * <p>Represents a user's intent, containing intent type, associated event, target task,
- * and other information. The intent recognizer (IntentRecognizer) will convert user input
- * events into Intent objects, then route them to appropriate processing logic based on
- * intent type.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Intent data model.
+ * <p>
+ * Represents a user's intent, containing intent type, associated event,
+ * target task, and other information. The intent recognizer converts user
+ * input events into Intent objects, then routes them to appropriate
+ * processing logic based on intent type.
+ * <p>
+ * Mirrors Python's {@code Intent(BaseModel)}.
  */
 public class Intent {
 
-    private final IntentType intentType;
-    private final Event event;
-    private final String targetTaskId;
-    private final String targetTaskDescription;
-    private final String dependTaskId;
-    private final Map<String, Object> supplementaryInfo;
-    private final Map<String, Object> modificationDetails;
-    private final double confidence;
-    private final Map<String, Object> metadata;
-    private final String clarificationPrompt;
+    private IntentType intentType;
+    private Event event;
+    private String targetTaskId;
+    private String targetTaskDescription;
+    private List<String> dependTaskId;
+    private String supplementaryInfo;
+    private String modificationDetails;
+    private double confidence;
+    private Map<String, Object> metadata;
+    private String clarificationPrompt;
 
-    private Intent(IntentBuilder builder) {
-        this.intentType = builder.intentType;
-        this.event = builder.event;
-        this.targetTaskId = builder.targetTaskId;
-        this.targetTaskDescription = builder.targetTaskDescription;
-        this.dependTaskId = builder.dependTaskId;
-        this.supplementaryInfo = builder.supplementaryInfo;
-        this.modificationDetails = builder.modificationDetails;
-        this.confidence = builder.confidence;
-        this.metadata = builder.metadata != null ? builder.metadata : new HashMap<>();
-        this.clarificationPrompt = builder.clarificationPrompt;
+    public Intent(IntentType intentType, Event event, String targetTaskId) {
+        this.intentType = intentType;
+        this.event = event;
+        this.targetTaskId = targetTaskId;
+        this.confidence = 1.0;
+        this.metadata = new HashMap<>();
+        validate();
+    }
 
+    public Intent(IntentType intentType, Event event, String targetTaskId,
+                  String targetTaskDescription, List<String> dependTaskId,
+                  String supplementaryInfo, String modificationDetails,
+                  double confidence, String clarificationPrompt) {
+        this.intentType = intentType;
+        this.event = event;
+        this.targetTaskId = targetTaskId;
+        this.targetTaskDescription = targetTaskDescription;
+        this.dependTaskId = dependTaskId;
+        this.supplementaryInfo = supplementaryInfo;
+        this.modificationDetails = modificationDetails;
+        this.confidence = confidence;
+        this.metadata = new HashMap<>();
+        this.clarificationPrompt = clarificationPrompt;
         validate();
     }
 
     /**
-     * Creates a new builder.
-     *
-     * @param intentType the intent type
-     * @param event      the associated event
-     * @return a new IntentBuilder
-     */
-    public static IntentBuilder builder(IntentType intentType, Event event) {
-        return new IntentBuilder(intentType, event);
-    }
-
-    /**
-     * Validates intent data.
-     *
-     * @throws BaseError if validation fails
+     * Validate intent data.
      */
     private void validate() {
-        // Validate confidence range
         if (confidence < 0.0 || confidence > 1.0) {
-            throw buildIntentError("Confidence must be between 0.0 and 1.0, got " + confidence);
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Confidence must be between 0.0 and 1.0, got " + confidence);
         }
 
-        // Validate intent-specific required fields
         switch (intentType) {
             case CREATE_TASK -> {
                 if (targetTaskDescription == null || targetTaskDescription.isBlank()) {
-                    throw buildIntentError("CREATE_TASK intent requires target_task_description");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "CREATE_TASK intent requires target_task_description");
                 }
             }
             case CONTINUE_TASK -> {
-                if (dependTaskId == null || dependTaskId.isBlank()) {
-                    throw buildIntentError("CONTINUE_TASK intent requires depend_task_id");
+                if (dependTaskId == null || dependTaskId.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "CONTINUE_TASK intent requires depend_task_id");
                 }
             }
             case SUPPLEMENT_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw buildIntentError("SUPPLEMENT_TASK intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "SUPPLEMENT_TASK intent requires target_task_id");
                 }
-                if (supplementaryInfo == null || supplementaryInfo.isEmpty()) {
-                    throw buildIntentError("SUPPLEMENT_TASK intent requires supplementary_info");
+                if (supplementaryInfo == null || supplementaryInfo.isBlank()) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "SUPPLEMENT_TASK intent requires supplementary_info");
                 }
             }
             case MODIFY_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw buildIntentError("MODIFY_TASK intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "MODIFY_TASK intent requires target_task_id");
                 }
-                if (modificationDetails == null || modificationDetails.isEmpty()) {
-                    throw buildIntentError("MODIFY_TASK intent requires modification_details");
+                if (modificationDetails == null || modificationDetails.isBlank()) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "MODIFY_TASK intent requires modification_details");
                 }
             }
             case PAUSE_TASK, RESUME_TASK, CANCEL_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw buildIntentError(intentType.getValue() + " intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", intentType.getValue() + " intent requires target_task_id");
                 }
             }
             case SWITCH_TASK -> {
                 if (targetTaskDescription == null || targetTaskDescription.isBlank()) {
-                    throw buildIntentError("SWITCH_TASK intent requires target_task_description");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "SWITCH_TASK intent requires target_task_description");
                 }
             }
             case UNKNOWN_TASK -> {
                 if (clarificationPrompt == null || clarificationPrompt.isBlank()) {
-                    throw buildIntentError("UNKNOWN_TASK intent requires clarification_prompt");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "UNKNOWN_TASK intent requires clarification_prompt");
                 }
             }
         }
     }
 
-    /**
-     * Builds a BaseError for intent validation failures.
-     */
-    private static BaseError buildIntentError(String errorMsg) {
-        return ErrorBuilder.build(
-            StatusCode.AGENT_CONTROLLER_INTENT_PARAM_ERROR,
-            null,
-            null,
-            null,
-            Map.of("error_msg", errorMsg)
-        );
-    }
-
-    // Getters
+    // Getters and setters
 
     public IntentType getIntentType() {
         return intentType;
+    }
+
+    public void setIntentType(IntentType intentType) {
+        this.intentType = intentType;
     }
 
     public Event getEvent() {
         return event;
     }
 
+    public void setEvent(Event event) {
+        this.event = event;
+    }
+
     public String getTargetTaskId() {
         return targetTaskId;
+    }
+
+    public void setTargetTaskId(String targetTaskId) {
+        this.targetTaskId = targetTaskId;
     }
 
     public String getTargetTaskDescription() {
         return targetTaskDescription;
     }
 
-    public String getDependTaskId() {
+    public void setTargetTaskDescription(String targetTaskDescription) {
+        this.targetTaskDescription = targetTaskDescription;
+    }
+
+    public List<String> getDependTaskId() {
         return dependTaskId;
     }
 
-    public Map<String, Object> getSupplementaryInfo() {
+    public void setDependTaskId(List<String> dependTaskId) {
+        this.dependTaskId = dependTaskId;
+    }
+
+    public String getSupplementaryInfo() {
         return supplementaryInfo;
     }
 
-    public Map<String, Object> getModificationDetails() {
+    public void setSupplementaryInfo(String supplementaryInfo) {
+        this.supplementaryInfo = supplementaryInfo;
+    }
+
+    public String getModificationDetails() {
         return modificationDetails;
+    }
+
+    public void setModificationDetails(String modificationDetails) {
+        this.modificationDetails = modificationDetails;
     }
 
     public double getConfidence() {
         return confidence;
     }
 
+    public void setConfidence(double confidence) {
+        this.confidence = confidence;
+    }
+
     public Map<String, Object> getMetadata() {
         return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata != null ? metadata : new HashMap<>();
     }
 
     public String getClarificationPrompt() {
         return clarificationPrompt;
     }
 
-    /**
-     * Builder for Intent.
-     */
-    public static class IntentBuilder {
-        private final IntentType intentType;
-        private final Event event;
-        private String targetTaskId;
-        private String targetTaskDescription;
-        private String dependTaskId;
-        private Map<String, Object> supplementaryInfo;
-        private Map<String, Object> modificationDetails;
-        private double confidence = 1.0;
-        private Map<String, Object> metadata;
-        private String clarificationPrompt;
-
-        public IntentBuilder(IntentType intentType, Event event) {
-            this.intentType = intentType;
-            this.event = event;
-        }
-
-        public IntentBuilder targetTaskId(String targetTaskId) {
-            this.targetTaskId = targetTaskId;
-            return this;
-        }
-
-        public IntentBuilder targetTaskDescription(String targetTaskDescription) {
-            this.targetTaskDescription = targetTaskDescription;
-            return this;
-        }
-
-        public IntentBuilder dependTaskId(String dependTaskId) {
-            this.dependTaskId = dependTaskId;
-            return this;
-        }
-
-        public IntentBuilder supplementaryInfo(Map<String, Object> supplementaryInfo) {
-            this.supplementaryInfo = supplementaryInfo;
-            return this;
-        }
-
-        public IntentBuilder modificationDetails(Map<String, Object> modificationDetails) {
-            this.modificationDetails = modificationDetails;
-            return this;
-        }
-
-        public IntentBuilder confidence(double confidence) {
-            this.confidence = confidence;
-            return this;
-        }
-
-        public IntentBuilder metadata(Map<String, Object> metadata) {
-            this.metadata = metadata;
-            return this;
-        }
-
-        public IntentBuilder clarificationPrompt(String clarificationPrompt) {
-            this.clarificationPrompt = clarificationPrompt;
-            return this;
-        }
-
-        /**
-         * Builds and validates the Intent.
-         *
-         * @return the validated Intent
-         * @throws BaseError if validation fails
-         */
-        public Intent build() {
-            return new Intent(this);
-        }
+    public void setClarificationPrompt(String clarificationPrompt) {
+        this.clarificationPrompt = clarificationPrompt;
     }
 }
-

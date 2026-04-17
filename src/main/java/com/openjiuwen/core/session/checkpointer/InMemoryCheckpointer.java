@@ -1,334 +1,361 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.SessionConstants;
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
-import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory implementation of Checkpointer.
- * 
- * <p>Stores session state in memory using ConcurrentHashMaps.
- * State is not persisted to disk.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/checkpointer/checkpointer.py - InMemoryCheckpointer
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * In-memory checkpointer implementation storing state in local maps.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.checkpointer.inmemory.InMemoryCheckpointer}.
  */
-public class InMemoryCheckpointer implements Checkpointer {
-    
-    private static final LoggerProtocol logger = LogManager.getLogger("session");
-    
-    /**
-     * Task status interrupt key (from pregel module).
-     */
-    public static final String TASK_STATUS_INTERRUPT = "__interrupt__";
-    
-    /**
-     * Map of session ID to agent storage.
-     */
-    private final Map<String, AgentStorage> agentStores = new ConcurrentHashMap<>();
-    
-    /**
-     * Map of session ID to workflow storage.
-     */
-    private final Map<String, WorkflowStorage> workflowStores = new ConcurrentHashMap<>();
-    
-    /**
-     * Map of session ID to set of workflow IDs.
-     */
+public class InMemoryCheckpointer extends Checkpointer {
+
+    private final Map<String, InMemoryAgentStorage> agentStores = new ConcurrentHashMap<>();
+    private final Map<String, InMemoryWorkflowStorage> workflowStores = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> sessionToWorkflowIds = new ConcurrentHashMap<>();
-    
-    /**
-     * Graph store for persisting graph state.
-     */
-    private final InMemoryStore graphStore;
-    
-    /**
-     * Creates a new InMemoryCheckpointer.
-     */
-    public InMemoryCheckpointer() {
-        this.graphStore = new InMemoryStore();
-    }
-    
+
+    private final Store graphStore = new InMemoryStore();
+
     @Override
-    public CompletableFuture<Void> preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
-        return CompletableFuture.supplyAsync(() -> {
-            String sessionId = session.getSessionId();
-            String workflowId = getWorkflowId(session);
-            
-            logger.info("workflow: {} create or restore checkpoint from session: {}", 
-                       workflowId, sessionId);
-            
-            WorkflowStorage workflowStore = workflowStores.computeIfAbsent(sessionId, 
-                k -> new WorkflowStorage());
-            sessionToWorkflowIds.computeIfAbsent(sessionId, k -> new HashSet<>());
-            
-            if (inputs != null) {
-                // Recovery mode with interactive input
-                workflowStore.recover(session, inputs);
+    public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
+        String sessionId = session.sessionId();
+        String workflowId = getWorkflowId(session);
+
+        boolean isNewStore = !workflowStores.containsKey(sessionId);
+        InMemoryWorkflowStorage workflowStore = workflowStores.computeIfAbsent(sessionId,
+                k -> new InMemoryWorkflowStorage());
+
+        if (isNewStore) {
+            Loggers.SESSION.info("Create new workflow checkpointer store, sessionId={}, workflowId={}",
+                    sessionId, workflowId);
+        }
+
+        sessionToWorkflowIds.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet());
+
+        if (inputs != null) {
+            Loggers.SESSION.info("Begin to restore workflow session, sessionId={}, workflowId={}",
+                    sessionId, workflowId);
+            workflowStore.recover(workflowId, session, inputs);
+            Loggers.SESSION.info("Succeed to restore workflow session, sessionId={}, workflowId={}",
+                    sessionId, workflowId);
+        } else {
+            if (!workflowStore.exists(workflowId)) {
+                return;
+            }
+            Object forceDelete = session.config() != null
+                    ? session.config().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false)
+                    : false;
+            if (Boolean.TRUE.equals(forceDelete)) {
+                Loggers.SESSION.info("Force clearing workflow checkpoints, sessionId={}, workflowId={}",
+                        sessionId, workflowId);
+                workflowStore.clear(workflowId);
+                graphStore.delete(sessionId, workflowId);
             } else {
-                // New workflow or check for conflict
-                if (!workflowStore.exists(session)) {
-                    return null;
-                }
-                
-                Object forceDelEnv = session.getConfig().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false);
-                boolean forceDel = Boolean.TRUE.equals(forceDelEnv);
-                
-                if (forceDel) {
-                    try {
-                        graphStore.delete(sessionId, workflowId).get();
-                    } catch (Exception e) {
-                        // Ignore delete errors
-                    }
-                    workflowStore.clear(workflowId);
-                } else {
-                    throw new JiuWenBaseException(
-                        StatusCode.WORKFLOW_STATE_INVALID.getCode(),
-                        StatusCode.WORKFLOW_STATE_INVALID.formatMessage(
-                            Map.of("error_msg", "workflow state exists but non-interactive input and cleanup is disabled")
-                        )
-                    );
-                }
+                throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR,
+                        "session_id", sessionId,
+                        "workflow", workflowId,
+                        "reason", "workflow state exists but non-interactive input and cleanup is disabled");
             }
-            return null;
-        });
+        }
     }
-    
+
     @Override
-    @SuppressWarnings("unchecked")
-    public CompletableFuture<Void> postWorkflowExecute(BaseSession session, Object result, 
-                                                        Exception exception) {
-        return CompletableFuture.supplyAsync(() -> {
-            String sessionId = session.getSessionId();
-            String workflowId = getWorkflowId(session);
-            
-            WorkflowStorage workflowStore = workflowStores.get(sessionId);
-            Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
-            
-            if (exception != null) {
-                logger.info("exception in workflow, save checkpoint for workflow: {} in session: {}",
-                           workflowId, sessionId);
-                if (workflowStore == null) {
-                    throw new JiuWenBaseException(
-                        StatusCode.SESSION_CHECKPOINTER_NONE_WORKFLOW_STORE_ERROR.getCode(),
-                        StatusCode.SESSION_CHECKPOINTER_NONE_WORKFLOW_STORE_ERROR.getMessage()
-                    );
-                }
-                workflowStore.save(session);
-                if (workflowIds != null) {
-                    workflowIds.add(workflowId);
-                }
-                throw new RuntimeException(exception);
+    public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
+        String sessionId = session.sessionId();
+        String workflowId = getWorkflowId(session);
+        InMemoryWorkflowStorage workflowStore = workflowStores.get(sessionId);
+
+        if (exception != null) {
+            if (workflowStore == null) {
+                throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_POST_WORKFLOW_EXECUTION_ERROR,
+                        "workflow", workflowId,
+                        "reason", "workflow store not found");
             }
-            
-            // Check for interrupt in result
-            Map<String, Object> resultMap = result instanceof Map ? (Map<String, Object>) result : null;
-            boolean hasInterrupt = resultMap != null && resultMap.get(TASK_STATUS_INTERRUPT) != null;
-            
-            if (!hasInterrupt) {
-                logger.info("clear checkpoint for workflow: {} in session: {}", workflowId, sessionId);
-                try {
-                    graphStore.delete(sessionId, workflowId).get();
-                } catch (Exception e) {
-                    // Ignore delete errors
-                }
-                
-                if (workflowStore != null) {
-                    workflowStore.clear(workflowId);
-                    if (workflowIds != null) {
-                        workflowIds.remove(workflowId);
-                    }
-                } else {
-                    logger.warning("workflow_store of workflow: {} does not exist in session: {}",
-                                  workflowId, sessionId);
-                }
-                
-                // Clear session if not under agent session
-                BaseSession parent = getParent(session);
-                if (!(parent instanceof AgentSession)) {
-                    logger.info("clear session: {}", sessionId);
-                    workflowStores.remove(sessionId);
+            saveWorkflowCheckpoint(workflowId, sessionId, session, "workflow exception");
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(exception);
+        }
+
+        if (result instanceof Map<?, ?> resultMap && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
+            saveWorkflowCheckpoint(workflowId, sessionId, session, "workflow interruption");
+            return;
+        }
+
+        // Normal completion - clear checkpoints
+        Loggers.SESSION.info("Clear workflow checkpoints on completion, sessionId={}, workflowId={}",
+                sessionId, workflowId);
+        graphStore.delete(sessionId, workflowId);
+        if (workflowStore != null) {
+            Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
+            if (workflowIds != null) {
+                workflowIds.remove(workflowId);
+                if (workflowIds.isEmpty()) {
                     sessionToWorkflowIds.remove(sessionId);
                 }
-            } else {
-                logger.info("interaction required, save checkpoint for workflow: {} in session: {}",
-                           workflowId, sessionId);
-                if (workflowStore == null) {
-                    throw new JiuWenBaseException(
-                        StatusCode.SESSION_CHECKPOINTER_NONE_WORKFLOW_STORE_ERROR.getCode(),
-                        StatusCode.SESSION_CHECKPOINTER_NONE_WORKFLOW_STORE_ERROR.getMessage()
-                    );
+            }
+            workflowStore.clear(workflowId);
+            if (workflowStore.isEmpty()) {
+                BaseSession parent = null;
+                try {
+                    parent = (BaseSession) session.getClass().getMethod("parent").invoke(session);
+                } catch (Exception ignored) {
+                    // Best effort: only preserve parent-owned stores when session exposes parent().
                 }
-                workflowStore.save(session);
-                if (workflowIds != null) {
-                    workflowIds.add(workflowId);
+                if (!(parent instanceof AgentSession)) {
+                    workflowStores.remove(sessionId);
                 }
             }
-            return null;
-        });
+        }
     }
-    
+
     @Override
-    public CompletableFuture<Void> preAgentExecute(BaseSession session, Object inputs) {
-        return CompletableFuture.supplyAsync(() -> {
-            String sessionId = session.getSessionId();
-            String agentId = getAgentId(session);
-            
-            logger.info("agent: {} create or restore checkpoint from session: {}", agentId, sessionId);
-            
-            AgentStorage agentStore = agentStores.computeIfAbsent(sessionId, k -> new AgentStorage());
-            agentStore.recover(session);
-            
-            if (inputs != null) {
-                session.getState().setState(Map.of(Constant.INTERACTIVE_INPUT, java.util.List.of(inputs)));
+    public void preAgentExecute(BaseSession session, Object inputs) {
+        String sessionId = session.sessionId();
+
+        boolean isNewStore = !agentStores.containsKey(sessionId);
+        InMemoryAgentStorage agentStore = agentStores.computeIfAbsent(sessionId,
+                k -> new InMemoryAgentStorage());
+
+        if (isNewStore) {
+            Loggers.SESSION.info("Create new agent checkpointer store, sessionId={}", sessionId);
+        }
+
+        Loggers.SESSION.info("Begin to restore agent session, sessionId={}", sessionId);
+        agentStore.recover(session);
+        Loggers.SESSION.info("Succeed to restore agent session, sessionId={}", sessionId);
+
+        if (inputs != null) {
+            List<Object> inputList = new ArrayList<>();
+            inputList.add(inputs);
+            session.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
+        }
+    }
+
+    @Override
+    public void interruptAgentExecute(BaseSession session) {
+        String sessionId = session.sessionId();
+        InMemoryAgentStorage agentStore = agentStores.get(sessionId);
+        if (agentStore == null) {
+            throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_INTERRUPT_AGENT_ERROR,
+                    "reason", "agent store not found");
+        }
+
+        Loggers.SESSION.info("Save agent checkpoint on interruption, sessionId={}", sessionId);
+        agentStore.save(session);
+        Loggers.SESSION.info("Succeed to save agent checkpoint on interruption, sessionId={}", sessionId);
+    }
+
+    @Override
+    public void postAgentExecute(BaseSession session) {
+        String sessionId = session.sessionId();
+        InMemoryAgentStorage agentStore = agentStores.get(sessionId);
+        if (agentStore == null) {
+            throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_POST_AGENT_EXECUTION_ERROR,
+                    "reason", "agent store not found");
+        }
+
+        Loggers.SESSION.info("Save agent checkpoint on completion, sessionId={}", sessionId);
+        agentStore.save(session);
+        Loggers.SESSION.info("Succeed to save agent checkpoint on completion, sessionId={}", sessionId);
+    }
+
+    @Override
+    public boolean sessionExists(String sessionId) {
+        return agentStores.containsKey(sessionId) || workflowStores.containsKey(sessionId);
+    }
+
+    @Override
+    public void release(String sessionId) {
+        Set<String> workflowIds = sessionToWorkflowIds.remove(sessionId);
+        if (workflowIds != null) {
+            Loggers.SESSION.info("Clear workflow checkpoints on release, sessionId={}, workflowIds={}",
+                    sessionId, workflowIds);
+            for (String workflowId : workflowIds) {
+                graphStore.delete(sessionId, workflowId);
             }
-            
-            return null;
-        });
+        }
+        workflowStores.remove(sessionId);
+        agentStores.remove(sessionId);
+        Loggers.SESSION.info("Cleared all checkpoints on release, sessionId={}", sessionId);
     }
-    
-    @Override
-    public CompletableFuture<Void> interruptAgentExecute(BaseSession session) {
-        return CompletableFuture.supplyAsync(() -> {
-            String sessionId = session.getSessionId();
-            String agentId = getAgentId(session);
-            
-            logger.info("interaction required, save checkpoint for agent: {} in session: {}",
-                       agentId, sessionId);
-            
-            AgentStorage agentStore = agentStores.get(sessionId);
-            if (agentStore == null) {
-                throw new JiuWenBaseException(
-                    StatusCode.SESSION_CHECKPOINTER_NONE_AGENT_STORE_ERROR.getCode(),
-                    StatusCode.SESSION_CHECKPOINTER_NONE_AGENT_STORE_ERROR.getMessage()
-                );
-            }
-            agentStore.save(session);
-            
-            return null;
-        });
-    }
-    
-    @Override
-    public CompletableFuture<Void> postAgentExecute(BaseSession session) {
-        return CompletableFuture.supplyAsync(() -> {
-            String sessionId = session.getSessionId();
-            String agentId = getAgentId(session);
-            
-            logger.info("agent finished, save checkpoint for agent: {} in session: {}", 
-                       agentId, sessionId);
-            
-            AgentStorage agentStore = agentStores.get(sessionId);
-            if (agentStore == null) {
-                throw new JiuWenBaseException(
-                    StatusCode.SESSION_CHECKPOINTER_NONE_AGENT_STORE_ERROR.getCode(),
-                    StatusCode.SESSION_CHECKPOINTER_NONE_AGENT_STORE_ERROR.getMessage()
-                );
-            }
-            agentStore.save(session);
-            
-            return null;
-        });
-    }
-    
-    @Override
-    public CompletableFuture<Void> release(String sessionId) {
-        return release(sessionId, null);
-    }
-    
-    @Override
-    public CompletableFuture<Void> release(String sessionId, String agentId) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (agentId != null) {
-                logger.info("clear checkpoint for agent: {} in session: {}", agentId, sessionId);
-                AgentStorage agentStore = agentStores.get(sessionId);
-                if (agentStore == null) {
-                    logger.warning("agent_store of agent: {} does not exist in session: {}", 
-                                  agentId, sessionId);
-                    return null;
-                }
-                agentStore.clear(agentId);
-            } else {
-                logger.info("clear session: {}", sessionId);
-                Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
-                if (workflowIds != null) {
-                    for (String workflowId : workflowIds) {
-                        try {
-                            graphStore.delete(sessionId, workflowId).get();
-                        } catch (Exception e) {
-                            // Ignore delete errors
-                        }
-                    }
-                }
-                sessionToWorkflowIds.remove(sessionId);
-                workflowStores.remove(sessionId);
-                agentStores.remove(sessionId);
-            }
-            return null;
-        });
-    }
-    
+
     @Override
     public Store graphStore() {
         return graphStore;
     }
-    
-    /**
-     * Gets the workflow ID from a session.
-     *
-     * @param session the base session
-     * @return the workflow ID, or empty string if not available
-     */
-    private String getWorkflowId(BaseSession session) {
-        if (session instanceof WorkflowSession workflowSession) {
-            return workflowSession.getWorkflowId();
+
+    private void saveWorkflowCheckpoint(String workflowId, String sessionId,
+                                         BaseSession session, String reason) {
+        InMemoryWorkflowStorage workflowStore = workflowStores.get(sessionId);
+        Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
+        Loggers.SESSION.info("Save workflow checkpoint on {}, sessionId={}, workflowId={}",
+                reason, sessionId, workflowId);
+        if (workflowStore != null) {
+            workflowStore.save(workflowId, session);
         }
-        return "";
+        if (workflowIds != null) {
+            workflowIds.add(workflowId);
+        }
+        Loggers.SESSION.info("Succeed to save workflow checkpoint on {}, sessionId={}, workflowId={}",
+                reason, sessionId, workflowId);
     }
-    
+
+    // ---- Inner Storage Classes ----
+
     /**
-     * Gets the agent ID from a session.
-     *
-     * @param session the base session
-     * @return the agent ID, or null if not available
+     * In-memory agent storage.
      */
-    private String getAgentId(BaseSession session) {
-        if (session instanceof AgentSession agentSession) {
-            return agentSession.getAgentId();
+    private static class InMemoryAgentStorage {
+        private final Map<String, Map<String, Object>> stateBlobs = new ConcurrentHashMap<>();
+
+        void save(BaseSession session) {
+            String agentId = session.sessionId();
+            Map<String, Object> state = session.state().getState();
+            if (state != null) {
+                stateBlobs.put(agentId, new HashMap<>(state));
+            }
         }
-        return null;
+
+        void recover(BaseSession session) {
+            String agentId = session.sessionId();
+            Map<String, Object> state = stateBlobs.get(agentId);
+            if (state != null) {
+                session.state().setState(new HashMap<>(state));
+            }
+        }
+
+        void clear(String agentId) {
+            stateBlobs.remove(agentId);
+        }
     }
-    
+
     /**
-     * Gets the parent session from a session.
-     *
-     * @param session the base session
-     * @return the parent session, or null if not available
+     * In-memory workflow storage.
      */
-    private BaseSession getParent(BaseSession session) {
-        if (session instanceof WorkflowSession workflowSession) {
-            return workflowSession.getParent();
+    private static class InMemoryWorkflowStorage {
+        private final Map<String, Map<String, Object>> stateBlobs = new ConcurrentHashMap<>();
+        private final Map<String, Map<String, Object>> stateUpdatesBlobs = new ConcurrentHashMap<>();
+
+        void save(String workflowId, BaseSession session) {
+            Map<String, Object> state = session.state().getState();
+            if (state != null) {
+                stateBlobs.put(workflowId, deepCopyMap(state));
+            }
+
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                stateUpdatesBlobs.put(workflowId, deepCopyMap(workflowState.getUpdates()));
+            }
         }
-        return null;
+
+        void recover(String workflowId, BaseSession session, InteractiveInput inputs) {
+            Map<String, Object> state = stateBlobs.get(workflowId);
+            if (state != null) {
+                session.state().setState(deepCopyMap(state));
+            }
+
+            if (inputs != null) {
+                processInteractiveInputs(session, inputs);
+            }
+
+            Map<String, Object> updates = stateUpdatesBlobs.get(workflowId);
+            if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.setUpdates(deepCopyMap(updates));
+            }
+        }
+
+        void recover(String workflowId, BaseSession session) {
+            recover(workflowId, session, null);
+        }
+
+        void clear(String workflowId) {
+            stateBlobs.remove(workflowId);
+            stateUpdatesBlobs.remove(workflowId);
+        }
+
+        boolean exists(String workflowId) {
+            return stateBlobs.containsKey(workflowId);
+        }
+
+        boolean isEmpty() {
+            return stateBlobs.isEmpty() && stateUpdatesBlobs.isEmpty();
+        }
+
+        @SuppressWarnings("unchecked")
+        private void processInteractiveInputs(BaseSession session, InteractiveInput inputs) {
+            if (inputs.getRawInputs() != null) {
+                if (session.state() instanceof WorkflowCommitState workflowState) {
+                    workflowState.updateAndCommitWorkflowState(
+                            Map.of(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
+                }
+                return;
+            }
+
+            for (Map.Entry<String, Object> entry : inputs.getUserInputs().entrySet()) {
+                NodeSession nodeSession = new NodeSession(session, entry.getKey());
+                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
+                List<Object> inputList;
+                if (interactiveInput instanceof List<?> existingInputs) {
+                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
+                    inputList.addAll((List<Object>) existingInputs);
+                    inputList.add(entry.getValue());
+                } else {
+                    inputList = List.of(entry.getValue());
+                }
+                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
+            }
+
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.commit();
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> deepCopyMap(Map<String, Object> source) {
+            Map<String, Object> copy = new HashMap<>();
+            for (Map.Entry<String, Object> entry : source.entrySet()) {
+                copy.put(entry.getKey(), deepCopyObject(entry.getValue()));
+            }
+            return copy;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Object deepCopyObject(Object value) {
+            if (value instanceof Map<?, ?> map) {
+                Map<String, Object> copy = new HashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    copy.put(String.valueOf(entry.getKey()), deepCopyObject(entry.getValue()));
+                }
+                return copy;
+            }
+            if (value instanceof List<?> list) {
+                List<Object> copy = new ArrayList<>(list.size());
+                for (Object item : list) {
+                    copy.add(deepCopyObject(item));
+                }
+                return copy;
+            }
+            return value;
+        }
     }
 }

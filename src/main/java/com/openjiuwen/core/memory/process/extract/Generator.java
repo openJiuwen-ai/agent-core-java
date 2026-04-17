@@ -1,270 +1,171 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.process.extract;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.utils.Pair;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
-import com.openjiuwen.core.memory.manage.memmodel.BaseMemoryUnit;
-import com.openjiuwen.core.memory.manage.memmodel.MemoryType;
-import com.openjiuwen.core.memory.manage.memmodel.UserProfileUnit;
-import com.openjiuwen.core.memory.manage.memmodel.VariableUnit;
-
+import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
+import com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.core.memory.manage.mem_model.SummaryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Generator for memory units from conversation.
- * Corresponds to Python: process/extract/generation.py Generator
+ * Generates all memory units (variables, summary, fragment) from conversation messages.
  */
 public class Generator {
 
-    private static final LoggerProtocol logger = Loggers.MEMORY;
+    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
-    /**
-     * Mapping from category string to MemoryType.
-     */
-    public static final Map<String, MemoryType> CATEGORY_TO_CLASS = Map.of(
-            "user_profile", MemoryType.USER_PROFILE
-    );
+    private final DataIdManager dataIdGenerator;
 
-    public Generator() {
+    public Generator(DataIdManager dataIdGenerator) {
+        this.dataIdGenerator = dataIdGenerator;
     }
 
-    /**
-     * Generate all memory units based on input.
-     *
-     * @param messages        Current messages
-     * @param config          Agent memory configuration
-     * @param userId          User ID
-     * @param scopeId         Scope ID
-     * @param baseChatModel   Chat model tuple
-     * @param historyMessages History messages
-     * @param messageMemId    Message memory ID
-     * @return CompletableFuture of list of memory units
-     */
-    public CompletableFuture<List<BaseMemoryUnit>> genAllMemory(
-            List<BaseMessage> messages,
-            AgentMemoryConfig config,
-            String userId,
-            String scopeId,
-            Pair<String, Model> baseChatModel,
-            List<BaseMessage> historyMessages,
-            String messageMemId
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (messages == null || config == null || userId == null || scopeId == null || baseChatModel == null) {
-                logger.error("messages, config, user_id, scope_id, model are required parameters");
-                return List.of();
-            }
+    public Map<String, List<BaseMemoryUnit>> genAllMemory(Map<String, Object> kwargs) {
+        @SuppressWarnings("unchecked")
+        List<BaseMessage> messages = (List<BaseMessage>) kwargs.get("messages");
+        AgentMemoryConfig config = (AgentMemoryConfig) kwargs.get("config");
+        @SuppressWarnings("unchecked")
+        Map.Entry<String, Model> model = (Map.Entry<String, Model>) kwargs.get("base_chat_model");
+        String userId = (String) kwargs.get("user_id");
+        String scopeId = (String) kwargs.get("scope_id");
+        @SuppressWarnings("unchecked")
+        List<BaseMessage> historyMessages = (List<BaseMessage>) kwargs.get("history_messages");
+        String messageMemId = (String) kwargs.get("message_mem_id");
+        String timestamp = (String) kwargs.get("timestamp");
+        Integer summaryMaxToken = (Integer) kwargs.get("summary_max_token");
 
-            ExtractMemoryParams extractMemoryParams = new ExtractMemoryParams(
-                    userId,
-                    scopeId,
-                    messages,
-                    historyMessages != null ? historyMessages : List.of(),
-                    baseChatModel
-            );
+        if (messages == null || config == null || userId == null || scopeId == null || model == null) {
+            MEMORY_LOGGER.error("[{}] Messages, config, user_id, scope_id, model are required parameters",
+                    LogEventType.MEMORY_PROCESS);
+            return Map.of();
+        }
 
-            List<BaseMemoryUnit> allMemoryResults = new ArrayList<>();
+        ExtractMemoryParams extractParams = ExtractMemoryParams.builder()
+                .userId(userId)
+                .scopeId(scopeId)
+                .messages(messages)
+                .historyMessages(historyMessages)
+                .baseChatModel(model)
+                .build();
 
-            try {
-                List<VariableUnit> variableUnits = genExtractedData(extractMemoryParams, config).join();
-                allMemoryResults.addAll(variableUnits);
-            } catch (Exception e) {
-                logger.debug("Failed to extract variables: {}", e.getMessage());
-            }
+        Map<String, List<BaseMemoryUnit>> allMemoryResults = new HashMap<>();
 
-            if (!config.isEnableLongTermMem()) {
-                logger.info("Not enable long term memory");
-                return allMemoryResults;
-            }
+        // Analyze memories
+        MemoryAnalyzerResult analyzeRes = MemoryAnalyzer.analyze(
+                messages, historyMessages, model, config,
+                summaryMaxToken != null ? summaryMaxToken : 128);
 
-            try {
-                List<String> categories = Categorizer.getCategories(
-                        messages,
-                        historyMessages != null ? historyMessages : List.of(),
-                        baseChatModel
-                ).join();
-
-                List<BaseMemoryUnit> mergedUnits = categoriesToMemoryUnit(
-                        categories,
-                        extractMemoryParams,
-                        messageMemId,
-                        null
-                ).join();
-                allMemoryResults.addAll(mergedUnits);
-
-            } catch (Exception e) {
-                String msg = e.getMessage();
-                if (e instanceof IllegalArgumentException) {
-                    logger.warning("Get conflict info has value exception: {}", msg);
-                } else {
-                    logger.warning("Get conflict info has exception: {}", msg);
-                }
-            }
-
+        if (analyzeRes == null) {
             return allMemoryResults;
-        });
+        }
+
+        // Process variable results
+        List<VariableUnit> variableUnits = processExtractedData(analyzeRes.getVariables());
+        for (VariableUnit unit : variableUnits) {
+            String memType = unit.getMemType().getValue();
+            allMemoryResults.computeIfAbsent(memType, k -> new ArrayList<>()).add(unit);
+        }
+
+        if (!config.isEnableLongTermMem()) {
+            MEMORY_LOGGER.info("[{}] Not enable long term memory", LogEventType.MEMORY_PROCESS);
+            return allMemoryResults;
+        }
+
+        // Process summary data
+        if (config.isEnableSummaryMemory()) {
+            SummaryUnit summaryUnit = processSummaryData(
+                    userId, messageMemId, analyzeRes.getSummary(), timestamp);
+            String summaryType = summaryUnit.getMemType().getValue();
+            allMemoryResults.computeIfAbsent(summaryType, k -> new ArrayList<>()).add(summaryUnit);
+        }
+
+        if (!analyzeRes.isHasKeyInformation() || !config.isEnableFragmentMemory()) {
+            return allMemoryResults;
+        }
+
+        // Process fragment memories
+        try {
+            List<BaseMemoryUnit> mergedUnits = categoriesToMemoryUnit(extractParams, messageMemId, timestamp);
+            for (BaseMemoryUnit unit : mergedUnits) {
+                String memType = unit.getMemType().getValue();
+                allMemoryResults.computeIfAbsent(memType, k -> new ArrayList<>()).add(unit);
+            }
+        } catch (Exception e) {
+            MEMORY_LOGGER.warn("[{}] Get conflict info has exception: {}",
+                    LogEventType.MEMORY_PROCESS, e.getMessage());
+            return allMemoryResults;
+        }
+
+        MEMORY_LOGGER.info("[{}] Memory units generated successfully", LogEventType.MEMORY_PROCESS);
+        return allMemoryResults;
     }
 
-    /**
-     * Generate extracted variable memory units based on input.
-     *
-     * @param extractMemoryParams Extract memory parameters
-     * @param config              Agent memory configuration
-     * @return CompletableFuture of list of variable units
-     */
-    public CompletableFuture<List<VariableUnit>> genExtractedData(
-            ExtractMemoryParams extractMemoryParams,
-            AgentMemoryConfig config
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<ExtractedData> extractedData = generateExtract(
-                    config,
-                    extractMemoryParams.historyMessages(),
-                    extractMemoryParams.messages(),
-                    extractMemoryParams.baseChatModel()
-            ).join();
+    private List<BaseMemoryUnit> categoriesToMemoryUnit(
+            ExtractMemoryParams params, String messageMemId, String timestamp) {
+        List<BaseMemoryUnit> memoryUnits = new ArrayList<>();
+        Map<String, List<String>> memoryDict = LongTermMemoryExtractor.extractLongTermMemory(params, timestamp);
+        memoryUnits.addAll(getFragmentMemoryUnits(params.getUserId(), messageMemId, memoryDict, timestamp));
+        return memoryUnits;
+    }
 
-            List<VariableUnit> variableUnits = new ArrayList<>();
-            for (ExtractedData tmpData : extractedData) {
-                variableUnits.add(VariableUnit.builder()
-                        .userId(extractMemoryParams.userId())
-                        .scopeId(extractMemoryParams.scopeId())
-                        .variableName(tmpData.key())
-                        .variableMem(tmpData.value())
+    private static List<VariableUnit> processExtractedData(List<VariableResult> variableResults) {
+        List<VariableUnit> variableUnits = new ArrayList<>();
+        if (variableResults == null) return variableUnits;
+        for (VariableResult tmp : variableResults) {
+            if (tmp.getVariableValue() == null || tmp.getVariableValue().isEmpty()) {
+                continue;
+            }
+            variableUnits.add(VariableUnit.builder()
+                    .variableName(tmp.getVariableKey())
+                    .variableMem(tmp.getVariableValue())
+                    .build());
+        }
+        return variableUnits;
+    }
+
+    private SummaryUnit processSummaryData(String userId, String messageMemId,
+                                           String summary, String timestamp) {
+        String memId = dataIdGenerator.generateNextId(userId);
+        return SummaryUnit.builder()
+                .memId(memId)
+                .summary(summary)
+                .messageMemId(messageMemId)
+                .timestamp(timestamp)
+                .build();
+    }
+
+    private List<FragmentMemoryUnit> getFragmentMemoryUnits(
+            String userId, String messageMemId,
+            Map<String, List<String>> memoryDict, String timestamp) {
+        List<FragmentMemoryUnit> fragmentUnits = new ArrayList<>();
+        if (memoryDict == null) return fragmentUnits;
+        for (Map.Entry<String, List<String>> entry : memoryDict.entrySet()) {
+            String fragmentType = entry.getKey();
+            for (String memContent : entry.getValue()) {
+                String memId = dataIdGenerator.generateNextId(userId);
+                fragmentUnits.add(FragmentMemoryUnit.builder()
+                        .fragmentType(fragmentType)
+                        .content(memContent)
+                        .messageMemId(messageMemId)
+                        .timestamp(timestamp)
+                        .memId(memId)
                         .build());
             }
-            return variableUnits;
-        });
-    }
-
-    /**
-     * Generate user profile memory unit based on input.
-     *
-     * @param extractMemoryParams Extract memory parameters
-     * @param messageMemId        Message memory ID
-     * @param userDefine          User-defined profile dimensions
-     * @return CompletableFuture of list of user profile units
-     */
-    public CompletableFuture<List<UserProfileUnit>> genUserProfile(
-            ExtractMemoryParams extractMemoryParams,
-            String messageMemId,
-            Map<String, String> userDefine
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            Map<String, Object> userProfileMemory = UserProfileExtractor.getUserProfile(
-                    extractMemoryParams.messages(),
-                    extractMemoryParams.historyMessages(),
-                    extractMemoryParams.baseChatModel(),
-                    userDefine,
-                    3
-            ).join();
-
-            List<UserProfileUnit> userProfileData = new ArrayList<>();
-
-            for (Map.Entry<String, Object> entry : userProfileMemory.entrySet()) {
-                String profileType = entry.getKey();
-                Object profileList = entry.getValue();
-
-                if (!(profileList instanceof List<?>)) {
-                    logger.warning("User profile extractor output format error: {} is not a list", profileList);
-                    continue;
-                }
-
-                @SuppressWarnings("unchecked")
-                List<String> profiles = (List<String>) profileList;
-                for (String profile : profiles) {
-                    userProfileData.add(UserProfileUnit.builder()
-                            .userId(extractMemoryParams.userId())
-                            .scopeId(extractMemoryParams.scopeId())
-                            .profileType(profileType)
-                            .profileMem(profile)
-                            .messageMemId(messageMemId)
-                            .build());
-                }
-            }
-
-            return userProfileData;
-        });
-    }
-
-    /**
-     * Convert categories to memory units.
-     *
-     * @param categories          List of category strings
-     * @param extractMemoryParams Extract memory parameters
-     * @param messageMemId        Message memory ID
-     * @param userDefine          User-defined profile dimensions
-     * @return CompletableFuture of list of memory units
-     */
-    private CompletableFuture<List<BaseMemoryUnit>> categoriesToMemoryUnit(
-            List<String> categories,
-            ExtractMemoryParams extractMemoryParams,
-            String messageMemId,
-            Map<String, String> userDefine
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<BaseMemoryUnit> memoryUnits = new ArrayList<>();
-
-            for (String category : categories) {
-                if (!CATEGORY_TO_CLASS.containsKey(category)) {
-                    logger.warning("Unsupported memory category: {}, skipped.", category);
-                    continue;
-                }
-
-                MemoryType memClass = CATEGORY_TO_CLASS.get(category);
-                if (memClass == MemoryType.USER_PROFILE) {
-                    List<UserProfileUnit> userProfileUnits = genUserProfile(
-                            extractMemoryParams,
-                            messageMemId,
-                            userDefine
-                    ).join();
-                    memoryUnits.addAll(userProfileUnits);
-                }
-            }
-
-            return memoryUnits;
-        });
-    }
-
-    /**
-     * Generate extract data from config and messages.
-     *
-     * @param config          Agent memory configuration
-     * @param historyMessages History messages
-     * @param messages        Current messages
-     * @param baseChatModel   Chat model tuple
-     * @return CompletableFuture of list of extracted data
-     */
-    private CompletableFuture<List<ExtractedData>> generateExtract(
-            AgentMemoryConfig config,
-            List<BaseMessage> historyMessages,
-            List<BaseMessage> messages,
-            Pair<String, Model> baseChatModel
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            StringBuilder historySummary = new StringBuilder();
-            if (historyMessages != null) {
-                for (BaseMessage msg : historyMessages) {
-                    historySummary.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n");
-                }
-            }
-
-            return ComprehensionExtractor.extract(
-                    messages,
-                    new BaseMessage(historySummary.toString(), ""),
-                    baseChatModel,
-                    config
-            ).join();
-        });
+        }
+        return fragmentUnits;
     }
 }

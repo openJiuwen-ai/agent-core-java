@@ -1,185 +1,257 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.controller.schema.Event;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Intent;
+import com.openjiuwen.core.controller.schema.IntentType;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
+import com.openjiuwen.core.controller.schema.TaskFailedEvent;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.session.AgentSessionApi;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Event handler with intent recognition.
- *
- * <p>Extends {@link EventHandler} by adding an intent recognition step and routing
- * to specific handlers based on the recognized intent.
- *
- * <p>Python reference: {@code modules/intent_recognizer.py::EventHandlerWithIntentRecognition}
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Extends {@link EventHandler} with LLM-based intent recognition,
+ * routing actions by recognized intent type.
+ * <p>
+ * Mirrors Python's {@code EventHandlerWithIntentRecognition}.
  */
-public abstract class EventHandlerWithIntentRecognition extends EventHandler {
+public class EventHandlerWithIntentRecognition extends EventHandler {
 
-    /** The intent recognizer instance. */
-    protected final IntentRecognizer recognizer;
+    private IntentRecognizer recognizer;
+    private IntentRecognizer.ModelProvider modelProvider;
+
+    public EventHandlerWithIntentRecognition(IntentRecognizer.ModelProvider modelProvider) {
+        this.modelProvider = modelProvider;
+    }
 
     /**
-     * Default constructor.
-     *
-     * <p>Creates an {@link IntentRecognizer} with the current dependencies from
-     * the parent {@link EventHandler}. Note: at construction time, all deps are null;
-     * the Controller injects real deps via property setters after construction.
+     * Initialize the recognizer after dependencies are set (config, taskManager, etc.).
      */
-    protected EventHandlerWithIntentRecognition() {
-        super();
+    public void initRecognizer() {
         this.recognizer = new IntentRecognizer(
-            getConfig(),
-            getTaskManager(),
-            getAbilityManager(),
-            getContextEngine()
+                config, taskManager, abilityManager, contextEngine, modelProvider
         );
     }
 
-    /**
-     * Handle input events.
-     *
-     * <p>Recognizes intent from the input and dispatches to the corresponding
-     * handler. Subclasses may override this for custom behavior.
-     *
-     * @param inputs the event handler input
-     * @return a future containing response data (nullable)
-     */
     @Override
-    public CompletableFuture<Map<String, Object>> handleInput(EventHandlerInput inputs) {
-        // Stub — subclasses should implement intent-based routing
-        return CompletableFuture.completedFuture(null);
+    public Map<String, Object> handleInput(EventHandlerInput inputs) {
+        if (recognizer == null) {
+            initRecognizer();
+        }
+
+        List<Intent> intents = recognizer.recognize(inputs.getEvent(), inputs.getSession());
+        List<Thread> threads = new ArrayList<>();
+
+        for (Intent intent : intents) {
+            Thread t = Thread.ofVirtual().start(() -> {
+                switch (intent.getIntentType()) {
+                    case IntentType.CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
+                    case IntentType.PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
+                    case IntentType.RESUME_TASK -> processResumeTaskIntent(intent, inputs.getSession());
+                    case IntentType.CONTINUE_TASK -> processContinueTaskIntent(intent, inputs.getSession());
+                    case IntentType.SUPPLEMENT_TASK -> processSupplementTaskIntent(intent, inputs.getSession());
+                    case IntentType.CANCEL_TASK -> processCancelTaskIntent(intent, inputs.getSession());
+                    case IntentType.MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
+                    default -> processUnknownTaskIntent(intent, inputs.getSession());
+                }
+            });
+            threads.add(t);
+        }
+
+        // Wait for all intent processing threads
+        for (Thread t : threads) {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return null;
     }
 
-    /**
-     * Handle task interaction events.
-     *
-     * @param inputs the event handler input
-     * @return a future containing response data (nullable)
-     */
     @Override
-    public CompletableFuture<Map<String, Object>> handleTaskInteraction(EventHandlerInput inputs) {
-        // Stub — default behavior surfaces interaction to user
-        return CompletableFuture.completedFuture(null);
+    public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
+        if (!(inputs.getEvent() instanceof TaskInteractionEvent)) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Input Event has to be type of TaskInteractionEvent, not "
+                            + inputs.getEvent().getClass().getSimpleName());
+        }
+        TaskInteractionEvent event = (TaskInteractionEvent) inputs.getEvent();
+        inputs.getSession().writeStream(Map.of("interaction", event.getInteraction()));
+        return null;
     }
 
-    /**
-     * Handle task completion events.
-     *
-     * @param inputs the event handler input
-     * @return a future containing response data (nullable)
-     */
     @Override
-    public CompletableFuture<Map<String, Object>> handleTaskCompletion(EventHandlerInput inputs) {
-        // Stub — default behavior surfaces completion information
-        return CompletableFuture.completedFuture(null);
+    public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+        if (!(inputs.getEvent() instanceof TaskCompletionEvent)) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Input Event has to be type of TaskCompletionEvent, not "
+                            + inputs.getEvent().getClass().getSimpleName());
+        }
+        TaskCompletionEvent event = (TaskCompletionEvent) inputs.getEvent();
+        inputs.getSession().writeStream(Map.of("result", event.getTaskResult()));
+        return null;
     }
 
-    /**
-     * Handle task failure events.
-     *
-     * @param inputs the event handler input
-     * @return a future containing response data (nullable)
-     */
     @Override
-    public CompletableFuture<Map<String, Object>> handleTaskFailed(EventHandlerInput inputs) {
-        // Stub — default behavior surfaces error information
-        return CompletableFuture.completedFuture(null);
+    public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
+        if (!(inputs.getEvent() instanceof TaskFailedEvent)) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Input Event has to be type of TaskFailedEvent, not "
+                            + inputs.getEvent().getClass().getSimpleName());
+        }
+        TaskFailedEvent event = (TaskFailedEvent) inputs.getEvent();
+        inputs.getSession().writeStream(Map.of("error_message", event.getErrorMessage()));
+        return null;
     }
 
-    // ==================== Intent Processing Methods ====================
+    // ==================== Intent Processors ====================
 
-    /**
-     * Process CREATE_TASK intent.
-     *
-     * <p>Subclasses should implement custom logic to execute a new task.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected abstract CompletableFuture<Void> processCreateTaskIntent(EventHandlerInput inputs);
-
-    /**
-     * Process PAUSE_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processPauseTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processCreateTaskIntent(Intent intent, AgentSessionApi session) {
+        Task task = new Task();
+        task.setSessionId(session.getSessionId());
+        task.setTaskId(intent.getTargetTaskId());
+        task.setTaskType("default_task_type");
+        task.setDescription(intent.getTargetTaskDescription());
+        task.setPriority(1);
+        task.setContextId(session.getSessionId() + "_" + intent.getTargetTaskId());
+        if (intent.getEvent() instanceof InputEvent) {
+            List<Object> inputList = new ArrayList<>();
+            inputList.add(intent.getEvent());
+            task.setInputs(inputList);
+        }
+        task.setStatus(TaskStatus.SUBMITTED);
+        task.setMetadata(intent.getMetadata());
+        taskManager.addTask(task);
     }
 
-    /**
-     * Process RESUME_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processResumeTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processPauseTaskIntent(Intent intent, AgentSessionApi session) {
+        taskScheduler.pauseTask(intent.getTargetTaskId());
     }
 
-    /**
-     * Process CONTINUE_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processContinueTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processResumeTaskIntent(Intent intent, AgentSessionApi session) {
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
+        if (!tasks.isEmpty()) {
+            Task task = tasks.get(0);
+            if (task.getStatus() == TaskStatus.PAUSED) {
+                task.setStatus(TaskStatus.SUBMITTED);
+                taskManager.updateTask(task);
+            }
+        }
     }
 
-    /**
-     * Process SUPPLEMENT_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processSupplementTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processContinueTaskIntent(Intent intent, AgentSessionApi session) {
+        if (!(intent.getEvent() instanceof InputEvent inputEvent)) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Input Event has to be type of InputEvent, not "
+                            + intent.getEvent().getClass().getSimpleName());
+        }
+
+        List<Object> previousEvents = new ArrayList<>();
+        List<String> contextIds = new ArrayList<>();
+        for (String taskId : intent.getDependTaskId()) {
+            List<Task> oldTasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
+            if (!oldTasks.isEmpty()) {
+                Task oldTask = oldTasks.get(0);
+                if (oldTask.getInputs() != null) {
+                    previousEvents.addAll(oldTask.getInputs());
+                }
+                contextIds.add(oldTask.getContextId());
+            }
+        }
+
+        // Add context messages as JsonDataFrame
+        Map<String, Object> contextData = new HashMap<>();
+        for (String ctxId : contextIds) {
+            ModelContext ctx = contextEngine.getContext(ctxId, session.getSessionId());
+            if (ctx != null) {
+                List<BaseMessage> msgs = ctx.getMessages();
+                contextData.put(ctxId, msgs);
+            }
+        }
+        inputEvent.getInputData().add(new DataFrame.JsonDataFrame(contextData));
+
+        previousEvents.add(inputEvent);
+
+        Task task = new Task();
+        task.setSessionId(session.getSessionId());
+        task.setTaskId(intent.getTargetTaskId());
+        task.setTaskType("default_task_type");
+        task.setDescription(intent.getTargetTaskDescription());
+        task.setPriority(1);
+        task.setContextId(session.getSessionId() + "_" + intent.getTargetTaskId());
+        task.setInputs(previousEvents);
+        task.setStatus(TaskStatus.SUBMITTED);
+        task.setMetadata(intent.getMetadata());
+        taskManager.addTask(task);
     }
 
-    /**
-     * Process CANCEL_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processCancelTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processSupplementTaskIntent(Intent intent, AgentSessionApi session) {
+        if (intent.getIntentType() != IntentType.SUPPLEMENT_TASK) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Intent type must be SUPPLEMENT_TASK");
+        }
+
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
+        if (!tasks.isEmpty()) {
+            Task task = tasks.get(0);
+            taskScheduler.pauseTask(intent.getTargetTaskId());
+            task.setDescription(task.getDescription() + "\n\n任务补充信息:\n" + intent.getSupplementaryInfo());
+            task.setStatus(TaskStatus.SUBMITTED);
+            taskManager.updateTask(task);
+        }
     }
 
-    /**
-     * Process MODIFY_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processModifyTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processCancelTaskIntent(Intent intent, AgentSessionApi session) {
+        if (intent.getIntentType() != IntentType.CANCEL_TASK) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Intent type must be CANCEL_TASK");
+        }
+        taskScheduler.cancelTask(intent.getTargetTaskId());
     }
 
-    /**
-     * Process SWITCH_TASK intent.
-     *
-     * @param inputs the event handler input
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processSwitchTaskIntent(EventHandlerInput inputs) {
-        return CompletableFuture.completedFuture(null);
+    private void processModifyTaskIntent(Intent intent, AgentSessionApi session) {
+        if (intent.getIntentType() != IntentType.MODIFY_TASK) {
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Intent type must be MODIFY_TASK");
+        }
+        taskScheduler.cancelTask(intent.getTargetTaskId());
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
+        if (!tasks.isEmpty()) {
+            Task task = tasks.get(0);
+            task.setDescription(intent.getTargetTaskDescription());
+            List<Object> inputs = task.getInputs();
+            if (inputs == null) {
+                inputs = new ArrayList<>();
+            }
+            inputs.add(intent.getEvent());
+            task.setInputs(inputs);
+            task.setStatus(TaskStatus.SUBMITTED);
+            taskManager.updateTask(task);
+        }
     }
 
-    /**
-     * Process UNKNOWN_TASK intent.
-     *
-     * @param event the input event
-     * @return a future that completes when processing is done
-     */
-    protected CompletableFuture<Void> processUnknownTaskIntent(Event event) {
-        return CompletableFuture.completedFuture(null);
+    private void processUnknownTaskIntent(Intent intent, AgentSessionApi session) {
+        if (intent.getIntentType() != IntentType.UNKNOWN_TASK) {
+            throw new IllegalArgumentException("Intent type must be UNKNOWN_TASK");
+        }
+        session.writeStream(Map.of("clarification_prompt", intent.getClarificationPrompt()));
     }
 }
-

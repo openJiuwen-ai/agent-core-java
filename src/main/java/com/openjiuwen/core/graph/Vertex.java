@@ -1,0 +1,826 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.graph;
+
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.graph.stream_actor.ActorManager;
+import com.openjiuwen.core.graph.stream_actor.StreamConsumer;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.interaction.WorkflowInteraction;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamEmitter;
+import com.openjiuwen.core.session.stream.StreamSchema;
+import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
+import com.openjiuwen.core.session.utils.SessionUtils;
+import com.openjiuwen.core.workflow.component.ComponentAbility;
+import com.openjiuwen.core.workflow.component.IOConfig;
+import com.openjiuwen.core.workflow.component.NodeConfig;
+import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+/**
+ * Vertex is the execution wrapper for a graph node. It manages node initialization,
+ * execution lifecycle (invoke/stream/collect/transform abilities), stream coordination,
+ * tracing, and end-node handling.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.vertex.Vertex}.
+ * In Java, async patterns use Virtual Threads and CompletableFuture instead of asyncio.
+ */
+public class Vertex extends AtomicNode implements StreamConsumer {
+
+    private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
+
+    private static final ExecutorService VIRTUAL_EXECUTOR =
+            Executors.newVirtualThreadPerTaskExecutor();
+
+    private final String nodeId;
+    private final Executable<Object, Object> executable;
+
+    private Object context;
+    private NodeSession session;
+    private int streamCalledTimeout = 10;
+    private CompletableFuture<Object> streamDone;
+    private int callCount = 0;
+    private int streamCallCount = 0;
+    private boolean isEndNode = false;
+    private volatile boolean isStarted = false;
+    private volatile boolean isCallStarted = false;
+    private NodeConfig nodeConfig;
+    private List<ComponentAbility> componentAbility;
+    private boolean hasStreamCall = false;
+    private boolean hasCall = false;
+    private List<String> sourceId = new ArrayList<>();
+    private Map<String, Object> logMessage = new HashMap<>();
+    private boolean isFirstInit = true;
+
+    @SuppressWarnings("unchecked")
+    public Vertex(String nodeId, Executable<?, ?> executable) {
+        this.nodeId = nodeId;
+        this.executable = (Executable<Object, Object>) executable;
+        this.streamDone = new CompletableFuture<>();
+    }
+
+    /**
+     * Initialize the vertex with a session and optional context.
+     *
+     * @param session the base session
+     * @param kwargs  additional arguments (e.g., "context")
+     * @return true if initialization succeeded
+     */
+    public boolean init(BaseSession session, Map<String, Object> kwargs) {
+        this.session = new NodeSession(session, this.nodeId, executable.getClass().getSimpleName());
+        this.context = kwargs != null ? kwargs.get("context") : null;
+
+        // Get stream call timeout from config
+        if (session.config() != null) {
+            Object timeout = session.config().getEnv(SessionConstants.COMP_STREAM_CALL_TIMEOUT_KEY);
+            if (timeout instanceof Number) {
+                this.streamCalledTimeout = ((Number) timeout).intValue();
+            }
+        }
+
+        // Get node config and determine abilities
+        Object rawConfig = this.session.nodeConfig();
+        if (rawConfig instanceof NodeConfig) {
+            this.nodeConfig = (NodeConfig) rawConfig;
+        }
+
+        if (nodeConfig != null && nodeConfig.getAbilities() != null && !nodeConfig.getAbilities().isEmpty()) {
+            this.componentAbility = nodeConfig.getAbilities();
+        } else {
+            this.componentAbility = List.of(ComponentAbility.INVOKE);
+        }
+
+        this.hasStreamCall = !streamAbilities().isEmpty();
+        this.hasCall = componentAbility.size() > streamAbilities().size();
+
+        this.logMessage = new HashMap<>();
+        logMessage.put("graph_id", this.session.workflowId());
+        logMessage.put("node_id", this.nodeId);
+
+        if (isFirstInit) {
+            List<String> abilityNames = componentAbility.stream()
+                    .map(ComponentAbility::name)
+                    .collect(Collectors.toList());
+            logger.info("Initialized node [{}], abilities is {}",
+                    this.nodeId, abilityNames);
+            isFirstInit = false;
+        }
+
+        boolean hasStreamInputs = hasStreamCall
+                && nodeConfig != null
+                && nodeConfig.getStreamIoConfigs() != null
+                && nodeConfig.getStreamIoConfigs().getInputsSchema() != null;
+
+        if (hasStreamInputs && executable instanceof MixModeAware) {
+            ((MixModeAware) executable).setMix();
+        }
+
+        this.isStarted = false;
+        return true;
+    }
+
+    /**
+     * Main entry point - called by the Pregel engine.
+     * Mirrors Python's {@code __call__(state, config)}.
+     *
+     * @param state  the graph state
+     * @param config execution config
+     * @return a map with source_node_id
+     * @throws Exception on execution failure
+     */
+    public Map<String, Object> call(GraphNodeState state, Object config) throws Exception {
+        logger.info("Begin to call batch-in node [{}]", nodeId);
+        try {
+            if (executable.postCommit()) {
+                Map<String, Object> kwargs = new HashMap<>();
+                kwargs.put("config", config);
+                kwargs.put("session", session);
+                atomicInvoke(kwargs);
+            } else {
+                doCall(config);
+            }
+            logger.info("Succeed to call batch-in node [{}]", nodeId);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("source_node_id", List.of(nodeId));
+            return result;
+
+        } catch (Exception e) {
+            if (session.tracer() != null) {
+                traceError(e);
+            }
+            if (e instanceof BaseError) {
+                BaseError be = (BaseError) e;
+                logger.error("Failed to call batch-in node [{}], code={}, msg={}",
+                        nodeId, be.getCode(), be.getMessage());
+            } else if (e instanceof GraphInterrupt) {
+                logger.info("Interrupt to call batch-in node [{}]", nodeId);
+            } else {
+                logger.error("Failed to call batch-in node [{}]", nodeId, e);
+            }
+            throw e;
+        } finally {
+            callCount++;
+            isStarted = false;
+            isCallStarted = false;
+        }
+    }
+
+    @Override
+    protected Object doAtomicInvoke(Map<String, Object> kwargs) {
+        try {
+            return doCall(kwargs.get("config"));
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            }
+            throw new RuntimeException(e);
+        }
+    }
+
+    // ---- Core Execution ----
+
+    /**
+     * Execute the node's abilities (invoke/stream, then wait for stream-in).
+     *
+     * @param config execution configuration
+     * @return null
+     * @throws Exception on execution failure
+     */
+    private Object doCall(Object config) throws Exception {
+        throwIfInterrupted();
+        // 1. Check whether the node is initialized
+        if (session == null || executable == null) {
+            throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR,
+                    "reason", "node is not initialized", "node_id", nodeId);
+        }
+
+        // 2. Execute node 'batch-in' abilities (INVOKE and STREAM)
+        boolean isSubgraph = executable.graphInvoker();
+        ComponentAbility currentAbility = null;
+        try {
+            List<ComponentAbility> callAbilities = componentAbility.stream()
+                    .filter(a -> a == ComponentAbility.INVOKE || a == ComponentAbility.STREAM)
+                    .collect(Collectors.toList());
+
+            for (ComponentAbility ability : callAbilities) {
+                throwIfInterrupted();
+                currentAbility = ability;
+                runExecutable(ability, isSubgraph, config, null);
+            }
+
+            if (callAbilities.isEmpty()) {
+                traceComponentBegin();
+            }
+        } catch (ExecutionError e) {
+            logger.error("Node ability call failed, node_id={}, ability={}",
+                    nodeId, currentAbility != null ? currentAbility.name() : null);
+            throw e;
+        }
+
+        // 3. Wait for stream-in abilities to complete
+        if (streamCalled()) {
+            int timeout = streamCalledTimeout > 0 ? streamCalledTimeout : 0;
+            try {
+                Object result;
+                if (timeout > 0) {
+                    result = streamDone.get(timeout, TimeUnit.SECONDS);
+                } else {
+                    result = streamDone.get();
+                }
+                if (result instanceof Exception) {
+                    throw (Exception) result;
+                }
+            } catch (TimeoutException e) {
+                throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_TIMEOUT,
+                        "timeout", String.valueOf(timeout), "node_id", nodeId);
+            }
+        } else if (hasStreamCall && !isEndNode) {
+            throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
+                    "reason", "no stream data in", "node_id", nodeId);
+        }
+
+        // 4. Send end tracer frame
+        traceComponentDone();
+        return null;
+    }
+
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Vertex execution cancelled");
+        }
+    }
+
+    // ---- Ability Execution ----
+
+    /**
+     * Run the executable with a specific ability.
+     *
+     * @param ability    the component ability to execute
+     * @param isSubgraph whether the executable is a subgraph
+     * @param config     execution config
+     * @param latch      optional latch to signal when stream-in is ready
+     * @throws Exception on execution failure
+     */
+    private void runExecutable(ComponentAbility ability, boolean isSubgraph,
+                               Object config, CountDownLatch latch) throws Exception {
+        try {
+            logger.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
+
+            switch (ability) {
+                case INVOKE:
+                    executeInvoke(isSubgraph, config);
+                    break;
+                case STREAM:
+                    executeStream(isSubgraph, config);
+                    break;
+                case COLLECT:
+                    executeCollect(isSubgraph, latch);
+                    break;
+                case TRANSFORM:
+                    executeTransform(isSubgraph, latch);
+                    break;
+                default:
+                    break;
+            }
+
+            logger.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
+        } catch (BaseError e) {
+            logger.error("Failed to call node [{}] ability [{}], code={}, msg={}",
+                    nodeId, ability.name(), e.getCode(), e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
+            GraphInterrupt interrupt = unwrapGraphInterrupt(e);
+            if (interrupt != null) {
+                logger.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+                throw interrupt;
+            }
+            logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    "ability", ability.name(), "comp", nodeId,
+                    "reason", e.toString(), "workflow", session.workflowId());
+        } catch (Exception e) {
+            logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    "ability", ability.name(), "comp", nodeId,
+                    "reason", e.toString(), "workflow", session.workflowId());
+        } finally {
+            if (latch != null) {
+                latch.countDown();
+            }
+        }
+    }
+
+    private void executeInvoke(boolean isSubgraph, Object config) {
+        Map<String, Object> batchInputs = preInvoke();
+        logger.debug("Prepare inputs for [{}] ability [INVOKE]", nodeId);
+        Object inputs = batchInputs;
+        if (isSubgraph) {
+            Map<String, Object> wrappedInputs = new HashMap<>();
+            wrappedInputs.put(Constant.INPUTS_KEY, batchInputs);
+            wrappedInputs.put(Constant.CONFIG_KEY, config);
+            inputs = wrappedInputs;
+        }
+        Object results = executable.onInvoke(inputs, session, context);
+        results = postInvoke(results);
+        logger.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
+    }
+
+    private void executeStream(boolean isSubgraph, Object config) {
+        Map<String, Object> batchInputs = preInvoke();
+        logger.debug("Prepare inputs for [{}] ability [STREAM]", nodeId);
+        Object inputs = batchInputs;
+        if (isSubgraph) {
+            Map<String, Object> wrappedInputs = new HashMap<>();
+            wrappedInputs.put(Constant.INPUTS_KEY, batchInputs);
+            wrappedInputs.put(Constant.CONFIG_KEY, config);
+            inputs = wrappedInputs;
+        }
+        Iterator<Object> resultIter = executable.onStream(inputs, session, context);
+        postStream(resultIter, ComponentAbility.STREAM);
+    }
+
+    private void executeCollect(boolean isSubgraph, CountDownLatch latch) {
+        Object collectInputs = preStream(ComponentAbility.COLLECT);
+        if (latch != null) {
+            latch.countDown();
+        }
+        Object batchOutput = executable.onCollect(collectInputs, session, context);
+        Object results = postInvoke(batchOutput);
+        logger.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
+    }
+
+    private void executeTransform(boolean isSubgraph, CountDownLatch latch) {
+        Object transformInputs = preStream(ComponentAbility.TRANSFORM);
+        if (latch != null) {
+            latch.countDown();
+        }
+        Iterator<Object> outputIter = executable.onTransform(transformInputs, session, context);
+        postStream(outputIter, ComponentAbility.TRANSFORM);
+    }
+
+    // ---- Pre/Post Processing ----
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> preInvoke() {
+        traceComponentBegin();
+        Object inputsSchema = null;
+        if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
+            inputsSchema = nodeConfig.getIoConfigs().getInputsSchema();
+        }
+
+        Map<String, Object> inputs = null;
+        if (inputsSchema != null && session.state() instanceof WorkflowStateCollection) {
+            WorkflowStateCollection stateCollection = (WorkflowStateCollection) session.state();
+            if (inputsSchema instanceof Map) {
+                inputs = (Map<String, Object>) stateCollection.getInputs(inputsSchema);
+            } else {
+                inputs = (Map<String, Object>) stateCollection.getInputsByTransformer(inputsSchema);
+            }
+        }
+
+        traceComponentInputs(inputs);
+        return inputs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object postInvoke(Object results) {
+        Object outputsSchema = null;
+        if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
+            outputsSchema = nodeConfig.getIoConfigs().getOutputsSchema();
+        }
+
+        if (outputsSchema != null) {
+            if (outputsSchema instanceof Map) {
+                results = SessionUtils.getBySchema(outputsSchema, (Map<String, Object>) results);
+                if (!isEndNode && results instanceof Map) {
+                    Map<String, Object> resultMap = (Map<String, Object>) results;
+                    resultMap.values().removeIf(java.util.Objects::isNull);
+                }
+            } else {
+                // transformer function
+                if (outputsSchema instanceof java.util.function.Function) {
+                    results = ((java.util.function.Function<Object, Object>) outputsSchema).apply(results);
+                }
+            }
+        }
+
+        // Mix mode: end node with both batch and stream calls
+        boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
+        if (results instanceof Map && isEndMixMode) {
+            Map<String, Object> resultMap = (Map<String, Object>) results;
+            Object outputs = resultMap.get("output");
+            if (outputs != null && !(outputs instanceof List)) {
+                resultMap.put("output", new ArrayList<>(List.of(outputs)));
+            }
+            if (session.state() instanceof WorkflowStateCollection) {
+                Object oldOutputs = ((WorkflowStateCollection) session.state()).getOutputs(nodeId);
+                if (oldOutputs instanceof Map) {
+                    Map<String, Object> oldMap = (Map<String, Object>) oldOutputs;
+                    if (oldMap.get("output") instanceof List && resultMap.get("output") instanceof List) {
+                        ((List<Object>) resultMap.get("output")).addAll((List<Object>) oldMap.get("output"));
+                    }
+                }
+            }
+        }
+
+        if (results != null && session.state() instanceof WorkflowStateCollection) {
+            ((WorkflowStateCollection) session.state()).setOutputs(results);
+        }
+        traceComponentOutputs(results);
+        clearInteractive();
+        return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object preStream(ComponentAbility ability) {
+        traceComponentBegin();
+        ActorManager actorManager = getActorManager();
+        Object inputsSchema = null;
+        if (nodeConfig != null && nodeConfig.getStreamIoConfigs() != null) {
+            inputsSchema = nodeConfig.getStreamIoConfigs().getInputsSchema();
+        }
+        if (!(inputsSchema instanceof Map)) {
+            inputsSchema = null;
+        }
+
+        boolean enableTrace = session.tracer() != null && !executable.skipTrace();
+
+        Consumer<Object> streamCallback = chunk -> {
+            logger.debug("Consume chunk of {}[{}]", nodeId, ability.name());
+            if (enableTrace) {
+                TracerWorkflowUtils.traceComponentStreamInput(session, chunk, false);
+            }
+        };
+
+        if (actorManager != null) {
+            return actorManager.consume(nodeId, ability, inputsSchema, streamCallback);
+        }
+        return Collections.emptyMap();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void postStream(Iterator<Object> resultsIter, ComponentAbility ability) {
+        boolean isEnd = isEndNode;
+        boolean isSubGraph = session.parentId() != null && !session.parentId().isEmpty();
+        ActorManager actorManager = getActorManager();
+
+        Object outputSchema = null;
+        if (nodeConfig != null && nodeConfig.getStreamIoConfigs() != null) {
+            outputSchema = nodeConfig.getStreamIoConfigs().getOutputsSchema();
+        }
+        Object outputTransformer = null;
+        if (!(outputSchema instanceof Map)) {
+            outputTransformer = outputSchema;
+        }
+
+        int endStreamIndex = 0;
+        while (resultsIter != null && resultsIter.hasNext()) {
+            Object chunk = resultsIter.next();
+            Object message;
+            if (outputTransformer == null) {
+                message = (outputSchema != null && actorManager != null)
+                        ? actorManager.getStreamTransform().getByDefaultTransformer(chunk, outputSchema)
+                        : chunk;
+            } else {
+                message = (actorManager != null)
+                        ? actorManager.getStreamTransform().getByDefinedTransformer(chunk, outputTransformer)
+                        : chunk;
+            }
+
+            logger.debug("Produce chunk[{}] from {}[{}]", endStreamIndex, nodeId, ability.name());
+            processChunk(message, isEnd, endStreamIndex, isSubGraph, ability);
+            endStreamIndex++;
+        }
+
+        // Send end frame
+        if (isEnd && isSubGraph) {
+            ActorManager am = getActorManager();
+            if (am != null && am.subWorkflowStream() != null) {
+                sendToSubWorkflowStream(am, StreamEmitter.END_FRAME);
+            }
+        } else if (actorManager != null) {
+            actorManager.endMessage(nodeId, ability);
+        }
+
+        logger.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
+        clearInteractive();
+
+        // LLM stream output writeback: mirrors Python Vertex._post_stream() LLMExecutable handling
+        if (executable instanceof LLMExecutable llmExec) {
+            Map<String, Object> result = llmExec.getStreamOutput();
+            if (result != null && session.state() instanceof WorkflowStateCollection) {
+                ((WorkflowStateCollection) session.state()).setOutputs(result);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void processChunk(Object message, boolean isEnd, int endStreamIndex,
+                              boolean isSubGraph, ComponentAbility ability) {
+        if (isEnd && !isSubGraph) {
+            Object messageStreamData;
+            if (message instanceof StreamSchema) {
+                messageStreamData = message;
+            } else {
+                Map<String, Object> data = new HashMap<>();
+                data.put("type", Constant.END_NODE_STREAM);
+                data.put("index", endStreamIndex);
+                data.put("payload", message);
+                messageStreamData = data;
+            }
+            traceComponentStreamOutput(messageStreamData);
+            if (session.streamWriterManager() != null
+                    && session.streamWriterManager().getOutputWriter() != null) {
+                session.streamWriterManager().getOutputWriter().write(messageStreamData);
+            }
+        } else if (isEnd) {
+            // isEnd && isSubGraph
+            Object messageStreamData = (message instanceof OutputSchema)
+                    ? ((OutputSchema) message).getPayload()
+                    : message;
+            traceComponentStreamOutput(messageStreamData);
+            ActorManager am = getActorManager();
+            if (am != null && am.subWorkflowStream() != null) {
+                sendToSubWorkflowStream(am, messageStreamData);
+            }
+        } else {
+            boolean firstFrame = endStreamIndex == 0;
+            traceComponentStreamOutput(message);
+            ActorManager am = getActorManager();
+            if (am != null) {
+                am.produce(nodeId, message, ability, firstFrame);
+            }
+        }
+    }
+
+    private void sendToSubWorkflowStream(ActorManager actorManager, Object message) {
+        try {
+            actorManager.subWorkflowStream().put(message);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw ErrorHelper.buildError(StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR,
+                    "reason", "interrupted while sending sub-workflow stream message",
+                    "node_id", nodeId);
+        }
+    }
+
+    private GraphInterrupt unwrapGraphInterrupt(Throwable throwable) {
+        if (throwable instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper wrapper) {
+            return wrapper.getGraphInterrupt();
+        }
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof GraphInterrupt interrupt) {
+                return interrupt;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    // ---- Stream Call ----
+
+    /**
+     * Handle stream-in call for stream abilities (COLLECT, TRANSFORM).
+     * Called by the stream actor system.
+     *
+     * @param latch         a latch to signal when stream-in is ready
+     * @param errorCallback callback for error reporting
+     */
+    public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
+        logger.info("Begin to call stream-in node [{}]", nodeId);
+        streamCallCount++;
+        streamDone = new CompletableFuture<>();
+
+        ActorManager actorManager = getActorManager();
+        if (session == null || actorManager == null) {
+            BaseError error = ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
+                    "reason", "queue manager is not initialized", "node_id", nodeId);
+            streamDone.complete(error);
+            logger.warning("Failed to call stream-in node [{}], actor_manager is missing", nodeId);
+            errorCallback.accept(error);
+            return;
+        }
+
+        Exception error = null;
+        List<CompletableFuture<Void>> tasks = new ArrayList<>();
+        try {
+            List<ComponentAbility> callAbilities = streamAbilities();
+            for (ComponentAbility ability : callAbilities) {
+                CountDownLatch abilityLatch = new CountDownLatch(1);
+                CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
+                    try {
+                        runExecutable(ability, false, null, abilityLatch);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }, VIRTUAL_EXECUTOR);
+                tasks.add(task);
+                abilityLatch.await();
+            }
+            latch.countDown();
+
+            // Wait for all tasks to complete
+            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+
+            logger.info("Succeed to call stream-in node [{}]", nodeId);
+        } catch (Exception e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            logger.error("Failed to call stream-in node [{}]", nodeId, cause);
+            error = (cause instanceof Exception) ? (Exception) cause : e;
+            errorCallback.accept(error);
+        } finally {
+            streamDone.complete(error != null ? error : Boolean.TRUE);
+            traceComponentStreamInputSend();
+        }
+    }
+
+    // ---- Helpers ----
+
+    private void clearInteractive() {
+        if (session.state() instanceof WorkflowStateCollection stateCollection) {
+            Object interactiveInput = stateCollection.get(Constant.INTERACTIVE_INPUT);
+            if (interactiveInput != null) {
+                Map<String, Object> clearMap = new HashMap<>();
+                clearMap.put(Constant.INTERACTIVE_INPUT, null);
+                stateCollection.update(clearMap);
+            }
+        }
+    }
+
+    /**
+     * Get stream abilities (COLLECT, TRANSFORM).
+     */
+    private List<ComponentAbility> streamAbilities() {
+        if (componentAbility == null) {
+            return List.of();
+        }
+        return componentAbility.stream()
+                .filter(a -> a == ComponentAbility.COLLECT || a == ComponentAbility.TRANSFORM)
+                .collect(Collectors.toList());
+    }
+
+    private boolean streamCalled() {
+        return streamCallCount == callCount + 1;
+    }
+
+    public boolean isDone() {
+        return callCount == streamCallCount || callCount == streamCallCount + 1;
+    }
+
+    public boolean shouldHandleMessage() {
+        return !streamAbilities().isEmpty();
+    }
+
+    /**
+     * Try to get ActorManager from the session hierarchy.
+     */
+    private ActorManager getActorManager() {
+        // Check if parent session has actor manager
+        BaseSession parentSession = session.parent();
+        if (parentSession != null) {
+            try {
+                java.lang.reflect.Method method = parentSession.getClass().getMethod("actorManager");
+                Object am = method.invoke(parentSession);
+                if (am instanceof ActorManager) {
+                    return (ActorManager) am;
+                }
+            } catch (Exception e) {
+                // Not available on this session type
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reset the vertex for reuse.
+     */
+    public void reset() {
+        callCount = 0;
+        streamCallCount = 0;
+        streamDone.cancel(true);
+        streamDone = new CompletableFuture<>();
+    }
+
+    // ---- Tracing Helpers ----
+
+    private void traceComponentBegin() {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        if (!isStarted) {
+            isStarted = true;
+            TracerWorkflowUtils.traceComponentBegin(session, sourceId);
+        }
+    }
+
+    private void traceComponentInputs(Map<String, Object> inputs) {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        isCallStarted = true;
+        boolean needSend = !hasStreamCall || streamDone.isDone();
+        TracerWorkflowUtils.traceComponentInputs(session, inputs, needSend);
+        if (SUB_WORKFLOW_COMPONENT.equals(executable.componentType())) {
+            TracerWorkflowUtils.registerWorkflowSpanManager(session);
+        }
+    }
+
+    private void traceComponentOutputs(Object outputs) {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        TracerWorkflowUtils.traceComponentOutputs(session, outputs);
+    }
+
+    private void traceComponentDone() {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        TracerWorkflowUtils.traceComponentDone(session);
+    }
+
+    private void traceComponentStreamOutput(Object chunk) {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        TracerWorkflowUtils.traceComponentStreamOutput(session, chunk);
+    }
+
+    private void traceError(Exception error) {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        TracerWorkflowUtils.traceError(session, error);
+    }
+
+    private void traceComponentStreamInputSend() {
+        if (session.tracer() == null || executable.skipTrace()) {
+            return;
+        }
+        if (!hasCall || isCallStarted) {
+            TracerWorkflowUtils.traceComponentStreamInput(session, new HashMap<>(), true);
+        }
+    }
+
+    // ---- Getters ----
+
+    public String getNodeId() {
+        return nodeId;
+    }
+
+    public Executable<Object, Object> getExecutable() {
+        return executable;
+    }
+
+    public NodeSession getSession() {
+        return session;
+    }
+
+    public boolean isEndNode() {
+        return isEndNode;
+    }
+
+    public void setEndNode(boolean endNode) {
+        isEndNode = endNode;
+    }
+
+    /**
+     * Marker interface for executables that support mixed mode (stream + batch).
+     */
+    public interface MixModeAware {
+        void setMix();
+    }
+}

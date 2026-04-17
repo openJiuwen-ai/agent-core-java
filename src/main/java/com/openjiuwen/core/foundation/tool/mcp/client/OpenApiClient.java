@@ -1,27 +1,22 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.mcp.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
-import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.Operation;
-import io.swagger.v3.oas.models.PathItem;
-import io.swagger.v3.oas.models.media.Schema;
-import io.swagger.v3.oas.models.parameters.Parameter;
-import io.swagger.v3.oas.models.parameters.RequestBody;
-import io.swagger.v3.parser.OpenAPIV3Parser;
-import io.swagger.v3.parser.core.models.SwaggerParseResult;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.yaml.snakeyaml.Yaml;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -32,480 +27,413 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * OpenAPI规范客户端
- *
- * <p>解析OpenAPI规范文件（JSON/YAML），将HTTP端点转换为MCP工具。
- * 使用Swagger Parser解析规范，使用OkHttp执行HTTP请求。
- *
- * <p>对应Python: openapi_client.py - OpenApiClient
- *
- * @author OpenJiuwen
- * @since 2026-01-30
+ * OpenAPI-file backed MCP-style client.
+ * <p>
+ * Parses OpenAPI spec files (JSON/YAML) and converts each route into an MCP tool card
+ * with proper parameter schemas, descriptions, and output schemas. Mirrors Python's
+ * {@code OpenApiClient} capabilities including {@code load_conf()}, {@code ToolManager},
+ * parameter schema extraction, and output schema extraction.
  */
 public class OpenApiClient implements McpClient {
 
-    private static final LoggerProtocol logger = LogManager.getLogger("OpenApiClient");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final String serverPath;
-    private final String name;
-    private final OkHttpClient httpClient;
-    private final ToolManager toolManager;
-    private final Map<String, Integer> usedNames;
-    private OpenAPI openApiSpec;
-    private boolean connected = false;
+    private final McpServerConfig config;
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final Map<String, Operation> operations = new LinkedHashMap<>();
+    private final Map<String, Integer> usedNames = new HashMap<>();
 
-    /**
-     * 构造OpenAPI客户端
-     *
-     * @param serverPath OpenAPI规范文件路径（逗号分隔支持多文件）
-     * @param name 客户端名称
-     */
-    public OpenApiClient(String serverPath, String name) {
-        this.serverPath = serverPath;
-        this.name = name;
-        this.httpClient = new OkHttpClient();
-        this.toolManager = new ToolManager();
-        this.usedNames = new HashMap<>();
+    public OpenApiClient(McpServerConfig config) {
+        this.config = config;
     }
 
     @Override
-    public CompletableFuture<Boolean> connect(int retryTimes, Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                String[] files = serverPath.split(",");
-                for (String filePath : files) {
-                    filePath = filePath.trim();
+    public boolean connect(int retryTimes, float timeout) throws Exception {
+        operations.clear();
+        usedNames.clear();
+        for (String rawPath : config.getServerPath().split(",")) {
+            Map<String, Object> spec = loadConf(rawPath.trim());
+            loadSpec(spec, rawPath.trim());
+        }
+        return true;
+    }
 
-                    // 加载配置文件
-                    Map<String, Object> specData = loadConf(filePath);
+    @Override
+    public boolean disconnect(float timeout) {
+        operations.clear();
+        usedNames.clear();
+        return true;
+    }
 
-                    // 使用Swagger Parser解析OpenAPI规范
-                    SwaggerParseResult parseResult = new OpenAPIV3Parser().readContents(
-                            new ObjectMapper().writeValueAsString(specData), null, null);
-                    openApiSpec = parseResult.getOpenAPI();
-                    if (openApiSpec == null) {
-                        logger.error("Invalid OpenAPI spec: " + filePath);
-                        return false;
+    @Override
+    public List<Object> listTools(float timeout) {
+        return new ArrayList<>(operations.values().stream().map(Operation::card).toList());
+    }
+
+    @Override
+    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        Operation operation = operations.get(toolName);
+        if (operation == null) {
+            throw new IllegalArgumentException("OpenAPI tool not found: " + toolName);
+        }
+        String url = resolveUrl(operation, arguments);
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json");
+        if (timeout != McpServerConfig.NO_TIMEOUT && timeout > 0) {
+            builder.timeout(Duration.ofMillis((long) (timeout * 1000)));
+        }
+
+        // Separate path params from body params
+        Map<String, Object> bodyArgs = arguments == null
+                ? Map.of()
+                : new LinkedHashMap<>(arguments);
+        // Remove path parameters from body
+        if (operation.pathParams != null) {
+            for (String pp : operation.pathParams) {
+                bodyArgs.remove(pp);
+            }
+        }
+
+        if ("GET".equals(operation.method)) {
+            // For GET, append remaining args as query params
+            if (!bodyArgs.isEmpty()) {
+                StringBuilder sb = new StringBuilder(url);
+                sb.append(url.contains("?") ? "&" : "?");
+                boolean first = true;
+                for (var entry : bodyArgs.entrySet()) {
+                    if (!first) {
+                        sb.append("&");
                     }
-
-                    // 获取base URL
-                    String baseUrl = "";
-                    if (openApiSpec.getServers() != null && !openApiSpec.getServers().isEmpty()) {
-                        baseUrl = openApiSpec.getServers().get(0).getUrl();
-                    }
-
-                    // 遍历路径，创建工具
-                    if (openApiSpec.getPaths() != null) {
-                        for (Map.Entry<String, PathItem> pathEntry : openApiSpec.getPaths().entrySet()) {
-                            String path = pathEntry.getKey();
-                            PathItem pathItem = pathEntry.getValue();
-                            processPathItem(path, pathItem, baseUrl, timeout);
-                        }
-                    }
+                    sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
+                            .append("=")
+                            .append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
+                    first = false;
                 }
-                connected = true;
-                logger.info("OpenAPI client connected successfully, loaded " + toolManager.size() + " tools");
-                return true;
-            } catch (Exception e) {
-                logger.error("OpenAPI connection failed: " + e.getMessage());
-                return false;
+                builder.uri(URI.create(sb.toString()));
             }
-        });
-    }
-
-    @Override
-    public CompletableFuture<Boolean> disconnect(Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            connected = false;
-            logger.info("OpenAPI client disconnected");
-            return true;
-        });
-    }
-
-    @Override
-    public CompletableFuture<List<McpToolCard>> listTools(Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<McpToolCard> toolsInfo = new ArrayList<>();
-            for (Map.Entry<String, OpenApiToolEntry> entry : toolManager.getTools().entrySet()) {
-                String toolName = entry.getKey();
-                OpenApiToolEntry tool = entry.getValue();
-                McpToolCard card = new McpToolCard(
-                        toolName,
-                        tool.description() != null ? tool.description() : "",
-                        tool.inputSchema() != null ? tool.inputSchema() : Map.of()
-                );
-                card.setServerName(name);
-                toolsInfo.add(card);
-            }
-            return toolsInfo;
-        });
-    }
-
-    @Override
-    public CompletableFuture<Object> callTool(String toolName, Map<String, Object> arguments, Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                Object result = toolManager.callTool(toolName, arguments, httpClient);
-                return result;
-            } catch (Exception e) {
-                throw new JiuWenBaseException(
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                                .replace("{error_msg}", e.getMessage())
-                );
-            }
-        });
-    }
-
-    @Override
-    public CompletableFuture<Optional<McpToolCard>> getToolInfo(String toolName, Duration timeout) {
-        return CompletableFuture.supplyAsync(() -> {
-            OpenApiToolEntry tool = toolManager.getTool(toolName);
-            if (tool == null) {
-                return Optional.empty();
-            }
-            McpToolCard card = new McpToolCard(
-                    toolName,
-                    tool.description() != null ? tool.description() : "",
-                    tool.inputSchema() != null ? tool.inputSchema() : Map.of()
-            );
-            card.setServerName(name);
-            return Optional.of(card);
-        });
-    }
-
-    @Override
-    public boolean isConnected() {
-        return connected;
-    }
-
-    /**
-     * 获取服务器路径
-     */
-    public String getServerPath() {
-        return serverPath;
-    }
-
-    /**
-     * 获取客户端名称
-     */
-    public String getName() {
-        return name;
-    }
-
-    // ==================== 内部方法 ====================
-
-    /**
-     * 处理PathItem，为每个HTTP方法创建工具
-     */
-    private void processPathItem(String path, PathItem pathItem, String baseUrl, Duration timeout) {
-        Map<String, Operation> operations = new LinkedHashMap<>();
-        if (pathItem.getGet() != null) operations.put("GET", pathItem.getGet());
-        if (pathItem.getPost() != null) operations.put("POST", pathItem.getPost());
-        if (pathItem.getPut() != null) operations.put("PUT", pathItem.getPut());
-        if (pathItem.getDelete() != null) operations.put("DELETE", pathItem.getDelete());
-        if (pathItem.getPatch() != null) operations.put("PATCH", pathItem.getPatch());
-
-        for (Map.Entry<String, Operation> opEntry : operations.entrySet()) {
-            String method = opEntry.getKey();
-            Operation operation = opEntry.getValue();
-
-            String toolName = generateToolName(operation, method, path);
-            String uniqueName = getUniqueName(toolName);
-            String description = buildDescription(operation, method, path);
-            Map<String, Object> inputSchema = buildInputSchema(operation);
-
-            OpenApiToolEntry toolEntry = new OpenApiToolEntry(
-                    uniqueName, description, inputSchema,
-                    method, baseUrl + path, operation
-            );
-            toolManager.registerTool(uniqueName, toolEntry);
-        }
-    }
-
-    /**
-     * 从Operation生成工具名称
-     * 对应Python的_generate_tool_name
-     */
-    private String generateToolName(Operation operation, String method, String path) {
-        String name;
-        if (operation.getOperationId() != null && !operation.getOperationId().isEmpty()) {
-            name = operation.getOperationId().split("__")[0];
-        } else if (operation.getSummary() != null && !operation.getSummary().isEmpty()) {
-            name = operation.getSummary();
+            builder.GET();
         } else {
-            name = method.toLowerCase() + "_" + path;
+            builder.method(operation.method,
+                    HttpRequest.BodyPublishers.ofString(
+                            MAPPER.writeValueAsString(bodyArgs), StandardCharsets.UTF_8));
         }
-        // 截断到64个字符
-        if (name.length() > 64) {
-            name = name.substring(0, 64);
-        }
-        return name;
+        HttpResponse<String> response = httpClient.send(builder.build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return response.body();
+    }
+
+    @Override
+    public Optional<Object> getToolInfo(String toolName, float timeout) {
+        return Optional.ofNullable(operations.get(toolName)).map(Operation::card);
+    }
+
+    @Override
+    public String getServerPath() {
+        return config.getServerPath();
     }
 
     /**
-     * 获取唯一名称（处理名称冲突）
-     * 对应Python的_get_unique_name
+     * Load and parse an OpenAPI spec from a file path.
+     * Mirrors Python's {@code load_conf()} function.
+     *
+     * @param filePath path to the JSON/YAML file
+     * @return parsed spec as a Map
+     * @throws Exception if file doesn't exist, is a symlink, or has unsupported format
      */
-    private String getUniqueName(String name) {
-        int count = usedNames.getOrDefault(name, 0) + 1;
-        usedNames.put(name, count);
+    public static Map<String, Object> loadConf(String filePath) throws Exception {
+        Path path = Path.of(filePath).toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("Path not exists: " + path);
+        }
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException("The path is not a file: " + path);
+        }
+        if (Files.isSymbolicLink(path)) {
+            throw new IllegalArgumentException("Symbolic link not allowed: " + path);
+        }
 
+        String content = Files.readString(path, StandardCharsets.UTF_8);
+        String suffix = filePath.toLowerCase();
+
+        Map<String, Object> data;
+        if (suffix.endsWith(".json")) {
+            data = MAPPER.readValue(content, new TypeReference<>() {});
+        } else if (suffix.endsWith(".yaml") || suffix.endsWith(".yml")) {
+            data = new Yaml().load(content);
+        } else {
+            throw new IllegalArgumentException(
+                    "Only supports .json/.yaml/.yml, current extension: " + suffix);
+        }
+
+        if (data == null || !(data instanceof Map)) {
+            throw new IllegalArgumentException("Only support dict type for OpenAPI spec");
+        }
+        return data;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void loadSpec(Map<String, Object> spec, String sourcePath) {
+        String baseUrl = extractBaseUrl(spec);
+        Map<String, Object> paths = spec.get("paths") instanceof Map<?, ?> map ? castMap(map) : Map.of();
+        Map<String, Object> components = spec.get("components") instanceof Map<?, ?> map ? castMap(map) : Map.of();
+        Map<String, Object> componentSchemas = components.get("schemas") instanceof Map<?, ?> map
+                ? castMap(map) : Map.of();
+
+        for (Map.Entry<String, Object> pathEntry : paths.entrySet()) {
+            if (!(pathEntry.getValue() instanceof Map<?, ?> methodsMap)) {
+                continue;
+            }
+            for (Map.Entry<String, Object> methodEntry : castMap(methodsMap).entrySet()) {
+                String httpMethod = methodEntry.getKey().toUpperCase();
+                if (!(methodEntry.getValue() instanceof Map<?, ?> operationMap)) {
+                    continue;
+                }
+                Map<String, Object> operation = castMap(operationMap);
+                Object operationId = operation.get("operationId");
+                String baseName = operationId != null
+                        ? String.valueOf(operationId).split("__")[0]
+                        : (operation.get("summary") != null
+                        ? String.valueOf(operation.get("summary"))
+                        : httpMethod + "_" + pathEntry.getKey().replace('/', '_'));
+                // Truncate to 64 characters
+                if (baseName.length() > 64) {
+                    baseName = baseName.substring(0, 64);
+                }
+                String toolName = getUniqueName(baseName);
+
+                // Build input parameter schema from parameters + requestBody
+                Map<String, Object> inputSchema = buildInputSchema(
+                        operation, pathEntry.getKey(), componentSchemas);
+
+                // Extract output schema from responses
+                Map<String, Object> outputSchema = extractOutputSchema(operation, componentSchemas);
+
+                // Build description
+                String description = buildDescription(operation);
+
+                // Collect path parameter names
+                List<String> pathParams = extractPathParamNames(pathEntry.getKey());
+
+                operations.put(toolName, new Operation(
+                        httpMethod,
+                        pathEntry.getKey(),
+                        baseUrl,
+                        pathParams,
+                        McpToolCard.builder()
+                                .name(toolName)
+                                .description(description)
+                                .serverName(config.getServerName())
+                                .serverId(config.getServerId())
+                                .inputParams(inputSchema)
+                                .build()
+                ));
+            }
+        }
+    }
+
+    private String getUniqueName(String name) {
+        int count = usedNames.merge(name, 1, Integer::sum);
         if (count == 1) {
             return name;
         }
-        String newName = name + "_" + count;
-        logger.debug("Tool name collision: '" + name + "' already used, using '" + newName + "' instead.");
-        return newName;
+        return name + "_" + count;
     }
 
-    /**
-     * 构建工具描述
-     */
-    private String buildDescription(Operation operation, String method, String path) {
-        if (operation.getDescription() != null && !operation.getDescription().isEmpty()) {
-            return operation.getDescription();
-        }
-        if (operation.getSummary() != null && !operation.getSummary().isEmpty()) {
-            return operation.getSummary();
-        }
-        return "Executes " + method + " " + path;
-    }
-
-    /**
-     * 从Operation构建输入Schema
-     */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> buildInputSchema(Operation operation) {
-        Map<String, Object> schema = new HashMap<>();
-        schema.put("type", "object");
-        Map<String, Object> properties = new HashMap<>();
+    private Map<String, Object> buildInputSchema(Map<String, Object> operation,
+                                                  String pathTemplate,
+                                                  Map<String, Object> componentSchemas) {
+        Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
 
-        // 处理路径/查询/头部参数
-        if (operation.getParameters() != null) {
-            for (Parameter param : operation.getParameters()) {
-                Map<String, Object> paramSchema = new HashMap<>();
-                if (param.getSchema() != null) {
-                    paramSchema.put("type", param.getSchema().getType() != null ? param.getSchema().getType() : "string");
-                    if (param.getDescription() != null) {
-                        paramSchema.put("description", param.getDescription());
-                    }
+        // Process parameters (path, query, header)
+        Object paramsObj = operation.get("parameters");
+        if (paramsObj instanceof List<?> params) {
+            for (Object paramObj : params) {
+                if (!(paramObj instanceof Map<?, ?> paramMap)) {
+                    continue;
                 }
-                properties.put(param.getName(), paramSchema);
-                if (Boolean.TRUE.equals(param.getRequired())) {
-                    required.add(param.getName());
+                Map<String, Object> param = castMap(paramMap);
+                String paramName = String.valueOf(param.getOrDefault("name", ""));
+                if (paramName.isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> schema = param.get("schema") instanceof Map<?, ?> s
+                        ? resolveRef(castMap(s), componentSchemas) : new LinkedHashMap<>(Map.of("type", "string"));
+                Object desc = param.get("description");
+                if (desc != null) {
+                    schema.put("description", String.valueOf(desc));
+                }
+                properties.put(paramName, schema);
+                if (Boolean.TRUE.equals(param.get("required"))) {
+                    required.add(paramName);
                 }
             }
         }
 
-        // 处理请求体
-        if (operation.getRequestBody() != null) {
-            RequestBody body = operation.getRequestBody();
-            if (body.getContent() != null && body.getContent().get("application/json") != null) {
-                Schema<?> bodySchema = body.getContent().get("application/json").getSchema();
-                if (bodySchema != null && bodySchema.getProperties() != null) {
-                    for (Map.Entry<String, Schema> propEntry : bodySchema.getProperties().entrySet()) {
-                        Map<String, Object> propSchema = new HashMap<>();
-                        propSchema.put("type", propEntry.getValue().getType() != null ?
-                                propEntry.getValue().getType() : "string");
-                        if (propEntry.getValue().getDescription() != null) {
-                            propSchema.put("description", propEntry.getValue().getDescription());
+        // Process requestBody
+        Object requestBodyObj = operation.get("requestBody");
+        if (requestBodyObj instanceof Map<?, ?> requestBody) {
+            Map<String, Object> bodyMap = castMap(requestBody);
+            Object contentObj = bodyMap.get("content");
+            if (contentObj instanceof Map<?, ?> contentMap) {
+                for (var contentEntry : castMap(contentMap).entrySet()) {
+                    if (contentEntry.getValue() instanceof Map<?, ?> mediaType) {
+                        Map<String, Object> mtMap = castMap(mediaType);
+                        Object schemaObj = mtMap.get("schema");
+                        if (schemaObj instanceof Map<?, ?> schemaMap) {
+                            Map<String, Object> resolved = resolveRef(castMap(schemaMap), componentSchemas);
+                            // Flatten body properties into the top-level schema
+                            Object bodyProps = resolved.get("properties");
+                            if (bodyProps instanceof Map<?, ?> bpMap) {
+                                for (var bp : castMap(bpMap).entrySet()) {
+                                    Object propVal = bp.getValue();
+                                    Map<String, Object> propSchema = (propVal instanceof Map<?, ?> pm)
+                                            ? resolveRef(castMap(pm), componentSchemas)
+                                            : new LinkedHashMap<>(Map.of("type", "string"));
+                                    properties.put(bp.getKey(), propSchema);
+                                }
+                            }
+                            Object bodyRequired = resolved.get("required");
+                            if (bodyRequired instanceof List<?> reqList) {
+                                for (Object r : reqList) {
+                                    required.add(String.valueOf(r));
+                                }
+                            }
                         }
-                        properties.put(propEntry.getKey(), propSchema);
-                    }
-                    if (bodySchema.getRequired() != null) {
-                        required.addAll(bodySchema.getRequired());
+                        break; // Use first content type
                     }
                 }
             }
         }
 
-        schema.put("properties", properties);
+        Map<String, Object> inputSchema = new LinkedHashMap<>();
+        inputSchema.put("type", "object");
+        inputSchema.put("properties", properties);
         if (!required.isEmpty()) {
-            schema.put("required", required);
+            inputSchema.put("required", required);
         }
-        return schema;
+        return inputSchema;
     }
 
-    // ==================== 静态工具方法 ====================
-
-    /**
-     * 加载配置文件（JSON/YAML）
-     * 对应Python的load_conf函数
-     *
-     * @param file 文件路径
-     * @return 解析后的Map
-     */
     @SuppressWarnings("unchecked")
-    static Map<String, Object> loadConf(String file) {
-        Path path = Path.of(file).toAbsolutePath().normalize();
-
-        if (!Files.exists(path)) {
-            throw new JiuWenBaseException(
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                            .replace("{error_msg}", "path not exists: " + path)
-            );
+    private Map<String, Object> extractOutputSchema(Map<String, Object> operation,
+                                                     Map<String, Object> componentSchemas) {
+        Object responsesObj = operation.get("responses");
+        if (!(responsesObj instanceof Map<?, ?> responses)) {
+            return Map.of();
         }
-        if (!Files.isRegularFile(path)) {
-            throw new JiuWenBaseException(
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                            .replace("{error_msg}", "the " + path + " is not a file")
-            );
-        }
-        if (Files.isSymbolicLink(path)) {
-            throw new JiuWenBaseException(
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                            .replace("{error_msg}", "symbolic link not allowed: " + path)
-            );
-        }
-
-        String suffix = "";
-        String fileName = path.getFileName().toString();
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex >= 0) {
-            suffix = fileName.substring(dotIndex).toLowerCase();
-        }
-
-        try {
-            String content = Files.readString(path);
-            Object data;
-
-            if (".json".equals(suffix)) {
-                data = new ObjectMapper().readValue(content, Map.class);
-            } else if (".yaml".equals(suffix) || ".yml".equals(suffix)) {
-                data = new Yaml().load(content);
-            } else {
-                throw new JiuWenBaseException(
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                                .replace("{error_msg}",
-                                        "only supports .json/.yaml/.yml, current extension: " + suffix)
-                );
+        // Look for 200 or 201 response first, then any 2xx
+        Map<String, Object> responseMap = castMap(responses);
+        Map<String, Object> successResponse = null;
+        for (String code : List.of("200", "201")) {
+            if (responseMap.get(code) instanceof Map<?, ?> r) {
+                successResponse = castMap(r);
+                break;
             }
-
-            if (!(data instanceof Map)) {
-                throw new JiuWenBaseException(
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                        StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                                .replace("{error_msg}", "only support dict type: " + data.getClass().getName())
-                );
-            }
-            return (Map<String, Object>) data;
-        } catch (JiuWenBaseException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new JiuWenBaseException(
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getCode(),
-                    StatusCode.PLUGIN_EXECUTION_RUNTIME_ERROR.getMessage()
-                            .replace("{error_msg}", e.getMessage())
-            );
         }
+        if (successResponse == null) {
+            for (var entry : responseMap.entrySet()) {
+                if (entry.getKey().startsWith("2") && entry.getValue() instanceof Map<?, ?> r) {
+                    successResponse = castMap(r);
+                    break;
+                }
+            }
+        }
+        if (successResponse == null) {
+            return Map.of();
+        }
+        Object contentObj = successResponse.get("content");
+        if (!(contentObj instanceof Map<?, ?> contentMap)) {
+            return Map.of();
+        }
+        for (var contentEntry : castMap(contentMap).entrySet()) {
+            if (contentEntry.getValue() instanceof Map<?, ?> mediaType) {
+                Object schemaObj = castMap(mediaType).get("schema");
+                if (schemaObj instanceof Map<?, ?> schemaMap) {
+                    return resolveRef(castMap(schemaMap), componentSchemas);
+                }
+            }
+        }
+        return Map.of();
     }
 
-    // ==================== 内部类 ====================
-
-    /**
-     * OpenAPI工具条目
-     */
-    record OpenApiToolEntry(
-            String name,
-            String description,
-            Map<String, Object> inputSchema,
-            String method,
-            String url,
-            Operation operation
-    ) {}
-
-    /**
-     * 工具管理器
-     * 对应Python的ToolManager
-     */
-    static class ToolManager {
-        private final Map<String, OpenApiToolEntry> tools = new LinkedHashMap<>();
-
-        void registerTool(String name, OpenApiToolEntry tool) {
-            tools.put(name, tool);
+    private static String buildDescription(Map<String, Object> operation) {
+        Object description = operation.get("description");
+        Object summary = operation.get("summary");
+        if (description != null && !String.valueOf(description).isBlank()) {
+            return String.valueOf(description);
         }
-
-        OpenApiToolEntry getTool(String name) {
-            return tools.get(name);
+        if (summary != null && !String.valueOf(summary).isBlank()) {
+            return String.valueOf(summary);
         }
+        return "";
+    }
 
-        Map<String, OpenApiToolEntry> getTools() {
-            return tools;
-        }
-
-        int size() {
-            return tools.size();
-        }
-
-        /**
-         * 调用工具（执行HTTP请求）
-         */
-        Object callTool(String toolName, Map<String, Object> arguments, OkHttpClient httpClient) {
-            OpenApiToolEntry tool = tools.get(toolName);
-            if (tool == null) {
-                return null;
+    private static List<String> extractPathParamNames(String pathTemplate) {
+        List<String> params = new ArrayList<>();
+        int start = pathTemplate.indexOf('{');
+        while (start >= 0) {
+            int end = pathTemplate.indexOf('}', start);
+            if (end > start) {
+                params.add(pathTemplate.substring(start + 1, end));
             }
-            try {
-                // 构建URL（替换路径参数）
-                String url = tool.url();
-                if (arguments != null) {
-                    for (Map.Entry<String, Object> arg : arguments.entrySet()) {
-                        url = url.replace("{" + arg.getKey() + "}", String.valueOf(arg.getValue()));
-                    }
-                }
+            start = pathTemplate.indexOf('{', end + 1);
+        }
+        return params;
+    }
 
-                Request.Builder requestBuilder = new Request.Builder().url(url);
-
-                switch (tool.method().toUpperCase()) {
-                    case "GET":
-                        requestBuilder.get();
-                        break;
-                    case "POST":
-                        requestBuilder.post(buildRequestBody(arguments));
-                        break;
-                    case "PUT":
-                        requestBuilder.put(buildRequestBody(arguments));
-                        break;
-                    case "DELETE":
-                        requestBuilder.delete();
-                        break;
-                    case "PATCH":
-                        requestBuilder.patch(buildRequestBody(arguments));
-                        break;
-                    default:
-                        requestBuilder.get();
-                }
-
-                try (Response response = httpClient.newCall(requestBuilder.build()).execute()) {
-                    if (response.body() != null) {
-                        return response.body().string();
-                    }
-                    return null;
-                }
-            } catch (Exception e) {
-                throw new JiuWenBaseException(
-                        StatusCode.AGENT_TOOL_EXECUTION_ERROR.getCode(),
-                        "call tool " + toolName + " failed: " + e.getMessage()
-                );
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveRef(Map<String, Object> schema, Map<String, Object> componentSchemas) {
+        Object ref = schema.get("$ref");
+        if (ref instanceof String refStr) {
+            // Handle "#/components/schemas/ModelName"
+            String[] parts = refStr.split("/");
+            String refKey = parts[parts.length - 1];
+            Object resolved = componentSchemas.get(refKey);
+            if (resolved instanceof Map<?, ?> resolvedMap) {
+                return new LinkedHashMap<>(castMap(resolvedMap));
             }
         }
+        return new LinkedHashMap<>(schema);
+    }
 
-        private okhttp3.RequestBody buildRequestBody(Map<String, Object> arguments) {
-            try {
-                String json = new ObjectMapper().writeValueAsString(arguments != null ? arguments : Map.of());
-                return okhttp3.RequestBody.create(json, MediaType.parse("application/json"));
-            } catch (Exception e) {
-                return okhttp3.RequestBody.create("{}", MediaType.parse("application/json"));
+    private String resolveUrl(Operation operation, Map<String, Object> arguments) {
+        String path = operation.path;
+        Map<String, Object> args = arguments == null ? Map.of() : arguments;
+        for (Map.Entry<String, Object> entry : args.entrySet()) {
+            path = path.replace("{" + entry.getKey() + "}",
+                    URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
+        }
+        return operation.baseUrl + path;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractBaseUrl(Map<String, Object> spec) {
+        Object serversObj = spec.get("servers");
+        if (serversObj instanceof List<?> servers && !servers.isEmpty()
+                && servers.get(0) instanceof Map<?, ?> server) {
+            Object url = server.get("url");
+            if (url != null) {
+                return String.valueOf(url).replaceAll("/+$", "");
             }
         }
+        Object explicitBaseUrl = config.getParams().get("base_url");
+        return explicitBaseUrl == null ? "" : String.valueOf(explicitBaseUrl).replaceAll("/+$", "");
+    }
+
+    private static Map<String, Object> castMap(Map<?, ?> map) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private record Operation(String method, String path, String baseUrl,
+                              List<String> pathParams, McpToolCard card) {
     }
 }

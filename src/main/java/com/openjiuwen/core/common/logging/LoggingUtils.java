@@ -1,171 +1,118 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.logging;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.PathChecker;
 
-import java.nio.file.*;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
- * Logging utility functions
- * 
- * <p>Provides session ID management and log path validation.
- * Uses ThreadLocal for session ID storage to support multi-threaded environments.
- * 
- * @since 0.1.4
+ * Logging utility functions.
+ * <p>
+ * Uses {@link ThreadLocal} (or {@link InheritableThreadLocal}) to maintain trace/session IDs
+ * across threads — the Java equivalent of Python's {@code contextvars.ContextVar}.
  */
 public final class LoggingUtils {
-    
-    private static final ThreadLocal<String> traceIdContext = 
-            ThreadLocal.withInitial(() -> "default_trace_id");
-    
-    private static final int DEFAULT_LOG_MAX_BYTES = 100 * 1024 * 1024; // 100MB
-    
+
+    private static final String DEFAULT_TRACE_ID = "default_trace_id";
+
+    /**
+     * InheritableThreadLocal so that child threads (virtual-thread or platform-thread)
+     * inherit the parent's trace ID automatically.
+     */
+    private static final InheritableThreadLocal<String> TRACE_ID_CONTEXT =
+        new InheritableThreadLocal<>() {
+            @Override
+            protected String initialValue() {
+                return DEFAULT_TRACE_ID;
+            }
+        };
+
     private LoggingUtils() {
-        // Utility class
     }
-    
-    /**
-     * Set trace ID in current thread context
-     * 
-     * @param traceId the trace ID
-     */
+
+    /** Set trace / session ID in current thread context. */
     public static void setSessionId(String traceId) {
-        if (traceId == null) {
-            traceId = "default_trace_id";
-        }
-        traceIdContext.set(traceId);
+        TRACE_ID_CONTEXT.set(traceId != null ? traceId : DEFAULT_TRACE_ID);
     }
-    
-    /**
-     * Get trace ID from current thread context
-     * 
-     * @return the trace ID
-     */
+
+    /** Get trace / session ID from current thread context. */
     public static String getSessionId() {
-        return traceIdContext.get();
+        String id = TRACE_ID_CONTEXT.get();
+        return id != null ? id : DEFAULT_TRACE_ID;
     }
-    
-    /**
-     * Clear trace ID from current thread context
-     * 
-     * <p>Should be called when thread finishes to prevent memory leak.
-     */
+
+    /** Clear the current thread's trace ID (useful for thread-pool cleanup). */
     public static void clearSessionId() {
-        traceIdContext.remove();
+        TRACE_ID_CONTEXT.remove();
     }
-    
+
     /**
-     * Get log max bytes from configuration
-     * 
-     * @param maxBytesConfig the configuration value
-     * @return the max bytes (defaults to 100MB if invalid)
+     * Parse and validate max_bytes config value.
+     *
+     * @param maxBytesConfig raw config value
+     * @return validated max bytes (capped at 100 MB)
+     * @throws IllegalArgumentException if the value is not a valid integer
      */
     public static int getLogMaxBytes(Object maxBytesConfig) {
+        int maxBytes;
         try {
-            int maxBytes = Integer.parseInt(String.valueOf(maxBytesConfig));
-            
-            if (maxBytes <= 0 || maxBytes > DEFAULT_LOG_MAX_BYTES) {
-                return DEFAULT_LOG_MAX_BYTES;
-            }
-            
-            return maxBytes;
+            maxBytes = Integer.parseInt(String.valueOf(maxBytesConfig));
         } catch (NumberFormatException e) {
-            ErrorBuilder.raise(
-                    StatusCode.COMMON_LOG_CONFIG_INVALID,
-                    null,
-                    null,
-                    e,
-                    java.util.Map.of("error_msg", "invalid max_bytes configuration: " + maxBytesConfig)
-            );
-            return DEFAULT_LOG_MAX_BYTES; // unreachable
+            throw new IllegalArgumentException("Invalid max_bytes configuration: " + maxBytesConfig, e);
         }
+        int defaultLogMaxBytes = 100 * 1024 * 1024; // 100 MB
+        if (maxBytes <= 0 || maxBytes > defaultLogMaxBytes) {
+            maxBytes = defaultLogMaxBytes;
+        }
+        return maxBytes;
     }
-    
+
     /**
-     * Normalize and validate log path
-     * 
-     * <p>Checks if path is valid and not sensitive.
-     * 
-     * @param pathValue the path value
-     * @return the normalized path
-     * @throws com.openjiuwen.core.common.exception.BaseError if path is invalid or sensitive
+     * Normalize log path (resolve to real path) and validate it is not a sensitive path.
+     * <p>
+     * Mirrors Python's {@code normalize_and_validate_log_path()}.
+     *
+     * @param pathValue the raw path value (String or Path)
+     * @return the normalized, validated real path string
+     * @throws RuntimeException if the path is invalid, empty, or points to a sensitive location
      */
     public static String normalizeAndValidateLogPath(Object pathValue) {
-        // Validate path type
         if (pathValue == null) {
-            ErrorBuilder.raise(
-                    StatusCode.COMMON_LOG_PATH_INVALID,
-                    null,
-                    null,
-                    null,
-                    java.util.Map.of("error_msg", "path_value is null")
-            );
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the path_value is null");
         }
-        
-        String pathStr = pathValue.toString();
-        
-        if (pathStr.trim().isEmpty()) {
-            ErrorBuilder.raise(
-                    StatusCode.COMMON_LOG_PATH_INVALID,
-                    null,
-                    null,
-                    null,
-                    java.util.Map.of("error_msg", "path_str is empty: " + pathStr)
-            );
+
+        String pathStr = pathValue.toString().trim();
+        if (pathStr.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the path_str is empty");
         }
-        
+
+        String realPath;
         try {
-            // Normalize path
-            Path path = Paths.get(pathStr);
-            String realPath = path.toRealPath(LinkOption.NOFOLLOW_LINKS).toString();
-            
-            // Check if path is sensitive
-            if (PathChecker.checkSensitivePath(realPath)) {
-                ErrorBuilder.raise(
-                        StatusCode.COMMON_LOG_PATH_INVALID,
-                        null,
-                        null,
-                        null,
-                        java.util.Map.of("error_msg", "the path is sensitive: " + realPath)
-                );
-            }
-            
-            return realPath;
-        } catch (InvalidPathException e) {
-            ErrorBuilder.raise(
-                    StatusCode.COMMON_LOG_PATH_INVALID,
-                    null,
-                    null,
-                    e,
-                    java.util.Map.of("error_msg", "invalid path: " + pathStr)
-            );
-        } catch (NoSuchFileException e) {
-            // Path doesn't exist yet - use absolute path
+            Path path = Paths.get(pathStr).toRealPath();
+            realPath = path.toString();
+        } catch (IOException | IllegalArgumentException e) {
             try {
-                Path path = Paths.get(pathStr);
-                return path.toAbsolutePath().normalize().toString();
-            } catch (InvalidPathException ex) {
-                ErrorBuilder.raise(
-                        StatusCode.COMMON_LOG_PATH_INVALID,
-                        null,
-                        null,
-                        ex,
-                        java.util.Map.of("error_msg", "invalid path: " + pathStr)
-                );
+                realPath = Paths.get(pathStr).toAbsolutePath().normalize().toString();
+            } catch (Exception ex) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                        "error_msg", "cannot resolve path: " + pathStr);
             }
-        } catch (Exception e) {
-            ErrorBuilder.raise(
-                    StatusCode.COMMON_LOG_PATH_INVALID,
-                    null,
-                    null,
-                    e,
-                    java.util.Map.of("error_msg", "failed to normalize path: " + pathStr)
-            );
         }
-        
-        return pathStr; // unreachable
+
+        if (PathChecker.isSensitivePath(realPath)) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg", "the real_path is sensitive: " + realPath);
+        }
+
+        return realPath;
     }
 }
-

@@ -1,53 +1,32 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.embedding;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.Map;
 
 /**
- * Embedding model abstract interface.
- * <p>
- * Provides a unified interface for embedding models.
- * Placeholder implementation for memory module dependency.
- * Will be completed when retrieval module is converted.
+ * Embedding model abstraction.
  */
 public interface Embedding {
 
-    /**
-     * Embed query text.
-     *
-     * @param text the text to embed
-     * @return CompletableFuture containing the embedding vector
-     */
-    CompletableFuture<List<Double>> embedQuery(String text);
+    List<Float> embedQuery(String text);
 
-    /**
-     * Embed document texts.
-     *
-     * @param texts the texts to embed
-     * @param batchSize optional batch size
-     * @return CompletableFuture containing list of embedding vectors
-     */
-    CompletableFuture<List<List<Double>>> embedDocuments(List<String> texts, Integer batchSize);
-
-    /**
-     * Embed document texts with default batch size.
-     *
-     * @param texts the texts to embed
-     * @return CompletableFuture containing list of embedding vectors
-     */
-    default CompletableFuture<List<List<Double>>> embedDocuments(List<String> texts) {
-        return embedDocuments(texts, null);
+    default List<Float> embedQuery(String text, Map<String, Object> options) {
+        return embedQuery(text);
     }
 
-    /**
-     * Return embedding dimension.
-     *
-     * @return the dimension of embedding vectors
-     */
-    int getDimension();
-}
+    List<List<Float>> embedDocuments(List<String> texts, Integer batchSize);
 
+    default List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options) {
+        return embedDocuments(texts, batchSize);
+    }
+
+    int getDimension();
+
+    default int getMaxBatchSize() {
+        return 256;
+    }
+}

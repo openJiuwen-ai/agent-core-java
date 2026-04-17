@@ -1,72 +1,82 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.exception;
+
+import com.openjiuwen.core.common.schema.BaseCard;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Tool error
- * 
- * @since 0.1.4
+ * Tool execution error — may carry a {@link BaseCard} reference.
  */
 public class ToolError extends ExecutionError {
-    
-    private Object card;
-    
+
+    private final BaseCard card;
+
+    /**
+     * Creates a ToolError with full details including card reference.
+     *
+     * @param status  the status code
+     * @param msg     optional custom message
+     * @param details optional additional details
+     * @param cause   optional root cause
+     * @param card    the tool card that caused the error
+     * @param params  template parameters for message rendering
+     */
+    public ToolError(StatusCode status, String msg, Object details, Throwable cause,
+                     BaseCard card, Map<String, Object> params) {
+        super(status, msg, mergeCardDetails(details, card), cause, params);
+        this.card = card != null ? card.copy() : null;
+    }
+
+    /**
+     * Creates a ToolError with status and parameters.
+     *
+     * @param status the status code
+     * @param params template parameters for message rendering
+     */
+    public ToolError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+        this.card = null;
+    }
+
+    /**
+     * Creates a ToolError with status only.
+     *
+     * @param status the status code
+     */
     public ToolError(StatusCode status) {
         super(status);
+        this.card = null;
     }
-    
-    public ToolError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
-        super(status, msg, details, cause, params);
-    }
-    
+
     /**
-     * Constructor with card
-     * 
-     * @param status the status code
-     * @param msg custom message
-     * @param details additional details
-     * @param cause the cause exception
-     * @param card the tool card
-     * @param params template parameters
+     * Gets the tool card that caused this error.
+     *
+     * @return the tool card, or null if not available
      */
-    public ToolError(StatusCode status, String msg, Object details, Throwable cause, Object card, Map<String, Object> params) {
-        super(status, msg, enrichDetailsWithCard(details, card), cause, enrichParamsWithCard(params, card));
-        this.card = card;
+    public BaseCard getCard() {
+        return card;
     }
-    
-    private static Object enrichDetailsWithCard(Object details, Object card) {
+
+    private static Object mergeCardDetails(Object details, BaseCard card) {
         if (card == null) {
             return details;
         }
-        
-        if (details == null) {
-            Map<String, Object> newDetails = new HashMap<>();
-            newDetails.put("card", card);
-            return newDetails;
-        }
-        
         if (details instanceof Map) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> detailsMap = new HashMap<>((Map<String, Object>) details);
-            detailsMap.put("card", card);
-            return detailsMap;
+            Map<String, Object> map = new HashMap<>((Map<String, Object>) details);
+            map.put("card", card);
+            return map;
         }
-        
-        return details;
-    }
-    
-    private static Map<String, Object> enrichParamsWithCard(Map<String, Object> params, Object card) {
-        Map<String, Object> result = params != null ? new HashMap<>(params) : new HashMap<>();
-        if (card != null) {
-            result.put("card", card);
+        Map<String, Object> map = new HashMap<>();
+        map.put("card", card);
+        if (details != null) {
+            map.put("original_details", details);
         }
-        return result;
-    }
-    
-    public Object getCard() {
-        return card;
+        return map;
     }
 }
-

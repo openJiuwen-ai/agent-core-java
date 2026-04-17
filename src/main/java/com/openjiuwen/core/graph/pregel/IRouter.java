@@ -1,23 +1,23 @@
-// -*- coding: UTF-8 -*-
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.graph.pregel;
-
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
 /**
- * IRouter接口定义了路由器的行为
+ * Router interface for dispatching messages after a node executes.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.IRouter}.
  */
 public interface IRouter {
 
     /**
-     * 根据源节点分发消息
+     * Dispatch messages from the given source node.
      *
-     * @param sourceNode 源节点名称
-     * @return 包含消息列表的Mono
+     * @param sourceNode the name of the node that just completed
+     * @return list of messages to send
      */
-    Mono<List<Message>> dispatch(String sourceNode);
+    List<Message> dispatch(String sourceNode);
 }
-

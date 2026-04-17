@@ -1,94 +1,48 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.tool.schema;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
 /**
- * 工具信息记录
- * 
- * <p>包含工具的元信息：类型、名称、描述和参数schema。
- * 
- * @param type 工具类型，默认为"function"
- * @param name 工具名称
- * @param description 工具描述
- * @param parameters 参数schema（JSON Schema格式）
- * 
- * @author OpenJiuwen
- * @since 2026-01-29
+ * Tool information descriptor for LLM function calling.
+ * <p>
+ * Mirrors Python's {@code ToolInfo} model from the foundation tool schema.
+ * Follows the OpenAI function calling format.
  */
-public record ToolInfo(
-    String type,
-    String name,
-    String description,
-    Object parameters
-) {
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ToolInfo {
+
+    /** Tool type, defaults to "function". */
+    @Builder.Default
+    private String type = "function";
+
+    /** Tool name. */
+    @Builder.Default
+    private String name = "";
+
+    /** Tool description. */
+    @Builder.Default
+    private String description = "";
+
     /**
-     * 默认构造器（type默认为"function"）
+     * Parameter schema — follows JSON Schema format.
+     * <p>
+     * Example: {@code {"type": "object", "properties": {"query": {"type": "string"}}}}
      */
-    public ToolInfo {
-        if (type == null || type.isEmpty()) {
-            type = "function";
-        }
-        if (name == null) {
-            name = "";
-        }
-        if (description == null) {
-            description = "";
-        }
-        if (parameters == null) {
-            parameters = Map.of();
-        }
-    }
-    
-    /**
-     * 简化构造器（type自动设为"function"）
-     */
-    public ToolInfo(String name, String description, Object parameters) {
-        this("function", name, description, parameters);
-    }
-    
-    /**
-     * 创建一个新的Builder实例。
-     *
-     * @return 新的Builder
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-    
-    /**
-     * ToolInfo的构建器。
-     */
-    public static class Builder {
-        private String type = "function";
-        private String name = "";
-        private String description = "";
-        private Object parameters = Map.of();
-        
-        public Builder type(String type) {
-            this.type = type;
-            return this;
-        }
-        
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
-        
-        public Builder description(String description) {
-            this.description = description;
-            return this;
-        }
-        
-        public Builder parameters(Object parameters) {
-            this.parameters = parameters;
-            return this;
-        }
-        
-        public ToolInfo build() {
-            return new ToolInfo(type, name, description, parameters);
-        }
-    }
+    @Builder.Default
+    private Map<String, Object> parameters = Map.of();
 }
-
-
-

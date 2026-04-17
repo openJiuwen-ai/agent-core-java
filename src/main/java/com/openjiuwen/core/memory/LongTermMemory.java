@@ -1,118 +1,111 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.utils.Pair;
-import com.openjiuwen.core.common.utils.Singleton;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.store.BaseDbStore;
-import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.memory.common.DistributedLock;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.memory.config.MemoryEngineConfig;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
-import com.openjiuwen.core.memory.manage.index.UserProfileManager;
+import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
+import com.openjiuwen.core.memory.manage.index.SummaryManager;
 import com.openjiuwen.core.memory.manage.index.VariableManager;
 import com.openjiuwen.core.memory.manage.index.WriteManager;
-import com.openjiuwen.core.memory.manage.memmodel.BaseMemoryUnit;
-import com.openjiuwen.core.memory.manage.memmodel.DataIdManager;
-import com.openjiuwen.core.memory.manage.memmodel.MemoryType;
-import com.openjiuwen.core.memory.manage.memmodel.MessageAddRequest;
-import com.openjiuwen.core.memory.manage.memmodel.MessageManager;
-import com.openjiuwen.core.memory.manage.memmodel.MessageTables;
-import com.openjiuwen.core.memory.manage.memmodel.ScopeUserMappingManager;
-import com.openjiuwen.core.memory.manage.memmodel.SemanticStore;
-import com.openjiuwen.core.memory.manage.memmodel.SqlDbStore;
-import com.openjiuwen.core.memory.manage.memmodel.UserMemStore;
+import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
+import com.openjiuwen.core.memory.manage.mem_model.DbModel;
+import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.core.memory.manage.mem_model.MessageAddRequest;
+import com.openjiuwen.core.memory.manage.mem_model.MessageManager;
+import com.openjiuwen.core.memory.manage.mem_model.ScopeUserMappingManager;
+import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.search.SearchManager;
 import com.openjiuwen.core.memory.manage.search.SearchParams;
+import com.openjiuwen.core.memory.migration.RunMigrations;
 import com.openjiuwen.core.memory.process.extract.Generator;
 import com.openjiuwen.core.retrieval.embedding.APIEmbedding;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.vectorstore.VectorStore;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
+import com.openjiuwen.spi.store.BaseDbStore;
+import com.openjiuwen.spi.store.BaseKVStore;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
- * Abstract base class for memory engine.
- * <p>
- * Defines the core interface for memory storage and retrieval operations.
- * Provides unified memory management functionality including conversation memory,
- * user variables, semantic search, and persistence.
- * <p>
- * Concrete implementations should handle memory operations across multiple storage
- * backends (KV store, semantic store, database store).
- * <p>
- * Corresponds to Python: long_term_memory.py - LongTermMemory
+ * Main memory engine implementing long-term memory management.
+ * Singleton class managing conversation memory, user variables, semantic search, and persistence.
  */
-@Singleton("LongTermMemory")
 public class LongTermMemory {
 
-    private static final LoggerProtocol logger = Loggers.MEMORY;
+    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter TIMESTAMP_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public static final String DEFAULT_VALUE = "__default__";
     public static final String SCOPE_CONFIG_KEY = "memory_scope_config";
 
     private static volatile LongTermMemory instance;
-    private static final Object LOCK = new Object();
 
-    // Config
+    // config
     private MemoryEngineConfig sysMemConfig;
-    private final Map<String, MemoryScopeConfig> scopeConfig = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, MemoryScopeConfig> scopeConfig = new ConcurrentHashMap<>();
 
-    // Store
+    // stores
     private BaseKVStore kvStore;
-    private SemanticStore semanticStore;
-    private BaseDbStore dbStore;
+    private VectorStore vectorStore;
+    private BaseDbStore<?> dbStore;
 
-    // Managers
+    // managers
     private ScopeUserMappingManager scopeUserMappingManager;
     private MessageManager messageManager;
-    private UserProfileManager userProfileManager;
+    private FragmentMemoryManager userProfileManager;
     private VariableManager variableManager;
     private WriteManager writeManager;
+    private SummaryManager summaryManager;
     private SearchManager searchManager;
     private Generator generator;
 
-    // LLM
-    private Pair<String, Model> baseLlm;
+    // llm
+    private Map.Entry<String, Model> baseLlm;
 
-    // Embedding model cache
-    private final Map<String, Embedding> scopeEmbedding = new ConcurrentHashMap<>();
+    // embedding
+    private Embedding baseEmbed;
+    private final ConcurrentHashMap<String, Embedding> scopeEmbedding = new ConcurrentHashMap<>();
 
-    /**
-     * Private constructor for singleton pattern.
-     */
     private LongTermMemory() {
-        // Initialize with null values
     }
 
     /**
-     * Get the singleton instance.
+     * Gets the singleton instance of LongTermMemory.
      *
-     * @return The singleton LongTermMemory instance
+     * @return the LongTermMemory singleton instance
      */
     public static LongTermMemory getInstance() {
         if (instance == null) {
-            synchronized (LOCK) {
+            synchronized (LongTermMemory.class) {
                 if (instance == null) {
                     instance = new LongTermMemory();
                 }
@@ -122,1006 +115,729 @@ public class LongTermMemory {
     }
 
     /**
-     * Reset the singleton instance. Used for testing.
+     * Reset singleton for testing.
      */
     public static void resetInstance() {
-        synchronized (LOCK) {
+        synchronized (LongTermMemory.class) {
             instance = null;
         }
     }
 
+    // ========================= Store Registration =========================
+
     /**
-     * Register store instances.
+     * Registers storage backends for the memory engine.
      *
-     * @param kvStore        Key-value store for fast structured data access
-     * @param vectorStore    Vector storage for vector-based similarity search
-     * @param dbStore        Database store for persistent data storage
-     * @param embeddingModel Embedding model for semantic search
-     * @return CompletableFuture that completes when registration is done
+     * @param kvStore        the key-value store for persistence
+     * @param vectorStore    the vector store for semantic search
+     * @param dbStore        the database store for structured data
+     * @param embeddingModel the embedding model for vectorization
      */
-    public CompletableFuture<Void> registerStore(BaseKVStore kvStore,
-                                                  VectorStore vectorStore,
-                                                  BaseDbStore dbStore,
-                                                  Embedding embeddingModel) {
+    public void registerStore(BaseKVStore kvStore,
+                              VectorStore vectorStore,
+                              BaseDbStore<?> dbStore,
+                              Embedding embeddingModel) {
         if (kvStore == null) {
-            throw ErrorBuilder.build(
-                    StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "kv store is required, cannot be None"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
+                    "store_type", "kv store", "error_msg", "kv store is required, cannot be None");
+        }
+        this.kvStore = kvStore;
+        this.vectorStore = vectorStore;
+        this.dbStore = dbStore;
+        this.baseEmbed = embeddingModel;
+
+        if (this.dbStore != null) {
+            DbModel.createTables(this.dbStore);
         }
 
-        this.kvStore = kvStore;
-        this.semanticStore = new SemanticStore(vectorStore, embeddingModel);
-        this.dbStore = dbStore;
+        setConfig(new MemoryEngineConfig());
 
-        if (this.semanticStore != null && embeddingModel != null) {
-            // Only temporarily initialize the embedding model of the semantic_store during the register_store process
-            this.semanticStore.initializeEmbeddingModel(embeddingModel);
+        runMigration(() -> RunMigrations.runKvMigrations(this.kvStore), "kv store");
+
+        if (this.vectorStore != null) {
+            SemanticStore semanticStore = new SemanticStore(this.vectorStore);
+            runMigration(() -> RunMigrations.runVectorMigrations(semanticStore), "vector store");
         }
 
         if (this.dbStore != null) {
-            return MessageTables.createTables(this.dbStore);
+            SqlDbStore sqlStore = new SqlDbStore(this.dbStore);
+            runMigration(() -> RunMigrations.runSqlMigrations(sqlStore), "db store");
         }
-
-        return CompletableFuture.completedFuture(null);
     }
 
+    // ========================= Configuration =========================
+
     /**
-     * Set configuration.
+     * Sets the system memory engine configuration.
      *
-     * @param config Memory engine configuration parameters
+     * @param config the memory engine configuration
      */
     public void setConfig(MemoryEngineConfig config) {
-        if (kvStore == null || semanticStore == null || dbStore == null) {
-            throw ErrorBuilder.build(
-                    StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
-                    "stores must be registered before setting config"
-            );
+        if (kvStore == null || dbStore == null || vectorStore == null) {
+            throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
+                    "config_type", "system", "error_msg", "stores must be registered before setting config");
         }
-
         this.sysMemConfig = config;
         DataIdManager dataIdGenerator = new DataIdManager();
-        UserMemStore userMemStore = new UserMemStore(this.kvStore);
+        UserMemStore userMemStore = new UserMemStore(kvStore);
 
-        if (this.dbStore != null) {
-            SqlDbStore sqlDbStore = new SqlDbStore(this.dbStore);
-            this.scopeUserMappingManager = new ScopeUserMappingManager(sqlDbStore);
-            this.messageManager = new MessageManager(
-                    sqlDbStore,
-                    dataIdGenerator,
-                    config.getCryptoKey()
-            );
+        if (dbStore != null) {
+            SqlDbStore sqlStore = new SqlDbStore(dbStore);
+            scopeUserMappingManager = new ScopeUserMappingManager(sqlStore);
+            messageManager = new MessageManager(sqlStore, dataIdGenerator, config.getCryptoKey());
         }
 
-        this.userProfileManager = new UserProfileManager(
-                this.semanticStore,
-                userMemStore,
-                dataIdGenerator,
-                config.getCryptoKey()
-        );
-
-        this.variableManager = new VariableManager(this.kvStore, config.getCryptoKey());
+        userProfileManager = new FragmentMemoryManager(userMemStore, dataIdGenerator, config.getCryptoKey());
+        variableManager = new VariableManager(kvStore, config.getCryptoKey());
+        summaryManager = new SummaryManager(userMemStore, config.getCryptoKey());
 
         Map<String, BaseMemoryManager> managers = new HashMap<>();
-        managers.put(MemoryType.USER_PROFILE.getValue(), this.userProfileManager);
-        managers.put(MemoryType.VARIABLE.getValue(), this.variableManager);
+        managers.put(MemoryType.FRAGMENT_MEMORY.getValue(), userProfileManager);
+        managers.put(MemoryType.VARIABLE.getValue(), variableManager);
+        managers.put(MemoryType.SUMMARY.getValue(), summaryManager);
 
-        this.writeManager = new WriteManager(managers, userMemStore);
-        this.searchManager = new SearchManager(managers, userMemStore, config.getCryptoKey());
-        this.generator = new Generator();
+        writeManager = new WriteManager(managers, userMemStore);
+        searchManager = new SearchManager(managers, userMemStore, config.getCryptoKey());
+        generator = new Generator(dataIdGenerator);
 
-        // Set init LLM
-        Model llm = getLlmFromConfig(config.getDefaultModelCfg(), config.getDefaultModelClientCfg());
-        this.baseLlm = new Pair<>(config.getDefaultModelCfg().getModelName(), llm);
+        if (config.getDefaultModelCfg() != null && config.getDefaultModelClientCfg() != null) {
+            Model llm = getLlmFromConfig(config.getDefaultModelCfg(), config.getDefaultModelClientCfg());
+            baseLlm = new AbstractMap.SimpleEntry<>(config.getDefaultModelCfg().getModelName(), llm);
+        }
     }
 
     /**
-     * Set the scope-specific memory configuration and store it in kv_store.
+     * Sets the configuration for a specific scope.
      *
-     * @param scopeId           The scope identifier
-     * @param memoryScopeConfig The scope-specific memory configuration
-     * @return CompletableFuture containing true if the configuration was set successfully, false otherwise
+     * @param scopeId             the scope identifier
+     * @param memoryScopeConfig   the scope-specific memory configuration
+     * @return true if configuration was set successfully, false otherwise
      */
-    public CompletableFuture<Boolean> setScopeConfig(String scopeId, MemoryScopeConfig memoryScopeConfig) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(false);
+    @SuppressWarnings("unchecked")
+    public boolean setScopeConfig(String scopeId, MemoryScopeConfig memoryScopeConfig) {
+        if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
+            MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_STORE);
+            return false;
         }
 
-        // Create a copy of the config (Java records are immutable, so we'd need a builder for encryption)
-        // For now, we'll store the config as-is and handle encryption at retrieval/storage layer
-        MemoryScopeConfig encryptedConfig = encryptScopeConfig(memoryScopeConfig);
-        this.scopeConfig.put(scopeId, encryptedConfig);
+        try {
+            // Serialize to JSON map, encrypt api_keys, then store
+            Map<String, Object> configMap = MAPPER.convertValue(memoryScopeConfig, Map.class);
+            encryptApiKeyInMap(configMap, "model_client_cfg");
+            encryptApiKeyInMap(configMap, "embedding_cfg");
 
+            // Store encrypted map in memory cache (as MemoryScopeConfig from encrypted JSON)
+            String encryptedJson = MAPPER.writeValueAsString(configMap);
+            MemoryScopeConfig encryptedConfig = MAPPER.readValue(encryptedJson, MemoryScopeConfig.class);
+            scopeConfig.put(scopeId, encryptedConfig);
+
+            String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+            kvStore.set(configKey, encryptedJson);
+
+            scopeEmbedding.remove(scopeId);
+            return true;
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to set scope config: {}", LogEventType.MEMORY_STORE, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Gets the configuration for a specific scope.
+     *
+     * @param scopeId the scope identifier
+     * @return the scope configuration, or null if not found
+     */
+    @SuppressWarnings("unchecked")
+    public MemoryScopeConfig getScopeConfig(String scopeId) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_RETRIEVE);
+            return null;
+        }
         String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
-        String configJson = serializeScopeConfig(encryptedConfig);
-
-        return kvStore.set(configKey, configJson)
-                .thenApply(v -> {
-                    // Clear cached embedding model for this scope since configuration changed
-                    scopeEmbedding.remove(scopeId);
-                    return true;
-                });
+        Object configJson = kvStore.get(configKey);
+        if (configJson == null) {
+            return null;
+        }
+        try {
+            // Parse JSON to map, decrypt api_keys, then rebuild config
+            Map<String, Object> configMap = MAPPER.readValue(String.valueOf(configJson), Map.class);
+            decryptApiKeyInMap(configMap, "model_client_cfg");
+            decryptApiKeyInMap(configMap, "embedding_cfg");
+            String decryptedJson = MAPPER.writeValueAsString(configMap);
+            return MAPPER.readValue(decryptedJson, MemoryScopeConfig.class);
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to parse scope config: {}", LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            return null;
+        }
     }
 
     /**
-     * Get the scope-specific memory configuration from kv_store.
+     * Deletes the configuration for a specific scope.
      *
-     * @param scopeId Unique identifier for the scope
-     * @return CompletableFuture containing the decrypted memory configuration for the scope, or null if not found
+     * @param scopeId the scope identifier
+     * @return true if deletion was successful, false otherwise
      */
-    public CompletableFuture<MemoryScopeConfig> getScopeConfig(String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
+    public boolean deleteScopeConfig(String scopeId) {
+        if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
+            return false;
         }
-
-        String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
-        return kvStore.get(configKey)
-                .thenApply(configJson -> {
-                    if (configJson == null || configJson.isEmpty()) {
-                        return null;
-                    }
-                    MemoryScopeConfig encryptedConfig = deserializeScopeConfig(configJson);
-                    return decryptScopeConfig(encryptedConfig);
-                });
+        try {
+            String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+            kvStore.delete(configKey);
+            scopeConfig.remove(scopeId);
+            scopeEmbedding.remove(scopeId);
+            return true;
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to delete configuration: {}",
+                    LogEventType.MEMORY_DELETE, e.getMessage());
+            return false;
+        }
     }
+
+    // ========================= Memory Operations =========================
 
     /**
-     * Delete the scope-specific memory configuration from kv_store.
+     * Deletes all memory data for a specific scope.
      *
-     * @param scopeId The scope identifier whose configuration should be deleted
-     * @return CompletableFuture containing true if the configuration was deleted successfully, false otherwise
+     * @param scopeId the scope identifier
+     * @return true if deletion was successful, false otherwise
      */
-    public CompletableFuture<Boolean> deleteScopeConfig(String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(false);
+    public boolean deleteMemByScope(String scopeId) {
+        if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
+            return false;
         }
-
-        String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
-        return kvStore.delete(configKey)
-                .thenApply(v -> {
-                    scopeConfig.remove(scopeId);
-                    scopeEmbedding.remove(scopeId);
-                    logger.debug("Successfully deleted configuration for scope {}", scopeId);
-                    return true;
-                })
-                .exceptionally(e -> {
-                    logger.error("Failed to delete configuration for scope {}", scopeId, e);
-                    return false;
-                });
+        List<Map<String, Object>> scopeUserData = scopeUserMappingManager.getByScopeId(scopeId);
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        if (writeManager != null) {
+            for (Map<String, Object> row : scopeUserData) {
+                String userId = String.valueOf(row.get("user_id"));
+                try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+                    lock.acquire();
+                    writeManager.deleteMemByUserId(userId, scopeId, semanticStore);
+                }
+            }
+        }
+        scopeUserMappingManager.deleteByScopeId(scopeId);
+        return true;
     }
 
-    /**
-     * Delete all memories associated with a specific scope.
-     *
-     * @param scopeId The scope identifier whose memories should be deleted
-     * @return CompletableFuture containing true if all memories were deleted successfully, false otherwise
-     */
-    public CompletableFuture<Boolean> deleteMemByScope(String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(false);
+    @SuppressWarnings("unchecked")
+    public void addMessages(List<BaseMessage> messages,
+                            AgentMemoryConfig agentConfig,
+                            String userId,
+                            String scopeId,
+                            String sessionId,
+                            OffsetDateTime timestamp,
+                            boolean genMem,
+                            int genMemWithHistoryMsgNum) {
+        if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
+            return;
         }
+        String msgId = "-1";
+        Map.Entry<String, Model> llm = getScopeLlm(scopeId);
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
 
-        return scopeUserMappingManager.getByScopeId(scopeId)
-                .thenCompose(scopeUserData -> {
-                    List<String> userIds = new ArrayList<>();
-                    for (Map<String, Object> scopeUser : scopeUserData) {
-                        userIds.add((String) scopeUser.get("user_id"));
-                    }
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
 
-                    // Use write_manager to delete all memories associated with the scope
-                    List<CompletableFuture<Void>> futures = new ArrayList<>();
-                    if (writeManager != null) {
-                        for (String userId : userIds) {
-                            CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
-                                DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-                                try {
-                                    lock.acquire();
-                                    writeManager.deleteMemByUserId(userId, scopeId).join();
-                                } finally {
-                                    lock.release();
-                                }
-                                return null;
-                            });
-                            futures.add(future);
-                        }
-                    }
+            if (llm == null) {
+                MEMORY_LOGGER.error("[{}] LLM is not initialized.", LogEventType.MEMORY_STORE);
+                return;
+            }
 
-                    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                            .thenCompose(v -> scopeUserMappingManager.deleteByScopeId(scopeId))
-                            .thenApply(v -> {
-                                logger.debug("Successfully deleted memories for scope {}", scopeId);
-                                return true;
-                            });
-                });
+            List<BaseMessage> historyMessages = getHistoryMessages(userId, scopeId, sessionId, genMemWithHistoryMsgNum);
+
+            scopeUserMappingManager.add(userId, scopeId);
+
+            if (timestamp == null) {
+                timestamp = OffsetDateTime.now(ZoneId.systemDefault());
+            }
+            String timestampStr = timestamp.format(TIMESTAMP_FMT);
+
+            for (int i = 0; i < messages.size(); i++) {
+                BaseMessage msg = messages.get(i);
+                OffsetDateTime msgTimestamp = timestamp.plusNanos((long) i * 1_000_000);
+                MessageAddRequest addReq = MessageAddRequest.builder()
+                        .userId(userId)
+                        .scopeId(scopeId)
+                        .role(msg.getRole())
+                        .content(msg.getContentAsString())
+                        .sessionId(sessionId)
+                        .timestamp(msgTimestamp)
+                        .build();
+                msgId = messageManager.add(addReq);
+            }
+
+            if (!genMem) {
+                return;
+            }
+
+            CheckMessagesResult checkRes = checkMessages(messages);
+            if (!checkRes.hasHumanMsg) {
+                MEMORY_LOGGER.debug("[{}] Memory engine no need to process messages.", LogEventType.MEMORY_STORE);
+                return;
+            }
+
+            Map<String, Object> genParams = new HashMap<>();
+            genParams.put("scope_id", scopeId);
+            genParams.put("user_id", userId);
+            genParams.put("messages", checkRes.messages);
+            genParams.put("history_messages", historyMessages);
+            genParams.put("session_id", sessionId);
+            genParams.put("config", agentConfig);
+            genParams.put("base_chat_model", llm);
+            genParams.put("message_mem_id", msgId);
+            genParams.put("timestamp", timestampStr);
+            genParams.put("summary_max_token", sysMemConfig.getSingleTurnHistorySummaryMaxToken());
+
+            Map<String, List<BaseMemoryUnit>> allMemory = generator.genAllMemory(genParams);
+
+            try {
+                writeManager.addMemories(userId, scopeId, allMemory, llm, semanticStore);
+            } catch (Exception e) {
+                MEMORY_LOGGER.error("[{}] Failed to add mem: {}", LogEventType.MEMORY_STORE, e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "unknown", "error_msg", e.getMessage());
+            }
+        }
     }
 
-    /**
-     * Add messages and optionally generate memories.
-     *
-     * @param messages               List of messages to add
-     * @param agentConfig            Agent memory configuration
-     * @param userId                 User identifier
-     * @param scopeId                Scope identifier
-     * @param sessionId              Session identifier
-     * @param timestamp              Optional timestamp
-     * @param genMem                 Whether to generate memories
-     * @param genMemWithHistoryMsgNum Number of history messages for memory generation
-     * @return CompletableFuture that completes when operation is done
-     */
-    public CompletableFuture<Void> addMessages(
-            List<BaseMessage> messages,
-            AgentMemoryConfig agentConfig,
-            String userId,
-            String scopeId,
-            String sessionId,
-            Instant timestamp,
-            boolean genMem,
-            int genMemWithHistoryMsgNum
-    ) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
-        }
-
-        return getScopeLlm(scopeId)
-                .thenCompose(llm -> setSemanticStoreEmbeddingModel(scopeId)
-                        .thenCompose(v -> {
-                            DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-                            return CompletableFuture.supplyAsync(() -> {
-                                try {
-                                    lock.acquire();
-                                    return processAddMessages(messages, agentConfig, userId, scopeId,
-                                            sessionId, timestamp, genMem, genMemWithHistoryMsgNum, llm);
-                                } finally {
-                                    lock.release();
-                                }
-                            }).thenCompose(f -> f);
-                        }));
+    public void addMessages(List<BaseMessage> messages, AgentMemoryConfig agentConfig,
+                            String userId, String scopeId, String sessionId) {
+        addMessages(messages, agentConfig, userId, scopeId, sessionId, null, true, 2);
     }
 
-    private CompletableFuture<Void> processAddMessages(
-            List<BaseMessage> messages,
-            AgentMemoryConfig agentConfig,
-            String userId,
-            String scopeId,
-            String sessionId,
-            Instant timestamp,
-            boolean genMem,
-            int genMemWithHistoryMsgNum,
-            Pair<String, Model> llm
-    ) {
-        if (llm == null) {
-            logger.error("llm is not initialized.");
-            return CompletableFuture.completedFuture(null);
+    // ========================= Message Operations =========================
+
+    public List<BaseMessage> getRecentMessages(String userId, String scopeId, String sessionId, int num) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return List.of();
         }
-
-        return getHistoryMessages(userId, scopeId, sessionId, genMemWithHistoryMsgNum)
-                .thenCompose(historyMessages -> 
-                    scopeUserMappingManager.add(userId, scopeId)
-                        .thenCompose(v -> {
-                            // If timestamp is null, use current time
-                            Instant ts = timestamp != null ? timestamp : Instant.now();
-                            String[] msgIdHolder = {"-1"};
-
-                            // Add messages sequentially
-                            CompletableFuture<Void> addFuture = CompletableFuture.completedFuture(null);
-                            for (int i = 0; i < messages.size(); i++) {
-                                final int index = i;
-                                final BaseMessage msg = messages.get(i);
-                                addFuture = addFuture.thenCompose(x -> {
-                                    Instant msgTimestamp = ts.plus(index, ChronoUnit.MILLIS);
-                                    MessageAddRequest addReq = MessageAddRequest.builder()
-                                            .userId(userId)
-                                            .scopeId(scopeId)
-                                            .role(msg.getRole())
-                                            .content((String) msg.getContent())
-                                            .sessionId(sessionId)
-                                            .timestamp(msgTimestamp)
-                                            .build();
-                                    return messageManager.add(addReq)
-                                            .thenAccept(msgId -> msgIdHolder[0] = msgId);
-                                });
-                            }
-
-                            if (!genMem) {
-                                return addFuture;
-                            }
-
-                            return addFuture.thenCompose(x -> {
-                                Pair<Boolean, List<BaseMessage>> checkResult = checkMessages(messages);
-                                if (!checkResult.getKey()) {
-                                    logger.debug("Memory engine no need to process messages.");
-                                    return CompletableFuture.completedFuture(null);
-                                }
-
-                                return generator.genAllMemory(
-                                        checkResult.getValue(),
-                                        agentConfig,
-                                        userId,
-                                        scopeId,
-                                        new Pair<>(llm.getKey(), llm.getValue()),
-                                        historyMessages,
-                                        msgIdHolder[0]
-                                ).thenCompose(allMemory -> {
-                                    try {
-                                        return writeManager.addMem(allMemory, llm)
-                                                .thenRun(() -> logger.debug("Successfully added memory units"));
-                                    } catch (Exception e) {
-                                        logger.error("Failed to add mem, error: {}", e.getMessage());
-                                        throw ErrorBuilder.build(
-                                                StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                                                e.getMessage()
-                                        );
-                                    }
-                                });
-                            });
-                        }));
+        List<MessageManager.MessageRecord> records = messageManager.get(userId, scopeId, sessionId, num);
+        List<BaseMessage> result = new ArrayList<>();
+        for (MessageManager.MessageRecord record : records) {
+            result.add(record.message());
+        }
+        return result;
     }
 
-    /**
-     * Get recent messages.
-     *
-     * @param userId    User identifier
-     * @param scopeId   Scope identifier
-     * @param sessionId Session identifier
-     * @param num       Number of messages to retrieve
-     * @return CompletableFuture containing list of messages in order of writing
-     */
-    public CompletableFuture<List<BaseMessage>> getRecentMessages(
-            String userId,
-            String scopeId,
-            String sessionId,
-            int num
-    ) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(new ArrayList<>());
-        }
-
-        return messageManager.get(userId, scopeId, sessionId, num)
-                .thenApply(recentMessagesTuple -> {
-                    List<BaseMessage> recentMessages = new ArrayList<>();
-                    for (MessageManager.MessageWithTimestamp mwt : recentMessagesTuple) {
-                        recentMessages.add(mwt.message());
-                    }
-                    return recentMessages;
-                });
-    }
-
-    /**
-     * Retrieve a specific message by its unique identifier.
-     *
-     * @param msgId Unique identifier of the message to retrieve
-     * @return CompletableFuture containing tuple of (message object, creation timestamp) or null
-     */
-    public CompletableFuture<MessageManager.MessageWithTimestamp> getMessageById(String msgId) {
+    public MessageManager.MessageRecord getMessageById(String msgId) {
         if (messageManager == null) {
-            logger.warning("Message manager is not initialized.");
-            return CompletableFuture.completedFuture(null);
+            MEMORY_LOGGER.warn("[{}] Message manager is not initialized.", LogEventType.MEMORY_RETRIEVE);
+            return null;
         }
-        return messageManager.getById(msgId)
-                .thenApply(opt -> opt.orElse(null));
+        return messageManager.getById(msgId);
     }
 
-    /**
-     * Delete a specific memory by ID.
-     *
-     * @param memId   Memory ID
-     * @param userId  User ID
-     * @param scopeId Scope ID
-     * @return CompletableFuture that completes when operation is done
-     */
-    public CompletableFuture<Void> deleteMemById(String memId, String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
+    public void deleteMessagesByUserAndScope(String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return;
         }
-
-        return setSemanticStoreEmbeddingModel(scopeId)
-                .thenCompose(v -> {
-                    DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-                    return CompletableFuture.supplyAsync(() -> {
-                        try {
-                            lock.acquire();
-                            if (writeManager == null) {
-                                throw ErrorBuilder.build(
-                                        StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                                        "write manager is not initialized"
-                                );
-                            }
-                            writeManager.deleteMemById(userId, scopeId, memId).join();
-                            return null;
-                        } finally {
-                            lock.release();
-                        }
-                    });
-                });
+        messageManager.deleteByUserAndScope(userId, scopeId);
     }
 
-    /**
-     * Delete all type memories for a user with scope id.
-     *
-     * @param userId  User identifier
-     * @param scopeId Scope identifier
-     * @return CompletableFuture that completes when operation is done
-     */
-    public CompletableFuture<Void> deleteMemByUserId(String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
-        }
+    // ========================= Memory CRUD =========================
 
-        return setSemanticStoreEmbeddingModel(scopeId)
-                .thenCompose(v -> {
-                    DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-                    return CompletableFuture.supplyAsync(() -> {
-                        try {
-                            lock.acquire();
-                            if (writeManager == null) {
-                                throw ErrorBuilder.build(
-                                        StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                                        "write manager is not initialized"
-                                );
-                            }
-                            writeManager.deleteMemByUserId(userId, scopeId).join();
-                            return null;
-                        } finally {
-                            lock.release();
-                        }
-                    });
-                });
+    public void deleteMemById(String memId, String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
+            return;
+        }
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
+            if (writeManager == null) {
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "all", "error_msg", "write manager is not initialized");
+            }
+            writeManager.deleteMemById(userId, scopeId, memId, semanticStore);
+        }
     }
 
-    /**
-     * Update the content of an existing memory entry.
-     *
-     * @param memId   Memory ID
-     * @param memory  New memory content
-     * @param userId  User ID
-     * @param scopeId Scope ID
-     * @return CompletableFuture that completes when operation is done
-     */
-    public CompletableFuture<Void> updateMemById(String memId, String memory, String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
+    public void deleteMemByUserId(String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
+            return;
         }
-
-        return setSemanticStoreEmbeddingModel(scopeId)
-                .thenCompose(v -> {
-                    DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-                    return CompletableFuture.supplyAsync(() -> {
-                        try {
-                            lock.acquire();
-                            if (writeManager == null) {
-                                throw ErrorBuilder.build(
-                                        StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
-                                        "write manager is not initialized"
-                                );
-                            }
-                            writeManager.updateMemById(userId, scopeId, memId, memory).join();
-                            return null;
-                        } finally {
-                            lock.release();
-                        }
-                    });
-                });
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
+            if (writeManager == null) {
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "all", "error_msg", "write manager is not initialized");
+            }
+            writeManager.deleteMemByUserId(userId, scopeId, semanticStore);
+        }
     }
 
-    /**
-     * Get user variable(s).
-     *
-     * @param names   Name of the variable(s) to get (null for all, String for one, List for multiple)
-     * @param userId  User identifier
-     * @param scopeId Scope identifier
-     * @return CompletableFuture containing map of variable name to value
-     */
-    public CompletableFuture<Map<String, String>> getVariables(Object names, String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(new HashMap<>());
+    public void updateMemById(String memId, String memory, String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_UPDATE, scopeId)) {
+            return;
         }
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
+            if (writeManager == null) {
+                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "all", "error_msg", "write manager is not initialized");
+            }
+            writeManager.updateMemById(userId, scopeId, memId, memory, semanticStore);
+        }
+    }
 
+    // ========================= Variable Operations =========================
+
+    public Map<String, String> getVariables(Object names, String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return Map.of();
+        }
         if (searchManager == null) {
-            throw ErrorBuilder.build(
-                    StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "search manager is not initialized"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                    "memory_type", "all", "error_msg", "search manager is not initialized");
         }
-
+        Map<String, String> ret = new HashMap<>();
         if (names == null) {
-            return searchManager.getAllUserVariable(userId, scopeId)
-                    .thenApply(objMap -> {
-                        Map<String, String> result = new HashMap<>();
-                        for (Map.Entry<String, Object> entry : objMap.entrySet()) {
-                            result.put(entry.getKey(), entry.getValue() != null ? entry.getValue().toString() : null);
-                        }
-                        return result;
-                    });
+            return searchManager.getAllUserVariable(userId, scopeId);
         }
-
-        if (names instanceof String) {
-            String name = (String) names;
-            return searchManager.getUserVariable(userId, scopeId, name)
-                    .thenApply(value -> {
-                        Map<String, String> result = new HashMap<>();
-                        result.put(name, value);
-                        return result;
-                    });
+        if (names instanceof String name) {
+            String value = searchManager.getUserVariable(userId, scopeId, name);
+            ret.put(name, value);
+            return ret;
         }
-
-        if (names instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<String> nameList = (List<String>) names;
-            Map<String, String> ret = new HashMap<>();
-            CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
-            for (String name : nameList) {
-                chain = chain.thenCompose(v ->
-                        searchManager.getUserVariable(userId, scopeId, name)
-                                .thenAccept(value -> ret.put(name, value))
-                );
+        if (names instanceof List<?> nameList) {
+            for (Object nameObj : nameList) {
+                String name = String.valueOf(nameObj);
+                String value = searchManager.getUserVariable(userId, scopeId, name);
+                ret.put(name, value);
             }
-            return chain.thenApply(v -> ret);
+            return ret;
         }
-
-        throw ErrorBuilder.build(
-                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                "names must be str | list[str] | None"
-        );
+        throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                "memory_type", "all", "error_msg", "names must be String | List<String> | null");
     }
 
-    /**
-     * Search user memories.
-     *
-     * @param query     Search query
-     * @param num       Number of results
-     * @param userId    User identifier
-     * @param scopeId   Scope identifier
-     * @param threshold Score threshold
-     * @return CompletableFuture containing list of memory results
-     */
-    public CompletableFuture<List<MemResult>> searchUserMem(
-            String query,
-            int num,
-            String userId,
-            String scopeId,
-            double threshold
-    ) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(new ArrayList<>());
+    public void updateVariables(Map<String, String> variables, String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_UPDATE, scopeId)) {
+            return;
         }
-
-        return setSemanticStoreEmbeddingModel(scopeId)
-                .thenCompose(v -> {
-                    if (searchManager == null) {
-                        throw ErrorBuilder.build(
-                                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                                "search manager is not initialized"
-                        );
-                    }
-
-                    SearchParams params = SearchParams.builder()
-                            .query(query)
-                            .scopeId(scopeId)
-                            .topK(num)
-                            .userId(userId)
-                            .threshold(threshold)
-                            .build();
-
-                    try {
-                        return searchManager.search(params)
-                                .thenApply(searchData -> {
-                                    List<MemResult> memResults = new ArrayList<>();
-                                    for (Map<String, Object> item : searchData) {
-                                        Object memTypeObj = item.get("mem_type");
-                                        MemoryType memType = memTypeObj instanceof MemoryType
-                                                ? (MemoryType) memTypeObj
-                                                : MemoryType.USER_PROFILE;
-                                        MemInfo memInfo = MemInfo.builder()
-                                                .memId((String) item.get("id"))
-                                                .content((String) item.get("mem"))
-                                                .type(memType)
-                                                .build();
-                                        MemResult memResult = MemResult.builder()
-                                                .memInfo(memInfo)
-                                                .score(((Number) item.getOrDefault("score", 0.0)).doubleValue())
-                                                .build();
-                                        memResults.add(memResult);
-                                    }
-                                    return memResults;
-                                });
-                    } catch (IllegalArgumentException e) {
-                        logger.warning("Search user mem has value exception: {}", e.getMessage());
-                        return CompletableFuture.completedFuture(new ArrayList<>());
-                    } catch (Exception e) {
-                        logger.warning("Search user mem has exception: {}", e.getMessage());
-                        return CompletableFuture.completedFuture(new ArrayList<>());
-                    }
-                });
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
+            if (variableManager == null) {
+                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "variable", "error_msg", "variable manager is not initialized");
+            }
+            for (Map.Entry<String, String> entry : variables.entrySet()) {
+                variableManager.updateUserVariable(userId, scopeId, entry.getKey(), entry.getValue());
+            }
+        }
     }
 
-    /**
-     * Return total number of user memory.
-     *
-     * @param userId  User identifier
-     * @param scopeId Scope identifier
-     * @return CompletableFuture containing total count
-     */
-    public CompletableFuture<Integer> userMemTotalNum(String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(0);
+    public boolean deleteVariables(List<String> names, String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
+            return false;
         }
-
-        return searchManager.listUserProfile(userId, scopeId, null)
-                .thenApply(List::size);
+        try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
+            lock.acquire();
+            if (variableManager == null) {
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "variable", "error_msg", "variable manager is not initialized");
+            }
+            for (String name : names) {
+                variableManager.deleteUserVariable(userId, scopeId, name);
+            }
+            return true;
+        }
     }
 
-    /**
-     * List user memories with pagination support.
-     *
-     * @param userId     User identifier
-     * @param scopeId    Scope identifier
-     * @param pageSize   Number of memories per page
-     * @param pageIdx    Page index (0-based)
-     * @param memoryType Memory type filter
-     * @return CompletableFuture containing list of memory info
-     */
-    public CompletableFuture<List<MemInfo>> getUserMemByPage(
-            String userId,
-            String scopeId,
-            int pageSize,
-            int pageIdx,
-            MemoryType memoryType
-    ) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(new ArrayList<>());
-        }
+    // ========================= Search Operations =========================
 
+    public List<MemResult> searchUserMem(String query, int num, String userId, String scopeId, double threshold) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return List.of();
+        }
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
         if (searchManager == null) {
-            throw ErrorBuilder.build(
-                    StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "search manager is not initialized"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                    "memory_type", "all", "error_msg", "search manager is not initialized");
         }
-
-        return searchManager.listUserMem(userId, scopeId, pageSize, pageIdx)
-                .thenApply(searchData -> {
-                    if (searchData == null || searchData.isEmpty()) {
-                        return new ArrayList<MemInfo>();
-                    }
-
-                    List<MemInfo> memResults = new ArrayList<>();
-                    for (Map<String, Object> item : searchData) {
-                        String memTypeValue = (String) item.getOrDefault("mem_type", MemoryType.UNKNOWN.getValue());
-                        // Apply filtering if type is not UNKNOWN
-                        if (memoryType == MemoryType.UNKNOWN || memTypeValue.equals(memoryType.getValue())) {
-                            MemInfo memInfo = MemInfo.builder()
-                                    .memId((String) item.get("id"))
-                                    .content((String) item.get("mem"))
-                                    .type(MemoryType.fromValue(memTypeValue))
-                                    .build();
-                            memResults.add(memInfo);
-                        }
-                    }
-                    return memResults;
-                });
+        SearchParams params = SearchParams.builder()
+                .query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold)
+                .build();
+        try {
+            List<Map<String, Object>> searchData = searchManager.search(params, semanticStore);
+            return toMemResults(searchData, MemoryType.FRAGMENT_MEMORY);
+        } catch (Exception e) {
+            MEMORY_LOGGER.warn("[{}] Search user mem has exception: {}",
+                    LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            return List.of();
+        }
     }
 
-    /**
-     * Update user variables.
-     *
-     * @param variables Variable name to value pairs
-     * @param userId    User identifier
-     * @param scopeId   Scope identifier
-     * @return CompletableFuture that completes when operation is done
-     */
-    public CompletableFuture<Void> updateVariables(Map<String, String> variables, String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(null);
+    public List<MemResult> searchUserHistorySummary(String query, int num, String userId,
+                                                     String scopeId, double threshold) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return List.of();
         }
-
-        DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                lock.acquire();
-                if (variableManager == null) {
-                    throw ErrorBuilder.build(
-                            StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
-                            "variable manager is not initialized"
-                    );
-                }
-
-                for (Map.Entry<String, String> entry : variables.entrySet()) {
-                    variableManager.updateUserVariable(userId, scopeId, entry.getKey(), entry.getValue()).join();
-                }
-                return null;
-            } finally {
-                lock.release();
-            }
-        });
+        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        if (searchManager == null) {
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                    "memory_type", "all", "error_msg", "search manager is not initialized");
+        }
+        SearchParams params = SearchParams.builder()
+                .query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold)
+                .searchType(MemoryType.SUMMARY.getValue())
+                .build();
+        try {
+            List<Map<String, Object>> searchData = searchManager.search(params, semanticStore);
+            return toMemResults(searchData, MemoryType.SUMMARY);
+        } catch (Exception e) {
+            MEMORY_LOGGER.warn("[{}] Search user history summary has exception: {}",
+                    LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            return List.of();
+        }
     }
 
-    /**
-     * Delete user variables.
-     *
-     * @param names   Names of the variables to delete
-     * @param userId  User identifier
-     * @param scopeId Scope identifier
-     * @return CompletableFuture containing true if successful
-     */
-    public CompletableFuture<Boolean> deleteVariables(List<String> names, String userId, String scopeId) {
-        if (!validateId(scopeId)) {
-            logger.error("Invalid scope_id format, scope_id={}", scopeId);
-            return CompletableFuture.completedFuture(false);
+    public int userMemTotalNum(String userId, String scopeId) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return 0;
         }
-
-        DistributedLock lock = new DistributedLock(kvStore, "user/" + userId);
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                lock.acquire();
-                if (variableManager == null) {
-                    throw ErrorBuilder.build(
-                            StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                            "variable manager is not initialized"
-                    );
-                }
-
-                for (String name : names) {
-                    variableManager.deleteUserVariable(userId, scopeId, name).join();
-                }
-                return true;
-            } finally {
-                lock.release();
-            }
-        });
+        List<Map<String, Object>> data = searchManager.listUserProfile(userId, scopeId);
+        return data.size();
     }
 
-    // ===== Private helper methods =====
+    public List<MemInfo> getUserMemByPage(String userId, String scopeId,
+                                           int pageSize, int pageIdx, MemoryType memoryType) {
+        if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            return List.of();
+        }
+        if (searchManager == null) {
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                    "memory_type", "all", "error_msg", "search manager is not initialized");
+        }
+        String searchMemType = memoryType == MemoryType.UNKNOWN ? null : memoryType.getValue();
+        List<Map<String, Object>> searchData = searchManager.listUserMem(userId, scopeId,
+                pageSize, pageIdx, searchMemType);
+        if (searchData == null || searchData.isEmpty()) {
+            return List.of();
+        }
+        List<MemInfo> results = new ArrayList<>();
+        for (Map<String, Object> item : searchData) {
+            String memTypeStr = String.valueOf(item.getOrDefault("mem_type", MemoryType.UNKNOWN.getValue()));
+            results.add(MemInfo.builder()
+                    .memId(String.valueOf(item.get("id")))
+                    .content(String.valueOf(item.get("mem")))
+                    .type(MemoryType.fromValue(memTypeStr))
+                    .build());
+        }
+        return results;
+    }
+
+    // ========================= Private Helpers =========================
 
     private static Model getLlmFromConfig(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         return new Model(modelClientConfig, modelConfig);
     }
 
-    private CompletableFuture<MemoryScopeConfig> getInternalScopeConfig(String scopeId) {
-        // First check if config is in memory cache
+    @SuppressWarnings("unchecked")
+    private MemoryScopeConfig getInternalScopeConfig(String scopeId) {
         if (scopeConfig.containsKey(scopeId)) {
             MemoryScopeConfig config = scopeConfig.get(scopeId);
-            return CompletableFuture.completedFuture(decryptScopeConfig(config));
+            try {
+                // Deep copy via JSON, decrypt api_keys
+                Map<String, Object> configMap = MAPPER.convertValue(config, Map.class);
+                decryptApiKeyInMap(configMap, "model_client_cfg");
+                decryptApiKeyInMap(configMap, "embedding_cfg");
+                String decryptedJson = MAPPER.writeValueAsString(configMap);
+                return MAPPER.readValue(decryptedJson, MemoryScopeConfig.class);
+            } catch (Exception e) {
+                MEMORY_LOGGER.error("[{}] Failed to decrypt scope config: {}",
+                        LogEventType.MEMORY_RETRIEVE, e.getMessage());
+                return null;
+            }
         }
-
-        // If not in memory, get from kv_store
         return getScopeConfig(scopeId);
     }
 
-    private CompletableFuture<Embedding> getScopeEmbeddingModel(String scopeId) {
-        // Check if embedding model is already in cache
-        if (scopeEmbedding.containsKey(scopeId)) {
-            return CompletableFuture.completedFuture(scopeEmbedding.get(scopeId));
+    private Embedding getScopeEmbeddingModel(String scopeId) {
+        Embedding cached = scopeEmbedding.get(scopeId);
+        if (cached != null) {
+            return cached;
         }
-
-        return getInternalScopeConfig(scopeId)
-                .thenApply(config -> {
-                    try {
-                        if (config != null && config.getEmbeddingCfg() != null) {
-                            // Use APIEmbedding to instantiate the embedding model
-                            Embedding embeddingModel = new APIEmbedding(config.getEmbeddingCfg());
-                            // Cache the embedding model
-                            scopeEmbedding.put(scopeId, embeddingModel);
-                            return embeddingModel;
-                        }
-                    } catch (Exception e) {
-                        logger.error("Failed to get or instantiate embedding model for scope {}: {}", scopeId, e.getMessage());
-                    }
-                    logger.error("No embedding model available for scope {}", scopeId);
-                    return null;
-                });
-    }
-
-    private CompletableFuture<Pair<String, Model>> getScopeLlm(String scopeId) {
-        return getInternalScopeConfig(scopeId)
-                .thenApply(config -> {
-                    try {
-                        if (config != null && config.getModelCfg() != null && config.getModelClientCfg() != null) {
-                            Model llm = getLlmFromConfig(config.getModelCfg(), config.getModelClientCfg());
-                            return new Pair<>(config.getModelCfg().getModelName(), llm);
-                        }
-
-                        // If the LLM fails to be obtained, try to use the system default configuration
-                        if (sysMemConfig == null) {
-                            return baseLlm;
-                        }
-                        if (sysMemConfig.getDefaultModelClientCfg() == null) {
-                            logger.debug("Default model client config is missing, cannot instantiate LLM");
-                            return baseLlm;
-                        }
-                        if (sysMemConfig.getDefaultModelCfg() == null) {
-                            logger.debug("Default model config is missing, cannot instantiate LLM");
-                            return baseLlm;
-                        }
-
-                        Model llm = getLlmFromConfig(sysMemConfig.getDefaultModelCfg(), sysMemConfig.getDefaultModelClientCfg());
-                        return new Pair<>(sysMemConfig.getDefaultModelCfg().getModelName(), llm);
-                    } catch (Exception e) {
-                        logger.error("Failed to get scope LLM for scope {}: {}", scopeId, e.getMessage());
-                        return baseLlm;
-                    }
-                });
-    }
-
-    private CompletableFuture<Void> setSemanticStoreEmbeddingModel(String scopeId) {
-        if (semanticStore == null) {
-            return CompletableFuture.completedFuture(null);
+        try {
+            MemoryScopeConfig config = getInternalScopeConfig(scopeId);
+            if (config != null && config.getEmbeddingCfg() != null) {
+                Embedding embeddingModel = new APIEmbedding(config.getEmbeddingCfg());
+                scopeEmbedding.put(scopeId, embeddingModel);
+                return embeddingModel;
+            }
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to get scope embedding model for scope {}: {}",
+                    LogEventType.MEMORY_RETRIEVE, scopeId, e.getMessage());
+            return null;
         }
-
-        return getScopeEmbeddingModel(scopeId)
-                .thenAccept(embeddingModel -> {
-                    if (embeddingModel != null) {
-                        semanticStore.initializeEmbeddingModel(embeddingModel);
-                    }
-                });
+        MEMORY_LOGGER.error("[{}] No embedding model available for scope: {}",
+                LogEventType.MEMORY_RETRIEVE, scopeId);
+        return null;
     }
 
-    private Pair<Boolean, List<BaseMessage>> checkMessages(List<BaseMessage> messages) {
+    private Map.Entry<String, Model> getScopeLlm(String scopeId) {
+        try {
+            MemoryScopeConfig config = getInternalScopeConfig(scopeId);
+            if (config != null && config.getModelCfg() != null && config.getModelClientCfg() != null) {
+                Model llm = getLlmFromConfig(config.getModelCfg(), config.getModelClientCfg());
+                return new AbstractMap.SimpleEntry<>(config.getModelCfg().getModelName(), llm);
+            }
+            if (sysMemConfig != null && sysMemConfig.getDefaultModelCfg() != null
+                    && sysMemConfig.getDefaultModelClientCfg() != null) {
+                Model llm = getLlmFromConfig(sysMemConfig.getDefaultModelCfg(),
+                        sysMemConfig.getDefaultModelClientCfg());
+                return new AbstractMap.SimpleEntry<>(sysMemConfig.getDefaultModelCfg().getModelName(), llm);
+            }
+            return baseLlm;
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] Failed to get scope LLM: {}", LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            return baseLlm;
+        }
+    }
+
+    private SemanticStore createSemanticStoreWithEmbedding(String scopeId) {
+        SemanticStore semanticStore = new SemanticStore(vectorStore);
+        Embedding embeddingModel = getScopeEmbeddingModel(scopeId);
+        if (embeddingModel != null) {
+            semanticStore.initializeEmbeddingModel(embeddingModel);
+        } else if (baseEmbed != null) {
+            semanticStore.initializeEmbeddingModel(baseEmbed);
+        }
+        return semanticStore;
+    }
+
+    private CheckMessagesResult checkMessages(List<BaseMessage> messages) {
         List<BaseMessage> outMessages = new ArrayList<>();
         boolean hasHumanMsg = false;
-        UserMessage humanMessage = new UserMessage();
-
+        String humanRole = "user";
         for (BaseMessage msg : messages) {
-            if (msg.getRole().equals(humanMessage.getRole())) {
+            if (humanRole.equals(msg.getRole())) {
                 outMessages.add(msg);
                 hasHumanMsg = true;
-                continue;
+            } else {
+                String content = msg.getContentAsString();
+                if (content != null && content.length() > sysMemConfig.getInputMsgMaxLen()) {
+                    content = content.substring(0, sysMemConfig.getInputMsgMaxLen());
+                    msg.setContent(content);
+                }
+                outMessages.add(msg);
             }
-            // Truncate content if needed
-            String content = (String) msg.getContent();
-            if (content.length() > sysMemConfig.getInputMsgMaxLen()) {
-                content = content.substring(0, sysMemConfig.getInputMsgMaxLen());
-                // Create new message with truncated content
-                msg = createTruncatedMessage(msg, content);
-            }
-            outMessages.add(msg);
         }
-
-        return new Pair<>(hasHumanMsg, outMessages);
+        return new CheckMessagesResult(hasHumanMsg, outMessages);
     }
 
-    private BaseMessage createTruncatedMessage(BaseMessage original, String truncatedContent) {
-        // Create a new message with the truncated content while preserving the role
-        if (original instanceof UserMessage) {
-            return new UserMessage(truncatedContent);
-        }
-        // For other message types, return as-is (they should implement similar truncation)
-        return original;
-    }
-
-    private CompletableFuture<List<BaseMessage>> getHistoryMessages(
-            String userId,
-            String scopeId,
-            String sessionId,
-            int historyWindowSize
-    ) {
+    private List<BaseMessage> getHistoryMessages(String userId, String scopeId,
+                                                  String sessionId, int historyWindowSize) {
         if (messageManager == null) {
-            return CompletableFuture.completedFuture(new ArrayList<>());
+            return List.of();
         }
-
-        return messageManager.get(userId, scopeId, sessionId, historyWindowSize)
-                .thenApply(historyMessagesTuple -> {
-                    List<BaseMessage> historyMessages = new ArrayList<>();
-                    UserMessage humanMessage = new UserMessage();
-
-                    for (MessageManager.MessageWithTimestamp mwt : historyMessagesTuple) {
-                        BaseMessage msg = mwt.message();
-                        if (msg.getRole().equals(humanMessage.getRole())) {
-                            historyMessages.add(msg);
-                            continue;
-                        }
-                        // Truncate content if needed
-                        String content = (String) msg.getContent();
-                        if (content.length() > sysMemConfig.getInputMsgMaxLen()) {
-                            content = content.substring(0, sysMemConfig.getInputMsgMaxLen());
-                            msg = createTruncatedMessage(msg, content);
-                        }
-                        historyMessages.add(msg);
-                    }
-                    return historyMessages;
-                });
+        List<MessageManager.MessageRecord> records = messageManager.get(userId, scopeId, sessionId, historyWindowSize);
+        List<BaseMessage> historyMessages = new ArrayList<>();
+        String humanRole = "user";
+        for (MessageManager.MessageRecord record : records) {
+            BaseMessage msg = record.message();
+            if (humanRole.equals(msg.getRole())) {
+                historyMessages.add(msg);
+            } else {
+                String content = msg.getContentAsString();
+                if (content != null && content.length() > sysMemConfig.getInputMsgMaxLen()) {
+                    content = content.substring(0, sysMemConfig.getInputMsgMaxLen());
+                    msg.setContent(content);
+                }
+                historyMessages.add(msg);
+            }
+        }
+        return historyMessages;
     }
 
-    /**
-     * Validate the scope_id format.
-     *
-     * @param scopeId Scope identifier
-     * @return true if the scope_id is valid, false otherwise
-     */
-    public static boolean validateId(String scopeId) {
+    private static boolean validateId(LogEventType eventType, String scopeId) {
         if (scopeId == null || scopeId.isEmpty()) {
-            logger.error("scope_id is invalid: {}", scopeId);
+            MEMORY_LOGGER.error("[{}] Scope_id is invalid.", eventType);
             return false;
         }
         if (scopeId.contains("/")) {
-            logger.error("scope_id cannot contain separator '/', scope_id={}", scopeId);
+            MEMORY_LOGGER.error("[{}] Scope_id cannot contain separator '/'.", eventType);
             return false;
         }
         if (scopeId.length() > 128) {
-            logger.error("scope_id length exceeds limit (128), scope_id={}", scopeId);
+            MEMORY_LOGGER.error("[{}] Scope_id length exceeds limit (128).", eventType);
             return false;
         }
         return true;
     }
 
-    // ===== Helper methods for config serialization/encryption =====
-
-    private MemoryScopeConfig encryptScopeConfig(MemoryScopeConfig config) {
-        // For now, return config as-is. Encryption would be implemented using BaseMemoryManager methods
-        return config;
+    private void runMigration(BooleanSupplier migrateFunc, String storeType) {
+        try {
+            MEMORY_LOGGER.info("[{}] Starting {} migration", LogEventType.MEMORY_INIT, storeType);
+            boolean success = migrateFunc.getAsBoolean();
+            if (!success) {
+                throw new IllegalStateException(storeType + " migration returned failure status");
+            }
+            MEMORY_LOGGER.info("[{}] {} migration completed successfully", LogEventType.MEMORY_INIT, storeType);
+        } catch (Exception e) {
+            MEMORY_LOGGER.error("[{}] {} migration failed: {}", LogEventType.MEMORY_INIT, storeType, e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
+                    "store_type", storeType, "error_msg", storeType + " migration failed: " + e.getMessage());
+        }
     }
 
-    private MemoryScopeConfig decryptScopeConfig(MemoryScopeConfig config) {
-        // For now, return config as-is. Decryption would be implemented using BaseMemoryManager methods
-        return config;
+    private static List<MemResult> toMemResults(List<Map<String, Object>> searchData, MemoryType defaultType) {
+        List<MemResult> results = new ArrayList<>();
+        for (Map<String, Object> item : searchData) {
+            Object memTypeObj = item.get("mem_type");
+            MemoryType memType = memTypeObj instanceof MemoryType mt ? mt
+                    : memTypeObj != null ? MemoryType.fromValue(String.valueOf(memTypeObj)) : defaultType;
+
+            results.add(MemResult.builder()
+                    .memInfo(MemInfo.builder()
+                            .memId(String.valueOf(item.get("id")))
+                            .content(String.valueOf(item.get("mem")))
+                            .type(memType)
+                            .build())
+                    .score(item.get("score") instanceof Number n ? n.doubleValue() : 0.0)
+                    .build());
+        }
+        return results;
     }
 
-    private String serializeScopeConfig(MemoryScopeConfig config) {
-        // Placeholder for JSON serialization
-        return "{}";
+    @SuppressWarnings("unchecked")
+    private void encryptApiKeyInMap(Map<String, Object> configMap, String cfgKey) {
+        Object subCfg = configMap.get(cfgKey);
+        if (subCfg instanceof Map<?, ?> subMap) {
+            Map<String, Object> mutableMap = (Map<String, Object>) subMap;
+            Object apiKey = mutableMap.get("api_key");
+            if (apiKey == null) {
+                apiKey = mutableMap.get("apiKey");
+            }
+            if (apiKey instanceof String key && !key.isEmpty()) {
+                String encrypted = BaseMemoryManager.encryptMemoryIfNeeded(sysMemConfig.getCryptoKey(), key);
+                mutableMap.put("api_key", encrypted);
+            }
+            mutableMap.remove("apiKey");
+        }
     }
 
-    private MemoryScopeConfig deserializeScopeConfig(String json) {
-        // Placeholder for JSON deserialization
-        return MemoryScopeConfig.builder().build();
+    @SuppressWarnings("unchecked")
+    private void decryptApiKeyInMap(Map<String, Object> configMap, String cfgKey) {
+        Object subCfg = configMap.get(cfgKey);
+        if (subCfg instanceof Map<?, ?> subMap) {
+            Map<String, Object> mutableMap = (Map<String, Object>) subMap;
+            Object apiKey = mutableMap.get("api_key");
+            if (apiKey == null) {
+                apiKey = mutableMap.get("apiKey");
+            }
+            if (apiKey instanceof String key && !key.isEmpty()) {
+                String decrypted = BaseMemoryManager.decryptMemoryIfNeeded(sysMemConfig.getCryptoKey(), key);
+                mutableMap.put("api_key", decrypted);
+            }
+            mutableMap.remove("apiKey");
+        }
     }
 
-    // ===== Getters for testing =====
-
-    public BaseKVStore getKvStore() {
-        return kvStore;
+    private record CheckMessagesResult(boolean hasHumanMsg, List<BaseMessage> messages) {
     }
-
-    public SemanticStore getSemanticStore() {
-        return semanticStore;
-    }
-
-    public BaseDbStore getDbStore() {
-        return dbStore;
-    }
-
-    public MessageManager getMessageManager() {
-        return messageManager;
-    }
-
-    public UserProfileManager getUserProfileManager() {
-        return userProfileManager;
-    }
-
-    public VariableManager getVariableManager() {
-        return variableManager;
-    }
-
-    public WriteManager getWriteManager() {
-        return writeManager;
-    }
-
-    public SearchManager getSearchManager() {
-        return searchManager;
-    }
-
-    public Generator getGenerator() {
-        return generator;
-    }
-
-    // ===== Setters for testing =====
-
-    public void setSearchManager(SearchManager searchManager) {
-        this.searchManager = searchManager;
-    }
-
 }
-

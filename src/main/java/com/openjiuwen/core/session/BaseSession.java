@@ -1,90 +1,120 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.tracer.Tracer;
-
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Base session interface defining core session operations.
- * 
- * @author OpenJiuwen
- * @since 1.0.0
+ * Base session abstraction providing access to all session subsystems.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.session.BaseSession}.
+ * Extends the minimal {@link Session} interface for backward compatibility with ContextEngine.
  */
-public interface BaseSession {
-    
+public abstract class BaseSession implements Session {
+
+    private volatile String currentOperatorId;
+
     /**
-     * Gets the session configuration.
-     * 
-     * @return the configuration
+     * Get the session configuration.
+     *
+     * @return config instance
      */
-    Config getConfig();
-    
+    public abstract Config config();
+
     /**
-     * Gets the session state.
-     * 
-     * @return the state
+     * Get the session state.
+     *
+     * @return state instance
      */
-    State getState();
-    
+    public abstract State state();
+
     /**
-     * Gets the tracer.
-     * 
-     * @return the tracer
+     * Get the tracer instance.
+     *
+     * @return tracer or null if not configured
      */
-    Tracer getTracer();
-    
+    public abstract Object tracer();
+
     /**
-     * Gets the stream writer manager.
-     * 
-     * @return the stream writer manager
+     * Get the stream writer manager.
+     *
+     * @return stream writer manager
      */
-    StreamWriterManager getStreamWriterManager();
-    
+    public abstract StreamWriterManager streamWriterManager();
+
     /**
-     * Gets the callback manager.
-     * 
-     * @return the callback manager
+     * Get the callback manager.
+     *
+     * @return callback manager
      */
-    CallbackManager getCallbackManager();
-    
+    public abstract CallbackManager callbackManager();
+
     /**
-     * Gets the session ID.
-     * 
-     * @return the session ID
+     * Get the unique session identifier.
+     *
+     * @return session ID
      */
-    String getSessionId();
-    
+    public abstract String sessionId();
+
     /**
-     * Gets the checkpointer.
-     * 
-     * @return the checkpointer
+     * Get the checkpointer instance.
+     *
+     * @return checkpointer or null
      */
-    Checkpointer getCheckpointer();
-    
+    public abstract Object checkpointer();
+
     /**
-     * Gets the actor manager.
-     * 
-     * @return the actor manager, or null if not available
+     * Get the actor manager for this session.
+     * <p>
+     * Mirrors Python's {@code BaseSession.actor_manager()}.
+     *
+     * @return actor manager or null if not applicable
      */
-    default Object getActorManager() {
+    public Object actorManager() {
         return null;
     }
-    
+
+    // ---- Session interface compatibility ----
+
+    @Override
+    public String getSessionId() {
+        return sessionId();
+    }
+
+    @Override
+    public Object getState(String key) {
+        if (state() != null) {
+            return state().get(key);
+        }
+        return null;
+    }
+
+    @Override
+    public void updateState(java.util.Map<String, Object> stateMap) {
+        if (state() != null && stateMap != null) {
+            state().update(stateMap);
+        }
+    }
+
+    @Override
+    public void setCurrentOperatorId(String operatorId) {
+        this.currentOperatorId = operatorId;
+    }
+
+    @Override
+    public String getCurrentOperatorId() {
+        return currentOperatorId;
+    }
+
     /**
-     * Closes the session.
-     * 
-     * @return a CompletableFuture that completes when the session is closed
+     * Close the session and release resources.
      */
-    default CompletableFuture<Void> close() {
-        return CompletableFuture.completedFuture(null);
+    public void close() {
+        // Default no-op, subclasses can override.
     }
 }
-

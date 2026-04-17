@@ -1,73 +1,88 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Controller Output Payload.
- *
- * <p>Contains the output type, data, and metadata information.
- * This is the core data part of controller output.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Controller output payload.
+ * <p>
+ * Contains the output type, data, and metadata information.
+ * <p>
+ * Mirrors Python's {@code ControllerOutputPayload(BaseModel)}.
  */
 public class ControllerOutputPayload {
 
-    private final String type;
-    private final List<BaseDataFrame> data;
-    private final Map<String, Object> metadata;
+    /** Processing type constant */
+    public static final String TASK_PROCESSING = "processing";
 
-    /**
-     * Constructor with type only (empty data, no metadata).
-     *
-     * @param type the output type
-     */
-    public ControllerOutputPayload(String type) {
-        this(type, new ArrayList<>(), null);
+    /** All tasks processed type constant */
+    public static final String ALL_TASKS_PROCESSED = "all_tasks_processed";
+
+    private String type;
+    private List<DataFrame> data;
+    private Map<String, Object> metadata;
+
+    public ControllerOutputPayload() {
+        this.data = new ArrayList<>();
     }
 
-    /**
-     * Full constructor.
-     *
-     * @param type     the output type
-     * @param data     the output data list
-     * @param metadata the metadata (can be null)
-     */
-    public ControllerOutputPayload(String type, List<BaseDataFrame> data, Map<String, Object> metadata) {
-        this.type = Objects.requireNonNull(type, "type must not be null");
-        this.data = data != null ? new ArrayList<>(data) : new ArrayList<>();
+    public ControllerOutputPayload(String type, List<DataFrame> data) {
+        this.type = type;
+        this.data = data != null ? data : new ArrayList<>();
+    }
+
+    public ControllerOutputPayload(String type, List<DataFrame> data, Map<String, Object> metadata) {
+        this.type = type;
+        this.data = data != null ? data : new ArrayList<>();
         this.metadata = metadata;
     }
 
     /**
-     * Gets the output type.
-     *
-     * @return the type string
+     * Create payload from EventType.
      */
+    public ControllerOutputPayload(EventType eventType, List<DataFrame> data) {
+        this(eventType.getValue(), data);
+    }
+
     public String getType() {
         return type;
     }
 
-    /**
-     * Gets the output data.
-     *
-     * @return the data list
-     */
-    public List<BaseDataFrame> getData() {
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public List<DataFrame> getData() {
         return data;
     }
 
-    /**
-     * Gets the metadata.
-     *
-     * @return the metadata map, or null
-     */
+    public void setData(List<DataFrame> data) {
+        this.data = data != null ? data : new ArrayList<>();
+    }
+
     public Map<String, Object> getMetadata() {
         return metadata;
     }
-}
 
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
+    /**
+     * Create a payload indicating all tasks have been processed.
+     *
+     * @param message descriptive message
+     * @return the payload
+     */
+    public static ControllerOutputPayload allTasksProcessed(String message) {
+        return new ControllerOutputPayload(
+                ALL_TASKS_PROCESSED,
+                List.of(new DataFrame.TextDataFrame(message))
+        );
+    }
+}

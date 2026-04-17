@@ -1,18 +1,17 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
 /**
- * Task Status Enumeration.
- *
- * <p>Defines all possible states of a task.
- *
- * <p>Task Status Flow:
- * submitted -> working -> (completed | failed | paused | canceled)
- *                |
- *                -> input-required -> (continue execution or cancel)
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Task status enumeration.
+ * <p>
+ * Task status flow:
+ * {@code submitted -> working -> (completed | failed | paused | canceled)}
+ * {@code working -> input-required -> (continue execution or cancel)}
+ * <p>
+ * Mirrors Python's {@code TaskStatus(str, Enum)}.
  */
 public enum TaskStatus {
 
@@ -32,29 +31,21 @@ public enum TaskStatus {
         this.value = value;
     }
 
-    /**
-     * Gets the string value of the task status.
-     *
-     * @return the status value
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * Returns the TaskStatus from its string value.
-     *
-     * @param value the string value
-     * @return the corresponding TaskStatus
-     * @throws IllegalArgumentException if value is not recognized
-     */
     public static TaskStatus fromValue(String value) {
         for (TaskStatus status : values()) {
             if (status.value.equals(value)) {
                 return status;
             }
         }
-        throw new IllegalArgumentException("Unknown TaskStatus value: " + value);
+        throw new IllegalArgumentException("Unknown TaskStatus: " + value);
+    }
+
+    @Override
+    public String toString() {
+        return value;
     }
 }
-

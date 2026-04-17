@@ -1,267 +1,197 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.schema.Param;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackFirer;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.skills.GitHubTree;
+import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Single Agent Base Class.
- * 
- * <p><strong>Design principles:</strong>
+ *
+ * <p>Design principles:
  * <ul>
  *   <li>Card is required (defines what the Agent is)</li>
  *   <li>Config is optional (defines how the Agent runs)</li>
  *   <li>All configuration methods support chaining</li>
  * </ul>
- * 
- * <p>Python reference: {@code agent-core/openjiuwen/core/single_agent/agent.py}
  */
-public abstract class BaseAgent {
-    
-    private static final LoggerProtocol logger = Loggers.AGENT;
-    
-    /**
-     * Agent card (required).
-     */
-    protected final AgentCard card;
-    
-    /**
-     * Ability manager.
-     */
-    protected final AbilityManager abilityManager;
-    
-    /**
-     * Initializes the agent.
-     *
-     * @param card the agent card (required)
-     */
+public abstract class BaseAgent implements AgentCallbackFirer {
+
+    private final AgentCard card;
+    private final AbilityManager abilityManager;
+    private final AgentCallbackManager agentCallbackManager;
+    private SkillUtil skillUtil;
+
     protected BaseAgent(AgentCard card) {
         this.card = card;
         this.abilityManager = new AbilityManager();
+        this.agentCallbackManager = new AgentCallbackManager(card.getId());
+        lazyInitSkill();
     }
-    
-    // ========== Configuration Interface ==========
-    
+
     /**
-     * Sets the configuration.
+     * Lazy init SkillUtil.
+     */
+    protected void lazyInitSkill() {
+        Object config = getConfig();
+        if (config == null) {
+            return;
+        }
+        String sysOperationId = getSysOperationId(config);
+        if (sysOperationId == null) {
+            return;
+        }
+        if (skillUtil == null) {
+            skillUtil = new SkillUtil(sysOperationId);
+        } else {
+            skillUtil.setSysOperationId(sysOperationId);
+        }
+    }
+
+    /**
+     * Extract sys_operation_id from config via reflection. Override for concrete types.
+     */
+    protected String getSysOperationId(Object config) {
+        try {
+            var method = config.getClass().getMethod("getSysOperationId");
+            return (String) method.invoke(config);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ========== Configuration Interface ==========
+
+    /**
+     * Set configuration.
      *
      * @param config the configuration object
-     * @return this agent for chaining
+     * @return self for chaining
      */
     public abstract BaseAgent configure(Object config);
-    
-    // ========== Ability Management Interface ==========
-    
+
     /**
-     * Gets the ability manager.
+     * Get current configuration.
      *
-     * @return the ability manager
+     * @return current config, or null
      */
-    public AbilityManager getAbilityManager() {
-        return abilityManager;
-    }
-    
-    /**
-     * Gets the agent card.
-     *
-     * @return the agent card
-     */
+    public abstract Object getConfig();
+
     public AgentCard getCard() {
         return card;
     }
-    
+
+    public AbilityManager getAbilityManager() {
+        return abilityManager;
+    }
+
+    public AgentCallbackManager getAgentCallbackManager() {
+        return agentCallbackManager;
+    }
+
+    public SkillUtil getSkillUtil() {
+        return skillUtil;
+    }
+
+    protected void setSkillUtil(SkillUtil skillUtil) {
+        this.skillUtil = skillUtil;
+    }
+
     /**
-     * Adds an ability.
+     * Register a skill from a local path.
      *
-     * @param ability the ability Card (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
-     * @return this agent for chaining
+     * @param skillPath path to the skill directory or file (String or List of Strings)
      */
-    public BaseAgent addAbility(Object ability) {
-        abilityManager.add(ability);
+    public void registerSkill(Object skillPath) {
+        lazyInitSkill();
+        if (skillUtil != null) {
+            skillUtil.registerSkills(skillPath, this);
+        }
+    }
+
+    /**
+     * Register remote skills from GitHub.
+     *
+     * @param skillsDir  local directory for skills
+     * @param githubTree the GitHub tree reference
+     * @param token      GitHub API token (optional, pass empty string if not needed)
+     */
+    public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
+        lazyInitSkill();
+        if (skillUtil != null) {
+            skillUtil.registerRemoteSkills(skillsDir, githubTree, token);
+        }
+    }
+
+    /**
+     * Register a callback for an event.
+     *
+     * @param event    event type
+     * @param callback callback function
+     * @param priority execution priority
+     * @return self for chaining
+     */
+    public BaseAgent registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority) {
+        agentCallbackManager.registerCallback(event, callback, priority);
         return this;
     }
-    
+
     /**
-     * Adds multiple abilities.
+     * Register a rail instance.
      *
-     * @param abilities the list of ability Cards
-     * @return this agent for chaining
+     * @param rail the AgentRail to register
+     * @return self for chaining
      */
-    public BaseAgent addAbility(List<?> abilities) {
-        for (Object ability : abilities) {
-            abilityManager.add(ability);
-        }
+    public BaseAgent registerRail(AgentRail rail) {
+        agentCallbackManager.registerRail(rail, this);
         return this;
     }
-    
+
     /**
-     * Removes an ability by name.
+     * Unregister a rail instance.
      *
-     * @param name the ability name to remove
-     * @return this agent for chaining
+     * @param rail the AgentRail to unregister
+     * @return self for chaining
      */
-    public BaseAgent removeAbility(String name) {
-        abilityManager.remove(name);
+    public BaseAgent unregisterRail(AgentRail rail) {
+        agentCallbackManager.unregisterRail(rail, this);
         return this;
     }
-    
-    /**
-     * Removes multiple abilities by name.
-     *
-     * @param names the list of ability names to remove
-     * @return this agent for chaining
-     */
-    public BaseAgent removeAbility(List<String> names) {
-        for (String name : names) {
-            abilityManager.remove(name);
-        }
-        return this;
+
+    @Override
+    public void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx) {
+        agentCallbackManager.execute(event, ctx);
     }
-    
+
     /**
-     * Gets an ability Card by name.
+     * Batch execution.
      *
-     * @param name the ability name
-     * @return the ability Card, or empty if not found
+     * @param inputs  agent input
+     * @param session session object
+     * @return agent output result
      */
-    public Optional<Object> getAbility(String name) {
-        return abilityManager.get(name);
-    }
-    
+    public abstract Object invoke(Object inputs, Session session);
+
     /**
-     * Lists all ability Cards.
+     * Stream execution.
      *
-     * @return list of all ability Cards
+     * @param inputs      agent input
+     * @param session     session object
+     * @param streamModes stream output modes
+     * @return iterator of stream output
      */
-    public List<Object> listAbilities() {
-        return abilityManager.list();
-    }
-    
-    /**
-     * Gets ToolInfo list for LLM usage.
-     *
-     * @param names optional filter by ability names (null means all)
-     * @return future containing list of ToolInfo objects
-     */
-    public CompletableFuture<List<ToolInfo>> listToolInfo(List<String> names) {
-        return abilityManager.listToolInfo(names);
-    }
-    
-    // ========== Query Interface ==========
-    
-    /**
-     * Converts current Agent to ToolInfo (for use as sub-agent).
-     *
-     * @return ToolInfo representing this agent
-     */
-    public ToolInfo getToolInfo() {
-        // Build parameters from agent card's input_params
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("type", "object");
-        
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
-        
-        List<Param> inputParams = card.getAgentInputParams();
-        if (inputParams != null) {
-            for (Param param : inputParams) {
-                Map<String, Object> propSchema = new LinkedHashMap<>();
-                propSchema.put("type", param.getType() != null ? param.getType().getValue() : "string");
-                propSchema.put("description", param.getDescription() != null ? param.getDescription() : "");
-                properties.put(param.getName(), propSchema);
-                
-                if (param.isRequired()) {
-                    required.add(param.getName());
-                }
-            }
-        }
-        
-        params.put("properties", properties);
-        params.put("required", required);
-        
-        return new ToolInfo(
-            card.getName(),
-            card.getDescription() != null ? card.getDescription() : "",
-            params
-        );
-    }
-    
-    // ========== Execution Interface ==========
-    
-    /**
-     * Executes a single ability call.
-     *
-     * @param toolCall the tool call from LLM
-     * @param session the session instance
-     * @return future containing list with one execution result
-     */
-    public CompletableFuture<List<AbilityManager.ExecutionResult>> executeAbility(
-            ToolCall toolCall, Session session) {
-        return executeAbility(List.of(toolCall), session);
-    }
-    
-    /**
-     * Executes ability calls (supports parallel execution).
-     *
-     * @param toolCalls list of tool calls from LLM
-     * @param session the session instance
-     * @return future containing list of execution results
-     */
-    public CompletableFuture<List<AbilityManager.ExecutionResult>> executeAbility(
-            List<ToolCall> toolCalls, Session session) {
-        
-        // Execute all tool calls in parallel
-        List<CompletableFuture<AbilityManager.ExecutionResult>> futures = new ArrayList<>();
-        for (ToolCall toolCall : toolCalls) {
-            CompletableFuture<AbilityManager.ExecutionResult> future = 
-                abilityManager.execute(toolCall, session)
-                    .exceptionally(ex -> {
-                        String errorMsg = "Ability execution error: " + ex.getMessage();
-                        logger.error(errorMsg);
-                        ToolMessage toolMessage = new ToolMessage(toolCall.getId(), errorMsg);
-                        return new AbilityManager.ExecutionResult(null, toolMessage);
-                    });
-            futures.add(future);
-        }
-        
-        // Wait for all to complete
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenApply(v -> futures.stream()
-                .map(CompletableFuture::join)
-                .toList());
-    }
-    
-    /**
-     * Batch execution (can pass config at runtime to override).
-     *
-     * @param inputs agent input, supports:
-     *               - Map: must contain "user_input" and "session_id"
-     *               - String: used directly as user_input
-     * @param session session object (optional)
-     * @return future containing agent output result
-     */
-    public abstract CompletableFuture<Object> invoke(Object inputs, Session session);
-    
-    /**
-     * Stream execution (can pass config at runtime to override).
-     *
-     * @param inputs agent input, supports:
-     *               - Map: must contain "user_input" and "session_id"
-     *               - String: used directly as user_input
-     * @param session session object (optional)
-     * @param streamModes stream output modes (optional)
-     * @return future containing an iterator over output chunks (async iterator equivalent)
-     */
-    public abstract CompletableFuture<Iterator<Object>> stream(
-        Object inputs, Session session, List<StreamMode> streamModes);
+    public abstract Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes);
 }

@@ -1,106 +1,60 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.config;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.memory.common.CryptoUtils;
-
-import java.util.Arrays;
+import com.openjiuwen.core.memory.common.MemoryCrypto;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * Memory engine configuration.
- * Corresponds to Python: config/config.py - MemoryEngineConfig
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class MemoryEngineConfig {
 
-    private final ModelRequestConfig defaultModelCfg;
-    private final ModelClientConfig defaultModelClientCfg;
-    private final int inputMsgMaxLen;
-    private final byte[] cryptoKey;
+    @JsonProperty("default_model_cfg")
+    private ModelRequestConfig defaultModelCfg;
 
-    private MemoryEngineConfig(Builder builder) {
-        this.defaultModelCfg = builder.defaultModelCfg;
-        this.defaultModelClientCfg = builder.defaultModelClientCfg;
-        this.inputMsgMaxLen = builder.inputMsgMaxLen;
-        this.cryptoKey = builder.cryptoKey != null ? builder.cryptoKey.clone() : new byte[0];
-    }
+    @JsonProperty("default_model_client_cfg")
+    private ModelClientConfig defaultModelClientCfg;
 
-    public ModelRequestConfig getDefaultModelCfg() {
-        return defaultModelCfg;
-    }
+    @Builder.Default
+    @JsonProperty("input_msg_max_len")
+    private int inputMsgMaxLen = 8192;
 
-    public ModelClientConfig getDefaultModelClientCfg() {
-        return defaultModelClientCfg;
-    }
+    @Builder.Default
+    @JsonProperty("crypto_key")
+    private byte[] cryptoKey = new byte[0];
 
-    public int getInputMsgMaxLen() {
-        return inputMsgMaxLen;
-    }
-
-    public byte[] getCryptoKey() {
-        return cryptoKey.clone();
-    }
+    @Builder.Default
+    @JsonProperty("single_turn_history_summary_max_token")
+    private int singleTurnHistorySummaryMaxToken = 128;
 
     /**
-     * Check if encryption is enabled.
-     *
-     * @return true if crypto_key is set
+     * Validate crypto key: must be empty or exactly 32 bytes.
      */
-    public boolean isEncryptionEnabled() {
-        return cryptoKey.length > 0;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        private ModelRequestConfig defaultModelCfg;
-        private ModelClientConfig defaultModelClientCfg;
-        private int inputMsgMaxLen = 8192;
-        private byte[] cryptoKey = new byte[0];
-
-        public Builder defaultModelCfg(ModelRequestConfig defaultModelCfg) {
-            this.defaultModelCfg = defaultModelCfg;
-            return this;
+    public void validateCryptoKey() {
+        if (cryptoKey == null || cryptoKey.length == 0) {
+            return;
         }
-
-        public Builder defaultModelClientCfg(ModelClientConfig defaultModelClientCfg) {
-            this.defaultModelClientCfg = defaultModelClientCfg;
-            return this;
+        if (cryptoKey.length != MemoryCrypto.AES_KEY_LENGTH) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
+                    "config_type", "crypto_key",
+                    "error_msg", "crypto_key must be empty or " + MemoryCrypto.AES_KEY_LENGTH + " bytes length"
+            );
         }
-
-        public Builder inputMsgMaxLen(int inputMsgMaxLen) {
-            this.inputMsgMaxLen = inputMsgMaxLen;
-            return this;
-        }
-
-        public Builder cryptoKey(byte[] cryptoKey) {
-            if (cryptoKey == null) {
-                this.cryptoKey = new byte[0];
-            } else if (cryptoKey.length == 0 || cryptoKey.length == CryptoUtils.AES_KEY_LENGTH) {
-                this.cryptoKey = cryptoKey.clone();
-            } else {
-                throw new IllegalArgumentException(
-                    String.format("Invalid crypto_key, must be empty or %d bytes length", CryptoUtils.AES_KEY_LENGTH));
-            }
-            return this;
-        }
-
-        public MemoryEngineConfig build() {
-            return new MemoryEngineConfig(this);
-        }
-    }
-
-    @Override
-    public String toString() {
-        return "MemoryEngineConfig{" +
-               "inputMsgMaxLen=" + inputMsgMaxLen +
-               ", cryptoKeySet=" + (cryptoKey.length > 0) +
-               '}';
     }
 }
-

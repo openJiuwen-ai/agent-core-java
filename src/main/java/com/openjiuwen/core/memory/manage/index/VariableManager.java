@@ -1,262 +1,174 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.manage.index;
 
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.utils.Pair;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.store.BaseKVStore;
-import com.openjiuwen.core.memory.manage.memmodel.BaseMemoryUnit;
-import com.openjiuwen.core.memory.manage.memmodel.VariableUnit;
+import com.openjiuwen.core.memory.common.KvPrefixRegistry;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.spi.store.BaseKVStore;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.*;
 
 /**
- * Manager for variable-type memory storage using KV store.
- * <p>
- * Corresponds to Python: manage/index/variable_manager.py
+ * Manages variable memory using KV store.
  */
 public class VariableManager extends BaseMemoryManager {
 
-    private static final LoggerProtocol logger = Loggers.MEMORY;
     private static final String SEPARATOR = "/";
+    private static final String USER_VAR_PREFIX = "user_var";
+    private static final String SESSION_VAR_PREFIX = "session_var";
 
     private final BaseKVStore kvStore;
     private final byte[] cryptoKey;
 
-    /**
-     * Initialize the VariableManager.
-     *
-     * @param kvStore   The KV store to use for storage
-     * @param cryptoKey The encryption key for encrypting variable values
-     */
     public VariableManager(BaseKVStore kvStore, byte[] cryptoKey) {
         this.kvStore = kvStore;
-        this.cryptoKey = cryptoKey != null ? cryptoKey : new byte[0];
+        this.cryptoKey = cryptoKey;
+        KvPrefixRegistry.getInstance().registerCurrent(USER_VAR_PREFIX);
+        KvPrefixRegistry.getInstance().registerCurrent(SESSION_VAR_PREFIX);
     }
 
     @Override
-    public CompletableFuture<Void> add(BaseMemoryUnit memory, Pair<String, Model> llmInfo) {
+    public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories,
+                             Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
+        @SuppressWarnings("unchecked")
+        List<VariableUnit> variableUnits = (List<VariableUnit>) (List<?>) memories;
+        for (VariableUnit unit : variableUnits) {
+            if (kvStore == null) {
+                MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
+                return;
+            }
+            String key = makeVariableKey(userId, scopeId, unit.getVariableName(), null);
+            String value = encryptMemoryIfNeeded(cryptoKey, unit.getVariableMem());
+            kvStore.set(key, value);
+        }
+    }
+
+    @Override
+    public void update(String userId, String scopeId, String memId, String newMemory,
+                        Map<String, Object> kwargs) {
+        MEMORY_LOGGER.warn("[{}] update not implemented for VariableManager", LogEventType.MEMORY_STORE);
+    }
+
+    public void updateUserVariable(String userId, String scopeId, String varName, String varMem) {
         if (kvStore == null) {
-            logger.error("kv_store cannot be None");
-            return CompletableFuture.completedFuture(null);
+            MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
+            return;
         }
-
-        if (!(memory instanceof VariableUnit variableUnit)) {
-            logger.error("Variable add Must pass VariableUnit class");
-            return CompletableFuture.completedFuture(null);
+        Map<String, String> existing = queryVariable(userId, scopeId, varName, null);
+        if (!checkExist(existing, varName)) {
+            return;
         }
-
-        Pair<String, String> keyValue = makeVariablePairs(
-                variableUnit.getUserId(),
-                false,
-                variableUnit.getScopeId(),
-                variableUnit.getVariableName(),
-                null,
-                variableUnit.getVariableMem(),
-                null
-        );
-
-        return kvStore.set(keyValue.getKey(), keyValue.getValue())
-                .thenApply(v -> null);
+        String key = makeVariableKey(userId, scopeId, varName, null);
+        String value = encryptMemoryIfNeeded(cryptoKey, varMem);
+        kvStore.set(key, value);
     }
 
     @Override
-    public CompletableFuture<Boolean> update(String userId, String scopeId, String memId, String newMemory) {
-        logger.warning("not implemented method update");
-        return CompletableFuture.completedFuture(false);
+    public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
+        MEMORY_LOGGER.warn("[{}] delete not implemented for VariableManager", LogEventType.MEMORY_STORE);
+        return false;
+    }
+
+    @Override
+    public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
+        if (kvStore == null) {
+            MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
+            return false;
+        }
+        String userPrefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        String sessionPrefix = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        kvStore.deleteByPrefix(userPrefix, null);
+        kvStore.deleteByPrefix(sessionPrefix, null);
+        return true;
+    }
+
+    public void deleteUserVariable(String userId, String scopeId, String varName) {
+        if (kvStore == null) {
+            MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
+            return;
+        }
+        String key = makeVariableKey(userId, scopeId, varName, null);
+        kvStore.delete(key);
+    }
+
+    @Override
+    public Map<String, Object> get(String userId, String scopeId, String memId) {
+        MEMORY_LOGGER.warn("[{}] get not implemented for VariableManager", LogEventType.MEMORY_STORE);
+        return null;
+    }
+
+    @Override
+    public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
+                                             Map<String, Object> kwargs) {
+        MEMORY_LOGGER.warn("[{}] search not implemented for VariableManager", LogEventType.MEMORY_STORE);
+        return null;
     }
 
     /**
-     * Update a user variable by name.
-     *
-     * @param userId  The user ID
-     * @param scopeId The scope ID
-     * @param varName The variable name
-     * @param varMem  The new variable value
-     * @return CompletableFuture that completes when the operation is done
+     * Query variable by user_id, scope_id, variable_name. Returns variable memory.
      */
-    public CompletableFuture<Void> updateUserVariable(String userId, String scopeId, String varName, String varMem) {
-        if (kvStore == null) {
-            logger.error("kv_store cannot be None");
-            return CompletableFuture.completedFuture(null);
+    @SuppressWarnings("unchecked")
+    public Map<String, String> queryVariable(String userId, String scopeId, String name, String sessionId) {
+        checkUserAndScopeId(userId, scopeId);
+        if (name == null || name.isBlank()) {
+            String prefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+            Map<String, Object> kvRet = kvStore.getByPrefix(prefix);
+            Map<String, String> result = new LinkedHashMap<>();
+            if (kvRet != null) {
+                for (Map.Entry<String, Object> entry : kvRet.entrySet()) {
+                    String decrypted = decryptMemoryIfNeeded(cryptoKey, String.valueOf(entry.getValue()));
+                    String varKey = entry.getKey().substring(entry.getKey().lastIndexOf(SEPARATOR) + 1);
+                    result.put(varKey, decrypted);
+                }
+            }
+            return result;
         }
 
-        return queryVariable(userId, scopeId, varName, null)
-                .thenCompose(existingVariable -> {
-                    if (!checkExist(existingVariable, varName)) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    Pair<String, String> keyValue = makeVariablePairs(
-                            userId, false, scopeId, varName, null, varMem, null
-                    );
-                    return kvStore.set(keyValue.getKey(), keyValue.getValue())
-                            .thenApply(v -> null);
-                });
-    }
-
-    @Override
-    public CompletableFuture<Boolean> delete(String userId, String scopeId, String memId) {
-        logger.warning("not implemented method delete");
-        return CompletableFuture.completedFuture(false);
-    }
-
-    /**
-     * Delete a user variable by name.
-     *
-     * @param userId  The user ID
-     * @param scopeId The scope ID
-     * @param varName The variable name
-     * @return CompletableFuture that completes when the operation is done
-     */
-    public CompletableFuture<Void> deleteUserVariable(String userId, String scopeId, String varName) {
-        if (kvStore == null) {
-            logger.error("kv_store cannot be None");
-            return CompletableFuture.completedFuture(null);
-        }
-
-        Pair<String, String> keyValue = makeVariablePairs(userId, false, scopeId, varName, null, null, null);
-        return kvStore.delete(keyValue.getKey())
-                .thenApply(v -> null);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> deleteByUserId(String userId, String scopeId) {
-        if (kvStore == null) {
-            logger.error("kv_store cannot be None");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        String userPrefix = "user_var" + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
-        String sessionPrefix = "session_var" + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
-
-        return kvStore.deleteByPrefix(userPrefix)
-                .thenCompose(v -> kvStore.deleteByPrefix(sessionPrefix))
-                .thenApply(v -> true)
-                .exceptionally(e -> {
-                    logger.error("Failed to delete by user id: {}", e.getMessage());
-                    return false;
-                });
-    }
-
-    @Override
-    public CompletableFuture<Map<String, Object>> get(String userId, String scopeId, String memId) {
-        logger.warning("not implemented method get");
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public CompletableFuture<List<Map<String, Object>>> search(String userId, String scopeId, String query, int topK) {
-        logger.warning("not implemented method search");
-        return CompletableFuture.completedFuture(List.of());
-    }
-
-    /**
-     * Query variable by user_id, scope_id, variable_name.
-     *
-     * @param userId    The user ID
-     * @param scopeId   The scope ID
-     * @param name      The variable name (null or empty to get all variables)
-     * @param sessionId The session ID (optional, for session-scoped variables)
-     * @return CompletableFuture containing a map of variable name to value
-     */
-    public CompletableFuture<Map<String, Object>> queryVariable(String userId, String scopeId,
-                                                                 String name, String sessionId) {
-        checkUserAndScopeId(userId, scopeId, "Search");
-
-        if (kvStore == null) {
-            return CompletableFuture.completedFuture(new HashMap<>());
-        }
-
-        // Get all variables if name is null or empty
-        if (name == null || name.trim().isEmpty()) {
-            String prefixStr = "user_var" + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
-            return kvStore.getByPrefix(prefixStr)
-                    .thenApply(kvRet -> {
-                        Map<String, Object> result = new HashMap<>();
-                        if (kvRet != null) {
-                            for (Map.Entry<String, String> entry : kvRet.entrySet()) {
-                                String decryptedValue = decryptMemoryIfNeeded(cryptoKey, entry.getValue());
-                                String varName = entry.getKey().split(SEPARATOR)[entry.getKey().split(SEPARATOR).length - 1];
-                                result.put(varName, decryptedValue);
-                            }
-                        }
-                        return result;
-                    });
-        }
-
-        // Get specific variable
         String key;
-        if (sessionId != null && !sessionId.isEmpty()) {
-            key = "session_var" + SEPARATOR + userId + SEPARATOR + scopeId
+        if (sessionId != null) {
+            key = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId
                     + SEPARATOR + sessionId + SEPARATOR + name;
         } else {
-            key = "user_var" + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + name;
+            key = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + name;
         }
-
-        return kvStore.get(key)
-                .thenApply(value -> {
-                    Map<String, Object> result = new HashMap<>();
-                    String decryptedValue = decryptMemoryIfNeeded(cryptoKey, value);
-                    result.put(name, decryptedValue);
-                    return result;
-                });
+        Object kvRet = kvStore.get(key);
+        String decrypted = decryptMemoryIfNeeded(cryptoKey, kvRet != null ? String.valueOf(kvRet) : null);
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put(name, decrypted);
+        return result;
     }
 
-    private Pair<String, String> makeVariablePairs(
-            String userId,
-            boolean forDeletion,
-            String scopeId,
-            String varName,
-            String sessionId,
-            String userVarValue,
-            String sessionVarValue) {
+    // ---- Private Helpers ----
 
-        String key = "";
-        String value = "";
-
-        String encryptedUserVarValue = encryptMemoryIfNeeded(cryptoKey, userVarValue);
-        String encryptedSessionVarValue = encryptMemoryIfNeeded(cryptoKey, sessionVarValue);
-
-        if (varName != null) {
-            if (sessionId == null || sessionId.isEmpty()) {
-                // user_var
-                key = "user_var" + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
-                value = forDeletion ? null : encryptedUserVarValue;
-            } else {
-                // session_var
-                key = "session_var" + SEPARATOR + userId + SEPARATOR + scopeId
-                        + SEPARATOR + sessionId + SEPARATOR + varName;
-                value = forDeletion ? null : encryptedSessionVarValue;
-            }
+    private String makeVariableKey(String userId, String scopeId, String varName, String sessionId) {
+        if (sessionId != null) {
+            return SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId
+                    + SEPARATOR + sessionId + SEPARATOR + varName;
         }
-
-        return new Pair<>(key, value);
+        return USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
     }
 
-    private static void checkUserAndScopeId(String userId, String scopeId, String context) {
-        if (userId == null || userId.trim().isEmpty()) {
-            logger.error("{} failed, user ID is empty", context);
+    private void checkUserAndScopeId(String userId, String scopeId) {
+        if (userId == null || userId.isBlank()) {
+            MEMORY_LOGGER.error("[{}] user_id is empty for variable operation", LogEventType.MEMORY_RETRIEVE);
         }
-        if (scopeId == null || scopeId.trim().isEmpty()) {
-            logger.error("{} failed, scope ID is empty", context);
+        if (scopeId == null || scopeId.isBlank()) {
+            MEMORY_LOGGER.error("[{}] scope_id is empty for variable operation", LogEventType.MEMORY_RETRIEVE);
         }
     }
 
-    private static boolean checkExist(Map<String, Object> variableDict, String variableName) {
+    private static boolean checkExist(Map<String, String> variableDict, String variableName) {
         if (variableDict == null || variableDict.isEmpty()) {
             return false;
         }
         if (!variableDict.containsKey(variableName)) {
             return false;
         }
-        return variableDict.get(variableName) != null;
+        return variableDict.get(variableName) != null && !variableDict.get(variableName).isEmpty();
     }
 }
-

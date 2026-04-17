@@ -1,177 +1,145 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * 基础模型信息配置类。
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/mode_info.py - BaseModelInfo
+ * Base model information — a simplified configuration used by higher-level components.
+ * <p>
+ * Mirrors Python's {@code BaseModelInfo} model.
  */
+@Data
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseModelInfo {
-    private final String apiKey;
-    private final String apiBase;
-    private final String modelName;
-    private final double temperature;
-    private final double topP;
-    private final boolean streaming;
-    private final int timeout;
-    private final Map<String, Object> extraParams;
 
-    private BaseModelInfo(Builder builder) {
-        this.apiKey = builder.apiKey;
-        this.apiBase = builder.apiBase;
-        this.modelName = builder.modelName;
-        this.temperature = builder.temperature;
-        this.topP = builder.topP;
-        this.streaming = builder.streaming;
-        this.timeout = builder.timeout;
-        this.extraParams = new HashMap<>(builder.extraParams);
+    private static final String GREATER_THAN_ZERO_MESSAGE =
+            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
+
+    @JsonProperty("api_key")
+    private String apiKey = "";
+
+    @JsonProperty("api_base")
+    private String apiBase;
+
+    @JsonProperty("model")
+    private String modelName = "";
+
+    private Double temperature = 0.95;
+
+    @JsonProperty("top_p")
+    private Double topP = 0.1;
+
+    @JsonProperty("stream")
+    private boolean streaming = false;
+
+    private int timeout = 60;
+    @JsonProperty("verify_ssl")
+    private boolean verifySsl = true;
+    @JsonProperty("ssl_cert")
+    private String sslCert;
+    private Map<String, String> headers = new LinkedHashMap<>();
+
+    private Map<String, Object> extraFields = new HashMap<>();
+
+    /**
+     * Creates a BaseModelInfo with the specified configuration.
+     *
+     * @param apiKey      the API key for authentication
+     * @param apiBase     the base URL for API requests
+     * @param modelName   the model name to use
+     * @param temperature the sampling temperature
+     * @param topP        the top-p sampling parameter
+     * @param streaming   whether to enable streaming
+     * @param timeout     the request timeout in seconds
+     * @param verifySsl   whether to verify SSL certificates
+     * @param sslCert     the SSL certificate path
+     * @param headers     additional HTTP headers
+     * @param extraFields additional extra fields
+     */
+    @Builder
+    public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
+                         Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert,
+                         Map<String, String> headers, Map<String, Object> extraFields) {
+        this.apiKey = apiKey == null ? "" : apiKey;
+        this.apiBase = apiBase;
+        this.modelName = modelName == null ? "" : modelName;
+        this.temperature = temperature == null ? 0.95 : temperature;
+        this.topP = topP == null ? 0.1 : topP;
+        this.streaming = streaming != null && streaming;
+        this.timeout = timeout == null ? 60 : validatePositive(timeout);
+        this.verifySsl = verifySsl == null || verifySsl;
+        this.sslCert = sslCert;
+        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
+        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
     }
 
-    public String getApiKey() {
-        return apiKey;
+    @JsonAnyGetter
+    public Map<String, Object> getExtraFields() {
+        return extraFields;
     }
 
-    public String getApiBase() {
-        return apiBase;
-    }
-
-    public String getModelName() {
-        return modelName;
-    }
-
-    public double getTemperature() {
-        return temperature;
-    }
-
-    public double getTopP() {
-        return topP;
-    }
-
-    public boolean isStreaming() {
-        return streaming;
-    }
-
-    public int getTimeout() {
-        return timeout;
-    }
-
-    public Map<String, Object> getExtraParams() {
-        return new HashMap<>(extraParams);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        BaseModelInfo that = (BaseModelInfo) o;
-        return Objects.equals(apiBase, that.apiBase) &&
-                Objects.equals(modelName, that.modelName);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(apiBase, modelName);
+    @JsonAnySetter
+    public void setExtraField(String key, Object value) {
+        if (extraFields == null) {
+            extraFields = new HashMap<>();
+        }
+        extraFields.put(key, value);
     }
 
     /**
-     * Builder类
+     * Sets the request timeout.
+     *
+     * @param timeout the timeout in seconds, must be greater than 0
      */
-    public static class Builder {
-        private String apiKey = "";
-        private String apiBase;
-        private String modelName = "";
-        private boolean modelNameSetDirectly = false;  // 跟踪是否直接设置了modelName
-        private double temperature = 0.95;
-        private double topP = 0.1;
-        private boolean streaming = false;
-        private int timeout = 60;
-        private final Map<String, Object> extraParams = new HashMap<>();
+    public void setTimeout(int timeout) {
+        this.timeout = validatePositive(timeout);
+    }
 
-        public Builder apiKey(String apiKey) {
-            this.apiKey = apiKey;
-            return this;
-        }
+    /**
+     * Sets the extra fields.
+     *
+     * @param extraFields the extra fields map
+     */
+    public void setExtraFields(Map<String, Object> extraFields) {
+        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
+    }
 
-        public Builder apiBase(String apiBase) {
-            this.apiBase = apiBase;
-            return this;
-        }
+    /**
+     * Gets the HTTP headers.
+     *
+     * @return a copy of the headers map
+     */
+    public Map<String, String> getHeaders() {
+        return new LinkedHashMap<>(headers);
+    }
 
-        /**
-         * 设置model（别名，等同于modelName）
-         * 注意：这是推荐的设置方式，直接使用modelName()可能导致值被重置为空
-         */
-        public Builder model(String model) {
-            this.modelName = model;
-            this.modelNameSetDirectly = false;  // 通过alias设置
-            return this;
-        }
+    /**
+     * Sets the HTTP headers.
+     *
+     * @param headers the headers map
+     */
+    public void setHeaders(Map<String, String> headers) {
+        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
+    }
 
-        /**
-         * 直接设置modelName（不推荐）
-         * 注意：为了与Python Pydantic行为一致，直接设置modelName会在build时被重置为空字符串
-         * 请使用model()方法代替
-         */
-        public Builder modelName(String modelName) {
-            this.modelName = modelName;
-            this.modelNameSetDirectly = true;  // 标记为直接设置
-            return this;
+    private static int validatePositive(int value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
         }
-
-        public Builder temperature(double temperature) {
-            this.temperature = temperature;
-            return this;
-        }
-
-        public Builder topP(double topP) {
-            this.topP = topP;
-            return this;
-        }
-
-        /**
-         * 设置stream（别名，等同于streaming）
-         */
-        public Builder stream(boolean stream) {
-            this.streaming = stream;
-            return this;
-        }
-
-        public Builder streaming(boolean streaming) {
-            this.streaming = streaming;
-            return this;
-        }
-
-        public Builder timeout(int timeout) {
-            this.timeout = timeout;
-            return this;
-        }
-
-        public Builder extraParam(String key, Object value) {
-            this.extraParams.put(key, value);
-            return this;
-        }
-
-        public BaseModelInfo build() {
-            // 验证必填字段
-            if (apiBase == null || apiBase.isEmpty()) {
-                throw new IllegalArgumentException("apiBase is required and must have at least 1 character");
-            }
-            // 验证timeout > 0
-            if (timeout <= 0) {
-                throw new IllegalArgumentException("timeout must be greater than 0");
-            }
-            
-            // 模拟Python Pydantic的行为：如果直接设置了modelName（而不是通过alias），则重置为空
-            // 这是Pydantic的一个特殊行为，当Field有alias时，直接使用字段名可能导致值被重置
-            if (modelNameSetDirectly) {
-                this.modelName = "";
-            }
-            
-            return new BaseModelInfo(this);
-        }
+        return value;
     }
 }
-

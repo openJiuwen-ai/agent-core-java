@@ -1,379 +1,201 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.exception.ErrorBuilder;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.contextengine.ContextEngine;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
-import com.openjiuwen.core.controller.schema.*;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.singleagent.AbilityManager;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
+import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
+import com.openjiuwen.core.controller.schema.TaskFailedEvent;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.session.AgentSessionApi;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Task scheduler.
- *
- * <p>Responsible for scheduling, executing, pausing, and canceling tasks.
- * Supports concurrent execution of multiple tasks and streaming of task execution output.
- *
- * <p>Workflow:
+ * Task scheduler responsible for scheduling, executing, pausing, and canceling tasks.
+ * <p>
+ * Supports concurrent execution of multiple tasks and streaming task execution output.
+ * <p>
+ * Workflow:
  * <ol>
- *   <li>Periodically scan for tasks to be executed (status = submitted)</li>
- *   <li>Execute multiple tasks concurrently</li>
+ *   <li>Periodically scan for tasks to be executed (status = SUBMITTED)</li>
+ *   <li>Execute multiple tasks concurrently using virtual threads</li>
  *   <li>Stream output generated during task execution</li>
  *   <li>Update task status based on output type</li>
  * </ol>
- *
- * <p>Python reference: {@code modules/task_scheduler.py::TaskScheduler}
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Mirrors Python's {@code TaskScheduler}.
  */
 public class TaskScheduler {
-
-    private static final Logger logger = LoggerFactory.getLogger(TaskScheduler.class);
 
     private ControllerConfig config;
     private final TaskManager taskManager;
     private final ContextEngine contextEngine;
-    private final AbilityManager abilityManager;
+    private final Object abilityManager;
     private final EventQueue eventQueue;
-    private final TaskExecutorRegistry taskExecutorRegistry;
-    private final Map<String, Session> sessions;
-    private final AgentCard card;
+    private final TaskExecutorRegistry taskExecutorRegistry = new TaskExecutorRegistry();
+    private final Map<String, AgentSessionApi> sessions = new ConcurrentHashMap<>();
+    private final BaseCard card;
 
-    // Scheduler running state
-    private volatile boolean running;
-    private Future<?> schedulerTask;
-
-    // Running tasks: task_id -> (TaskExecutor, Future)
-    private final Map<String, TaskEntry> runningTasks;
-
-    // Lock for synchronized access
-    private final ReentrantLock lock;
-
-    // Executor services
-    private final ExecutorService taskExecutorService;
-    private ScheduledExecutorService schedulerExecutorService;
+    private volatile boolean running = false;
+    private ScheduledFuture<?> schedulerFuture;
+    private ScheduledExecutorService scheduler;
 
     /**
-     * Constructs a TaskScheduler with all dependencies.
-     *
-     * @param config         the controller configuration
-     * @param taskManager    the task manager
-     * @param contextEngine  the context engine
-     * @param abilityManager the ability manager
-     * @param eventQueue     the event queue
-     * @param card           the agent card
+     * Running tasks: taskId -> RunningTaskEntry (executor + future).
      */
-    public TaskScheduler(ControllerConfig config,
-                          TaskManager taskManager,
-                          ContextEngine contextEngine,
-                          AbilityManager abilityManager,
-                          EventQueue eventQueue,
-                          AgentCard card) {
+    private final Map<String, RunningTaskEntry> runningTasks = new ConcurrentHashMap<>();
+    private final ReentrantLock lock = new ReentrantLock();
+
+    public TaskScheduler(
+            ControllerConfig config,
+            TaskManager taskManager,
+            ContextEngine contextEngine,
+            Object abilityManager,
+            EventQueue eventQueue,
+            BaseCard card
+    ) {
         this.config = config;
         this.taskManager = taskManager;
         this.contextEngine = contextEngine;
         this.abilityManager = abilityManager;
         this.eventQueue = eventQueue;
-        this.taskExecutorRegistry = new TaskExecutorRegistry();
-        this.sessions = new ConcurrentHashMap<>();
         this.card = card;
-
-        this.running = false;
-        this.schedulerTask = null;
-        this.runningTasks = new ConcurrentHashMap<>();
-        this.lock = new ReentrantLock();
-
-        this.taskExecutorService = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "TaskScheduler-executor");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
-    // ==================== Properties ====================
-
-    /**
-     * Gets the configuration.
-     *
-     * @return the controller configuration
-     */
     public ControllerConfig getConfig() {
         return config;
     }
 
-    /**
-     * Sets the configuration.
-     *
-     * @param config the new controller configuration
-     */
     public void setConfig(ControllerConfig config) {
         this.config = config;
     }
 
-    /**
-     * Gets the session dictionary.
-     *
-     * @return the sessions map
-     */
-    public Map<String, Session> getSessions() {
+    public Map<String, AgentSessionApi> getSessions() {
         return sessions;
     }
 
-    /**
-     * Gets the task manager.
-     *
-     * @return the task manager
-     */
     public TaskManager getTaskManager() {
         return taskManager;
     }
 
-    /**
-     * Gets the task executor registry.
-     *
-     * @return the task executor registry
-     */
     public TaskExecutorRegistry getTaskExecutorRegistry() {
         return taskExecutorRegistry;
     }
 
-    // ==================== Lifecycle ====================
-
-    /**
-     * Starts the task scheduler.
-     *
-     * <p>Starts the background scheduling task and begins periodic scanning
-     * and execution of pending tasks.
-     */
-    public void start() {
-        if (running) {
-            logger.warn("TaskScheduler is already running");
-            return;
-        }
-        running = true;
-        schedulerExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "TaskScheduler-schedule");
-            t.setDaemon(true);
-            return t;
-        });
-        schedulerTask = schedulerExecutorService.submit(this::schedule);
-        logger.info("TaskScheduler started");
-    }
-
-    /**
-     * Stops the task scheduler.
-     *
-     * <p>Stops the background scheduling task and cancels all running tasks
-     * to ensure clean shutdown.
-     */
-    public void stop() {
-        if (!running) {
-            logger.warn("TaskScheduler is not running");
-            return;
-        }
-
-        running = false;
-
-        // Cancel all running tasks
-        if (!runningTasks.isEmpty()) {
-            logger.info("Cancelling {} running tasks before stopping...", runningTasks.size());
-            lock.lock();
-            try {
-                for (Map.Entry<String, TaskEntry> entry : runningTasks.entrySet()) {
-                    TaskEntry taskEntry = entry.getValue();
-                    if (taskEntry.future != null && !taskEntry.future.isDone()) {
-                        taskEntry.future.cancel(true);
-                        logger.info("Cancelled task {} successfully", entry.getKey());
-                    }
-                }
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        if (schedulerTask != null) {
-            schedulerTask.cancel(true);
-        }
-
-        if (schedulerExecutorService != null) {
-            schedulerExecutorService.shutdownNow();
-        }
-
-        logger.info("TaskScheduler stopped");
-    }
-
-    // ==================== Schedule Loop ====================
-
-    /**
-     * Background scheduling loop.
-     *
-     * <p>Periodically scans TaskManager and concurrently executes tasks with
-     * status SUBMITTED.
-     */
-    void schedule() {
-        logger.info("TaskScheduler schedule loop started");
-        while (running) {
-            try {
-                // 1. Get tasks to execute
-                List<Task> submittedTasks = taskManager.getTask(
-                    TaskFilter.builder().status(TaskStatus.SUBMITTED).build()
-                );
-
-                // 2. Concurrently start all new tasks (non-blocking)
-                for (Task task : submittedTasks) {
-                    // Check whether session exists
-                    Session session = sessions.get(task.getSessionId());
-                    if (session == null) {
-                        logger.warn("Task {} session {} not found, skipping",
-                            task.getTaskId(), task.getSessionId());
-                        continue;
-                    }
-
-                    lock.lock();
-                    try {
-                        if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
-                            logger.warn("Reached max concurrent tasks limit ({}), waiting for next schedule",
-                                config.getMaxConcurrentTasks());
-                            break;
-                        }
-
-                        // Check whether it is already running
-                        if (runningTasks.containsKey(task.getTaskId())) {
-                            continue;
-                        }
-
-                        // Start non-blockingly
-                        Future<?> execTask = taskExecutorService.submit(
-                            () -> executeTaskWrapper(task.getTaskId(), session)
-                        );
-
-                        // Record in running tasks
-                        runningTasks.put(task.getTaskId(), new TaskEntry(null, execTask));
-                    } finally {
-                        lock.unlock();
-                    }
-
-                    logger.info("Task {} ({}) started", task.getTaskId(), task.getTaskType());
-                }
-
-                // 3. Sleep briefly (loop remains non-blocking)
-                Thread.sleep((long) (config.getScheduleInterval() * 1000));
-
-            } catch (InterruptedException e) {
-                logger.info("TaskScheduler schedule loop interrupted");
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Exception e) {
-                logger.error("Error in schedule loop: {}", e.getMessage(), e);
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }
-
-        // 4. When stopping, wait for all tasks to complete
-        waitAllTasksComplete();
-        logger.info("TaskScheduler schedule end");
-    }
-
     // ==================== Task Execution ====================
 
-    /**
-     * Task execution wrapper.
-     *
-     * <p>Wraps executeTask to ensure exceptions are captured and handled correctly.
-     *
-     * @param taskId  the task ID
-     * @param session the session object
-     */
-    void executeTaskWrapper(String taskId, Session session) {
+    private void handleTaskExecutionFailure(String taskId, AgentSessionApi session, String errorMessage) {
+        taskManager.updateTaskStatus(taskId, TaskStatus.FAILED, errorMessage);
+
+        ControllerOutputChunk failedChunk = new ControllerOutputChunk(
+                0,
+                new ControllerOutputPayload(
+                        EventType.TASK_FAILED.getValue(),
+                        List.of(new DataFrame.TextDataFrame(errorMessage)),
+                        null
+                ),
+                false
+        );
+        publishTaskEvent(taskId, session, failedChunk);
+    }
+
+    @SuppressWarnings("resource")
+    private void executeTaskWrapper(String taskId, AgentSessionApi session) {
         try {
             if (config.getTaskTimeout() != null) {
-                CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> executeTask(taskId, session),
-                    taskExecutorService
-                );
-                future.get(config.getTaskTimeout().longValue(), TimeUnit.SECONDS);
+                // Execute with timeout: run on current virtual thread, use a watchdog to interrupt
+                Thread currentThread = Thread.currentThread();
+                ScheduledExecutorService watchdog = new ScheduledThreadPoolExecutor(1, r -> {
+                    Thread t = new Thread(r, "task-timeout-" + taskId);
+                    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                        @Override
+                        public void uncaughtException(Thread t, Throwable e) {
+                            Loggers.CONTROLLER.error("executeTaskWrapper Error,Thread {} , {}", t.getName(),e.getMessage());
+                        }
+                    });
+                    t.setDaemon(true);
+                    return t;
+                });
+                long timeoutMs = (long) (config.getTaskTimeout() * 1000);
+                ScheduledFuture<?> timeout = watchdog.schedule(() -> {
+                    Loggers.CONTROLLER.error("Task {} timed out after {} seconds", taskId, config.getTaskTimeout());
+                    currentThread.interrupt();
+                }, timeoutMs, TimeUnit.MILLISECONDS);
+                try {
+                    executeTask(taskId, session);
+                } finally {
+                    timeout.cancel(false);
+                    watchdog.shutdown();
+                }
             } else {
                 executeTask(taskId, session);
             }
-        } catch (TimeoutException e) {
-            String errorMsg = "Task timeout after " + config.getTaskTimeout() + " seconds";
-            logger.error("Task {} {}", taskId, errorMsg);
-            handleTaskExecutionFailure(taskId, session, errorMsg);
-        } catch (CancellationException e) {
-            logger.info("Task {} cancelled (likely by pause_task/cancel_task), "
-                + "continuing gracefully to not affect other tasks", taskId);
-        } catch (InterruptedException e) {
-            logger.info("Task {} interrupted (likely by stop), continuing gracefully", taskId);
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            logger.error("Task {} execution failed: {}", taskId, cause.getMessage(), cause);
-            handleTaskExecutionFailure(taskId, session, cause.getMessage());
+            if (e instanceof InterruptedException) {
+                String errorMsg = "Task timeout after " + config.getTaskTimeout() + " seconds";
+                Loggers.CONTROLLER.error("Task {} {}", taskId, errorMsg);
+                handleTaskExecutionFailure(taskId, session, errorMsg);
+                Thread.currentThread().interrupt();
+            } else {
+                Loggers.CONTROLLER.error("Task {} execution failed: {}", taskId, e.getMessage());
+                handleTaskExecutionFailure(taskId, session, e.getMessage());
+            }
         } finally {
-            // Cleanup: remove from running tasks
             lock.lock();
             try {
                 runningTasks.remove(taskId);
             } finally {
                 lock.unlock();
             }
-
-            // Check if all tasks are done and send completion signal
             ensureSessionCompletionSignal(session.getSessionId());
         }
     }
 
-    /**
-     * Execute task.
-     *
-     * @param taskId  the task ID
-     * @param session the session object
-     */
-    void executeTask(String taskId, Session session) {
+    private void executeTask(String taskId, AgentSessionApi session) {
         // 1. Get task object
-        List<Task> tasks = taskManager.getTask(
-            TaskFilter.builder().taskId(taskId).build()
-        );
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
         if (tasks.isEmpty()) {
-            logger.error("Task {} not found", taskId);
-            throw ErrorBuilder.build(
-                StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR,
-                "task " + taskId + " not found"
-            );
+            Loggers.CONTROLLER.error("Task {} not found", taskId);
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR,
+                    "error_msg", "task " + taskId + " not found");
         }
         Task task = tasks.get(0);
-
-        logger.info("Executing task {} (type: {})", taskId, task.getTaskType());
+        Loggers.CONTROLLER.info("Executing task {} (type: {})", taskId, task.getTaskType());
 
         // 2. Create TaskExecutor
         TaskExecutorDependencies dependencies = new TaskExecutorDependencies(
-            config, abilityManager, contextEngine, taskManager, eventQueue
+                config, abilityManager, contextEngine, taskManager, eventQueue
         );
-        TaskExecutor executor = taskExecutorRegistry.getTaskExecutor(
-            task.getTaskType(), dependencies
-        );
+        TaskExecutor executor = taskExecutorRegistry.getTaskExecutor(task.getTaskType(), dependencies);
 
-        // Update running task records (add executor)
+        // Update running task entry with executor
         lock.lock();
         try {
-            if (runningTasks.containsKey(taskId)) {
-                TaskEntry entry = runningTasks.get(taskId);
-                runningTasks.put(taskId, new TaskEntry(executor, entry.future));
+            RunningTaskEntry entry = runningTasks.get(taskId);
+            if (entry != null) {
+                entry.setExecutor(executor);
             }
         } finally {
             lock.unlock();
@@ -382,367 +204,408 @@ public class TaskScheduler {
         // 3. Update task status to WORKING
         taskManager.updateTaskStatus(taskId, TaskStatus.WORKING);
 
-        // 4. Execute task in streaming mode
+        // 4. Execute task and stream output
         Iterator<ControllerOutputChunk> chunks = executor.executeAbility(taskId, session);
         while (chunks.hasNext()) {
             ControllerOutputChunk chunk = chunks.next();
 
-            // 4.1 Write to session stream
-            session.writeStream(chunk).join();
+            // Write to session stream
+            session.writeStream(chunk);
 
-            // 4.2 Check output type and decide whether to stop the task
-            if (chunk.getPayload() != null && chunk.getPayload().getType() != null) {
-                String payloadType = chunk.getPayload().getType();
+            // Check output type
+            if (chunk.getControllerPayload() != null && chunk.getControllerPayload().getType() != null) {
+                String payloadType = chunk.getControllerPayload().getType();
 
-                // Task completed
-                if (payloadType.equals(EventType.TASK_COMPLETION.getValue())) {
-                    logger.info("Task {} completed", taskId);
+                if (EventType.TASK_COMPLETION.getValue().equals(payloadType)) {
+                    Loggers.CONTROLLER.info("Task {} completed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.COMPLETED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
-                }
-
-                // Task requires interaction
-                if (payloadType.equals(EventType.TASK_INTERACTION.getValue())) {
-                    logger.info("Task {} requires interaction", taskId);
+                } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
+                    Loggers.CONTROLLER.info("Task {} requires interaction", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.INPUT_REQUIRED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
-                }
-
-                // Task failed
-                if (payloadType.equals(EventType.TASK_FAILED.getValue())) {
-                    logger.error("Task {} failed", taskId);
+                } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
+                    Loggers.CONTROLLER.error("Task {} failed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 }
-
-                // Processing (continue execution)
-                if ("processing".equals(payloadType)) {
-                    continue;
-                }
+                // "processing" -> continue
             }
         }
     }
 
-    // ==================== Task Event Publishing ====================
+    // ==================== Completion Signal ====================
 
-    /**
-     * Publishes a task event (auto-recognizes type from chunk).
-     *
-     * @param taskId  the task ID
-     * @param session the session object
-     * @param chunk   the output chunk
-     */
-    void publishTaskEvent(String taskId, Session session, ControllerOutputChunk chunk) {
-        if (chunk.getPayload() == null || chunk.getPayload().getType() == null) {
-            logger.error("Invalid chunk for task {}: missing payload or type", taskId);
+    private boolean areAllTasksCompleted(String sessionId) {
+        try {
+            List<Task> sessionTasks = taskManager.getTask(
+                    TaskFilter.bySessionId(sessionId)
+            );
+            if (sessionTasks.isEmpty()) {
+                Loggers.CONTROLLER.warning("No tasks found for session {}", sessionId);
+                return true;
+            }
+            for (Task t : sessionTasks) {
+                if (t.getStatus() == TaskStatus.SUBMITTED || t.getStatus() == TaskStatus.WORKING) {
+                    return false;
+                }
+            }
+            Loggers.CONTROLLER.info("No active tasks for session {}", sessionId);
+            return true;
+        } catch (Exception e) {
+            Loggers.CONTROLLER.error("Error checking task completion status: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void ensureSessionCompletionSignal(String sessionId) {
+        try {
+            if (!areAllTasksCompleted(sessionId)) {
+                Loggers.CONTROLLER.info("Not all tasks completed, continue");
+                return;
+            }
+            Loggers.CONTROLLER.info("All tasks completed for session {}, sending completion signal", sessionId);
+
+            AgentSessionApi session = sessions.get(sessionId);
+            if (session == null) {
+                Loggers.CONTROLLER.warning("Session {} not found, cannot send completion signal", sessionId);
+                return;
+            }
+
+            ControllerOutputChunk completionChunk = new ControllerOutputChunk(
+                    0,
+                    ControllerOutputPayload.allTasksProcessed(
+                            "All tasks have been successfully processed"
+                    ),
+                    true
+            );
+            session.writeStream(completionChunk);
+            Loggers.CONTROLLER.info("Completion signal sent for session {}", sessionId);
+        } catch (Exception e) {
+            Loggers.CONTROLLER.error("Unexpected error in ensureSessionCompletionSignal: {}", e.getMessage());
+        }
+    }
+
+    // ==================== Event Publishing ====================
+
+    private void publishTaskEvent(String taskId, AgentSessionApi session, ControllerOutputChunk chunk) {
+        if (chunk.getControllerPayload() == null || chunk.getControllerPayload().getType() == null) {
+            Loggers.CONTROLLER.error("Invalid chunk for task {}: missing payload or type", taskId);
             return;
         }
 
-        List<Task> tasks = taskManager.getTask(
-            TaskFilter.builder().taskId(taskId).build()
-        );
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
         if (tasks.isEmpty()) {
-            logger.error("Task {} not found in TaskManager", taskId);
+            Loggers.CONTROLLER.error("Task {} not found in TaskManager", taskId);
             return;
         }
         Task task = tasks.get(0);
-        String payloadType = chunk.getPayload().getType();
-        List<BaseDataFrame> payloadData = chunk.getPayload().getData();
+        String payloadType = chunk.getControllerPayload().getType();
+        List<DataFrame> payloadData = chunk.getControllerPayload().getData() != null
+                ? chunk.getControllerPayload().getData() : List.of();
 
-        // Automatically construct event based on payload type
-        Event event;
-        if (payloadType.equals(EventType.TASK_COMPLETION.getValue())) {
+        com.openjiuwen.core.controller.schema.Event event;
+        if (EventType.TASK_COMPLETION.getValue().equals(payloadType)) {
             event = new TaskCompletionEvent(payloadData, task);
-        } else if (payloadType.equals(EventType.TASK_INTERACTION.getValue())) {
+        } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
             event = new TaskInteractionEvent(payloadData, task);
-        } else if (payloadType.equals(EventType.TASK_FAILED.getValue())) {
-            String errorMsg = (payloadData != null && !payloadData.isEmpty()
-                && payloadData.get(0) instanceof TextDataFrame)
-                ? ((TextDataFrame) payloadData.get(0)).getText()
-                : "Unknown error";
+        } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
+            String errorMsg = "Unknown error";
+            if (!payloadData.isEmpty() && payloadData.get(0) instanceof DataFrame.TextDataFrame tdf) {
+                errorMsg = tdf.text();
+            }
             task.setErrorMessage(errorMsg);
             event = new TaskFailedEvent(errorMsg, task);
         } else {
-            logger.error("Unsupported payload type: {}", payloadType);
+            Loggers.CONTROLLER.error("Unsupported payload type: {}", payloadType);
             return;
         }
 
         eventQueue.publishEvent(card.getId(), session, event);
-        logger.info("Published {} for task {}", payloadType, taskId);
+        Loggers.CONTROLLER.info("Published {} for task {}", payloadType, taskId);
     }
 
     // ==================== Pause / Cancel ====================
 
     /**
-     * Pauses a task.
+     * Pause a running task.
      *
-     * @param taskId the task ID
-     * @return true if the task was successfully paused
+     * @param taskId task ID
+     * @return whether pause succeeded
      */
     public boolean pauseTask(String taskId) {
-        List<Task> tasks = taskManager.getTask(
-            TaskFilter.builder().taskId(taskId).build()
-        );
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
         if (tasks.isEmpty()) {
-            logger.error("Task {} not found in TaskManager", taskId);
+            Loggers.CONTROLLER.error("Task {} not found in TaskManager", taskId);
             return false;
         }
         Task task = tasks.get(0);
 
-        Session session = sessions.get(task.getSessionId());
+        AgentSessionApi session = sessions.get(task.getSessionId());
         if (session == null) {
-            logger.error("Session {} not found for task {}", task.getSessionId(), taskId);
+            Loggers.CONTROLLER.error("Session {} not found for task {}", task.getSessionId(), taskId);
             return false;
         }
 
+        RunningTaskEntry entry;
         lock.lock();
         try {
-            // Check whether the task is running
-            if (!runningTasks.containsKey(taskId)) {
-                logger.warn("Task {} is not running, cannot pause", taskId);
+            entry = runningTasks.get(taskId);
+            if (entry == null) {
+                Loggers.CONTROLLER.warning("Task {} is not running, cannot pause", taskId);
                 return false;
             }
-
-            // Get task and executor
-            TaskEntry entry = runningTasks.get(taskId);
-            TaskExecutor executor = entry.executor;
-
-            // Check whether it can be paused
-            if (executor != null) {
-                try {
-                    TaskExecutor.PauseResult pauseResult = executor.canPause(taskId, session);
-                    if (!pauseResult.canPause()) {
-                        logger.warn("Task {} cannot be paused, reason: {}", taskId, pauseResult.reason());
-                        return false;
-                    }
-
-                    // Execute executor pause logic
-                    executor.pause(taskId, session);
-                } catch (Exception e) {
-                    logger.error("Error pausing task {}: {}", taskId, e.getMessage(), e);
-                    return false;
-                }
-            }
-
-            // Cancel the running future
-            if (entry.future != null && !entry.future.isDone()) {
-                entry.future.cancel(true);
-            }
-
-            // Clean up running task records
-            runningTasks.remove(taskId);
         } finally {
             lock.unlock();
         }
 
-        // Update task status
+        TaskExecutor executor = entry.getExecutor();
+        if (executor != null) {
+            try {
+                TaskExecutor.PauseCheckResult checkResult = executor.canPause(taskId, session);
+                if (!checkResult.canPause()) {
+                    Loggers.CONTROLLER.warning("Task {} cannot be paused, reason: {}", taskId, checkResult.reason());
+                    return false;
+                }
+                executor.pause(taskId, session);
+            } catch (Exception e) {
+                Loggers.CONTROLLER.error("Error pausing task {}: {}", taskId, e.getMessage());
+                return false;
+            }
+        }
+
+        // Cancel the thread
+        lock.lock();
+        try {
+            entry = runningTasks.get(taskId);
+            if (entry == null) {
+                Loggers.CONTROLLER.warning("Task {} was already removed during pause operation", taskId);
+                return false;
+            }
+            Thread taskThread = entry.getTaskThread();
+            if (taskThread != null && taskThread.isAlive()) {
+                taskThread.interrupt();
+            }
+        } finally {
+            lock.unlock();
+        }
+
         taskManager.updateTaskStatus(taskId, TaskStatus.PAUSED);
-        logger.info("Task {} paused successfully", taskId);
+        Loggers.CONTROLLER.info("Task {} paused successfully", taskId);
         return true;
     }
 
     /**
-     * Cancels a task.
+     * Cancel a running task.
      *
-     * @param taskId the task ID
-     * @return true if the task was successfully canceled
+     * @param taskId task ID
+     * @return whether cancel succeeded
      */
     public boolean cancelTask(String taskId) {
-        List<Task> tasks = taskManager.getTask(
-            TaskFilter.builder().taskId(taskId).build()
-        );
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
         if (tasks.isEmpty()) {
-            logger.error("Task {} not found in TaskManager", taskId);
+            Loggers.CONTROLLER.error("Task {} not found in TaskManager", taskId);
             return false;
         }
         Task task = tasks.get(0);
 
-        Session session = sessions.get(task.getSessionId());
+        AgentSessionApi session = sessions.get(task.getSessionId());
         if (session == null) {
-            logger.error("Session {} not found for task {}", task.getSessionId(), taskId);
+            Loggers.CONTROLLER.error("Session {} not found for task {}", task.getSessionId(), taskId);
             return false;
         }
 
+        RunningTaskEntry entry;
         lock.lock();
         try {
-            // Check whether the task is running
-            if (!runningTasks.containsKey(taskId)) {
-                logger.warn("Task {} is not running, cannot cancel", taskId);
+            entry = runningTasks.get(taskId);
+            if (entry == null) {
+                Loggers.CONTROLLER.warning("Task {} is not running, cannot cancel", taskId);
                 return false;
             }
-
-            // Get task executor
-            TaskEntry entry = runningTasks.get(taskId);
-            TaskExecutor executor = entry.executor;
-
-            // Check whether it can be canceled
-            if (executor != null) {
-                try {
-                    TaskExecutor.CancelResult cancelResult = executor.canCancel(taskId, session);
-                    if (!cancelResult.canCancel()) {
-                        logger.warn("Task {} cannot be cancelled: {}", taskId, cancelResult.reason());
-                        return false;
-                    }
-
-                    // Execute executor cancel logic
-                    executor.cancel(taskId, session);
-                } catch (Exception e) {
-                    logger.error("Error cancelling task {}: {}", taskId, e.getMessage(), e);
-                    return false;
-                }
-            }
-
-            // Cancel the running future
-            if (entry.future != null && !entry.future.isDone()) {
-                entry.future.cancel(true);
-            }
-
-            // Clean up running task records
-            runningTasks.remove(taskId);
         } finally {
             lock.unlock();
         }
 
-        // Update task status
+        TaskExecutor executor = entry.getExecutor();
+        if (executor != null) {
+            try {
+                TaskExecutor.CancelCheckResult checkResult = executor.canCancel(taskId, session);
+                if (!checkResult.canCancel()) {
+                    Loggers.CONTROLLER.warning("Task {} cannot be cancelled: {}", taskId, checkResult.reason());
+                    return false;
+                }
+                executor.cancel(taskId, session);
+            } catch (Exception e) {
+                Loggers.CONTROLLER.error("Error cancelling task {}: {}", taskId, e.getMessage());
+                return false;
+            }
+        }
+
+        lock.lock();
+        try {
+            entry = runningTasks.get(taskId);
+            if (entry == null) {
+                Loggers.CONTROLLER.warning("Task {} was already removed during cancel operation", taskId);
+                return false;
+            }
+            Thread taskThread = entry.getTaskThread();
+            if (taskThread != null && taskThread.isAlive()) {
+                taskThread.interrupt();
+            }
+        } finally {
+            lock.unlock();
+        }
+
         taskManager.updateTaskStatus(taskId, TaskStatus.CANCELED);
-        logger.info("Task {} cancelled successfully", taskId);
+        Loggers.CONTROLLER.info("Task {} cancelled successfully", taskId);
         return true;
     }
 
-    // ==================== Completion Check ====================
+    // ==================== Schedule Loop ====================
 
-    /**
-     * Checks if all tasks for a session are in terminal status.
-     *
-     * @param sessionId the session ID
-     * @return true if all tasks are completed
-     */
-    boolean areAllTasksCompleted(String sessionId) {
+    private void scheduleLoop() {
+        Loggers.CONTROLLER.info("TaskScheduler schedule loop iteration");
+        if (!running) {
+            return;
+        }
         try {
-            List<Task> sessionTasks = taskManager.getTask(
-                TaskFilter.builder().sessionId(sessionId).build()
+            List<Task> submittedTasks = taskManager.getTask(
+                    TaskFilter.builder().status(TaskStatus.SUBMITTED).build()
             );
-            if (sessionTasks.isEmpty()) {
-                logger.warn("No tasks found for session {}", sessionId);
-                return false;
+
+            for (Task task : submittedTasks) {
+                AgentSessionApi session = sessions.get(task.getSessionId());
+                if (session == null) {
+                    Loggers.CONTROLLER.warning("Task {} session {} not found, skipping",
+                            task.getTaskId(), task.getSessionId());
+                    continue;
+                }
+
+                lock.lock();
+                try {
+                    if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
+                        Loggers.CONTROLLER.warning(
+                                "Reached max concurrent tasks limit ({}), waiting for next schedule",
+                                config.getMaxConcurrentTasks());
+                        break;
+                    }
+                    if (runningTasks.containsKey(task.getTaskId())) {
+                        continue;
+                    }
+
+                    // Start task on virtual thread
+                    String taskId = task.getTaskId();
+                    Thread virtualThread = Thread.ofVirtual()
+                            .name("task-" + taskId)
+                            .start(() -> executeTaskWrapper(taskId, session));
+
+                    runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
+                } finally {
+                    lock.unlock();
+                }
+
+                Loggers.CONTROLLER.info("Task {} ({}) started", task.getTaskId(), task.getTaskType());
             }
-
-            // Check if any task is still actively working or submitted
-            Set<TaskStatus> activeStates = Set.of(TaskStatus.SUBMITTED, TaskStatus.WORKING);
-            boolean hasActiveTasks = sessionTasks.stream()
-                .anyMatch(t -> activeStates.contains(t.getStatus()));
-
-            if (!hasActiveTasks) {
-                logger.info("No active tasks for session {}", sessionId);
-                return true;
-            }
-
-            return false;
         } catch (Exception e) {
-            logger.error("Error checking task completion status: {}", e.getMessage(), e);
-            return false;
+            Loggers.CONTROLLER.error("Error in schedule loop: {}", e.getMessage());
         }
     }
 
+    // ==================== Start / Stop ====================
+
     /**
-     * Ensures completion signal is sent if all tasks are done.
-     *
-     * @param sessionId the session ID
+     * Start task scheduler.
      */
-    void ensureSessionCompletionSignal(String sessionId) {
-        try {
-            if (!areAllTasksCompleted(sessionId)) {
-                logger.info("not all tasks completed, continue");
-                return;
-            }
-
-            logger.info("All tasks completed for session {}, sending completion signal", sessionId);
-
-            Session session = sessions.get(sessionId);
-            if (session == null) {
-                logger.warn("Session {} not found, cannot send completion signal", sessionId);
-                return;
-            }
-
-            // Build and send completion message
-            ControllerOutputChunk completionChunk = new ControllerOutputChunk(
+    public void start() {
+        if (running) {
+            Loggers.CONTROLLER.warning("TaskScheduler is already running");
+            return;
+        }
+        running = true;
+        scheduler = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "task-scheduler");
+            t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread t, Throwable e) {
+                    Loggers.CONTROLLER.error("start Error,Thread {} , {}", t.getName(),e.getMessage());
+                }
+            });
+            t.setDaemon(true);
+            return t;
+        });
+        long intervalMs = (long) (config.getScheduleInterval() * 1000);
+        schedulerFuture = scheduler.scheduleWithFixedDelay(
+                this::scheduleLoop,
                 0,
-                "controller_output",
-                new ControllerOutputPayload(
-                    "all_tasks_processed",
-                    List.of(new TextDataFrame("All tasks have been successfully processed")),
-                    null
-                ),
-                true
-            );
-
-            session.writeStream(completionChunk).join();
-            logger.info("Completion signal sent for session {}", sessionId);
-
-        } catch (Exception e) {
-            logger.error("Unexpected error in ensureSessionCompletionSignal: {}", e.getMessage(), e);
-        }
-    }
-
-    // ==================== Private Helpers ====================
-
-    /**
-     * Handles task failure by updating status and publishing failure event.
-     */
-    private void handleTaskExecutionFailure(String taskId, Session session, String errorMessage) {
-        taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
-
-        ControllerOutputChunk failedChunk = new ControllerOutputChunk(
-            0,
-            "controller_output",
-            new ControllerOutputPayload(
-                EventType.TASK_FAILED.getValue(),
-                List.of(new TextDataFrame(errorMessage)),
-                null
-            ),
-            false
+                intervalMs,
+                TimeUnit.MILLISECONDS
         );
-        publishTaskEvent(taskId, session, failedChunk);
+        Loggers.CONTROLLER.info("TaskScheduler started");
     }
 
     /**
-     * Waits for all running tasks to complete.
+     * Stop task scheduler.
      */
-    private void waitAllTasksComplete() {
+    public void stop() {
+        if (!running) {
+            Loggers.CONTROLLER.warning("TaskScheduler is not running");
+            return;
+        }
+        running = false;
+
+        // Cancel all running tasks
         lock.lock();
-        List<Future<?>> futures;
         try {
-            if (runningTasks.isEmpty()) {
-                return;
-            }
-
-            logger.info("Waiting for {} running tasks to complete...", runningTasks.size());
-
-            futures = new ArrayList<>();
-            for (TaskEntry entry : runningTasks.values()) {
-                if (entry.future != null) {
-                    futures.add(entry.future);
+            for (Map.Entry<String, RunningTaskEntry> e : runningTasks.entrySet()) {
+                Thread t = e.getValue().getTaskThread();
+                if (t != null && t.isAlive()) {
+                    t.interrupt();
+                    Loggers.CONTROLLER.info("Cancelled task {}", e.getKey());
                 }
             }
         } finally {
             lock.unlock();
         }
 
-        if (!futures.isEmpty()) {
-            int successCount = 0;
-            int errorCount = 0;
-            for (Future<?> future : futures) {
-                try {
-                    future.get(30, TimeUnit.SECONDS);
-                    successCount++;
-                } catch (Exception e) {
-                    errorCount++;
+        if (schedulerFuture != null) {
+            schedulerFuture.cancel(true);
+        }
+        if (scheduler != null) {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            } catch (InterruptedException ex) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // Wait for running tasks
+        List<Thread> threads;
+        lock.lock();
+        try {
+            threads = new ArrayList<>();
+            for (RunningTaskEntry entry : runningTasks.values()) {
+                if (entry.getTaskThread() != null) {
+                    threads.add(entry.getTaskThread());
                 }
             }
-            logger.info("All tasks completed: {} succeeded, {} failed", successCount, errorCount);
+        } finally {
+            lock.unlock();
+        }
+
+        for (Thread t : threads) {
+            try {
+                t.join(5000);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         lock.lock();
@@ -751,25 +614,34 @@ public class TaskScheduler {
         } finally {
             lock.unlock();
         }
+
+        Loggers.CONTROLLER.info("TaskScheduler stopped");
     }
+
+    // ==================== Inner class ====================
 
     /**
-     * Internal record for tracking running tasks.
+     * Tracks a running task's executor and thread.
      */
-    record TaskEntry(TaskExecutor executor, Future<?> future) {}
+    private static class RunningTaskEntry {
+        private volatile TaskExecutor executor;
+        private final Thread taskThread;
 
-    // ==================== Package-private accessors for testing ====================
+        RunningTaskEntry(TaskExecutor executor, Thread taskThread) {
+            this.executor = executor;
+            this.taskThread = taskThread;
+        }
 
-    Map<String, TaskEntry> getRunningTasks() {
-        return runningTasks;
-    }
+        TaskExecutor getExecutor() {
+            return executor;
+        }
 
-    boolean isRunning() {
-        return running;
-    }
+        void setExecutor(TaskExecutor executor) {
+            this.executor = executor;
+        }
 
-    Future<?> getSchedulerTask() {
-        return schedulerTask;
+        Thread getTaskThread() {
+            return taskThread;
+        }
     }
 }
-

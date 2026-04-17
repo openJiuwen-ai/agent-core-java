@@ -1,126 +1,99 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.stream.StreamWriter;
-import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Abstract session class that provides state management operations.
- * 
- * <p>Extends WrappedSession to provide state read/write operations and
- * stream writing capabilities by delegating to the inner session.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/internal/wrapper.py - StateSession
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Abstract session providing state and stream delegation to the inner session.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.wrapper.StateSession}.
  */
 public abstract class StateSession extends WrappedSession {
-    
-    /**
-     * Creates a new StateSession.
-     * 
-     * @param inner the inner session to wrap
-     */
+
     protected StateSession(BaseSession inner) {
         super(inner);
     }
-    
+
     @Override
-    public String getExecutableId() {
-        if (inner instanceof NodeSession nodeSession) {
-            return nodeSession.getExecutableId();
+    public String executableId() {
+        if (inner instanceof NodeSession) {
+            return ((NodeSession) inner).executableId();
         }
-        return "";
+        return inner.sessionId();
     }
-    
+
     @Override
-    public String getSessionId() {
-        return inner.getSessionId();
+    public String sessionId() {
+        return inner.sessionId();
     }
-    
+
     @Override
     public void updateState(Map<String, Object> data) {
-        if (inner.getState() != null) {
-            inner.getState().update(data);
+        if (inner.state() != null) {
+            inner.state().update(data);
         }
     }
-    
+
     @Override
     public Object getState(Object key) {
-        if (inner.getState() != null) {
-            return inner.getState().get(key);
+        if (inner.state() != null) {
+            return inner.state().get(key);
         }
         return null;
     }
-    
+
     @Override
     public void updateGlobalState(Map<String, Object> data) {
-        if (inner.getState() != null) {
-            inner.getState().updateGlobal(data);
+        if (inner.state() != null) {
+            inner.state().updateGlobal(data);
         }
     }
-    
+
     @Override
     public Object getGlobalState(Object key) {
-        if (inner.getState() != null) {
-            return inner.getState().getGlobal(key);
+        if (inner.state() != null) {
+            return inner.state().getGlobal(key);
         }
         return null;
     }
-    
+
     @Override
-    public StreamWriter<?, ?> getStreamWriter() {
-        StreamWriterManager manager = inner.getStreamWriterManager();
-        if (manager != null) {
-            return manager.getOutputWriter();
+    public StreamWriter<?> streamWriter() {
+        if (inner.streamWriterManager() != null) {
+            return inner.streamWriterManager().getOutputWriter();
         }
         return null;
     }
-    
+
     @Override
-    public StreamWriter<?, ?> getCustomWriter() {
-        StreamWriterManager manager = inner.getStreamWriterManager();
-        if (manager != null) {
-            return manager.getCustomWriter();
+    public StreamWriter<?> customWriter() {
+        if (inner.streamWriterManager() != null) {
+            return inner.streamWriterManager().getCustomWriter();
         }
         return null;
     }
-    
+
     @Override
-    @SuppressWarnings("unchecked")
-    public CompletableFuture<Void> writeStream(Object data) {
-        // For non-Map objects (e.g., ControllerOutputChunk), emit directly to stream
-        // bypassing the OutputStreamWriter schema validation. This matches the Python
-        // behavior where write_stream() passes any object through to the emitter.
-        if (!(data instanceof Map)) {
-            StreamWriterManager manager = inner.getStreamWriterManager();
-            if (manager != null && manager.streamEmitter() != null) {
-                return manager.streamEmitter().emit(data);
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-        StreamWriter<Object, ?> writer = (StreamWriter<Object, ?>) getStreamWriter();
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void writeStream(Object data) {
+        StreamWriter writer = (StreamWriter) streamWriter();
         if (writer != null) {
-            return writer.write(data);
+            writer.write(data);
         }
-        return CompletableFuture.completedFuture(null);
     }
-    
+
     @Override
-    @SuppressWarnings("unchecked")
-    public CompletableFuture<Void> writeCustomStream(Map<String, Object> data) {
-        StreamWriter<Map<String, Object>, ?> writer = (StreamWriter<Map<String, Object>, ?>) getCustomWriter();
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void writeCustomStream(Map<String, Object> data) {
+        StreamWriter writer = (StreamWriter) customWriter();
         if (writer != null) {
-            return writer.write(data);
+            writer.write(data);
         }
-        return CompletableFuture.completedFuture(null);
     }
 }
-

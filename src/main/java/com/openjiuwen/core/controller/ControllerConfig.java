@@ -1,103 +1,117 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller;
+
+import java.util.List;
 
 /**
  * Controller configuration.
- *
- * <p>Defines configuration parameters for the controller and controls its behavior.
- * The configuration items are grouped into several categories: task scheduling,
- * task management, event queue, and intent recognition.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * <p>
+ * Defines configuration parameters for the controller, grouped into categories:
+ * task scheduling, task management, event queue, and intent recognition.
+ * <p>
+ * Mirrors Python's {@code ControllerConfig(BaseModel)}.
  */
 public class ControllerConfig {
 
     // ==================== Task scheduling configuration ====================
 
-    /**
-     * Maximum number of concurrent tasks.
-     * Controls the upper limit of tasks running at the same time. 0 means no limit.
-     */
+    /** Maximum number of concurrent tasks (0 means no limit). Default: 5 */
     private int maxConcurrentTasks = 5;
 
-    /**
-     * Task scheduling interval in seconds.
-     * The scheduler periodically scans pending tasks using this interval.
-     * Must be >= 0.1.
-     */
+    /** Task scheduling interval in seconds. Default: 1.0 */
     private double scheduleInterval = 1.0;
 
-    /**
-     * Task timeout in seconds.
-     * Tasks that exceed this duration are marked as failed.
-     * null means no timeout. If set, must be >= 600.
-     * Package-private to allow tests to bypass validation (matching Python's direct attribute access).
-     */
-    Double taskTimeout = null;
+    /** Task timeout in seconds. null means no timeout. */
+    private Double taskTimeout;
 
     // ==================== Task management configuration ====================
 
-    /**
-     * Default task priority. Used when a task is created without an explicit priority.
-     * Larger numbers mean higher priority.
-     */
+    /** Default task priority. Larger numbers mean higher priority. Default: 1 */
     private int defaultTaskPriority = 1;
 
-    /**
-     * Whether to enable task persistence.
-     * When enabled, task states are stored for recovery.
-     */
+    /** Whether to enable task persistence. Default: false */
     private boolean enableTaskPersistence = false;
 
     // ==================== Event queue configuration ====================
 
-    /**
-     * Event queue size. Limits the number of events that can be stored in the queue.
-     * Must be >= 1 if set.
-     */
-    private Integer eventQueueSize = 10000;
+    /** Event queue size. Default: 10000 */
+    private int eventQueueSize = 10000;
 
-    /**
-     * Event processing timeout in milliseconds.
-     * Events that are not processed within this time are discarded.
-     * Must be >= 600 if set.
-     */
-    private Double eventTimeout = 120000.0;
-
-    /**
-     * LLM ID for intent recognition.
-     */
-    private String intentLlmId = "";
+    /** Event processing timeout in seconds. Default: 300 */
+    private double eventTimeout = 300;
 
     // ==================== Intent recognition configuration ====================
 
-    /**
-     * Confidence threshold for intent recognition.
-     * Intents below this value are treated as UNKNOWN_TASK. Range 0.0-1.0.
-     */
+    /** Whether to enable intent recognition. Default: false */
+    private boolean enableIntentRecognition = false;
+
+    /** Intent LLM model ID */
+    private String intentLlmId = "";
+
+    /** Confidence threshold for intent recognition. Default: 0.7 */
     private double intentConfidenceThreshold = 0.7;
 
-    /**
-     * Default constructor with all default values.
-     */
+    /** List of supported intent types */
+    private List<String> intentTypeList = List.of(
+            "create_task",
+            "pause_task",
+            "resume_task",
+            "cancel_task",
+            "unknown_task"
+    );
+
     public ControllerConfig() {
     }
 
-    // Getters and Setters
+    // Builder pattern
 
+    /**
+     * Creates a default ControllerConfig instance.
+     *
+     * @return a new ControllerConfig with default values
+     */
+    public static ControllerConfig defaultConfig() {
+        return new ControllerConfig();
+    }
+
+    // Getters and setters
+
+    /**
+     * Gets the maximum number of concurrent tasks.
+     *
+     * @return the max concurrent tasks value
+     */
     public int getMaxConcurrentTasks() {
         return maxConcurrentTasks;
     }
 
+    /**
+     * Sets the maximum number of concurrent tasks.
+     *
+     * @param maxConcurrentTasks the max concurrent tasks value
+     */
     public void setMaxConcurrentTasks(int maxConcurrentTasks) {
         this.maxConcurrentTasks = maxConcurrentTasks;
     }
 
+    /**
+     * Gets the task scheduling interval.
+     *
+     * @return the schedule interval in seconds
+     */
     public double getScheduleInterval() {
         return scheduleInterval;
     }
 
+    /**
+     * Sets the task scheduling interval.
+     *
+     * @param scheduleInterval the schedule interval in seconds (must be >= 0.1)
+     * @throws IllegalArgumentException if scheduleInterval < 0.1
+     */
     public void setScheduleInterval(double scheduleInterval) {
         if (scheduleInterval < 0.1) {
             throw new IllegalArgumentException("scheduleInterval must be >= 0.1");
@@ -111,7 +125,7 @@ public class ControllerConfig {
 
     public void setTaskTimeout(Double taskTimeout) {
         if (taskTimeout != null && taskTimeout < 600) {
-            throw new IllegalArgumentException("taskTimeout must be >= 600 if set");
+            throw new IllegalArgumentException("taskTimeout must be >= 600 or null");
         }
         this.taskTimeout = taskTimeout;
     }
@@ -132,26 +146,34 @@ public class ControllerConfig {
         this.enableTaskPersistence = enableTaskPersistence;
     }
 
-    public Integer getEventQueueSize() {
+    public int getEventQueueSize() {
         return eventQueueSize;
     }
 
-    public void setEventQueueSize(Integer eventQueueSize) {
-        if (eventQueueSize != null && eventQueueSize < 1) {
-            throw new IllegalArgumentException("eventQueueSize must be >= 1 if set");
+    public void setEventQueueSize(int eventQueueSize) {
+        if (eventQueueSize < 1) {
+            throw new IllegalArgumentException("eventQueueSize must be >= 1");
         }
         this.eventQueueSize = eventQueueSize;
     }
 
-    public Double getEventTimeout() {
+    public double getEventTimeout() {
         return eventTimeout;
     }
 
-    public void setEventTimeout(Double eventTimeout) {
-        if (eventTimeout != null && eventTimeout < 600) {
-            throw new IllegalArgumentException("eventTimeout must be >= 600 if set");
+    public void setEventTimeout(double eventTimeout) {
+        if (eventTimeout < 100) {
+            throw new IllegalArgumentException("eventTimeout must be >= 100");
         }
         this.eventTimeout = eventTimeout;
+    }
+
+    public boolean isEnableIntentRecognition() {
+        return enableIntentRecognition;
+    }
+
+    public void setEnableIntentRecognition(boolean enableIntentRecognition) {
+        this.enableIntentRecognition = enableIntentRecognition;
     }
 
     public String getIntentLlmId() {
@@ -173,93 +195,11 @@ public class ControllerConfig {
         this.intentConfidenceThreshold = intentConfidenceThreshold;
     }
 
-    /**
-     * Creates a new Builder for ControllerConfig.
-     *
-     * @return a new Builder
-     */
-    public static Builder builder() {
-        return new Builder();
+    public List<String> getIntentTypeList() {
+        return intentTypeList;
     }
 
-    /**
-     * Builder for ControllerConfig.
-     */
-    public static class Builder {
-        private int maxConcurrentTasks = 5;
-        private double scheduleInterval = 1.0;
-        private Double taskTimeout = null;
-        private int defaultTaskPriority = 1;
-        private boolean enableTaskPersistence = false;
-        private Integer eventQueueSize = 10000;
-        private Double eventTimeout = 120000.0;
-        private String intentLlmId = "";
-        private double intentConfidenceThreshold = 0.7;
-
-        public Builder maxConcurrentTasks(int maxConcurrentTasks) {
-            this.maxConcurrentTasks = maxConcurrentTasks;
-            return this;
-        }
-
-        public Builder scheduleInterval(double scheduleInterval) {
-            this.scheduleInterval = scheduleInterval;
-            return this;
-        }
-
-        public Builder taskTimeout(Double taskTimeout) {
-            this.taskTimeout = taskTimeout;
-            return this;
-        }
-
-        public Builder defaultTaskPriority(int defaultTaskPriority) {
-            this.defaultTaskPriority = defaultTaskPriority;
-            return this;
-        }
-
-        public Builder enableTaskPersistence(boolean enableTaskPersistence) {
-            this.enableTaskPersistence = enableTaskPersistence;
-            return this;
-        }
-
-        public Builder eventQueueSize(Integer eventQueueSize) {
-            this.eventQueueSize = eventQueueSize;
-            return this;
-        }
-
-        public Builder eventTimeout(Double eventTimeout) {
-            this.eventTimeout = eventTimeout;
-            return this;
-        }
-
-        public Builder intentLlmId(String intentLlmId) {
-            this.intentLlmId = intentLlmId;
-            return this;
-        }
-
-        public Builder intentConfidenceThreshold(double intentConfidenceThreshold) {
-            this.intentConfidenceThreshold = intentConfidenceThreshold;
-            return this;
-        }
-
-        /**
-         * Builds the ControllerConfig.
-         *
-         * @return the configured ControllerConfig
-         */
-        public ControllerConfig build() {
-            ControllerConfig config = new ControllerConfig();
-            config.setMaxConcurrentTasks(maxConcurrentTasks);
-            config.setScheduleInterval(scheduleInterval);
-            // Directly set field to bypass validation (matching Python builder behavior)
-            config.taskTimeout = taskTimeout;
-            config.setDefaultTaskPriority(defaultTaskPriority);
-            config.setEnableTaskPersistence(enableTaskPersistence);
-            config.setEventQueueSize(eventQueueSize);
-            config.setEventTimeout(eventTimeout);
-            config.setIntentLlmId(intentLlmId);
-            config.setIntentConfidenceThreshold(intentConfidenceThreshold);
-            return config;
-        }
+    public void setIntentTypeList(List<String> intentTypeList) {
+        this.intentTypeList = intentTypeList;
     }
 }
-

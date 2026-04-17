@@ -1,77 +1,33 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.config;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * Memory scope configuration.
- * Corresponds to Python: config/config.py - MemoryScopeConfig
+ * Scope-specific memory configuration.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class MemoryScopeConfig {
 
-    private final ModelRequestConfig modelCfg;
-    private final ModelClientConfig modelClientCfg;
-    private final EmbeddingConfig embeddingCfg;
+    @JsonProperty("model_cfg")
+    private ModelRequestConfig modelCfg;
 
-    private MemoryScopeConfig(Builder builder) {
-        this.modelCfg = builder.modelCfg;
-        this.modelClientCfg = builder.modelClientCfg;
-        this.embeddingCfg = builder.embeddingCfg;
-    }
+    @JsonProperty("model_client_cfg")
+    private ModelClientConfig modelClientCfg;
 
-    public ModelRequestConfig getModelCfg() {
-        return modelCfg;
-    }
-
-    public ModelClientConfig getModelClientCfg() {
-        return modelClientCfg;
-    }
-
-    public EmbeddingConfig getEmbeddingCfg() {
-        return embeddingCfg;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        private ModelRequestConfig modelCfg;
-        private ModelClientConfig modelClientCfg;
-        private EmbeddingConfig embeddingCfg;
-
-        public Builder modelCfg(ModelRequestConfig modelCfg) {
-            this.modelCfg = modelCfg;
-            return this;
-        }
-
-        public Builder modelClientCfg(ModelClientConfig modelClientCfg) {
-            this.modelClientCfg = modelClientCfg;
-            return this;
-        }
-
-        public Builder embeddingCfg(EmbeddingConfig embeddingCfg) {
-            this.embeddingCfg = embeddingCfg;
-            return this;
-        }
-
-        public MemoryScopeConfig build() {
-            return new MemoryScopeConfig(this);
-        }
-    }
-
-    @Override
-    public String toString() {
-        return "MemoryScopeConfig{" +
-               "modelCfg=" + modelCfg +
-               ", modelClientCfg=" + modelClientCfg +
-               ", embeddingCfg=" + embeddingCfg +
-               '}';
-    }
+    @JsonProperty("embedding_cfg")
+    private EmbeddingConfig embeddingCfg;
 }
-

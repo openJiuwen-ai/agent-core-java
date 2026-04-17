@@ -1,34 +1,75 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm;
 
-import com.openjiuwen.core.common.exception.JiuWenBaseException;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.modelclients.*;
-import com.openjiuwen.core.foundation.llm.schema.*;
-import com.openjiuwen.core.foundation.llm.outputparsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.ServiceLoader;
 
 /**
- * 统一的LLM调用入口。
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/model.py
- * 
- * 职责：
- * 1. 根据client_id或配置获取/创建ModelClient实例
- * 2. 委托给ModelClient执行实际的LLM调用
- * 3. 提供统一的接口（invoke, stream）
+ * Unified LLM invocation entry point.
+ * <p>
+ * Creates a {@link BaseModelClient} based on {@link ModelClientConfig#getClientProvider()}
+ * and delegates all calls to it.
+ * <p>
+ * Mirrors Python's {@code Model} class.
+ *
+ * <p>Usage:
+ * <pre>
+ *   Model model = new Model(modelClientConfig, modelRequestConfig);
+ *   AssistantMessage response = model.invoke("Hello", null, null, null, null, null, null, null, null, null);
+ * </pre>
  */
 public class Model {
 
-    private static final Map<String, Class<? extends BaseModelClient>> CLIENT_TYPE_REGISTRY = new HashMap<>();
+    /**
+     * SPI-based registry for model client factories.
+     * <p>
+     * Implementations of {@link ModelClientFactory} are discovered via
+     * {@link ServiceLoader}. Each factory declares which {@code clientProvider}
+     * name it supports.
+     */
+    public interface ModelClientFactory {
+        /** The provider name this factory handles (e.g., "OpenAI", "DashScope"). */
+        String providerName();
+
+        /** Create a client instance. */
+        BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig);
+    }
+
+    /** Static registry populated from ServiceLoader + manual registration. */
+    private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = new LinkedHashMap<>();
 
     static {
-        CLIENT_TYPE_REGISTRY.put("OpenAI", OpenAIModelClient.class);
-        CLIENT_TYPE_REGISTRY.put("SiliconFlow", SiliconFlowModelClient.class);
+        for (ModelClientFactory f : ServiceLoader.load(ModelClientFactory.class)) {
+            FACTORY_REGISTRY.put(f.providerName(), f);
+        }
+        DefaultModelClientFactories.ensureRegistered();
+    }
+
+    /**
+     * Register a model client factory programmatically.
+     */
+    public static void registerFactory(ModelClientFactory factory) {
+        FACTORY_REGISTRY.put(factory.providerName(), factory);
     }
 
     private final ModelRequestConfig modelConfig;
@@ -36,155 +77,114 @@ public class Model {
     private final BaseModelClient client;
 
     /**
-     * 初始化Model实例
+     * Construct a Model.
      *
-     * @param modelClientConfig 客户端配置
-     * @param modelConfig       模型参数配置
+     * @param modelClientConfig client configuration (apiKey, apiBase, clientProvider, etc.)
+     * @param modelConfig       model request parameters (modelName, temperature, topP, etc.)
      */
     public Model(ModelClientConfig modelClientConfig, ModelRequestConfig modelConfig) {
-        this.modelConfig = modelConfig;
-        this.modelClientConfig = modelClientConfig;
-
         if (modelClientConfig == null) {
-            throw new JiuWenBaseException(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR.getCode(),
-                    "model client config is none."
-            );
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "error_msg", "model client config is none");
         }
-
+        this.modelClientConfig = modelClientConfig;
+        this.modelConfig = modelConfig;
         this.client = createModelClient(modelClientConfig);
     }
 
-    /**
-     * 根据client_type创建对应的ModelClient实例
-     */
-    private BaseModelClient createModelClient(ModelClientConfig clientConfig) {
-        if (clientConfig.getClientProvider() == null || clientConfig.getClientProvider().isEmpty()) {
-            throw new JiuWenBaseException(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR.getCode(),
-                    "model client config client_provider is none."
-            );
+    private BaseModelClient createModelClient(ModelClientConfig config) {
+        if (config.getClientProvider() == null) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "error_msg", "model client config client_provider is none");
         }
-        if (clientConfig.getClientId() == null || clientConfig.getClientId().isEmpty()) {
-            throw new JiuWenBaseException(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR.getCode(),
-                    "model client config client_id is none."
-            );
+        if (config.getClientId() == null) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "error_msg", "model client config client_id is none");
         }
-
-        String clientProvider = clientConfig.getClientProvider();
-        Class<? extends BaseModelClient> clientClass = CLIENT_TYPE_REGISTRY.get(clientProvider);
-
-        if (clientClass == null) {
-            String supportedTypes = String.join(", ", CLIENT_TYPE_REGISTRY.keySet());
-            throw new JiuWenBaseException(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR.getCode(),
-                    "Unsupported client_type: '" + clientProvider + "'. Supported types: " + supportedTypes
-            );
+        String provider = config.getClientProvider().strip();
+        ModelClientFactory factory = FACTORY_REGISTRY.get(provider);
+        if (factory == null) {
+            // Case-insensitive fallback: match "openai" -> "OpenAI", etc.
+            String lowerProvider = provider.toLowerCase();
+            for (Map.Entry<String, ModelClientFactory> entry : FACTORY_REGISTRY.entrySet()) {
+                if (entry.getKey().toLowerCase().equals(lowerProvider)) {
+                    factory = entry.getValue();
+                    break;
+                }
+            }
         }
-
-        try {
-            return clientClass
-                    .getConstructor(ModelRequestConfig.class, ModelClientConfig.class)
-                    .newInstance(modelConfig, clientConfig);
-        } catch (Exception e) {
-            throw new JiuWenBaseException(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR.getCode(),
-                    "Failed to create model client: " + e.getMessage()
-            );
+        if (factory == null) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_PROVIDER_INVALID,
+                    "error_msg", "unavailable model provider: " + config.getClientProvider()
+                            + ",and available providers are: " + FACTORY_REGISTRY.keySet());
         }
+        return factory.create(modelConfig, config);
     }
 
-    /**
-     * 异步LLM调用
-     */
-    public CompletableFuture<AssistantMessage> invoke(
-            Object messages,
-            List<?> tools,
-            Double temperature,
-            Double topP,
-            Integer maxTokens,
-            String stop,
-            String model,
-            BaseOutputParser<?> outputParser,
-            Double timeout,
-            Map<String, Object> kwargs
-    ) {
-        return client.invoke(
-                messages,
-                tools,
-                temperature,
-                topP,
-                model,
-                maxTokens,
-                stop,
-                outputParser,
-                timeout,
-                kwargs
-        );
+    // ==================== Delegation Methods ====================
+
+    public AssistantMessage invoke(Object messages,
+                                  Object tools,
+                                  Float temperature,
+                                  Float topP,
+                                  String model,
+                                  Integer maxTokens,
+                                  String stop,
+                                  BaseOutputParser outputParser,
+                                  Float timeout,
+                                  Map<String, Object> kwargs) throws Exception {
+        return client.invoke(messages, tools, temperature, topP, model, maxTokens,
+                stop, outputParser, timeout, kwargs);
     }
 
-    /**
-     * 异步LLM调用（简化版）
-     */
-    public CompletableFuture<AssistantMessage> invoke(Object messages) {
-        return invoke(messages, null, null, null, null, null, null, null, null, null);
+    public Iterator<AssistantMessageChunk> stream(Object messages,
+                                                  Object tools,
+                                                  Float temperature,
+                                                  Float topP,
+                                                  String model,
+                                                  Integer maxTokens,
+                                                  String stop,
+                                                  BaseOutputParser outputParser,
+                                                  Float timeout,
+                                                  Map<String, Object> kwargs) throws Exception {
+        return client.stream(messages, tools, temperature, topP, model, maxTokens,
+                stop, outputParser, timeout, kwargs);
     }
 
-    /**
-     * 异步流式LLM调用
-     */
-    public Iterator<AssistantMessageChunk> stream(
-            Object messages,
-            List<?> tools,
-            Double temperature,
-            Double topP,
-            Integer maxTokens,
-            String stop,
-            String model,
-            BaseOutputParser<?> outputParser,
-            Double timeout,
-            Map<String, Object> kwargs
-    ) {
-        return client.stream(
-                messages,
-                tools,
-                temperature,
-                topP,
-                model,
-                maxTokens,
-                stop,
-                outputParser,
-                timeout,
-                kwargs
-        );
+    public ImageGenerationResponse generateImage(List<UserMessage> messages,
+                                                 String model,
+                                                 String size,
+                                                 String negativePrompt,
+                                                 int n,
+                                                 boolean promptExtend,
+                                                 boolean watermark,
+                                                 int seed,
+                                                 Map<String, Object> kwargs) throws Exception {
+        return client.generateImage(messages, model, size, negativePrompt, n,
+                promptExtend, watermark, seed, kwargs);
     }
 
-    /**
-     * 异步流式LLM调用（简化版）
-     */
-    public Iterator<AssistantMessageChunk> stream(Object messages) {
-        return stream(messages, null, null, null, null, null, null, null, null, null);
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
+                                                  String model,
+                                                  String voice,
+                                                  String languageType,
+                                                  Map<String, Object> kwargs) throws Exception {
+        return client.generateSpeech(messages, model, voice, languageType, kwargs);
     }
 
-    // Getters
-    public ModelRequestConfig getModelConfig() {
-        return modelConfig;
-    }
-
-    public ModelClientConfig getModelClientConfig() {
-        return modelClientConfig;
-    }
-
-    public BaseModelClient getClient() {
-        return client;
-    }
-
-    /**
-     * 注册新的客户端类型
-     */
-    public static void registerClientType(String providerName, Class<? extends BaseModelClient> clientClass) {
-        CLIENT_TYPE_REGISTRY.put(providerName, clientClass);
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
+                                                 String imgUrl,
+                                                 String audioUrl,
+                                                 String model,
+                                                 String size,
+                                                 String resolution,
+                                                 int duration,
+                                                 boolean promptExtend,
+                                                 boolean watermark,
+                                                 String negativePrompt,
+                                                 Integer seed,
+                                                 Map<String, Object> kwargs) throws Exception {
+        return client.generateVideo(messages, imgUrl, audioUrl, model, size, resolution,
+                duration, promptExtend, watermark, negativePrompt, seed, kwargs);
     }
 }
-

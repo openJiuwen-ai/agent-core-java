@@ -1,66 +1,73 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+import java.util.List;
+
 /**
- * Base message class for LLM interactions.
- * 对应 Python: agent-core/openjiuwen/core/foundation/llm/schema/message.py
+ * Base message class for LLM conversation messages.
+ * <p>
+ * Mirrors Python's {@code BaseMessage} model. Content can be a simple string
+ * or a list of content parts (for multimodal messages).
  */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseMessage {
+
+    /** Message role (system, user, assistant, tool). */
     private String role;
-    private Object content; // Union[str, List[Union[str, dict]]]
+
+    /**
+     * Message content — either a plain string or a list of content parts.
+     * <p>
+     * For simple text messages, use {@code String}. For multimodal messages,
+     * use a {@code List} of maps containing text/image data.
+     */
+    private Object content;
+
+    /** Optional name identifier for the message sender. */
     private String name;
 
-    public BaseMessage() {
-    }
+    // ==================== Convenience Constructors ====================
 
-    public BaseMessage(String role, Object content) {
+    /**
+     * Create a message with role and string content.
+     */
+    public BaseMessage(String role, String content) {
         this.role = role;
         this.content = content;
     }
 
-    public BaseMessage(String role, Object content, String name) {
-        this.role = role;
-        this.content = content;
-        this.name = name;
+    /**
+     * Get content as string. Returns empty string if content is not a string.
+     */
+    public String getContentAsString() {
+        if (content instanceof String s) {
+            return s;
+        }
+        return content != null ? content.toString() : "";
     }
 
-    public String getRole() {
-        return role;
-    }
-
-    public void setRole(String role) {
-        this.role = role;
-    }
-
-    public Object getContent() {
-        return content;
-    }
-
-    public void setContent(Object content) {
-        this.content = content;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        BaseMessage that = (BaseMessage) o;
-        return java.util.Objects.equals(role, that.role) &&
-                java.util.Objects.equals(content, that.content) &&
-                java.util.Objects.equals(name, that.name);
-    }
-
-    @Override
-    public int hashCode() {
-        return java.util.Objects.hash(role, content, name);
+    /**
+     * Get content as list (for multimodal messages).
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object> getContentAsList() {
+        if (content instanceof List<?> list) {
+            return (List<Object>) list;
+        }
+        return null;
     }
 }
-

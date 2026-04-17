@@ -1,85 +1,58 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.controller.schema;
 
+import com.openjiuwen.core.session.stream.OutputSchema;
+
 /**
- * Controller Output Chunk.
- *
- * <p>A single data chunk in streaming output, containing index, type, payload,
- * and a flag indicating whether it's the last chunk. Used for streaming output
- * scenarios, supporting incremental return of processing results.
- *
- * <p>Note: In Python this extends OutputSchema (a pydantic BaseModel). In Java,
- * OutputSchema is a record and cannot be extended, so this class uses composition
- * instead, carrying the same fields (index, type, payload) directly.
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Controller output chunk for streaming output.
+ * <p>
+ * A single data chunk in streaming output, containing index, type, payload,
+ * and a flag indicating whether it's the last chunk.
+ * <p>
+ * Extends {@link OutputSchema} for compatibility with the session stream system.
+ * <p>
+ * Mirrors Python's {@code ControllerOutputChunk(OutputSchema)}.
  */
-public class ControllerOutputChunk {
+public class ControllerOutputChunk extends OutputSchema {
 
-    private final int index;
-    private final String type;
-    private final ControllerOutputPayload payload;
-    private final boolean lastChunk;
+    public static final String CONTROLLER_OUTPUT_TYPE = "controller_output";
 
-    /**
-     * Constructor with index only (defaults).
-     *
-     * @param index the output chunk index
-     */
-    public ControllerOutputChunk(int index) {
-        this(index, "controller_output", null, false);
+    private ControllerOutputPayload controllerPayload;
+    private boolean lastChunk;
+
+    public ControllerOutputChunk() {
+        setType(CONTROLLER_OUTPUT_TYPE);
     }
 
-    /**
-     * Full constructor.
-     *
-     * @param index     the output chunk index
-     * @param type      the output type (default "controller_output")
-     * @param payload   the output payload (can be null)
-     * @param lastChunk whether this is the last chunk
-     */
-    public ControllerOutputChunk(int index, String type, ControllerOutputPayload payload, boolean lastChunk) {
-        this.index = index;
-        this.type = type != null ? type : "controller_output";
-        this.payload = payload;
+    public ControllerOutputChunk(int index, ControllerOutputPayload payload) {
+        setType(CONTROLLER_OUTPUT_TYPE);
+        setIndex(index);
+        this.controllerPayload = payload;
+        setPayload(payload);
+    }
+
+    public ControllerOutputChunk(int index, ControllerOutputPayload payload, boolean lastChunk) {
+        this(index, payload);
         this.lastChunk = lastChunk;
     }
 
-    /**
-     * Gets the chunk index.
-     *
-     * @return the index
-     */
-    public int getIndex() {
-        return index;
+    public ControllerOutputPayload getControllerPayload() {
+        return controllerPayload;
     }
 
-    /**
-     * Gets the output type.
-     *
-     * @return the type string
-     */
-    public String getType() {
-        return type;
+    public void setControllerPayload(ControllerOutputPayload payload) {
+        this.controllerPayload = payload;
+        setPayload(payload);
     }
 
-    /**
-     * Gets the payload.
-     *
-     * @return the payload, or null
-     */
-    public ControllerOutputPayload getPayload() {
-        return payload;
-    }
-
-    /**
-     * Whether this is the last chunk.
-     *
-     * @return true if this is the last chunk
-     */
     public boolean isLastChunk() {
         return lastChunk;
     }
-}
 
+    public void setLastChunk(boolean lastChunk) {
+        this.lastChunk = lastChunk;
+    }
+}

@@ -1,113 +1,147 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
-
-import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 
 /**
- * Abstract base class for checkpointing session state.
- * 
- * <p>Provides methods for saving and restoring session state during
- * workflow and agent execution.
- * 
- * <p>对应 Python: agent-core/openjiuwen/core/session/checkpointer/base.py - Checkpointer
- *
- * @author OpenJiuwen
- * @since 1.0.0
+ * Abstract checkpointer for managing session state persistence across workflow/agent executions.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.checkpointer.base.Checkpointer}.
  */
-public interface Checkpointer {
-    
+public abstract class Checkpointer {
+
     /**
-     * Generates a thread ID from session ID and workflow ID.
-     *
-     * @param sessionId the session identifier
-     * @param workflowId the workflow identifier
-     * @return the thread ID in format "sessionId:workflowId"
+     * Namespace for agent state under session.
      */
-    static String getThreadId(String sessionId, String workflowId) {
-        return sessionId + ":" + workflowId;
+    public static final String SESSION_NAMESPACE_AGENT = "agent";
+
+    /**
+     * Namespace for workflow state under session.
+     */
+    public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";
+
+    /**
+     * Namespace for graph state under workflow.
+     */
+    public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
+
+    /**
+     * Get the thread ID for a session (session_id:workflow_id).
+     *
+     * @param session the session
+     * @return the thread ID string
+     */
+    public static String getThreadId(BaseSession session) {
+        return session.sessionId() + ":" + getWorkflowId(session);
     }
-    
+
     /**
-     * Called before workflow execution starts.
-     * 
-     * <p>Creates or restores workflow checkpoint from session.
+     * Pre-workflow execution hook.
      *
-     * @param session the base session
-     * @param inputs the interactive input, or null for new workflow
-     * @return a CompletableFuture that completes when the operation is done
+     * @param session the session
+     * @param inputs  the interactive input, or null for fresh execution
      */
-    CompletableFuture<Void> preWorkflowExecute(BaseSession session, InteractiveInput inputs);
-    
+    public abstract void preWorkflowExecute(BaseSession session, InteractiveInput inputs);
+
     /**
-     * Called after workflow execution completes.
-     * 
-     * <p>Handles saving state on exception/interrupt or clearing state on success.
+     * Post-workflow execution hook.
      *
-     * @param session the base session
-     * @param result the execution result
-     * @param exception the exception if any, or null on success
-     * @return a CompletableFuture that completes when the operation is done
+     * @param session   the session
+     * @param result    the execution result
+     * @param exception any exception that occurred
      */
-    CompletableFuture<Void> postWorkflowExecute(BaseSession session, Object result, Exception exception);
-    
+    public abstract void postWorkflowExecute(BaseSession session, Object result, Exception exception);
+
     /**
-     * Called before agent execution starts.
-     * 
-     * <p>Creates or restores agent checkpoint from session.
+     * Pre-agent execution hook.
      *
-     * @param session the base session
-     * @param inputs the inputs for the agent
-     * @return a CompletableFuture that completes when the operation is done
+     * @param session the session
+     * @param inputs  the input data
      */
-    CompletableFuture<Void> preAgentExecute(BaseSession session, Object inputs);
-    
+    public abstract void preAgentExecute(BaseSession session, Object inputs);
+
     /**
-     * Called when agent execution is interrupted.
-     * 
-     * <p>Saves checkpoint for later resumption.
+     * Interrupt agent execution for interaction.
      *
-     * @param session the base session
-     * @return a CompletableFuture that completes when the operation is done
+     * @param session the session
      */
-    CompletableFuture<Void> interruptAgentExecute(BaseSession session);
-    
+    public abstract void interruptAgentExecute(BaseSession session);
+
     /**
-     * Called after agent execution completes.
-     * 
-     * <p>Saves the final agent state.
+     * Post-agent execution hook.
      *
-     * @param session the base session
-     * @return a CompletableFuture that completes when the operation is done
+     * @param session the session
      */
-    CompletableFuture<Void> postAgentExecute(BaseSession session);
-    
+    public abstract void postAgentExecute(BaseSession session);
+
     /**
-     * Releases checkpoint resources for a session.
+     * Check whether a session exists.
      *
-     * @param sessionId the session identifier
-     * @return a CompletableFuture that completes when the operation is done
+     * @param sessionId the session ID
+     * @return true if the session exists
      */
-    CompletableFuture<Void> release(String sessionId);
-    
+    public abstract boolean sessionExists(String sessionId);
+
     /**
-     * Releases checkpoint resources for a specific agent in a session.
+     * Release (clear) all checkpoints for a session.
      *
-     * @param sessionId the session identifier
-     * @param agentId the agent identifier, or null to release entire session
-     * @return a CompletableFuture that completes when the operation is done
+     * @param sessionId the session ID
      */
-    CompletableFuture<Void> release(String sessionId, String agentId);
-    
+    public abstract void release(String sessionId);
+
     /**
-     * Gets the graph store used for persisting graph state.
+     * Get the graph store used by this checkpointer.
      *
-     * @return the graph store
+     * @return the graph store for workflow graph checkpoints
      */
-    Store graphStore();
+    public abstract Store graphStore();
+
+    // ---- Utility ----
+
+    protected static String getWorkflowId(BaseSession session) {
+        if (session instanceof WorkflowSession ws) {
+            return ws.workflowId();
+        } else if (session instanceof NodeSession ns) {
+            return ns.workflowId();
+        }
+        return session.sessionId();
+    }
+
+    /**
+     * Build a key by joining parts with ':'.
+     *
+     * @param parts the key parts
+     * @return joined key
+     */
+    public static String buildKey(String... parts) {
+        return String.join(":", parts);
+    }
+
+    /**
+     * Build a key with namespace structure: session:namespace:entity_id:suffixes.
+     *
+     * @param sessionId the session ID
+     * @param namespace the namespace
+     * @param entityId  the entity ID
+     * @param suffixes  additional key suffixes
+     * @return the built key
+     */
+    public static String buildKeyWithNamespace(String sessionId, String namespace,
+                                                String entityId, String... suffixes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(sessionId).append(':')
+                .append(namespace).append(':')
+                .append(entityId);
+        for (String suffix : suffixes) {
+            sb.append(':').append(suffix);
+        }
+        return sb.toString();
+    }
 }

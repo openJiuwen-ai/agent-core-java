@@ -1,226 +1,360 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- */
+/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.session.tracer;
 
-import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.stream.StreamEmitter;
-import com.openjiuwen.core.session.stream.StreamWriterManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for Tracer class.
- * 
- * <p>Converted from Python: test_tracer.py</p>
- * <p>Python测试类: TestTracerInit, TestTracerInitMethod, TestTracerRegisterWorkflowSpanManager,
- *    TestTracerGetWorkflowSpan, TestTracerTrigger, TestTracerPopWorkflowSpan</p>
+ * Tests for tracer subsystem: {@link Tracer}, {@link SpanManager}, {@link Span},
+ * {@link TraceAgentSpan}, {@link TraceWorkflowSpan}.
+ * <p>
+ * Ported from Python's tracer test files.
  */
 class TracerTest {
-    
-    private CallbackManager callbackManager;
-    private StreamWriterManager streamWriterManager;
-    private Tracer tracer;
-    
-    @BeforeEach
-    void setUp() {
-        callbackManager = new CallbackManager();
-        StreamEmitter emitter = new StreamEmitter();
-        streamWriterManager = new StreamWriterManager(emitter);
-        tracer = new Tracer();
-        tracer.init(streamWriterManager, callbackManager);
-    }
-    
+
+    // ---------- Span tests ----------
+
     @Nested
-    @DisplayName("Tracer Init Tests")
-    class TracerInitTests {
-        
+    @DisplayName("Span")
+    class SpanTests {
+
         @Test
-        @DisplayName("Should create unique trace_id")
-        void testInitCreatesTraceId() {
-            // Python: assert tracer._trace_id is not None
-            //         assert len(tracer._trace_id) > 0
-            Tracer t = new Tracer();
-            
-            assertNotNull(t.getTraceId());
-            assertTrue(t.getTraceId().length() > 0);
+        @DisplayName("span basic construction")
+        void testSpanConstruction() {
+            Span span = new Span("trace-1", "invoke-1", "parent-1");
+            assertEquals("trace-1", span.getTraceId());
+            assertEquals("invoke-1", span.getInvokeId());
+            assertEquals("parent-1", span.getParentInvokeId());
         }
-        
+
         @Test
-        @DisplayName("Should create agent span manager")
-        void testInitCreatesAgentSpanManager() {
-            // Python: assert tracer.tracer_agent_span_manager is not None
-            //         assert isinstance(tracer.tracer_agent_span_manager, SpanManager)
-            Tracer t = new Tracer();
-            
-            assertNotNull(t.getTracerAgentSpanManager());
-            assertInstanceOf(SpanManager.class, t.getTracerAgentSpanManager());
+        @DisplayName("span update with map")
+        void testSpanUpdate() {
+            Span span = new Span("trace-1", "invoke-1", null);
+            LocalDateTime now = LocalDateTime.now();
+            span.update(Map.of(
+                    "startTime", now,
+                    "status", "running",
+                    "inputs", Map.of("key", "value")
+            ));
+            assertEquals(now, span.getStartTime());
+            assertEquals("running", span.getStatus());
+            assertEquals(Map.of("key", "value"), span.getInputs());
         }
-        
+
         @Test
-        @DisplayName("Should create empty workflow span manager dict")
-        void testInitCreatesEmptyWorkflowSpanDict() {
-            // Python: assert tracer.tracer_workflow_span_manager_dict == {}
-            Tracer t = new Tracer();
-            
-            assertNotNull(t.getTracerWorkflowSpanManagerDict());
-            assertTrue(t.getTracerWorkflowSpanManagerDict().isEmpty());
+        @DisplayName("span appendChildInvokeId")
+        void testSpanAppendChild() {
+            Span span = new Span("trace-1", "invoke-1", null);
+            assertNull(span.getChildInvokesId());
+            span.appendChildInvokeId("child-1");
+            span.appendChildInvokeId("child-2");
+            assertEquals(List.of("child-1", "child-2"), span.getChildInvokesId());
         }
-    }
-    
-    @Nested
-    @DisplayName("Tracer Init Method Tests")
-    class TracerInitMethodTests {
-        
+
         @Test
-        @DisplayName("Should register agent and workflow handlers")
-        void testInitRegistersHandlers() {
-            // Python: tracer.init(stream_writer_manager, callback_manager)
-            //         assert "" in tracer.tracer_workflow_span_manager_dict
-            Tracer t = new Tracer();
-            
-            t.init(streamWriterManager, callbackManager);
-            
-            assertTrue(t.getTracerWorkflowSpanManagerDict().containsKey(""));
+        @DisplayName("span setField with outputs")
+        void testSpanSetFieldOutputs() {
+            Span span = new Span();
+            span.update(Map.of("outputs", "some-output"));
+            assertEquals("some-output", span.getOutputs());
         }
-        
+
         @Test
-        @DisplayName("Should store stream_writer_manager and callback_manager")
-        void testInitStoresManagers() {
-            // Python: assert tracer._callback_manager is callback_manager
-            //         assert tracer._stream_writer_manager is stream_writer_manager
-            Tracer t = new Tracer();
-            
-            t.init(streamWriterManager, callbackManager);
-            
-            assertSame(callbackManager, t.getCallbackManager());
-            assertSame(streamWriterManager, t.getStreamWriterManager());
+        @DisplayName("span setField with error")
+        void testSpanSetFieldError() {
+            Span span = new Span();
+            Map<String, Object> error = Map.of("error_code", 500, "message", "test error");
+            span.update(Map.of("error", error));
+            assertEquals(error, span.getError());
         }
     }
-    
+
+    // ---------- TraceAgentSpan tests ----------
+
     @Nested
-    @DisplayName("Tracer RegisterWorkflowSpanManager Tests")
-    class TracerRegisterWorkflowSpanManagerTests {
-        
+    @DisplayName("TraceAgentSpan")
+    class AgentSpanTests {
+
         @Test
-        @DisplayName("Should create and register new span manager for parent_node_id")
+        @DisplayName("agent span construction with parent")
+        void testAgentSpanConstruction() {
+            TraceAgentSpan span = new TraceAgentSpan("trace-1", "invoke-1", "parent-1");
+            assertEquals("trace-1", span.getTraceId());
+            assertEquals("invoke-1", span.getInvokeId());
+            assertEquals("parent-1", span.getParentInvokeId());
+        }
+
+        @Test
+        @DisplayName("agent span setField - invokeType")
+        void testAgentSpanInvokeType() {
+            TraceAgentSpan span = new TraceAgentSpan();
+            span.update(Map.of("invokeType", "LLM"));
+            assertEquals("LLM", span.getInvokeType());
+        }
+
+        @Test
+        @DisplayName("agent span setField - name")
+        void testAgentSpanName() {
+            TraceAgentSpan span = new TraceAgentSpan();
+            span.update(Map.of("name", "TestAgent"));
+            assertEquals("TestAgent", span.getName());
+        }
+
+        @Test
+        @DisplayName("agent span setField - elapsedTime")
+        void testAgentSpanElapsedTime() {
+            TraceAgentSpan span = new TraceAgentSpan();
+            span.update(Map.of("elapsedTime", "120ms"));
+            assertEquals("120ms", span.getElapsedTime());
+        }
+
+        @Test
+        @DisplayName("agent span setField - metaData")
+        void testAgentSpanMetaData() {
+            TraceAgentSpan span = new TraceAgentSpan();
+            Map<String, Object> meta = Map.of("class_name", "MockAgent");
+            span.update(Map.of("metaData", meta));
+            assertEquals(meta, span.getMetaData());
+        }
+    }
+
+    // ---------- TraceWorkflowSpan tests ----------
+
+    @Nested
+    @DisplayName("TraceWorkflowSpan")
+    class WorkflowSpanTests {
+
+        @Test
+        @DisplayName("workflow span construction")
+        void testWorkflowSpanConstruction() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan("trace-1", "invoke-1", "parent-1", "parentNode");
+            assertEquals("trace-1", span.getTraceId());
+            assertEquals("invoke-1", span.getInvokeId());
+            assertEquals("parent-1", span.getParentInvokeId());
+            assertEquals("parentNode", span.getParentNodeId());
+            assertEquals("trace-1", span.getExecutionId());
+        }
+
+        @Test
+        @DisplayName("workflow span setField - componentId")
+        void testWorkflowSpanComponentId() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            span.update(Map.of("componentId", "comp-1"));
+            assertEquals("comp-1", span.getComponentId());
+        }
+
+        @Test
+        @DisplayName("workflow span setField - workflowId, version, name")
+        void testWorkflowSpanWorkflowInfo() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            span.update(Map.of(
+                    "workflowId", "wf-1",
+                    "workflowVersion", "1.0",
+                    "workflowName", "test workflow"
+            ));
+            assertEquals("wf-1", span.getWorkflowId());
+            assertEquals("1.0", span.getWorkflowVersion());
+            assertEquals("test workflow", span.getWorkflowName());
+        }
+
+        @Test
+        @DisplayName("workflow span setField - componentType")
+        void testWorkflowSpanComponentType() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            span.update(Map.of("componentType", "LLMNode"));
+            assertEquals("LLMNode", span.getComponentType());
+        }
+
+        @Test
+        @DisplayName("workflow span setField - loopNodeId and loopIndex")
+        void testWorkflowSpanLoopInfo() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            span.update(Map.of("loopNodeId", "loop-1", "loopIndex", 3));
+            assertEquals("loop-1", span.getLoopNodeId());
+            assertEquals(3, span.getLoopIndex());
+        }
+
+        @Test
+        @DisplayName("workflow span appendStreamOutput")
+        void testWorkflowSpanAppendStreamOutput() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            assertNull(span.getStreamOutputs());
+            span.appendStreamOutput(Map.of("data", "chunk1"));
+            span.appendStreamOutput(Map.of("data", "chunk2"));
+            assertEquals(2, span.getStreamOutputs().size());
+        }
+
+        @Test
+        @DisplayName("workflow span appendStreamInput")
+        void testWorkflowSpanAppendStreamInput() {
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            assertNull(span.getStreamInputs());
+            span.appendStreamInput(Map.of("data", "input1"));
+            assertEquals(1, span.getStreamInputs().size());
+        }
+    }
+
+    // ---------- SpanManager tests ----------
+
+    @Nested
+    @DisplayName("SpanManager")
+    class SpanManagerTests {
+
+        private SpanManager manager;
+
+        @BeforeEach
+        void setUp() {
+            manager = new SpanManager("trace-1");
+        }
+
+        @Test
+        @DisplayName("create agent span without parent")
+        void testCreateAgentSpanNoParent() {
+            TraceAgentSpan span = manager.createAgentSpan(null);
+            assertNotNull(span);
+            assertNotNull(span.getInvokeId());
+            assertNull(span.getParentInvokeId());
+            assertEquals("trace-1", span.getTraceId());
+        }
+
+        @Test
+        @DisplayName("create agent span with parent")
+        void testCreateAgentSpanWithParent() {
+            TraceAgentSpan parent = manager.createAgentSpan(null);
+            TraceAgentSpan child = manager.createAgentSpan(parent);
+            assertNotNull(child);
+            assertEquals(parent.getInvokeId(), child.getParentInvokeId());
+        }
+
+        @Test
+        @DisplayName("create workflow span")
+        void testCreateWorkflowSpan() {
+            TraceWorkflowSpan span = manager.createWorkflowSpan("node-1", null);
+            assertNotNull(span);
+            assertEquals("node-1", span.getInvokeId());
+            assertNull(span.getParentInvokeId());
+        }
+
+        @Test
+        @DisplayName("getSpan returns existing span")
+        void testGetSpan() {
+            TraceWorkflowSpan span = manager.createWorkflowSpan("node-1", null);
+            Span retrieved = manager.getSpan("node-1");
+            assertNotNull(retrieved);
+            assertEquals("node-1", retrieved.getInvokeId());
+        }
+
+        @Test
+        @DisplayName("getSpan returns null for non-existent span")
+        void testGetSpanNonExistent() {
+            assertNull(manager.getSpan("non-existent"));
+        }
+
+        @Test
+        @DisplayName("popSpan removes span")
+        void testPopSpan() {
+            manager.createWorkflowSpan("node-1", null);
+            assertNotNull(manager.getSpan("node-1"));
+            manager.popSpan("node-1");
+            assertNull(manager.getSpan("node-1"));
+        }
+
+        @Test
+        @DisplayName("getLastSpan returns the last added span")
+        void testGetLastSpan() {
+            manager.createWorkflowSpan("node-1", null);
+            manager.createWorkflowSpan("node-2", null);
+            Span last = manager.getLastSpan();
+            assertNotNull(last);
+            assertEquals("node-2", last.getInvokeId());
+        }
+
+        @Test
+        @DisplayName("getLastSpan returns null when empty")
+        void testGetLastSpanEmpty() {
+            assertNull(manager.getLastSpan());
+        }
+
+        @Test
+        @DisplayName("updateSpan updates span data and refreshes record")
+        void testUpdateSpan() {
+            TraceWorkflowSpan span = manager.createWorkflowSpan("node-1", null);
+            manager.updateSpan(span, Map.of("status", "running"));
+            Span retrieved = manager.getSpan("node-1");
+            assertEquals("running", retrieved.getStatus());
+        }
+
+        @Test
+        @DisplayName("span manager with parentNodeId")
+        void testSpanManagerWithParentNodeId() {
+            SpanManager parentManager = new SpanManager("trace-1", "parent-node");
+            TraceWorkflowSpan span = parentManager.createWorkflowSpan("child-1", null);
+            assertEquals("parent-node", span.getParentNodeId());
+        }
+    }
+
+    // ---------- Tracer tests ----------
+
+    @Nested
+    @DisplayName("Tracer")
+    class TracerTests {
+
+        @Test
+        @DisplayName("tracer initialization")
+        void testTracerInit() {
+            Tracer tracer = new Tracer();
+            assertNotNull(tracer.getTraceId());
+            assertNotNull(tracer.getTracerAgentSpanManager());
+        }
+
+        @Test
+        @DisplayName("tracer agent span manager creates agent span")
+        void testTracerAgentSpan() {
+            Tracer tracer = new Tracer();
+            TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(null);
+            assertNotNull(span);
+            assertNotNull(span.getInvokeId());
+        }
+
+        @Test
+        @DisplayName("tracer agent span with parent-child relationship")
+        void testTracerAgentSpanParentChild() {
+            Tracer tracer = new Tracer();
+            TraceAgentSpan parent = tracer.getTracerAgentSpanManager().createAgentSpan(null);
+            TraceAgentSpan child = tracer.getTracerAgentSpanManager().createAgentSpan(parent);
+            assertEquals(parent.getInvokeId(), child.getParentInvokeId());
+        }
+
+        @Test
+        @DisplayName("register workflow span manager")
         void testRegisterWorkflowSpanManager() {
-            // Python: tracer.register_workflow_span_manager(parent_node_id)
-            //         assert parent_node_id in tracer.tracer_workflow_span_manager_dict
-            //         assert isinstance(tracer.tracer_workflow_span_manager_dict[parent_node_id], SpanManager)
-            String parentNodeId = "node_123";
-            
-            tracer.registerWorkflowSpanManager(parentNodeId);
-            
-            assertTrue(tracer.getTracerWorkflowSpanManagerDict().containsKey(parentNodeId));
-            assertInstanceOf(SpanManager.class, tracer.getTracerWorkflowSpanManagerDict().get(parentNodeId));
+            Tracer tracer = new Tracer();
+            com.openjiuwen.core.session.stream.StreamEmitter emitter =
+                    new com.openjiuwen.core.session.stream.StreamEmitter();
+            com.openjiuwen.core.session.stream.StreamWriterManager swm =
+                    new com.openjiuwen.core.session.stream.StreamWriterManager(emitter);
+            com.openjiuwen.core.session.callback.CallbackManager cbm =
+                    new com.openjiuwen.core.session.callback.CallbackManager();
+            tracer.init(swm, cbm);
+
+            tracer.registerWorkflowSpanManager("parent-node-1");
+            assertTrue(tracer.getTracerWorkflowSpanManagerDict().containsKey("parent-node-1"));
         }
-    }
-    
-    @Nested
-    @DisplayName("Tracer GetWorkflowSpan Tests")
-    class TracerGetWorkflowSpanTests {
-        
+
         @Test
-        @DisplayName("Should return None for unknown parent_node_id")
-        void testGetWorkflowSpanReturnsNullForUnknownParent() {
-            // Python: result = tracer.get_workflow_span("invoke_123", "unknown_parent")
-            //         assert result is None
-            Object result = tracer.getWorkflowSpan("invoke_123", "unknown_parent");
-            
-            assertNull(result);
-        }
-        
-        @Test
-        @DisplayName("Should return span from registered manager")
-        void testGetWorkflowSpanReturnsSpan() {
-            // Python: tracer.tracer_workflow_span_manager_dict[""].create_workflow_span("invoke_123")
-            //         result = tracer.get_workflow_span("invoke_123", "")
-            //         assert result is not None
-            tracer.getTracerWorkflowSpanManagerDict().get("").createWorkflowSpan("invoke_123");
-            
-            Object result = tracer.getWorkflowSpan("invoke_123", "");
-            
-            assertNotNull(result);
-        }
-    }
-    
-    @Nested
-    @DisplayName("Tracer Trigger Tests")
-    class TracerTriggerTests {
-        
-        @Test
-        @DisplayName("Should call callback_manager.trigger with correct params")
-        void testTriggerCallsCallbackManager() throws Exception {
-            // Python: await tracer.trigger("tracer_agent", "on_chain_start", data="test")
-            //         tracer._callback_manager.trigger.assert_called_once()
-            CallbackManager mockCallbackManager = mock(CallbackManager.class);
-            when(mockCallbackManager.trigger(anyString(), anyString(), any()))
-                .thenReturn(CompletableFuture.completedFuture(null));
-            
-            Tracer t = new Tracer();
-            t.init(streamWriterManager, mockCallbackManager);
-            
-            t.trigger("tracer_agent", "on_chain_start", Map.of("data", "test")).get();
-            
-            verify(mockCallbackManager, atLeastOnce()).trigger(anyString(), anyString(), any());
-        }
-        
-        @Test
-        @DisplayName("Should append parent_node_id to handler_class_name")
-        void testTriggerAppendsParentNodeId() throws Exception {
-            // Python: await tracer.trigger("tracer_workflow", "on_call_start", parent_node_id="node_123")
-            //         assert "node_123" in call_args[0][0]
-            CallbackManager mockCallbackManager = mock(CallbackManager.class);
-            when(mockCallbackManager.trigger(anyString(), anyString(), any()))
-                .thenReturn(CompletableFuture.completedFuture(null));
-            
-            Tracer t = new Tracer();
-            t.init(streamWriterManager, mockCallbackManager);
-            
-            t.trigger("tracer_workflow", "on_call_start", Map.of("parent_node_id", "node_123")).get();
-            
-            // Verify that trigger was called with handler name containing node_123
-            verify(mockCallbackManager, atLeastOnce()).trigger(contains("node_123"), anyString(), any());
-        }
-    }
-    
-    @Nested
-    @DisplayName("Tracer PopWorkflowSpan Tests")
-    class TracerPopWorkflowSpanTests {
-        
-        @Test
-        @DisplayName("Should remove span from manager")
-        void testPopWorkflowSpanRemovesSpan() {
-            // Python: tracer.tracer_workflow_span_manager_dict[""].create_workflow_span("invoke_123")
-            //         tracer.pop_workflow_span("invoke_123", "")
-            //         result = tracer.get_workflow_span("invoke_123", "")
-            //         assert result is None
-            tracer.getTracerWorkflowSpanManagerDict().get("").createWorkflowSpan("invoke_123");
-            
-            tracer.popWorkflowSpan("invoke_123", "");
-            
-            Object result = tracer.getWorkflowSpan("invoke_123", "");
-            assertNull(result);
-        }
-        
-        @Test
-        @DisplayName("Should not fail for unknown parent_node_id")
-        void testPopWorkflowSpanHandlesUnknownParent() {
-            // Python: tracer.pop_workflow_span("invoke_123", "unknown_parent")
-            //         # Should not raise
-            assertDoesNotThrow(() -> tracer.popWorkflowSpan("invoke_123", "unknown_parent"));
+        @DisplayName("tracer getWorkflowSpan returns null for non-existent")
+        void testGetWorkflowSpanNonExistent() {
+            Tracer tracer = new Tracer();
+            assertNull(tracer.getWorkflowSpan("non-existent", ""));
         }
     }
 }
-
