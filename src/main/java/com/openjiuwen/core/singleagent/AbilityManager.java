@@ -73,13 +73,13 @@ public class AbilityManager implements ToolRegistry {
 
     private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
-            tools.putIfAbsent(toolCard.getName(), toolCard);
+            tools.put(toolCard.getName(), toolCard);
         } else if (ability instanceof WorkflowCard wfCard) {
-            workflows.putIfAbsent(wfCard.getName(), wfCard);
+            workflows.put(wfCard.getName(), wfCard);
         } else if (ability instanceof AgentCard agentCard) {
-            agents.putIfAbsent(agentCard.getName(), agentCard);
+            agents.put(agentCard.getName(), agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
-            mcpServers.putIfAbsent(mcpConfig.getServerName(), mcpConfig);
+            mcpServers.put(mcpConfig.getServerName(), mcpConfig);
         } else {
             Loggers.AGENT.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
         }

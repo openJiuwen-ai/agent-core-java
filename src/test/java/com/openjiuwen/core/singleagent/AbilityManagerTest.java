@@ -188,7 +188,7 @@ class AbilityManagerTest {
     // ========== Overwrite ==========
 
     @Test
-    void testAddSameNamePreservesFirstRegistration() {
+    void testAddSameNameOverwrites() {
         ToolCard tc1 = ToolCard.builder().name("dup").description("first").build();
         ToolCard tc2 = ToolCard.builder().name("dup").description("second").build();
 
@@ -196,7 +196,7 @@ class AbilityManagerTest {
         manager.add(tc2);
 
         ToolCard result = (ToolCard) manager.get("dup");
-        assertThat(result.getDescription()).isEqualTo("first");
+        assertThat(result.getDescription()).isEqualTo("second");
     }
 
     // ========== Unknown type ==========

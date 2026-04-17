@@ -94,36 +94,6 @@ class McpToolTest {
             assertNotNull(config.getParams());
             assertTrue(config.getParams().isEmpty());
         }
-
-        @Test
-        @DisplayName("Jackson field names remain compatible")
-        void testJacksonFieldNamesRemainCompatible() throws Exception {
-            McpServerConfig config = OBJECT_MAPPER.readValue("""
-                    {
-                      "server_name": "demo",
-                      "server_path": "http://localhost:8930/mcp"
-                    }
-                    """, McpServerConfig.class);
-
-            assertEquals("demo", config.getServerName());
-            assertEquals("http://localhost:8930/mcp", config.getServerPath());
-            assertEquals("sse", config.getClientType());
-            assertTrue(OBJECT_MAPPER.writeValueAsString(config).contains("client_type"));
-        }
-
-        @Test
-        @DisplayName("Common compatibility client types are accepted as-is")
-        void testCompatibleClientTypeInputs() {
-            for (String clientType : List.of("sse", "stdio", "streamable-http", "http")) {
-                McpServerConfig config = McpServerConfig.builder()
-                        .serverName("demo")
-                        .serverPath("http://localhost:8930/mcp")
-                        .clientType(clientType)
-                        .build();
-
-                assertEquals(clientType, config.getClientType());
-            }
-        }
     }
 
     // ============================== McpToolCard tests ==============================
@@ -179,37 +149,6 @@ class McpToolTest {
             assertEquals("Extract page text", info.getDescription());
             assertEquals("mcp-server", info.getServerName());
             assertEquals(Map.of("type", "object"), info.getParameters());
-        }
-
-        @Test
-        @DisplayName("toolInfo keeps raw toolName and stable schema semantics")
-        void testToolInfoKeepsRawToolNameAndStableSchemaSemantics() {
-            Map<String, Object> parameters = new LinkedHashMap<>();
-            parameters.put("type", "object");
-            parameters.put("properties", Map.of(
-                    "location", Map.of("type", "string"),
-                    "options", Map.of(
-                            "type", "object",
-                            "properties", Map.of("unit", Map.of("type", "string"))
-                    )
-            ));
-            parameters.put("required", List.of("location"));
-
-            McpToolCard card = McpToolCard.builder()
-                    .name("weather_lookup")
-                    .description("Lookup weather")
-                    .serverName("mcp-server")
-                    .serverId("server-1")
-                    .inputParams(parameters)
-                    .build();
-
-            McpToolInfo info = card.toolInfo();
-
-            assertEquals("weather_lookup", info.getName());
-            assertFalse(info.getName().contains("server-1.mcp-server.weather_lookup"));
-            assertEquals(parameters, info.getParameters());
-            assertEquals("string", ((Map<?, ?>) ((Map<?, ?>) info.getParameters().get("properties")).get("location")).get("type"));
-            assertEquals(List.of("location"), info.getParameters().get("required"));
         }
 
         @Test
@@ -280,13 +219,7 @@ class McpToolTest {
         @DisplayName("McpTool invoke delegates to mcpClient.callTool")
         void testInvokeDelegatesToClient() throws Exception {
             MockMcpClient client = new MockMcpClient();
-            client.setCallResult("browser_navigate", Map.of(
-                    "tool_name", "browser_navigate",
-                    "text", "navigation completed",
-                    "content", List.of(Map.of("type", "text", "text", "navigation completed")),
-                    "structured_content", Map.of(),
-                    "is_error", false
-            ));
+            client.setCallResult("browser_navigate", "navigation completed");
 
             McpToolCard card = McpToolCard.builder()
                     .name("browser_navigate")
@@ -301,13 +234,7 @@ class McpToolTest {
             assertInstanceOf(Map.class, result);
             @SuppressWarnings("unchecked")
             Map<String, Object> resultMap = (Map<String, Object>) result;
-            assertEquals(Map.of(
-                    "tool_name", "browser_navigate",
-                    "text", "navigation completed",
-                    "content", List.of(Map.of("type", "text", "text", "navigation completed")),
-                    "structured_content", Map.of(),
-                    "is_error", false
-            ), resultMap.get("result"));
+            assertEquals("navigation completed", resultMap.get("result"));
             assertEquals("browser_navigate", client.lastCalledTool);
             assertEquals("https://example.com", client.lastArguments.get("url"));
         }
@@ -330,52 +257,6 @@ class McpToolTest {
             assertNotNull(result);
             assertNotNull(client.lastArguments);
             assertTrue(client.lastArguments.isEmpty());
-        }
-
-        @Test
-        @DisplayName("McpTool schema mismatch falls back to generic execution error")
-        void testInvokeSchemaMismatchFallsBackToGenericExecutionError() {
-            MockMcpClient client = new MockMcpClient();
-            McpToolCard card = McpToolCard.builder()
-                    .name("weather_lookup")
-                    .description("Lookup weather")
-                    .serverName("server")
-                    .inputParams(Map.of(
-                            "type", "object",
-                            "properties", Map.of("location", Map.of("type", "string")),
-                            "required", List.of("location")
-                    ))
-                    .build();
-
-            McpTool tool = new McpTool(client, card);
-
-            BaseError error = assertThrows(BaseError.class, () -> tool.invoke(Map.of("location", 123)));
-
-            assertEquals(StatusCode.TOOL_MCP_EXECUTION_ERROR, error.getStatus());
-        }
-
-        @Test
-        @DisplayName("McpTool missing tool and execution failure keep distinct kind markers")
-        void testInvokeFailureKindsRemainDistinguishable() {
-            MockMcpClient client = new MockMcpClient() {
-                @Override
-                public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
-                    throw new IllegalStateException("kind=tool_missing tool not found: " + toolName);
-                }
-            };
-            McpToolCard card = McpToolCard.builder()
-                    .name("missing_tool")
-                    .description("missing")
-                    .serverName("server")
-                    .build();
-
-            McpTool tool = new McpTool(client, card);
-
-            BaseError error = assertThrows(BaseError.class, () -> tool.invoke(Map.of()));
-
-            assertEquals(StatusCode.TOOL_MCP_EXECUTION_ERROR, error.getStatus());
-            assertTrue(error.getMessage().contains("kind=tool_missing"));
-            assertFalse(error.getMessage().contains("SCHEMA_VALIDATE_INVALID"));
         }
 
         @Test

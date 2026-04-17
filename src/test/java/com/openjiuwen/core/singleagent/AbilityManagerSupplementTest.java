@@ -358,30 +358,4 @@ class AbilityManagerSupplementTest {
         assertThat(entry.classification()).isEqualTo(AbilityManager.ToolExecutionClassification.ERROR);
         assertThat(entry.errorMessage()).isEqualTo("boom");
     }
-
-    private static final class RecordingChildAgent {
-        private AgentSessionApi seenSession;
-        private Map<String, Object> seenInputs;
-
-        private Map<String, Object> invoke(Object inputs, AgentSessionApi session) {
-            seenSession = session;
-            @SuppressWarnings("unchecked")
-            Map<String, Object> inputMap = (Map<String, Object>) inputs;
-            seenInputs = inputMap;
-            return Map.of(
-                    "session_id", session.getSessionId(),
-                    "conversation_id", inputMap.get("conversation_id"),
-                    "state", session.getState("interrupt_auto_confirm")
-            );
-        }
-    }
-
-    private ListAppender<ILoggingEvent> attachToolAppender() {
-        Logger logger = (Logger) LoggerFactory.getLogger("tool");
-        logger.setLevel(Level.INFO);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        return appender;
-    }
 }
