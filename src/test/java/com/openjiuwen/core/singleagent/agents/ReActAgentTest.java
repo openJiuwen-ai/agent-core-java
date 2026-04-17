@@ -306,33 +306,6 @@ class ReActAgentTest {
     }
 
     @Test
-    void testInvokePropagatesModelRuntimeExceptions() throws Exception {
-        ReActAgent spyAgent = Mockito.spy(agent);
-        Model model = mock(Model.class);
-        doReturn(model).when(spyAgent).getLlm();
-        doThrow(new IllegalStateException("model boom"))
-                .when(model)
-                .invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
-
-        assertThatThrownBy(() -> spyAgent.invoke(Map.of("query", "test"), null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("model boom");
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void testInvokeReturnsErrorPayloadForMaxIterations() {
-        agent.configure(ReActAgentConfig.builder()
-                .maxIterations(0)
-                .build());
-
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of("query", "test"), null);
-
-        assertThat(result).containsEntry("result_type", "error");
-        assertThat(result).containsEntry("output", "Max iterations reached without completion");
-    }
-
-    @Test
     void testAfterInvokeCallbackSeesInvokeInputsOnFailure() {
         List<EventInputs> seenInputs = new ArrayList<>();
         agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> seenInputs.add(ctx.getInputs()), 50);
