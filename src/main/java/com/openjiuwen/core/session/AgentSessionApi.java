@@ -231,6 +231,11 @@ public class AgentSessionApi implements Session {
         return new AgentSessionApi(sessionId, envs, card);
     }
 
+    public static AgentSessionApi create(java.util.Optional<String> sessionId, Map<String, Object> envs, Object card,
+                                         List<StreamMode> streamModes) {
+        return new AgentSessionApi(sessionId != null ? sessionId.orElse(null) : null, envs, card, streamModes);
+    }
+
     public static AgentSessionApi create(String sessionId, Map<String, Object> envs, Object card,
                                          List<StreamMode> streamModes) {
         return new AgentSessionApi(sessionId, envs, card, streamModes);

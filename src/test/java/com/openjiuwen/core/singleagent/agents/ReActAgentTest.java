@@ -327,8 +327,12 @@ class ReActAgentTest {
     @Test
     void testGetLlmThrowsWithoutClientConfig() {
         // Default config has no model_client_config
-        assertThatThrownBy(() -> agent.invoke(Map.of("query", "test"), null))
-                .isInstanceOf(Exception.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "test"), null);
+
+        assertThat(payload)
+                .containsEntry("result_type", "error")
+                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
     }
 
     @Test
@@ -336,9 +340,12 @@ class ReActAgentTest {
         List<EventInputs> seenInputs = new ArrayList<>();
         agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> seenInputs.add(ctx.getInputs()), 50);
 
-        assertThatThrownBy(() -> agent.invoke(Map.of("query", "needs-model"), null))
-                .isInstanceOf(Exception.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "needs-model"), null);
 
+        assertThat(payload)
+                .containsEntry("result_type", "error")
+                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
         assertThat(seenInputs).hasSize(1);
         assertThat(seenInputs.get(0)).isInstanceOf(InvokeInputs.class);
         assertThat(((InvokeInputs) seenInputs.get(0)).getQuery()).isEqualTo("needs-model");
@@ -351,9 +358,12 @@ class ReActAgentTest {
         agent.configure(config);
         Session session = new TestSession("react-reload-session");
 
-        assertThatThrownBy(() -> agent.invoke(Map.of("query", "reload"), session))
-                .isInstanceOf(Exception.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) agent.invoke(Map.of("query", "reload"), session);
 
+        assertThat(payload)
+                .containsEntry("result_type", "error")
+                .containsEntry("output", "model_client_config is required. Use configureModelClient() to set it.");
         assertThat(agent.getAbilityManager().get("reload_original_context_messages")).isNotNull();
     }
 

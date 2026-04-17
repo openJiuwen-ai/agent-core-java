@@ -364,6 +364,7 @@ public class ReActAgent extends BaseAgent {
     public Object invoke(Object inputs, Session session) {
         InvokeInputs invokeInputs = buildInvokeInputs(inputs);
         Session runtimeSession = resolveRuntimeSession(session, invokeInputs, null);
+        boolean restoreInterrupt = false;
 
         // Create shared context for the entire invoke lifecycle
         AgentCallbackContext ctx = AgentCallbackContext.builder()
@@ -379,11 +380,12 @@ public class ReActAgent extends BaseAgent {
         try {
             PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null, inputs);
+            restoreInterrupt = captureAndClearInterrupt();
             invokeInputs.setResult(terminalOutcome.invokeResult());
             return terminalOutcome.invokeResult();
 
         } finally {
-            finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null);
+            finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, null, restoreInterrupt);
         }
     }
 
@@ -400,6 +402,7 @@ public class ReActAgent extends BaseAgent {
         InvokeInputs invokeInputs = buildInvokeInputs(inputs);
         Session runtimeSession = resolveRuntimeSession(session, invokeInputs, streamModes);
         AgentSessionApi agentSession = toAgentSession(runtimeSession, streamModes);
+        boolean[] restoreInterruptState = new boolean[] {false};
         agentSession.preRun(inputs);
 
         startStreamProducer(() -> {
@@ -418,6 +421,7 @@ public class ReActAgent extends BaseAgent {
 
                 PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
                 TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession, inputs);
+                restoreInterruptState[0] = captureAndClearInterrupt();
                 invokeInputs.setResult(terminalOutcome.invokeResult());
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } catch (Exception e) {
@@ -430,7 +434,8 @@ public class ReActAgent extends BaseAgent {
                 }
                 writeTerminalOutcome(agentSession, terminalOutcome);
             } finally {
-                finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession);
+                boolean restoreInterrupt = restoreInterruptState[0];
+                finalizeExecutionLifecycle(ctx, invokeLifecycleInputs, runtimeSession, agentSession, restoreInterrupt);
             }
         });
 
@@ -444,7 +449,7 @@ public class ReActAgent extends BaseAgent {
         if (session != null) {
             return session;
         }
-        return AgentSessionApi.create(normalizeConversationId(invokeInputs).orElse(null), null, getCard(), streamModes);
+        return AgentSessionApi.create(normalizeConversationId(invokeInputs), null, getCard(), streamModes);
     }
 
     /**
@@ -462,7 +467,8 @@ public class ReActAgent extends BaseAgent {
             AgentCallbackContext ctx,
             Object invokeLifecycleInputs,
             Session session,
-            AgentSessionApi agentSession
+            AgentSessionApi agentSession,
+            boolean restoreInterrupt
     ) {
         try {
             contextEngine.saveContexts(session, null);
@@ -476,8 +482,19 @@ public class ReActAgent extends BaseAgent {
                     ctx.setInputs(eventInputs);
                     fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
                 }
+                if (restoreInterrupt) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }
+    }
+
+    private boolean captureAndClearInterrupt() {
+        if (!Thread.currentThread().isInterrupted()) {
+            return false;
+        }
+        Thread.interrupted();
+        return true;
     }
 
     private Optional<String> normalizeConversationId(InvokeInputs invokeInputs) {
@@ -602,7 +619,7 @@ public class ReActAgent extends BaseAgent {
         if (stateSession == null) {
             return Optional.empty();
         }
-        Object rawState = stateSession.getState(REACT_INTERRUPT_STATE_KEY);
+        Object rawState = stateSession.getState("react_interrupt_state");
         if (!(rawState instanceof Map<?, ?> stateMap)) {
             return Optional.empty();
         }
@@ -994,6 +1011,7 @@ public class ReActAgent extends BaseAgent {
             Optional<InterruptedException> interruptedException = findInterruptedException(e);
             if (interruptedException.isPresent()) {
                 Loggers.AGENT.warn("ReActAgent shared loop interrupted");
+                Thread.currentThread().interrupt();
                 persistInterruptState(stateSession, config.getMaxIterations(), List.of(),
                         buildInterruptPendingOutcome("Execution interrupted", resolveConversationId(session).orElse(null), null));
                 return buildInterruptPendingOutcome("Execution interrupted", resolveConversationId(session).orElse(null), null);
