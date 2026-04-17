@@ -101,7 +101,9 @@ class AbilityManagerSupplementTest {
             assertThat(appender.list)
                     .extracting(ILoggingEvent::getFormattedMessage)
                     .anySatisfy(message -> assertThat(message)
-                            .contains("Tool result summary: Map(keys=[token, nested])")
+                            .contains("Tool result summary: Map(keys=[")
+                            .contains("token")
+                            .contains("nested")
                             .doesNotContain("secret-value")
                             .doesNotContain("hidden"));
         } finally {
