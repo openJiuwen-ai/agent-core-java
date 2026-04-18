@@ -14,6 +14,7 @@ import java.io.File;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Assumptions;
 
 /**
  * Tests for LocalCodeOperation.
@@ -49,7 +50,8 @@ class LocalCodeOperationTest {
         String nodeExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "node.exe" : "node";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, nodeExe);
-            if (f.exists() && f.isFile() && f.canExecute()) return true;
+            if (f.exists() && f.isFile() && f.canExecute())
+                return true;
         }
         return false;
     }
@@ -70,10 +72,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute valid Python code successfully")
     void testExecutePythonCodeSuccess() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('Hello, Python!'); x = 1 + 2; print(x)";
         ExecuteCodeResult result = code().executeCode(code, "python", 300, null, null);
 
@@ -111,10 +110,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with custom environment variables")
     void testExecuteCodeWithEnvironmentVars() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         Map<String, String> env = new HashMap<>();
         env.put("TEST_ENV", "pytest_test");
         env.put("COUNT", "5");
@@ -132,10 +128,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with custom timeout (no timeout triggered)")
     void testExecuteCodeWithCustomTimeout() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "import time; time.sleep(1); print('Timeout test pass')";
         ExecuteCodeResult result = code().executeCode(code, "python", 3, null, null);
 
@@ -148,10 +141,6 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute empty code returns error")
     void testExecuteEmptyCode() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
         String[] emptyCodes = {"", "   ", "\n", "\t"};
         for (String emptyCode : emptyCodes) {
             ExecuteCodeResult result = code().executeCode(emptyCode, "python", 300, null, null);
@@ -165,16 +154,12 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute unsupported language returns error")
     void testExecuteUnsupportedLanguage() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
         String code = "print('test')";
         String[] unsupported = {"java", "c++", "ruby", "go"};
         for (String lang : unsupported) {
             ExecuteCodeResult result = code().executeCode(code, lang, 300, null, null);
             assertEquals(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode(), result.getCode());
-            assertTrue(result.getMessage().contains(lang + " is not supported"),
+            assertTrue(result.getMessage().contains(lang + " is not supported"), 
                     "Message should contain '" + lang + " is not supported'");
             assertEquals(code, result.getData().getCodeContent());
             assertEquals(lang, result.getData().getLanguage());
@@ -184,10 +169,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute Python code with syntax error")
     void testExecutePythonCodeWithSyntaxError() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('missing quote";
         ExecuteCodeResult result = code().executeCode(code, "python", 300, null, null);
 
@@ -203,10 +185,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code timeout")
     void testExecuteCodeTimeout() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "import time; time.sleep(5)";
         ExecuteCodeResult result = code().executeCode(code, "python", 1, null, null);
 
@@ -218,10 +197,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute long-running valid code (within timeout)")
     void testExecuteLongRunningValidCode() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "import time; time.sleep(2); print('Long run success')";
         ExecuteCodeResult result = code().executeCode(code, "python", 5, null, null);
 
@@ -232,10 +208,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with large output")
     void testExecuteCodeWithLargeOutput() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('\\n'.join([f'Line {i}' for i in range(1000)]))";
         ExecuteCodeResult result = code().executeCode(code, "python", 120, null, null);
 
@@ -247,10 +220,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with special characters (Chinese, symbols)")
     void testExecuteCodeWithSpecialCharacters() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('Chinese test: 中文测试')\nprint('Special symbols: !@#$%^&*()_+-=[]{}|;:,.<>?')";
         ExecuteCodeResult result = code().executeCode(code, "python", 300, null, null);
 
@@ -262,10 +232,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with force_file=true via options")
     void testExecuteCodeForceFileTrue() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "a, b = 50, 60\nprint(f'50 + 60 = {a + b}')";
         Map<String, Object> opts = new HashMap<>();
         opts.put("force_file", true);
@@ -283,10 +250,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with force_file=true and runtime error")
     void testExecuteCodeForceFileTrueWithError() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print(undefined_variable_999)";
         Map<String, Object> opts = Map.of("force_file", true);
 
@@ -301,10 +265,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute code with force_file=true and timeout")
     void testExecuteCodeForceFileTrueTimeout() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "import time\ntime.sleep(5)\nprint('should not print')";
         Map<String, Object> opts = Map.of("force_file", true);
 
@@ -318,10 +279,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Reusability of code operation instance")
     void testFixtureReusability() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         ExecuteCodeResult r1 = code().executeCode("print(1)", "python", 300, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), r1.getCode());
 
@@ -335,10 +293,6 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: empty code returns error")
     void testStreamEmptyCode() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream("", "python", 300, null, null));
         assertEquals(1, results.size());
@@ -355,10 +309,6 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: unsupported language returns error")
     void testStreamUnsupportedLanguage() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream("print(1)", "java", 300, null, null));
         assertEquals(1, results.size());
@@ -370,10 +320,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: normal Python code execution")
     void testStreamPythonNormal() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('hello python')\nprint('stream test for python')";
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream(code, "python", 10, null, null));
@@ -396,10 +343,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: Python code with stderr")
     void testStreamPythonStderr() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print(undefined_variable)";
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream(code, "python", 10, null, null));
@@ -438,10 +382,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: custom environment variables")
     void testStreamCustomEnvironment() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "import os\nprint(os.getenv('TEST_ENV_KEY'))\nprint(os.getenv('TEST_ENV_VALUE'))";
         Map<String, String> env = Map.of("TEST_ENV_KEY", "python_test", "TEST_ENV_VALUE", "123456");
 
@@ -459,10 +400,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: timeout with infinite loop")
     void testStreamTimeout() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "while True: pass";
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream(code, "python", 2, null, null));
@@ -470,17 +408,14 @@ class LocalCodeOperationTest {
         assertTrue(results.size() >= 1);
         boolean hasTimeout = results.stream().anyMatch(r ->
                 r.getMessage().toLowerCase().contains("timeout") ||
-                        r.getMessage().contains("execution receive error"));
+                r.getMessage().contains("execution receive error"));
         assertTrue(hasTimeout, "Should contain timeout error");
     }
 
     @Test
     @DisplayName("Stream: default parameters execution")
     void testStreamDefaultParams() {
-        if (!isPythonAvailable()) {
-            System.out.println("Python not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('default parameter test success')";
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream(code, "python", 300, null, null));

@@ -1,6 +1,3 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 package com.openjiuwen.dev_tools.tune;
 
 import com.openjiuwen.core.common.exception.BaseError;

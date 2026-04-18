@@ -1,6 +1,3 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import org.junit.jupiter.api.Test;
