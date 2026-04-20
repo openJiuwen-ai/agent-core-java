@@ -1,6 +1,6 @@
 # Store Java Example
 
-这个目录对应 Python 版 `examples/store/showcase_obs.py` 的对象存储演示流程，但当前 Java 框架只有本地对象存储 provider，因此这里用 `LocalObjectStorageClient` 展示同一组核心操作：创建 bucket、列举对象、上传、下载、校验和清理。
+这个目录演示 Java 侧的对象存储流程。当前框架只有本地对象存储 provider，因此这里用 `LocalObjectStorageClient` 展示创建 bucket、列举对象、上传、下载、校验和清理这组核心操作。
 
 ## 文件说明
 
@@ -46,7 +46,7 @@
 
 ## 运行方式
 
-建议从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行：
+以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录：
 
 ```powershell
 mvn -DskipTests compile
@@ -71,8 +71,7 @@ java "-Dopenjiuwen.example.store.keepArtifacts=true" -cp "target/classes;example
 - 内容校验通过
 - 默认模式下，下载文件和 bucket 在最后被删除
 
-## 与 Python 示例的差异
+## 当前实现说明
 
-- Python 版 `showcase_obs.py` 使用 `AioBotoClient`，面向 OBS/S3 风格云对象存储。
 - Java 当前只提供 `LocalObjectStorageClient`，把 bucket/object 映射到本地文件系统目录。
-- 因此这个 Java 示例对齐的是对象存储操作流程和接口语义，不是云 provider 的一比一能力对齐。
+- 示例聚焦对象存储操作流程和接口语义，不涉及云 provider 接入。
