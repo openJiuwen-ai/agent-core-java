@@ -9,7 +9,7 @@
 | [概述](概述.md) | 多智能体整体模型与阅读顺序 | `com.openjiuwen.core.multiagent`、`examples/groups` | 先建立 Java 侧术语与推荐路径。 |
 | [BaseGroup与组封装](BaseTeam.md) | `BaseGroup`、`GroupCard`、`GroupConfig` | `BaseGroup`、`GroupConfig`、`schema` 子包 | 聚焦 Java 的 `BaseGroup` 主线。 |
 | [组运行时职责与通信协作](TeamRuntime与CommunicableAgent.md) | 运行时职责分配与通信协作 | `MultiAgentSessions`、`AgentGroupSessionApi`、resource manager、legacy controller group | 说明 group、session、controller 和 resource manager 的职责边界。 |
-| [AgentAsTool](AgentAsTool.md) | agent 能力暴露与注册 | `AbilityManager`、`LlmAgent` / `WorkflowAgent` 资源注册、`examples/groups` | 基于架构页术语继续展开，不把示例 bridge 写成稳定公共 API。 |
+| [AgentAsTool](AgentAsTool.md) | 把 Agent 当作 Tool 使用 | `AbilityManager`、`Runner.resourceMgr()`、`ReActAgent` | 面向使用者的接入教程，说明怎样把子 Agent 暴露成宿主 Agent 的可调用能力。 |
 | [团队装配与运行](AgentTeams.md) | 团队装配与协作入口 | `multiagent` API、`examples/groups` | 以 Java 当前可组合的 group/session 能力为准。 |
 | [预置协作模式](预置协作模式.md) | 常见协作结构与示例映射 | `examples/groups` | 重点说明 Java 现有示例能表达的协作模式和边界。 |
 
