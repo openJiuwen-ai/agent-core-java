@@ -1,10 +1,10 @@
 # 组运行时职责与通信协作
 
-本页聚焦 Java 多智能体里的运行时职责分配：成员管理、会话状态、消息路由、共享资源以及组内通信协作。当前这些能力分别落在分组、会话、controller 和资源管理器上。
+这里重点说明 Java 多智能体里的运行时职责分配：成员管理、会话状态、消息路由、共享资源以及组内通信协作。当前这些能力分别落在分组、会话、controller 和资源管理器上。
 
 ## 功能定位
 
-本页回答两个问题：
+先看两件事：
 
 1. 成员管理、消息路由、发布订阅、生命周期在 Java 里分别落到哪里。
 2. 组内 Agent 的发送、发布和恢复协作当前怎样实现。
@@ -76,7 +76,7 @@ Java 当前没有一个公开的 mixin 或基类，让任意 `BaseAgent` 直接�
 - 组内谁接收消息、谁负责广播、谁负责恢复上一次中断，往往由 `BaseGroupController` 或示例内的 leader/controller 决定。
 - `examples/groups/hierarchical_group` 里的 `HierarchicalGroupController` 和 `HierarchicalLeaderAgent` 展示了这种写法：leader 负责路由决策，controller 负责把消息送到合适 worker，并在用户回复后继续恢复到上一次中断的成员。
 
-所以本页里的“组内通信能力”不是一个单独类型，而是一组由 controller、session 和成员协同完成的职责分配。
+这里说的“组内通信能力”不是一个单独类型，而是一组由 controller、session 和成员协同完成的职责分配。
 
 ## 当前能力状态
 
@@ -99,8 +99,8 @@ Java 当前没有一个公开的 mixin 或基类，让任意 `BaseAgent` 直接�
 - [API 文档：ControllerGroup](../API文档/com.openjiuwen.core/multiagent/legacy/ControllerGroup.md)
 - [API 文档：Runner](../API文档/com.openjiuwen.core/runner/Runner.md)
 
-## 本页说明
+## 使用边界
 
-- 本页聚焦运行时职责和组内通信协作在 Java 中的真实落点。
+- 这里聚焦运行时职责和组内通信协作在 Java 中的真实落点。
 - 职责拆分给 `BaseGroup`、`Session`、legacy controller 和 `Runner.resourceMgr()`。
 - 文中所有说法都能回到当前仓库的源码、API 文档或 `examples/groups` 中找到对应依据。

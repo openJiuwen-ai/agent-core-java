@@ -2,7 +2,7 @@
 
 Java 版安全护栏当前公开在 `com.openjiuwen.core.security.guardrail` 子包中。它不是一套独立的“安全平台”，而是一层建立在 `CallbackFramework` 之上的事件检测和阻断机制：某个运行时事件发生时，guardrail 读取事件数据，交给 `GuardrailBackend` 分析，再按结果决定放行还是抛出 `GuardrailError`。
 
-这一页只覆盖 Java 当前真正公开的能力：`BaseGuardrail`、`GuardrailBackend`、`RiskAssessment`、`GuardrailResult`、`RiskLevel` 和 `UserInputGuardrail`。仓库里没有公开的 `PromptInjectionGuardrail` 之类内置策略，因此文档也不应承诺那类尚未落地的策略类型。
+这里讨论的范围是 Java 当前真正公开的能力：`BaseGuardrail`、`GuardrailBackend`、`RiskAssessment`、`GuardrailResult`、`RiskLevel` 和 `UserInputGuardrail`。仓库里没有公开的 `PromptInjectionGuardrail` 一类内置策略，因此使用时应以当前已落地的策略类型为准。
 
 ## 能力定位
 
@@ -118,7 +118,7 @@ Java 当前没有单独的 `examples/guardrail` 目录，因此这里的“最�
 - Java 当前公开包的主线是你自己实现 `GuardrailBackend`；默认现成 guardrail 主要是 `UserInputGuardrail`。
 - 默认事件当前是 `user_input`；LLM / tool 输出护栏和多模式 detector 并未作为内置能力公开。
 - Java 护栏明显依赖 `CallbackFramework` 这条事件链路，注册和阻断语义都以 `BaseGuardrail.register(...)` 的当前实现为准。
-- 本页只覆盖 `security.guardrail` 子包当前已公开能力，不承诺仓库外或未实现的策略类型。
+- 这里以 `security.guardrail` 子包当前已公开能力为准，不延伸到仓库外或未实现的策略类型。
 
 ## 参考入口
 

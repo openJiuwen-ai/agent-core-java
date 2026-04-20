@@ -1,10 +1,10 @@
 # 团队装配与运行
 
-本页聚焦 Java 多智能体里的团队装配与运行方式。当前主线不是额外的团队工厂，而是用 `BaseGroup` 把多个 `BaseAgent` 封装成一个 group，再结合 `Session`、`MultiAgentSessions` 和 `Runner` 完成一次团队执行。
+团队装配与运行的主线是：用 `BaseGroup` 把多个 `BaseAgent` 封装成一个 group，再结合 `Session`、`MultiAgentSessions` 和 `Runner` 完成一次团队执行。当前主线不是额外的团队工厂。
 
 ## 功能定位
 
-本页回答三个问题：
+先看三个关键问题：
 
 1. Java 里怎样把多个 Agent 组织成一个清晰的团队边界。
 2. 这个团队怎样被直接调用，或注册为 `Runner` 可解析的 group 资源。
@@ -248,8 +248,8 @@ Java 当前多智能体主线已经可以完成团队封装、团队会话和运
 - [API 文档：ControllerGroup](../API文档/com.openjiuwen.core/multiagent/legacy/ControllerGroup.md)
 - [API 文档：BaseGroupController](../API文档/com.openjiuwen.core/multiagent/legacy/BaseGroupController.md)
 
-## 本页说明
+## 使用边界
 
-- 本页只写 Java 当前仓库里已经存在的团队装配、会话和执行入口。
+- 这里聚焦 Java 当前仓库里已经存在的团队装配、会话和执行入口。
 - 推荐主线落在 `BaseGroup + Session + Runner`。
 - controller 路径和 leader-worker 示例只作为协作入口说明，不替代正式公共 API。

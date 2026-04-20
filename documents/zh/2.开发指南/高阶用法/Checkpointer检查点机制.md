@@ -18,7 +18,7 @@
 
 > 补充说明
 >
-> 当前仓库还注册了 `redis` 与 `redis_checkpointer_cluster` 两个扩展类型，但它们位于 `extensions/checkpointer/redis`，不作为本页主线展开。
+> 当前仓库还注册了 `redis` 与 `redis_checkpointer_cluster` 两个扩展类型，但它们位于 `extensions/checkpointer/redis`，这里先不展开。
 
 ## 三个命名空间先记住
 
@@ -283,7 +283,7 @@ CheckpointerFactory.setDefaultCheckpointer(checkpointer);
 - agent 完成后当前不会自动删除 agent checkpoint；如果会话结束，记得显式 `release(...)`。
 - workflow 新执行遇到旧 checkpoint 时，默认会报错；只有显式开启 `FORCE_DEL_WORKFLOW_STATE_KEY` 才会强制删旧状态。
 - graph checkpoint 和 workflow state 是分开存储、分开清理的，不能只理解成“一份 workflow 序列化”。
-- Redis 扩展当前有源码和测试，但本页不把它写成已完整文档化的主线能力。
+- Redis 扩展当前有源码和测试，但当前主线仍以内置 `in_memory` 和 `persistence` 实现为准。
 
 ## 参考入口
 

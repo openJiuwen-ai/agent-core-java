@@ -27,8 +27,8 @@
 - [API 文档：foundation](../API文档/com.openjiuwen.core/foundation.README.md)
 - [示例：ReAct Agent Java Example](../../../../examples/reac_agent/README.md)
 
-## 本栏说明
+## 使用边界
 
-- 三篇页面围绕 Java 当前的模型接入、模板装配和工具暴露主线展开。
-- 页面中的步骤、类型名和示例入口只引用 Java 仓库中当前存在的 API、examples 和测试。
-- 如果某个能力存在多种接入方式，正文会按 Java 当前公开 API 的主路径说明，不引入额外的别名或快捷写法。
+- 本栏目聚焦 Java 当前公开的运行时接入主线：模型、模板装配和工具系统。
+- 页面中的步骤、类型名和示例入口都以当前 Java 仓库中的 API、examples 和测试为准。
+- 同一能力如果存在多种接入方式，正文默认优先说明当前公开 API 的主路径。

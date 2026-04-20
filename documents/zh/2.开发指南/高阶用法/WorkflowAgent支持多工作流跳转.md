@@ -7,7 +7,7 @@ Java 版 `WorkflowAgent` 的“多工作流跳转”不是单条 graph 内部的
 1. `WorkflowAgent`：负责把多条 workflow 注册到 agent 与全局资源管理器；
 2. `WorkflowEventHandler`：负责意图识别、保存中断任务、根据用户回复恢复对应 workflow。
 
-本页以 `examples/workflow_agent` 为主线，解释 Java 当前已经可验证的多 workflow 选择与恢复路径，不把它写成一个超出仓库实现范围的“通用任务编排平台”。
+这里以 `examples/workflow_agent` 为主线，解释 Java 当前已经可验证的多 workflow 选择与恢复路径。更适合把它理解成多 workflow 入口与恢复机制，而不是一个超出仓库实现范围的“通用任务编排平台”。
 
 ## 先区分两种“跳转”
 
@@ -248,9 +248,9 @@ Runner / WorkflowAgent
 
 为了避免写出超出实现范围的承诺，这里明确几点：
 
-- 本页讨论的是 **`WorkflowAgent` 管理多条顶层 workflow**，不是单条 workflow 内部的任意节点跳转。
+- 这里讨论的是 **`WorkflowAgent` 管理多条顶层 workflow**，不是单条 workflow 内部的任意节点跳转。
 - `examples/workflow_agent` 的命令行界面重点展示“多 workflow 注册 + 单轮补问恢复”主线；更细粒度的多中断并存行为主要由 `WorkflowEventHandler` 的状态管理逻辑保证。
-- Java 当前流式路径里，交互回放存在边界：`stream` 路径只保证当前需要展示的交互能返回给调用方，不应承诺复杂中断集合一定完整重放。
+- Java 当前流式路径里，交互回放存在边界：`stream` 路径只保证当前需要展示的交互能返回给调用方，不应把它理解成复杂中断集合一定能够完整重放。
 - `QuestionerComponent` 触发时底层可能打印 `GraphInterrupt` 的 `ERROR` 日志；按照示例 README，这属于正常等待输入行为，不代表示例失败。
 
 ## 参考入口

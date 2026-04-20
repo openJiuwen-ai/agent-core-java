@@ -1,6 +1,6 @@
 # AgentAsTool
 
-本页介绍怎样在 openJiuwen Java 里把一个 `Agent` 当作另一个 `Agent` 的可调用能力来使用。
+在 openJiuwen Java 里，可以把一个 `Agent` 当作另一个 `Agent` 的可调用能力来使用。
 
 它适合这种场景：
 

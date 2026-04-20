@@ -177,16 +177,16 @@ Java 这套 checkpoint 的内容重点是：
 | 主要对象 | `ReActAgentEvolve` + operator registry | legacy `BaseAgent` + `LLMCall` |
 | 绑定方式 | `getOperators()` / tunable targets | `getLlmCalls()` |
 | 运行数据 | `AgentSession` + tracer trajectory | 主要是 prompt tuning 数据闭环 |
-| checkpoint | 内置 `FileCheckpointStore` / `DefaultCheckpointManager` | 本页不把它视为主 checkpoint 方案 |
-| 本页定位 | Java 当前推荐理解路径 | 历史 / 相邻能力，不作为本页主线 |
+| checkpoint | 内置 `FileCheckpointStore` / `DefaultCheckpointManager` | 当前默认 checkpoint 方案 |
+| 当前推荐理解 | Java 当前推荐理解路径 | 历史 / 相邻能力，不作为当前主线 |
 
-如果你正在看 [生成和优化提示词](生成和优化提示词.md)，那一页讨论的是开发期 prompt builder 工具；如果你看到 `dev_tools.tune` 相关类，它们则更接近旧的 prompt tuning 实现。当前这页谈的是 `agent_evolving` 这条、已经通过 Java example 直接落地的 agent 自演化路径。
+与 [生成和优化提示词](生成和优化提示词.md) 的区别在于：前者讨论开发期 prompt builder 工具；`dev_tools.tune` 更接近旧的 prompt tuning 实现；这里讨论的是 `agent_evolving` 这条已经通过 Java example 落地的 agent 自演化路径。
 
 ## 当前实现边界
 
 - Java 当前主线是 instruction optimization 和 operator writeback。
 - Java 这条链路目前最可靠的入口是 `examples/agent_evolving`，不是抽象文档层面的假设能力。
-- 当你需要理解“提示词怎么生成或微调”时，应当回到 [生成和优化提示词](生成和优化提示词.md)；当你需要理解“Agent 怎么在 case 驱动下自我迭代”时，才读这一页。
+- 想理解“提示词怎么生成或微调”时，回到 [生成和优化提示词](生成和优化提示词.md)；想理解“Agent 怎么在 case 驱动下自我迭代”时，再重点阅读这里。
 
 ## 参考入口
 
