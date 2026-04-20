@@ -4,7 +4,7 @@
 
 如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`CallbackFramework` 与后续几页。
 
-> 本页聚焦 Java 当前公开 API 与示例，不展开底层 MQ 或 distributed server adapter 的实现细节。
+> 这里聚焦 Java 当前公开 API 与示例，不展开底层 MQ 或 distributed server adapter 的实现细节。
 
 ## 核心角色
 
@@ -62,7 +62,7 @@ Runner.start();
 - `distributedMode = false`
 - fake message queue
 
-因此，文档里谈“默认运行器行为”时，应该以 `RunnerConfig.DEFAULT` 为准，而不是只看字段声明的默认值。
+理解“默认运行器行为”时，应以 `RunnerConfig.DEFAULT` 为准，而不是只看字段声明的默认值。
 
 ## `DistributedConfig` 负责什么
 
@@ -77,7 +77,7 @@ Runner.start();
 
 当前 Java 实现会把 `envPrefix` 叠加到 topic template 上，再由 `Runner.start()` 启动 distributed message queue 和 reply topic subscription。
 
-> 本页不展开 MQ 类型、Pulsar 或 server adapter 细节；这里只强调：`Runner` 负责启动这些入口，具体消息系统配置由 `DistributedConfig` 和相关子包承担。
+> 这里不展开 MQ 类型、Pulsar 或 server adapter 细节；重点是：`Runner` 负责启动这些入口，具体消息系统配置由 `DistributedConfig` 和相关子包承担。
 
 ## `ResourceMgr`：运行时资源都放哪里
 
@@ -304,7 +304,7 @@ while (stream.hasNext()) {
 - `Runner` 是全局单例门面；如果你在同一进程里多次切配置，应明确控制 `setConfig(...)`、`start()`、`stop()` 的顺序。
 - 默认全局 runner 使用的是 `RunnerConfig.DEFAULT`，不是 builder 字段声明里的所有默认值。
 - `release(sessionId)` 只负责清掉默认 checkpointer 中该 session 的状态，不代表所有外部资源都会被释放。
-- 本页不承诺分布式 MQ 子系统的底层消息协议细节；这里只说明 Java 当前公开的启动入口和配置边界。
+- 这里不展开分布式 MQ 子系统的底层消息协议细节；重点说明 Java 当前公开的启动入口和配置边界。
 
 ## 参考入口
 

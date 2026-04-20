@@ -1,6 +1,6 @@
 # ReActAgent 演化训练
 
-本页聚焦 Java 当前已经落地的 ReActAgent 演化训练链路：`ReActAgentEvolve` 配合 `com.openjiuwen.agent_evolving.*` 提供运行、评估、优化、回写和 checkpoint 闭环。
+这里重点说明 Java 当前已经落地的 ReActAgent 演化训练链路：`ReActAgentEvolve` 配合 `com.openjiuwen.agent_evolving.*` 提供运行、评估、优化、回写和 checkpoint 闭环。
 
 当前公开并由示例直接覆盖的主线，是“基于运行时 operator 的自演化 / 指令优化”路径，而不是独立的模型权重训练平台。
 
@@ -95,12 +95,12 @@ trainer.train(agent, trainCases, valCases, 3, Map.of(
 
 ## 当前实现边界
 
-- 本页聚焦的是 operator 参数优化，不涉及模型权重训练、独立 rollout 服务或分布式训练栈。
+- 这里聚焦的是 operator 参数优化，不涉及模型权重训练、独立 rollout 服务或分布式训练栈。
 - Java 当前优化的是 operator 参数，最常见的是 `system_prompt`，不是模型权重。
 - Java checkpoint 是 `agent_evolving` 自己的本地 JSON 快照，保存的是 `operators_state`、训练进度和少量元数据，不是统一训练平台的 checkpoint 体系。
 - Java 示例直接复用正常的 `agent.invoke(...)`、`AgentSession` 和 tracer，训练数据来自运行时真实输出，而不是独立 rollout 服务。
 
-因此，这一页的正确阅读方式是：把它理解成 Java 当前的演化训练入口页，而不是通用 RL 框架页。
+更适合把它理解成 Java 当前的演化训练入口页，而不是通用 RL 框架页。
 
 ## 相关页面
 

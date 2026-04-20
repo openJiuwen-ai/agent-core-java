@@ -1,10 +1,10 @@
 # BaseGroup 与组封装
 
-本页聚焦 `com.openjiuwen.core.multiagent.BaseGroup` 及其配套的 `GroupCard`、`GroupConfig` 和 group session 能力。
+这里重点说明 `com.openjiuwen.core.multiagent.BaseGroup` 及其配套的 `GroupCard`、`GroupConfig` 和 group session 能力。
 
 ## 功能定位
 
-本页聚焦“怎样把多个 Agent 封装成一个可调用的 group”。如果你只想先弄清 Java 多智能体整体长什么样，先回到 [概述](概述.md)；如果你关心运行时职责和消息分发，再读 [组运行时职责与通信协作](TeamRuntime与CommunicableAgent.md)。
+这里重点说明“怎样把多个 Agent 封装成一个可调用的 group”。如果要先了解 Java 多智能体整体结构，可以先回到 [概述](概述.md)；如果更关心运行时职责和消息分发，再读 [组运行时职责与通信协作](TeamRuntime与CommunicableAgent.md)。
 
 ## 核心类型
 
@@ -141,7 +141,7 @@ Object result = group.invoke(Map.of("task", "整理需求"), session);
 - [API 文档：Session](../API文档/com.openjiuwen.core/multiagent/Session.md)
 - [API 文档：AgentGroupSessionApi](../API文档/com.openjiuwen.core/session/AgentGroupSessionApi.md)
 
-## 本页说明
+## 使用边界
 
 - 团队封装主线落在 `BaseGroup + GroupCard + GroupConfig + Session`。
 - 协作策略和成员路由由 group 子类自行实现。

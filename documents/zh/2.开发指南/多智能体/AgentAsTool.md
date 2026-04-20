@@ -1,125 +1,365 @@
 # AgentAsTool
 
-Java 版这一页讨论的不是一个单独的 `AgentAsTool` 框架类，而是 `AbilityManager` 如何把 `ToolCard`、`WorkflowCard`、`AgentCard` 和 `McpServerConfig` 暴露成 LLM 可见能力，并在运行时分发到对应执行入口。对 Java 来说，`AgentCard` 这条路径是“原语层可用”，但不像 `Tool` / `Workflow` 那样已经包成完整工厂。
+在 openJiuwen Java 里，可以把一个 `Agent` 当作另一个 `Agent` 的可调用能力来使用。
 
-## 功能定位
+它适合这种场景：
 
-如果你想让一个宿主 Agent 像调用工具一样调用其他能力，当前最核心的入口就是 `AbilityManager`。它负责两件事：
+- 你已经有一个宿主 Agent，希望它像调用工具一样调用“翻译专家”“摘要专家”“审校专家”这类子 Agent
+- 子能力本身更像一个独立 Agent，而不是简单函数或工作流
+- 你需要一个轻量的主从协作结构，而不是先搭一个完整 group
 
-1. 保存能力卡片，并把它们转换成发给模型的 `ToolInfo`。
-2. 在模型发起 tool call 后，按能力类型把调用分发到 `Tool.invoke(...)`、`Runner.runWorkflow(...)` 或 `Runner.runAgent(...)`。
+如果你要的是明确的团队边界、成员关系和团队级运行入口，优先看 [AgentTeams](AgentTeams.md)。
 
-因此 Java 里的 “Agent as Tool” 更准确的说法是：`AgentCard` 也能进入能力列表，但你需要自己把真实 Agent 实例注册进 `Runner.resourceMgr()`。
+## 核心思路
 
-## 能力对象与执行链路
+Java 版的 `Agent as Tool` 由两步组成：
 
-| 能力对象 | 如何进入 `AbilityManager` | 模型看到什么 | 实际执行入口 | 当前状态 |
-| --- | --- | --- | --- | --- |
-| `ToolCard` | `add(tool.getCard())`，或 `WorkflowAgent.addTools(...)` / `LlmAgent.createLlmAgent(...)` | `toolCard.toolInfo()` | `Tool.invoke(...)` | 推荐主线 |
-| `WorkflowCard` | `add(workflow.getCard())`，或 `WorkflowAgent.addWorkflows(...)` / `LlmAgent.createLlmAgent(...)` | `workflowCard.toolInfo()` | `Runner.runWorkflow(...)` | 推荐主线 |
-| `AgentCard` | 手动 `add(agentCard)` | `agentCard.toolInfo()` | `Runner.runAgent(...)` | 可用，但需手动注册实例 |
-| `McpServerConfig` | 手动 `add(mcpConfig)` | 由 MCP 工具卡片展开成 `ToolInfo` | 依赖资源管理器里的具体 MCP 工具 | 仅能力元数据与工具展开已落地 |
+1. 把子 Agent 实例注册到 `Runner.resourceMgr()`，让运行时能按 ID 找到它
+2. 把子 Agent 的 `AgentCard` 加到宿主 Agent 的 `AbilityManager`，让模型把它当成可调用能力
 
-## `AbilityManager` 到底做了什么
+其中：
 
-### 1. `add(Object ability)` 只负责登记能力元数据
+- `AgentCard.description` 会直接影响模型什么时候选择这个子 Agent
+- `AgentCard.inputParams` 会直接影响模型调用时传什么参数
 
-`AbilityManager.add(Object ability)` 会按对象类型把能力放入四类表：
+所以对用户来说，最重要的不是先理解底层分发链路，而是把 `AgentCard` 写清楚。
 
-- `ToolCard`
-- `WorkflowCard`
-- `AgentCard`
-- `McpServerConfig`
+## 接入步骤
 
-这一步不会自动替你创建真实实例，只是告诉宿主 Agent：“这些名字现在可以进入能力集合”。
+### 第一步：定义子 Agent
 
-### 2. `listToolInfo()` 决定模型能看到哪些能力
+子 Agent 是普通的 `BaseAgent` 子类。和 Python 版不同，Java 里最小实现通常要补齐这四个方法：
 
-当宿主 Agent 需要把可调用能力发给模型时，`AbilityManager.listToolInfo()` 会：
+- `configure(Object config)`
+- `getConfig()`
+- `invoke(Object inputs, Session session)`
+- `stream(Object inputs, Session session, List<StreamMode> streamModes)`
 
-- 把 `ToolCard` 转成 `ToolInfo`
-- 把 `WorkflowCard` 转成 `ToolInfo`
-- 把 `AgentCard` 转成 `ToolInfo`
-- 把 MCP server 展开成具体 MCP tool 的 `ToolInfo`
+如果你的子 Agent 逻辑很简单，`stream(...)` 可以直接把 `invoke(...)` 的结果包成单元素迭代器返回。
 
-这也是为什么 `AgentCard` 虽然不是 `ToolCard`，仍然可以被模型当成“工具入口”看见。
+### 第二步：定义子 Agent 的 `AgentCard`
 
-### 3. `executeSingleToolCall(...)` 决定最终调用谁
+`AgentCard` 至少建议写清楚：
 
-`AbilityManager.executeSingleToolCall(...)` 的分发顺序很直接：
+- `id`
+- `name`
+- `description`
+- `inputParams`
 
-1. 如果名字命中 `ToolCard`，取出工具实例并执行 `tool.invoke(...)`
-2. 如果名字命中 `WorkflowCard`，执行 `Runner.runWorkflow(...)`
-3. 如果名字命中 `AgentCard`，执行 `Runner.runAgent(...)`
-4. 如果能力表里都没命中，再回退到 `Runner.resourceMgr()` 里按工具名查找
+其中 `description` 和 `inputParams` 会被转换成模型可见的工具描述。写得越清晰，宿主 Agent 越容易在正确时机调用它。
 
-这条执行链说明了一个关键边界：把 `AgentCard` 放进能力列表还不够，真正执行时还必须能在 `Runner.resourceMgr()` 里解析到对应 Agent。
+### 第三步：注册子 Agent 到 `Runner.resourceMgr()`
 
-## 最稳的注册路径
-
-### Tool / Workflow：优先用现成封装
-
-Java 当前已经给 `Tool` 和 `Workflow` 提供了比较完整的注册路径：
-
-- `LlmAgent.createLlmAgent(...)` 会把 `WorkflowCard` / `ToolCard` 同步写入 `AbilityManager`、`agentConfig` 和 `Runner.resourceMgr()`
-- `WorkflowAgent.addTools(...)` / `addWorkflows(...)` 会同步更新 `AbilityManager`、配置对象和资源管理器
-
-如果你的“子能力”本质上是工具或工作流，优先走这条路径，封装最完整，也最接近当前 Java 的推荐写法。
-
-### Agent：手动把卡片和实例都补齐
-
-如果你的“子能力”本质上是另一个 Agent，当前写法更接近下面这样：
+只有把真实实例注册进资源管理器，运行时才能在 tool call 发生后找到它：
 
 ```java
-AgentCard reviewerCard = AgentCard.builder()
-        .id("reviewer_agent")
-        .name("reviewer_agent")
-        .description("负责复核回答并给出修改建议")
-        .build();
-
-BaseAgent reviewerAgent = new ReviewerAgent(reviewerCard);
-
-Runner.resourceMgr().addAgent(reviewerCard, () -> reviewerAgent, null);
-hostAgent.getAbilityManager().add(reviewerCard);
+Runner.resourceMgr().addAgent(translatorCard, () -> translatorAgent, null);
+Runner.resourceMgr().addAgent(summarizerCard, () -> summarizerAgent, null);
 ```
 
-这里有三个容易踩的点：
+### 第四步：把子 Agent 挂到宿主 Agent 的 `AbilityManager`
 
-1. `AgentCard.id` 不能为空，因为 `Runner.resourceMgr().addAgent(...)` 会校验资源 ID。
-2. `executeSingleToolCall(...)` 会优先使用 `agentCard.getId()`，因此资源注册时的 ID 和卡片 ID 需要对齐。
-3. 当前仓库没有一个与 `LlmAgent.createLlmAgent(...)` 对应的“批量注册子 Agent”为能力的现成工厂，所以文档里不应把这条路径写成完全开箱。
+```java
+hostAgent.getAbilityManager().add(translatorCard);
+hostAgent.getAbilityManager().add(summarizerCard);
+```
 
-## 宿主 Agent 侧应该怎么理解
+做完这一步后，子 Agent 会出现在宿主 Agent 发给模型的能力列表里，模型就可以像选工具一样选它们。
 
-从宿主 Agent 视角看，`AgentAsTool` 其实是两层结构：
+### 第五步：运行宿主 Agent
 
-1. `AbilityManager` 负责把能力描述暴露给模型
-2. `Runner.resourceMgr()` 负责在真正执行时找到对应实例
+```java
+Object result = Runner.runAgent(
+        hostAgent,
+        Map.of("query", "请把以下内容翻译成英文：人工智能正在改变世界。"),
+        null,
+        null
+);
+```
 
-这说明 Java 当前更偏向一组可组合原语，尤其是 `AgentCard` 这条路径仍需要你自己装配。
+## 完整示例
 
-## 当前能力边界
+下面的示例里：
 
-- `Tool` / `Workflow` 的注册路径已经比较成熟，适合写成推荐主线。
-- `AgentCard` 暴露为能力是可行的，但当前更偏底层装配，不应伪装成已经有完整 Team/Tool 框架封装。
-- `AbilityManager` 能登记 `McpServerConfig` 并展开 MCP tool 元数据，但文档不应把它写成“直接以 server name 执行 MCP 能力”的完整闭环。
-- 如果你只是想组织多智能体协作，而不是把一个 Agent 暴露成宿主 Agent 的可调用能力，优先回到 [AgentTeams](AgentTeams.md) 或 [预置协作模式](预置协作模式.md) 看 group 和协作结构。
+- `TranslatorAgent` 负责翻译
+- `SummarizerAgent` 负责摘要
+- `hostAgent` 是宿主 `ReActAgent`
+- 宿主会根据用户请求决定调用哪个子 Agent
 
-## 示例入口
+运行前请先准备模型配置环境变量：
 
-- [示例：Groups Java Examples](../../../../examples/groups/README.md)
-- [示例：hierarchical_group](../../../../examples/groups/hierarchical_group/README.md)
+- `API_KEY`
+- `API_BASE`
+- `MODEL_NAME`
 
-## 参考入口
+```java
+package examples.agent_as_tool;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.ReActAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+public final class AgentAsToolExample {
+
+    private static final String HOST_AGENT_ID = "host_agent";
+    private static final String TRANSLATOR_AGENT_ID = "translator_agent";
+    private static final String SUMMARIZER_AGENT_ID = "summarizer_agent";
+
+    private AgentAsToolExample() {
+    }
+
+    public static void main(String[] args) {
+        AgentCard translatorCard = AgentCard.builder()
+                .id(TRANSLATOR_AGENT_ID)
+                .name(TRANSLATOR_AGENT_ID)
+                .description("翻译专家。用户要求翻译、转成英文、转成日文时调用。")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "text", Map.of(
+                                        "type", "string",
+                                        "description", "需要翻译的原始文本"
+                                ),
+                                "target_lang", Map.of(
+                                        "type", "string",
+                                        "description", "目标语言，例如 English、Japanese"
+                                )
+                        ),
+                        "required", List.of("text", "target_lang")
+                ))
+                .build();
+
+        AgentCard summarizerCard = AgentCard.builder()
+                .id(SUMMARIZER_AGENT_ID)
+                .name(SUMMARIZER_AGENT_ID)
+                .description("摘要专家。用户要求总结、提炼要点、生成摘要时调用。")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "text", Map.of(
+                                        "type", "string",
+                                        "description", "需要生成摘要的原始文本"
+                                )
+                        ),
+                        "required", List.of("text")
+                ))
+                .build();
+
+        TranslatorAgent translatorAgent = new TranslatorAgent(translatorCard);
+        SummarizerAgent summarizerAgent = new SummarizerAgent(summarizerCard);
+
+        Runner.resourceMgr().addAgent(translatorCard, () -> translatorAgent, null);
+        Runner.resourceMgr().addAgent(summarizerCard, () -> summarizerAgent, null);
+
+        AgentCard hostCard = AgentCard.builder()
+                .id(HOST_AGENT_ID)
+                .name(HOST_AGENT_ID)
+                .description("主智能体，负责把任务分发给翻译专家或摘要专家。")
+                .build();
+
+        ReActAgent hostAgent = new ReActAgent(hostCard);
+        ReActAgentConfig config = ReActAgentConfig.builder()
+                .promptTemplate(List.of(Map.of(
+                        "role", "system",
+                        "content", """
+                                你是一个任务分发助手。
+                                当用户要求翻译时，调用 translator_agent。
+                                当用户要求总结、提炼要点时，调用 summarizer_agent。
+                                工具返回后，基于工具结果继续回答用户。
+                                """
+                )))
+                .maxIterations(4)
+                .build()
+                .configureModelClient(
+                        "openai",
+                        System.getenv("API_KEY"),
+                        System.getenv("API_BASE"),
+                        System.getenv("MODEL_NAME"),
+                        true
+                );
+
+        ModelRequestConfig requestConfig = config.getModelConfigObj();
+        requestConfig.setTemperature(0.3);
+        requestConfig.setMaxTokens(512);
+
+        hostAgent.configure(config);
+        hostAgent.getAbilityManager().add(translatorCard);
+        hostAgent.getAbilityManager().add(summarizerCard);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> translateResult = (Map<String, Object>) Runner.runAgent(
+                hostAgent,
+                Map.of(
+                        "query", "请把以下内容翻译成英文：人工智能正在改变世界。",
+                        "conversation_id", "agent_as_tool_translate_demo"
+                ),
+                null,
+                null
+        );
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summarizeResult = (Map<String, Object>) Runner.runAgent(
+                hostAgent,
+                Map.of(
+                        "query", "请总结这段话：人工智能正在改变研发、客服、金融和制造业的工作方式，但落地时仍要关注成本、数据质量和合规风险。",
+                        "conversation_id", "agent_as_tool_summary_demo"
+                ),
+                null,
+                null
+        );
+
+        System.out.println("Translate result: " + translateResult);
+        System.out.println("Summarize result: " + summarizeResult);
+
+        Runner.release("agent_as_tool_translate_demo");
+        Runner.release("agent_as_tool_summary_demo");
+    }
+
+    static final class TranslatorAgent extends BaseAgent {
+        private Object config;
+
+        TranslatorAgent(AgentCard card) {
+            super(card);
+        }
+
+        @Override
+        public BaseAgent configure(Object config) {
+            this.config = config;
+            return this;
+        }
+
+        @Override
+        public Object getConfig() {
+            return config;
+        }
+
+        @Override
+        public Object invoke(Object inputs, Session session) {
+            Map<String, Object> request = normalizeInputs(inputs);
+            String text = String.valueOf(request.getOrDefault("text", ""));
+            String targetLang = String.valueOf(request.getOrDefault("target_lang", "English"));
+            return Map.of(
+                    "translated", "[" + targetLang + "] " + text
+            );
+        }
+
+        @Override
+        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+            return List.of(invoke(inputs, session)).iterator();
+        }
+    }
+
+    static final class SummarizerAgent extends BaseAgent {
+        private Object config;
+
+        SummarizerAgent(AgentCard card) {
+            super(card);
+        }
+
+        @Override
+        public BaseAgent configure(Object config) {
+            this.config = config;
+            return this;
+        }
+
+        @Override
+        public Object getConfig() {
+            return config;
+        }
+
+        @Override
+        public Object invoke(Object inputs, Session session) {
+            Map<String, Object> request = normalizeInputs(inputs);
+            String text = String.valueOf(request.getOrDefault("text", ""));
+            String summary = text.length() > 40 ? text.substring(0, 40) + "..." : text;
+            return Map.of(
+                    "summary", "摘要：" + summary
+            );
+        }
+
+        @Override
+        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+            return List.of(invoke(inputs, session)).iterator();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeInputs(Object inputs) {
+        if (inputs instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of("text", String.valueOf(inputs));
+    }
+}
+```
+
+这个示例里，子 Agent 自身没有调用大模型，只是为了演示“宿主 Agent 如何像调工具一样调子 Agent”。在真实业务里，你可以把 `TranslatorAgent` 和 `SummarizerAgent` 替换成更复杂的 Agent 实现。
+
+## 用户视角下应该怎么理解
+
+从使用者角度看，这个能力只需要记住一句话：
+
+> 子 Agent 负责实现能力，`AgentCard` 负责把这项能力描述给模型看。
+
+也就是说：
+
+- 你想让模型更容易选中某个子 Agent，就改好 `description`
+- 你想让模型传对参数，就改好 `inputParams`
+- 你想让运行时真的能执行，就把实例注册进 `Runner.resourceMgr()`
+
+## 什么时候适合用 AgentAsTool
+
+优先用这条路径的典型场景：
+
+- 一个宿主 Agent 统一调度多个“专家能力”
+- 专家之间不需要复杂广播、订阅、团队会话
+- 你更关心“让模型选哪个子能力”，而不是“先建一个团队对象”
+
+如果你的重点变成下面这些问题，就该切到 [AgentTeams](AgentTeams.md)：
+
+- 团队边界怎么建
+- 成员之间怎么通信
+- 团队怎样作为一个整体被注册和运行
+
+## Java 版注意事项
+
+1. `AgentCard.id` 不能为空。`Runner.resourceMgr().addAgent(...)` 会校验资源 ID。
+2. 只把 `AgentCard` 加进 `AbilityManager` 还不够。没有注册真实实例时，运行阶段找不到对应 Agent。
+3. `AgentCard.id` 和资源注册 ID 要保持一致。运行时按这个 ID 去 `Runner.resourceMgr()` 里解析。
+4. `Agent as Tool` 当前是可用能力，不是一个单独的高层封装类。`Tool` 和 `Workflow` 有更多现成辅助入口，子 Agent 这条路径仍然需要手动装配。
+5. 如果你在同一个 JVM 里反复执行示例并重复注册相同 `agentId`，资源管理器会拒绝重复注册。这种情况下应复用唯一 ID，或先手动清理旧资源。
+
+例如：
+
+```java
+Runner.resourceMgr().removeAgent(
+        "translator_agent",
+        null,
+        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL,
+        true
+);
+Runner.resourceMgr().removeAgent(
+        "summarizer_agent",
+        null,
+        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL,
+        true
+);
+```
+
+## 延伸阅读
+
+- [AgentTeams](AgentTeams.md)
+- [预置协作模式](预置协作模式.md)
+- [API 文档：BaseAgent](../API文档/com.openjiuwen.core/singleagent/BaseAgent.md)
 - [API 文档：AbilityManager](../API文档/com.openjiuwen.core/singleagent/AbilityManager.md)
-- [API 文档：LlmAgent](../API文档/com.openjiuwen.core/application/llm/LlmAgent.md)
-- [API 文档：WorkflowAgent](../API文档/com.openjiuwen.core/application/workflow/WorkflowAgent.md)
 - [API 文档：Runner](../API文档/com.openjiuwen.core/runner/Runner.md)
 - [API 文档：ResourceMgr](../API文档/com.openjiuwen.core/runner/resourcemanager/ResourceMgr.md)
-
-## 本页说明
-
-- 本页重点落在 `AbilityManager` 的真实执行链路。
-- 明确区分 `Tool` / `Workflow` 的成熟封装和 `AgentCard` 的手动装配路径。
-- 文中所有结论都能回到 `AbilityManager`、`LlmAgent`、`WorkflowAgent` 与 `Runner.resourceMgr()` 的现有实现上。

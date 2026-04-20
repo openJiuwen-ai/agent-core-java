@@ -34,9 +34,9 @@
 - [API 文档：workflow.component](../API文档/com.openjiuwen.core/workflow/component.README.md)
 - [示例：Workflow Agent Java Example](../../../../examples/workflow_agent/README.md)
 
-## 本栏说明
+## 使用边界
 
 - 本栏目围绕 Java 工作流的整体定位、概念、构建、可视化和组件使用展开。
 - 代码路径、组件命名和执行步骤只引用 Java 当前真实存在的 API、示例和测试。
-- `使用组件` 子目录会明确区分当前稳定组件能力与兼容/legacy 组件布局。
-- `工作流可视化` 页面直接以 `Workflow.draw(...)` / `drawBytes(...)` 这条 Java 主线展开。
+- `使用组件` 子目录会区分当前稳定组件能力与兼容/legacy 组件布局。
+- `工作流可视化` 页面直接沿着 `Workflow.draw(...)` / `drawBytes(...)` 这条 Java 主线展开。
