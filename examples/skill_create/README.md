@@ -1,6 +1,6 @@
 # Skill Create Java Example
 
-这个目录对应 Python 版 `examples/skill_create/main.py`，演示如何在 Java 框架里完成以下流程：
+这个目录演示如何在 Java 框架里完成以下流程：
 
 1. 下载一个 PDF 文件
 2. 从 PDF 提取文本并生成一个 Markdown 辅助文件
@@ -14,7 +14,7 @@
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 需要外网访问 PDF URL 和大模型接口。
 4. 输出目录下需要有写权限，因为示例会下载 PDF、生成 Markdown、再写出最终 skill 目录。
 
@@ -31,7 +31,7 @@
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -49,7 +49,7 @@ javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" e
 如果需要显式指定配置文件，也可以这样运行：
 
 ```powershell
-& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=F:\openJiuwenTT\agent-core-java-myfork\examples\apiconfig.json' -cp "target/classes;examples;examples/skill_create;$(Get-Content target/skill_examples.classpath -Raw)" SkillCreateExample
+& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=examples/apiconfig.json' -cp "target/classes;examples;examples/skill_create;$(Get-Content target/skill_examples.classpath -Raw)" SkillCreateExample
 ```
 
 ## 输出说明
@@ -75,6 +75,6 @@ javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" e
 - Markdown 生成位置
 - `SkillCreator` 返回的 JSON 结果
 
-注意：Java 版这里实现的是轻量 Markdown 辅助流程，内容来自 `PDFParser` 提取的文本，不追求与 Python `markitdown` 完全一致的版式保真。
+注意：Java 版这里实现的是轻量 Markdown 辅助流程，内容来自 `PDFParser` 提取的文本，不追求与其他 Markdown 转换工具完全一致的版式保真。
 
 另外，`SkillCreator` 当前也已经做了 Windows 兼容约束，优先使用文件工具，不依赖 Unix heredoc 或 shell 特性。

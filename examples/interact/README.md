@@ -1,6 +1,6 @@
 # Interact Weather Assistant (Java)
 
-这个目录对应 Python 版 [agent-core-python/examples/interact/weather_assistant_interact.ipynb](../../../agent-core-python/examples/interact/weather_assistant_interact.ipynb) 的 Java 示例，但实现上做了两件额外的事：
+这个目录提供一个 Java 交互天气助理示例，实现上做了两件额外的事：
 
 1. 交互、并发提问、同一 `sessionId` 的 checkpoint 恢复，仍然使用原生 `Workflow`
 2. 模型配置改为读取真实 `examples/apiconfig.json`，天气查询接口复用 `examples/reac_agent/ReActWeatherAgentExample.java` 的同款天气 API
@@ -28,7 +28,7 @@
 
 ## 运行方式
 
-从 `f:\openJiuwenTT\agent-core-java-myfork` 目录执行：
+以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录：
 
 ```powershell
 mvn -DskipTests compile
@@ -81,4 +81,4 @@ $runtimeClasspath = "target/classes;examples;examples/interact;$classpath"
 4. 第二次输入 `retry` 后，`QueryWeather` 才会真正请求天气 API
 5. `SummarizeWeather` 使用 `examples/apiconfig.json` 里的真实模型生成最终回答
 
-因此，这个示例既能展示 Python interact notebook 里的恢复语义，也能验证真实配置和真实外部接口都已经接通。
+因此，这个示例既能展示交互恢复语义，也能验证真实配置和真实外部接口都已经接通。

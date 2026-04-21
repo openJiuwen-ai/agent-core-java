@@ -1,6 +1,6 @@
 # ReAct Agent Java Example
 
-这个目录对应 Python 版 `examples/react_agent` notebook，提供了一个基于 Java 框架的 ReAct 天气助手示例。
+这个目录提供了一个基于 Java 框架的 ReAct 天气助手示例。
 
 ## 文件说明
 
@@ -20,7 +20,7 @@
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录下执行一次编译：
+以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。建议先执行一次编译：
 
 注意：下面的 `javac` 命令会把 `.class` 文件直接生成到 `examples/reac_agent` 目录中。
 

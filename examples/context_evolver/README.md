@@ -1,6 +1,6 @@
 # Context Evolver Java Example
 
-这个目录补齐了与 Python 版 `examples/context_evolver/quickstart.py` 对齐的 Java 示例。
+这个目录提供 Java 版 `context_evolver` 示例，覆盖 quickstart 到 HotpotQA 循环的完整链路。
 
 示例默认会按完整 quickstart 路径执行：
 
@@ -44,13 +44,13 @@
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 默认运行会发起多次真实模型请求，并在 HotpotQA 段落里访问 Wikipedia 接口。
 4. 因为示例默认完整执行，所以耗时和调用成本明显高于普通单轮 example。
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -62,7 +62,7 @@ java -Dfile.encoding=UTF-8 -cp "target/classes;examples;examples/context_evolver
 也可以在最后一条命令后追加自定义首轮查询，例如：
 
 ```powershell
-java -Dfile.encoding=UTF-8 -cp "target/classes;examples;examples/context_evolver;$(Get-Content target/context_evolver.classpath -Raw)" ContextEvolverQuickstartExample What are some good practices for documenting a Python API?
+java -Dfile.encoding=UTF-8 -cp "target/classes;examples;examples/context_evolver;$(Get-Content target/context_evolver.classpath -Raw)" ContextEvolverQuickstartExample What are some good practices for documenting a Java API?
 ```
 
 注意：即使传了自定义查询，示例仍然会继续执行默认的 summarize 和 HotpotQA 段落。

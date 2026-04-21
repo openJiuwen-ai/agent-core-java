@@ -1,6 +1,6 @@
 # ReAct Agent Evolving Java Example
 
-这个目录补齐了与 Python 版 `examples/agent_evolving/react_agent_evolving.py` 对应的 Java 示例。
+这个目录提供 ReActAgent 演化训练的 Java 示例。
 
 示例演示的是一个完整的自进化训练闭环：
 
@@ -27,13 +27,13 @@
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 示例会发起真实远程模型调用，训练耗时和最终输出会随模型响应变化而变化。
 4. 相比普通单轮对话，这个示例会额外执行训练集推理、验证集评估和 optimizer 调用，因此需要模型账户具备足够的余额或调用额度。
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile

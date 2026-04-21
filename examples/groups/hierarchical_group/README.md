@@ -1,6 +1,6 @@
 # Hierarchical Group Java Example
 
-这个目录对齐 Python 版 `examples/groups/hierarchical_group`，演示如何在 Java 框架中组织一个 leader-worker 结构的 group：
+这个目录演示如何在 Java 框架中组织一个 leader-worker 结构的 group：
 
 1. 外部请求先进入 group。
 2. group 默认把请求交给 leader `main_controller`。
@@ -17,15 +17,15 @@
 - `../README.md`: groups 目录总览。
 - `../../SharedExampleApiConfigLoader.java`: 读取 `examples/apiconfig.json` 中的大模型配置。
 
-## 与 Python 对齐方式
+## 当前实现说明
 
-Java 侧保留了 Python 示例的核心结构：
+这个 Java 示例保留了 leader-worker 的核心结构：
 
 1. `HierarchicalGroupController` 仍然实现三段式路由：显式 `receiver_id`、订阅路由、默认 leader。
 2. leader 仍然只做分发与恢复，不直接处理业务。
 3. worker 仍然是真正执行业务的 agent。
 
-当前 Java 示例和 Python 示例的一个主要差异是：
+当前 Java 示例的实现边界是：
 
 1. 这里的 leader 采用示例内的确定性关键词路由，而不是完整的 LLM intent detection。
 2. 这样做是为了避开当前 Java examples 层 group/controller event 适配尚未完全统一的问题，同时保证示例能直接运行。
@@ -33,13 +33,13 @@ Java 侧保留了 Python 示例的核心结构：
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 使用的模型需要能理解中文，供 worker 内部的 `QuestionerComponent` 提问和字段抽取。
 4. 模型服务账号需要有足够额度；如果额度不足，worker 在补充信息后的字段抽取阶段可能直接返回服务端错误。
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -123,4 +123,4 @@ assistant> 我目前只支持转账、理财和余额查询三类 worker，请�
 
 1. 没有把 `HierarchicalGroup` 提升为 `src/main` 的正式公共类。
 2. 没有引入完整的 LLM 意图分类 leader。
-3. 重点是提供一个能运行、便于对照 Python、能展示 leader-worker 协作模式的 Java 示例。
+3. 重点是提供一个能运行、能展示 leader-worker 协作模式的 Java 示例。
