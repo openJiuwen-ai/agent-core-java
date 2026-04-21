@@ -11,7 +11,6 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ExecutionError;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.stream_actor.StreamConsumer;
@@ -19,7 +18,6 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.interaction.WorkflowInteraction;
-import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
@@ -27,7 +25,6 @@ import com.openjiuwen.core.session.stream.StreamSchema;
 import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
-import com.openjiuwen.core.workflow.component.IOConfig;
 import com.openjiuwen.core.workflow.component.NodeConfig;
 import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
 
@@ -57,11 +54,10 @@ import java.util.stream.Collectors;
  */
 public class Vertex extends AtomicNode implements StreamConsumer {
 
-    private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
 
-    private static final ExecutorService VIRTUAL_EXECUTOR =
-            Executors.newVirtualThreadPerTaskExecutor();
+    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
 
     private final String nodeId;
     private final Executable<Object, Object> executable;
@@ -132,7 +128,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             List<String> abilityNames = componentAbility.stream()
                     .map(ComponentAbility::name)
                     .collect(Collectors.toList());
-            logger.info("Initialized node [{}], abilities is {}",
+            LOGGER.info("Initialized node [{}], abilities is {}",
                     this.nodeId, abilityNames);
             isFirstInit = false;
         }
@@ -160,7 +156,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @throws Exception on execution failure
      */
     public Map<String, Object> call(GraphNodeState state, Object config) throws Exception {
-        logger.info("Begin to call batch-in node [{}]", nodeId);
+        LOGGER.info("Begin to call batch-in node [{}]", nodeId);
         try {
             if (executable.postCommit()) {
                 Map<String, Object> kwargs = new HashMap<>();
@@ -170,7 +166,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             } else {
                 doCall(config);
             }
-            logger.info("Succeed to call batch-in node [{}]", nodeId);
+            LOGGER.info("Succeed to call batch-in node [{}]", nodeId);
 
             Map<String, Object> result = new HashMap<>();
             result.put("source_node_id", List.of(nodeId));
@@ -182,12 +178,12 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             }
             if (e instanceof BaseError) {
                 BaseError be = (BaseError) e;
-                logger.error("Failed to call batch-in node [{}], code={}, msg={}",
+                LOGGER.error("Failed to call batch-in node [{}], code={}, msg={}",
                         nodeId, be.getCode(), be.getMessage());
             } else if (e instanceof GraphInterrupt) {
-                logger.info("Interrupt to call batch-in node [{}]", nodeId);
+                LOGGER.info("Interrupt to call batch-in node [{}]", nodeId);
             } else {
-                logger.error("Failed to call batch-in node [{}]", nodeId, e);
+                LOGGER.error("Failed to call batch-in node [{}]", nodeId, e);
             }
             throw e;
         } finally {
@@ -232,7 +228,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         try {
             List<ComponentAbility> callAbilities = componentAbility.stream()
                     .filter(a -> a == ComponentAbility.INVOKE || a == ComponentAbility.STREAM)
-                    .collect(Collectors.toList());
+                    .toList();
 
             for (ComponentAbility ability : callAbilities) {
                 throwIfInterrupted();
@@ -244,7 +240,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 traceComponentBegin();
             }
         } catch (ExecutionError e) {
-            logger.error("Node ability call failed, node_id={}, ability={}",
+            LOGGER.error("Node ability call failed, node_id={}, ability={}",
                     nodeId, currentAbility != null ? currentAbility.name() : null);
             throw e;
         }
@@ -296,7 +292,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private void runExecutable(ComponentAbility ability, boolean isSubgraph,
                                Object config, CountDownLatch latch) throws Exception {
         try {
-            logger.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
+            LOGGER.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
 
             switch (ability) {
                 case INVOKE:
@@ -315,23 +311,23 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     break;
             }
 
-            logger.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
+            LOGGER.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
         } catch (BaseError e) {
-            logger.error("Failed to call node [{}] ability [{}], code={}, msg={}",
+            LOGGER.error("Failed to call node [{}] ability [{}], code={}, msg={}",
                     nodeId, ability.name(), e.getCode(), e.getMessage());
             throw e;
         } catch (RuntimeException e) {
             GraphInterrupt interrupt = unwrapGraphInterrupt(e);
             if (interrupt != null) {
-                logger.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+                LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
                 throw interrupt;
             }
-            logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
+            LOGGER.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
                     "ability", ability.name(), "comp", nodeId,
                     "reason", e.toString(), "workflow", session.workflowId());
         } catch (Exception e) {
-            logger.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
+            LOGGER.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
                     "ability", ability.name(), "comp", nodeId,
                     "reason", e.toString(), "workflow", session.workflowId());
@@ -344,7 +340,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     private void executeInvoke(boolean isSubgraph, Object config) {
         Map<String, Object> batchInputs = preInvoke();
-        logger.debug("Prepare inputs for [{}] ability [INVOKE]", nodeId);
+        LOGGER.debug("Prepare inputs for [{}] ability [INVOKE]", nodeId);
         Object inputs = batchInputs;
         if (isSubgraph) {
             Map<String, Object> wrappedInputs = new HashMap<>();
@@ -354,12 +350,12 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         }
         Object results = executable.onInvoke(inputs, session, context);
         results = postInvoke(results);
-        logger.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
+        LOGGER.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
     }
 
     private void executeStream(boolean isSubgraph, Object config) {
         Map<String, Object> batchInputs = preInvoke();
-        logger.debug("Prepare inputs for [{}] ability [STREAM]", nodeId);
+        LOGGER.debug("Prepare inputs for [{}] ability [STREAM]", nodeId);
         Object inputs = batchInputs;
         if (isSubgraph) {
             Map<String, Object> wrappedInputs = new HashMap<>();
@@ -378,7 +374,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         }
         Object batchOutput = executable.onCollect(collectInputs, session, context);
         Object results = postInvoke(batchOutput);
-        logger.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
+        LOGGER.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
     }
 
     private void executeTransform(boolean isSubgraph, CountDownLatch latch) {
@@ -478,7 +474,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         boolean enableTrace = session.tracer() != null && !executable.skipTrace();
 
         Consumer<Object> streamCallback = chunk -> {
-            logger.debug("Consume chunk of {}[{}]", nodeId, ability.name());
+            LOGGER.debug("Consume chunk of {}[{}]", nodeId, ability.name());
             if (enableTrace) {
                 TracerWorkflowUtils.traceComponentStreamInput(session, chunk, false);
             }
@@ -519,7 +515,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                         : chunk;
             }
 
-            logger.debug("Produce chunk[{}] from {}[{}]", endStreamIndex, nodeId, ability.name());
+            LOGGER.debug("Produce chunk[{}] from {}[{}]", endStreamIndex, nodeId, ability.name());
             processChunk(message, isEnd, endStreamIndex, isSubGraph, ability);
             endStreamIndex++;
         }
@@ -534,7 +530,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             actorManager.endMessage(nodeId, ability);
         }
 
-        logger.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
+        LOGGER.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
         clearInteractive();
 
         // LLM stream output writeback: mirrors Python Vertex._post_stream() LLMExecutable handling
@@ -619,8 +615,9 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @param latch         a latch to signal when stream-in is ready
      * @param errorCallback callback for error reporting
      */
+    @Override
     public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
-        logger.info("Begin to call stream-in node [{}]", nodeId);
+        LOGGER.info("Begin to call stream-in node [{}]", nodeId);
         streamCallCount++;
         streamDone = new CompletableFuture<>();
 
@@ -629,7 +626,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             BaseError error = ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
                     "reason", "queue manager is not initialized", "node_id", nodeId);
             streamDone.complete(error);
-            logger.warning("Failed to call stream-in node [{}], actor_manager is missing", nodeId);
+            LOGGER.warning("Failed to call stream-in node [{}], actor_manager is missing", nodeId);
             errorCallback.accept(error);
             return;
         }
@@ -655,10 +652,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             // Wait for all tasks to complete
             CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
 
-            logger.info("Succeed to call stream-in node [{}]", nodeId);
+            LOGGER.info("Succeed to call stream-in node [{}]", nodeId);
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            logger.error("Failed to call stream-in node [{}]", nodeId, cause);
+            LOGGER.error("Failed to call stream-in node [{}]", nodeId, cause);
             error = (cause instanceof Exception) ? (Exception) cause : e;
             errorCallback.accept(error);
         } finally {
@@ -696,10 +693,12 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         return streamCallCount == callCount + 1;
     }
 
+    @Override
     public boolean isDone() {
         return callCount == streamCallCount || callCount == streamCallCount + 1;
     }
 
+    @Override
     public boolean shouldHandleMessage() {
         return !streamAbilities().isEmpty();
     }

@@ -75,7 +75,7 @@ class QueryRewriterTest {
 
         assertEquals("退货运费是谁承担", rewritten.get("standalone_query"));
         assertEquals(1, context.getMessages(null, true).size());
-        assertEquals("system", context.getMessages(null, true).getFirst().getRole());
+        assertEquals("system", context.getMessages(null, true).get(0).getRole());
         assertEquals(1, ((List<?>) rewritten.get("typo")).size());
     }
 

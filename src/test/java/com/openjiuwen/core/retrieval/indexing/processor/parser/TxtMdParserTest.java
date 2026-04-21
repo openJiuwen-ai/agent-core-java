@@ -29,7 +29,7 @@ class TxtMdParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals("Content", docs.getFirst().getText());
+        assertEquals("Content", docs.get(0).getText());
     }
 
     @Test

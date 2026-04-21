@@ -73,8 +73,8 @@ class TracerTrajectoryExtractorTest {
         assertEquals("inv_1", toolStep.getMeta().get("parent_invoke_id"));
         assertNotNull(result.getEdges());
         assertEquals(1, result.getEdges().size());
-        assertEquals(0, result.getEdges().getFirst()[0]);
-        assertEquals(1, result.getEdges().getFirst()[1]);
+        assertEquals(0, result.getEdges().get(0)[0]);
+        assertEquals(1, result.getEdges().get(0)[1]);
     }
 
     @Test
@@ -110,8 +110,8 @@ class TracerTrajectoryExtractorTest {
         assertEquals(Map.of("final", "answer"), childStep.getOutputs());
         assertNotNull(result.getEdges());
         assertEquals(1, result.getEdges().size());
-        assertEquals(0, result.getEdges().getFirst()[0]);
-        assertEquals(1, result.getEdges().getFirst()[1]);
+        assertEquals(0, result.getEdges().get(0)[0]);
+        assertEquals(1, result.getEdges().get(0)[1]);
     }
 
     @Test
@@ -137,7 +137,7 @@ class TracerTrajectoryExtractorTest {
         );
 
         assertEquals(1, result.getSteps().size());
-        TrajectoryStep workflowStep = result.getSteps().getFirst();
+        TrajectoryStep workflowStep = result.getSteps().get(0);
         assertEquals("workflow", workflowStep.getKind());
         assertEquals("component_1", workflowStep.getNodeId());
         assertEquals(Map.of("x", 1), workflowStep.getInputs());
@@ -170,8 +170,8 @@ class TracerTrajectoryExtractorTest {
         );
 
         assertEquals(1, result.getSteps().size());
-        assertEquals("llm_call_1", result.getSteps().getFirst().getOperatorId());
-        assertEquals("node_llm", result.getSteps().getFirst().getNodeId());
+        assertEquals("llm_call_1", result.getSteps().get(0).getOperatorId());
+        assertEquals("node_llm", result.getSteps().get(0).getNodeId());
     }
 
     @Test
@@ -199,7 +199,7 @@ class TracerTrajectoryExtractorTest {
 
         assertEquals("trace_py", result.getTraceId());
         assertEquals(1, result.getSteps().size());
-        TrajectoryStep step = result.getSteps().getFirst();
+        TrajectoryStep step = result.getSteps().get(0);
         assertEquals("tool", step.getKind());
         assertEquals("llm_py", step.getOperatorId());
         assertEquals("agent_py", step.getAgentId());

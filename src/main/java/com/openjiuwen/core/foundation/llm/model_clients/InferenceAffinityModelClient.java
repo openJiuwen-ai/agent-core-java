@@ -229,7 +229,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             throw new RuntimeException("No choices in response: " + responseMap);
         }
 
-        Map<String, Object> choice = choices.getFirst();
+        Map<String, Object> choice = choices.get(0);
         Map<String, Object> message = asMap(choice.get("message"));
         if (message == null) {
             throw new RuntimeException("No message in response choice: " + choice);
@@ -266,7 +266,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                     .build();
         }
 
-        Map<String, Object> choice = choices.getFirst();
+        Map<String, Object> choice = choices.get(0);
         Map<String, Object> delta = asMap(choice.get("delta"));
         Object content = delta != null ? delta.get("content") : "";
         List<ToolCall> toolCalls = delta == null

@@ -31,7 +31,7 @@ class AutoFileParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals(".json", docs.getFirst().getMetadata().get("file_ext"));
+        assertEquals(".json", docs.get(0).getMetadata().get("file_ext"));
     }
 
     @Test

@@ -121,7 +121,7 @@ public class JsonOutputParser extends BaseOutputParser {
             if (pending.isEmpty() && !hasNext()) {
                 throw new NoSuchElementException();
             }
-            return pending.removeFirst();
+            return pending.remove(0);
         }
 
         @SuppressWarnings("unchecked")

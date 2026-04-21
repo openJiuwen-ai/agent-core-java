@@ -37,8 +37,8 @@ class SqlDbStoreTest {
 
         assertNotNull(rows);
         assertEquals(1, rows.size());
-        assertEquals("u1", rows.getFirst().get("user_id"));
-        assertEquals("Hello", rows.getFirst().get("content"));
+        assertEquals("u1", rows.get(0).get("user_id"));
+        assertEquals("Hello", rows.get(0).get("content"));
     }
 
     @Test
@@ -68,7 +68,7 @@ class SqlDbStoreTest {
         ));
         Map<String, List<Object>> singleFilter = new LinkedHashMap<>();
         singleFilter.put("message_id", new ArrayList<>(List.of("m1")));
-        assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).getFirst().get("content"));
+        assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).get(0).get("content"));
 
         Map<String, Object> batchConditions = new LinkedHashMap<>();
         batchConditions.put("message_id", new ArrayList<>(List.of("m2", "m3")));
@@ -82,8 +82,8 @@ class SqlDbStoreTest {
         m2Filter.put("message_id", new ArrayList<>(List.of("m2")));
         Map<String, List<Object>> m3Filter = new LinkedHashMap<>();
         m3Filter.put("message_id", new ArrayList<>(List.of("m3")));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m2Filter, null).getFirst().get("content"));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m3Filter, null).getFirst().get("content"));
+        assertEquals("batch", sqlDbStore.conditionGet("user_message", m2Filter, null).get(0).get("content"));
+        assertEquals("batch", sqlDbStore.conditionGet("user_message", m3Filter, null).get(0).get("content"));
 
         assertTrue(sqlDbStore.delete("user_message", Map.of("message_id", "m1")));
         assertTrue(sqlDbStore.conditionGet("user_message", singleFilter, null).isEmpty());

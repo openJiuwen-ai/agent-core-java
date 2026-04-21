@@ -25,7 +25,7 @@ class VLLMEmbeddingTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> messages = (List<Map<String, Object>>) ((Map<String, Object>) kwargs.get("extra_body")).get("messages");
 
-        assertEquals("system", messages.getFirst().get("role"));
+        assertEquals("system", messages.get(0).get("role"));
         assertEquals("user", messages.get(1).get("role"));
     }
 
@@ -40,7 +40,7 @@ class VLLMEmbeddingTest {
         List<Map<String, Object>> messages = (List<Map<String, Object>>) ((Map<String, Object>) result.get("extra_body")).get("messages");
 
         assertEquals(1, messages.size());
-        assertEquals("user", messages.getFirst().get("role"));
+        assertEquals("user", messages.get(0).get("role"));
         assertFalse(result.containsKey("instruction"));
     }
 
@@ -55,7 +55,7 @@ class VLLMEmbeddingTest {
         assertTrue(model.lastOptions.containsKey("extra_body"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> messages = (List<Map<String, Object>>) ((Map<String, Object>) model.lastOptions.get("extra_body")).get("messages");
-        assertEquals("Custom instruction", ((Map<?, ?>) ((List<?>) messages.getFirst().get("content")).getFirst()).get("text"));
+        assertEquals("Custom instruction", ((Map<?, ?>) ((List<?>) messages.get(0).get("content")).get(0)).get("text"));
     }
 
     @Test

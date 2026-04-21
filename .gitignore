@@ -4,10 +4,8 @@ target/
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
+.idea/
+*.class
 *.iws
 *.iml
 *.ipr
@@ -35,7 +33,7 @@ build/
 .vscode/
 
 ### Runtime logs ###
-logs/run/run.log
+logs/
 
 ### Mac OS ###
 .DS_Store

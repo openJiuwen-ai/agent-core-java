@@ -473,7 +473,7 @@ public class CallbackFramework {
         Object[] finalArgs = args != null ? args : new Object[0];
         Map<String, Object> finalKwargs = kwargs != null ? kwargs : new HashMap<>();
 
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        ExecutorService executor = Executors.newCachedThreadPool();
         List<Future<Object>> futures = new ArrayList<>();
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {

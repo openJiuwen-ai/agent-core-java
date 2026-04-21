@@ -19,9 +19,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * LLM-backed triple extractor aligned with the Python implementation.
@@ -57,7 +62,26 @@ public class LLMTripleExtractor extends Extractor {
         List<Triple> triples = new CopyOnWriteArrayList<>();
         List<String> failedChunks = new CopyOnWriteArrayList<>();
         Semaphore limiter = new Semaphore(maxConcurrent);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        ExecutorService executor = new ThreadPoolExecutor(
+                0,
+                maxConcurrent,
+                60L,
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                new ThreadFactory() {
+                    private final AtomicInteger seq = new AtomicInteger(1);
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r);
+                        t.setName("llm-triple-extract-" + seq.getAndIncrement());
+                        t.setDaemon(false);
+                        return t;
+                    }
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+
+        try {
             List<Future<?>> tasks = new ArrayList<>();
             for (TextChunk chunk : chunks) {
                 tasks.add(executor.submit(() -> {
@@ -78,7 +102,18 @@ public class LLMTripleExtractor extends Extractor {
             throw RetrievalExceptions.error(
                     StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                     "triple extraction execution failed: " + ex.getMessage());
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, TimeUnit.MINUTES)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
+
         if (!failedChunks.isEmpty()) {
             throw RetrievalExceptions.error(
                     StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,

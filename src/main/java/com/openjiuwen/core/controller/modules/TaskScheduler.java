@@ -497,13 +497,13 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on virtual thread
+                    // Start task on regular thread
                     String taskId = task.getTaskId();
-                    Thread virtualThread = Thread.ofVirtual()
-                            .name("task-" + taskId)
-                            .start(() -> executeTaskWrapper(taskId, session));
+                    Thread regularThread = new Thread(() -> executeTaskWrapper(taskId, session), "task-" + taskId);
+                    regularThread.setDaemon(true);
+                    regularThread.start();
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, regularThread));
                 } finally {
                     lock.unlock();
                 }

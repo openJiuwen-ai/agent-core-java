@@ -29,7 +29,7 @@ class RetrieverDefaultMethodTest {
         List<SearchResult> results = retriever.retrieveSearchResults("query", 5, "hybrid", Map.of());
 
         assertEquals(1, results.size());
-        assertEquals("chunk-1", results.getFirst().getId());
-        assertEquals("text", results.getFirst().getText());
+        assertEquals("chunk-1", results.get(0).getId());
+        assertEquals("text", results.get(0).getText());
     }
 }

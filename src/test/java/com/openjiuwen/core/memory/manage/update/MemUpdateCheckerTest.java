@@ -63,8 +63,8 @@ class MemUpdateCheckerTest {
         );
 
         assertEquals(1, results.size());
-        assertEquals("1", results.getFirst().getId());
-        assertEquals(MemoryStatus.ADD, results.getFirst().getStatus());
+        assertEquals("1", results.get(0).getId());
+        assertEquals(MemoryStatus.ADD, results.get(0).getStatus());
     }
 
     @Test
