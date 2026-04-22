@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -20,6 +21,7 @@ import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
@@ -43,6 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Convert Cards to ToolInfo for LLM usage</li>
  *   <li>Execute ability calls (get instances from ResourceManager)</li>
  * </ul>
+ *
+ * @since 0.1.7
  */
 public class AbilityManager implements ToolRegistry {
 
@@ -206,6 +210,12 @@ public class AbilityManager implements ToolRegistry {
 
     // ========== ToolRegistry interface ==========
 
+    /**
+     * Override a registered tool description in memory.
+     *
+     * @param toolName tool name
+     * @param description replacement description
+     */
     @Override
     public void setToolDescription(String toolName, String description) {
         ToolCard toolCard = tools.get(toolName);
@@ -269,8 +279,12 @@ public class AbilityManager implements ToolRegistry {
                 ToolExecutionEntry result = railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
 
                 if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
-                    Object toolResult = inputs.getToolResult() != null ? inputs.getToolResult() : result.result();
-                    ToolMessage toolMsg = inputs.getToolMsg() != null ? inputs.getToolMsg() : result.toolMessage();
+                    Object toolResult = inputs.getToolResult() != null
+                            ? inputs.getToolResult()
+                            : (result != null ? result.result() : null);
+                    ToolMessage toolMsg = inputs.getToolMsg() != null
+                            ? inputs.getToolMsg()
+                            : (result != null ? result.toolMessage() : null);
                     finalResults.add(new ToolExecutionEntry(toolResult, toolMsg));
                 } else {
                     finalResults.add(result);
@@ -278,6 +292,12 @@ public class AbilityManager implements ToolRegistry {
             } catch (Exception e) {
                 String errorMsg = "Ability execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
+
+                ToolInterruptException interruptException = unwrapToolInterrupt(e);
+                if (interruptException != null) {
+                    finalResults.add(new ToolExecutionEntry(interruptException, null));
+                    continue;
+                }
 
                 Object toolResult = null;
                 ToolMessage toolMessage = null;
@@ -320,13 +340,22 @@ public class AbilityManager implements ToolRegistry {
                 AgentCallbackEvent.AFTER_TOOL_CALL,
                 AgentCallbackEvent.ON_TOOL_EXCEPTION,
                 () -> {
+                    if (Boolean.TRUE.equals(ctx.getExtra().remove("_skip_tool"))) {
+                        if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                            return new ToolExecutionEntry(inputs.getToolResult(), inputs.getToolMsg());
+                        }
+                        return new ToolExecutionEntry(null, null);
+                    }
+
                     if (ctx.getInputs() instanceof ToolCallInputs inputs) {
                         if (inputs.getToolName() != null && !inputs.getToolName().isEmpty()) {
                             toolCall.setName(inputs.getToolName());
                         }
                         if (inputs.getToolArgs() != null) {
                             toolCall.setArguments(
-                                    inputs.getToolArgs() instanceof String s ? s : MAPPER.writeValueAsString(inputs.getToolArgs())
+                                    inputs.getToolArgs() instanceof String s
+                                            ? s
+                                            : MAPPER.writeValueAsString(inputs.getToolArgs())
                             );
                         }
                     }
@@ -343,7 +372,7 @@ public class AbilityManager implements ToolRegistry {
 
                     return result;
                 }
-        );
+        ).orElseGet(() -> new ToolExecutionEntry(null, null));
     }
 
     /**
@@ -374,7 +403,7 @@ public class AbilityManager implements ToolRegistry {
                 throw buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId);
             }
             try {
-                result = tool.invoke(toolArgs, Map.of());
+                result = invokeTool(tool, toolArgs, session);
                 // Log tool result to match Python behavior
                 Loggers.TOOL.info("Tool result: " + result);
             } catch (Exception e) {
@@ -411,7 +440,7 @@ public class AbilityManager implements ToolRegistry {
                 throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
             }
             try {
-                result = tool.invoke(toolArgs, Map.of());
+                result = invokeTool(tool, toolArgs, session);
                 // Log tool result to match Python behavior
                 Loggers.TOOL.info("Tool result: " + result);
             } catch (Exception e) {
@@ -515,5 +544,31 @@ public class AbilityManager implements ToolRegistry {
             return session;
         }
         return session != null ? session.getSessionId() : null;
+    }
+
+    private Object invokeTool(Tool tool, Map<String, Object> toolArgs, Session session) throws Exception {
+        Map<String, Object> kwargs = new LinkedHashMap<String, Object>();
+        if (session != null) {
+            kwargs.put("session", session);
+            SessionContextHolder.setCurrentSession(session);
+        }
+        try {
+            return tool.invoke(toolArgs, kwargs);
+        } finally {
+            SessionContextHolder.clearCurrentSession();
+        }
+    }
+
+    private static ToolInterruptException unwrapToolInterrupt(Throwable throwable) {
+        Throwable cursor = throwable;
+        ToolInterruptException interruptException = null;
+        while (cursor != null) {
+            if (cursor instanceof ToolInterruptException) {
+                interruptException = (ToolInterruptException) cursor;
+                return interruptException;
+            }
+            cursor = cursor.getCause();
+        }
+        return interruptException;
     }
 }

@@ -6,6 +6,8 @@ package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.util.Optional;
+
 /**
  * Utility class that replaces the Python {@code @rail} decorator.
  *
@@ -19,10 +21,13 @@ import com.openjiuwen.core.common.logging.Loggers;
  *     return result;
  * });
  * }</pre>
+ *
+ * @since 0.1.7
  */
 public final class RailExecutor {
 
-    private RailExecutor() {}
+    private RailExecutor() {
+    }
 
     /**
      * Execute a callable with rail lifecycle events.
@@ -33,9 +38,9 @@ public final class RailExecutor {
      * @param onException event fired when exception occurs (may be null)
      * @param body        the callable to execute
      * @param <T>         return type
-     * @return the result from body
+     * @return the result from body, or {@link Optional#empty()} when execution is skipped
      */
-    public static <T> T execute(
+    public static <T> Optional<T> execute(
             AgentCallbackContext ctx,
             AgentCallbackEvent before,
             AgentCallbackEvent after,
@@ -51,7 +56,10 @@ public final class RailExecutor {
                 if (before != null) {
                     ctx.fire(before);
                 }
-                return body.execute();
+                if (ctx.hasForceFinishRequest()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(body.execute());
             } catch (Exception e) {
                 ctx.setException(e);
                 if (onException != null) {

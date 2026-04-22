@@ -62,7 +62,8 @@ class LocalFunctionTest {
                     .description("test")
                     .build();
 
-            assertThrows(Throwable.class, () -> new LocalFunction(card, null));
+            assertThrows(Throwable.class,
+                    () -> new LocalFunction(card, (java.util.function.Function<Map<String, Object>, Object>) null));
         }
 
         @Test

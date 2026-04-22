@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,7 +37,7 @@ class RailExecutorTest {
     void testNormalExecutionFiresBeforeAndAfter() {
         AgentCallbackContext ctx = createCtxWithFirer();
 
-        String result = RailExecutor.execute(
+        Optional<String> result = RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
@@ -44,7 +45,7 @@ class RailExecutorTest {
                 () -> "success"
         );
 
-        assertThat(result).isEqualTo("success");
+        assertThat(result).contains("success");
         List<Object[]> fired = getFiredList(ctx);
         assertThat(fired).hasSize(2);
         assertThat(fired.get(0)[0]).isEqualTo(AgentCallbackEvent.BEFORE_MODEL_CALL);
@@ -108,7 +109,7 @@ class RailExecutorTest {
                 .agent(firer)
                 .build();
 
-        String result = RailExecutor.execute(
+        Optional<String> result = RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
@@ -122,7 +123,7 @@ class RailExecutorTest {
                 }
         );
 
-        assertThat(result).isEqualTo("retry_success");
+        assertThat(result).contains("retry_success");
         assertThat(attempts.get()).isEqualTo(2);
         // Events: before(0), on_exception(0), after(0), before(1), after(1)
         assertThat(events).containsExactly(
@@ -153,7 +154,7 @@ class RailExecutorTest {
 
         AtomicInteger callCount = new AtomicInteger(0);
 
-        String result = RailExecutor.execute(
+        Optional<String> result = RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
@@ -167,7 +168,7 @@ class RailExecutorTest {
                 }
         );
 
-        assertThat(result).isEqualTo("ok");
+        assertThat(result).contains("ok");
         assertThat(callCount.get()).isEqualTo(3);
         assertThat(attemptsSeen).containsExactly(0, 1, 2);
     }
@@ -176,13 +177,13 @@ class RailExecutorTest {
     void testNullEventsSkipped() {
         AgentCallbackContext ctx = createCtxWithFirer();
 
-        String result = RailExecutor.execute(
+        Optional<String> result = RailExecutor.execute(
                 ctx,
                 null, null, null,
                 () -> "no_events"
         );
 
-        assertThat(result).isEqualTo("no_events");
+        assertThat(result).contains("no_events");
         List<Object[]> fired = getFiredList(ctx);
         assertThat(fired).isEmpty();
     }
@@ -230,7 +231,7 @@ class RailExecutorTest {
                 .build();
 
         long start = System.currentTimeMillis();
-        String result = RailExecutor.execute(
+        Optional<String> result = RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
@@ -244,7 +245,7 @@ class RailExecutorTest {
         );
         long elapsed = System.currentTimeMillis() - start;
 
-        assertThat(result).isEqualTo("delayed_success");
+        assertThat(result).contains("delayed_success");
         assertThat(elapsed).isGreaterThanOrEqualTo(5); // At least some delay
     }
 }

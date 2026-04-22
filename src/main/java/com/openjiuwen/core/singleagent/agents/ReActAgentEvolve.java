@@ -41,6 +41,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * ReAct paradigm Agent with self-evolving operators.
@@ -261,13 +262,13 @@ public class ReActAgentEvolve extends BaseAgent {
                 .tools(contextWindow.getToolList())
                 .build());
 
-        return railedModelCall(ctx, userInput, ctx.getSession());
+        return railedModelCall(ctx, userInput, ctx.getSession()).orElse(null);
     }
 
     /**
      * Execute LLM call via Operator with rail hooks.
      */
-    private AssistantMessage railedModelCall(
+    private Optional<AssistantMessage> railedModelCall(
             AgentCallbackContext ctx,
             String userInput,
             Session session
@@ -490,13 +491,15 @@ public class ReActAgentEvolve extends BaseAgent {
     }
 
     private AgentSessionApi toAgentSession(Session session) {
+        AgentSessionApi agentSession = null;
         if (session == null) {
-            return null;
+            return agentSession;
         }
-        if (session instanceof AgentSessionApi asa) {
-            return asa;
+        if (session instanceof AgentSessionApi) {
+            return (AgentSessionApi) session;
         }
-        return AgentSessionApi.create(session.getSessionId(), null, getCard());
+        agentSession = AgentSessionApi.create(session.getSessionId(), null, getCard());
+        return agentSession;
     }
 
     private static String normalizeUserInput(Object inputs) {

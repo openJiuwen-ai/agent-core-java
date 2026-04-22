@@ -27,6 +27,8 @@ import java.util.Map;
  *   <li>exception: Exception object (set on error events)</li>
  *   <li>retryAttempt: Current failed-attempt index</li>
  * </ul>
+ *
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -44,6 +46,7 @@ public class AgentCallbackContext {
     @Builder.Default
     private int retryAttempt = 0;
     private RetryRequest retryRequest;
+    private ForceFinishRequest forceFinishRequest;
 
     /**
      * Trigger all registered callbacks for an event.
@@ -84,6 +87,37 @@ public class AgentCallbackContext {
     }
 
     /**
+     * Request that the enclosing agent loop terminate immediately and return the provided result.
+     *
+     * @param result terminal result payload
+     */
+    public void requestForceFinish(Map<String, Object> result) {
+        this.forceFinishRequest = ForceFinishRequest.builder()
+                .result(result)
+                .build();
+    }
+
+    /**
+     * Read and clear the pending force-finish request.
+     *
+     * @return the pending force-finish request, or null
+     */
+    public ForceFinishRequest consumeForceFinish() {
+        ForceFinishRequest request = this.forceFinishRequest;
+        this.forceFinishRequest = null;
+        return request;
+    }
+
+    /**
+     * Check whether a force-finish request is pending.
+     *
+     * @return true when force-finish has been requested
+     */
+    public boolean hasForceFinishRequest() {
+        return this.forceFinishRequest != null;
+    }
+
+    /**
      * Execute a block of code wrapped in before/after lifecycle events.
      *
      * <p>Fires {@code before} on entry, then executes the body,
@@ -105,5 +139,16 @@ public class AgentCallbackContext {
             this.inputs = savedInputs;
             fire(after);
         }
+    }
+
+    /**
+     * Force-finish request captured from rail callbacks.
+     *
+     * @since 0.1.7
+     */
+    @Data
+    @Builder
+    public static class ForceFinishRequest {
+        private Map<String, Object> result;
     }
 }

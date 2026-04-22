@@ -99,6 +99,20 @@ public abstract class AgentRail {
         return skills;
     }
 
+    /**
+     * Lifecycle hook invoked when the rail is registered on an agent.
+     *
+     * @param agent owning agent
+     */
+    public void init(Object agent) {}
+
+    /**
+     * Lifecycle hook invoked when the rail is unregistered from an agent.
+     *
+     * @param agent owning agent
+     */
+    public void uninit(Object agent) {}
+
     // -- 8 hook methods (override to activate) --
 
     public void beforeInvoke(AgentCallbackContext ctx) {}
