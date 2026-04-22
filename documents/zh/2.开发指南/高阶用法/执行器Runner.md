@@ -1,319 +1,383 @@
 # 执行器Runner
 
-`Runner` 是 Java 版 openJiuwen 的全局执行门面。它把 `Workflow`、`Agent`、`AgentGroup` 的运行入口统一到一组静态方法里，并把资源注册、回调框架、消息队列和检查点初始化放到同一处管理。
+Runner是openJiuwen执行所有核心组件（包括Workflow，Agent）的统一入口和控制中心。它将复杂的执行逻辑抽象化，为开发者提供了一个简洁、一致且强大的编程接口。
 
-如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`CallbackFramework` 与后续几页。
+**重要说明**：Runner是一个单例类，所有方法调用和属性访问都会自动代理到全局的Runner实例。无需实例化Runner，直接通过类名调用即可，例如：`Runner.start()`、`Runner.resourceMgr()`。
 
-> 这里聚焦 Java 当前公开 API 与示例，不展开底层 MQ 或 distributed server adapter 的实现细节。
+Runner的主要功能包括：
 
-## 核心角色
+- 提供Agent标准的异步调用（invoke）和异步流式调用（stream）两种执行入口。
+- 提供Workflow标准的异步调用（invoke）和异步流式调用（stream）两种执行入口。
 
-| 类型 | 作用 | 你通常什么时候接触它 |
-| --- | --- | --- |
-| `Runner` | 全局单例门面，统一暴露 `start()`、`runWorkflow(...)`、`runAgent(...)`、`release(...)` 等静态入口 | 日常调用时 |
-| `RunnerImpl` | 真实执行器，负责 session 准备、资源管理、消息队列启动、checkpointer 初始化 | 理解运行时行为时 |
-| `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID 和 `checkpointerConfig` | 启动前配置时 |
-| `DistributedConfig` | 分布式运行相关参数，如 topic 模板、超时、并发数和消息队列配置 | 需要跨进程执行时 |
-| `ResourceMgr` | 统一管理 workflow、agent、group、tool、model、prompt、sysop 等资源 | 你想按 ID 注册 / 获取资源时 |
-| `CallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
+## Agent执行
 
-## `Runner` 与 `RunnerImpl` 的关系
+Runner支持所有Agent的单次输出执行和流式输出执行，包括ReActAgent、WorkflowAgent等内置Agent的执行，也包括用户自定义的Agent的执行。
 
-Java 当前的 `Runner` 不是一个需要手动 new 的对象，而是一个固定代理到全局 `RunnerImpl` 的静态门面。
+下面以一个`WorkflowAgent`为例，介绍通过`Runner`执行`Agent`的过程。
 
-- `Runner` 内部持有一个全局 `RunnerImpl("global", RunnerConfig.DEFAULT)`。
-- 你通过 `Runner.resourceMgr()`、`Runner.runAgent(...)`、`Runner.runWorkflow(...)` 调用时，实际都转发给这个全局实例。
-- 如果需要改配置，应在启动前调用 `Runner.setConfig(...)`，再调用 `Runner.start()`。
-
-这带来两个直接结果：
-
-1. `Runner` 适合作为应用级统一入口；
-2. `Runner.release(sessionId)` 清理的是**当前全局默认 checkpointer**里对应 session 的状态，而不是某个局部 runner 私有的状态。
-
-## 启动前先看配置
-
-最常见的配置入口是 `RunnerConfig`。它至少有三类信息：
-
-- 是否启用 distributed mode；
-- distributed topic / MQ 配置；
-- checkpointer 配置。
+首先，创建一个WorkflowAgent实例：
 
 ```java
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.RunnerConfig;
-import java.util.Map;
-
-RunnerConfig config = RunnerConfig.builder()
-        .distributedMode(false)
-        .checkpointerConfig(Map.of(
-                "type", "in_memory",
-                "conf", Map.of()
-        ))
-        .build();
-
-Runner.setConfig(config);
-Runner.start();
-```
-
-### `RunnerConfig` 的一个易混点
-
-源码里 `RunnerConfig` 字段的 builder 默认值是 `distributedMode = true`，但全局 `Runner` 启动时实际使用的是静态常量 `RunnerConfig.DEFAULT`，它是：
-
-- `distributedMode = false`
-- fake message queue
-
-理解“默认运行器行为”时，应以 `RunnerConfig.DEFAULT` 为准，而不是只看字段声明的默认值。
-
-## `DistributedConfig` 负责什么
-
-如果你需要跨进程或分布式运行，相关入口集中在 `DistributedConfig`：
-
-- `requestTimeout`
-- `maxRequestConcurrency`
-- `messageQueueConfig`
-- `agentTopicTemplate`
-- `replyTopicTemplate`
-- `envPrefix`
-
-当前 Java 实现会把 `envPrefix` 叠加到 topic template 上，再由 `Runner.start()` 启动 distributed message queue 和 reply topic subscription。
-
-> 这里不展开 MQ 类型、Pulsar 或 server adapter 细节；重点是：`Runner` 负责启动这些入口，具体消息系统配置由 `DistributedConfig` 和相关子包承担。
-
-## `ResourceMgr`：运行时资源都放哪里
-
-`ResourceMgr` 是 `Runner` 体系里最常用的基础设施之一。它统一管理以下资源：
-
-- `Workflow`
-- `Agent`
-- `AgentGroup`
-- `Tool`
-- `Model`
-- `Prompt`
-- `SysOperation`
-
-这意味着你可以把资源预先注册到全局资源池，再通过字符串 ID 运行，而不必每次都直接传实例。
-
-### 一个重要细节：workflow 资源 ID 常常是“带版本的 key”
-
-Java 侧很多位置会把 workflow 资源注册成：
-
-```text
-<workflowId>_<version>
-```
-
-对应工具方法是：
-
-- `WorkflowUtils.generateWorkflowKey(...)`
-- `RunnerImpl.generateWorkflowKey(...)`
-
-例如 `WorkflowAgent.addWorkflows(...)` 在把 workflow 注册进 `ResourceMgr` 时，用的就是这个版本化 key。所以如果你用字符串方式取 workflow，最好明确使用版本化 ID。
-
-## 执行入口一：运行 `Workflow`
-
-### 直接传实例运行
-
-如果你手上已经有 workflow 实例，最直接的方式是把实例交给 `Runner.runWorkflow(...)`：
-
-```java
-import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.application.workflow.WorkflowAgent;
+import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.workflow.Workflow;
-import java.util.Map;
-
-Workflow workflow = buildWorkflow();
-Object result = Runner.runWorkflow(
-        workflow,
-        Map.of("query", "我要转账"),
-        null,
-        null
-);
-```
-
-这里如果 `session` 传 `null`，`RunnerImpl` 会自动创建 `WorkflowSessionApi`。
-
-### 通过资源 ID 运行
-
-如果 workflow 已经注册进 `ResourceMgr`，也可以按 ID 运行：
-
-```java
-String workflowKey = "transfer_flow_1.0";
-Object result = Runner.runWorkflow(
-        workflowKey,
-        Map.of("query", "我要转账"),
-        null,
-        null
-);
-```
-
-这类写法更适合：
-
-- workflow 由启动阶段统一注册；
-- 运行阶段只关心资源 ID；
-- 需要和 `WorkflowAgent`、工具系统或其他注册式能力统一资源命名。
-
-## 执行入口二：运行 `Agent`
-
-`Runner.runAgent(...)` 负责把 agent 执行入口统一起来。Java 当前实现会：
-
-1. 准备 agent 实例；
-2. 准备 `AgentSessionApi`；
-3. 调用 agent 的 `invoke(...)`；
-4. 在执行后触发 `agentSession.postRun()`。
-
-```java
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.Start;
+import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.runner.Runner;
-import java.util.Map;
 
-Object result = Runner.runAgent(
-        agent,
-        Map.of(
-                "query", "帮我查一下余额",
-                "conversation_id", "conversation-001"
-        ),
-        null,
-        null
-);
-```
-
-### `conversation_id` 为什么重要
-
-对 agent 来说，`RunnerImpl` 会优先从输入里读取 `conversation_id` 作为 session ID；如果没有，就回退到 `default_session`。
-
-这会直接影响：
-
-- 多轮上下文是否延续；
-- 交互恢复是否能回到同一条执行链；
-- `WorkflowAgent` 这类应用层 agent 是否能复用之前的中断任务。
-
-因此，只要你要做多轮或恢复，最好显式传 `conversation_id`。
-
-## 执行入口三：运行 `AgentGroup`
-
-`Runner` 也把 group 执行入口统一到了：
-
-- `runAgentGroup(...)`
-- `runAgentGroupStreaming(...)`
-
-调用方式和 workflow / agent 保持一致：既可以传实例，也可以传资源 ID。这一层的价值主要在于统一运行接口，而不是改变 group 自己的调度逻辑。
-
-## 流式执行
-
-Java 当前把流式入口统一成以下几组方法：
-
-- `Runner.runWorkflowStreaming(...)`
-- `Runner.runAgentStreaming(...)`
-- `Runner.runAgentGroupStreaming(...)`
-
-它们都返回 `Iterator<?>`，常见调用形态如下：
-
-```java
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.stream.StreamMode;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-Iterator<Object> stream = Runner.runAgentStreaming(
-        agent,
-        Map.of(
-                "query", "我要转账",
-                "conversation_id", "conversation-001"
-        ),
-        null,
-        null,
-        List.of(StreamMode.OUTPUT)
-);
+public class WorkflowAgentExample {
 
-while (stream.hasNext()) {
-    Object chunk = stream.next();
-    // 这里按 OutputSchema / TraceSchema / CustomSchema 等类型继续处理
+    private static WorkflowAgent createAgent() {
+        // 创建工作流
+        WorkflowCard card = WorkflowCard.builder()
+                .id("workflow_id")
+                .name("简单工作流")
+                .version("1")
+                .description("这是一个演示工作流")
+                .build();
+
+        Workflow flow = new Workflow(card);
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
+        flow.setEndComp("end", new End(Map.of("responseTemplate", "{{result}}")),
+                Map.of("result", "${start.query}"), null);
+        flow.addConnection("start", "end");
+
+        // 注册工作流到资源管理器
+        String workflowKey = card.getId() + "_" + card.getVersion();
+        Runner.resourceMgr().addWorkflow(workflowKey, flow);
+
+        // 创建Agent
+        BaseModelInfo modelInfo = BaseModelInfo.builder()
+                .modelName("gpt-4")
+                .apiKey("sk-xxxxx")
+                .apiBase("https://api.openai.com/v1")
+                .temperature(0.2)
+                .build();
+
+        WorkflowAgentConfig agentConfig = WorkflowAgentConfig.builder()
+                .id("agent_id")
+                .version("1")
+                .description("这是一个演示Agent")
+                .model(new ModelConfig("OpenAI", modelInfo))
+                .workflows(List.of(workflowKey))
+                .build();
+
+        return new WorkflowAgent(agentConfig);
+    }
+
+    public static void main(String[] args) throws Exception {
+        WorkflowAgent agent = createAgent();
+        
+        // 执行Agent
+        Object result = Runner.runAgent(
+                agent,
+                Map.of("query", "哈哈", "conversation_id", "test_conv"),
+                null,
+                null
+        );
+        
+        System.out.println(result);
+    }
 }
 ```
 
-在 `examples/workflow_agent/WorkflowAgentExampleSupport.java` 里，命令行示例就是通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
+执行结果：
 
-## Runner 会怎样准备 session
+```java
+// 输出类似：Map.of("output", Map.of("result", "哈哈"), "state", "COMPLETED")
+```
 
-理解 `RunnerImpl` 的 session 准备逻辑，有助于看懂为什么“同一个 session / conversation id”这么重要。
+## Workflow执行
 
-### 对 workflow
+Runner支持Workflow的单次输出执行和流式输出执行。
 
-`RunnerImpl.createWorkflowSession(...)` 的行为是：
+下面通过构建一个简单工作流为例，介绍`Runner`执行`Workflow`的过程。
 
-- `session == null`：创建新的 `WorkflowSessionApi`
-- `session` 是字符串：把它当 session id 创建 `WorkflowSessionApi`
-- `session` 是 `AgentSessionApi`：从 agent session 派生内部 workflow session
-- `session` 已经是 `WorkflowSessionApi` 或 `BaseSession`：直接复用
+首先，创建一个Workflow:
 
-### 对 agent
+```java
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.Start;
 
-`RunnerImpl.prepareAgentSession(...)` 会优先从输入里取 `conversation_id`，否则退回 `default_session`。这也是为什么 `WorkflowAgent` 和 group 示例都会显式传 `conversation_id`。
+public class WorkflowExample {
 
-## 回调框架：如何观察运行过程
+    private static Workflow buildWorkflow(String name, String workflowId, String version) {
+        WorkflowCard card = WorkflowCard.builder()
+                .id(workflowId)
+                .name(name)
+                .version(version)
+                .description("这是一个演示工作流")
+                .build();
 
-`Runner.callbackFramework()` 暴露的是一个功能较完整的事件框架，而不只是简单的事件总线。Java 当前实现已经支持：
+        Workflow flow = new Workflow(card);
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
+        flow.setEndComp("end", new End(Map.of("responseTemplate", "{{result}}")),
+                Map.of("result", "${start.query}"), null);
+        flow.addConnection("start", "end");
+        return flow;
+    }
 
-- callback priority
-- event / callback filter
-- callback chain 与 rollback
-- retry 与 timeout
-- metrics
-- lifecycle hooks
-- circuit breaker
-- history / logging
+    public static void main(String[] args) throws Exception {
+        Workflow workflow = buildWorkflow("test_workflow", "test_workflow", "1");
+        
+        // 执行Workflow
+        Object result = Runner.runWorkflow(
+                workflow,
+                Map.of("query", "query workflow"),
+                null,
+                null
+        );
+        
+        System.out.println(result);
+    }
+}
+```
 
-如果你要做：
+执行结果：
 
-- 埋点
-- 运行时统计
-- 某类事件统一日志
-- 执行失败后的回滚 / 降级
+```java
+// 输出类似：Map.of("output", Map.of("result", "query workflow"), "state", "COMPLETED")
+```
 
-就应该从 `CallbackFramework` 和 `runner/callback` 子包继续往下看。
+## 流式执行
 
-## 清理：`release(sessionId)` 做什么
+Runner也支持流式执行：
 
-`Runner.release(sessionId)` 会把清理动作转发给当前默认 checkpointer：
+```java
+import com.openjiuwen.core.session.stream.StreamMode;
+import java.util.Iterator;
+import java.util.List;
 
-- 对内存 checkpointer，就是清掉该 session 的内存状态；
-- 对持久化 checkpointer，就是按 `sessionId + ":"` 前缀删除对应状态；
-- 如果你切换成了其他默认 checkpointer，`release(...)` 清理的也是那个实现里的状态。
+public class StreamingExample {
 
-因此，`release(...)` 更像“结束一个执行会话并回收状态”，而不是“关闭 Runner 本身”。真正的全局资源回收仍然要看 `Runner.stop()`。
+    public static void runStreaming(WorkflowAgent agent) {
+        Iterator<Object> stream = Runner.runAgentStreaming(
+                agent,
+                Map.of("query", "我要转账", "conversation_id", "conversation-001"),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)
+        );
 
-## 对照示例看 Runner
+        while (stream.hasNext()) {
+            Object chunk = stream.next();
+            // 处理流式输出块
+            System.out.println("receive chunk: " + chunk);
+        }
+    }
+}
+```
 
-### `examples/workflow_agent`
+## Runner配置
 
-这个示例展示了最典型的 Runner 用法：
+Runner支持通过`RunnerConfig`进行配置：
 
-1. 创建 `WorkflowAgent`
-2. 注册多个 workflow
-3. 使用 `Runner.runAgentStreaming(...)` 执行
-4. 收到 `__interaction__` 事件后，用同一个 `conversation_id` 继续调用
-5. 退出时调用 `Runner.release(conversationId)` 与 `Runner.stop()`
+```java
+import com.openjiuwen.core.runner.RunnerConfig;
+import java.util.Map;
 
-### `examples/interact`
+public class RunnerConfigExample {
 
-这个示例更多展示原生 `Workflow.invoke(...)` + `Checkpointer` 的恢复路径，而不是直接通过 `Runner` 运行。但它和本页并不冲突：
+    public static void configureRunner() {
+        RunnerConfig config = RunnerConfig.builder()
+                .distributedMode(false)
+                .checkpointerConfig(Map.of(
+                        "type", "in_memory",
+                        "conf", Map.of()
+                ))
+                .build();
 
-- `Runner` 负责“全局执行门面”；
-- 原生 `Workflow` + checkpointer 更适合展示底层恢复语义。
+        Runner.setConfig(config);
+        Runner.start();
+    }
+}
+```
 
-## 当前 Java 能力边界
+## 资源管理器
 
-- `Runner` 是全局单例门面；如果你在同一进程里多次切配置，应明确控制 `setConfig(...)`、`start()`、`stop()` 的顺序。
-- 默认全局 runner 使用的是 `RunnerConfig.DEFAULT`，不是 builder 字段声明里的所有默认值。
-- `release(sessionId)` 只负责清掉默认 checkpointer 中该 session 的状态，不代表所有外部资源都会被释放。
-- 这里不展开分布式 MQ 子系统的底层消息协议细节；重点说明 Java 当前公开的启动入口和配置边界。
+Runner内置资源管理器`ResourceMgr`，用于统一管理Workflow、Agent、Tool等资源：
 
-## 参考入口
+```java
+import com.openjiuwen.core.runner.Runner;
 
-- [API 文档：runner 根包](../API文档/com.openjiuwen.core/runner.README.md)
-- [API 文档：Runner](../API文档/com.openjiuwen.core/runner/Runner.md)
-- [API 文档：RunnerImpl](../API文档/com.openjiuwen.core/runner/RunnerImpl.md)
-- [API 文档：RunnerConfig](../API文档/com.openjiuwen.core/runner/RunnerConfig.md)
-- [API 文档：DistributedConfig](../API文档/com.openjiuwen.core/runner/DistributedConfig.md)
-- [API 文档：ResourceMgr](../API文档/com.openjiuwen.core/runner/resourcemanager/ResourceMgr.md)
-- [API 文档：CallbackFramework](../API文档/com.openjiuwen.core/runner/callback/CallbackFramework.md)
-- [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
-- [示例：interact](../../../../examples/interact/README.md)
+// 注册工作流
+Runner.resourceMgr().addWorkflow("workflow_key", workflow);
+
+// 获取已注册的工作流
+Workflow workflow = Runner.resourceMgr().getWorkflow("workflow_key");
+
+// 注册Agent
+Runner.resourceMgr().addAgent("agent_key", agent);
+
+// 获取已注册的Agent
+Agent agent = Runner.resourceMgr().getAgent("agent_key");
+```
+
+## 会话清理
+
+执行完成后，可以通过`Runner.release`清理会话状态：
+
+```java
+// 清理指定会话的资源
+Runner.release("conversation-001");
+
+// 停止Runner
+Runner.stop();
+```
+
+## conversation_id的重要性
+
+对Agent来说，`Runner`会优先从输入里读取`conversation_id`作为session ID。如果没有，就回退到`default_session`。
+
+这会直接影响：
+- 多轮上下文是否延续；
+- 交互恢复是否能回到同一条执行链；
+- `WorkflowAgent`这类应用层Agent是否能复用之前的中断任务。
+
+因此，只要需要多轮或恢复，最好显式传`conversation_id`。
+
+## 完整示例
+
+```java
+import com.openjiuwen.core.application.workflow.WorkflowAgent;
+import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.Start;
+import com.openjiuwen.core.workflow.component.llm.QuestionerComponent;
+import com.openjiuwen.core.workflow.component.llm.QuestionerConfig;
+import com.openjiuwen.core.workflow.component.llm.FieldInfo;
+import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Iterator;
+import java.util.UUID;
+
+public class RunnerFullExample {
+
+    public static void main(String[] args) throws Exception {
+        // 配置Runner
+        Runner.start();
+
+        // 创建工作流
+        WorkflowCard card = WorkflowCard.builder()
+                .id("transfer_flow")
+                .name("转账服务")
+                .version("1.0")
+                .build();
+
+        Workflow workflow = new Workflow(card);
+        workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
+        
+        QuestionerConfig questionerConfig = new QuestionerConfig();
+        questionerConfig.setQuestionContent("请补充转账金额，必须是数字或带货币单位的金额描述。");
+        questionerConfig.setExtractFieldsFromResponse(true);
+        questionerConfig.setFieldNames(List.of(FieldInfo.builder()
+                .fieldName("amount")
+                .description("转账金额")
+                .required(true)
+                .build()));
+        
+        workflow.addWorkflowComp("questioner", new QuestionerComponent(questionerConfig),
+                Map.of("query", "${start.query}"), null);
+        workflow.setEndComp("end", new End(Map.of("responseTemplate", "转账完成，金额为{{amount}}")),
+                Map.of("amount", "${questioner.amount}"), null);
+        workflow.addConnection("start", "questioner");
+        workflow.addConnection("questioner", "end");
+
+        // 注册工作流
+        Runner.resourceMgr().addWorkflow("transfer_flow_1.0", workflow);
+
+        // 创建Agent
+        BaseModelInfo modelInfo = BaseModelInfo.builder()
+                .modelName("gpt-4")
+                .apiKey("sk-xxxxx")
+                .apiBase("https://api.openai.com/v1")
+                .temperature(0.2)
+                .build();
+
+        WorkflowAgentConfig agentConfig = WorkflowAgentConfig.builder()
+                .id("workflow_agent")
+                .version("1.0")
+                .model(new ModelConfig("OpenAI", modelInfo))
+                .workflows(List.of("transfer_flow_1.0"))
+                .build();
+
+        WorkflowAgent agent = new WorkflowAgent(agentConfig);
+
+        // 执行Agent（流式）
+        String conversationId = UUID.randomUUID().toString().substring(0, 8);
+        Iterator<Object> stream = Runner.runAgentStreaming(
+                agent,
+                Map.of("query", "我要转账", "conversation_id", conversationId),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)
+        );
+
+        // 消费流式输出
+        String lastNodeId = null;
+        while (stream.hasNext()) {
+            Object chunk = stream.next();
+            if (chunk instanceof OutputSchema output) {
+                if ("__interaction__".equals(output.getType())) {
+                    // 捕获交互节点ID
+                    lastNodeId = "questioner";
+                    System.out.println("assistant> " + output.getPayload());
+                } else {
+                    System.out.println("assistant> " + output.getPayload());
+                }
+            }
+        }
+
+        // 如果有交互，继续执行
+        if (lastNodeId != null) {
+            InteractiveInput reply = new InteractiveInput();
+            reply.update(lastNodeId, "2000元");
+
+            Iterator<Object> continueStream = Runner.runAgentStreaming(
+                    agent,
+                    Map.of("query", reply, "conversation_id", conversationId),
+                    null,
+                    null,
+                    List.of(StreamMode.OUTPUT)
+            );
+
+            while (continueStream.hasNext()) {
+                Object chunk = continueStream.next();
+                System.out.println("assistant> " + chunk);
+            }
+        }
+
+        // 清理
+        Runner.release(conversationId);
+        Runner.stop();
+
+        System.out.println("Runner示例完成");
+    }
+}
+```
+
+输出示例：
+
+```
+assistant> 请补充转账金额，必须是数字或带货币单位的金额描述。
+assistant> 转账完成，金额为2000元
+Runner示例完成
+```
