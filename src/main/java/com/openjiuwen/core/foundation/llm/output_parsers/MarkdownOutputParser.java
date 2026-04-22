@@ -311,7 +311,7 @@ public class MarkdownOutputParser extends BaseOutputParser {
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            return pending.removeFirst();
+            return pending.remove(0);
         }
 
         private String toChunkText(Object chunk) {

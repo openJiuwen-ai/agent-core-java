@@ -121,7 +121,11 @@ public class ControllerGroup extends LegacyBaseGroup {
             } finally {
                 finalSession.getInner().streamWriterManager().getStreamEmitter().close();
             }
-        }, runnable -> Thread.ofVirtual().start(runnable));
+        }, runnable -> {
+            Thread thread = new Thread(runnable,"controller-group");
+            thread.setDaemon(true);
+            thread.start();
+        });
 
         Iterator<Object> sessionStream = finalSession.getInner().streamWriterManager().streamIterator();
         return new Iterator<>() {

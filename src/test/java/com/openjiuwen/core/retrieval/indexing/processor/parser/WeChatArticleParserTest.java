@@ -35,9 +35,9 @@ class WeChatArticleParserTest {
         List<Document> docs = parser.parse("https://mp.weixin.qq.com/s/abc123", "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals("Test WeChat Title", docs.getFirst().getMetadata().get("title"));
-        assertEquals("wechat_article", docs.getFirst().getMetadata().get("source_type"));
-        assertTrue(docs.getFirst().getText().contains("Article body text here"));
+        assertEquals("Test WeChat Title", docs.get(0).getMetadata().get("title"));
+        assertEquals("wechat_article", docs.get(0).getMetadata().get("source_type"));
+        assertTrue(docs.get(0).getText().contains("Article body text here"));
     }
 
     @Test

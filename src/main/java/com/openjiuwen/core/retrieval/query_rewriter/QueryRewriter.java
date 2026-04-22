@@ -245,7 +245,7 @@ public class QueryRewriter {
         if (results == null || results.isEmpty()) {
             return query;
         }
-        String first = results.getFirst().getText();
+        String first = results.get(0).getText();
         return query + " " + first;
     }
 

@@ -112,7 +112,7 @@ public class PromptAssembler {
                     if (content instanceof String text) {
                         list.add(new TextableVariable(text, "__inner__", placeholderPrefix, placeholderSuffix));
                     } else if (content instanceof List<?> contentList && !contentList.isEmpty()
-                            && contentList.getFirst() instanceof Map) {
+                            && contentList.get(0) instanceof Map) {
                         list.add(new DictableVariable(content, "__inner__", placeholderPrefix, placeholderSuffix));
                     } else {
                         list.add(null);

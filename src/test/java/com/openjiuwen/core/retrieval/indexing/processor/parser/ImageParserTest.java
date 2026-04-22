@@ -27,7 +27,7 @@ class ImageParserTest {
         var docs = parser.parse(image.toString(), "img-1", new TestModelClient("gpt-4o", "a cat sitting on a mat"), Map.of());
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().getText().contains("a cat sitting on a mat"));
+        assertTrue(docs.get(0).getText().contains("a cat sitting on a mat"));
     }
 
     @Test

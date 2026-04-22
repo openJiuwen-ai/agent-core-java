@@ -48,7 +48,7 @@ public class ExcelParser extends Parser {
         }
 
         List<String> headers = new ArrayList<>();
-        for (Object value : rows.getFirst()) {
+        for (Object value : rows.get(0)) {
             headers.add(cellStr(value));
         }
         List<? extends List<?>> dataRows = rows.size() > 1 ? rows.subList(1, rows.size()) : List.of();

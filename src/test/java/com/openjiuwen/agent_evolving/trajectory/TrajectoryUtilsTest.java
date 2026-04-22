@@ -74,8 +74,8 @@ class TrajectoryUtilsTest {
         List<TrajectoryStep> result = TrajectoryUtils.iterSteps(List.of(first, second), "case_1", "op_1", StepKind.LLM);
 
         assertEquals(1, result.size());
-        assertEquals("llm", result.getFirst().getKind());
-        assertEquals("op_1", result.getFirst().getOperatorId());
+        assertEquals("llm", result.get(0).getKind());
+        assertEquals("op_1", result.get(0).getOperatorId());
     }
 
     @Test
@@ -94,7 +94,7 @@ class TrajectoryUtilsTest {
         List<TrajectoryStep> result = TrajectoryUtils.getStepsForCaseOperator(List.of(trajectory), "case_1", "op_1");
 
         assertEquals(1, result.size());
-        assertEquals("llm", result.getFirst().getKind());
+        assertEquals("llm", result.get(0).getKind());
     }
 
     @Test

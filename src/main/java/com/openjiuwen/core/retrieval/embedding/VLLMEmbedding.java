@@ -63,7 +63,7 @@ public class VLLMEmbedding extends OpenAIEmbedding {
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options);
         List<List<Float>> embeddings = getEmbeddings(null, kwargs);
-        return embeddings.getFirst();
+        return embeddings.get(0);
     }
 
     public List<Float> embedMultimodal(MultimodalDocument document, Map<String, Object> options) {
@@ -82,7 +82,7 @@ public class VLLMEmbedding extends OpenAIEmbedding {
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options == null ? new LinkedHashMap<>() : options);
         List<List<Float>> embeddings = getEmbeddings(null, kwargs);
-        return embeddings.getFirst();
+        return embeddings.get(0);
     }
 
     public List<Float> embedMultimodalSync(MultimodalDocument document, Map<String, Object> options) {

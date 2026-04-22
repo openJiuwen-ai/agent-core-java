@@ -125,7 +125,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                     "Empty text provided for embedding");
         }
         List<List<Float>> embeddings = getEmbeddings(text, options);
-        return embeddings.getFirst();
+        return embeddings.get(0);
     }
 
     @Override
@@ -218,8 +218,8 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                             "Failed to get embedding after " + attempt + " attempts");
                 }
                 List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body()));
-                if (dimension == null && !embeddings.isEmpty() && !embeddings.getFirst().isEmpty()) {
-                    dimension = embeddings.getFirst().size();
+                if (dimension == null && !embeddings.isEmpty() && !embeddings.get(0).isEmpty()) {
+                    dimension = embeddings.get(0).size();
                 }
                 return embeddings;
             } catch (IOException | InterruptedException ex) {

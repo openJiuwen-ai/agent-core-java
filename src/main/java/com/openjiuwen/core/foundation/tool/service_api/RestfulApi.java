@@ -205,7 +205,7 @@ public class RestfulApi extends Tool {
         Map<String, String> responseHeaders = new LinkedHashMap<>();
         response.headers().map().forEach((k, v) -> {
             if (!v.isEmpty()) {
-                responseHeaders.put(k, v.getFirst());
+                responseHeaders.put(k, v.get(0));
             }
         });
 

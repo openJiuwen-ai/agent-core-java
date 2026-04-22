@@ -318,11 +318,15 @@ public abstract class BaseGroupController {
                 subscribers.size(), messageType
         );
 
-        // Concurrently call all subscribers using virtual threads
+        // Concurrently call all subscribers using regular threads
         List<CompletableFuture<Object>> futures = subscribers.stream()
                 .map(agentId -> CompletableFuture.supplyAsync(
                         () -> sendToAgent(event, agentId, session),
-                        runnable -> Thread.ofVirtual().start(runnable)
+                        runnable ->  {
+                            Thread thread = new Thread(runnable,"base-controller-group");
+                            thread.setDaemon(true);
+                            thread.start();
+                        }
                 ))
                 .toList();
 

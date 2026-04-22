@@ -36,9 +36,9 @@ class WebPageParserTest {
         List<Document> docs = parser.parse("https://example.com/page", "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals("Test Page Title", docs.getFirst().getMetadata().get("title"));
-        assertEquals("web_page", docs.getFirst().getMetadata().get("source_type"));
-        assertTrue(docs.getFirst().getText().contains("Main article content"));
+        assertEquals("Test Page Title", docs.get(0).getMetadata().get("title"));
+        assertEquals("web_page", docs.get(0).getMetadata().get("source_type"));
+        assertTrue(docs.get(0).getText().contains("Main article content"));
     }
 
     @Test

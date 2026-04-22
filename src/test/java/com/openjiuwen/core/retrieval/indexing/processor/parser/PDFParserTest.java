@@ -41,7 +41,7 @@ class PDFParserTest {
         var docs = parser.parse(file.toString(), "pdf-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().getText().contains("Page 1 content"));
+        assertTrue(docs.get(0).getText().contains("Page 1 content"));
     }
 
     @Test

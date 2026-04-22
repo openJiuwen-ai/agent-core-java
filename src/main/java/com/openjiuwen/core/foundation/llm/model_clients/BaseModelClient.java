@@ -128,7 +128,7 @@ public abstract class BaseModelClient {
                 throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
                         "error_msg", "The message sent to the llm cannot be empty.");
             }
-            if (list.getFirst() instanceof Map) {
+            if (list.get(0) instanceof Map) {
                 return (List<Map<String, Object>>) messages;
             }
             List<Map<String, Object>> result = new ArrayList<>();
@@ -175,7 +175,7 @@ public abstract class BaseModelClient {
             if (list.isEmpty()) {
                 return null;
             }
-            if (list.getFirst() instanceof Map) {
+            if (list.get(0) instanceof Map) {
                 return (List<Map<String, Object>>) tools;
             }
             List<Map<String, Object>> result = new ArrayList<>();

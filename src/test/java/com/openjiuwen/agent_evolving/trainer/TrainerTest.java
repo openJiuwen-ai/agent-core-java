@@ -51,7 +51,7 @@ class TrainerTest {
         assertEquals(1.0, forward.score());
         assertEquals(2, forward.evaluatedCases().size());
         assertEquals(2, forward.trajectories().size());
-        assertEquals("case_0", forward.trajectories().getFirst().getCaseId());
+        assertEquals("case_0", forward.trajectories().get(0).getCaseId());
         assertEquals(2, forward.sessions().size());
     }
 
@@ -64,7 +64,7 @@ class TrainerTest {
         List<Map<String, Object>> predictions = trainer.predictOnly(agent, loader("expected"));
 
         assertEquals(1, predictions.size());
-        assertTrue(String.valueOf(predictions.getFirst().get("error")).contains("boom"));
+        assertTrue(String.valueOf(predictions.get(0).get("error")).contains("boom"));
     }
 
     @Test
@@ -85,7 +85,7 @@ class TrainerTest {
         assertEquals("case_custom", agent.invocationInputs.get(0).get("conversation_id"));
         assertTrue(agent.invocationInputs.get(1).containsKey("conversation_id"));
         assertEquals("", agent.invocationInputs.get(1).get("conversation_id"));
-        assertNotEquals("case_custom", prediction.predictions().getFirst().get("session_id"));
+        assertNotEquals("case_custom", prediction.predictions().get(0).get("session_id"));
         assertTrue(String.valueOf(prediction.predictions().get(1).get("session_id")).length() > 0);
     }
 

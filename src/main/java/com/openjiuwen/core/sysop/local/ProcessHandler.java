@@ -78,22 +78,22 @@ public class ProcessHandler {
         StringBuilder stdoutBuf = new StringBuilder();
         StringBuilder stderrBuf = new StringBuilder();
 
-        Thread stdoutThread = Thread.ofVirtual().name("invoke-stdout-reader").start(
-                () -> {
-                    try {
-                        stdoutBuf.append(readStream(process.getInputStream()));
-                    } catch (Exception e) {
-                        Loggers.SYS_OPERATION.error("Failed to read stdout", e);
-                    }
-                });
-        Thread stderrThread = Thread.ofVirtual().name("invoke-stderr-reader").start(
-                () -> {
-                    try {
-                        stderrBuf.append(readStream(process.getErrorStream()));
-                    } catch (Exception e) {
-                        Loggers.SYS_OPERATION.error("Failed to read stderr", e);
-                    }
-                });
+        Thread stdoutThread = new Thread(() -> {
+            try {
+                stdoutBuf.append(readStream(process.getInputStream()));
+            } catch (Exception e) {
+                Loggers.SYS_OPERATION.error("Failed to read stdout", e);
+            }
+        }, "invoke-stdout-reader");
+        stdoutThread.start();
+        Thread stderrThread = new Thread(() -> {
+            try {
+                stderrBuf.append(readStream(process.getErrorStream()));
+            } catch (Exception e) {
+                Loggers.SYS_OPERATION.error("Failed to read stderr", e);
+            }
+        }, "invoke-stderr-reader");
+        stderrThread.start();
 
         try {
             boolean finished = process.waitFor(overallTimeoutSeconds, TimeUnit.SECONDS);
@@ -167,10 +167,10 @@ public class ProcessHandler {
         }
 
         // Start reader threads for stdout and stderr
-        Thread stdoutReader = Thread.ofVirtual().name("stdout-reader").start(
-                () -> readerTask(process.getInputStream(), StreamEventType.STDOUT));
-        Thread stderrReader = Thread.ofVirtual().name("stderr-reader").start(
-                () -> readerTask(process.getErrorStream(), StreamEventType.STDERR));
+        Thread stdoutReader = new Thread(() -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader");
+        stdoutReader.start();
+        Thread stderrReader = new Thread(() -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader");
+        stderrReader.start();
 
         return new StreamEventIterator(stdoutReader, stderrReader);
     }

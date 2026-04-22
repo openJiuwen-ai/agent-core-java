@@ -67,7 +67,7 @@ import java.util.function.Function;
 public class Workflow {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ExecutorService STREAM_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final ExecutorService STREAM_EXECUTOR = Executors.newCachedThreadPool();
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;
@@ -542,7 +542,7 @@ public class Workflow {
             }
         }, STREAM_EXECUTOR);
 
-        return new Iterator<WorkflowChunk>() {
+        return new Iterator<>() {
             private boolean finalChunkEmitted = false;
             private boolean firstFrame = true;
             private boolean done = false;
@@ -722,9 +722,6 @@ public class Workflow {
     /**
      * Generate a Mermaid diagram of the workflow.
      *
-     * @param title           diagram title
-     * @param outputFormat    "mermaid", "png", or "svg"
-     * @param expandSubgraph  subgraph expansion level
      * @return Mermaid syntax string for "mermaid" format; empty string for "png"/"svg" (use drawBytes instead)
      */
     public String draw() {

@@ -35,7 +35,7 @@ public class StreamActor {
     private static final long SHUTDOWN_TIMEOUT_MS = 5000;
 
     private static final ExecutorService VIRTUAL_EXECUTOR =
-            Executors.newVirtualThreadPerTaskExecutor();
+            Executors.newCachedThreadPool();
 
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
     private Future<?> task;
