@@ -11,6 +11,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Represents a tool call from LLM output.
  * <p>
@@ -23,7 +26,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ToolCall implements java.io.Serializable {
+public class ToolCall implements Serializable {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /** Tool call ID. */

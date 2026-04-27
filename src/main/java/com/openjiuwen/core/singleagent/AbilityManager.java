@@ -290,14 +290,16 @@ public class AbilityManager implements ToolRegistry {
                     finalResults.add(result);
                 }
             } catch (Exception e) {
-                String errorMsg = "Ability execution error: " + e.getMessage();
-                Loggers.AGENT.error(errorMsg);
-
                 ToolInterruptException interruptException = unwrapToolInterrupt(e);
                 if (interruptException != null) {
+                    Loggers.AGENT.debug("Ability execution interrupted for tool {}: {}",
+                            singleToolCall.getName(), interruptException.getMessage());
                     finalResults.add(new ToolExecutionEntry(interruptException, null));
                     continue;
                 }
+
+                String errorMsg = "Ability execution error: " + e.getMessage();
+                Loggers.AGENT.error(errorMsg);
 
                 Object toolResult = null;
                 ToolMessage toolMessage = null;

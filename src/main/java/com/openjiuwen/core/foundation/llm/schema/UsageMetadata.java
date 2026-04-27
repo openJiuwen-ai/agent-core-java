@@ -11,6 +11,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Usage metadata returned by LLM responses.
  * <p>
@@ -21,7 +24,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class UsageMetadata {
+public class UsageMetadata implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     @Builder.Default
     private int code = 0;

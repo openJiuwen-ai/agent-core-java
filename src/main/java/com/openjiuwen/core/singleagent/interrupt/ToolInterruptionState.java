@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +23,9 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ToolInterruptionState implements java.io.Serializable {
+public class ToolInterruptionState implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
     /** Session state key used to persist interruption metadata. */
     public static final String INTERRUPTION_KEY = "__react_agent_interruption__";
 

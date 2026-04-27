@@ -11,6 +11,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -24,7 +26,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class BaseMessage implements java.io.Serializable {
+public class BaseMessage implements Serializable {
+
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /** Message role (system, user, assistant, tool). */

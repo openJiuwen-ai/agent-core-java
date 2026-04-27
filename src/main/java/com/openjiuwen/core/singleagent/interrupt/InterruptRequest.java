@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -21,7 +23,9 @@ import java.util.Map;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InterruptRequest implements java.io.Serializable {
+public class InterruptRequest implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
     private String interruptId;
     private String message;
 

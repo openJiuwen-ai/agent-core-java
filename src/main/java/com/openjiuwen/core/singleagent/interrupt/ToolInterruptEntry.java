@@ -10,6 +10,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Persisted interrupted tool entry for resume support.
  *
@@ -19,7 +22,9 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ToolInterruptEntry implements java.io.Serializable {
+public class ToolInterruptEntry implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
     private ToolCall toolCall;
     private InterruptRequest request;
 }

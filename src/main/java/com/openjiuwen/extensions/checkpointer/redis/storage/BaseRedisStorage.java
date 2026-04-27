@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +57,7 @@ public abstract class BaseRedisStorage {
             return serializer.dumpsTyped(state);
         } catch (RuntimeException e) {
             log.warn("Failed to serialize Redis state: {}", e.getMessage());
+            log.warn("Redis state diagnostic: {}", describeState(state));
             return null;
         }
     }
@@ -135,5 +138,58 @@ public abstract class BaseRedisStorage {
 
     protected static String makeRedisKey(String... args) {
         return String.join(":", args);
+    }
+
+    protected String describeState(Object state) {
+        List<String> lines = new ArrayList<String>();
+        appendStateDescription(lines, "root", state, 0);
+        return String.join(" | ", lines);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void appendStateDescription(List<String> lines, String path, Object value, int depth) {
+        if (depth > 3) {
+            lines.add(path + "=<max-depth>");
+            return;
+        }
+        if (value == null) {
+            lines.add(path + "=null");
+            return;
+        }
+
+        lines.add(path + "=" + value.getClass().getName());
+
+        if (value instanceof Map<?, ?> map) {
+            int count = 0;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (count >= 10) {
+                    lines.add(path + ".<more>=truncated");
+                    break;
+                }
+                String childKey = entry.getKey() != null ? String.valueOf(entry.getKey()) : "<null>";
+                appendStateDescription(lines, path + "." + childKey, entry.getValue(), depth + 1);
+                count++;
+            }
+            return;
+        }
+
+        if (value instanceof Collection<?> collection) {
+            int index = 0;
+            for (Object item : collection) {
+                if (index >= 5) {
+                    lines.add(path + "[<more>]=truncated");
+                    break;
+                }
+                appendStateDescription(lines, path + "[" + index + "]", item, depth + 1);
+                index++;
+            }
+            return;
+        }
+
+        if (value.getClass().isArray() && value instanceof Object[] array) {
+            for (int i = 0; i < array.length && i < 5; i++) {
+                appendStateDescription(lines, path + "[" + i + "]", array[i], depth + 1);
+            }
+        }
     }
 }
