@@ -24,7 +24,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class BaseMessage {
+public class BaseMessage implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
 
     /** Message role (system, user, assistant, tool). */
     private String role;

@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ToolInterruptEntry {
+public class ToolInterruptEntry implements java.io.Serializable {
     private ToolCall toolCall;
     private InterruptRequest request;
 }

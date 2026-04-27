@@ -21,7 +21,7 @@ import java.util.Map;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InterruptRequest {
+public class InterruptRequest implements java.io.Serializable {
     private String interruptId;
     private String message;
 

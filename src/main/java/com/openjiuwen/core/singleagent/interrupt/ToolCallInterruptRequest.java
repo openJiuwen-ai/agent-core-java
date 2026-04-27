@@ -11,7 +11,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
  *
  * @since 0.1.7
  */
-public class ToolCallInterruptRequest extends InterruptRequest {
+public class ToolCallInterruptRequest extends InterruptRequest implements java.io.Serializable {
     private String toolCallId;
     private String toolName;
 

@@ -23,7 +23,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ToolCall {
+public class ToolCall implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
 
     /** Tool call ID. */
     private String id;

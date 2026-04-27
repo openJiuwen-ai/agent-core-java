@@ -21,7 +21,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ToolInterruptionState {
+public class ToolInterruptionState implements java.io.Serializable {
     /** Session state key used to persist interruption metadata. */
     public static final String INTERRUPTION_KEY = "__react_agent_interruption__";
 
