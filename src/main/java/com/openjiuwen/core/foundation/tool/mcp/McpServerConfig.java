@@ -61,4 +61,32 @@ public class McpServerConfig {
 
     /** Constant for no timeout. */
     public static final float NO_TIMEOUT = -1;
+
+    public String getServerId() {
+        return serverId;
+    }
+
+    public String getServerName() {
+        return serverName;
+    }
+
+    public String getServerPath() {
+        return serverPath;
+    }
+
+    public String getClientType() {
+        return clientType;
+    }
+
+    public Map<String, Object> getParams() {
+        return params;
+    }
+
+    public Map<String, String> getAuthHeaders() {
+        return authHeaders;
+    }
+
+    public Map<String, String> getAuthQueryParams() {
+        return authQueryParams;
+    }
 }

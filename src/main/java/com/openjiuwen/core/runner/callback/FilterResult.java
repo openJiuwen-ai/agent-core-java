@@ -32,6 +32,10 @@ public class FilterResult {
     /** Optional reason for the action taken. */
     private String reason;
 
+    public static FilterResultBuilder builder() {
+        return new FilterResultBuilder();
+    }
+
     /**
      * Create a CONTINUE result.
      */
@@ -79,5 +83,73 @@ public class FilterResult {
                 .modifiedArgs(modifiedArgs)
                 .modifiedKwargs(modifiedKwargs)
                 .build();
+    }
+
+    public FilterAction getAction() {
+        return action;
+    }
+
+    public void setAction(FilterAction action) {
+        this.action = action;
+    }
+
+    public Object[] getModifiedArgs() {
+        return modifiedArgs;
+    }
+
+    public void setModifiedArgs(Object[] modifiedArgs) {
+        this.modifiedArgs = modifiedArgs;
+    }
+
+    public Map<String, Object> getModifiedKwargs() {
+        return modifiedKwargs;
+    }
+
+    public void setModifiedKwargs(Map<String, Object> modifiedKwargs) {
+        this.modifiedKwargs = modifiedKwargs;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
+    }
+
+    public static final class FilterResultBuilder {
+        private FilterAction action;
+        private Object[] modifiedArgs;
+        private Map<String, Object> modifiedKwargs;
+        private String reason;
+
+        public FilterResultBuilder action(FilterAction action) {
+            this.action = action;
+            return this;
+        }
+
+        public FilterResultBuilder modifiedArgs(Object[] modifiedArgs) {
+            this.modifiedArgs = modifiedArgs;
+            return this;
+        }
+
+        public FilterResultBuilder modifiedKwargs(Map<String, Object> modifiedKwargs) {
+            this.modifiedKwargs = modifiedKwargs;
+            return this;
+        }
+
+        public FilterResultBuilder reason(String reason) {
+            this.reason = reason;
+            return this;
+        }
+
+        public FilterResult build() {
+            FilterResult result = new FilterResult();
+            result.setAction(action);
+            result.setModifiedArgs(modifiedArgs);
+            result.setModifiedKwargs(modifiedKwargs);
+            result.setReason(reason);
+            return result;
+        }
     }
 }

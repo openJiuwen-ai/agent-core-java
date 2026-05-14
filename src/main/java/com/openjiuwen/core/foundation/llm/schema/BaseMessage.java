@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Base message class for LLM conversation messages.
@@ -50,6 +51,40 @@ public class BaseMessage {
         this.content = content;
     }
 
+    public BaseMessage(String role, Object content, String name) {
+        this.role = role;
+        this.content = content;
+        this.name = name;
+    }
+
+    public static BaseMessageBuilder builder() {
+        return new BaseMessageBuilder();
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public Object getContent() {
+        return content;
+    }
+
+    public void setContent(Object content) {
+        this.content = content;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
     /**
      * Get content as string. Returns empty string if content is not a string.
      */
@@ -69,5 +104,50 @@ public class BaseMessage {
             return (List<Object>) list;
         }
         return null;
+    }
+
+    public static class BaseMessageBuilder {
+        private String role;
+        private Object content;
+        private String name;
+        private List<ToolCall> toolCalls;
+        private UsageMetadata usageMetadata;
+
+        public BaseMessageBuilder role(String role) {
+            this.role = role;
+            return this;
+        }
+
+        public BaseMessageBuilder content(Object content) {
+            this.content = content;
+            return this;
+        }
+
+        public BaseMessageBuilder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public BaseMessageBuilder toolCalls(List<ToolCall> toolCalls) {
+            this.toolCalls = toolCalls;
+            return this;
+        }
+
+        public BaseMessageBuilder usageMetadata(UsageMetadata usageMetadata) {
+            this.usageMetadata = usageMetadata;
+            return this;
+        }
+
+        public BaseMessage build() {
+            AssistantMessage message = new AssistantMessage();
+            message.setRole(role);
+            message.setContent(content);
+            message.setName(name);
+            if (toolCalls != null) {
+                message.setToolCalls(new ArrayList<>(toolCalls));
+            }
+            message.setUsageMetadata(usageMetadata);
+            return message;
+        }
     }
 }

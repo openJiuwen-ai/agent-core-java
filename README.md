@@ -4,7 +4,7 @@
 
 ## Introduction
 
-**openJiuwen Core Java** is a Java port of the OpenJiuwen Core Python version, a Java software development toolkit designed for large language model applications. It provides a high-performance runtime for agents running on the **openJiuwen** framework. This development toolkit not only encapsulates multi-layered, easy-to-use external interfaces for Agent creation, workflow orchestration, large language model invocation, and tool calling; it also includes a high-performance runtime with support for asynchronous I/O and stream processing, enabling agent state persistence and interruption resumption; furthermore, it is equipped with a complete suite of debugging and optimization tools for full-link observability. The **openJiuwen Core Java** development toolkit balances flexibility and stability, helping developers efficiently build robust large language model applications.
+**openJiuwen Core Java** is an independent Java implementation for the openJiuwen framework, a Java software development toolkit designed for large language model applications. It provides a high-performance runtime for agents running on the **openJiuwen** framework. This development toolkit not only encapsulates multi-layered, easy-to-use external interfaces for Agent creation, workflow orchestration, large language model invocation, and tool calling; it also includes a high-performance runtime with support for asynchronous I/O and stream processing, enabling agent state persistence and interruption resumption; furthermore, it is equipped with a complete suite of debugging and optimization tools for full-link observability. The **openJiuwen Core Java** development toolkit balances flexibility and stability, helping developers efficiently build robust large language model applications.
 
 ## Why Choose openJiuwen Core Java?
 
@@ -65,6 +65,23 @@ assistant> Transfer service completed, recorded transfer amount is 2000元.
 ```
 
 For more complete examples, please check the [examples/workflow_agent](examples/workflow_agent/) directory.
+
+### Model Connection Configuration
+
+When you build model connection settings directly with `ModelClientConfig` or `BaseModelInfo`, you can use `httpVersion` / `http_version` to control the HTTP version used by the underlying `HttpClient`.
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider("OpenAI")
+        .apiKey("sk-test")
+        .apiBase("https://your-api-base.example/v1")
+        .httpVersion(ModelHttpVersion.HTTP_1_1)
+        .build();
+```
+
+- If `httpVersion` is not set, the framework keeps the JDK `HttpClient` default negotiation behavior.
+- If a model endpoint only supports HTTP/1.1, set `httpVersion` to `ModelHttpVersion.HTTP_1_1` explicitly.
+- The example `apiconfig.json` template does not read `http_version` yet, so this option currently applies to code-based `ModelClientConfig` or `BaseModelInfo` construction.
 
 ## Architecture Design
 

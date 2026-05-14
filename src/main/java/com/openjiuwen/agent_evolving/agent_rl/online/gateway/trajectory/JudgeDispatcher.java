@@ -1,0 +1,119 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Delayed-judge dispatch for pending rail-v1 samples.
+ * <p>
+ * Mirrors the deterministic finalize-sample behavior from
+ * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.judge_dispatcher}.
+ */
+public class JudgeDispatcher {
+
+    private final PendingJudgeStore pendingStore;
+    private final SampleRecordingSink recordSample;
+    private final JudgeScorer judgeScorer;
+
+    public JudgeDispatcher(PendingJudgeStore pendingStore, SampleRecordingSink recordSample, JudgeScorer judgeScorer) {
+        this.pendingStore = pendingStore;
+        this.recordSample = recordSample;
+        this.judgeScorer = judgeScorer;
+    }
+
+    public int onPrevFeedback(String sessionId, Map<String, Object> prevFeedback) {
+        String feedback = feedbackText(prevFeedback);
+        if (feedback.isBlank()) {
+            return 0;
+        }
+        Map<String, Object> sample = pendingStore.popEarliest(sessionId);
+        if (sample == null) {
+            return 0;
+        }
+        recordSample.recordSample(finalizeSample(sample, feedback, "prev_feedback"));
+        return 1;
+    }
+
+    public int onSessionDone(String sessionId) {
+        List<Map<String, Object>> samples = pendingStore.popAll(sessionId);
+        int count = 0;
+        for (int i = 0; i < samples.size(); i++) {
+            String tag = i == samples.size() - 1 ? "session_done" : "session_flush";
+            recordSample.recordSample(finalizeSample(samples.get(i), "", tag));
+            count += 1;
+        }
+        return count;
+    }
+
+    public Map<String, Object> finalizeSample(Map<String, Object> sample, String feedback, String tag) {
+        Map<String, Object> finalized = new LinkedHashMap<>(sample);
+        String sessionId = String.valueOf(finalized.getOrDefault("session_id", ""));
+        int turnNum = intValue(finalized.get("turn_num"), intValue(finalized.get("step_index"), 0));
+        Map<String, Object> trajectory = mapValue(finalized.get("trajectory"));
+        String responseText = String.valueOf(trajectory.getOrDefault("response_text", finalized.getOrDefault("response_text", "")));
+        List<Map<String, Object>> messages = listOfMaps(mapValue(finalized.get("request")).get("messages"));
+        String instructionText = GatewayMessageUtils.extractLastUserInstruction(messages);
+        if (instructionText.isBlank()) {
+            instructionText = feedback;
+        }
+
+        Map<String, Object> judge;
+        if (judgeScorer != null) {
+            try {
+                judge = judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum);
+            } catch (Exception exception) {
+                judge = Map.of("score", 0.0, "votes", List.of("fail"), "details", Map.of(), "error", exception.getMessage());
+            }
+        } else {
+            judge = Map.of("score", 0.0, "votes", List.of("skip"), "details", Map.of(), "error", tag);
+        }
+
+        finalized.put("judge", judge);
+        finalized.put("judge_feedback", Map.of("tag", tag, "followup_user_feedback", feedback));
+        finalized.putIfAbsent("sample_id", UUID.randomUUID().toString());
+        return finalized;
+    }
+
+    private static String feedbackText(Map<String, Object> prevFeedback) {
+        if (prevFeedback == null) {
+            return "";
+        }
+        Object raw = prevFeedback.get("raw_user_text");
+        if (raw == null) {
+            raw = prevFeedback.get("text");
+        }
+        if (raw == null) {
+            raw = prevFeedback.get("feedback");
+        }
+        return String.valueOf(raw != null ? raw : "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        return value instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (Exception ignored) {
+            }
+        }
+        return fallback;
+    }
+}

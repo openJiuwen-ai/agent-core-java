@@ -29,6 +29,10 @@ public class SystemMessage extends BaseMessage {
         super("system", content);
     }
 
+    public SystemMessage(String role, Object content) {
+        super(role, content, null);
+    }
+
     /**
      * Creates a system message with the given content and name.
      *
@@ -38,6 +42,10 @@ public class SystemMessage extends BaseMessage {
     public SystemMessage(String content, String name) {
         this(content);
         setName(name);
+    }
+
+    public SystemMessage(String role, Object content, String name) {
+        super(role, content, name);
     }
 
     @Override

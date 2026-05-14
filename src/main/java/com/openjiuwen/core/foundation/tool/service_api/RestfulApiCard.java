@@ -53,4 +53,32 @@ public class RestfulApiCard extends ToolCard {
     /** Maximum response size in bytes (default 10 MB). */
     @Builder.Default
     private final int maxResponseByteSize = 10 * 1024 * 1024;
+
+    public String getUrl() {
+        return url;
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public Map<String, Object> getHeaders() {
+        return headers;
+    }
+
+    public Map<String, Object> getQueries() {
+        return queries;
+    }
+
+    public Map<String, Object> getPaths() {
+        return paths;
+    }
+
+    public double getTimeout() {
+        return timeout;
+    }
+
+    public int getMaxResponseByteSize() {
+        return maxResponseByteSize;
+    }
 }

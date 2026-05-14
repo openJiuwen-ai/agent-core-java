@@ -13,9 +13,10 @@ import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient;
 import com.openjiuwen.core.foundation.tool.mcp.client.PlaywrightClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.SseClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.StdioClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
+import com.openjiuwen.core.foundation.tool.mcp.sdk.OfficialMcpClientFactory;
+import com.openjiuwen.harness.tools.browser_move.clients.BrowserMoveStdioClient;
+import com.openjiuwen.harness.tools.browser_move.clients.BrowserMoveStreamableHttpClient;
+import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserRuntimeMcpSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,11 +122,18 @@ public class ToolMgr {
 
     private McpClient createClient(McpServerConfig config) {
         String clientType = config.getClientType() == null ? "sse" : config.getClientType().toLowerCase();
+        if (BrowserRuntimeMcpSupport.shouldUseBrowserMoveClientPatch(config)) {
+            return switch (clientType) {
+                case "stdio" -> new BrowserMoveStdioClient(config);
+                case "streamable_http", "streamable-http", "http", "sse" -> new BrowserMoveStreamableHttpClient(config);
+                default -> throw new UnsupportedOperationException("Unsupported browser_move MCP client type: " + config.getClientType());
+            };
+        }
         return switch (clientType) {
-            case "sse" -> new SseClient(config);
-            case "stdio" -> new StdioClient(config);
+            case "sse" -> OfficialMcpClientFactory.create(config);
+            case "stdio" -> OfficialMcpClientFactory.create(config);
             case "openapi" -> new OpenApiClient(config);
-            case "streamable_http", "streamable-http", "http" -> new StreamableHttpClient(config);
+            case "streamable_http", "streamable-http", "http" -> OfficialMcpClientFactory.create(config);
             case "playwright" -> new PlaywrightClient(config);
             default -> throw new UnsupportedOperationException("Unsupported MCP client type: " + config.getClientType());
         };

@@ -35,6 +35,7 @@ build/
 .vscode/
 
 ### Runtime logs ###
+logs/
 logs/run/run.log
 
 ### Mac OS ###

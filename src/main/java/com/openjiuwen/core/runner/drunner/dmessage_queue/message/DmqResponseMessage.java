@@ -29,4 +29,28 @@ public class DmqResponseMessage extends DmqMessage {
     private boolean lastChunk;
 
     private Double expireAt;
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public String getSenderId() {
+        return senderId;
+    }
+
+    public ResultType getResultType() {
+        return resultType;
+    }
+
+    public void setResultType(ResultType resultType) {
+        this.resultType = resultType;
+    }
+
+    public boolean isLastChunk() {
+        return lastChunk;
+    }
+
+    public void setLastChunk(boolean lastChunk) {
+        this.lastChunk = lastChunk;
+    }
 }

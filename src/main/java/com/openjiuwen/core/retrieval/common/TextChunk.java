@@ -75,4 +75,24 @@ public class TextChunk {
     public void setEmbedding(List<Float> embedding) {
         this.embedding = embedding == null ? null : List.copyOf(embedding);
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public String getDocId() {
+        return docId;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public List<Float> getEmbedding() {
+        return embedding;
+    }
 }

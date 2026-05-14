@@ -90,4 +90,91 @@ public class RunnerConfig {
         }
         return config;
     }
+
+    public static RunnerConfigBuilder builder() {
+        return new RunnerConfigBuilder();
+    }
+
+    public DistributedConfig getDistributedConfig() {
+        return distributedConfig;
+    }
+
+    public void setDistributedConfig(DistributedConfig distributedConfig) {
+        this.distributedConfig = distributedConfig;
+    }
+
+    public boolean isDistributedMode() {
+        return distributedMode;
+    }
+
+    public void setDistributedMode(boolean distributedMode) {
+        this.distributedMode = distributedMode;
+    }
+
+    public String getEnvPrefix() {
+        return envPrefix;
+    }
+
+    public void setEnvPrefix(String envPrefix) {
+        this.envPrefix = envPrefix;
+    }
+
+    public String getInstanceId() {
+        return instanceId;
+    }
+
+    public void setInstanceId(String instanceId) {
+        this.instanceId = instanceId;
+    }
+
+    public Map<String, Object> getCheckpointerConfig() {
+        return checkpointerConfig;
+    }
+
+    public void setCheckpointerConfig(Map<String, Object> checkpointerConfig) {
+        this.checkpointerConfig = checkpointerConfig;
+    }
+
+    public static final class RunnerConfigBuilder {
+        private boolean distributedMode = true;
+        private DistributedConfig distributedConfig = new DistributedConfig();
+        private String envPrefix = "";
+        private String instanceId = UUID.randomUUID().toString();
+        private Map<String, Object> checkpointerConfig;
+
+        public RunnerConfigBuilder distributedMode(boolean distributedMode) {
+            this.distributedMode = distributedMode;
+            return this;
+        }
+
+        public RunnerConfigBuilder distributedConfig(DistributedConfig distributedConfig) {
+            this.distributedConfig = distributedConfig;
+            return this;
+        }
+
+        public RunnerConfigBuilder envPrefix(String envPrefix) {
+            this.envPrefix = envPrefix;
+            return this;
+        }
+
+        public RunnerConfigBuilder instanceId(String instanceId) {
+            this.instanceId = instanceId;
+            return this;
+        }
+
+        public RunnerConfigBuilder checkpointerConfig(Map<String, Object> checkpointerConfig) {
+            this.checkpointerConfig = checkpointerConfig;
+            return this;
+        }
+
+        public RunnerConfig build() {
+            RunnerConfig config = new RunnerConfig();
+            config.distributedMode = distributedMode;
+            config.setDistributedConfig(distributedConfig);
+            config.envPrefix = envPrefix;
+            config.instanceId = instanceId;
+            config.checkpointerConfig = checkpointerConfig;
+            return config;
+        }
+    }
 }

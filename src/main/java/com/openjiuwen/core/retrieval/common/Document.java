@@ -49,4 +49,22 @@ public class Document {
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        if (id != null && !id.isBlank()) {
+            this.id = id;
+        }
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
 }

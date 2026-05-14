@@ -48,6 +48,34 @@ public class StreamEvent {
     @Builder.Default
     private Instant timestamp = Instant.now();
 
+    public static StreamEventBuilder builder() {
+        return new StreamEventBuilder();
+    }
+
+    public StreamEventType getType() {
+        return type;
+    }
+
+    public void setType(StreamEventType type) {
+        this.type = type;
+    }
+
+    public Object getData() {
+        return data;
+    }
+
+    public void setData(Object data) {
+        this.data = data;
+    }
+
+    public Instant getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
+    }
+
     /**
      * Get data as String.
      */
@@ -73,5 +101,34 @@ public class StreamEvent {
             }
         }
         return null;
+    }
+
+    public static final class StreamEventBuilder {
+        private StreamEventType type;
+        private Object data;
+        private Instant timestamp = Instant.now();
+
+        public StreamEventBuilder type(StreamEventType type) {
+            this.type = type;
+            return this;
+        }
+
+        public StreamEventBuilder data(Object data) {
+            this.data = data;
+            return this;
+        }
+
+        public StreamEventBuilder timestamp(Instant timestamp) {
+            this.timestamp = timestamp;
+            return this;
+        }
+
+        public StreamEvent build() {
+            StreamEvent event = new StreamEvent();
+            event.setType(type);
+            event.setData(data);
+            event.setTimestamp(timestamp);
+            return event;
+        }
     }
 }

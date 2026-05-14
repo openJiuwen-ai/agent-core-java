@@ -301,7 +301,8 @@ class ReActAgentTest {
     void testGetLlmThrowsWithoutClientConfig() {
         // Default config has no model_client_config
         assertThatThrownBy(() -> agent.invoke(Map.of("query", "test"), null))
-                .isInstanceOf(Exception.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("model_client_config is required");
     }
 
     @Test

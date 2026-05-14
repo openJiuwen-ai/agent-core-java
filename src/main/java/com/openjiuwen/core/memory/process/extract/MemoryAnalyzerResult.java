@@ -26,4 +26,28 @@ public class MemoryAnalyzerResult {
     private List<VariableResult> variables = new ArrayList<>();
     @Builder.Default
     private String summary = "";
+
+    public boolean isHasKeyInformation() {
+        return hasKeyInformation;
+    }
+
+    public void setHasKeyInformation(boolean hasKeyInformation) {
+        this.hasKeyInformation = hasKeyInformation;
+    }
+
+    public List<VariableResult> getVariables() {
+        return variables;
+    }
+
+    public void setVariables(List<VariableResult> variables) {
+        this.variables = variables;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
+    }
 }

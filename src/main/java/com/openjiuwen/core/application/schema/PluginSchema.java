@@ -45,4 +45,17 @@ public class PluginSchema {
     @JsonProperty("plugin_id")
     @JsonAlias("pluginId")
     private String pluginId = "";
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public Map<String, Object> getInputs() { return inputs; }
+    public void setInputs(Map<String, Object> inputs) { this.inputs = inputs; }
+    public String getPluginId() { return pluginId; }
+    public void setPluginId(String pluginId) { this.pluginId = pluginId; }
 }

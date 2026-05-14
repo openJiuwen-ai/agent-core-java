@@ -29,6 +29,10 @@ public class ToolMessage extends BaseMessage {
     @JsonProperty("tool_call_id")
     private String toolCallId;
 
+    public ToolMessage() {
+        super();
+    }
+
     /**
      * Creates a tool message with the given content and tool call ID.
      *
@@ -52,9 +56,57 @@ public class ToolMessage extends BaseMessage {
         setName(name);
     }
 
+    public static ToolMessageBuilder builder() {
+        return new ToolMessageBuilder();
+    }
+
+    public String getToolCallId() {
+        return toolCallId;
+    }
+
+    public void setToolCallId(String toolCallId) {
+        this.toolCallId = toolCallId;
+    }
+
     @Override
     public String getRole() {
         String r = super.getRole();
         return r != null ? r : "tool";
+    }
+
+    public static class ToolMessageBuilder {
+        private String role;
+        private Object content;
+        private String name;
+        private String toolCallId;
+
+        public ToolMessageBuilder role(String role) {
+            this.role = role;
+            return this;
+        }
+
+        public ToolMessageBuilder content(Object content) {
+            this.content = content;
+            return this;
+        }
+
+        public ToolMessageBuilder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public ToolMessageBuilder toolCallId(String toolCallId) {
+            this.toolCallId = toolCallId;
+            return this;
+        }
+
+        public ToolMessage build() {
+            ToolMessage message = new ToolMessage();
+            message.setRole(role);
+            message.setContent(content);
+            message.setName(name);
+            message.setToolCallId(toolCallId);
+            return message;
+        }
     }
 }

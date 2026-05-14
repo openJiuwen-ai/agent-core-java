@@ -1,6 +1,6 @@
 # Skill Use Java Example
 
-这个目录对应 Python 版 `examples/skill_use/main.py` 和 `examples/skill_use/skill_use.py`，演示如何在 Java 框架里：
+这个目录演示如何在 Java 框架里：
 
 1. 创建 `ReActAgent`
 2. 注册本地 skill
@@ -16,7 +16,7 @@
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 将待处理图片等输入文件放入 `FILES_BASE_DIR` 对应目录。
 4. 本机需要可直接调用的 `python`，因为 skill 最终通过 `executeCode` 执行 Python/OpenCV 缩图代码。
 5. 如本机 Python 环境里尚未安装 `opencv-python`，首次运行时需要允许安装，或者提前手动安装。
@@ -34,7 +34,7 @@
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -52,7 +52,7 @@ javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" e
 如果需要显式指定配置文件，也可以这样运行：
 
 ```powershell
-& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=F:\openJiuwenTT\agent-core-java-myfork\examples\apiconfig.json' -cp "target/classes;examples;examples/skill_use;$(Get-Content target/skill_examples.classpath -Raw)" SkillUseExample
+& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=examples/apiconfig.json' -cp "target/classes;examples;examples/skill_use;$(Get-Content target/skill_examples.classpath -Raw)" SkillUseExample
 ```
 
 ## 已验证的默认示例
@@ -72,7 +72,7 @@ javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" e
 
 ## 说明
 
-- 示例默认尝试从 GitHub 下载 Python 示例里同一个 `image_resizer` skill。
+- 示例默认尝试从 GitHub 下载同名 `image_resizer` skill。
 - 如果远程注册失败，程序会打印提示并继续尝试本地 skills。
 - Java 系统工具名采用框架内的 camelCase 形式：`readFile`、`executeCode`、`executeCmd`。
 - 当前 Windows 运行时已经做过兼容修复：Python 代码会通过临时 `.py` 文件执行，而不是 `python -c`，因此包含 Windows 路径和引号的生成代码可以正常执行。

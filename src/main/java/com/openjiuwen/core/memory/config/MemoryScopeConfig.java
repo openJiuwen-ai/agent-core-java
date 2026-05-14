@@ -30,4 +30,28 @@ public class MemoryScopeConfig {
 
     @JsonProperty("embedding_cfg")
     private EmbeddingConfig embeddingCfg;
+
+    public ModelRequestConfig getModelCfg() {
+        return modelCfg;
+    }
+
+    public void setModelCfg(ModelRequestConfig modelCfg) {
+        this.modelCfg = modelCfg;
+    }
+
+    public ModelClientConfig getModelClientCfg() {
+        return modelClientCfg;
+    }
+
+    public void setModelClientCfg(ModelClientConfig modelClientCfg) {
+        this.modelClientCfg = modelClientCfg;
+    }
+
+    public EmbeddingConfig getEmbeddingCfg() {
+        return embeddingCfg;
+    }
+
+    public void setEmbeddingCfg(EmbeddingConfig embeddingCfg) {
+        this.embeddingCfg = embeddingCfg;
+    }
 }

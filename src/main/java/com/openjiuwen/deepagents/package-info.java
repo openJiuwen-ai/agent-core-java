@@ -1,18 +1,14 @@
 /**
- * Deep Agents package - Provides advanced agent orchestration capabilities.
+ * Deprecated compatibility bridge for the pre-0.1.12 deep-agent namespace.
  *
- * <p>Mirrors Python's {@code openjiuwen.deepagents} package.
- *
- * <p>This package contains:
- * <ul>
- *   <li>{@link DeepAgentsFactory} - Factory for creating deep agent instances</li>
- *   <li>{@code middlewares} - Middleware components for agent processing</li>
- *   <li>{@code subagents} - Sub-agent implementations</li>
- *   <li>{@code tools} - Tool implementations for deep agents</li>
- * </ul>
+ * <p>Python `0.1.12` moved active coding-agent functionality to
+ * {@code openjiuwen.harness}. This package remains only so copied
+ * `0.1.7` Java code can be migrated incrementally without breaking
+ * immediate compilation.
  */
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
+@Deprecated(forRemoval = false)
 package com.openjiuwen.deepagents;
