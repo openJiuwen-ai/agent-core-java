@@ -40,6 +40,18 @@ public abstract class BaseResult<T> {
         this.data = data;
     }
 
+    public void setCode(int code) {
+        this.code = code;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public void setData(T data) {
+        this.data = data;
+    }
+
     /**
      * Create a standardized error result object with specified error type and formatted message.
      *

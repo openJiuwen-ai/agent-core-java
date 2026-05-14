@@ -312,21 +312,4 @@ class AbilityManagerSupplementTest {
                 .hasMessageContaining("MCP tool execution not yet implemented");
     }
 
-    // ========== ToolExecutionEntry record ==========
-
-    @Test
-    void testToolExecutionEntryCreation() {
-        ToolMessage msg = ToolMessage.builder().content("result").toolCallId("tc-1").build();
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry("data", msg);
-
-        assertThat(entry.result()).isEqualTo("data");
-        assertThat(entry.toolMessage()).isSameAs(msg);
-    }
-
-    @Test
-    void testToolExecutionEntryNulls() {
-        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(null, null);
-        assertThat(entry.result()).isNull();
-        assertThat(entry.toolMessage()).isNull();
-    }
 }

@@ -54,6 +54,49 @@ public class Event {
 
     private String customEventType;
 
+    public static EventBuilder builder() {
+        return new EventBuilder();
+    }
+
+    public static final class EventBuilder {
+        private String eventId = UUID.randomUUID().toString();
+        private EventType eventType = EventType.USER_INPUT;
+        private EventPriority priority = EventPriority.NORMAL;
+        private EventSource source = new EventSource("unknown", SourceType.SYSTEM, null);
+        private EventContent content = new EventContent();
+        private EventContext context = new EventContext();
+        private Instant createdAt = Instant.now();
+        private Map<String, Object> metadata = new LinkedHashMap<>();
+        private String receiverId;
+        private String customEventType;
+
+        public EventBuilder eventId(String eventId) { this.eventId = eventId; return this; }
+        public EventBuilder eventType(EventType eventType) { this.eventType = eventType; return this; }
+        public EventBuilder priority(EventPriority priority) { this.priority = priority; return this; }
+        public EventBuilder source(EventSource source) { this.source = source; return this; }
+        public EventBuilder content(EventContent content) { this.content = content; return this; }
+        public EventBuilder context(EventContext context) { this.context = context; return this; }
+        public EventBuilder createdAt(Instant createdAt) { this.createdAt = createdAt; return this; }
+        public EventBuilder metadata(Map<String, Object> metadata) { this.metadata = metadata; return this; }
+        public EventBuilder receiverId(String receiverId) { this.receiverId = receiverId; return this; }
+        public EventBuilder customEventType(String customEventType) { this.customEventType = customEventType; return this; }
+
+        public Event build() {
+            Event event = new Event();
+            event.eventId = eventId;
+            event.eventType = eventType;
+            event.priority = priority;
+            event.source = source;
+            event.content = content;
+            event.context = context;
+            event.createdAt = createdAt;
+            event.metadata = metadata == null ? new LinkedHashMap<>() : metadata;
+            event.receiverId = receiverId;
+            event.customEventType = customEventType;
+            return event;
+        }
+    }
+
     public static Event createUserEvent(Object content, String conversationId, String userId,
                                         Map<String, Object> extensions) {
         EventContent eventContent = new EventContent();
@@ -286,6 +329,22 @@ public class Event {
         private String conversationId;
         private SourceType sourceType;
         private String userId;
+
+        public EventSource() {
+        }
+
+        public EventSource(String conversationId, SourceType sourceType, String userId) {
+            this.conversationId = conversationId;
+            this.sourceType = sourceType;
+            this.userId = userId;
+        }
+
+        public String getConversationId() { return conversationId; }
+        public void setConversationId(String conversationId) { this.conversationId = conversationId; }
+        public SourceType getSourceType() { return sourceType; }
+        public void setSourceType(SourceType sourceType) { this.sourceType = sourceType; }
+        public String getUserId() { return userId; }
+        public void setUserId(String userId) { this.userId = userId; }
     }
 
     @Data
@@ -297,6 +356,18 @@ public class Event {
         private List<Object> streamData = new ArrayList<>();
         private Object taskResult;
         private Map<String, Object> extensions = new LinkedHashMap<>();
+
+        public void setQuery(String query) { this.query = query; }
+        public void setInteractiveInput(InteractiveInput interactiveInput) { this.interactiveInput = interactiveInput; }
+        public void setStreamData(List<Object> streamData) { this.streamData = streamData; }
+        public void setTaskResult(Object taskResult) { this.taskResult = taskResult; }
+        public void setExtensions(Map<String, Object> extensions) { this.extensions = extensions; }
+
+        public String getQuery() { return query; }
+        public InteractiveInput getInteractiveInput() { return interactiveInput; }
+        public List<Object> getStreamData() { return streamData; }
+        public Object getTaskResult() { return taskResult; }
+        public Map<String, Object> getExtensions() { return extensions; }
 
         public String getQueryText() {
             if (query != null) {
@@ -322,5 +393,24 @@ public class Event {
         private String conversationId;
         private String taskId;
         private String workflowId;
+
+        public EventContext() {
+        }
+
+        public EventContext(String correlationId, String conversationId, String taskId, String workflowId) {
+            this.correlationId = correlationId;
+            this.conversationId = conversationId;
+            this.taskId = taskId;
+            this.workflowId = workflowId;
+        }
+
+        public String getCorrelationId() { return correlationId; }
+        public void setCorrelationId(String correlationId) { this.correlationId = correlationId; }
+        public String getConversationId() { return conversationId; }
+        public void setConversationId(String conversationId) { this.conversationId = conversationId; }
+        public String getTaskId() { return taskId; }
+        public void setTaskId(String taskId) { this.taskId = taskId; }
+        public String getWorkflowId() { return workflowId; }
+        public void setWorkflowId(String workflowId) { this.workflowId = workflowId; }
     }
 }

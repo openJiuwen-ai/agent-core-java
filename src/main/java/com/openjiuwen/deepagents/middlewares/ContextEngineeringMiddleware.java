@@ -5,15 +5,11 @@
 package com.openjiuwen.deepagents.middlewares;
 
 /**
- * Context Engineering Middleware for deep agents.
+ * Deprecated compatibility placeholder for the removed deepagents middleware.
  *
- * <p>Mirrors Python's {@code context_engineering_middleware} module in {@code openjiuwen.deepagents.middlewares}.
- *
- * <p>This middleware handles context engineering operations for deep agents,
- * including context manipulation, context injection, and context optimization.
- *
- * <p>Placeholder implementation - actual functionality to be implemented.
+ * <p>Python `0.1.12` moved active behavior into {@code openjiuwen.harness}.
  */
+@Deprecated(forRemoval = false)
 public class ContextEngineeringMiddleware {
 
     /**
@@ -30,7 +26,7 @@ public class ContextEngineeringMiddleware {
      * @return the processed context (placeholder)
      */
     public Object process(Object context) {
-        // Placeholder implementation
-        throw new UnsupportedOperationException("ContextEngineeringMiddleware.process() is not yet implemented");
+        throw new UnsupportedOperationException(
+                "ContextEngineeringMiddleware is deprecated. Migrate to com.openjiuwen.harness rails.");
     }
 }

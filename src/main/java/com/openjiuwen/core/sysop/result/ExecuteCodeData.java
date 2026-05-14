@@ -36,4 +36,44 @@ public class ExecuteCodeData {
     /** Standard error stream. */
     @Builder.Default
     private String stderr = "";
+
+    public String getCodeContent() {
+        return codeContent;
+    }
+
+    public void setCodeContent(String codeContent) {
+        this.codeContent = codeContent;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
+    }
+
+    public Integer getExitCode() {
+        return exitCode;
+    }
+
+    public void setExitCode(Integer exitCode) {
+        this.exitCode = exitCode;
+    }
+
+    public String getStdout() {
+        return stdout;
+    }
+
+    public void setStdout(String stdout) {
+        this.stdout = stdout;
+    }
+
+    public String getStderr() {
+        return stderr;
+    }
+
+    public void setStderr(String stderr) {
+        this.stderr = stderr;
+    }
 }

@@ -94,4 +94,64 @@ public class LlmAgentConfig {
     public int getContextWindowLimit() {
         return constrain != null ? constrain.getReservedMaxChatRounds() : 10;
     }
+
+    public AgentMemoryConfig getAgentMemoryConfig() {
+        return agentMemoryConfig;
+    }
+
+    public ConstrainConfig getConstrain() {
+        return constrain;
+    }
+
+    public ModelConfig getModel() {
+        return model;
+    }
+
+    public List<WorkflowSchema> getWorkflows() {
+        return workflows;
+    }
+
+    public List<PluginSchema> getPlugins() {
+        return plugins;
+    }
+
+    public List<String> getTools() {
+        return tools;
+    }
+
+    public String getMemoryScopeId() {
+        return memoryScopeId;
+    }
+
+    public List<Map<String, String>> getPromptTemplate() {
+        return promptTemplate;
+    }
+
+    public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
+        this.promptTemplate = promptTemplate;
+    }
+
+    public void setMemoryScopeId(String memoryScopeId) {
+        this.memoryScopeId = memoryScopeId;
+    }
+
+    public String getPromptTemplateName() {
+        return promptTemplateName;
+    }
+
+    public void setPromptTemplateName(String promptTemplateName) {
+        this.promptTemplateName = promptTemplateName;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public String getDescription() {
+        return description;
+    }
 }

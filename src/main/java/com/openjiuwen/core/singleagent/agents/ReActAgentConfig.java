@@ -155,4 +155,162 @@ public class ReActAgentConfig {
         this.contextProcessors = processors;
         return this;
     }
+
+    public static ReActAgentConfigBuilder builder() {
+        return new ReActAgentConfigBuilder();
+    }
+
+    public String getMemScopeId() {
+        return memScopeId;
+    }
+
+    public String getModelName() {
+        return modelName;
+    }
+
+    public String getModelProvider() {
+        return modelProvider;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public String getApiBase() {
+        return apiBase;
+    }
+
+    public String getPromptTemplateName() {
+        return promptTemplateName;
+    }
+
+    public List<Map<String, String>> getPromptTemplate() {
+        return promptTemplate;
+    }
+
+    public int getMaxIterations() {
+        return maxIterations;
+    }
+
+    public ModelClientConfig getModelClientConfig() {
+        return modelClientConfig;
+    }
+
+    public ModelRequestConfig getModelConfigObj() {
+        return modelConfigObj;
+    }
+
+    public ContextEngineConfig getContextEngineConfig() {
+        return contextEngineConfig;
+    }
+
+    public List<Object> getContextProcessors() {
+        return contextProcessors;
+    }
+
+    public String getSysOperationId() {
+        return sysOperationId;
+    }
+
+    public static final class ReActAgentConfigBuilder {
+        private String memScopeId = "";
+        private String modelName = "";
+        private String modelProvider = "openai";
+        private String apiKey = "";
+        private String apiBase = "";
+        private String promptTemplateName = "";
+        private List<Map<String, String>> promptTemplate = new ArrayList<>();
+        private int maxIterations = 5;
+        private ModelClientConfig modelClientConfig;
+        private ModelRequestConfig modelConfigObj;
+        private String sysOperationId;
+        private ContextEngineConfig contextEngineConfig = ContextEngineConfig.builder()
+                .maxContextMessageNum(200)
+                .defaultWindowRoundNum(10)
+                .build();
+        private List<Object> contextProcessors;
+
+        public ReActAgentConfigBuilder memScopeId(String memScopeId) {
+            this.memScopeId = memScopeId;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder modelName(String modelName) {
+            this.modelName = modelName;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder modelProvider(String modelProvider) {
+            this.modelProvider = modelProvider;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder apiKey(String apiKey) {
+            this.apiKey = apiKey;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder apiBase(String apiBase) {
+            this.apiBase = apiBase;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder promptTemplateName(String promptTemplateName) {
+            this.promptTemplateName = promptTemplateName;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder promptTemplate(List<Map<String, String>> promptTemplate) {
+            this.promptTemplate = promptTemplate;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder maxIterations(int maxIterations) {
+            this.maxIterations = maxIterations;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder modelClientConfig(ModelClientConfig modelClientConfig) {
+            this.modelClientConfig = modelClientConfig;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder modelConfigObj(ModelRequestConfig modelConfigObj) {
+            this.modelConfigObj = modelConfigObj;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder sysOperationId(String sysOperationId) {
+            this.sysOperationId = sysOperationId;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder contextEngineConfig(ContextEngineConfig contextEngineConfig) {
+            this.contextEngineConfig = contextEngineConfig;
+            return this;
+        }
+
+        public ReActAgentConfigBuilder contextProcessors(List<Object> contextProcessors) {
+            this.contextProcessors = contextProcessors;
+            return this;
+        }
+
+        public ReActAgentConfig build() {
+            ReActAgentConfig config = new ReActAgentConfig();
+            config.memScopeId = memScopeId;
+            config.modelName = modelName;
+            config.modelProvider = modelProvider;
+            config.apiKey = apiKey;
+            config.apiBase = apiBase;
+            config.promptTemplateName = promptTemplateName;
+            config.promptTemplate = promptTemplate;
+            config.maxIterations = maxIterations;
+            config.modelClientConfig = modelClientConfig;
+            config.modelConfigObj = modelConfigObj;
+            config.sysOperationId = sysOperationId;
+            config.contextEngineConfig = contextEngineConfig;
+            config.contextProcessors = contextProcessors;
+            return config;
+        }
+    }
 }

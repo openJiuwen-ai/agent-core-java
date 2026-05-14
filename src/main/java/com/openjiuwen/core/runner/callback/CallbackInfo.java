@@ -67,6 +67,10 @@ public class CallbackInfo {
     /** Name of the callback for logging purposes. */
     private String callbackName;
 
+    public static CallbackInfoBuilder builder() {
+        return new CallbackInfoBuilder();
+    }
+
     /**
      * Get the callback name for logging/metrics purposes.
      *
@@ -77,5 +81,135 @@ public class CallbackInfo {
             return callbackName;
         }
         return callback != null ? callback.getClass().getSimpleName() : "unknown";
+    }
+
+    public Function<Map<String, Object>, Object> getCallback() {
+        return callback;
+    }
+
+    public void setCallback(Function<Map<String, Object>, Object> callback) {
+        this.callback = callback;
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public void setPriority(int priority) {
+        this.priority = priority;
+    }
+
+    public boolean isOnce() {
+        return once;
+    }
+
+    public void setOnce(boolean once) {
+        this.once = once;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getNamespace() {
+        return namespace;
+    }
+
+    public void setNamespace(String namespace) {
+        this.namespace = namespace;
+    }
+
+    public Set<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(Set<String> tags) {
+        this.tags = tags;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
+    public double getRetryDelay() {
+        return retryDelay;
+    }
+
+    public void setRetryDelay(double retryDelay) {
+        this.retryDelay = retryDelay;
+    }
+
+    public Double getTimeout() {
+        return timeout;
+    }
+
+    public void setTimeout(Double timeout) {
+        this.timeout = timeout;
+    }
+
+    public double getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(double createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getCallbackName() {
+        return callbackName;
+    }
+
+    public void setCallbackName(String callbackName) {
+        this.callbackName = callbackName;
+    }
+
+    public static final class CallbackInfoBuilder {
+        private Function<Map<String, Object>, Object> callback;
+        private int priority = 0;
+        private boolean once = false;
+        private boolean enabled = true;
+        private String namespace = "default";
+        private Set<String> tags = new HashSet<>();
+        private int maxRetries = 0;
+        private double retryDelay = 0.0;
+        private Double timeout;
+        private double createdAt = System.currentTimeMillis() / 1000.0;
+        private String callbackName;
+
+        public CallbackInfoBuilder callback(Function<Map<String, Object>, Object> callback) { this.callback = callback; return this; }
+        public CallbackInfoBuilder priority(int priority) { this.priority = priority; return this; }
+        public CallbackInfoBuilder once(boolean once) { this.once = once; return this; }
+        public CallbackInfoBuilder enabled(boolean enabled) { this.enabled = enabled; return this; }
+        public CallbackInfoBuilder namespace(String namespace) { this.namespace = namespace; return this; }
+        public CallbackInfoBuilder tags(Set<String> tags) { this.tags = tags; return this; }
+        public CallbackInfoBuilder maxRetries(int maxRetries) { this.maxRetries = maxRetries; return this; }
+        public CallbackInfoBuilder retryDelay(double retryDelay) { this.retryDelay = retryDelay; return this; }
+        public CallbackInfoBuilder timeout(Double timeout) { this.timeout = timeout; return this; }
+        public CallbackInfoBuilder createdAt(double createdAt) { this.createdAt = createdAt; return this; }
+        public CallbackInfoBuilder callbackName(String callbackName) { this.callbackName = callbackName; return this; }
+
+        public CallbackInfo build() {
+            CallbackInfo info = new CallbackInfo();
+            info.setCallback(callback);
+            info.setPriority(priority);
+            info.setOnce(once);
+            info.setEnabled(enabled);
+            info.setNamespace(namespace);
+            info.setTags(tags);
+            info.setMaxRetries(maxRetries);
+            info.setRetryDelay(retryDelay);
+            info.setTimeout(timeout);
+            info.setCreatedAt(createdAt);
+            info.setCallbackName(callbackName);
+            return info;
+        }
     }
 }

@@ -47,6 +47,10 @@ public class AssistantMessage extends BaseMessage {
     @JsonProperty("reasoning_content")
     private String reasoningContent;
 
+    public static AssistantMessageBuilder builder() {
+        return new AssistantMessageBuilder();
+    }
+
     // ==================== Constructors ====================
 
     /**
@@ -57,6 +61,84 @@ public class AssistantMessage extends BaseMessage {
     public AssistantMessage(String content) {
         super("assistant", content);
         this.finishReason = "null";
+    }
+
+    public AssistantMessage() {
+        super();
+        this.finishReason = "null";
+    }
+
+    public List<ToolCall> getToolCalls() {
+        return toolCalls;
+    }
+
+    public void setToolCalls(List<ToolCall> toolCalls) {
+        this.toolCalls = toolCalls;
+    }
+
+    public UsageMetadata getUsageMetadata() {
+        return usageMetadata;
+    }
+
+    public void setUsageMetadata(UsageMetadata usageMetadata) {
+        this.usageMetadata = usageMetadata;
+    }
+
+    public String getFinishReason() {
+        return finishReason;
+    }
+
+    public void setFinishReason(String finishReason) {
+        this.finishReason = finishReason;
+    }
+
+    public Object getParserContent() {
+        return parserContent;
+    }
+
+    public void setParserContent(Object parserContent) {
+        this.parserContent = parserContent;
+    }
+
+    public String getReasoningContent() {
+        return reasoningContent;
+    }
+
+    public void setReasoningContent(String reasoningContent) {
+        this.reasoningContent = reasoningContent;
+    }
+
+    public static final class AssistantMessageBuilder {
+        private String role;
+        private Object content;
+        private String name;
+        private List<ToolCall> toolCalls;
+        private UsageMetadata usageMetadata;
+        private String finishReason;
+        private Object parserContent;
+        private String reasoningContent;
+
+        public AssistantMessageBuilder role(String role) { this.role = role; return this; }
+        public AssistantMessageBuilder content(Object content) { this.content = content; return this; }
+        public AssistantMessageBuilder name(String name) { this.name = name; return this; }
+        public AssistantMessageBuilder toolCalls(List<ToolCall> toolCalls) { this.toolCalls = toolCalls; return this; }
+        public AssistantMessageBuilder usageMetadata(UsageMetadata usageMetadata) { this.usageMetadata = usageMetadata; return this; }
+        public AssistantMessageBuilder finishReason(String finishReason) { this.finishReason = finishReason; return this; }
+        public AssistantMessageBuilder parserContent(Object parserContent) { this.parserContent = parserContent; return this; }
+        public AssistantMessageBuilder reasoningContent(String reasoningContent) { this.reasoningContent = reasoningContent; return this; }
+
+        public AssistantMessage build() {
+            AssistantMessage message = new AssistantMessage();
+            message.setRole(role);
+            message.setContent(content);
+            message.setName(name);
+            message.setToolCalls(toolCalls);
+            message.setUsageMetadata(usageMetadata);
+            message.setFinishReason(finishReason);
+            message.setParserContent(parserContent);
+            message.setReasoningContent(reasoningContent);
+            return message;
+        }
     }
 
     @Override

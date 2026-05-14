@@ -1,8 +1,8 @@
 # Multi Workflow Agent Demo (Java)
 
-这个子目录补齐了与 Python 版 `examples/workflow_agent/multi_workflow_agent_demo` 对应的 Java 示例入口。
+这个子目录提供多工作流 agent 的推荐 Java 示例入口。
 
-Java 版没有额外复制 Python 中的 `workflow_event_handler.py` 和 `workflow_executor.py` 两个示例文件，因为这些职责已经由框架内置类承担：
+这里没有额外拆分独立的 event handler / executor 示例文件，因为这些职责已经由框架内置类承担：
 
 - `com.openjiuwen.core.application.workflow.WorkflowAgent`
 - `com.openjiuwen.core.application.workflow.WorkflowEventHandler`
@@ -11,7 +11,7 @@ Java 版没有额外复制 Python 中的 `workflow_event_handler.py` 和 `workfl
 
 ## 文件说明
 
-- `MultiWorkflowAgentDemo.java`: 推荐入口，对齐 Python 目录命名。
+- `MultiWorkflowAgentDemo.java`: 推荐入口。
 - `../WorkflowAgentExampleSupport.java`: 共享的多工作流示例实现。
 - `../../SharedExampleApiConfigLoader.java`: 读取 `examples/apiconfig.json` 中的大模型配置。
 
@@ -23,7 +23,7 @@ Java 版没有额外复制 Python 中的 `workflow_event_handler.py` 和 `workfl
 
 ## 运行方式
 
-从 `f:\openJiuwenTT\agent-core-java-myfork` 目录执行：
+以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录：
 
 ```powershell
 mvn -DskipTests compile

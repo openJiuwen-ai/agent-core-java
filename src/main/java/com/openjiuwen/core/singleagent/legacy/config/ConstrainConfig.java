@@ -44,6 +44,37 @@ public class ConstrainConfig {
         this.maxIteration = validatePositive(maxIteration);
     }
 
+    public int getReservedMaxChatRounds() {
+        return reservedMaxChatRounds;
+    }
+
+    public int getMaxIteration() {
+        return maxIteration;
+    }
+
+    public static ConstrainConfigBuilder builder() {
+        return new ConstrainConfigBuilder();
+    }
+
+    public static final class ConstrainConfigBuilder {
+        private Integer reservedMaxChatRounds;
+        private Integer maxIteration;
+
+        public ConstrainConfigBuilder reservedMaxChatRounds(Integer reservedMaxChatRounds) {
+            this.reservedMaxChatRounds = reservedMaxChatRounds;
+            return this;
+        }
+
+        public ConstrainConfigBuilder maxIteration(Integer maxIteration) {
+            this.maxIteration = maxIteration;
+            return this;
+        }
+
+        public ConstrainConfig build() {
+            return new ConstrainConfig(reservedMaxChatRounds, maxIteration);
+        }
+    }
+
     private static int validatePositive(int value) {
         if (value <= 0) {
             throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));

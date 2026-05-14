@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -26,11 +27,14 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.harness.security.PermissionInterruptException;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -85,6 +89,8 @@ public class AbilityManager implements ToolRegistry {
     /**
      * Remove an ability by name.
      *
+     * <p>这里不改成 Optional，因为这是对外兼容 API，现有调用方仍通过原始 null 返回值来判断“未找到”。
+     *
      * @param name ability name
      * @return removed ability, or null if not found
      */
@@ -129,6 +135,9 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get an ability Card by name.
+     *
+     * <p>这里不改成 Optional，因为这是跨多种能力类型的对外查询入口，当前用原始 Object 做桥接，
+     * 修改签名会扩大兼容性影响面。
      *
      * @param name ability name
      * @return ability card, or null
@@ -206,6 +215,12 @@ public class AbilityManager implements ToolRegistry {
 
     // ========== ToolRegistry interface ==========
 
+    /**
+     * Update the description of a registered tool card.
+     *
+     * @param toolName tool name
+     * @param description new tool description
+     */
     @Override
     public void setToolDescription(String toolName, String description) {
         ToolCard toolCard = tools.get(toolName);
@@ -236,7 +251,7 @@ public class AbilityManager implements ToolRegistry {
      * @param toolCall single tool call or list of tool calls
      * @param session  session instance
      * @param tag      optional tag
-     * @return list of (result, ToolMessage) tuples
+     * @return list of structured tool execution facts
      */
     public List<ToolExecutionEntry> execute(
             AgentCallbackContext ctx,
@@ -271,7 +286,14 @@ public class AbilityManager implements ToolRegistry {
                 if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
                     Object toolResult = inputs.getToolResult() != null ? inputs.getToolResult() : result.result();
                     ToolMessage toolMsg = inputs.getToolMsg() != null ? inputs.getToolMsg() : result.toolMessage();
-                    finalResults.add(new ToolExecutionEntry(toolResult, toolMsg));
+                    ToolCall effectiveToolCall = inputs.getToolCall() != null ? inputs.getToolCall() : result.toolCall();
+                    finalResults.add(new ToolExecutionEntry(
+                            effectiveToolCall,
+                            toolResult,
+                            toolMsg,
+                            result.classification(),
+                            result.errorMessage()
+                    ));
                 } else {
                     finalResults.add(result);
                 }
@@ -298,7 +320,13 @@ public class AbilityManager implements ToolRegistry {
                             .build();
                 }
 
-                finalResults.add(new ToolExecutionEntry(toolResult, toolMessage));
+                finalResults.add(new ToolExecutionEntry(
+                        singleToolCall,
+                        toolResult,
+                        toolMessage,
+                        classifyException(e),
+                        errorMsg
+                ));
             }
         }
 
@@ -351,32 +379,20 @@ public class AbilityManager implements ToolRegistry {
      */
     public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
         String toolName = toolCall.getName();
-
-        Map<String, Object> toolArgs;
-        try {
-            String args = toolCall.getArguments();
-            if (args != null && !args.isBlank()) {
-                toolArgs = MAPPER.readValue(args, new TypeReference<>() {});
-            } else {
-                toolArgs = Map.of();
-            }
-        } catch (Exception e) {
-            toolArgs = Map.of();
-        }
+        Map<String, Object> toolArgs = parseToolArguments(toolCall);
 
         Object result;
 
         if (tools.containsKey(toolName)) {
             ToolCard toolCard = tools.get(toolName);
             String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
-            Tool tool = getToolFromResourceMgr(toolId, tag);
-            if (tool == null) {
-                throw buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId);
-            }
+            Tool tool = getToolFromResourceMgr(toolId, tag)
+                    .orElseThrow(() -> buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId));
             try {
                 result = tool.invoke(toolArgs, Map.of());
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
+            } catch (PermissionInterruptException interruptException) {
+                throw interruptException;
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -396,7 +412,8 @@ public class AbilityManager implements ToolRegistry {
             AgentCard agentCard = agents.get(toolName);
             String agentId = agentCard.getId() != null ? agentCard.getId() : agentCard.getName();
             try {
-                result = Runner.runAgent(agentId, toolArgs, adaptSubtaskSession(session), null);
+                Object childSession = adaptChildAgentSession(session, toolCall, agentCard, toolArgs);
+                result = Runner.runAgent(agentId, toolArgs, childSession, null);
             } catch (Exception e) {
                 String errorMsg = "Agent execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -406,14 +423,13 @@ public class AbilityManager implements ToolRegistry {
             throw buildExecutionError(toolCall, "MCP tool execution not yet implemented: " + toolName);
         } else {
             // Fallback: try resource_mgr by name
-            Tool tool = getToolFromResourceMgr(toolName, tag);
-            if (tool == null) {
-                throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
-            }
+            Tool tool = getToolFromResourceMgr(toolName, tag)
+                    .orElseThrow(() -> buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName));
             try {
                 result = tool.invoke(toolArgs, Map.of());
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
+            } catch (PermissionInterruptException interruptException) {
+                throw interruptException;
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -427,7 +443,61 @@ public class AbilityManager implements ToolRegistry {
                 .toolCallId(toolCall.getId())
                 .build();
 
-        return new ToolExecutionEntry(result, toolMessage);
+        return new ToolExecutionEntry(toolCall, result, toolMessage, ToolExecutionClassification.SUCCESS, null);
+    }
+
+    private static Map<String, Object> parseToolArguments(ToolCall toolCall) {
+        String args = toolCall.getArguments();
+        if (args == null || args.isBlank()) {
+            return Map.of();
+        }
+
+        try {
+            Map<String, Object> parsedArgs = MAPPER.readValue(args, new TypeReference<>() {
+            });
+            return parsedArgs != null ? parsedArgs : Map.of();
+        } catch (JsonProcessingException e) {
+            throw buildExecutionError(toolCall, "Malformed tool arguments JSON: " + e.getMessage());
+        }
+    }
+
+    private static ToolExecutionClassification classifyException(Throwable throwable) {
+        if (throwable instanceof PermissionInterruptException) {
+            return ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE;
+        }
+        return findInterruptedException(throwable).isPresent()
+                ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
+                : ToolExecutionClassification.ERROR;
+    }
+
+    private static String summarizeForLog(Object result) {
+        if (result == null) {
+            return "null";
+        }
+        if (result instanceof Map<?, ?> resultMap) {
+            return "Map(keys=" + resultMap.keySet() + ")";
+        }
+        if (result instanceof Collection<?> collection) {
+            return result.getClass().getSimpleName() + "(size=" + collection.size() + ")";
+        }
+        if (result.getClass().isArray()) {
+            return result.getClass().getComponentType().getSimpleName() + "[](length=" + java.lang.reflect.Array.getLength(result) + ")";
+        }
+        if (result instanceof CharSequence text) {
+            return result.getClass().getSimpleName() + "(length=" + text.length() + ")";
+        }
+        return result.getClass().getSimpleName();
+    }
+
+    private static Optional<InterruptedException> findInterruptedException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException interruptedException) {
+                return Optional.of(interruptedException);
+            }
+            current = current.getCause();
+        }
+        return Optional.empty();
     }
 
     private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
@@ -461,10 +531,29 @@ public class AbilityManager implements ToolRegistry {
     /**
      * Result entry from tool execution.
      *
-     * @param result      the raw result
-     * @param toolMessage the tool message for LLM context
+     * @param toolCall       the effective tool call metadata
+     * @param result         the raw result
+     * @param toolMessage    the tool message for LLM context
+     * @param classification raw execution classification, interpreted later by ReActAgent
+     * @param errorMessage   optional execution error detail
      */
-    public record ToolExecutionEntry(Object result, ToolMessage toolMessage) {}
+    public record ToolExecutionEntry(
+            ToolCall toolCall,
+            Object result,
+            ToolMessage toolMessage,
+            ToolExecutionClassification classification,
+            String errorMessage
+    ) {
+    }
+
+    /**
+     * Classification of a single tool execution outcome.
+     */
+    public enum ToolExecutionClassification {
+        SUCCESS,
+        ERROR,
+        INTERRUPT_PENDING_CANDIDATE
+    }
 
     private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {
         if (toolInfoObj instanceof ToolInfo toolInfo) {
@@ -503,17 +592,44 @@ public class AbilityManager implements ToolRegistry {
         appendToolInfo(toolInfos, tool.getCard().toolInfo());
     }
 
-    private Tool getToolFromResourceMgr(String toolId, String tag) {
+    private Optional<Tool> getToolFromResourceMgr(String toolId, String tag) {
         Object toolObj = tag != null && !tag.isBlank()
                 ? Runner.resourceMgr().getTool(toolId, tag, TagMatchStrategy.ALL)
                 : Runner.resourceMgr().getTool(toolId);
-        return toolObj instanceof Tool tool ? tool : null;
+        return toolObj instanceof Tool tool ? Optional.of(tool) : Optional.empty();
     }
 
+    /**
+     * 这里不改成 Optional，因为 Runner 的工作流执行链路仍要求传入原始 session 对象或 null。
+     */
     private Object adaptSubtaskSession(Session session) {
         if (session instanceof AgentSessionApi) {
             return session;
         }
         return session != null ? session.getSessionId() : null;
+    }
+
+    private Object adaptChildAgentSession(Session session,
+                                          ToolCall toolCall,
+                                          AgentCard agentCard,
+                                          Map<String, Object> toolArgs) {
+        if (!(session instanceof AgentSessionApi agentSession)) {
+            return adaptSubtaskSession(session);
+        }
+        String parentSessionId = agentSession.getSessionId();
+        String childSessionId = parentSessionId != null && toolCall.getId() != null
+                ? parentSessionId + ":" + toolCall.getId()
+                : parentSessionId;
+        if (childSessionId != null && !childSessionId.isBlank()) {
+            toolArgs.put("conversation_id", childSessionId);
+        }
+
+        AgentSessionApi childSession = AgentSessionApi.create(
+                childSessionId,
+                agentSession.getEnvs(),
+                agentCard
+        );
+        childSession.getInner().state().setState(agentSession.getInner().state().getState());
+        return childSession;
     }
 }

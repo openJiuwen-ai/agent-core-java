@@ -1,10 +1,10 @@
 # Groups Java Examples
 
-这个目录对齐 Python 版 `examples/groups`，用于展示 Java 框架里的多 agent 分组协作示例。
+这个目录用于展示 Java 框架里的多 agent 分组协作示例。
 
 当前已提供：
 
-1. `hierarchical_group/`: 对齐 Python `examples/groups/hierarchical_group` 的 leader-worker 示例。
+1. `hierarchical_group/`: leader-worker 分组协作示例。
 
 ## 设计说明
 
@@ -16,7 +16,7 @@ Java 框架已经具备 `ControllerGroup` 和 `BaseGroupController` 这类分组
 2. 复用现有 `ControllerGroup`、`BaseGroupController` 和 `WorkflowAgent`。
 3. 在示例内部补一层最小 bridge，把 leader 的路由逻辑和 worker 的 workflow 执行串起来。
 
-这样做的目标是先提供一个能跑、能读、能对照 Python 的 Java 示例，而不是把 hierarchical group 直接提升为正式框架能力。
+这样做的目标是先提供一个能跑、能读、能展示 leader-worker 协作结构的 Java 示例，而不是把 hierarchical group 直接提升为正式框架能力。
 
 ## 运行方式
 

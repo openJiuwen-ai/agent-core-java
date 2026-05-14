@@ -19,4 +19,20 @@ import lombok.experimental.SuperBuilder;
 public class BaseMemoryUnit {
     private MemoryType memType;
     private String memId;
+
+    public MemoryType getMemType() {
+        return memType;
+    }
+
+    public void setMemType(MemoryType memType) {
+        this.memType = memType;
+    }
+
+    public String getMemId() {
+        return memId;
+    }
+
+    public void setMemId(String memId) {
+        this.memId = memId;
+    }
 }

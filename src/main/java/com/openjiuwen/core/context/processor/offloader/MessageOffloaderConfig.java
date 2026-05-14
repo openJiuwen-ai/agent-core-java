@@ -65,6 +65,25 @@ public class MessageOffloaderConfig {
     @Builder.Default
     private boolean keepLastRound = true;
 
+    public static MessageOffloaderConfigBuilder builder() {
+        return new MessageOffloaderConfigBuilder();
+    }
+
+    public Integer getMessagesThreshold() { return messagesThreshold; }
+    public void setMessagesThreshold(Integer messagesThreshold) { this.messagesThreshold = messagesThreshold; }
+    public int getTokensThreshold() { return tokensThreshold; }
+    public void setTokensThreshold(int tokensThreshold) { this.tokensThreshold = tokensThreshold; }
+    public int getLargeMessageThreshold() { return largeMessageThreshold; }
+    public void setLargeMessageThreshold(int largeMessageThreshold) { this.largeMessageThreshold = largeMessageThreshold; }
+    public List<String> getOffloadMessageType() { return offloadMessageType; }
+    public void setOffloadMessageType(List<String> offloadMessageType) { this.offloadMessageType = offloadMessageType; }
+    public int getTrimSize() { return trimSize; }
+    public void setTrimSize(int trimSize) { this.trimSize = trimSize; }
+    public Integer getMessagesToKeep() { return messagesToKeep; }
+    public void setMessagesToKeep(Integer messagesToKeep) { this.messagesToKeep = messagesToKeep; }
+    public boolean isKeepLastRound() { return keepLastRound; }
+    public void setKeepLastRound(boolean keepLastRound) { this.keepLastRound = keepLastRound; }
+
     /**
      * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
      */
@@ -83,6 +102,28 @@ public class MessageOffloaderConfig {
         }
         if (messagesToKeep != null && messagesToKeep <= 0) {
             throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+    }
+
+    public static final class MessageOffloaderConfigBuilder {
+        private Integer messagesThreshold;
+        private int tokensThreshold = 20000;
+        private int largeMessageThreshold = 1000;
+        private List<String> offloadMessageType = List.of("tool");
+        private int trimSize = 100;
+        private Integer messagesToKeep;
+        private boolean keepLastRound = true;
+
+        public MessageOffloaderConfigBuilder messagesThreshold(Integer messagesThreshold) { this.messagesThreshold = messagesThreshold; return this; }
+        public MessageOffloaderConfigBuilder tokensThreshold(int tokensThreshold) { this.tokensThreshold = tokensThreshold; return this; }
+        public MessageOffloaderConfigBuilder largeMessageThreshold(int largeMessageThreshold) { this.largeMessageThreshold = largeMessageThreshold; return this; }
+        public MessageOffloaderConfigBuilder offloadMessageType(List<String> offloadMessageType) { this.offloadMessageType = offloadMessageType; return this; }
+        public MessageOffloaderConfigBuilder trimSize(int trimSize) { this.trimSize = trimSize; return this; }
+        public MessageOffloaderConfigBuilder messagesToKeep(Integer messagesToKeep) { this.messagesToKeep = messagesToKeep; return this; }
+        public MessageOffloaderConfigBuilder keepLastRound(boolean keepLastRound) { this.keepLastRound = keepLastRound; return this; }
+
+        public MessageOffloaderConfig build() {
+            return new MessageOffloaderConfig(messagesThreshold, tokensThreshold, largeMessageThreshold, offloadMessageType, trimSize, messagesToKeep, keepLastRound);
         }
     }
 }

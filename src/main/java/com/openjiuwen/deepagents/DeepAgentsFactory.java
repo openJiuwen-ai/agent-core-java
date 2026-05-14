@@ -4,16 +4,20 @@
 
 package com.openjiuwen.deepagents;
 
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
+import com.openjiuwen.harness.HarnessFactory;
+
 /**
  * Factory for creating deep agent instances.
  *
  * <p>Mirrors Python's {@code factory} module in {@code openjiuwen.deepagents}.
  *
- * <p>This factory provides methods to create and configure deep agent instances
- * with various middleware and tool configurations.
- *
- * <p>Placeholder implementation - actual functionality to be implemented.
+ * <p>This package is retained only as a compatibility bridge. Python `0.1.12`
+ * moved active implementation ownership to {@code openjiuwen.harness}.
+ * New code should depend on {@link HarnessFactory} instead.
  */
+@Deprecated(forRemoval = false)
 public class DeepAgentsFactory {
 
     /**
@@ -28,9 +32,8 @@ public class DeepAgentsFactory {
      *
      * @return a new deep agent instance (placeholder)
      */
-    public Object createDeepAgent() {
-        // Placeholder implementation
-        throw new UnsupportedOperationException("DeepAgentsFactory.createDeepAgent() is not yet implemented");
+    public DeepAgent createDeepAgent() {
+        return HarnessFactory.createDeepAgent();
     }
 
     /**
@@ -39,8 +42,15 @@ public class DeepAgentsFactory {
      * @param config the configuration for the deep agent
      * @return a new deep agent instance (placeholder)
      */
-    public Object createDeepAgent(Object config) {
-        // Placeholder implementation
-        throw new UnsupportedOperationException("DeepAgentsFactory.createDeepAgent(Object) is not yet implemented");
+    public DeepAgent createDeepAgent(Object config) {
+        if (config == null) {
+            return HarnessFactory.createDeepAgent();
+        }
+        if (config instanceof DeepAgentConfig deepAgentConfig) {
+            return HarnessFactory.createDeepAgent(deepAgentConfig);
+        }
+        throw new IllegalArgumentException(
+                "DeepAgentsFactory compatibility bridge only accepts DeepAgentConfig; got "
+                        + config.getClass().getName());
     }
 }

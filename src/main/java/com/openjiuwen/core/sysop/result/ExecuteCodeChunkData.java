@@ -37,4 +37,72 @@ public class ExecuteCodeChunkData {
 
     /** Data for execution. */
     private Map<String, Object> metadata;
+
+    public static ExecuteCodeChunkDataBuilder builder() {
+        return new ExecuteCodeChunkDataBuilder();
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public int getChunkIndex() {
+        return chunkIndex;
+    }
+
+    public void setChunkIndex(int chunkIndex) {
+        this.chunkIndex = chunkIndex;
+    }
+
+    public Integer getExitCode() {
+        return exitCode;
+    }
+
+    public void setExitCode(Integer exitCode) {
+        this.exitCode = exitCode;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
+    public static final class ExecuteCodeChunkDataBuilder {
+        private String text = "";
+        private String type;
+        private int chunkIndex;
+        private Integer exitCode;
+        private Map<String, Object> metadata;
+
+        public ExecuteCodeChunkDataBuilder text(String text) { this.text = text; return this; }
+        public ExecuteCodeChunkDataBuilder type(String type) { this.type = type; return this; }
+        public ExecuteCodeChunkDataBuilder chunkIndex(int chunkIndex) { this.chunkIndex = chunkIndex; return this; }
+        public ExecuteCodeChunkDataBuilder exitCode(Integer exitCode) { this.exitCode = exitCode; return this; }
+        public ExecuteCodeChunkDataBuilder metadata(Map<String, Object> metadata) { this.metadata = metadata; return this; }
+
+        public ExecuteCodeChunkData build() {
+            ExecuteCodeChunkData data = new ExecuteCodeChunkData();
+            data.setText(text);
+            data.setType(type);
+            data.setChunkIndex(chunkIndex);
+            data.setExitCode(exitCode);
+            data.setMetadata(metadata);
+            return data;
+        }
+    }
 }

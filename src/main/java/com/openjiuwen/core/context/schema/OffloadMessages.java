@@ -54,6 +54,32 @@ public final class OffloadMessages {
 
         private Map<String, Object> metadata;
 
+        public OffloadUserMessage() {
+            super("user", "");
+        }
+
+        public void setOffloadType(String offloadType) {
+            this.offloadType = offloadType;
+        }
+
+        public void setOffloadHandle(String offloadHandle) {
+            this.offloadHandle = offloadHandle;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public String getOffloadType() {
+            return offloadType;
+        }
+
+        @Override
+        public String getOffloadHandle() {
+            return offloadHandle;
+        }
+
         @Override
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
@@ -81,6 +107,32 @@ public final class OffloadMessages {
         private String offloadHandle;
 
         private Map<String, Object> metadata;
+
+        public OffloadAssistantMessage() {
+            super("assistant", "");
+        }
+
+        public void setOffloadType(String offloadType) {
+            this.offloadType = offloadType;
+        }
+
+        public void setOffloadHandle(String offloadHandle) {
+            this.offloadHandle = offloadHandle;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public String getOffloadType() {
+            return offloadType;
+        }
+
+        @Override
+        public String getOffloadHandle() {
+            return offloadHandle;
+        }
 
         @Override
         public Map<String, Object> getMetadata() {
@@ -110,6 +162,32 @@ public final class OffloadMessages {
 
         private Map<String, Object> metadata;
 
+        public OffloadSystemMessage() {
+            super("system", "");
+        }
+
+        public void setOffloadType(String offloadType) {
+            this.offloadType = offloadType;
+        }
+
+        public void setOffloadHandle(String offloadHandle) {
+            this.offloadHandle = offloadHandle;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public String getOffloadType() {
+            return offloadType;
+        }
+
+        @Override
+        public String getOffloadHandle() {
+            return offloadHandle;
+        }
+
         @Override
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
@@ -137,6 +215,32 @@ public final class OffloadMessages {
         private String offloadHandle;
 
         private Map<String, Object> metadata;
+
+        public OffloadToolMessage() {
+            super("tool", "", "");
+        }
+
+        public void setOffloadType(String offloadType) {
+            this.offloadType = offloadType;
+        }
+
+        public void setOffloadHandle(String offloadHandle) {
+            this.offloadHandle = offloadHandle;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public String getOffloadType() {
+            return offloadType;
+        }
+
+        @Override
+        public String getOffloadHandle() {
+            return offloadHandle;
+        }
 
         @Override
         public Map<String, Object> getMetadata() {

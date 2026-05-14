@@ -71,6 +71,34 @@ public class ChainContext {
         return new ArrayList<>(results);
     }
 
+    public List<Object> getResults() {
+        return results;
+    }
+
+    public Object[] getInitialArgs() {
+        return initialArgs;
+    }
+
+    public Map<String, Object> getInitialKwargs() {
+        return initialKwargs;
+    }
+
+    public void setCompleted(boolean completed) {
+        this.completed = completed;
+    }
+
+    public void setRolledBack(boolean rolledBack) {
+        this.rolledBack = rolledBack;
+    }
+
+    public int getCurrentIndex() {
+        return currentIndex;
+    }
+
+    public void setCurrentIndex(int currentIndex) {
+        this.currentIndex = currentIndex;
+    }
+
     /**
      * Store metadata in the context.
      *

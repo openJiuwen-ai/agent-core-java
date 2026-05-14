@@ -4,7 +4,7 @@
 
 ## 简介
 
-**openJiuwen Core Java**本项目是 OpenJiuwen Core Python 版本的 Java 移植，是一款面向大模型应用的Java软件开发工具包，为运行在**openJiuwen**框架上的智能体提供高性能运行时。这款开发工具包不仅封装了Agent创建、工作流编排、大模型与工具调用等多层次、易上手的对外接口；还内置了支持异步IO、流式处理的高性能运行时，实现智能体的状态保存和中断接续；更配备了全链路观测等一系列智能体调试调优工具。**openJiuwen Core Java**开发工具包兼顾灵活性与稳定性，助力开发者高效构建稳定的大模型应用。
+**openJiuwen Core Java** 是 openJiuwen 面向 Java 生态的独立框架实现，是一款面向大模型应用的 Java 软件开发工具包，为运行在 **openJiuwen** 框架上的智能体提供高性能运行时。这款开发工具包不仅封装了 Agent 创建、工作流编排、大模型与工具调用等多层次、易上手的对外接口；还内置了支持异步 IO、流式处理的高性能运行时，实现智能体的状态保存和中断接续；更配备了全链路观测等一系列智能体调试调优工具。**openJiuwen Core Java** 开发工具包兼顾灵活性与稳定性，助力开发者高效构建稳定的大模型应用。
 
 ## 为什么选择openJiuwen Core Java?
 
@@ -67,6 +67,23 @@ assistant> 转账服务完成，记录的转账金额为 2000元。
 ```
 
 更多完整示例请查看[examples/workflow_agent](examples/workflow_agent/)目录。
+
+### 模型连接配置说明
+
+当你直接通过 `ModelClientConfig` 或 `BaseModelInfo` 组装模型连接参数时，可以使用 `httpVersion` / `http_version` 控制底层 `HttpClient` 的 HTTP 版本。
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider("OpenAI")
+        .apiKey("sk-test")
+        .apiBase("https://your-api-base.example/v1")
+        .httpVersion(ModelHttpVersion.HTTP_1_1)
+        .build();
+```
+
+- 默认不设置 `httpVersion`，保持 JDK `HttpClient` 的默认协商行为。
+- 当部分模型服务端只支持 HTTP/1.1 时，可显式设置为 `ModelHttpVersion.HTTP_1_1`。
+- 当前示例目录下的 `apiconfig.json` 模板还不读取 `http_version`，该配置项适用于代码方式构造 `ModelClientConfig` 或 `BaseModelInfo` 的场景。
 
 ## 架构设计
 
@@ -131,22 +148,25 @@ agent-core-java/
 ├── examples/                # 示例代码
 └── documents/               # 文档
     └── zh/                  # 中文文档
-        └── SUMMARY.md       # API文档索引
+        └── SUMMARY.md       # 开发指南与 API 文档导航
 ```
 
 ## 完整文档
 
-详细API文档请参考[documents/zh/SUMMARY.md](documents/zh/SUMMARY.md)。
+完整文档索引请参考 [documents/zh/SUMMARY.md](documents/zh/SUMMARY.md)。
 
-主要文档包括：
+文档入口分为两层：
 
-- [开发指南](documents/zh/2.开发指南/)
-  - [API文档](documents/zh/2.开发指南/API文档/)
-    - [应用层API](documents/zh/2.开发指南/API文档/com.openjiuwen.core/application.README.md)
-    - [控制器API](documents/zh/2.开发指南/API文档/com.openjiuwen.core/controller.README.md)
-    - [基础层API](documents/zh/2.开发指南/API文档/com.openjiuwen.core/foundation.README.md)
-    - [图引擎API](documents/zh/2.开发指南/API文档/com.openjiuwen.core/graph.README.md)
-    - [记忆系统API](documents/zh/2.开发指南/API文档/com.openjiuwen.core/memory.README.md)
+- [开发指南总入口](documents/zh/2.开发指南/README.md)：先按主题理解能力、阅读顺序和推荐接入路径。
+- [API文档](documents/zh/2.开发指南/API文档/README.md)：再按 `com.openjiuwen.core` 包结构查看模块 README、子包和类型页。
+
+建议先从开发指南进入，再按问题查看对应栏目：
+
+- [基础功能](documents/zh/2.开发指南/基础功能/README.md)：模型接入、提示词模板和工具系统。
+- [多智能体](documents/zh/2.开发指南/多智能体/README.md)：group 组织、协作模式与 agent 能力暴露。
+- [工作流](documents/zh/2.开发指南/工作流/README.md)：工作流图、组件体系与执行路径。
+- [高阶用法](documents/zh/2.开发指南/高阶用法/README.md)：检索、记忆、上下文、Session、Runner、Skills 等能力。
+- [API文档](documents/zh/2.开发指南/API文档/README.md)：应用层、控制器、foundation、graph、memory、session、workflow 等包索引。
 
 ## 参与贡献
 
