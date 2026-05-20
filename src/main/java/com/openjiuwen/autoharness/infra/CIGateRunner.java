@@ -28,7 +28,7 @@ public class CIGateRunner {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public static final String DEFAULT_CONFIG_RESOURCE = "/com/openjiuwen/auto_harness/resources/ci_gate.yaml";
+    public static final String DEFAULT_CONFIG_RESOURCE = "/com/openjiuwen/autoharness/resources/ci_gate.yaml";
     private static final Map<String, String> ACTION_ALIASES = Map.of("check", "lint");
     private static final Pattern MAKE_SEGMENT_PATTERN = Pattern.compile("(^|\\s)make\\s+");
 

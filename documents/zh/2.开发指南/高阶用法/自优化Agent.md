@@ -7,7 +7,7 @@ Java 版这里已经有一条可运行的“自优化 Agent”主路径，核心
 如果只看标题，容易把它理解成一个更大而全的训练框架。实际更合适的定位是：
 
 - Java 当前已经有一条可运行的 agent 自演化闭环。
-- 这条闭环围绕 `com.openjiuwen.agent_evolving.*` 构建。
+- 这条闭环围绕 `com.openjiuwen.agentevolving.*` 构建。
 - 仓库里也保留了较早的 `com.openjiuwen.dev_tools.tune.*` prompt tuning 路径，但它更多面向 legacy `BaseAgent` / `LLMCall`，不应混同为本页的当前主线。
 
 ## 当前能力状态
@@ -15,10 +15,10 @@ Java 版这里已经有一条可运行的“自优化 Agent”主路径，核心
 | 关注点 | Java 当前主路径 | 说明 |
 | --- | --- | --- |
 | 可优化 Agent | `ReActAgentEvolve` | 通过 `getOperators()` 暴露可调 operator |
-| 评估器 | `com.openjiuwen.agent_evolving.evaluator.DefaultEvaluator` | 用 LLM 判断预测与 label 是否一致 |
-| 优化器 | `com.openjiuwen.agent_evolving.optimizer.llm_call.InstructionOptimizer` | 依据 bad case 生成 textual gradient 并改 prompt |
+| 评估器 | `com.openjiuwen.agentevolving.evaluator.DefaultEvaluator` | 用 LLM 判断预测与 label 是否一致 |
+| 优化器 | `com.openjiuwen.agentevolving.optimizer.llm_call.InstructionOptimizer` | 依据 bad case 生成 textual gradient 并改 prompt |
 | 更新器 | `SingleDimUpdater` | 负责 bind targets、调用 optimizer、产出 `Updates` |
-| 训练器 | `com.openjiuwen.agent_evolving.trainer.Trainer` | 编排 forward / evaluate / update / validate / checkpoint |
+| 训练器 | `com.openjiuwen.agentevolving.trainer.Trainer` | 编排 forward / evaluate / update / validate / checkpoint |
 | checkpoint | `DefaultCheckpointManager` + `FileCheckpointStore` | 本地 JSON 保存与恢复 |
 | 示例入口 | `examples/agent_evolving` | 当前最可靠的真实运行入口 |
 
@@ -195,10 +195,10 @@ Java 这套 checkpoint 的内容重点是：
 - [生成和优化提示词](生成和优化提示词.md)
 - [示例：agent_evolving](../../../../examples/agent_evolving/README.md)
 - [源码：AgentEvolvingExampleSupport.java](../../../../examples/agent_evolving/AgentEvolvingExampleSupport.java)
-- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/trainer/Trainer.java)
-- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agent_evolving/evaluator/DefaultEvaluator.java)
-- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/optimizer/llm_call/InstructionOptimizer.java)
-- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agent_evolving/updater/SingleDimUpdater.java)
-- [源码：DefaultCheckpointManager.java](../../../../src/main/java/com/openjiuwen/agent_evolving/checkpointing/DefaultCheckpointManager.java)
-- [源码：FileCheckpointStore.java](../../../../src/main/java/com/openjiuwen/agent_evolving/checkpointing/FileCheckpointStore.java)
+- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agentevolving/trainer/Trainer.java)
+- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agentevolving/evaluator/DefaultEvaluator.java)
+- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agentevolving/optimizer/llm_call/InstructionOptimizer.java)
+- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agentevolving/updater/SingleDimUpdater.java)
+- [源码：DefaultCheckpointManager.java](../../../../src/main/java/com/openjiuwen/agentevolving/checkpointing/DefaultCheckpointManager.java)
+- [源码：FileCheckpointStore.java](../../../../src/main/java/com/openjiuwen/agentevolving/checkpointing/FileCheckpointStore.java)
 - [源码：旧 Trainer.java](../../../../src/main/java/com/openjiuwen/dev_tools/tune/trainer/Trainer.java)

@@ -47,7 +47,7 @@ import java.util.Set;
 public final class AutoHarnessFactory {
     private static final String PACKAGE_SKILLS_RESOURCE = "openjiuwen/auto_harness/skills";
     private static final String PACKAGE_PROMPTS_RESOURCE = "openjiuwen/auto_harness/prompts/";
-    private static final String CI_GATE_RESOURCE = "com/openjiuwen/auto_harness/resources/ci_gate.yaml";
+    private static final String CI_GATE_RESOURCE = "com/openjiuwen/autoharness/resources/ci_gate.yaml";
 
     private AutoHarnessFactory() {
     }

@@ -9,4 +9,4 @@ The current Java baseline aligns to the reusable training primitives behind the 
 
 Helper entry:
 
-- `com.openjiuwen.agent_evolving.AgentEvolvingExampleSupport#calculatorCaseLoader`
+- `com.openjiuwen.agentevolving.AgentEvolvingExampleSupport#calculatorCaseLoader`
