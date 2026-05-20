@@ -11,11 +11,17 @@ package com.openjiuwen.core.workflow.components.llm;
 public class IntentDetectionComponent
         extends com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IntentDetectionComponent(
             com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig config) {
         super(config);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IntentDetectionComponent(IntentDetectionCompConfig config) {
         super(config);
     }

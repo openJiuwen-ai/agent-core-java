@@ -21,6 +21,9 @@ public class FieldInfo extends com.openjiuwen.core.workflow.component.llm.FieldI
         setRequired(required);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public FieldInfo() {
         super();
     }

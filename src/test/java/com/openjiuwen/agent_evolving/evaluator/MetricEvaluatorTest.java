@@ -1,8 +1,8 @@
-package com.openjiuwen.agent_evolving.evaluator;
+package com.openjiuwen.agentevolving.evaluator;
 
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.evaluator.metrics.Metric;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.evaluator.metrics.Metric;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;

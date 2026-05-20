@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving;
+package com.openjiuwen.agentevolving;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,8 +12,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 
 import java.util.*;
 import java.util.regex.Matcher;

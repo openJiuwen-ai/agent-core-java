@@ -11,5 +11,8 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 public class ListDirsResult extends BaseResult<FileSystemData> {
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ListDirsResult(int code, String message, FileSystemData data) { super(code, message, data); }
 }

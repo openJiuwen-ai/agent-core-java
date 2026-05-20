@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.memory.manage.mem_model;
 
 import com.google.gson.JsonObject;
@@ -34,14 +36,15 @@ class SemanticStoreMilvusTest {
         when(client.createSchema()).thenCallRealMethod();
 
         SemanticStore semanticStore = new SemanticStore(
-                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "hybrid"));
+                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "vector",
+                        Map.of("vector_field", "embedding")));
 
         semanticStore.createCollection("memory_fragments", 3, Map.of());
 
         ArgumentCaptor<CreateCollectionReq> collectionCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
         verify(client).createCollection(collectionCaptor.capture());
         assertEquals("memory_fragments", collectionCaptor.getValue().getCollectionName());
-        assertNotNull(collectionCaptor.getValue().getCollectionSchema().getField("vector"));
+        assertNotNull(collectionCaptor.getValue().getCollectionSchema().getField("embedding"));
         assertNull(collectionCaptor.getValue().getCollectionSchema().getField("sparse_vector"));
         verify(client, never()).insert(any());
         verify(client, never()).flush(any(FlushReq.class));
@@ -54,7 +57,8 @@ class SemanticStoreMilvusTest {
         when(client.createSchema()).thenCallRealMethod();
 
         SemanticStore semanticStore = new SemanticStore(
-                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "hybrid"),
+                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "vector",
+                        Map.of("vector_field", "embedding")),
                 new FixedEmbedding());
 
         boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "memory_fragments");
@@ -64,7 +68,7 @@ class SemanticStoreMilvusTest {
         ArgumentCaptor<CreateCollectionReq> collectionCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
         verify(client).createCollection(collectionCaptor.capture());
         assertEquals("memory_fragments", collectionCaptor.getValue().getCollectionName());
-        assertNotNull(collectionCaptor.getValue().getCollectionSchema().getField("vector"));
+        assertNotNull(collectionCaptor.getValue().getCollectionSchema().getField("embedding"));
         assertNull(collectionCaptor.getValue().getCollectionSchema().getField("sparse_vector"));
 
         ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
@@ -74,7 +78,7 @@ class SemanticStoreMilvusTest {
         assertTrue(row.has("chunk_id"));
         assertTrue(row.has("doc_id"));
         assertTrue(row.has("text"));
-        assertTrue(row.has("vector"));
+        assertTrue(row.has("embedding"));
     }
 
     private static final class FixedEmbedding implements Embedding {
@@ -84,8 +88,8 @@ class SemanticStoreMilvusTest {
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize) {
-            return texts.stream().map(this::embedQuery).toList();
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
         }
 
         @Override

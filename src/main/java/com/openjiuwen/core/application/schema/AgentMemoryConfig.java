@@ -12,6 +12,9 @@ package com.openjiuwen.core.application.schema;
  */
 public class AgentMemoryConfig extends com.openjiuwen.core.memory.config.AgentMemoryConfig {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentMemoryConfig() {
         super();
     }

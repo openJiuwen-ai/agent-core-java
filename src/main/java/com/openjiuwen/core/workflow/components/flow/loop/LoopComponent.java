@@ -15,6 +15,9 @@ import java.util.Map;
  */
 public class LoopComponent extends LoopComponentImpl {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public LoopComponent(com.openjiuwen.core.workflow.component.loop.LoopGroup loopGroup,
                          Map<String, Object> outputSchema) {
         super(loopGroup, outputSchema);

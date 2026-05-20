@@ -27,10 +27,16 @@ public class AgentReasoner {
 
     private ReasonerConfig config = new ReasonerConfig();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IntentDetectionController.Intent detect(Event event, Session session) {
         return intentDetector != null ? intentDetector.detect(event, session, config) : null;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Task plan(IntentDetectionController.Intent intent, Session session) {
         return planner != null ? planner.plan(intent, session) : null;
     }

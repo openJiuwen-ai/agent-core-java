@@ -37,6 +37,7 @@ import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -45,10 +46,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 class ReActAgentInterruptRegressionTest {
 
@@ -141,6 +145,44 @@ class ReActAgentInterruptRegressionTest {
         assertEquals("interrupt-session", resumedSession.getState("tool_session_id"));
     }
 
+    @Test
+    void streamShouldYieldAssistantDeltaBeforeFinalAnswer() {
+        ReActAgent agent = newAgent("streaming-regression-agent");
+        Model model = Mockito.mock(Model.class);
+        try {
+            when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenAnswer(invocation -> List.of(
+                            AssistantMessageChunk.builder().content("delta:stream progressively").build(),
+                            AssistantMessageChunk.builder().content("FINAL:stream progressively").build()
+                    ).iterator());
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+        agent.setLlm(model);
+        AgentSessionApi session = AgentSessionApi.create("streaming-session", null, agent.getCard());
+
+        Iterator<Object> iterator = agent.stream(
+                Map.of("query", "stream progressively", "conversation_id", "streaming-session"),
+                session,
+                List.of(StreamMode.OUTPUT)
+        );
+        List<Object> firstChunks = takeChunks(iterator, 2);
+
+        assertThat(firstChunks).isNotEmpty();
+        assertThat(firstChunks.get(0)).isInstanceOf(OutputSchema.class);
+        OutputSchema firstChunk = (OutputSchema) firstChunks.get(0);
+        assertThat(firstChunk.getType()).isEqualTo("answer");
+        assertThat(firstChunk.getPayload()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> firstPayload = (Map<String, Object>) firstChunk.getPayload();
+        assertThat(firstPayload).containsEntry("delta", "delta:stream progressively");
+
+        List<Object> allChunks = new ArrayList<Object>(firstChunks);
+        iterator.forEachRemaining(allChunks::add);
+        String finalOutput = extractFinalOutput(allChunks);
+        assertThat(finalOutput).contains("FINAL:stream progressively");
+    }
+
     private ReActAgent newAgent(String agentId) {
         ReActAgent agent = new ReActAgent(AgentCard.builder()
                 .id(agentId)
@@ -201,6 +243,14 @@ class ReActAgentInterruptRegressionTest {
     private List<Object> collect(Iterator<Object> iterator) {
         List<Object> items = new ArrayList<Object>();
         iterator.forEachRemaining(items::add);
+        return items;
+    }
+
+    private List<Object> takeChunks(Iterator<Object> iterator, int maxItems) {
+        List<Object> items = new ArrayList<Object>();
+        for (int i = 0; i < maxItems && iterator.hasNext(); i++) {
+            items.add(iterator.next());
+        }
         return items;
     }
 
@@ -316,7 +366,32 @@ class ReActAgentInterruptRegressionTest {
                                                       String model, Integer maxTokens, String stop,
                                                       BaseOutputParser outputParser, Float timeout,
                                                       Map<String, Object> kwargs) {
-            return List.<AssistantMessageChunk>of().iterator();
+            List<BaseMessage> messageList = toMessages(messages);
+            String lastToolContent = findLastContent(messageList, "tool");
+            if (lastToolContent == null) {
+                String userContent = findLastContent(messageList, "user");
+                return List.of(
+                        AssistantMessageChunk.builder()
+                                .content("delta:" + userContent)
+                                .build(),
+                        AssistantMessageChunk.builder()
+                                .content("")
+                                .toolCalls(List.of(ToolCall.builder()
+                                        .id("ask-user-call")
+                                        .name("ask_user")
+                                        .arguments("{\"question\":\"Please provide your name\"}")
+                                        .build()))
+                                .build()
+                ).iterator();
+            }
+            return List.of(
+                    AssistantMessageChunk.builder()
+                            .content("delta:" + lastToolContent)
+                            .build(),
+                    AssistantMessageChunk.builder()
+                            .content("FINAL:" + lastToolContent)
+                            .build()
+            ).iterator();
         }
 
         @Override

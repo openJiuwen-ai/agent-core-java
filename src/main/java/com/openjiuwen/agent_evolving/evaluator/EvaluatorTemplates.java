@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator;
+package com.openjiuwen.agentevolving.evaluator;
 
 /**
  * Evaluation prompt templates for LLM-as-judge evaluation.

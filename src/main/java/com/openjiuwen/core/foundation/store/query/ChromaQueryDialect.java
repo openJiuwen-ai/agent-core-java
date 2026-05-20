@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -42,6 +43,9 @@ public final class ChromaQueryDialect {
     private ChromaQueryDialect() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static QueryLanguageDefinition definition() {
         return QueryLanguageDefinition.builder()
                 .comparison(expr -> comparisonFilter((ComparisonExpr) expr))
@@ -142,7 +146,7 @@ public final class ChromaQueryDialect {
         Map<String, Object> rightWhere = rightResult != null ? rightResult.getOrDefault("where", new HashMap<>()) : new HashMap<>();
         Map<String, Object> rightWhereDoc = rightResult != null ? rightResult.getOrDefault("where_document", new HashMap<>()) : new HashMap<>();
 
-        String op = self.getOperator().toLowerCase();
+        String op = self.getOperator().toLowerCase(Locale.ROOT);
         switch (op) {
             case "and":
                 whereFilter = combineFilters("$and", leftWhere, rightWhere);

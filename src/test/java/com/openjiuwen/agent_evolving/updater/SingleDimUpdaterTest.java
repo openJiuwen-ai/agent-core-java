@@ -1,9 +1,9 @@
-package com.openjiuwen.agent_evolving.updater;
+package com.openjiuwen.agentevolving.updater;
 
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.optimizer.BaseOptimizer;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.Updates;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;

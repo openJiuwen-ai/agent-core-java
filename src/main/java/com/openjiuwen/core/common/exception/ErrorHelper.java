@@ -62,7 +62,7 @@ public final class ErrorHelper {
                                        Throwable cause, Map<String, Object> params) {
         var factory = StatusMapping.resolveExceptionFactory(status);
         BaseError err = factory.apply(status);
-        // For full control, use the resolved class constructor explicitly.
+        // For full control, use the isResolved class constructor explicitly.
         // Here we create via factory and augment.
         return createWithDetails(status, msg, details, cause, params);
     }

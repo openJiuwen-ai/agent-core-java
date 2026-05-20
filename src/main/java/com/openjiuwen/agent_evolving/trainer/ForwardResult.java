@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.trainer;
+package com.openjiuwen.agentevolving.trainer;
 
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 
 import java.util.List;
 

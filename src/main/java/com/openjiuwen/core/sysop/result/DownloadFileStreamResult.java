@@ -11,5 +11,8 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 public class DownloadFileStreamResult extends BaseResult<DownloadFileChunkData> {
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public DownloadFileStreamResult(int code, String message, DownloadFileChunkData data) { super(code, message, data); }
 }

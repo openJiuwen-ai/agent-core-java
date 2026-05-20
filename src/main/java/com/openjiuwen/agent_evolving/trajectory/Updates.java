@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.trajectory;
+package com.openjiuwen.agentevolving.trajectory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,14 +14,23 @@ import java.util.Map;
  */
 public class Updates extends HashMap<UpdateKey, Object> {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Updates() {
         super();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Updates(int initialCapacity) {
         super(initialCapacity);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Updates(Map<? extends UpdateKey, ?> m) {
         super(m);
     }

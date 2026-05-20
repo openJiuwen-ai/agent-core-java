@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval;
 
 import com.google.gson.JsonObject;
@@ -76,8 +78,8 @@ class MilvusKnowledgeBaseTest {
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize) {
-            return texts.stream().map(this::embedQuery).toList();
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
         }
 
         @Override

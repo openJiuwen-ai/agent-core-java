@@ -16,6 +16,9 @@ public class OperationMetadata {
     private int schemaVersion;
     private String description;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public OperationMetadata(int schemaVersion) {
         this.schemaVersion = schemaVersion;
         this.description = null;

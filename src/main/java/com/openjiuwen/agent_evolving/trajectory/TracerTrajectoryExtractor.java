@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.trajectory;
+package com.openjiuwen.agentevolving.trajectory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -154,13 +154,13 @@ public class TracerTrajectoryExtractor {
                 new LinkedHashMap<>()
         );
         String operatorId = getOperatorId(span, baseMeta);
-        String nodeId = getStringFromMap(baseMeta, "node_id", "component_id");
+        String nodeId = getStringFromMap(baseMeta, new String[]{"node_id", "component_id"});
 
         TrajectoryStep step = TrajectoryStep.builder()
                 .kind(classifySpanKind(span))
                 .operatorId(operatorId)
-                .agentId(getStringFromMap(baseMeta, "agent_id"))
-                .role(getStringFromMap(baseMeta, "role"))
+                .agentId(getStringFromMap(baseMeta, new String[]{"agent_id"}))
+                .role(getStringFromMap(baseMeta, new String[]{"role"}))
                 .nodeId(nodeId)
                 .inputs(extractInputs(span))
                 .outputs(extractOutputs(span))
@@ -227,7 +227,7 @@ public class TracerTrajectoryExtractor {
         return firstNonBlank(
                 getAttribute(span, List.of("operatorId", "operator_id"), String.class, null),
                 getAttribute(span, List.of("llmCallId", "llm_call_id"), String.class, null),
-                getStringFromMap(meta, "operator_id"),
+                getStringFromMap(meta, new String[]{"operator_id"}),
                 getAttribute(span, List.of("name"), String.class, null)
         );
     }
@@ -356,7 +356,7 @@ public class TracerTrajectoryExtractor {
         throw new NoSuchFieldException(fieldName);
     }
 
-    private String getStringFromMap(Map<String, Object> map, String... keys) {
+    private String getStringFromMap(Map<String, Object> map, String[] keys) {
         if (map == null) {
             return null;
         }

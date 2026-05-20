@@ -493,7 +493,9 @@ public class QuestionerContextRegressionTest {
             StringBuilder json = new StringBuilder("{");
             boolean first = true;
             for (Map.Entry<String, String> entry : fields.entrySet()) {
-                if (!first) json.append(", ");
+                if (!first) {
+                    json.append(", ");
+                }
                 json.append("\"").append(entry.getKey()).append("\": \"").append(entry.getValue()).append("\"");
                 first = false;
             }

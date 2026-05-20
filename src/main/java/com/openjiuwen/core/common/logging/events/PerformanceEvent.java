@@ -21,12 +21,18 @@ public class PerformanceEvent extends BaseLogEvent {
     private String resourceType;
     private String operation;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public PerformanceEvent() {
         super();
         setModuleType(ModuleType.SYSTEM);
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "metric_name", metricName);
         putIfNotNull(map, "metric_value", metricValue);

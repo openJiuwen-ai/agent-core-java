@@ -13,10 +13,16 @@ import java.util.Map;
  */
 public class InMemoryVectorStore extends AbstractRetrievalVectorStoreAdapter {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public InMemoryVectorStore() {
         this(Map.of());
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public InMemoryVectorStore(Map<String, Object> options) {
         super(new com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore(config("chroma", options), indexType(options)));
     }

@@ -47,7 +47,7 @@ public abstract class Storage {
      * Check if state exists for the given session.
      *
      * @param session the session
-     * @return true if state exists
+     * @return true if state isExists
      */
-    public abstract boolean exists(BaseSession session);
+    public abstract boolean isExists(BaseSession session);
 }

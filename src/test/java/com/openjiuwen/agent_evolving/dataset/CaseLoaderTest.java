@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.dataset;
+package com.openjiuwen.agentevolving.dataset;
 
 import org.junit.jupiter.api.Test;
 

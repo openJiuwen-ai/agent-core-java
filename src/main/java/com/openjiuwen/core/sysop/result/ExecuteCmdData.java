@@ -37,4 +37,7 @@ public class ExecuteCmdData {
     /** Standard error stream. */
     @Builder.Default
     private String stderr = "";
+
+    /** Effective shell type used to run the command. */
+    private String shellType;
 }

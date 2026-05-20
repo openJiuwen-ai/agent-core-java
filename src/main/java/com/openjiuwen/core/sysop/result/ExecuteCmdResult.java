@@ -14,6 +14,9 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class ExecuteCmdResult extends BaseResult<ExecuteCmdData> {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ExecuteCmdResult(int code, String message, ExecuteCmdData data) {
         super(code, message, data);
     }

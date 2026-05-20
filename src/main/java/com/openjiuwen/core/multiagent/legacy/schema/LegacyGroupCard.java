@@ -7,11 +7,9 @@ package com.openjiuwen.core.multiagent.legacy.schema;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,16 +22,13 @@ import java.util.List;
  * @deprecated Use {@link com.openjiuwen.core.multiagent.schema.GroupCard}.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @Deprecated
 public class LegacyGroupCard extends BaseCard {
 
-    @Builder.Default
     private List<AgentCard> agentCard = new ArrayList<>();
 
-    @Builder.Default
     private String topic = "";
 }

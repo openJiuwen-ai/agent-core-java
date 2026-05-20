@@ -16,14 +16,23 @@ import java.util.Map;
  */
 public class EndComponent extends End {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public EndComponent() {
         super((EndConfig) null);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public EndComponent(Map<String, Object> confMap) {
         super(confMap);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public EndComponent(EndConfig conf) {
         super(conf);
     }

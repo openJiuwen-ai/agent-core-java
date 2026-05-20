@@ -81,8 +81,12 @@ public final class GraphStoreFactory {
             }
             try {
                 var method = backendCls.getMethod("fromConfig", GraphConfig.class);
-                return (GraphStore) method.invoke(null, config);
-            } catch (Exception e) {
+                Object result = method.invoke(null, config);
+                if (result instanceof GraphStore graphStore) {
+                    return graphStore;
+                }
+                throw new IllegalStateException("fromConfig did not return a GraphStore for backend: " + name);
+            } catch (ReflectiveOperationException | SecurityException e) {
                 throw new RuntimeException("Failed to create GraphStore from config for backend: " + name, e);
             }
         } finally {

@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.trajectory;
+package com.openjiuwen.agentevolving.trajectory;
 
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.TraceWorkflowSpan;

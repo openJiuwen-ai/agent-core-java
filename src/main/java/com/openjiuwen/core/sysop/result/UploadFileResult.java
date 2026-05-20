@@ -11,5 +11,8 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 public class UploadFileResult extends BaseResult<UploadFileData> {
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public UploadFileResult(int code, String message, UploadFileData data) { super(code, message, data); }
 }

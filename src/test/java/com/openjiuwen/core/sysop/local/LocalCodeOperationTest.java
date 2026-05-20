@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -46,23 +48,30 @@ class LocalCodeOperationTest {
 
     private static boolean isNodeAvailable() {
         String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) return false;
+        if (pathEnv == null) {
+            return false;
+        }
         String nodeExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "node.exe" : "node";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, nodeExe);
-            if (f.exists() && f.isFile() && f.canExecute())
+            if (f.exists() && f.isFile() && f.canExecute()) {
                 return true;
+            }
         }
         return false;
     }
 
     private static boolean isPythonAvailable() {
         String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) return false;
+        if (pathEnv == null) {
+            return false;
+        }
         String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute()) return true;
+            if (f.exists() && f.isFile() && f.canExecute()) {
+                return true;
+            }
         }
         return false;
     }

@@ -1,3 +1,6 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 /**
  * Tools package - Provides tool implementations for deep agents.
  *
@@ -7,9 +10,6 @@
  * for various operations such as external API calls, data processing, and more.
  *
  * <p>Placeholder package - actual implementations to be added.
- */
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.deepagents.tools;

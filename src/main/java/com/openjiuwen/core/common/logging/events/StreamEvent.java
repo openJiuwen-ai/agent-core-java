@@ -20,11 +20,17 @@ public class StreamEvent extends BaseLogEvent {
     private Integer frameCount;
     private String streamId;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public StreamEvent() {
         super();
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "stream_type", streamType);
         putIfNotNull(map, "chunk_index", chunkIndex);

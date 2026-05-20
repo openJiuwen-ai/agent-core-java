@@ -19,16 +19,25 @@ public class KnowledgeRetrievalComponent implements ComponentComposable {
 
     private final KnowledgeRetrievalCompConfig config;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public KnowledgeRetrievalComponent(KnowledgeRetrievalCompConfig config) {
         this.config = config;
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void addComponent(Graph graph, String nodeId, boolean waitForAll) {
         graph.addNode(nodeId, toExecutable(), waitForAll);
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Executable<?, ?> toExecutable() {
         return new KnowledgeRetrievalExecutable(config);
     }

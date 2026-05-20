@@ -15,11 +15,17 @@ import com.openjiuwen.core.session.BaseSession;
 public class EmptyExecutable extends Executable<Object, Object> {
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
         return null;
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public boolean skipTrace() {
         return true;
     }

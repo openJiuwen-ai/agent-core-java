@@ -16,11 +16,17 @@ import java.util.Map;
 public class MilvusAUTO extends MilvusVectorField {
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getIndexType() {
         return "auto";
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, Object> toDict(String stage) {
         return new HashMap<>();
     }

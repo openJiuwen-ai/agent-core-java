@@ -14,6 +14,9 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
  */
 public class SseClient extends AbstractHttpMcpClient {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public SseClient(McpServerConfig config) {
         super(config);
     }

@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator.metrics;
+package com.openjiuwen.agentevolving.evaluator.metrics;
 
 import java.util.ArrayList;
 import java.util.List;

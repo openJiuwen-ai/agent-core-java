@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.sysop;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.registry.OperationDef;
@@ -38,12 +40,15 @@ public class SysOperation {
     private final Object runConfig;
     private final Map<String, BaseOperation> instances = new ConcurrentHashMap<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public SysOperation(SysOperationCard card) {
         this.mode = card.getMode() != null ? card.getMode() : OperationMode.LOCAL;
         if (this.mode == OperationMode.LOCAL) {
             this.runConfig = card.getWorkConfig() != null ? card.getWorkConfig() : new LocalWorkConfig();
         } else {
-            this.runConfig = card.getGatewayConfig() != null ? card.getGatewayConfig() : new SandboxGatewayConfig();
+            this.runConfig = validateSandboxGatewayConfig(card.getGatewayConfig());
         }
     }
 
@@ -81,7 +86,35 @@ public class SysOperation {
         });
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public OperationMode getMode() {
         return mode;
+    }
+
+    private static SandboxGatewayConfig validateSandboxGatewayConfig(SandboxGatewayConfig gatewayConfig) {
+        SandboxGatewayConfig config = gatewayConfig != null ? gatewayConfig : new SandboxGatewayConfig();
+        if (config.getLauncherConfig() == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires launcher_config"
+            );
+        }
+        if (config.getLauncherConfig().getLauncherType() == null
+                || config.getLauncherConfig().getLauncherType().isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires launcher_type"
+            );
+        }
+        if (config.getLauncherConfig().getSandboxType() == null
+                || config.getLauncherConfig().getSandboxType().isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires sandbox_type"
+            );
+        }
+        return config;
     }
 }

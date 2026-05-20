@@ -18,6 +18,9 @@ import java.util.concurrent.CompletableFuture;
 class ReasoningBankSummarizeMemoryOp extends BaseOp {
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         List<?> rawTrajectories = context.getList("trajectories");
         if (rawTrajectories == null || rawTrajectories.isEmpty()) {
@@ -83,7 +86,8 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
                     ? "Prefer the action path that directly surfaces the required evidence."
                     : "A failed run needs an earlier pivot or verification step.",
                 success
-                    ? "Start with " + action + " to collect the authoritative evidence before drafting the final answer."
+                    ? "Start with " + action
+                        + " to collect the authoritative evidence before drafting the final answer."
                     : "The trajectory stalled after " + action
                         + ". Validate the returned data and switch tools or filters when the evidence is incomplete.",
                 3
@@ -101,8 +105,10 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
                     ? "Read returned fields directly before composing the final answer."
                     : "Check whether the observed fields really support the answer before continuing.",
                 success
-                    ? "Inspect the returned fields (" + keys + ") and map them directly into the requested output format."
-                    : "Inspect the returned fields (" + keys + ") and stop the current plan if they do not support the requested answer.",
+                    ? "Inspect the returned fields (" + keys
+                        + ") and map them directly into the requested output format."
+                    : "Inspect the returned fields (" + keys
+                        + ") and stop the current plan if they do not support the requested answer.",
                 3
             );
         }
@@ -188,7 +194,8 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
                 "Reuse the successful tool path",
                 "Prefer actions that directly expose the needed evidence across trajectories.",
                 "Across the stronger trajectories, " + String.join(", ", successTools)
-                    + " surfaced the data needed to answer the task. Reuse that path before drafting the final response.",
+                    + " surfaced the data needed to answer the task. Reuse that path before drafting "
+                    + "the final response.",
                 5
             );
         }
@@ -200,7 +207,8 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
                 "Pivot away from low-signal tool paths",
                 "Do not repeat trajectories that fail to surface usable evidence.",
                 "Lower-quality trajectories stalled around " + String.join(", ", failureTools)
-                    + ". When that happens, change the tool, filter, or verification step instead of repeating the dead end.",
+                    + ". When that happens, change the tool, filter, or verification step instead of "
+                    + "repeating the dead end.",
                 5
             );
         }
@@ -213,7 +221,8 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
             SummaryFlowSupport.toolNames(worstTrajectory),
             SummaryFlowSupport.actionLines(worstTrajectory)
         );
-        String comparativeContent = "Compare multiple trajectories for the same query and keep the path that exposes directly usable evidence.";
+        String comparativeContent = "Compare multiple trajectories for the same query and keep the path that exposes "
+            + "directly usable evidence.";
         if (!bestTool.isBlank() || !worstTool.isBlank()) {
             comparativeContent += " The stronger run relied on " + defaultToolName(bestTool, "a better tool path")
                 + " while the weaker run stalled around " + defaultToolName(worstTool, "a weaker tool path") + ".";

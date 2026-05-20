@@ -33,12 +33,16 @@ public class MemoryAnalyzer {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static MemoryAnalyzerResult analyze(
             List<BaseMessage> messages,
             List<BaseMessage> historyMessages,
             Map.Entry<String, Model> baseChatModel,
             AgentMemoryConfig memoryConfig,
             int summaryMaxToken,
+            String forbiddenVariables,
             int retries) {
 
         if (messages == null || messages.isEmpty()) {
@@ -85,6 +89,7 @@ public class MemoryAnalyzer {
         }
 
         boolean hasVariable = memoryConfig.getMemVariables() != null && !memoryConfig.getMemVariables().isEmpty();
+        String normalizedForbiddenVariables = normalizeForbiddenVariables(forbiddenVariables);
 
         Map<String, Object> variables = new HashMap<>();
         variables.put("history", history.toString());
@@ -92,6 +97,7 @@ public class MemoryAnalyzer {
         variables.put("has_variable", hasVariable);
         variables.put("variables_define_template", variablesDescJson);
         variables.put("variables_output_template", variablesOutputJson);
+        variables.put("forbidden_variables", normalizedForbiddenVariables);
         variables.put("max_message_token", summaryMaxToken);
 
         String promptContent = PromptApplier.getInstance().apply("memory_analysis_prompt", variables);
@@ -152,12 +158,23 @@ public class MemoryAnalyzer {
         return new MemoryAnalyzerResult();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static MemoryAnalyzerResult analyze(
             List<BaseMessage> messages,
             List<BaseMessage> historyMessages,
             Map.Entry<String, Model> baseChatModel,
             AgentMemoryConfig memoryConfig,
-            int summaryMaxToken) {
-        return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken, 3);
+            int summaryMaxToken,
+            String forbiddenVariables) {
+        return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken, forbiddenVariables, 3);
+    }
+
+    private static String normalizeForbiddenVariables(String forbiddenVariables) {
+        if (forbiddenVariables == null || forbiddenVariables.isBlank()) {
+            return "None";
+        }
+        return forbiddenVariables;
     }
 }

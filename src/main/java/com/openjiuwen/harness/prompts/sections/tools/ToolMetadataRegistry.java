@@ -22,6 +22,51 @@ public final class ToolMetadataRegistry {
 
     static {
         registerToolProvider(new AskUserMetadataProvider());
+        registerToolProvider(new BashMetadataProvider());
+        registerToolProvider(new PowerShellMetadataProvider());
+        registerToolProvider(new CodeMetadataProvider());
+        registerToolProvider(new CronMetadataProvider());
+        registerToolProvider(new ReadFileMetadataProvider());
+        registerToolProvider(new WriteFileMetadataProvider());
+        registerToolProvider(new EditFileMetadataProvider());
+        registerToolProvider(new GlobMetadataProvider());
+        registerToolProvider(new ListDirMetadataProvider());
+        registerToolProvider(new GrepMetadataProvider());
+        registerToolProvider(new DiscoveryMetadataProviders.ListSkillMetadataProvider());
+        registerToolProvider(new DiscoveryMetadataProviders.SearchToolsMetadataProvider());
+        registerToolProvider(new DiscoveryMetadataProviders.LoadToolsMetadataProvider());
+        registerToolProvider(new DiscoveryMetadataProviders.SkillToolMetadataProvider());
+        registerToolProvider(new AudioMetadataProviders.AudioTranscriptionMetadataProvider());
+        registerToolProvider(new AudioMetadataProviders.AudioQuestionAnsweringMetadataProvider());
+        registerToolProvider(new AudioMetadataProviders.AudioMetadataMetadataProvider());
+        registerToolProvider(new VisionMetadataProviders.ImageOCRMetadataProvider());
+        registerToolProvider(new VisionMetadataProviders.VisualQuestionAnsweringMetadataProvider());
+        registerToolProvider(new VisionMetadataProviders.VideoUnderstandingMetadataProvider());
+        registerToolProvider(new LspToolMetadataProvider());
+        registerToolProvider(new WebMetadataProviders.FreeSearchMetadataProvider());
+        registerToolProvider(new WebMetadataProviders.PaidSearchMetadataProvider());
+        registerToolProvider(new WebMetadataProviders.FetchWebpageMetadataProvider());
+        registerToolProvider(new McpMetadataProviders.ListMcpResourcesMetadataProvider());
+        registerToolProvider(new McpMetadataProviders.ReadMcpResourceMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.MemorySearchMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.MemoryGetMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.WriteMemoryMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.EditMemoryMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.ReadMemoryMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.CodingMemoryReadMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.CodingMemoryWriteMetadataProvider());
+        registerToolProvider(new MemoryMetadataProviders.CodingMemoryEditMetadataProvider());
+        registerToolProvider(new SwitchModeMetadataProvider());
+        registerToolProvider(new EnterPlanModeMetadataProvider());
+        registerToolProvider(new ExitPlanModeMetadataProvider());
+        registerToolProvider(new TaskMetadataProvider());
+        registerToolProvider(new SessionsListMetadataProvider());
+        registerToolProvider(new SessionsSpawnMetadataProvider());
+        registerToolProvider(new SessionsCancelMetadataProvider());
+        registerToolProvider(new TodoCreateMetadataProvider());
+        registerToolProvider(new TodoListMetadataProvider());
+        registerToolProvider(new TodoModifyMetadataProvider());
+        registerToolProvider(new TodoGetMetadataProvider());
     }
 
     private ToolMetadataRegistry() {
@@ -68,7 +113,7 @@ public final class ToolMetadataRegistry {
      * @param name tool name
      * @param toolId concrete tool id
      * @param language target language code
-     * @return resolved tool card
+     * @return isResolved tool card
      */
     public static ToolCard buildToolCard(String name, String toolId, String language) {
         return ToolCard.builder()

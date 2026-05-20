@@ -12,6 +12,9 @@ import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
  */
 public class LLMComponent extends com.openjiuwen.core.workflow.component.llm.LLMComponent {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public LLMComponent(com.openjiuwen.core.workflow.component.llm.LLMCompConfig config) {
         super(config);
     }

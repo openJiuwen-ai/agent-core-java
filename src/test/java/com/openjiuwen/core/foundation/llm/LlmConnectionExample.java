@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.foundation.llm;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -394,7 +396,9 @@ public class LlmConnectionExample {
         }
 
         private static int toInt(Object value) {
-            if (value instanceof Number n) return n.intValue();
+            if (value instanceof Number n) {
+                return n.intValue();
+            }
             return 0;
         }
     }

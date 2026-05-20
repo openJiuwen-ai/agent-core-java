@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
+package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -181,6 +181,32 @@ class ToolCallCustomSliceTest {
                         (Function<Map<String, Object>, Object>) params -> params
                 )
         );
+    }
+
+    @Test
+    void customizedPipelineMergesExistingSavedResultsIntoReturnValue() throws Exception {
+        Path saveDir = Files.createTempDirectory("customized-pipeline-test");
+        Path saveFile = saveDir.resolve("tool.json");
+        Files.writeString(saveFile, "[[{\"description\":\"old\"}]]");
+
+        @SuppressWarnings("unchecked")
+        List<Object> result = CustomizedPipeline.customizedPipeline(
+                "description",
+                Map.of("name", "tool"),
+                new LinkedHashMap<>(Map.of(
+                        "save_dir", saveDir.toString(),
+                        "beam_width", 1,
+                        "expand_num", 1,
+                        "max_depth", 1,
+                        "num_workers", 1,
+                        "top_k", 1,
+                        "verbose", 0
+                )),
+                (Function<Map<String, Object>, Object>) params -> params
+        );
+
+        assertEquals(2, result.size());
+        assertEquals("old", ((Map<?, ?>) ((List<?>) result.get(0)).get(0)).get("description"));
     }
 
     private static final class StubSimpleEval extends SimpleEval {

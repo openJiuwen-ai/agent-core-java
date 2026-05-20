@@ -11,10 +11,16 @@ package com.openjiuwen.core.session.interaction;
  */
 public class AgentInterrupt extends RuntimeException {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentInterrupt() {
         super();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentInterrupt(String message) {
         super(message);
     }

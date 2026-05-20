@@ -23,5 +23,5 @@ public class MemInfo {
     @Builder.Default
     private String content = "";
     @Builder.Default
-    private MemoryType type = MemoryType.FRAGMENT_MEMORY;
+    private MemoryType type = MemoryType.USER_PROFILE;
 }

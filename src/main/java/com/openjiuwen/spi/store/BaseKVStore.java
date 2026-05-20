@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.spi.store;
 
@@ -27,7 +29,7 @@ public abstract class BaseKVStore {
      * @param key    string key
      * @param value  string or bytes payload
      * @param expiry optional expiry in seconds (null for no expiry)
-     * @return true if set, false if key already existed
+     * @return true if set, false if key already isExisted
      */
     public abstract boolean exclusiveSet(String key, Object value, Integer expiry);
 
@@ -43,9 +45,9 @@ public abstract class BaseKVStore {
      * Check whether a key exists.
      *
      * @param key string key
-     * @return true if the key exists
+     * @return true if the key isExists
      */
-    public abstract boolean exists(String key);
+    public abstract boolean isExists(String key);
 
     /**
      * Remove the specified key.

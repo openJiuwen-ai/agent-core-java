@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.BaseError;
@@ -621,7 +623,8 @@ class ModelContextTest {
             context.clearMessages(true);
             context.addMessages(messages);
             window = context.getContextWindow(null, null, null, 2);
-            List<BaseMessage> expected2 = new ArrayList<>(d2);
+            List<BaseMessage> expected2 = new ArrayList<>(d1.subList(6, d1.size()));
+            expected2.addAll(d2);
             expected2.addAll(d3);
             assertEquals(expected2, window.getContextMessages());
 
@@ -673,7 +676,8 @@ class ModelContextTest {
             context.clearMessages(true);
             context.addMessages(messages);
             window = context.getContextWindow(null, null, null, 2);
-            List<BaseMessage> expected2 = new ArrayList<>(d2);
+            List<BaseMessage> expected2 = new ArrayList<>(d1.subList(6, d1.size()));
+            expected2.addAll(d2);
             expected2.addAll(d3);
             assertEquals(expected2, window.getContextMessages());
 
@@ -747,10 +751,10 @@ class ModelContextTest {
             ModelContext context = createContext();
             assertEquals(0, context.statistic().getTotalDialogues());
 
-            // Only user messages => 0
+            // Only user messages => 1 incomplete round
             context = createContext();
             context.addMessages(List.of(new UserMessage("u1"), new UserMessage("u2")));
-            assertEquals(0, context.statistic().getTotalDialogues());
+            assertEquals(1, context.statistic().getTotalDialogues());
 
             // One complete round
             context = createContext();

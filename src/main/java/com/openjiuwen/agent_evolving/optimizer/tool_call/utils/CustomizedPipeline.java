@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
+package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -80,6 +80,7 @@ public final class CustomizedPipeline {
         );
 
         List<List<Object>> result = singleSearch.search(tool);
+        List<Object> mergedResult = new ArrayList<>();
 
         // Save results
         String saveDir = (String) config.get("save_dir");
@@ -90,8 +91,7 @@ public final class CustomizedPipeline {
             try {
                 Files.createDirectories(savePath.getParent());
 
-                List<Object> mergedResult = new ArrayList<>();
-                // Merge with existing results if file exists
+                // Merge with existing results if file isExists
                 if (Files.exists(savePath)) {
                     String content = Files.readString(savePath);
                     @SuppressWarnings("unchecked")
@@ -106,6 +106,9 @@ public final class CustomizedPipeline {
             }
         }
 
-        return new ArrayList<>(result);
+        if (mergedResult.isEmpty()) {
+            mergedResult.addAll(result);
+        }
+        return new ArrayList<>(mergedResult);
     }
 }

@@ -11,20 +11,28 @@ package com.openjiuwen.extensions.context_evolver.summary.task.ace;
  */
 public final class AcePrompts {
 
-    public static final String ACE_REFLECTOR_PROMPT = """
-You are an expert reflection agent and educator. Your job is to diagnose the current trajectory: identify what went wrong (or could be better), grounded in execution feedback, API usage, unit test report, and ground truth when applicable.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_REFLECTOR_PROMPT =
+      """
+You are an expert reflection agent and educator. Your job is to diagnose the current trajectory: \
+identify what went wrong (or could be better), grounded in execution feedback, API usage, unit test \
+report, and ground truth when applicable.
 
 Instructions:
 - Carefully analyze the model's reasoning trace to identify where it went wrong
 - Take the environment feedback into account, comparing the predicted answer with the ground truth to understand the gap
 - Identify specific conceptual errors, calculation mistakes, or misapplied strategies
 - Provide actionable insights that could help the model avoid this mistake in the future
-- Identify root causes: wrong source of truth, bad filters (timeframe/direction/identity), formatting issues, or missing authentication and how to correct them
+- Identify root causes: wrong source of truth, bad filters (timeframe/direction/identity), formatting \
+issues, or missing authentication and how to correct them
 - Provide concrete, step-by-step corrections the model should take in this task
 - Be specific about what the model should have done differently
 - You will receive bulletpoints that are part of playbook that's used by the generator to answer the question
-- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be ['helpful', 'harmful', 'neutral']
-- Explicitly curate from the environment feedback the output format/schema of APIs used when unclear or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of content_ids (strings), not content objects)
+- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be \
+['helpful', 'harmful', 'neutral']
+- Explicitly curate from the environment feedback the output format/schema of APIs used when unclear \
+or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of content_ids \
+(strings), not content objects)
 
 Inputs:
 - Ground Truth Code (reference, known-correct):
@@ -60,19 +68,26 @@ Answer in this exact JSON format:
 {trajectory}
 """;
 
-    public static final String ACE_REFLECTOR_NOGT_PROMPT = """
-You are an expert reflection agent and educator. Your job is to diagnose the current trajectory: identify what went wrong (or could be better), grounded in execution feedback and API usage.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_REFLECTOR_NOGT_PROMPT =
+      """
+You are an expert reflection agent and educator. Your job is to diagnose the current trajectory: \
+identify what went wrong (or could be better), grounded in execution feedback and API usage.
 
 Instructions:
 - Carefully analyze the model's reasoning trace to identify where it went wrong
 - Identify specific conceptual errors, calculation mistakes, or misapplied strategies
 - Provide actionable insights that could help the model avoid this mistake in the future
-- Identify root causes: wrong source of truth, bad filters (timeframe/direction/identity), formatting issues, or missing authentication and how to correct them
+- Identify root causes: wrong source of truth, bad filters (timeframe/direction/identity), formatting \
+issues, or missing authentication and how to correct them
 - Provide concrete, step-by-step corrections the model should take in this task
 - Be specific about what the model should have done differently
 - You will receive bulletpoints that are part of playbook that's used by the generator to answer the question
-- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be ['helpful', 'harmful', 'neutral']
-- Explicitly curate from the environment feedback the output format/schema of APIs used when unclear or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of content_ids (strings), not content objects)
+- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be \
+['helpful', 'harmful', 'neutral']
+- Explicitly curate from the environment feedback the output format/schema of APIs used when unclear \
+or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of content_ids \
+(strings), not content objects)
 
 Inputs:
 - ACE Playbook (playbook that's used by model for code generation):
@@ -98,24 +113,34 @@ Answer in this exact JSON format:
 {trajectory}
 """;
 
-    public static final String ACE_CURATOR_PROMPT = """
-You are a master curator of knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from a previous attempt.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_CURATOR_PROMPT =
+      """
+You are a master curator of knowledge. Your job is to identify what new insights should be added to \
+an existing playbook based on a reflection from a previous attempt.
 
 Context:
 - The playbook you created will be used to help answering similar questions.
-- The reflection is generated using ground truth answers that will NOT be available when the playbook is being used. So you need to come up with content that can aid the playbook user to create predictions that likely align with ground truth.
+- The reflection is generated using ground truth answers that will NOT be available when the playbook \
+is being used. So you need to come up with content that can aid the playbook user to create \
+predictions that likely align with ground truth.
 
 Instructions:
 - Review the existing playbook and the reflection from the previous attempt
 - ADD ONLY the NEW insights, strategies, or mistakes that are MISSING from the current playbook
-- Avoid redundancy, if similar advice already exists. Only add new content that is a perfect complement to the existing playbook
-- The number of MAXIMUM insight in the playbook is 50. If the playbook is full consider to REMOVE or UPDATE exisiting insight
+- Avoid redundancy, if similar advice already exists. Only add new content that is a perfect \
+complement to the existing playbook
+- The number of MAXIMUM insight in the playbook is 50. If the playbook is full consider to REMOVE \
+or UPDATE exisiting insight
 - Do NOT regenerate the entire playbook, only provide the additions needed or update existing insight with refined one
-- Focus on quality over quantity, a focused well-organized playbook is better than an exhaustive one. You can REMOVE redundant or unnecessary insight
+- Focus on quality over quantity, a focused well-organized playbook is better than an exhaustive one. \
+You can REMOVE redundant or unnecessary insight
 - Format your response as a PURE JSON object with specific sections
 - For any operation if no new content to ADD/UPDATE/TAG/REMOVE, return an empty list for the operations field
 - Be concise and specific, each operation should be actionable
-- For coding tasks, explicitly curate from the reflections the output format/schema of APIs used when unclear or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of content_ids (strings), not content objects)
+- For coding tasks, explicitly curate from the reflections the output format/schema of APIs used when \
+unclear or mismatched with expectations (e.g., apis.blah.show_contents() returns a list of \
+content_ids (strings), not content objects)
 
 Task Context (the actual task instruction):
 {question_context}
@@ -157,8 +182,12 @@ RESPONSE FORMAT - Output ONLY this JSON structure (no markdown, no code blocks):
 If no updates are required, return an empty list for "operations".
 """;
 
-    public static final String ACE_REFLECTOR_SCALING_PROMPT = """
-You are an expert reflection agent and educator. Your job is to diagnose the current trajectories: compare and contrast them to identify the most useful and generalizable strategies as memory items, grounded in execution feedback, API usage, unit test report, and ground truth when applicable.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_REFLECTOR_SCALING_PROMPT =
+      """
+You are an expert reflection agent and educator. Your job is to diagnose the current trajectories: \
+compare and contrast them to identify the most useful and generalizable strategies as memory items, \
+grounded in execution feedback, API usage, unit test report, and ground truth when applicable.
 
 Guidelines:
 - Identify patterns and strategies that consistently led to success
@@ -176,13 +205,18 @@ PLAYBOOK_START
 {playbook}
 PLAYBOOK_END
 
-Outputs: Your output should be a json object with the fields reasoning, error_identification, root_cause_analysis, correct_approach, and key_insight.
+Outputs: Your output should be a json object with the fields reasoning, error_identification, \
+root_cause_analysis, correct_approach, and key_insight.
 
 {trajectories}
 """;
 
-    public static final String ACE_REFLECTOR_SCALING_NOGT_PROMPT = """
-You are an expert reflection agent and educator. You will be given a user query and multiple trajectories showing how an agent attempted the task. Some trajectories may be successful, and others may have failed.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_REFLECTOR_SCALING_NOGT_PROMPT =
+      """
+You are an expert reflection agent and educator. You will be given a user query and multiple \
+trajectories showing how an agent attempted the task. Some trajectories may be successful, and \
+others may have failed.
 
 Guidelines:
 - Identify patterns and strategies that consistently led to success
@@ -195,13 +229,17 @@ PLAYBOOK_START
 {playbook}
 PLAYBOOK_END
 
-Outputs: Your output should be a json object with the fields reasoning, error_identification, root_cause_analysis, correct_approach, and key_insight.
+Outputs: Your output should be a json object with the fields reasoning, error_identification, \
+root_cause_analysis, correct_approach, and key_insight.
 
 {trajectories}
 """;
 
-    public static final String ACE_CURATOR_SCALING_PROMPT = """
-You are a master curator of knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from previous attempts.
+  /** Auto-generated for codecheck compliance. */
+  public static final String ACE_CURATOR_SCALING_PROMPT =
+      """
+You are a master curator of knowledge. Your job is to identify what new insights should be added to \
+an existing playbook based on a reflection from previous attempts.
 
 Context:
 - The playbook you create will be used to help answer similar questions
@@ -242,6 +280,5 @@ RESPONSE FORMAT - Output ONLY this JSON structure (no markdown, no code blocks):
 If no updates are required, return an empty list for "operations".
 """;
 
-    private AcePrompts() {
-    }
+  private AcePrompts() {}
 }

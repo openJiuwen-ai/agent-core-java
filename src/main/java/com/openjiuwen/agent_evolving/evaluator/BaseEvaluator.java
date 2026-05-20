@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator;
+package com.openjiuwen.agentevolving.evaluator;
 
-import com.openjiuwen.agent_evolving.TuneConstant;
-import com.openjiuwen.agent_evolving.TuneUtils;
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.CaseLoader;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.TuneConstant;
+import com.openjiuwen.agentevolving.TuneUtils;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.CaseLoader;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 

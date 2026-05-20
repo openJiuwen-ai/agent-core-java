@@ -135,7 +135,10 @@ public final class SysOperationToolAdapter {
         Object[] args = new Object[parameters.length];
         for (int i = 0; i < parameters.length; i++) {
             Parameter parameter = parameters[i];
-            args[i] = convertValue(inputs.get(parameter.getName()), parameter.getType(), parameter.getParameterizedType());
+            args[i] = convertValue(
+                    inputs.get(parameter.getName()),
+                    parameter.getType(),
+                    parameter.getParameterizedType());
         }
         return args;
     }
@@ -152,13 +155,19 @@ public final class SysOperationToolAdapter {
             return String.valueOf(rawValue);
         }
         if (targetType == int.class || targetType == Integer.class) {
-            return rawValue instanceof Number ? ((Number) rawValue).intValue() : Integer.parseInt(String.valueOf(rawValue));
+            return rawValue instanceof Number
+                    ? ((Number) rawValue).intValue()
+                    : Integer.parseInt(String.valueOf(rawValue));
         }
         if (targetType == long.class || targetType == Long.class) {
-            return rawValue instanceof Number ? ((Number) rawValue).longValue() : Long.parseLong(String.valueOf(rawValue));
+            return rawValue instanceof Number
+                    ? ((Number) rawValue).longValue()
+                    : Long.parseLong(String.valueOf(rawValue));
         }
         if (targetType == double.class || targetType == Double.class) {
-            return rawValue instanceof Number ? ((Number) rawValue).doubleValue() : Double.parseDouble(String.valueOf(rawValue));
+            return rawValue instanceof Number
+                    ? ((Number) rawValue).doubleValue()
+                    : Double.parseDouble(String.valueOf(rawValue));
         }
         if (targetType == boolean.class || targetType == Boolean.class) {
             if (rawValue instanceof Boolean) {
@@ -171,7 +180,9 @@ public final class SysOperationToolAdapter {
                 int[] result = new int[list.size()];
                 for (int i = 0; i < list.size(); i++) {
                     Object item = list.get(i);
-                    result[i] = item instanceof Number ? ((Number) item).intValue() : Integer.parseInt(String.valueOf(item));
+                    result[i] = item instanceof Number
+                            ? ((Number) item).intValue()
+                            : Integer.parseInt(String.valueOf(item));
                 }
                 return result;
             }
@@ -229,7 +240,9 @@ public final class SysOperationToolAdapter {
         Type valueType = getGenericArgument(genericType, 1);
         if (valueType == String.class) {
             Map<String, String> converted = new LinkedHashMap<>();
-            rawMap.forEach((key, value) -> converted.put(String.valueOf(key), value == null ? null : String.valueOf(value)));
+            rawMap.forEach((key, value) -> converted.put(
+                    String.valueOf(key),
+                    value == null ? null : String.valueOf(value)));
             return converted;
         }
         Map<String, Object> converted = new LinkedHashMap<>();

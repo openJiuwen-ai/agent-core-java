@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.trainer;
+package com.openjiuwen.agentevolving.trainer;
 
 import org.junit.jupiter.api.Test;
 

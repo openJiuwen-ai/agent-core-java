@@ -1,12 +1,16 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.common.security;
 
 import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpClient;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SslUtilsTest {
 
@@ -19,5 +23,7 @@ class SslUtilsTest {
         HttpClient client = builder.build();
         assertNotNull(client.sslContext());
         assertEquals("", client.sslParameters().getEndpointIdentificationAlgorithm());
+        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.2"));
+        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.3"));
     }
 }

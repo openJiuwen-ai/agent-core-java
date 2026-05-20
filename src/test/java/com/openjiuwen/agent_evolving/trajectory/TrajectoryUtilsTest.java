@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.trajectory;
+package com.openjiuwen.agentevolving.trajectory;
 
 import org.junit.jupiter.api.Test;
 
@@ -110,6 +110,41 @@ class TrajectoryUtilsTest {
         List<TrajectoryStep> result = TrajectoryUtils.iterSteps(List.of(trajectory), "case_1", "op_1", StepKind.TOOL);
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void trajectoryBuilderKeepsPythonTrajectoryDefaults() {
+        Trajectory trajectory = Trajectory.builder()
+                .executionId("exec_1")
+                .steps(List.of())
+                .build();
+
+        assertEquals("offline", trajectory.getSource());
+        assertEquals(null, trajectory.getSessionId());
+        assertEquals(null, trajectory.getCost());
+        assertTrue(trajectory.getMeta().isEmpty());
+    }
+
+    @Test
+    void trajectoryStepBuilderCarriesAdapterFacingFields() {
+        LLMCallDetail detail = new LLMCallDetail();
+        detail.setModel("m");
+
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind(StepKind.LLM)
+                .detail(detail)
+                .reward(1.5)
+                .promptTokenIds(List.of(1, 2))
+                .completionTokenIds(List.of(3))
+                .logprobs(Map.of("token", -0.2))
+                .meta(Map.of())
+                .build();
+
+        assertEquals(detail, step.getDetail());
+        assertEquals(1.5, step.getReward());
+        assertEquals(List.of(1, 2), step.getPromptTokenIds());
+        assertEquals(List.of(3), step.getCompletionTokenIds());
+        assertEquals(Map.of("token", -0.2), step.getLogprobs());
     }
 
     private static TrajectoryStep step(StepKind kind, String operatorId) {

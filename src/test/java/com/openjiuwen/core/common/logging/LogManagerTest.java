@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.common.logging;
 
 import org.junit.jupiter.api.*;
@@ -40,18 +42,55 @@ class LogManagerTest {
             this.config = config != null ? new HashMap<>(config) : new HashMap<>();
         }
 
-        @Override public void debug(String msg, Object... args) { messages.add("DEBUG: " + msg); }
-        @Override public void info(String msg, Object... args) { messages.add("INFO: " + msg); }
-        @Override public void warning(String msg, Object... args) { messages.add("WARNING: " + msg); }
-        @Override public void error(String msg, Object... args) { messages.add("ERROR: " + msg); }
-        @Override public void critical(String msg, Object... args) { messages.add("CRITICAL: " + msg); }
-        @Override public void exception(String msg, Throwable t, Object... args) {
+        @Override
+        public void debug(String msg, Object... args) {
+            messages.add("DEBUG: " + msg);
+        }
+
+        @Override
+        public void info(String msg, Object... args) {
+            messages.add("INFO: " + msg);
+        }
+
+        @Override
+        public void warning(String msg, Object... args) {
+            messages.add("WARNING: " + msg);
+        }
+
+        @Override
+        public void error(String msg, Object... args) {
+            messages.add("ERROR: " + msg);
+        }
+
+        @Override
+        public void critical(String msg, Object... args) {
+            messages.add("CRITICAL: " + msg);
+        }
+
+        @Override
+        public void exception(String msg, Throwable t, Object... args) {
             messages.add("EXCEPTION: " + msg + " | " + t.getMessage());
         }
-        @Override public void log(int level, String msg, Object... args) { messages.add("LOG(" + level + "): " + msg); }
-        @Override public void setLevel(int level) { this.currentLevel = level; }
-        @Override public Map<String, Object> getConfig() { return Map.copyOf(config); }
-        @Override public void reconfigure(Map<String, Object> newConfig) { this.config = new HashMap<>(newConfig); }
+
+        @Override
+        public void log(int level, String msg, Object... args) {
+            messages.add("LOG(" + level + "): " + msg);
+        }
+
+        @Override
+        public void setLevel(int level) {
+            this.currentLevel = level;
+        }
+
+        @Override
+        public Map<String, Object> getConfig() {
+            return Map.copyOf(config);
+        }
+
+        @Override
+        public void reconfigure(Map<String, Object> newConfig) {
+            this.config = new HashMap<>(newConfig);
+        }
     }
 
     private void initializeWithTestFactory() {

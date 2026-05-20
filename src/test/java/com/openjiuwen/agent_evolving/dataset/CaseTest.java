@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.dataset;
+package com.openjiuwen.agentevolving.dataset;
 
 import com.openjiuwen.core.common.exception.ValidationError;
 import org.junit.jupiter.api.Test;

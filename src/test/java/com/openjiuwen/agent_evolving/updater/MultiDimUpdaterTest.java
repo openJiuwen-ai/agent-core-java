@@ -1,6 +1,6 @@
-package com.openjiuwen.agent_evolving.updater;
+package com.openjiuwen.agentevolving.updater;
 
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

@@ -1,3 +1,6 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 /**
  * Subagents package - Provides sub-agent implementations for deep agents.
  *
@@ -7,9 +10,6 @@
  * orchestrated by deep agents for complex task execution.
  *
  * <p>Placeholder package - actual implementations to be added.
- */
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.deepagents.subagents;

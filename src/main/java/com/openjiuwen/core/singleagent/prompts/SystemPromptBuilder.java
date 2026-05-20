@@ -6,9 +6,11 @@ package com.openjiuwen.core.singleagent.prompts;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Section-based system prompt builder.
@@ -16,14 +18,27 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class SystemPromptBuilder {
+    private static final String MODE_FULL = "full";
+    private static final String MODE_MINIMAL = "minimal";
+    private static final String MODE_NONE = "none";
+    private static final Set<String> MINIMAL_SECTIONS = new HashSet<String>(List.of(
+            "identity",
+            "safety",
+            "skills",
+            "tools",
+            "runtime",
+            "memory"
+    ));
+
     private final String language;
+    private final String mode;
     private final Map<String, PromptSection> sections = new LinkedHashMap<String, PromptSection>();
 
     /**
      * Create a prompt builder with the default language.
      */
     public SystemPromptBuilder() {
-        this(PromptSection.DEFAULT_LANGUAGE);
+        this(PromptSection.DEFAULT_LANGUAGE, MODE_FULL);
     }
 
     /**
@@ -32,11 +47,29 @@ public class SystemPromptBuilder {
      * @param language target language code
      */
     public SystemPromptBuilder(String language) {
-        this.language = language != null && !language.isBlank() ? language : PromptSection.DEFAULT_LANGUAGE;
+        this(language, MODE_FULL);
     }
 
     /**
-     * Add or replace a prompt section.
+     * Create a prompt builder with the requested language and prompt mode.
+     *
+     * <p>Modes mirror the harness Python builder:
+     * <ul>
+     *   <li>{@code full}: render every section</li>
+     *   <li>{@code minimal}: render only core sections</li>
+     *   <li>{@code none}: render identity only</li>
+     * </ul>
+     *
+     * @param language target language code
+     * @param mode prompt assembly mode
+     */
+    public SystemPromptBuilder(String language, String mode) {
+        this.language = language != null && !language.isBlank() ? language : PromptSection.DEFAULT_LANGUAGE;
+        this.mode = normalizeMode(mode);
+    }
+
+    /**
+     * Add or isReplace a prompt section.
      *
      * @param section prompt section
      * @return this builder
@@ -74,7 +107,7 @@ public class SystemPromptBuilder {
      * Check whether the builder contains a section.
      *
      * @param name section name
-     * @return true when the section exists
+     * @return true when the section isExists
      */
     public boolean hasSection(String name) {
         return name != null && sections.containsKey(name);
@@ -96,7 +129,7 @@ public class SystemPromptBuilder {
      * @return rendered system prompt
      */
     public String build() {
-        List<PromptSection> ordered = new ArrayList<PromptSection>(sections.values());
+        List<PromptSection> ordered = getSectionsForBuild();
         ordered.sort(Comparator.comparingInt(PromptSection::getPriority));
 
         List<String> parts = new ArrayList<String>();
@@ -107,5 +140,53 @@ public class SystemPromptBuilder {
             }
         }
         return String.join("\n\n", parts);
+    }
+
+    /**
+     * Return the normalized prompt assembly mode.
+     *
+     * @return prompt mode
+     */
+    public String getMode() {
+        return mode;
+    }
+
+    /**
+     * Return the language used to render sections.
+     *
+     * @return target language code
+     */
+    public String getLanguage() {
+        return language;
+    }
+
+    private List<PromptSection> getSectionsForBuild() {
+        if (MODE_FULL.equals(mode)) {
+            return new ArrayList<PromptSection>(sections.values());
+        }
+        List<PromptSection> filtered = new ArrayList<PromptSection>();
+        for (PromptSection section : sections.values()) {
+            if (MODE_NONE.equals(mode)) {
+                if ("identity".equals(section.getName())) {
+                    filtered.add(section);
+                }
+                continue;
+            }
+            if (MINIMAL_SECTIONS.contains(section.getName())) {
+                filtered.add(section);
+            }
+        }
+        return filtered;
+    }
+
+    private static String normalizeMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            return MODE_FULL;
+        }
+        String normalized = mode.trim().toLowerCase(java.util.Locale.ROOT);
+        if (MODE_MINIMAL.equals(normalized) || MODE_NONE.equals(normalized)) {
+            return normalized;
+        }
+        return MODE_FULL;
     }
 }

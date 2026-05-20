@@ -12,6 +12,9 @@ import com.openjiuwen.spi.store.BaseDbStore;
 
 import javax.sql.DataSource;
 import java.sql.*;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Database model: table definitions and creation logic.
@@ -46,6 +49,7 @@ public final class DbModel {
         try (Connection conn = getConnectionFrom(engine)) {
             conn.setAutoCommit(false);
             try {
+                Set<String> newlyCreatedTables = new HashSet<>();
                 // Check for old version table with 'group_id' column and drop if found
                 if (tableExists(conn, USER_MESSAGE_TABLE)) {
                     if (columnExists(conn, USER_MESSAGE_TABLE, "group_id")) {
@@ -53,6 +57,13 @@ public final class DbModel {
                             stmt.executeUpdate("DROP TABLE IF EXISTS " + USER_MESSAGE_TABLE);
                         }
                         MEMORY_LOGGER.debug("Deleted old version sql table");
+                    }
+                }
+
+                for (String[] tableConfig : MEMORY_TABLES_CONFIG) {
+                    String tableName = tableConfig[0];
+                    if (!tableExists(conn, tableName)) {
+                        newlyCreatedTables.add(tableName);
                     }
                 }
 
@@ -65,9 +76,11 @@ public final class DbModel {
                 for (String[] tableConfig : MEMORY_TABLES_CONFIG) {
                     String tableName = tableConfig[0];
                     String entityKey = tableConfig[1];
-                    int currentVersion = MigrationPlan.getSqlRegistry().getCurrentVersion(entityKey);
-                    if (currentVersion > 0) {
-                        insertMemoryMeta(conn, tableName, String.valueOf(currentVersion));
+                    if (newlyCreatedTables.contains(tableName)) {
+                        int currentVersion = MigrationPlan.getSqlRegistry().getCurrentVersion(entityKey);
+                        if (currentVersion > 0) {
+                            insertMemoryMeta(conn, tableName, String.valueOf(currentVersion));
+                        }
                     }
                 }
 
@@ -138,16 +151,32 @@ public final class DbModel {
 
     private static boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getTables(null, null, tableName, null)) {
-            return rs.next();
+        for (String candidate : tableNameCandidates(tableName)) {
+            try (ResultSet rs = meta.getTables(null, null, candidate, null)) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
         }
+        return false;
     }
 
     private static boolean columnExists(Connection conn, String tableName, String columnName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getColumns(null, null, tableName, columnName)) {
-            return rs.next();
+        for (String tableCandidate : tableNameCandidates(tableName)) {
+            for (String columnCandidate : tableNameCandidates(columnName)) {
+                try (ResultSet rs = meta.getColumns(null, null, tableCandidate, columnCandidate)) {
+                    if (rs.next()) {
+                        return true;
+                    }
+                }
+            }
         }
+        return false;
+    }
+
+    private static String[] tableNameCandidates(String name) {
+        return new String[] {name, name.toUpperCase(Locale.ROOT), name.toLowerCase(Locale.ROOT)};
     }
 
     private static Connection getConnectionFrom(Object engine) throws SQLException {

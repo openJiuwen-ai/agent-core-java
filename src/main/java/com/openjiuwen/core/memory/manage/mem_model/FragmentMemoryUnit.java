@@ -19,13 +19,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class FragmentMemoryUnit extends BaseMemoryUnit {
-    private String fragmentType;
     private String content;
     private String messageMemId;
     private String timestamp;
-
-    @Override
-    public MemoryType getMemType() {
-        return MemoryType.FRAGMENT_MEMORY;
-    }
 }

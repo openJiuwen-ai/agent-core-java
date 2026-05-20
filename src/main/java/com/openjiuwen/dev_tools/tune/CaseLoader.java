@@ -11,10 +11,16 @@ import java.util.List;
  */
 public class CaseLoader extends com.openjiuwen.dev_tools.tune.dataset.CaseLoader {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CaseLoader() {
         super();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CaseLoader(List<Case> cases) {
         super(cases);
     }

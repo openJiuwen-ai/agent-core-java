@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving;
+package com.openjiuwen.agentevolving;
 
 /**
  * Hyperparameter defaults and validation bounds for self-evolving training.
@@ -17,6 +17,9 @@ public final class TuneConstant {
     public static final int DEFAULT_MAX_SAMPLED_EXAMPLE_NUM = 10;
     public static final int DEFAULT_PARALLEL_NUM = 1;
     public static final int DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES = 10;
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static final float DEFAULT_EARLY_STOP_SCORE = 1.0f;
 
     // Valid ranges

@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.reranker;
 
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
@@ -6,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,5 +75,30 @@ class LexicalRerankerTest {
         List<RetrievalResult> results = reranker.rerank("hello", candidates, 5);
         assertEquals(1, results.size());
         assertTrue(results.get(0).getScore() > 0.0);
+    }
+
+    @Test
+    void rerankScoresSupportsStringInputs() {
+        LexicalReranker reranker = new LexicalReranker();
+
+        Map<String, Double> scores = reranker.rerankScores("apple banana", List.of("apple banana", "pear orange"));
+
+        assertEquals(2, scores.size());
+        assertTrue(scores.get("apple banana") > scores.get("pear orange"));
+    }
+
+    @Test
+    void rerankScoresSupportsRetrievalResults() {
+        LexicalReranker reranker = new LexicalReranker();
+        List<RetrievalResult> candidates = List.of(
+                new RetrievalResult("alpha beta", 0.0, Map.of(), "doc-1", "chunk-1"),
+                new RetrievalResult("gamma delta", 0.0, Map.of(), "doc-2", "chunk-2")
+        );
+
+        Map<String, Double> scores = reranker.rerankScores("alpha", candidates);
+
+        assertEquals(2, scores.size());
+        assertTrue(scores.containsKey("chunk-1"));
+        assertTrue(scores.get("chunk-1") > scores.get("chunk-2"));
     }
 }

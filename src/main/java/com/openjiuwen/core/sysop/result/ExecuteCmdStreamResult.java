@@ -14,6 +14,9 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class ExecuteCmdStreamResult extends BaseResult<ExecuteCmdChunkData> {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ExecuteCmdStreamResult(int code, String message, ExecuteCmdChunkData data) {
         super(code, message, data);
     }

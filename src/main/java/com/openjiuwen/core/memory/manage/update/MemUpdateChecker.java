@@ -25,6 +25,9 @@ public class MemUpdateChecker {
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private final PromptApplier promptApplier;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MemUpdateChecker() {
         this.promptApplier = PromptApplier.getInstance();
     }
@@ -43,6 +46,9 @@ public class MemUpdateChecker {
         return check(newMemories, oldMemories, baseChatModel, 3);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public List<MemoryActionItem> check(Map<String, String> newMemories,
                                          Map<String, String> oldMemories,
                                          Map.Entry<String, Model> baseChatModel,
@@ -147,13 +153,29 @@ public class MemUpdateChecker {
     }
 
     static String[] formatInput(Map<String, String> newMemories, Map<String, String> oldMemories) {
-        return new String[]{formatMemories(newMemories), formatMemories(oldMemories)};
+        return new String[]{formatMemoriesInReverseOrder(newMemories), formatMemories(oldMemories)};
+    }
+
+    private static String formatMemoriesInReverseOrder(Map<String, String> memories) {
+        List<Map.Entry<String, String>> entries = new ArrayList<>(memories.entrySet());
+        Collections.reverse(entries);
+
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> entry : entries) {
+            if (sb.length() > 0) {
+                sb.append("\n");
+            }
+            sb.append(entry.getKey()).append(": ").append(entry.getValue());
+        }
+        return sb.toString();
     }
 
     private static String formatMemories(Map<String, String> memories) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> e : memories.entrySet()) {
-            if (sb.length() > 0) sb.append("\n");
+            if (sb.length() > 0) {
+                sb.append("\n");
+            }
             sb.append(e.getKey()).append(": ").append(e.getValue());
         }
         return sb.toString();

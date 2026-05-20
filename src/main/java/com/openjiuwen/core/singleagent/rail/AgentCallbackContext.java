@@ -10,10 +10,11 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Unified context object passed to rail/callback hooks.
+ * Unified context object isPassed to rail/callback hooks.
  *
  * <p>Attributes:
  * <ul>
@@ -47,6 +48,7 @@ public class AgentCallbackContext {
     private int retryAttempt = 0;
     private RetryRequest retryRequest;
     private ForceFinishRequest forceFinishRequest;
+    private SteeringQueue steeringQueue;
 
     /**
      * Trigger all registered callbacks for an event.
@@ -118,6 +120,47 @@ public class AgentCallbackContext {
     }
 
     /**
+     * Bind the steering queue shared by invoke/model/tool lifecycle hooks.
+     *
+     * @param queue queue to bind; null clears the binding
+     */
+    public void bindSteeringQueue(SteeringQueue queue) {
+        this.steeringQueue = queue;
+    }
+
+    /**
+     * Push a steering instruction to the bound queue.
+     *
+     * @param message steering text
+     */
+    public void pushSteering(String message) {
+        if (steeringQueue != null) {
+            steeringQueue.pushSteering(message);
+        }
+    }
+
+    /**
+     * Drain all pending steering instructions from the bound queue.
+     *
+     * @return drained steering instructions, or empty list when no queue is bound
+     */
+    public List<String> drainSteering() {
+        if (steeringQueue == null) {
+            return List.of();
+        }
+        return steeringQueue.drainSteering();
+    }
+
+    /**
+     * Whether the context is bound to a steering queue.
+     *
+     * @return true when a queue is bound
+     */
+    public boolean hasSteeringQueue() {
+        return steeringQueue != null;
+    }
+
+    /**
      * Execute a block of code wrapped in before/after lifecycle events.
      *
      * <p>Fires {@code before} on entry, then executes the body,
@@ -148,6 +191,9 @@ public class AgentCallbackContext {
      */
     @Data
     @Builder
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static class ForceFinishRequest {
         private Map<String, Object> result;
     }

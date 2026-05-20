@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.context.processor.offloader;
 
 import com.openjiuwen.core.common.exception.BaseError;
@@ -193,6 +195,25 @@ class MessageOffloaderTest {
         }
 
         @Test
+        @DisplayName("above threshold without candidate does not trigger offload")
+        void testAboveThresholdWithoutCandidate() {
+            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
+                    .messagesThreshold(2)
+                    .largeMessageThreshold(200)
+                    .trimSize(10)
+                    .offloadMessageType(List.of("tool"))
+                    .build();
+            ModelContext ctx = createContextWithOffloader(config);
+            ctx.addMessages(List.of(
+                    new UserMessage("u1"),
+                    new UserMessage("u2"),
+                    new UserMessage("u3")
+            ));
+
+            assertTrue(ctx.getMessages().stream().noneMatch(m -> m instanceof OffloadMixin));
+        }
+
+        @Test
         @DisplayName("above tokens_threshold triggers offload")
         void testAboveTokensThreshold() {
             TokenCounter counter = mockTokenCounter(200);
@@ -247,6 +268,32 @@ class MessageOffloaderTest {
             assertTrue(result.get(1) instanceof OffloadMixin);
             assertTrue(result.get(2) instanceof ToolMessage);
             assertEquals("T".repeat(50), result.get(2).getContentAsString());
+        }
+
+        @Test
+        @DisplayName("protected tool messages are not offloaded")
+        void testProtectedToolMessageSkipped() {
+            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
+                    .messagesThreshold(2)
+                    .largeMessageThreshold(20)
+                    .trimSize(8)
+                    .offloadMessageType(List.of("tool"))
+                    .protectedToolNames(List.of("reload_original_context_messages"))
+                    .build();
+            ModelContext ctx = createContextWithOffloader(config);
+            List<BaseMessage> msgs = List.of(
+                    AssistantMessage.builder().content("").toolCalls(List.of(
+                            ToolCall.builder().id("tc-1").name("reload_original_context_messages")
+                                    .type("function").arguments("{\"offload_handle\":\"abc\"}").build()
+                    )).build(),
+                    ToolMessage.builder().content("T".repeat(50)).toolCallId("tc-1")
+                            .name("reload_original_context_messages").build(),
+                    new UserMessage("tail")
+            );
+
+            ctx.addMessages(msgs);
+
+            assertFalse(ctx.getMessages().get(1) instanceof OffloadMixin);
         }
     }
 

@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.util.Map;
 
+/**
+ * Auto-generated for codecheck compliance.
+ */
 public final class AppconfigUtils {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

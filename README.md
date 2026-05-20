@@ -21,7 +21,7 @@
 ### Environment Requirements
 
 - **Operating System**: Compatible with Windows, Linux, macOS.
-- **Java Version**: Java 21 or higher.
+- **Java Version**: Java 17 or higher.
 - **Build Tool**: Maven 3.9+.
 
 ### Installation
@@ -39,7 +39,7 @@ Then add agent-core-java as a dependency to your Maven project:
 <dependency>
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.7</version>
+    <version>0.1.12</version>
 </dependency>
 ```
 

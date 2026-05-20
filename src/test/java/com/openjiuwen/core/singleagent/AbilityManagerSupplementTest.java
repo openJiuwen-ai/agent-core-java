@@ -3,9 +3,18 @@ package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpTool;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +22,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -238,6 +249,82 @@ class AbilityManagerSupplementTest {
     }
 
     @Test
+    void testExecutePreservesSkipToolMarkerThroughAfterToolCallThenClearsIt() {
+        class SkippingAgent extends BaseAgent {
+            SkippingAgent() {
+                super(AgentCard.builder().id("skip-agent").name("skip-agent").build());
+            }
+
+            @Override
+            public BaseAgent configure(Object config) {
+                return this;
+            }
+
+            @Override
+            public Object getConfig() {
+                return null;
+            }
+
+            @Override
+            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+                return null;
+            }
+
+            @Override
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
+                    List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
+                return List.of().iterator();
+            }
+        }
+
+        class SkipRail extends AgentRail {
+            private boolean skipVisibleInAfter;
+
+            @Override
+            public void beforeToolCall(AgentCallbackContext ctx) {
+                ctx.getExtra().put("_skip_tool", Boolean.TRUE);
+            }
+
+            @Override
+            public void afterToolCall(AgentCallbackContext ctx) {
+                skipVisibleInAfter = Boolean.TRUE.equals(ctx.getExtra().get("_skip_tool"));
+            }
+        }
+
+        String toolId = "skip-tool-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
+                inputs -> "should-not-run"
+        );
+        Runner.resourceMgr().addTool(tool, null);
+        try {
+            SkippingAgent agent = new SkippingAgent();
+            SkipRail rail = new SkipRail();
+            agent.registerRail(rail);
+            manager.add(tool.getCard());
+            Map<String, Object> extra = new java.util.LinkedHashMap<>();
+            AgentCallbackContext ctx = AgentCallbackContext.builder()
+                    .agent(agent)
+                    .extra(extra)
+                    .build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(1);
+            assertThat(results.get(0).result()).isNull();
+            assertThat(rail.skipVisibleInAfter).isTrue();
+            assertThat(extra).doesNotContainKey("_skip_tool");
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
     void testExecuteSingleToolCallNotFound() {
         ToolCall tc = ToolCall.builder()
                 .id("tc-1")
@@ -295,6 +382,77 @@ class AbilityManagerSupplementTest {
     }
 
     @Test
+    void testExecuteSingleToolCallResolvesMcpToolByNameWithoutPreListing() throws Exception {
+        String serverId = "mcp-server-id-" + UUID.randomUUID();
+        String toolId = serverId + ".demo-server.browser_navigate";
+
+        McpServerConfig server = McpServerConfig.builder()
+                .serverName("demo-server")
+                .serverId(serverId)
+                .build();
+        manager.add(server);
+
+        McpClient client = new McpClient() {
+            @Override
+            public boolean connect(int retryTimes, float timeout) {
+                return true;
+            }
+
+            @Override
+            public boolean disconnect(float timeout) {
+                return true;
+            }
+
+            @Override
+            public List<Object> listTools(float timeout) {
+                return List.of();
+            }
+
+            @Override
+            public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+                return Map.of("tool", toolName, "arguments", arguments);
+            }
+
+            @Override
+            public Optional<Object> getToolInfo(String toolName, float timeout) {
+                return Optional.empty();
+            }
+
+            @Override
+            public String getServerPath() {
+                return "mock://demo-server";
+            }
+        };
+
+        McpToolCard card = McpToolCard.builder()
+                .id(toolId)
+                .name("browser_navigate")
+                .description("Navigate browser")
+                .serverId(serverId)
+                .serverName("demo-server")
+                .build();
+        Tool tool = new McpTool(client, card);
+        Runner.resourceMgr().addTool(tool, "ut-mcp");
+
+        try {
+            ToolCall tc = ToolCall.builder()
+                    .id("tc-mcp")
+                    .name("browser_navigate")
+                    .arguments("{\"url\":\"https://example.com\"}")
+                    .build();
+
+            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(tc, null, null);
+
+            assertThat(entry.result()).isEqualTo(Map.of(
+                    "result", Map.of("tool", "browser_navigate", "arguments", Map.of("url", "https://example.com"))
+            ));
+            assertThat(manager.get("browser_navigate")).isInstanceOf(ToolCard.class);
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, "ut-mcp", TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
     void testExecuteSingleToolCallMcpServerNameRaisesExplicitError() {
         manager.add(McpServerConfig.builder()
                 .serverName("mcp-server")
@@ -309,7 +467,7 @@ class AbilityManagerSupplementTest {
 
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
                 .isInstanceOf(AbilityExecutionError.class)
-                .hasMessageContaining("MCP tool execution not yet implemented");
+                .hasMessageContaining("not directly executable");
     }
 
     // ========== ToolExecutionEntry record ==========

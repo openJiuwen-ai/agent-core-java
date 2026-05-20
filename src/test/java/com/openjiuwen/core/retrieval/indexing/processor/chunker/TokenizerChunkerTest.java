@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,8 @@ class TokenizerChunkerTest {
         TokenizerChunker chunker = new TokenizerChunker(2, 0);
         assertTrue(chunker.chunkText("").isEmpty());
         assertInstanceOf(HybridChunker.class, ChunkerRegistry.getChunker("hybrid"));
+        assertTrue(ChunkerRegistry.contains("char"));
+        assertFalse(ChunkerRegistry.contains("token"));
     }
 
     @Test

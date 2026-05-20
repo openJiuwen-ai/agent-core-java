@@ -49,6 +49,9 @@ public class ReActAgentConfig {
     @Builder.Default
     private List<Map<String, String>> promptTemplate = new ArrayList<>();
 
+    @Builder.Default
+    private String promptMode = "full";
+
     private Map<String, String> customHeaders;
 
     @Builder.Default

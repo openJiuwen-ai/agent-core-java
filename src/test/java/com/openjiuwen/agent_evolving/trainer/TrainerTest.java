@@ -1,16 +1,16 @@
-package com.openjiuwen.agent_evolving.trainer;
+package com.openjiuwen.agentevolving.trainer;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolveCheckpoint;
-import com.openjiuwen.agent_evolving.checkpointing.FileCheckpointStore;
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.CaseLoader;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.evaluator.BaseEvaluator;
-import com.openjiuwen.agent_evolving.trajectory.ExecutionSpec;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TracerTrajectoryExtractor;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
-import com.openjiuwen.agent_evolving.updater.Updater;
+import com.openjiuwen.agentevolving.checkpointing.EvolveCheckpoint;
+import com.openjiuwen.agentevolving.checkpointing.FileCheckpointStore;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.CaseLoader;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.evaluator.BaseEvaluator;
+import com.openjiuwen.agentevolving.trajectory.ExecutionSpec;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TracerTrajectoryExtractor;
+import com.openjiuwen.agentevolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.updater.Updater;
 import com.openjiuwen.core.session.Session;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -320,7 +320,7 @@ class TrainerTest {
         }
 
         @Override
-        public Object update(List<com.openjiuwen.agent_evolving.trajectory.Trajectory> trajectories,
+        public Object update(List<com.openjiuwen.agentevolving.trajectory.Trajectory> trajectories,
                              List<Object> evaluatedCases,
                              Map<String, Object> config) {
             updateCalls++;

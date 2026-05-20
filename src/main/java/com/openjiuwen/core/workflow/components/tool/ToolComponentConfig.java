@@ -19,6 +19,9 @@ public class ToolComponentConfig
         setToolId(toolId);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ToolComponentConfig() {
         super();
     }

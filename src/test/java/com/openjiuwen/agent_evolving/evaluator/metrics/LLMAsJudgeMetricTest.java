@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.evaluator.metrics;
+package com.openjiuwen.agentevolving.evaluator.metrics;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;

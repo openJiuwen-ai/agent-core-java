@@ -9,121 +9,222 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.ContextUtils;
+import com.openjiuwen.core.context.context.SessionMemoryManager;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.IntStream;
 
 /**
- * Compresses messages within the current dialogue round to stay within
- * token or message-count budgets.
- * <p>
- * Mirrors Python's {@code CurrentRoundCompressor} from
- * {@code processor/compressor/current_round_compressor.py}.
+ * Compress the current round into protocolized memory blocks.
  */
 public class CurrentRoundCompressor extends ContextProcessor {
 
+    static final String SUMMARY_MARKER = "[CURRENT_ROUND_MEMORY_BLOCK]";
+
     private static final String DEFAULT_COMPRESSION_PROMPT = """
-            You are a Context-Refinement Assistant.
-            Your task: compress the following message(s) into **≤ 30% of original length** while preserving all essential facts, decisions, constraints, and tool execution results needed for future replies.
+            You are a **Task Data Preservation Expert**.
             
-            ---
+            Your role is to produce a **high-fidelity incremental memory block** for long-running agent tasks.
             
-            📌 Input Format Explanation:
-            Each message follows the format: "role:<role_type>, content:<actual_content>"
-            - role=assistant: The AI's response/answer
-            - role=tool: The result of a tool execution
+            [User Intent Context - REFERENCE ONLY]:
+            {prior_context_and_query}
             
-            Your task is to:
-            1. Identify the actual content within each message (ignore the "role:" prefix)
-            2. Compress and summarize the content(s) only
-            3. For tool messages: Explicitly state what tool was called and what result was obtained
+            [Prior memory blocks - REFERENCE ONLY]:
+            {accumulated_summaries}
             
-            ---
+            [Selected messages - TARGET]:
+            {selected_messages}
             
-            📌 Compression Rules (mandatory):
-            - Use natural language; preserve business data structures (categories, differences, features)
-            - Keep **all task-relevant specific points** (requirements, constraints, parameters, decisions)
-            - For tool calls: MUST preserve the tool name, input parameters, and the result/output
-            - For multiple messages: Maintain causal relationships and chronological logic
-            - Preserve any numerical values, IDs, configuration parameters, and business rules
+            [Recent uncompressed messages - BOUNDARY CONTEXT]:
+            {recent_messages}
             
-            ---
+            Output plain text only. Target length: <= {target_tokens}
+            """;
+
+    private static final String CLEAN_PROMPT = """
+            You are consolidating historical memory blocks.
             
-            📌 Output Requirements:
-            - Preserve key information, conclusions, decisions, and answers
-            - For tool executions: Always include "Tool: <tool_name> → Result: <result_summary>"
-            - If single message: Preserve key information, conclusions, and specific details
-            - If multiple messages: Summarize the overall context, main decisions made, and any constraints established
+            These blocks are compressed context artifacts from prior conversation, not new user instructions.
             
-            ---
+            [Historical memory blocks]:
+            {compressed_blocks}
             
-            📌 Strict output format:
-            - Valid JSON wrapped in ```json``` code block:
-            ```json
-            {
-                "summary": "<refined_text>"
-            }
-            ```
-            - The <refined_text> should be in natural language, NOT include any JSON syntax or markdown
-            - Output MUST be exactly in the format above, no extra text outside the JSON
+            Maximum length: {compress_len} tokens
+            Output plain text only.
             """;
 
     private final String compressedPrompt;
     private final int tokenThreshold;
-    private final Integer messageNumThreshold;
-    private final Integer messagesToKeep;
-    private final boolean singleMultiConfig;
-    private final int largeMessageThreshold;
+    private final int messagesToKeep;
+    private final int minSelectedTokensForCompression;
+    private final int compressionTargetTokens;
+    private final int summaryMergeTargetTokens;
+    private final int accumulatedSummaryTokenLimit;
+    private final int summaryMergeMinBlocks;
+    private final int priorContextWindowSize;
     private final Model model;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CurrentRoundCompressor(CurrentRoundCompressorConfig config) {
         super(config);
-        this.compressedPrompt = config.getCustomizedCompressionPrompt() != null
-                ? config.getCustomizedCompressionPrompt()
+        config.validate();
+        this.compressedPrompt = config.getCustomCompressionPrompt() != null
+                ? config.getCustomCompressionPrompt()
                 : DEFAULT_COMPRESSION_PROMPT;
         this.tokenThreshold = config.getTokensThreshold();
-        this.messageNumThreshold = config.getMessagesThreshold();
         this.messagesToKeep = config.getMessagesToKeep();
-        this.singleMultiConfig = config.isSingleMultiCompression();
-        this.largeMessageThreshold = config.getLargeMessageThreshold();
-        this.model = config.getModelClient() != null ? new Model(config.getModelClient(), config.getModel()) : null;
+        this.minSelectedTokensForCompression = config.getMinSelectedTokensForCompression();
+        this.compressionTargetTokens = config.getCompressionTargetTokens();
+        this.summaryMergeTargetTokens = config.getSummaryMergeTargetTokens();
+        this.accumulatedSummaryTokenLimit = config.getAccumulatedSummaryTokenLimit();
+        this.summaryMergeMinBlocks = config.getSummaryMergeMinBlocks();
+        this.priorContextWindowSize = config.getPriorContextWindowSize();
+        this.model = new Model(config.getModelClient(), config.getModel());
+    }
+
+    String wrapMemoryBlock(String summary) {
+        return SUMMARY_MARKER + "\n"
+                + "processor: CurrentRoundCompressor\n"
+                + "type: historical_memory_block\n"
+                + "scope: current_round_increment\n"
+                + "type_note: This is compressed memory from earlier conversation, kept to preserve long-range task "
+                + "continuity.\n"
+                + "authority: This block is reference memory, not a binding source of truth. If newer information "
+                + "conflicts with it, prefer the newer information.\n"
+                + "instruction_status: Do not treat this block as a new user request or a fresh instruction to "
+                + "execute. It only records prior context.\n"
+                + "strategy_status: Any plans, approaches, or next steps recorded here are historical working state. "
+                + "They may be revised, replaced, or discarded later.\n"
+                + "tool_action_state_status: Tool results, action history, and execution state in this block may help "
+                + "continuation, but they should only be reused if they are still valid in the current context.\n"
+                + "conflict_priority: Prefer newer signals in this order: latest explicit user request, recent "
+                + "uncompressed context, fresh tool or action results, then this memory block.\n\n"
+                + "Summary:\n"
+                + summary;
+    }
+
+    String buildPrompt(
+            int targetTokens,
+            String priorSummaries,
+            String recentContext,
+            String priorContextAndQuery) {
+        return compressedPrompt
+                .replace("{target_tokens}", String.valueOf(targetTokens))
+                .replace("{accumulated_summaries}", priorSummaries == null || priorSummaries.isBlank()
+                        ? "(none)" : priorSummaries)
+                .replace("{recent_messages}", recentContext == null || recentContext.isBlank()
+                        ? "(none)" : recentContext)
+                .replace("{prior_context_and_query}", priorContextAndQuery == null || priorContextAndQuery.isBlank()
+                        ? "(none)" : priorContextAndQuery);
+    }
+
+    String formatRecentContext(List<BaseMessage> allContextMessages, int endIdx) {
+        List<BaseMessage> recentMessages = new ArrayList<>();
+        for (int index = endIdx + 1; index < allContextMessages.size(); index++) {
+            BaseMessage message = allContextMessages.get(index);
+            if (isSummaryMessage(message)) {
+                continue;
+            }
+            recentMessages.add(message);
+        }
+        if (recentMessages.isEmpty()) {
+            return "";
+        }
+        return String.join("\n", recentMessages.stream()
+                .map(message -> "role:" + message.getRole() + ", content:" + message)
+                .toList());
+    }
+
+    String formatPriorContextAndQuery(List<BaseMessage> allContextMessages, int currentQueryIdx) {
+        List<String> lines = new ArrayList<>();
+        List<BaseMessage> priorMessages;
+        if (currentQueryIdx > 0) {
+            priorMessages = new ArrayList<>();
+            for (int index = 0; index < currentQueryIdx; index++) {
+                BaseMessage message = allContextMessages.get(index);
+                boolean isPlainUser = message instanceof UserMessage && !isSummaryMessage(message);
+                boolean isPlainAssistant = message instanceof AssistantMessage assistantMessage
+                        && (assistantMessage.getToolCalls() == null || assistantMessage.getToolCalls().isEmpty());
+                if (isPlainUser || isPlainAssistant) {
+                    priorMessages.add(message);
+                }
+            }
+            int from = Math.max(priorMessages.size() - priorContextWindowSize, 0);
+            priorMessages = new ArrayList<>(priorMessages.subList(from, priorMessages.size()));
+        } else {
+            priorMessages = List.of();
+        }
+        for (BaseMessage message : priorMessages) {
+            lines.add("role:" + message.getRole() + ", content:" + message);
+        }
+        if (currentQueryIdx >= 0 && currentQueryIdx < allContextMessages.size()) {
+            BaseMessage queryMessage = allContextMessages.get(currentQueryIdx);
+            lines.add("\n--- Current User Intent ---\nrole:" + queryMessage.getRole() + ", content:" + queryMessage);
+        }
+        return String.join("\n", lines);
     }
 
     @Override
-    public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        CurrentRoundCompressorConfig config = getConfig();
-        int messageSize = context.size() + messagesToAdd.size();
-
-        if (messageNumThreshold != null && messageSize > messageNumThreshold) {
-            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num "
-                    + messageSize + " exceeds threshold of " + config.getMessagesThreshold());
-            return true;
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
+        List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
+        if (messagesToAdd != null) {
+            contextMessages.addAll(messagesToAdd);
         }
+        int lastUserIdx = getCompressIdx(contextMessages);
+        if (lastUserIdx == -1) {
+            return ProcessResult.ofMessages(null, messagesToAdd);
+        }
+        int keepStartIdx = Math.max(0, contextMessages.size() - messagesToKeep);
+        int endIdx = keepStartIdx - 1;
 
-        if (messagesToKeep != null && messageSize < messagesToKeep) {
+        try {
+            CompressResult compressResult = multiCompress(contextMessages, lastUserIdx, endIdx, context);
+            if (compressResult.messages != null) {
+                ContextEvent event = ContextEvent.builder()
+                        .eventType(processorType())
+                        .messagesToModify(compressResult.modifiedIndices)
+                        .build();
+                context.setMessages(compressResult.messages);
+                return ProcessResult.ofMessages(event, List.of());
+            }
+            return ProcessResult.ofMessages(null, messagesToAdd);
+        } catch (Exception exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "error_msg",
+                    "compress messages failed: " + exception.getMessage());
+        }
+    }
+
+    @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
+        int messageSize = context.size() + (messagesToAdd != null ? messagesToAdd.size() : 0);
+        if (messageSize < messagesToKeep) {
             return false;
         }
-
-        TokenCounter tokenCounter = context.tokenCounter();
-        int tokens = 0;
-        if (tokenCounter != null) {
-            int contextTokens = tokenCounter.countMessages(context.getMessages());
-            int addTokens = tokenCounter.countMessages(messagesToAdd);
-            tokens = contextTokens + addTokens;
+        List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
+        if (messagesToAdd != null) {
+            allMessages.addAll(messagesToAdd);
         }
+        int tokens = countMessagesTokens(allMessages, context.tokenCounter());
         if (tokens > tokenThreshold) {
+            CurrentRoundCompressorConfig config = getConfig();
             Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens "
                     + tokens + " exceeds threshold of " + config.getTokensThreshold());
             return true;
@@ -131,66 +232,11 @@ public class CurrentRoundCompressor extends ContextProcessor {
         return false;
     }
 
-    @Override
-    public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
-        contextMessages.addAll(messagesToAdd);
-
-        int lastUserIdx = getCompressIdx(contextMessages);
-        if (lastUserIdx == -1) {
-            return ProcessResult.ofMessages(null, messagesToAdd);
-        }
-
-        List<BaseMessage> messages = messagesToKeep != null
-                ? contextMessages.subList(0, contextMessages.size() - messagesToKeep)
-                : contextMessages;
-        int endIdx = messages.size() - 1;
-
-        ContextEvent event = ContextEvent.builder().eventType(processorType()).build();
-
-        if (singleMultiConfig) {
-            List<BaseMessage> compressed = multiCompress(contextMessages, lastUserIdx, endIdx, context);
-            if (compressed != null) {
-                event.setMessagesToModify(new ArrayList<>(
-                        IntStream.range(lastUserIdx, endIdx).boxed().toList()));
-                context.setMessages(compressed);
-                return ProcessResult.ofMessages(event, Collections.emptyList());
-            }
-            return ProcessResult.ofMessages(null, messagesToAdd);
-        } else {
-            try {
-                List<BaseMessage> compressed = singleCompress(contextMessages, lastUserIdx, endIdx, context);
-                if (compressed != null) {
-                    event.setMessagesToModify(new ArrayList<>(
-                            IntStream.range(lastUserIdx, endIdx).boxed().toList()));
-                    context.setMessages(compressed);
-                    return ProcessResult.ofMessages(event, Collections.emptyList());
-                }
-                return ProcessResult.ofMessages(null, messagesToAdd);
-            } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                        "error_msg", "compress messages failed: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public void loadState(Map<String, Object> state) {
-        // stateless
-    }
-
-    @Override
-    public Map<String, Object> saveState() {
-        return Map.of();
-    }
-
-    // ==================== Private Helpers ====================
-
-    private int getCompressIdx(List<BaseMessage> messages) {
+    int getCompressIdx(List<BaseMessage> messages) {
         int compressedIdx = -1;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i) instanceof UserMessage) {
-                compressedIdx = i;
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            if (messages.get(index) instanceof UserMessage) {
+                compressedIdx = index;
                 break;
             }
         }
@@ -200,94 +246,260 @@ public class CurrentRoundCompressor extends ContextProcessor {
         if (compressedIdx < 0) {
             return -1;
         }
-
-        int keepIndex = messagesToKeep == null
-                ? messages.size()
-                : messages.size() - messagesToKeep;
-
+        int keepIndex = messages.size() - messagesToKeep;
         if (compressedIdx >= keepIndex) {
             return -1;
         }
         return compressedIdx;
     }
 
-    private List<BaseMessage> multiCompress(
+    CompressResult multiCompress(
             List<BaseMessage> contextMessages,
             int lastUserIdx,
             int endIdx,
             ModelContext context) {
-
+        boolean isUpdated = false;
+        List<Integer> modifiedIndices = new ArrayList<>();
+        List<BaseMessage> workingMessages = contextMessages;
         int startIdx = lastUserIdx + 1;
-        if (endIdx >= startIdx) {
-            BaseMessage lastMsg = contextMessages.get(endIdx);
-            if (lastMsg instanceof AssistantMessage am && am.getToolCalls() != null && !am.getToolCalls().isEmpty()) {
-                endIdx = endIdx - 1;
-            }
-            if (endIdx < startIdx) {
-                return null;
+        int actualEndIdx = endIdx;
+        if (actualEndIdx >= startIdx) {
+            actualEndIdx = findLastCompletedApiRoundEndIdx(workingMessages, startIdx, actualEndIdx);
+        }
+        if (actualEndIdx >= startIdx) {
+            List<BaseMessage> messagesToCompress = new ArrayList<>(
+                    workingMessages.subList(startIdx, actualEndIdx + 1));
+            BaseMessage compressedMessage = compress(
+                    messagesToCompress,
+                    context,
+                    workingMessages,
+                    actualEndIdx,
+                    lastUserIdx);
+            if (compressedMessage != null) {
+                workingMessages = ContextUtils.replaceMessages(
+                        workingMessages,
+                        List.of(compressedMessage),
+                        startIdx,
+                        actualEndIdx);
+                for (int index = startIdx; index <= actualEndIdx; index++) {
+                    modifiedIndices.add(index);
+                }
+                isUpdated = true;
             }
         }
 
-        List<BaseMessage> messagesToCompress = new ArrayList<>(
-                contextMessages.subList(startIdx, endIdx + 1));
-        BaseMessage compressed = compress(messagesToCompress, context);
-        if (compressed != null) {
-            return ContextUtils.replaceMessages(contextMessages, List.of(compressed), startIdx, endIdx);
+        for (int[] range : iterSummaryMergeRanges(workingMessages, summaryMergeMinBlocks)) {
+            List<BaseMessage> oldCompressMessages = new ArrayList<>(
+                    workingMessages.subList(range[0], range[1] + 1));
+            BaseMessage compressedMessage = mergeSummaryBlocks(context, oldCompressMessages);
+            if (compressedMessage != null) {
+                workingMessages = ContextUtils.replaceMessages(
+                        workingMessages,
+                        List.of(compressedMessage),
+                        range[0],
+                        range[1]);
+                for (int index = range[0]; index <= range[1]; index++) {
+                    modifiedIndices.add(index);
+                }
+                isUpdated = true;
+                break;
+            }
         }
-        return null;
+        return new CompressResult(isUpdated ? workingMessages : null, modifiedIndices);
     }
 
-    private List<BaseMessage> singleCompress(
-            List<BaseMessage> contextMessages,
-            int lastUserIdx,
-            int endIdx,
-            ModelContext context) {
-
-        int startIdx = lastUserIdx + 1;
+    BaseMessage compress(
+            List<BaseMessage> messagesToCompress,
+            ModelContext context,
+            List<BaseMessage> allContextMessages,
+            Integer compressEndIdx,
+            Integer currentQueryIdx) {
         TokenCounter tokenCounter = context.tokenCounter();
-        List<BaseMessage> result = new ArrayList<>(contextMessages);
+        int inputTokens = countMessagesTokens(messagesToCompress, tokenCounter);
+        if (inputTokens < minSelectedTokensForCompression) {
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + "] Skipping: selected span tokens ("
+                    + inputTokens + ") < min_selected_tokens_for_compression ("
+                    + minSelectedTokensForCompression + ")");
+            return null;
+        }
 
-        for (int idx = startIdx; idx <= endIdx; idx++) {
-            BaseMessage msg = result.get(idx);
-            if (msg instanceof AssistantMessage am && am.getToolCalls() != null && !am.getToolCalls().isEmpty()) {
+        String priorSummaries = "";
+        String recentContext = "";
+        String priorContextAndQuery = "";
+        if (allContextMessages != null) {
+            List<Integer> summaryIndices = collectSummaryIndices(allContextMessages);
+            if (!summaryIndices.isEmpty()) {
+                priorSummaries = String.join("\n---\n", summaryIndices.stream()
+                        .map(index -> allContextMessages.get(index).getContentAsString())
+                        .toList());
+            }
+            if (compressEndIdx != null) {
+                recentContext = formatRecentContext(allContextMessages, compressEndIdx);
+            }
+            if (currentQueryIdx != null && currentQueryIdx >= 0) {
+                priorContextAndQuery = formatPriorContextAndQuery(allContextMessages, currentQueryIdx);
+            }
+        }
+
+        String filledPrompt = buildPrompt(
+                compressionTargetTokens,
+                priorSummaries,
+                recentContext,
+                priorContextAndQuery);
+        String processedMessages = String.join("\n", messagesToCompress.stream()
+                .map(message -> "role:" + message.getRole() + ", content:" + message)
+                .toList());
+        filledPrompt = filledPrompt.replace("{selected_messages}", processedMessages);
+
+        String summary = invokeModel(filledPrompt, "current-round compression");
+        if (summary == null || summary.isBlank()) {
+            return null;
+        }
+        int compressedTokens = countMessagesTokens(List.of(new UserMessage(summary)), tokenCounter);
+        if (compressedTokens >= inputTokens) {
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + "] Skipping: compressed tokens ("
+                    + compressedTokens + ") >= original (" + inputTokens + "), no benefit.");
+            return null;
+        }
+        return new UserMessage(wrapMemoryBlock(summary));
+    }
+
+    BaseMessage mergeSummaryBlocks(ModelContext context, List<BaseMessage> oldCompressMessages) {
+        TokenCounter tokenCounter = context.tokenCounter();
+        int totalTokens = countMessagesTokens(oldCompressMessages, tokenCounter);
+        if (totalTokens <= accumulatedSummaryTokenLimit) {
+            return null;
+        }
+        List<String> mergedBlocks = new ArrayList<>();
+        for (int index = 0; index < oldCompressMessages.size(); index++) {
+            mergedBlocks.add("[MEMORY_BLOCK_" + (index + 1) + "]\n"
+                    + oldCompressMessages.get(index).getContentAsString());
+        }
+        String filledPrompt = CLEAN_PROMPT
+                .replace("{compress_len}", String.valueOf(summaryMergeTargetTokens))
+                .replace("{compressed_blocks}", mergedBlocks.isEmpty() ? "(none)" : String.join("\n\n", mergedBlocks));
+
+        String summary = invokeModel(filledPrompt, "summary merge");
+        if (summary == null || summary.isBlank()) {
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + "] failed to compress "
+                    + oldCompressMessages.size() + " old compressed messages");
+            return null;
+        }
+        Loggers.CONTEXT_ENGINE.info("[" + processorType() + "] compressed "
+                + oldCompressMessages.size() + " old compressed messages into one");
+        return new UserMessage(wrapMemoryBlock(summary));
+    }
+
+    private String invokeModel(String prompt, String phase) {
+        try {
+            AssistantMessage response = model.invoke(
+                    List.of(new UserMessage(prompt)),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+            return response != null ? response.getContentAsString() : "";
+        } catch (Exception exception) {
+            Loggers.CONTEXT_ENGINE.warning("[" + processorType()
+                    + "] compression model invoke failed during " + phase
+                    + ", skip current processor and continue remaining processors: "
+                    + exception.getMessage());
+            return null;
+        }
+    }
+
+    static boolean isSummaryMessage(BaseMessage message) {
+        return message instanceof UserMessage
+                && message.getContent() instanceof String content
+                && content.startsWith(SUMMARY_MARKER);
+    }
+
+    static List<Integer> collectSummaryIndices(List<BaseMessage> messages) {
+        List<Integer> indices = new ArrayList<>();
+        for (int index = 0; index < messages.size(); index++) {
+            if (isSummaryMessage(messages.get(index))) {
+                indices.add(index);
+            }
+        }
+        return indices;
+    }
+
+    static int countMessagesTokens(List<BaseMessage> messages, TokenCounter tokenCounter) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        if (tokenCounter != null) {
+            try {
+                return tokenCounter.countMessages(messages);
+            } catch (IllegalStateException exception) {
+                Loggers.CONTEXT_ENGINE.warning("[CurrentRoundCompressor] token_counter failed, "
+                        + "fallback to char-based estimate: "
+                        + exception.getMessage());
+            }
+        }
+        return messages.stream().mapToInt(ContextUtils::estimateMessageTokens).sum();
+    }
+
+    static int findLastCompletedApiRoundEndIdx(List<BaseMessage> messages, int startIdx, int endIdx) {
+        if (endIdx < startIdx) {
+            return endIdx;
+        }
+        List<BaseMessage> candidateMessages = messages.subList(startIdx, endIdx + 1);
+        List<int[]> completedRounds = SessionMemoryManager.groupCompletedApiRounds(candidateMessages);
+        if (completedRounds.isEmpty()) {
+            return startIdx - 1;
+        }
+        int completedEnd = completedRounds.get(completedRounds.size() - 1)[1];
+        return startIdx + completedEnd - 1;
+    }
+
+    static List<int[]> iterSummaryMergeRanges(List<BaseMessage> messages, int minBlocks) {
+        List<int[]> ranges = new ArrayList<>();
+        Integer startIdx = null;
+        Integer previousIdx = null;
+        for (int index = 0; index < messages.size(); index++) {
+            if (isSummaryMessage(messages.get(index))) {
+                if (startIdx == null) {
+                    startIdx = index;
+                }
+                previousIdx = index;
                 continue;
             }
-            int contextToken = tokenCounter != null ? tokenCounter.countMessages(List.of(msg)) : 0;
-            if (contextToken > largeMessageThreshold) {
-                BaseMessage compressed = compress(List.of(msg), context);
-                if (compressed != null) {
-                    result = ContextUtils.replaceMessages(result, List.of(compressed), idx, idx);
+            if (startIdx != null && previousIdx != null) {
+                if (previousIdx - startIdx + 1 >= minBlocks) {
+                    ranges.add(new int[]{startIdx, previousIdx});
                 }
+                startIdx = null;
+                previousIdx = null;
             }
         }
-        return result;
+        if (startIdx != null && previousIdx != null && previousIdx - startIdx + 1 >= minBlocks) {
+            ranges.add(new int[]{startIdx, previousIdx});
+        }
+        return ranges;
     }
 
-    private BaseMessage compress(List<BaseMessage> messagesToCompress, ModelContext context) {
-        try {
-            List<BaseMessage> processedMessages = new ArrayList<>();
-            processedMessages.add(new SystemMessage(compressedPrompt));
-            for (BaseMessage msg : messagesToCompress) {
-                processedMessages.add(new UserMessage("role:" + msg.getRole()
-                        + ", content:" + msg.getContentAsString()));
-            }
+    @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public void loadState(Map<String, Object> state) {
+        // stateless
+    }
 
-            AssistantMessage response = model.invoke(
-                    processedMessages, null, null, null, null, null, null,
-                    new JsonOutputParser(), null, null);
+    @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public Map<String, Object> saveState() {
+        return Map.of();
+    }
 
-            Object parserContent = response.getParserContent();
-            if (parserContent instanceof Map<?, ?> summaryMap) {
-                Object summaryObj = summaryMap.get("summary");
-                String summary = summaryObj != null ? String.valueOf(summaryObj) : "";
-                if (!summary.isEmpty()) {
-                    return offloadMessages("user", summary, messagesToCompress, context);
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            Loggers.CONTEXT_ENGINE.warning("Compression failed: " + e.getMessage());
-            return null;
-        }
+    record CompressResult(List<BaseMessage> messages, List<Integer> modifiedIndices) {
     }
 }

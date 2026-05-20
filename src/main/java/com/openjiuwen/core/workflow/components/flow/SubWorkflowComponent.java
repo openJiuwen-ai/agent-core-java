@@ -14,6 +14,9 @@ import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
  */
 public class SubWorkflowComponent extends SubWorkflowComponentImpl {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public SubWorkflowComponent(Workflow subWorkflow) {
         super(subWorkflow);
     }

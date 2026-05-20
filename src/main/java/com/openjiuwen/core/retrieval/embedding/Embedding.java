@@ -18,9 +18,9 @@ public interface Embedding {
         return embedQuery(text);
     }
 
-    List<List<Float>> embedDocuments(List<String> texts, Integer batchSize);
+    List<List<Float>> embedDocuments(List<?> texts, Integer batchSize);
 
-    default List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options) {
+    default List<List<Float>> embedDocuments(List<?> texts, Integer batchSize, Map<String, Object> options) {
         return embedDocuments(texts, batchSize);
     }
 

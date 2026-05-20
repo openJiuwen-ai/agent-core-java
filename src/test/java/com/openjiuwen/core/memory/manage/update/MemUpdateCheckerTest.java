@@ -2,8 +2,11 @@ package com.openjiuwen.core.memory.manage.update;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.memory.prompt.PromptApplier;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -15,6 +18,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 class MemUpdateCheckerTest {
+
+    @AfterEach
+    void clearPromptCache() {
+        PromptApplier.getInstance().clearCache("memory_update_check");
+    }
 
     @Test
     void checkWithoutOldMemoriesReturnsAddActions() {
@@ -69,10 +77,10 @@ class MemUpdateCheckerTest {
 
     @Test
     void formatInputMatchesPythonBehavior() {
-        Map<String, String> newMemories = new java.util.LinkedHashMap<>();
+        Map<String, String> newMemories = new LinkedHashMap<>();
         newMemories.put("1", "I like reading");
         newMemories.put("2", "I enjoy books");
-        Map<String, String> oldMemories = new java.util.LinkedHashMap<>();
+        Map<String, String> oldMemories = new LinkedHashMap<>();
         oldMemories.put("3", "I love novels");
         oldMemories.put("4", "I hate sports");
 
@@ -80,10 +88,18 @@ class MemUpdateCheckerTest {
 
         assertArrayEquals(
                 new String[]{
-                        "1: I like reading\n2: I enjoy books",
+                        "2: I enjoy books\n1: I like reading",
                         "3: I love novels\n4: I hate sports"
                 },
                 formatted
         );
+    }
+
+    @Test
+    void promptResourceUsesPythonOrderSemantics() {
+        String template = PromptApplier.getInstance().getTemplate("memory_update_check").getContent().toString();
+
+        assertTrue(template.contains("按正序遍历未丢弃的新信息"));
+        assertTrue(template.contains("暂未遍历到且未丢弃的新信息"));
     }
 }

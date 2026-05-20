@@ -1,7 +1,7 @@
-package com.openjiuwen.agent_evolving.optimizer.tool_call;
+package com.openjiuwen.agentevolving.optimizer.tool_call;
 
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.trajectory.Updates;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;

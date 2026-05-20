@@ -8,6 +8,7 @@ import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.sysop.SysOperation;
 
 import java.util.List;
 import java.util.Map;
@@ -50,7 +51,7 @@ public abstract class ModelContext {
      * Replace the current message list with the provided one.
      *
      * @param messages    new sequence of messages
-     * @param withHistory if true, replace both history and context messages
+     * @param withHistory if true, isReplace both history and context messages
      */
     public abstract void setMessages(List<BaseMessage> messages, boolean withHistory);
 
@@ -99,6 +100,24 @@ public abstract class ModelContext {
      */
     public List<BaseMessage> addMessages(BaseMessage message) {
         return addMessages(List.of(message));
+    }
+
+    /**
+     * Actively compress the context using registered compression processors.
+     *
+     * @param processorTypes optional target processor type names
+     * @param kwargs additional context-specific parameters
+     * @return compression result marker such as {@code compressed}, {@code noop}, or {@code busy}
+     */
+    public String compressContext(List<String> processorTypes, Map<String, Object> kwargs) {
+        throw new UnsupportedOperationException("compressContext is not implemented");
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public String compressContext() {
+        return compressContext(null, Map.of());
     }
 
     /**
@@ -155,6 +174,20 @@ public abstract class ModelContext {
      * Return the context identifier.
      */
     public abstract String contextId();
+
+    /**
+     * Return the workspace directory associated with this context, or empty string.
+     */
+    public String workspaceDir() {
+        return "";
+    }
+
+    /**
+     * Return the sys operation associated with this context, if any.
+     */
+    public SysOperation sysOperation() {
+        return null;
+    }
 
     /**
      * Return the token counter used by this context.

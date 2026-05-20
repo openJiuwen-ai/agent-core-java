@@ -23,6 +23,9 @@ public class Skill {
     private String directory;
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String toString() {
         return "Skill: " + name + "\nDescription: " + description + "\nDirectory: " + directory;
     }

@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.evaluator.metrics;
+package com.openjiuwen.agentevolving.evaluator.metrics;
 
 import org.junit.jupiter.api.Test;
 

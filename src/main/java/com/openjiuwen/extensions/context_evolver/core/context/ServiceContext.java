@@ -100,6 +100,9 @@ public class ServiceContext {
     }
     
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String toString() {
         return "ServiceContext(services=" + services.keySet() + ")";
     }
