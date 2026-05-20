@@ -58,7 +58,7 @@ class MemoryAnalyzerTest {
         verify(model).invoke(inputCaptor.capture(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         @SuppressWarnings("unchecked")
         List<BaseMessage> modelInput = (List<BaseMessage>) inputCaptor.getValue();
-        String prompt = modelInput.getFirst().getContentAsString();
+        String prompt = modelInput.get(0).getContentAsString();
         assertTrue(prompt.contains("禁止记忆变量定义如下："));
         assertTrue(prompt.contains("手机号,证件号"));
         assertTrue(prompt.contains("variable_key"));
@@ -90,7 +90,7 @@ class MemoryAnalyzerTest {
         verify(model).invoke(inputCaptor.capture(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         @SuppressWarnings("unchecked")
         List<BaseMessage> modelInput = (List<BaseMessage>) inputCaptor.getValue();
-        String prompt = modelInput.getFirst().getContentAsString();
+        String prompt = modelInput.get(0).getContentAsString();
         assertTrue(prompt.contains("禁止记忆变量定义如下："));
         assertTrue(prompt.contains("None"));
     }
@@ -122,8 +122,8 @@ class MemoryAnalyzerTest {
         );
 
         assertEquals(1, result.getVariables().size());
-        assertEquals("nickname", result.getVariables().getFirst().getVariableKey());
-        assertEquals("小王", result.getVariables().getFirst().getVariableValue());
+        assertEquals("nickname", result.getVariables().get(0).getVariableKey());
+        assertEquals("小王", result.getVariables().get(0).getVariableValue());
         assertEquals("用户昵称是小王", result.getSummary());
     }
 }

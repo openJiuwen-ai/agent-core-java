@@ -31,7 +31,7 @@ class SemanticStoreTest {
         assertTrue(vectorStore.collections.contains("uid_user_gid_scope_mtype_user_profile"));
         assertEquals(Map.of("schema_version", 0),
                 vectorStore.metadata.get("uid_user_gid_scope_mtype_user_profile"));
-        Map<String, Object> row = vectorStore.rows.get("uid_user_gid_scope_mtype_user_profile").getFirst();
+        Map<String, Object> row = vectorStore.rows.get("uid_user_gid_scope_mtype_user_profile").get(0);
         assertEquals("mem-1", row.get("id"));
         assertTrue(row.containsKey("embedding"));
         assertFalse(row.containsKey("text"));
