@@ -299,7 +299,7 @@ public class AbilityManager implements ToolRegistry {
                 }
 
                 String errorMsg = "Ability execution error: " + e.getMessage();
-                Loggers.AGENT.error(errorMsg);
+                Loggers.AGENT.exception(errorMsg, e);
 
                 Object toolResult = null;
                 ToolMessage toolMessage = null;
