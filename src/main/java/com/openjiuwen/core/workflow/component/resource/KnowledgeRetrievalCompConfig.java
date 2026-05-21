@@ -41,25 +41,4 @@ public class KnowledgeRetrievalCompConfig extends ComponentConfig {
     // Output formatting
     private String resultSeparator = "\n\n";
     private boolean includeMetadata = false;
-
-    public List<KnowledgeBaseConfig> getKbConfigs() { return kbConfigs; }
-    public void setKbConfigs(List<KnowledgeBaseConfig> kbConfigs) { this.kbConfigs = kbConfigs; }
-    public RetrievalConfig getRetrievalConfig() { return retrievalConfig; }
-    public void setRetrievalConfig(RetrievalConfig retrievalConfig) { this.retrievalConfig = retrievalConfig; }
-    public VectorStoreConfig getVectorStoreConfig() { return vectorStoreConfig; }
-    public void setVectorStoreConfig(VectorStoreConfig vectorStoreConfig) { this.vectorStoreConfig = vectorStoreConfig; }
-    public Map<String, Object> getVectorStoreAdditionalConfig() { return vectorStoreAdditionalConfig; }
-    public void setVectorStoreAdditionalConfig(Map<String, Object> vectorStoreAdditionalConfig) { this.vectorStoreAdditionalConfig = vectorStoreAdditionalConfig; }
-    public EmbeddingConfig getEmbedConfig() { return embedConfig; }
-    public void setEmbedConfig(EmbeddingConfig embedConfig) { this.embedConfig = embedConfig; }
-    public String getModelId() { return modelId; }
-    public void setModelId(String modelId) { this.modelId = modelId; }
-    public ModelClientConfig getModelClientConfig() { return modelClientConfig; }
-    public void setModelClientConfig(ModelClientConfig modelClientConfig) { this.modelClientConfig = modelClientConfig; }
-    public ModelRequestConfig getModelConfig() { return modelConfig; }
-    public void setModelConfig(ModelRequestConfig modelConfig) { this.modelConfig = modelConfig; }
-    public String getResultSeparator() { return resultSeparator; }
-    public void setResultSeparator(String resultSeparator) { this.resultSeparator = resultSeparator; }
-    public boolean isIncludeMetadata() { return includeMetadata; }
-    public void setIncludeMetadata(boolean includeMetadata) { this.includeMetadata = includeMetadata; }
 }

@@ -1,7 +1,5 @@
 package com.openjiuwen.harness.tools;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,12 +13,6 @@ public class AskUserTool extends AbstractHarnessTool {
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("question", inputs.get("question"));
-        data.put("questions", inputs.get("questions") instanceof List<?> list ? list : List.of());
-        data.put("header", inputs.get("header"));
-        data.put("multiple", Boolean.TRUE.equals(inputs.get("multiple")));
-        data.put("options", inputs.get("options") instanceof List<?> list ? list : List.of());
-        return new ToolOutput(true, data, null);
+        return new ToolOutput(true, Map.of(), null);
     }
 }

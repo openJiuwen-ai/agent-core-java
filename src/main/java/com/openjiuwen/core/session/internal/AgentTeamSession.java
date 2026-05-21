@@ -49,6 +49,16 @@ public class AgentTeamSession extends BaseSession {
                             Checkpointer checkpointer) {
         this(sessionId, teamId, config, checkpointer, null);
     }
+    
+    /**
+     * Create a new AgentTeamSession with defaults.
+     *
+     * @param sessionId the unique session identifier
+     * @param teamId    the team identifier
+     */
+    public AgentTeamSession(String sessionId, String teamId) {
+        this(sessionId, teamId, null, null, null);
+    }
 
     /**
      * Create a new AgentTeamSession with an explicit stream writer manager.

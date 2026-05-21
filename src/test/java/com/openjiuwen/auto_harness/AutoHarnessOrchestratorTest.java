@@ -10,6 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.test_orchestrator}.
+ * Tests for AutoHarnessOrchestrator initialization, cycle result recording, and factory methods.
+ */
 class AutoHarnessOrchestratorTest {
 
     @Test

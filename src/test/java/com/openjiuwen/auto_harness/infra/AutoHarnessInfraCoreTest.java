@@ -6,6 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_session_budget}
+ * and {@code tests.unit_tests.auto_harness.infra.test_fix_loop}.
+ * Tests for SessionBudgetController time/cost tracking and FixLoopController retry logic.
+ */
 class AutoHarnessInfraCoreTest {
 
     @Test

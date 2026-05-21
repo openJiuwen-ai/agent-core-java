@@ -86,16 +86,14 @@ public class GatewayTrajectoryRuntime implements SampleRecordingSink {
         );
     }
 
-    static final class InMemoryPendingJudgeStore implements PendingJudgeStore {
+    static final class InMemoryPendingJudgeStore extends PendingJudgeStore {
         private final Map<String, java.util.List<Map<String, Object>>> bySession = new LinkedHashMap<>();
 
-        @Override
         public void put(Map<String, Object> sample) {
             String sessionId = String.valueOf(sample.getOrDefault("session_id", ""));
             bySession.computeIfAbsent(sessionId, ignored -> new java.util.ArrayList<>()).add(sample);
         }
 
-        @Override
         public Map<String, Object> popEarliest(String sessionId) {
             java.util.List<Map<String, Object>> samples = bySession.get(sessionId);
             if (samples == null || samples.isEmpty()) {
@@ -104,7 +102,6 @@ public class GatewayTrajectoryRuntime implements SampleRecordingSink {
             return samples.removeFirst();
         }
 
-        @Override
         public java.util.List<Map<String, Object>> popAll(String sessionId) {
             java.util.List<Map<String, Object>> samples = bySession.remove(sessionId);
             return samples != null ? samples : java.util.List.of();

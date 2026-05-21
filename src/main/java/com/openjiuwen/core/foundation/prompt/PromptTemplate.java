@@ -55,26 +55,6 @@ public class PromptTemplate {
     @Builder.Default
     private String placeholderSuffix = "}}";
 
-    public static PromptTemplateBuilder builder() {
-        return new PromptTemplateBuilder();
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public Object getContent() {
-        return content;
-    }
-
-    public String getPlaceholderPrefix() {
-        return placeholderPrefix;
-    }
-
-    public String getPlaceholderSuffix() {
-        return placeholderSuffix;
-    }
-
     /**
      * Convert template content to a list of BaseMessages.
      * Preserves original message subtype.
@@ -192,37 +172,6 @@ public class PromptTemplate {
                     .content(bm.getContent())
                     .name(bm.getName())
                     .build();
-        }
-    }
-
-    public static class PromptTemplateBuilder {
-        private String name = "";
-        private Object content = "";
-        private String placeholderPrefix = "{{";
-        private String placeholderSuffix = "}}";
-
-        public PromptTemplateBuilder name(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public PromptTemplateBuilder content(Object content) {
-            this.content = content;
-            return this;
-        }
-
-        public PromptTemplateBuilder placeholderPrefix(String placeholderPrefix) {
-            this.placeholderPrefix = placeholderPrefix;
-            return this;
-        }
-
-        public PromptTemplateBuilder placeholderSuffix(String placeholderSuffix) {
-            this.placeholderSuffix = placeholderSuffix;
-            return this;
-        }
-
-        public PromptTemplate build() {
-            return new PromptTemplate(name, content, placeholderPrefix, placeholderSuffix);
         }
     }
 }

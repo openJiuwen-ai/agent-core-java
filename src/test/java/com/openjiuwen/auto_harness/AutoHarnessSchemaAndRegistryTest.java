@@ -28,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.test_schema}.
+ * Tests for AutoHarness schema classes and registry functionality.
+ */
 class AutoHarnessSchemaAndRegistryTest {
 
     @Test

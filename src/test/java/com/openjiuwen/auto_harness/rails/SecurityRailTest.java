@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Tests for {@link SecurityRail}.
+ * Mirrors Python's {@code tests.unit_tests.harness.test_security_rail}.
+ * Tests for SecurityRail blocking suspicious prompts and allowing benign inputs.
  */
 class SecurityRailTest {
 

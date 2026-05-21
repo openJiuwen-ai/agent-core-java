@@ -46,36 +46,4 @@ public class RetrievalResult {
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
-
-    public String getText() {
-        return text;
-    }
-
-    public double getScore() {
-        return score;
-    }
-
-    public void setScore(double score) {
-        this.score = score;
-    }
-
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
-    public String getDocId() {
-        return docId;
-    }
-
-    public void setDocId(String docId) {
-        this.docId = docId;
-    }
-
-    public String getChunkId() {
-        return chunkId;
-    }
-
-    public void setChunkId(String chunkId) {
-        this.chunkId = chunkId;
-    }
 }

@@ -22,24 +22,4 @@ public class RiskAssessment {
     @Builder.Default
     double confidence = 0.0;
     Map<String, Object> details;
-
-    public boolean isHasRisk() {
-        return hasRisk;
-    }
-
-    public RiskLevel getRiskLevel() {
-        return riskLevel;
-    }
-
-    public String getRiskType() {
-        return riskType;
-    }
-
-    public double getConfidence() {
-        return confidence;
-    }
-
-    public Map<String, Object> getDetails() {
-        return details;
-    }
 }

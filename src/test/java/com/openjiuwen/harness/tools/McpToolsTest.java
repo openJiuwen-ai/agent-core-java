@@ -50,6 +50,59 @@ class McpToolsTest {
     }
 
     @Test
+    void listMcpResourcesAllowsEmptyData() {
+        ListMcpResourcesTool tool = new ListMcpResourcesTool((serverId, options) -> List.of());
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "my-server"), Map.of());
+
+        assertTrue(output.isSuccess());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) output.getData();
+        assertTrue(data.isEmpty());
+    }
+
+    @Test
+    void listMcpResourcesNormalizesNullDataToEmptyList() {
+        ListMcpResourcesTool tool = new ListMcpResourcesTool((serverId, options) -> null);
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "my-server"), Map.of());
+
+        assertTrue(output.isSuccess());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) output.getData();
+        assertTrue(data.isEmpty());
+    }
+
+    @Test
+    void listMcpResourcesSurfacesProviderExceptions() {
+        ListMcpResourcesTool tool = new ListMcpResourcesTool((serverId, options) -> {
+            throw new IllegalStateException("connection refused");
+        });
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "bad-server"), Map.of());
+
+        assertFalse(output.isSuccess());
+        assertEquals("connection refused", output.getError());
+    }
+
+    @Test
+    void listMcpResourcesSupportsFallbackStringRows() {
+        ListMcpResourcesTool tool = new ListMcpResourcesTool((serverId, options) -> List.of(
+                row("java.lang.Object@1", "", null, null)
+        ));
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "s"), Map.of());
+
+        assertTrue(output.isSuccess());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) output.getData();
+        assertEquals("java.lang.Object@1", data.get(0).get("uri"));
+        assertEquals("", data.get(0).get("name"));
+        assertEquals(null, data.get(0).get("mimeType"));
+        assertEquals(null, data.get(0).get("description"));
+    }
+
+    @Test
     void readMcpResourceReturnsContents() {
         ReadMcpResourceTool tool = new ReadMcpResourceTool((serverId, uri, options) -> List.of(
                 Map.of("uri", uri, "mimeType", "text/markdown", "text", "# hello")
@@ -70,5 +123,17 @@ class McpToolsTest {
         ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "my-server"), Map.of());
         assertFalse(output.isSuccess());
         assertEquals("uri is required", output.getError());
+    }
+
+    @Test
+    void readMcpResourceNormalizesNullDataToEmptyList() {
+        ReadMcpResourceTool tool = new ReadMcpResourceTool((serverId, uri, options) -> null);
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("server_id", "my-server", "uri", "res://doc"), Map.of());
+
+        assertTrue(output.isSuccess());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) output.getData();
+        assertTrue(data.isEmpty());
     }
 }

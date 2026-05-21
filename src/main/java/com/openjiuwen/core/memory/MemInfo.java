@@ -24,46 +24,4 @@ public class MemInfo {
     private String content = "";
     @Builder.Default
     private MemoryType type = MemoryType.FRAGMENT_MEMORY;
-
-    public static MemInfoBuilder builder() {
-        return new MemInfoBuilder();
-    }
-
-    public String getMemId() {
-        return memId;
-    }
-
-    public void setMemId(String memId) {
-        this.memId = memId;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public void setContent(String content) {
-        this.content = content;
-    }
-
-    public MemoryType getType() {
-        return type;
-    }
-
-    public void setType(MemoryType type) {
-        this.type = type;
-    }
-
-    public static final class MemInfoBuilder {
-        private String memId = "";
-        private String content = "";
-        private MemoryType type = MemoryType.FRAGMENT_MEMORY;
-
-        public MemInfoBuilder memId(String memId) { this.memId = memId; return this; }
-        public MemInfoBuilder content(String content) { this.content = content; return this; }
-        public MemInfoBuilder type(MemoryType type) { this.type = type; return this; }
-
-        public MemInfo build() {
-            return new MemInfo(memId, content, type);
-        }
-    }
 }

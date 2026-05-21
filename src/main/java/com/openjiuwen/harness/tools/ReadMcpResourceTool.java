@@ -2,6 +2,7 @@ package com.openjiuwen.harness.tools;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Mirrors Python's {@code ReadMcpResourceTool} in {@code openjiuwen.harness.tools.mcp_tools}.
@@ -35,7 +36,8 @@ public class ReadMcpResourceTool extends AbstractHarnessTool {
             return new ToolOutput(false, null, "uri is required");
         }
         try {
-            return new ToolOutput(true, resourceReader.read(serverId, uri, inputs), null);
+            List<Map<String, Object>> data = resourceReader.read(serverId, uri, inputs);
+            return new ToolOutput(true, Objects.requireNonNullElseGet(data, List::of), null);
         } catch (Exception e) {
             return new ToolOutput(false, null, e.getMessage());
         }

@@ -41,12 +41,13 @@ public class WorkflowFactory implements Supplier<Workflow> {
                            String workflowName, String workflowDescription,
                            Object inputSchema) {
         this.factory = factory;
-        this.workflowCard = new WorkflowCard();
-        this.workflowCard.setId(workflowId);
-        this.workflowCard.setName(workflowName != null ? workflowName : "");
-        this.workflowCard.setDescription(workflowDescription != null ? workflowDescription : "");
-        this.workflowCard.setVersion(workflowVersion);
-        this.workflowCard.setInputParams(inputSchema);
+        this.workflowCard = WorkflowCard.builder()
+                .id(workflowId)
+                .name(workflowName != null ? workflowName : "")
+                .description(workflowDescription != null ? workflowDescription : "")
+                .version(workflowVersion)
+                .inputParams(inputSchema)
+                .build();
     }
 
     public WorkflowFactory(String workflowId, String workflowVersion, Supplier<Workflow> factory) {

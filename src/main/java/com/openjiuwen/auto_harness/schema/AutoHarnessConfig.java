@@ -174,4 +174,47 @@ public class AutoHarnessConfig {
     public String getSuggestedLocalRepo() { return suggestedLocalRepo; }
     public void setSuggestedLocalRepo(String suggestedLocalRepo) { this.suggestedLocalRepo = suggestedLocalRepo; }
     public double getTaskTimeoutSecs() { return taskTimeoutSecs; }
+    
+    // Additional getters for orchestrator dependencies
+    public double getCostLimitUsd() { return costLimitUsd; }
+    public void setCostLimitUsd(double costLimitUsd) { this.costLimitUsd = costLimitUsd; }
+    
+    public int getFixPhase1MaxRetries() { return fixPhase1MaxRetries; }
+    public void setFixPhase1MaxRetries(int fixPhase1MaxRetries) { this.fixPhase1MaxRetries = fixPhase1MaxRetries; }
+    
+    public int getFixPhase2MaxRetries() { return fixPhase2MaxRetries; }
+    public void setFixPhase2MaxRetries(int fixPhase2MaxRetries) { this.fixPhase2MaxRetries = fixPhase2MaxRetries; }
+    
+    public String getGitBaseBranch() { return gitBaseBranch; }
+    public void setGitBaseBranch(String gitBaseBranch) { this.gitBaseBranch = gitBaseBranch; }
+    
+    public String getUpstreamOwner() { return upstreamOwner; }
+    public void setUpstreamOwner(String upstreamOwner) { this.upstreamOwner = upstreamOwner; }
+    
+    public String getUpstreamRepo() { return upstreamRepo; }
+    public void setUpstreamRepo(String upstreamRepo) { this.upstreamRepo = upstreamRepo; }
+    
+    public String getGitUserEmail() { return gitUserEmail; }
+    public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
+    
+    public String getCiGateConfig() { return ciGateConfig; }
+    public void setCiGateConfig(String ciGateConfig) { this.ciGateConfig = ciGateConfig; }
+    
+    public String resolveGitcodeToken() {
+        if (!gitcodeToken.isBlank()) {
+            return gitcodeToken;
+        }
+        String envValue = System.getenv(gitcodeTokenEnv);
+        return envValue != null ? envValue : "";
+    }
+    
+    public String resolveCiGatePythonExecutable() {
+        if (!ciGatePythonExecutable.isBlank()) {
+            return ciGatePythonExecutable;
+        }
+        return "python";
+    }
+    
+    public String getExperienceDir() { return experienceDir; }
+    public void setExperienceDir(String experienceDir) { this.experienceDir = experienceDir; }
 }

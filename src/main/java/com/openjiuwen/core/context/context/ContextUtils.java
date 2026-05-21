@@ -6,10 +6,13 @@ package com.openjiuwen.core.context.context;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -170,9 +173,130 @@ public final class ContextUtils {
      * Check whether a message has tool calls (AssistantMessage with non-empty toolCalls).
      */
     private static boolean hasToolCalls(BaseMessage msg) {
-        if (msg instanceof com.openjiuwen.core.foundation.llm.schema.AssistantMessage am) {
+        if (msg instanceof AssistantMessage am) {
             return am.getToolCalls() != null && !am.getToolCalls().isEmpty();
         }
         return false;
+    }
+
+    // ==================== Tool resolution helpers ====================
+
+    /**
+     * Look up the tool_call object that corresponds to a tool message by
+     * traversing context backwards.
+     * <p>
+     * Mirrors Python's {@code ContextUtils.resolve_tool_call_from_message}.
+     *
+     * @param message         ToolMessage to look up
+     * @param contextMessages context message list
+     * @return the matching tool_call object, or null if not found
+     */
+    public static Object resolveToolCallFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+        if (!(message instanceof ToolMessage toolMsg)) {
+            return null;
+        }
+        String toolCallId = toolMsg.getToolCallId();
+        if (toolCallId == null || toolCallId.isEmpty()) {
+            return null;
+        }
+        for (int i = contextMessages.size() - 1; i >= 0; i--) {
+            BaseMessage ctxMsg = contextMessages.get(i);
+            if (!(ctxMsg instanceof AssistantMessage assistant)) {
+                continue;
+            }
+            if (assistant.getToolCalls() != null) {
+                for (Object toolCall : assistant.getToolCalls()) {
+                    if (toolCallMatchesId(toolCall, toolCallId)) {
+                        return toolCall;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if a tool_call object matches a given tool_call_id.
+     */
+    public static boolean toolCallMatchesId(Object toolCall, String toolCallId) {
+        if (toolCall instanceof Map<?, ?> map) {
+            Object id = map.get("id");
+            return toolCallId.equals(id);
+        }
+        // attribute-based access
+        try {
+            Object id = toolCall.getClass().getField("id").get(toolCall);
+            return toolCallId.equals(id);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Extract the tool name from a tool_call object.
+     */
+    public static String extractToolName(Object toolCall) {
+        if (toolCall instanceof Map<?, ?> map) {
+            Object function = map.get("function");
+            if (function instanceof Map<?, ?> funcMap) {
+                Object name = funcMap.get("name");
+                if (name instanceof String s && !s.isEmpty()) {
+                    return s;
+                }
+            }
+            Object name = map.get("name");
+            return (name instanceof String s && !s.isEmpty()) ? s : null;
+        }
+        // attribute-based
+        try {
+            Object function = toolCall.getClass().getField("function").get(toolCall);
+            if (function != null) {
+                Object name = function.getClass().getField("name").get(function);
+                if (name instanceof String s && !s.isEmpty()) {
+                    return s;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            Object name = toolCall.getClass().getField("name").get(toolCall);
+            if (name instanceof String s && !s.isEmpty()) {
+                return s;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Look up the tool name that corresponds to a tool message.
+     * <p>
+     * Mirrors Python's {@code ContextUtils.resolve_tool_name_from_message}.
+     */
+    public static String resolveToolNameFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+        Object toolCall = resolveToolCallFromMessage(message, contextMessages);
+        if (toolCall == null) {
+            return null;
+        }
+        return extractToolName(toolCall);
+    }
+
+    // ==================== Token estimation ====================
+
+    /**
+     * Estimate token count from content using a rough chars/3 heuristic.
+     * <p>
+     * Mirrors Python's {@code ContextUtils.estimate_tokens}.
+     */
+    public static int estimateTokens(Object content) {
+        if (content instanceof String s) {
+            return Math.max(s.length() / 3, 1);
+        }
+        try {
+            String json = MAPPER.writeValueAsString(content);
+            return Math.max(json.length() / 3, 1);
+        } catch (JsonProcessingException e) {
+            return Math.max(String.valueOf(content).length() / 3, 1);
+        }
     }
 }

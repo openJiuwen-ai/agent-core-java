@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.agent_teams.test_hitt}
+ * and {@code tests.unit_tests.agent_teams.worktree.test_manager}.
+ * Tests for worktree config defaults, session management, and workspace file operations.
+ */
 class AgentTeamsWorktreeWorkspaceAndHittTest {
 
     @AfterEach
@@ -57,6 +62,15 @@ class AgentTeamsWorktreeWorkspaceAndHittTest {
         assertEquals("slug-a", session.getSlug());
         assertTrue(manager.removeCurrent(true));
         assertEquals(null, WorktreeSessionHolder.getCurrentSession());
+    }
+
+    @Test
+    void requireCurrentSessionUsesPythonAlignedErrorMessage() {
+        WorktreeSessionHolder.setCurrentSession(null);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, WorktreeSessionHolder::requireCurrentSession);
+
+        assertEquals("Not in a worktree session", error.getMessage());
     }
 
     @Test

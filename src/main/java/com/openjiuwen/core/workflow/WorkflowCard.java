@@ -39,58 +39,10 @@ public class WorkflowCard extends BaseCard {
         setName(name);
     }
 
-    public WorkflowCard() {
-        super();
-    }
-
     @Builder.Default
     private String version = "";
 
     private Object inputParams;
-
-    public static WorkflowCardBuilder builder() {
-        return new WorkflowCardBuilder();
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public void setVersion(String version) {
-        this.version = version;
-    }
-
-    public Object getInputParams() {
-        return inputParams;
-    }
-
-    public void setInputParams(Object inputParams) {
-        this.inputParams = inputParams;
-    }
-
-    public static final class WorkflowCardBuilder {
-        private String id = "";
-        private String name = "";
-        private String description = "";
-        private String version = "";
-        private Object inputParams;
-
-        public WorkflowCardBuilder id(String id) { this.id = id; return this; }
-        public WorkflowCardBuilder name(String name) { this.name = name; return this; }
-        public WorkflowCardBuilder description(String description) { this.description = description; return this; }
-        public WorkflowCardBuilder version(String version) { this.version = version; return this; }
-        public WorkflowCardBuilder inputParams(Object inputParams) { this.inputParams = inputParams; return this; }
-
-        public WorkflowCard build() {
-            WorkflowCard card = new WorkflowCard();
-            card.setId(id);
-            card.setName(name);
-            card.setDescription(description);
-            card.setVersion(version);
-            card.setInputParams(inputParams);
-            return card;
-        }
-    }
 
     /**
      * Compatibility constructor for translated tests that still pass

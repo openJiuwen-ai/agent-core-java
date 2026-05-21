@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.agent_teams.worktree.test_manager}.
+ * Tests for WorktreeManager base repo and worktree name generation.
+ */
 class WorktreeManagerTest {
 
     @Test

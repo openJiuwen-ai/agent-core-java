@@ -56,6 +56,20 @@ class WebToolsTest {
     }
 
     @Test
+    void createWebToolsHonorsPerCallInclusionFlags() {
+        System.setProperty("FREE_SEARCH_BING_ENABLED", "true");
+        System.setProperty("BOCHA_API_KEY", "test-key");
+
+        List<Tool> paidOnly = WebTools.createWebTools("cn", false, true, false);
+        List<Tool> freeOnly = WebTools.createWebTools("cn", true, false, false);
+        List<Tool> none = WebTools.createWebTools("cn", false, false, false);
+
+        assertEquals(List.of("paid_search"), paidOnly.stream().map(tool -> tool.getCard().getName()).toList());
+        assertEquals(List.of("free_search"), freeOnly.stream().map(tool -> tool.getCard().getName()).toList());
+        assertTrue(none.isEmpty());
+    }
+
+    @Test
     void freeSearchRequiresQuery() {
         WebFreeSearchTool tool = new WebFreeSearchTool("cn");
 

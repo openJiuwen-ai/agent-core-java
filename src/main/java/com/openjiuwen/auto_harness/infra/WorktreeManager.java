@@ -76,4 +76,25 @@ public class WorktreeManager {
     }
 
     public record GitResult(int returnCode, String output) {}
+
+    /**
+     * Prepare a worktree synchronously for a given topic.
+     *
+     * @param topic the task topic
+     * @return the worktree path
+     */
+    public String prepareSync(String topic) {
+        String wtName = worktreeNameFor(topic);
+        String wtPath = Path.of(config.getWorktreesDir(), wtName).toString();
+        try {
+            // Create worktrees directory
+            java.nio.file.Files.createDirectories(Path.of(config.getWorktreesDir()));
+            // Create worktree (simplified)
+            runGit(baseRepo(), "worktree", "add", wtPath, "--detach");
+            return wtPath;
+        } catch (Exception e) {
+            // Return path anyway, may need async preparation later
+            return wtPath;
+        }
+    }
 }

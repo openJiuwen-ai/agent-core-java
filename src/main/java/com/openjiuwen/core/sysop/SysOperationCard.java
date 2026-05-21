@@ -51,30 +51,6 @@ public class SysOperationCard extends BaseCard {
     /** Sandbox gateway config (required when mode is SANDBOX). */
     private SandboxGatewayConfig gatewayConfig;
 
-    public OperationMode getMode() {
-        return mode;
-    }
-
-    public void setMode(OperationMode mode) {
-        this.mode = mode;
-    }
-
-    public LocalWorkConfig getWorkConfig() {
-        return workConfig;
-    }
-
-    public void setWorkConfig(LocalWorkConfig workConfig) {
-        this.workConfig = workConfig;
-    }
-
-    public SandboxGatewayConfig getGatewayConfig() {
-        return gatewayConfig;
-    }
-
-    public void setGatewayConfig(SandboxGatewayConfig gatewayConfig) {
-        this.gatewayConfig = gatewayConfig;
-    }
-
     /**
      * Validate that mode is a valid OperationMode.
      *

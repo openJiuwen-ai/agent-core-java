@@ -21,45 +21,6 @@ public class GitHubTree {
     private String treeRef = "HEAD";
     private String directory = "";
 
-    public GitHubTree(String repoOwner, String repoName, String treeRef, String directory) {
-        this.repoOwner = repoOwner;
-        this.repoName = repoName;
-        this.treeRef = treeRef;
-        this.directory = directory;
-    }
-
-    public String getRepoOwner() {
-        return repoOwner;
-    }
-
-    public void setRepoOwner(String repoOwner) {
-        this.repoOwner = repoOwner;
-    }
-
-    public String getRepoName() {
-        return repoName;
-    }
-
-    public void setRepoName(String repoName) {
-        this.repoName = repoName;
-    }
-
-    public String getTreeRef() {
-        return treeRef;
-    }
-
-    public void setTreeRef(String treeRef) {
-        this.treeRef = treeRef;
-    }
-
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(String directory) {
-        this.directory = directory;
-    }
-
     public GitHubTree(String repoOwner, String repoName) {
         this.repoOwner = repoOwner;
         this.repoName = repoName;

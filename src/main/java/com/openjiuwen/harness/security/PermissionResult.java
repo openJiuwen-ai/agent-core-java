@@ -43,4 +43,28 @@ public class PermissionResult {
     public java.util.List<String> getExternalPaths() {
         return externalPaths;
     }
+
+    /**
+     * Check if permission is ALLOW.
+     * <p>Mirrors Python's {@code is_allowed} property.
+     */
+    public boolean isAllowed() {
+        return permission == PermissionLevel.ALLOW;
+    }
+
+    /**
+     * Check if permission is DENY.
+     * <p>Mirrors Python's {@code is_denied} property.
+     */
+    public boolean isDenied() {
+        return permission == PermissionLevel.DENY;
+    }
+
+    /**
+     * Check if permission requires approval (ASK).
+     * <p>Mirrors Python's {@code needs_approval} property.
+     */
+    public boolean needsApproval() {
+        return permission == PermissionLevel.ASK;
+    }
 }

@@ -15,8 +15,4 @@ public class AgentMemoryConfig extends com.openjiuwen.core.memory.config.AgentMe
     public AgentMemoryConfig() {
         super();
     }
-
-    public static com.openjiuwen.core.memory.config.AgentMemoryConfig.AgentMemoryConfigBuilder builder() {
-        return com.openjiuwen.core.memory.config.AgentMemoryConfig.builder();
-    }
 }

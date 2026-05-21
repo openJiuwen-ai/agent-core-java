@@ -36,8 +36,7 @@ class HarnessModernToolsTest {
         assertTrue(output.isSuccess());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) output.getData();
-        assertEquals("Choose one", data.get("question"));
-        assertEquals(false, data.get("multiple"));
+        assertTrue(data.isEmpty());
     }
 
     @Test
@@ -58,6 +57,50 @@ class HarnessModernToolsTest {
     }
 
     @Test
+    void skillToolReturnsErrorForUnknownSkill(@TempDir Path tempDir) {
+        Path skillDir = tempDir.resolve("test_skill_1");
+        Skill skill = Skill.builder().name("test_skill_1").description("skill description 1").directory(skillDir.toString()).build();
+        SkillTool tool = new SkillTool((SysOperation) null, () -> List.of(skill));
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("skill_name", "test_skill_2", "relative_file_path", ""), Map.of());
+
+        assertFalse(output.isSuccess());
+        assertTrue(String.valueOf(output.getError()).contains("Skill not found: test_skill_2"));
+    }
+
+    @Test
+    void skillToolReadsReferenceFile(@TempDir Path tempDir) throws Exception {
+        Path skillDir = tempDir.resolve("test_skill_1");
+        Path referenceDir = skillDir.resolve("reference");
+        Files.createDirectories(referenceDir);
+        Files.writeString(skillDir.resolve("SKILL.md"), "# test_skill_1\nskill body 1");
+        Files.writeString(referenceDir.resolve("temp_file.md"), "test_skill_1 temp file content");
+        Skill skill = Skill.builder().name("test_skill_1").description("skill description 1").directory(skillDir.toString()).build();
+        SkillTool tool = new SkillTool((SysOperation) null, () -> List.of(skill));
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("skill_name", "test_skill_1", "relative_file_path", "reference/temp_file.md"), Map.of());
+
+        assertTrue(output.isSuccess());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) output.getData();
+        assertTrue(String.valueOf(data.get("skill_content")).contains("test_skill_1 temp file content"));
+    }
+
+    @Test
+    void skillToolReturnsErrorForUnknownReferenceFile(@TempDir Path tempDir) throws Exception {
+        Path skillDir = tempDir.resolve("test_skill_1");
+        Files.createDirectories(skillDir.resolve("reference"));
+        Files.writeString(skillDir.resolve("SKILL.md"), "# test_skill_1\nskill body 1");
+        Skill skill = Skill.builder().name("test_skill_1").description("skill description 1").directory(skillDir.toString()).build();
+        SkillTool tool = new SkillTool((SysOperation) null, () -> List.of(skill));
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("skill_name", "test_skill_1", "relative_file_path", "reference/unknown_file.md"), Map.of());
+
+        assertFalse(output.isSuccess());
+        assertNotNull(output.getError());
+    }
+
+    @Test
     void listSkillToolReturnsAllSkillsAndFallbackMessage() {
         Skill a = Skill.builder().name("alpha").description("first").directory("/skills/alpha").build();
         Skill b = Skill.builder().name("beta").description("second").directory("/skills/beta").build();
@@ -73,6 +116,8 @@ class HarnessModernToolsTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> skills = (List<Map<String, Object>>) data.get("skills");
         assertEquals(2, skills.size());
+        assertEquals("/skills/alpha/SKILL.md", skills.get(0).get("skill_md_path"));
+        assertEquals("/skills/beta/SKILL.md", skills.get(1).get("skill_md_path"));
     }
 
     @Test

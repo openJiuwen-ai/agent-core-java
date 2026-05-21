@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -243,9 +244,9 @@ public class CallbackFramework {
                 chain.remove(callback);
             }
 
-            if (enableLogging) {
+if (enableLogging) {
                 log.info("Unregistered callback: {} -> {}", event, toRemove.getCallbackDisplayName());
-            }
+}
         }
     }
 
@@ -1439,5 +1440,140 @@ public class CallbackFramework {
             return new RuntimeException(throwable);
         }
         return null;
+    }
+
+    // ========== Wrap Decorators (Mirrors Python decorator.py) ==========
+
+    /** Prefix for wrap event keys in the callbacks registry. */
+    public static final String WRAP_EVENT_PREFIX = "__wrap__:";
+
+    /**
+     * Functional interface for wrap handlers.
+     * <p>
+     * Mirrors Python's WrapHandler protocol. Each handler receives call_next as its first
+     * argument and decides when (and whether) to invoke the rest of the chain.
+     */
+    @FunctionalInterface
+    public interface WrapHandler {
+        /**
+         * Execute the handler.
+         *
+         * @param callNext The next function to call (pass kwargs to invoke next)
+         * @param kwargs   Keyword arguments (args stored under "_args" key)
+         * @return Result object
+         */
+        Object execute(Function<Map<String, Object>, Object> callNext, Map<String, Object> kwargs);
+    }
+
+    /**
+     * Register a wrap handler for an event.
+     * <p>
+     * Mirrors Python's {@code @framework.on_wrap(event)}.
+     *
+     * @param event    Logical event name
+     * @param handler  Wrap handler to register
+     * @param priority Execution priority (higher = outermost in chain)
+     * @return The registered CallbackInfo
+     */
+    public CallbackInfo onWrap(String event, WrapHandler handler, int priority) {
+        String wrapEventKey = WRAP_EVENT_PREFIX + event;
+        // Store the handler reference as the callback
+        Function<Map<String, Object>, Object> callbackWrapper = kwargs -> handler;
+        return registerSync(wrapEventKey, callbackWrapper, priority, false, "default",
+                new HashSet<>(), Collections.emptyList(), null, null, 0, 0.0, null, null);
+    }
+
+    /**
+     * Create a decorator that wraps a function with event-registered wrap handlers.
+     * <p>
+     * Mirrors Python's {@code @framework.wrap(event)}.
+     *
+     * @param event Logical event name
+     * @return A function wrapper that applies the wrap handler chain
+     */
+public Function<Map<String, Object>, Object> wrap(String event) {
+        return kwargs -> {
+            List<WrapHandler> handlers = getWrapHandlers(event);
+            if (handlers.isEmpty()) {
+                return Collections.emptyMap();
+            }
+            Function<Map<String, Object>, Object> chain = k -> k;
+            for (int i = handlers.size() - 1; i >= 0; i--) {
+                WrapHandler handler = handlers.get(i);
+                Function<Map<String, Object>, Object> next = chain;
+                chain = k -> handler.execute(next, k);
+            }
+            return chain.apply(kwargs);
+        };
+    }
+
+    /**
+     * Get enabled wrap handlers for an event.
+     *
+     * @param event Event name
+     * @return List of enabled WrapHandlers
+     */
+    @SuppressWarnings("unchecked")
+    public List<WrapHandler> getWrapHandlers(String event) {
+        String key = WRAP_EVENT_PREFIX + event;
+        List<CallbackInfo> infos = callbacks.getOrDefault(key, Collections.emptyList());
+        List<WrapHandler> handlers = new ArrayList<>();
+        for (CallbackInfo info : infos) {
+            if (info.isEnabled() && info.getCallback() != null) {
+                Object result = info.getCallback().apply(Collections.emptyMap());
+                if (result instanceof WrapHandler) {
+                    handlers.add((WrapHandler) result);
+                }
+            }
+        }
+        return handlers;
+    }
+
+    /**
+     * Create a static wrap decorator with given handlers.
+     * <p>
+     * Mirrors Python's {@code create_wrap_decorator(*handlers)}.
+     *
+     * @param handlers Wrap handlers in outermost-first order
+     * @return A decorator function
+     */
+    public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>>
+            createWrapDecorator(List<WrapHandler> handlers) {
+        return wrapped -> {
+            if (handlers == null || handlers.isEmpty()) {
+                return wrapped;
+            }
+            Function<Map<String, Object>, Object> chain = wrapped;
+            for (int i = handlers.size() - 1; i >= 0; i--) {
+                WrapHandler handler = handlers.get(i);
+                Function<Map<String, Object>, Object> next = chain;
+                chain = k -> handler.execute(next, k);
+            }
+            return chain;
+        };
+    }
+
+    /**
+     * Create a static wrap decorator (varargs version).
+     */
+    public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>>
+            createWrapDecorator(WrapHandler... handlers) {
+        return createWrapDecorator(Arrays.asList(handlers));
+    }
+
+    /**
+     * Unregister a wrap handler.
+     */
+    public boolean unregisterWrapHandler(String event, WrapHandler handler) {
+        String key = WRAP_EVENT_PREFIX + event;
+        List<CallbackInfo> infos = callbacks.getOrDefault(key, Collections.emptyList());
+        for (int i = 0; i < infos.size(); i++) {
+            Object result = infos.get(i).getCallback().apply(Collections.emptyMap());
+            if (result == handler) {
+                infos.remove(i);
+                return true;
+            }
+        }
+        return false;
     }
 }

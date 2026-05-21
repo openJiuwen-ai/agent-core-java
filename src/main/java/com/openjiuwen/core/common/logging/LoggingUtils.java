@@ -8,9 +8,15 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.PathChecker;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Logging utility functions.
@@ -114,5 +120,106 @@ public final class LoggingUtils {
         }
 
         return realPath;
+    }
+
+    // ==================== Log Type Label Resolution ====================
+
+    /**
+     * Map internal logger types to the label rendered in outputs.
+     * <p>
+     * Mirrors Python's {@code resolve_log_type_label()} from base_impl.py.
+     *
+     * @param logType the internal log type string
+     * @return the label to render in outputs
+     */
+    public static String resolveLogTypeLabel(String logType) {
+        if ("performance".equals(logType)) {
+            return "perf";
+        }
+        return logType;
+    }
+
+    // ==================== Log Filename Formatting ====================
+
+    /**
+     * Apply the configured filename pattern to a log file path.
+     * <p>
+     * Mirrors Python's {@code format_log_filename()} from base_impl.py.
+     * <p>
+     * Supported placeholders:
+     * <ul>
+     *   <li>{name} - base filename without extension</li>
+     *   <li>{ext} - original extension including the dot</li>
+     *   <li>{pid} - process ID</li>
+     *   <li>{timestamp} - YYYYMMDDHHMMSS</li>
+     *   <li>{date} - YYYYMMDD</li>
+     *   <li>{time} - HHMMSS</li>
+     *   <li>{datetime} - YYYY-MM-DD_HH-MM-SS</li>
+     * </ul>
+     *
+     * @param baseFilename the original filename (may include path)
+     * @param pattern      the pattern to apply
+     * @return the formatted filename
+     */
+    public static String formatLogFilename(String baseFilename, String pattern) {
+        if (baseFilename == null || baseFilename.isEmpty()) {
+            return baseFilename;
+        }
+        if (pattern == null || pattern.isEmpty()) {
+            return baseFilename;
+        }
+
+        File file = new File(baseFilename);
+        String dirPath = file.getParent();
+        String fileName = file.getName();
+
+        // Split name and extension
+        String namePart;
+        String ext;
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            namePart = fileName.substring(0, dotIndex);
+            ext = fileName.substring(dotIndex); // includes the dot
+        } else {
+            namePart = fileName;
+            ext = "";
+        }
+
+        // Build replacements map
+        Instant now = Instant.now();
+        DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                .withZone(ZoneId.of("UTC"));
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+                .withZone(ZoneId.of("UTC"));
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+                .withZone(ZoneId.of("UTC"));
+        DateTimeFormatter datetimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-MM-SS")
+                .withZone(ZoneId.of("UTC"));
+
+        Map<String, String> replacements = new HashMap<>();
+        replacements.put("name", namePart);
+        replacements.put("ext", ext);
+        replacements.put("pid", ProcessHandle.current().pid() + "");
+        replacements.put("timestamp", timestampFormatter.format(now));
+        replacements.put("date", dateFormatter.format(now));
+        replacements.put("time", timeFormatter.format(now));
+        replacements.put("datetime", datetimeFormatter.format(now));
+
+        // Apply pattern
+        String formattedName = pattern;
+        for (Map.Entry<String, String> entry : replacements.entrySet()) {
+            formattedName = formattedName.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
+
+        // Append extension if not in pattern and original had extension
+        if (!pattern.contains("{ext}") && !ext.isEmpty() && !formattedName.endsWith(ext)) {
+            formattedName = formattedName + ext;
+        }
+
+        // Reconstruct full path if directory was present
+        if (dirPath != null && !dirPath.isEmpty()) {
+            return new File(dirPath, formattedName).getPath();
+        }
+        return formattedName;
     }
 }

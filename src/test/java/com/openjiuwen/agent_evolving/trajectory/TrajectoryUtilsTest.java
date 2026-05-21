@@ -34,6 +34,22 @@ class TrajectoryUtilsTest {
     }
 
     @Test
+    void trajectoryStepCarriesRlPostInjectionFields() {
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("llm")
+                .reward(1.0)
+                .logprobs(List.of(-0.5, -0.3))
+                .promptTokenIds(List.of(1, 2, 3))
+                .completionTokenIds(List.of(101, 102, 103))
+                .build();
+
+        assertEquals(1.0, step.getReward());
+        assertEquals(List.of(-0.5, -0.3), step.getLogprobs());
+        assertEquals(List.of(1, 2, 3), step.getPromptTokenIds());
+        assertEquals(List.of(101, 102, 103), step.getCompletionTokenIds());
+    }
+
+    @Test
     void iterStepsReturnsAllStepsWithoutFilters() {
         Trajectory trajectory = new Trajectory(
                 "case_1",
