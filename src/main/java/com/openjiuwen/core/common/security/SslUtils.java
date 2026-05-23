@@ -42,14 +42,15 @@ public final class SslUtils {
             SSLContext ctx = SSLContext.getInstance("TLS");
 
             if (sslCertPath != null) {
-                Path certPath = Path.of(sslCertPath).toRealPath();
-
-                // Validate cert directory
+                // Validate cert directory before resolving the cert path
                 String safeCertDir = System.getenv("SAFE_CERT_DIR");
                 if (safeCertDir == null || safeCertDir.isBlank()) {
                     throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
                         "SAFE_CERT_DIR is not set", null, null, null);
                 }
+
+                Path certPath = Path.of(sslCertPath).toRealPath();
+
                 Path safePrefix = Path.of(safeCertDir).toRealPath();
                 if (!certPath.startsWith(safePrefix)) {
                     throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
@@ -180,20 +181,29 @@ public final class SslUtils {
      * @param sslCertEnv      env var name for cert path
      * @param triggerValues   values that disable SSL verification
      * @param urlIsHttps      whether the target URL uses HTTPS
-     * @return two-element array: [sslVerify, sslCertPath] (Boolean and String)
+     * @return three-element array: [sslVerify, sslCertPath, explicitlyEnabled] (Boolean, String, Boolean).
+     *         When the verify switch is not explicitly set, returns {true, null, false}
+     *         to indicate "use default SSL context" (trust system CAs).
+     *         When explicitly set to a trigger value (e.g. "false"), returns {false, null, false}.
+     *         When explicitly set to a truthy value, returns {true, sslCertPath, true}.
      */
     public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv,
                                         java.util.List<String> triggerValues, boolean urlIsHttps) {
         if (!urlIsHttps) {
-            return new Object[]{false, null};
+            return new Object[]{false, null, false};
         }
         String envValue = readEnvOrProperty(verifySwitchEnv);
         boolean isOff = envValue != null && triggerValues.contains(envValue.trim().toLowerCase(Locale.ROOT));
         if (isOff) {
-            return new Object[]{false, null};
+            return new Object[]{false, null, false};
         }
+        // If verify switch is not explicitly set, use default SSL context (trust system CAs)
+        if (envValue == null || envValue.isBlank()) {
+            return new Object[]{true, null, false};
+        }
+        // Verify switch is explicitly set to a truthy value — require explicit cert
         String sslCert = readEnvOrProperty(sslCertEnv);
-        return new Object[]{true, sslCert};
+        return new Object[]{true, sslCert, true};
     }
 
     private static String readEnvOrProperty(String key) {

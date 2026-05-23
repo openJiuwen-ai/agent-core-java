@@ -140,54 +140,88 @@ public class RestfulApi extends Tool {
         throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", card.toString());
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> executeRequest(Map<ApiParamLocation, Map<String, Object>> mapResults,
                                                double timeoutSec,
                                                int maxResponseByteSize,
                                                boolean raiseForStatus) throws Exception {
-        // Build URL with path params
+        String resolvedUrl = resolveUrl(mapResults);
+        HttpRequest request = buildHttpRequest(resolvedUrl, mapResults, timeoutSec);
+        HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        byte[] content = response.body();
+        validateResponse(response, content, maxResponseByteSize, raiseForStatus);
+        return formatResponse(response, content);
+    }
+
+    private String resolveUrl(Map<ApiParamLocation, Map<String, Object>> mapResults) {
         String resolvedUrl = this.url;
         Map<String, Object> pathParams = mapResults.getOrDefault(ApiParamLocation.PATH, Map.of());
         for (var entry : pathParams.entrySet()) {
             resolvedUrl = resolvedUrl.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
         }
-
-        // Append query params
         Map<String, Object> queryParams = mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of());
-        resolvedUrl = appendQueryParams(resolvedUrl, queryParams);
+        return appendQueryParams(resolvedUrl, queryParams);
+    }
 
-        // Build request
+    @SuppressWarnings("unchecked")
+    private HttpRequest buildHttpRequest(String resolvedUrl,
+                                         Map<ApiParamLocation, Map<String, Object>> mapResults,
+                                         double timeoutSec) throws Exception {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(resolvedUrl))
                 .timeout(Duration.ofMillis((long) (timeoutSec * 1000)));
-
-        // Set headers
         Map<String, Object> headers = mapResults.getOrDefault(ApiParamLocation.HEADER, Map.of());
         for (var entry : headers.entrySet()) {
             requestBuilder.header(entry.getKey(), String.valueOf(entry.getValue()));
         }
-
-        // Set body / method
         Map<String, Object> bodyParams = mapResults.getOrDefault(ApiParamLocation.BODY, Map.of());
-        if ("GET".equalsIgnoreCase(method)) {
-            // For GET, body params go as additional query params
-            resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
-            requestBuilder.uri(URI.create(resolvedUrl));
-            requestBuilder.GET();
-        } else {
-            // POST: serialize body as JSON
-            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String jsonBody = mapper.writeValueAsString(bodyParams);
-            requestBuilder.header("Content-Type", "application/json");
-            requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+        configureMethodAndBody(requestBuilder, resolvedUrl, bodyParams);
+        return requestBuilder.build();
+    }
+
+    private void configureMethodAndBody(HttpRequest.Builder requestBuilder, String resolvedUrl,
+                                        Map<String, Object> bodyParams) throws Exception {
+        switch (method.toUpperCase(Locale.ROOT)) {
+            case "GET":
+            case "HEAD":
+            case "OPTIONS":
+                resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
+                requestBuilder.uri(URI.create(resolvedUrl));
+                if ("GET".equalsIgnoreCase(method)) {
+                    requestBuilder.GET();
+                } else {
+                    requestBuilder.method(method.toUpperCase(Locale.ROOT), HttpRequest.BodyPublishers.noBody());
+                }
+                break;
+            case "DELETE":
+                if (!bodyParams.isEmpty()) {
+                    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    String jsonBody = mapper.writeValueAsString(bodyParams);
+                    requestBuilder.header("Content-Type", "application/json");
+                    requestBuilder.method("DELETE", HttpRequest.BodyPublishers.ofString(jsonBody));
+                } else {
+                    resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
+                    requestBuilder.uri(URI.create(resolvedUrl));
+                    requestBuilder.method("DELETE", HttpRequest.BodyPublishers.noBody());
+                }
+                break;
+            default:
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                String jsonBody = mapper.writeValueAsString(bodyParams);
+                requestBuilder.header("Content-Type", "application/json");
+                if ("PUT".equalsIgnoreCase(method)) {
+                    requestBuilder.PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
+                } else if ("PATCH".equalsIgnoreCase(method)) {
+                    requestBuilder.method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody));
+                } else {
+                    requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+                }
+                break;
         }
+    }
 
-        HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);
-
-        HttpResponse<byte[]> response = client.send(requestBuilder.build(),
-                HttpResponse.BodyHandlers.ofByteArray());
-
-        byte[] content = response.body();
+    private void validateResponse(HttpResponse<byte[]> response, byte[] content,
+                                  int maxResponseByteSize, boolean raiseForStatus) {
         if (content != null && content.length > maxResponseByteSize) {
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT,
                     "method", "invoke",
@@ -195,17 +229,15 @@ public class RestfulApi extends Tool {
                     "actual_length", String.valueOf(content.length),
                     "card", card.toString());
         }
-
         if (raiseForStatus && (response.statusCode() < 200 || response.statusCode() >= 400)) {
             String reason = reasonPhrase(response.statusCode());
+            String responseBody = content != null ? new String(content, java.nio.charset.StandardCharsets.UTF_8) : "";
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR,
                     "method", "invoke",
                     "code", String.valueOf(response.statusCode()),
-                    "reason", reason,
+                    "reason", reason + " | body: " + responseBody,
                     "card", card.toString());
         }
-
-        return formatResponse(response, content);
     }
 
     private Map<String, Object> formatResponse(HttpResponse<byte[]> response, byte[] content) {
@@ -240,6 +272,7 @@ public class RestfulApi extends Tool {
 
     private HttpClient buildHttpClient(String resolvedUrl, double timeoutSec) {
         HttpClient.Builder builder = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
 
@@ -277,8 +310,9 @@ public class RestfulApi extends Tool {
                 RESTFUL_SSL_CERT,
                 List.of("false", "0", "off"),
                 true);
-        boolean sslVerify = (Boolean) sslConfig[0];
-        String sslCertPath = (String) sslConfig[1];
+        boolean sslVerify = sslConfig[0] instanceof Boolean b ? b : false;
+        String sslCertPath = sslConfig[1] instanceof String s ? s : null;
+        boolean isExplicitlyEnabled = sslConfig[2] instanceof Boolean b ? b : false;
 
         if (!sslVerify) {
             builder.sslContext(SslUtils.createInsecureSslContext());
@@ -291,17 +325,33 @@ public class RestfulApi extends Tool {
         if (sslCertPath != null && !sslCertPath.isBlank()) {
             SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
             builder.sslContext(sslContext);
+        } else if (isExplicitlyEnabled) {
+            // RESTFUL_SSL_VERIFY was explicitly set to a truthy value but no cert provided
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CERT_INVALID,
+                    "error_msg", "when RESTFUL_SSL_VERIFY=true, must provide ssl cert");
+        } else {
+            // When sslVerify=true but no explicit switch (default behavior),
+            // use the default SSL context which trusts the system's standard CAs.
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static String appendQueryParams(String url, Map<String, Object> queryParams) {
         if (queryParams == null || queryParams.isEmpty()) {
             return url;
         }
         StringJoiner joiner = new StringJoiner("&");
         for (var entry : queryParams.entrySet()) {
-            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
-                    + "=" + URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
+            String encodedKey = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
+            Object value = entry.getValue();
+            if (value instanceof List<?> listValue) {
+                // Array values: repeat the key for each element (e.g. status=available&status=pending)
+                for (Object item : listValue) {
+                    joiner.add(encodedKey + "=" + URLEncoder.encode(String.valueOf(item), StandardCharsets.UTF_8));
+                }
+            } else {
+                joiner.add(encodedKey + "=" + URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8));
+            }
         }
         return url + (url.contains("?") ? "&" : "?") + joiner;
     }

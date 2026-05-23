@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.utils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -296,7 +297,7 @@ public final class SessionUtils {
             }
             return result;
         } else if (data instanceof Map map) {
-            Map<String, Object> result = new HashMap<>();
+            Map<String, Object> result = new LinkedHashMap<>();
             for (Object entry : map.entrySet()) {
                 Map.Entry<String, Object> e = (Map.Entry<String, Object>) entry;
                 Object[] pathResult = rootToPath(e.getKey(), result, true);
@@ -355,7 +356,7 @@ public final class SessionUtils {
             }
             return getValueByNestedPath(originKey, data);
         } else if (schema instanceof Map<?, ?> mapSchema) {
-            Map<String, Object> result = new HashMap<>();
+            Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : mapSchema.entrySet()) {
                 String targetKey = (String) entry.getKey();
                 Object targetSchema = entry.getValue();

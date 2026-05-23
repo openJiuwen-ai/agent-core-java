@@ -228,6 +228,9 @@ public class PregelGraph extends Graph {
         }
 
         // Separate barrier edges from regular edges
+        // Self-connections (source == target) must not be included as barrier sources,
+        // because that would create a deadlock (node waits for itself). Instead they are
+        // added as regular edges so the node can re-trigger itself after execution.
         for (Object[] edge : edges) {
             Object sourceNodeId = edge[0];
             String targetNodeId = (String) edge[1];
@@ -235,10 +238,26 @@ public class PregelGraph extends Graph {
             if (waits.contains(targetNodeId)) {
                 sources.computeIfAbsent(targetNodeId, k -> new HashSet<>());
                 if (sourceNodeId instanceof String) {
-                    sources.get(targetNodeId).add((String) sourceNodeId);
+                    if (sourceNodeId.equals(targetNodeId)) {
+                        // Self-connection: add as regular edge, not barrier
+                        regularEdges.add(edge);
+                    } else {
+                        sources.get(targetNodeId).add((String) sourceNodeId);
+                    }
                 } else if (sourceNodeId instanceof List) {
+                    boolean hasSelfConnection = false;
                     for (Object s : (List<?>) sourceNodeId) {
-                        sources.get(targetNodeId).add((String) s);
+                        if (!(s instanceof String srcStr)) {
+                            continue;
+                        }
+                        if (srcStr.equals(targetNodeId)) {
+                            hasSelfConnection = true;
+                        } else {
+                            sources.get(targetNodeId).add(srcStr);
+                        }
+                    }
+                    if (hasSelfConnection) {
+                        regularEdges.add(new Object[]{targetNodeId, targetNodeId});
                     }
                 }
             } else {

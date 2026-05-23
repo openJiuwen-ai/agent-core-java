@@ -7,6 +7,7 @@ package com.openjiuwen.core.session.state;
 import com.openjiuwen.core.session.utils.SessionUtils;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -89,7 +90,7 @@ public class InMemoryStateLike implements StateLike {
             return null;
         }
         if (obj instanceof Map<?, ?> map) {
-            Map<String, Object> copy = new HashMap<>();
+            Map<String, Object> copy = new LinkedHashMap<>();
             for (var entry : map.entrySet()) {
                 copy.put(String.valueOf(entry.getKey()), deepCopy(entry.getValue()));
             }

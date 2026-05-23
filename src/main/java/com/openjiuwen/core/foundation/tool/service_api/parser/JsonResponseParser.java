@@ -58,6 +58,10 @@ public class JsonResponseParser extends BaseResponseParser {
         }
         String decoded = decodeBytes(responseData, contentType);
         try {
+            var jsonNode = MAPPER.readTree(decoded);
+            if (jsonNode.isArray()) {
+                return MAPPER.readValue(decoded, java.util.List.class);
+            }
             return MAPPER.readValue(decoded, Map.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("JSON parsing failed: " + e.getMessage(), e);
