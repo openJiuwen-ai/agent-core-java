@@ -141,11 +141,12 @@ public final class TrajectoryGenerator {
         }
 
         // Call memory service for summarization
-        return memoryService.summarizeAndStore(
+        return memoryService.summarize(
             userId,
             algoName,
             input.getQuery(),
-            trajectoryText,
+            List.of(trajectoryText),
+            null,
             input.getScores()
         );
     }

@@ -6,11 +6,9 @@ package com.openjiuwen.core.workflow.component.tool.http;
 
 import com.openjiuwen.core.workflow.component.ComponentConfig;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 /**
  * HTTP component configuration.
@@ -18,7 +16,6 @@ import lombok.experimental.SuperBuilder;
  * Mirrors Python's {@code HttpComponentConfig}.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

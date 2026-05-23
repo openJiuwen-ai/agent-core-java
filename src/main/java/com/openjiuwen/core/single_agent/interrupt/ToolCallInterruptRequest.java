@@ -6,7 +6,6 @@ package com.openjiuwen.core.single_agent.interrupt;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -27,16 +26,13 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class ToolCallInterruptRequest extends InterruptRequest {
 
     // Extra fields storage (for subclasses like AskUserRequest)
     private Map<String, Object> extraFields = new HashMap<>();
 
-    @Builder.Default
     private String toolName = "";
 
-    @Builder.Default
     private String toolCallId = "";
 
     private Object toolArgs;
@@ -62,10 +58,10 @@ public class ToolCallInterruptRequest extends InterruptRequest {
      * @return new ToolCallInterruptRequest instance
      */
     public static ToolCallInterruptRequest fromToolCall(InterruptRequest request, Object toolCall) {
-        ToolCallInterruptRequestBuilder builder = ToolCallInterruptRequest.builder()
-                .message(request.getMessage())
-                .payloadSchema(request.getPayloadSchema())
-                .autoConfirmKey(request.getAutoConfirmKey());
+        ToolCallInterruptRequest result = new ToolCallInterruptRequest();
+        result.setMessage(request.getMessage());
+        result.setPayloadSchema(request.getPayloadSchema());
+        result.setAutoConfirmKey(request.getAutoConfirmKey());
 
         // Extract tool call attributes
         if (toolCall != null) {
@@ -76,16 +72,16 @@ public class ToolCallInterruptRequest extends InterruptRequest {
                 java.lang.reflect.Method getArguments = toolCall.getClass().getMethod("getArguments");
                 java.lang.reflect.Method getIndex = toolCall.getClass().getMethod("getIndex");
 
-                builder.toolName((String) getName.invoke(toolCall));
-                builder.toolCallId((String) getId.invoke(toolCall));
-                builder.toolArgs(getArguments.invoke(toolCall));
-                builder.index((Integer) getIndex.invoke(toolCall));
+                result.setToolName((String) getName.invoke(toolCall));
+                result.setToolCallId((String) getId.invoke(toolCall));
+                result.setToolArgs(getArguments.invoke(toolCall));
+                result.setIndex((Integer) getIndex.invoke(toolCall));
             } catch (Exception e) {
                 // Fallback: treat toolCall as string
-                builder.toolName(String.valueOf(toolCall));
+                result.setToolName(String.valueOf(toolCall));
             }
         }
 
-        return builder.build();
+        return result;
     }
 }

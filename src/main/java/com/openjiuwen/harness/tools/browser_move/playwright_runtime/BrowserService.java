@@ -3,6 +3,7 @@ package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;

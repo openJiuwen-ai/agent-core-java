@@ -17,4 +17,12 @@ public class ExecuteCodeResult extends BaseResult<ExecuteCodeData> {
     public ExecuteCodeResult(int code, String message, ExecuteCodeData data) {
         super(code, message, data);
     }
+
+    public static ExecuteCodeResult success(ExecuteCodeData data) {
+        return new ExecuteCodeResult(0, "success", data);
+    }
+
+    public static ExecuteCodeResult failure(String message) {
+        return new ExecuteCodeResult(1, message, null);
+    }
 }

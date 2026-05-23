@@ -147,7 +147,7 @@ public class Clarifier {
 
             } catch (Exception e) {
                 LOG.error("Resource parsing failed for type {}: {}", resourceType, e.getMessage());
-                throw ErrorHelper.buildError(StatusCode.AGENT_BUILDER_RESOURCE_PARSE_ERROR,
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR,
                         "error_msg", "Resource parsing exception: " + e.getMessage());
             }
         }

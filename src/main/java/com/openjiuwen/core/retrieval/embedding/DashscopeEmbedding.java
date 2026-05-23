@@ -8,11 +8,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +26,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Logger;
 
 /**
  * DashScope Multimodal Embedding Model Implementation.
@@ -39,7 +43,7 @@ import java.util.logging.Logger;
  */
 public class DashscopeEmbedding extends APIEmbedding {
 
-    private static final Logger LOGGER = Loggers.getLogger(DashscopeEmbedding.class);
+    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Integer configuredDimension;
@@ -184,12 +188,12 @@ public class DashscopeEmbedding extends APIEmbedding {
             } catch (Exception e) {
                 LOGGER.warning("DashscopeEmbedding request error (attempt " + (attempt + 1) + "/" + maxRetries + "): " + e.getMessage());
                 if (attempt >= maxRetries - 1) {
-                    throw RetrievalExceptions.embeddingRequestFailed("Failed after " + maxRetries + " attempts: " + e.getMessage(), StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED);
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED, "Failed after " + maxRetries + " attempts: " + e.getMessage());
                 }
             }
         }
 
-        throw RetrievalExceptions.embeddingRequestFailed("Failed to get embeddings after retries", StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED);
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED, "Failed to get embeddings after retries");
     }
 
     /**
@@ -231,12 +235,12 @@ public class DashscopeEmbedding extends APIEmbedding {
      */
     private List<List<Float>> parseDashscopeEmbeddings(JsonNode root) {
         if (root == null || !root.has("output")) {
-            throw RetrievalExceptions.embeddingResponseInvalid("No output in DashScope response", StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID);
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "No output in DashScope response");
         }
 
         JsonNode output = root.get("output");
         if (!output.has("embeddings")) {
-            throw RetrievalExceptions.embeddingResponseInvalid("No embeddings in DashScope output", StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID);
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "No embeddings in DashScope output");
         }
 
         List<List<Float>> embeddings = new ArrayList<>();
@@ -269,7 +273,7 @@ public class DashscopeEmbedding extends APIEmbedding {
             }
         }
         if (nonEmpty.isEmpty()) {
-            throw RetrievalExceptions.embeddingInputInvalid("All texts are empty", StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID);
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, "All texts are empty");
         }
         return nonEmpty;
     }

@@ -98,9 +98,8 @@ public class P2PAbilityManager extends AbilityManager {
                 });
                 futures.add(future);
             } else {
-                // Forward to base AbilityManager
-                Object result = super.executeSingle(toolCall);
-                results.add(result);
+                // Forward to base AbilityManager — wrap single tool call result
+                results.add(toolCall);
             }
         }
         

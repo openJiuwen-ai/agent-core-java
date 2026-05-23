@@ -7,7 +7,9 @@ package com.openjiuwen.core.multiagent.teams.handoff;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -112,5 +114,11 @@ public class HandoffTool extends Tool {
      */
     public String getTargetId() {
         return targetId;
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        Object result = invoke(inputs, kwargs);
+        return Collections.singletonList(result).iterator();
     }
 }

@@ -16,6 +16,7 @@ import com.openjiuwen.core.workflow.ComponentExecutable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,7 +47,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
                 .build();
         this.reactAgent = new ReActAgent(card);
         // Configure the agent with the provided config
-        this.reactAgent.configure(config);
+        this.reactAgent.configure(config.toReActAgentConfig());
     }
 
     /**
@@ -93,7 +94,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
             AgentSessionApi agentSession = convertToAgentSession(session);
             
             // Execute the ReAct agent with streaming
-            Iterator<Object> streamIterator = reactAgent.stream(inputs, agentSession);
+            Iterator<Object> streamIterator = reactAgent.stream(inputs, agentSession, List.of());
             
             // Transform and yield chunks
             return new ReActStreamIterator(streamIterator);
@@ -107,7 +108,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
             errorOutput.put("type", "error");
             errorOutput.put("payload", errorPayload);
             
-            return Collections.singleton(errorOutput).iterator();
+            return Collections.<Object>singletonList(errorOutput).iterator();
         }
     }
 
@@ -120,7 +121,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
     private AgentSessionApi convertToAgentSession(NodeSessionApi session) {
         // Create agent session with session ID and card
         String sessionId = session.getSessionId();
-        AgentSessionApi agentSession = new AgentSessionApi(sessionId, reactAgent.getCard());
+        AgentSessionApi agentSession = new AgentSessionApi(sessionId, null, reactAgent.getCard());
         return agentSession;
     }
 

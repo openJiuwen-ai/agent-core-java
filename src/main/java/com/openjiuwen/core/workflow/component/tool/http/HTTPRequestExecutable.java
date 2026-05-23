@@ -122,7 +122,7 @@ public class HTTPRequestExecutable extends ComponentExecutable {
 
         try {
             HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(requestParams.getTimeout()))
+                    .connectTimeout(Duration.ofMillis((long) requestParams.getTimeout()))
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
 
@@ -154,7 +154,7 @@ public class HTTPRequestExecutable extends ComponentExecutable {
             return result;
 
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_HTTP_REQUEST_FAILED,
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
                     "error_msg", "HTTP request failed: " + e.getMessage());
         }
     }

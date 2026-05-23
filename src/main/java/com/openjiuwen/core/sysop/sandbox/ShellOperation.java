@@ -4,12 +4,14 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.base.BaseOperation;
 import com.openjiuwen.core.sysop.base.OperationMode;
 import com.openjiuwen.core.sysop.protocal.BaseShellProtocal;
 import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -58,5 +60,10 @@ public class ShellOperation extends BaseOperation implements BaseShellProtocal {
             Map<String, Object> options
     ) {
         return executeCmd(command, cwd, timeout, environment, options);
+    }
+
+    @Override
+    public List<ToolCard> listTools() {
+        return List.of();
     }
 }

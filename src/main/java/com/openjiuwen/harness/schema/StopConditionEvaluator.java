@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.schema;
 
+import java.util.Map;
+
 /**
  * Strategy interface for a single stop condition.
  *

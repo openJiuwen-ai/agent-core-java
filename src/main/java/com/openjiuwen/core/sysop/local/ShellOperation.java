@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.base.BaseOperation;
 import com.openjiuwen.core.sysop.base.OperationMode;
 import com.openjiuwen.core.sysop.protocal.BaseShellProtocal;
@@ -12,6 +13,7 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -114,5 +116,10 @@ public class ShellOperation extends BaseOperation implements BaseShellProtocal {
     ) {
         // Stream shell execution (same as regular for now)
         return executeCmd(command, cwd, timeout, environment, options);
+    }
+
+    @Override
+    public List<ToolCard> listTools() {
+        return List.of();
     }
 }

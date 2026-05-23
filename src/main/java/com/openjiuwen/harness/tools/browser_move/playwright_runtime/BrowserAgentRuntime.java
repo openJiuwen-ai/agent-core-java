@@ -2,7 +2,10 @@ package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.controller.legacy.BaseController;
+import com.openjiuwen.core.controller.legacy.event.Event;
+import com.openjiuwen.core.session.Session;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +35,12 @@ public class BrowserAgentRuntime {
     }
 
     protected BaseController createDefaultController() {
-        return new BaseController() {};
+        return new BaseController() {
+            @Override
+            protected Map<String, Object> handleEvent(Event event, Session session) {
+                return Collections.emptyMap();
+            }
+        };
     }
 
     public BrowserService getService() {

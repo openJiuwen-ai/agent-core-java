@@ -8,8 +8,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.experimental.SuperBuilder;
 
 import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -23,7 +21,6 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
  * Extends TeamConfig with root agent setting.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

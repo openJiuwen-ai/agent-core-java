@@ -2,14 +2,16 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.core.sysop.local;
+package com.openjiuwen.core.sysop.sandbox;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.base.BaseOperation;
 import com.openjiuwen.core.sysop.base.OperationMode;
 import com.openjiuwen.core.sysop.protocal.BaseCodeProtocal;
 import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.core.sysop.protocal.BaseShellProtocal;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -60,5 +62,10 @@ public class CodeOperation extends BaseOperation implements BaseCodeProtocal {
             Map<String, Object> options
     ) {
         return executeCode(code, language, timeout, environment, options);
+    }
+
+    @Override
+    public List<ToolCard> listTools() {
+        return List.of();
     }
 }

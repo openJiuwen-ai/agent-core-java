@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -170,13 +171,15 @@ public class MessageBus {
     ) {
         String topic = getP2pTopic(sessionId);
         
-        MessageEnvelope envelope = MessageEnvelope.builder()
-                .messageId(UUID.randomUUID().toString())
-                .message(message)
-                .sender(sender.orElse(null))
-                .recipient(recipient)
-                .sessionId(sessionId.orElse(null))
-                .build();
+        MessageEnvelope envelope = new MessageEnvelope(
+                UUID.randomUUID().toString(),
+                message,
+                sender.orElse(null),
+                recipient,
+                null,
+                sessionId.orElse(null),
+                new HashMap<>()
+        );
         
         LOGGER.debug("[MessageBus] Sent to {}: {} -> {}, session={}",
                 topic, sender.orElse("unknown"), recipient, sessionId.orElse("default"));
@@ -200,13 +203,15 @@ public class MessageBus {
             Optional<String> sender,
             Optional<String> sessionId
     ) {
-        MessageEnvelope envelope = MessageEnvelope.builder()
-                .messageId(UUID.randomUUID().toString())
-                .message(message)
-                .sender(sender.orElse(null))
-                .topicId(topicId)
-                .sessionId(sessionId.orElse(null))
-                .build();
+        MessageEnvelope envelope = new MessageEnvelope(
+                UUID.randomUUID().toString(),
+                message,
+                sender.orElse(null),
+                null,
+                topicId,
+                sessionId.orElse(null),
+                new HashMap<>()
+        );
         
         LOGGER.debug("[MessageBus] Published to {}: from {}, session={}",
                 topicId, sender.orElse("unknown"), sessionId.orElse("default"));

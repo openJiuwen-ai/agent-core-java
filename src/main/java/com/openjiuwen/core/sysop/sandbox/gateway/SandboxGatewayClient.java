@@ -161,7 +161,7 @@ public class SandboxGatewayClient {
         String errorMsg = response.getMessage() != null ? response.getMessage() : "unknown error";
         throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_SANDBOX_GATEWAY_ERROR,
                 "operation", "gateway_unknown",
-                "error_msg", errorMsg).toRuntimeException();
+                "error_msg", errorMsg);
     }
 
     /**

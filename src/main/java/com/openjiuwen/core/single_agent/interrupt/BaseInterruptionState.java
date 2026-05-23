@@ -6,6 +6,7 @@ package com.openjiuwen.core.single_agent.interrupt;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;

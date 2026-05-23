@@ -117,7 +117,6 @@ public final class BrowserAgentFactory {
                 .maxIterations(25)
                 .language(resolvedLanguage)
                 .settings(settings)
-                .factoryName(BROWSER_AGENT_FACTORY_NAME)
                 .build();
     }
 

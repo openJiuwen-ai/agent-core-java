@@ -1,7 +1,7 @@
 package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 
 import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;

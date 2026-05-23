@@ -11,6 +11,12 @@ import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.StreamMode;
+
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -165,5 +171,38 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
     
     public Supplier<BaseAgent> getTargetProvider() {
         return targetProvider;
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        // Delegate to target agent
+        if (targetInstance != null) {
+            return targetInstance.stream(inputs, session, streamModes);
+        }
+        return Collections.emptyIterator();
+    }
+
+    @Override
+    public Object invoke(Object inputs, Session session) {
+        if (targetInstance != null) {
+            return targetInstance.invoke(inputs, session);
+        }
+        return null;
+    }
+
+    @Override
+    public Object getConfig() {
+        if (targetInstance != null) {
+            return targetInstance.getConfig();
+        }
+        return null;
+    }
+
+    @Override
+    public BaseAgent configure(Object config) {
+        if (targetInstance != null) {
+            targetInstance.configure(config);
+        }
+        return this;
     }
 }

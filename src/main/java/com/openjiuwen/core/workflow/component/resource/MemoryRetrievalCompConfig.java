@@ -10,7 +10,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 /**
  * Configuration for the Memory Retrieval workflow component.
@@ -18,21 +17,38 @@ import lombok.experimental.SuperBuilder;
  * Mirrors Python's {@code MemoryRetrievalCompConfig}.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class MemoryRetrievalCompConfig extends ComponentConfig {
 
     private LongTermMemory memory;
-    private String scopeId;
-    private String userId;
-    private Double threshold;
+    private String scopeId = LongTermMemory.DEFAULT_VALUE;
+    private String userId = LongTermMemory.DEFAULT_VALUE;
+    private Double threshold = 0.3;
 
-    // Default values via builder
+    public static MemoryRetrievalCompConfigBuilder builder() {
+        return new MemoryRetrievalCompConfigBuilder();
+    }
+
     public static class MemoryRetrievalCompConfigBuilder {
+        private LongTermMemory memory;
         private String scopeId = LongTermMemory.DEFAULT_VALUE;
         private String userId = LongTermMemory.DEFAULT_VALUE;
         private Double threshold = 0.3;
+
+        public MemoryRetrievalCompConfigBuilder memory(LongTermMemory memory) { this.memory = memory; return this; }
+        public MemoryRetrievalCompConfigBuilder scopeId(String scopeId) { this.scopeId = scopeId; return this; }
+        public MemoryRetrievalCompConfigBuilder userId(String userId) { this.userId = userId; return this; }
+        public MemoryRetrievalCompConfigBuilder threshold(Double threshold) { this.threshold = threshold; return this; }
+
+        public MemoryRetrievalCompConfig build() {
+            MemoryRetrievalCompConfig config = new MemoryRetrievalCompConfig();
+            config.setMemory(memory);
+            config.setScopeId(scopeId);
+            config.setUserId(userId);
+            config.setThreshold(threshold);
+            return config;
+        }
     }
 }

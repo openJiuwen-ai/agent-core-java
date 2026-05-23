@@ -6,6 +6,7 @@ package com.openjiuwen.core.multiagent;
 
 import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
+import com.openjiuwen.core.multiagent.teamruntime.RuntimeConfig;
 import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -62,7 +63,7 @@ public abstract class BaseTeam {
      * Create default runtime with team_id.
      */
     protected TeamRuntime createDefaultRuntime() {
-        return new TeamRuntime(new TeamRuntime.RuntimeConfigBuilder()
+        return new TeamRuntime(RuntimeConfig.builder()
             .teamId(teamId)
             .build());
     }

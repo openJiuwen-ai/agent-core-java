@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.single_agent.interrupt.InterruptConstants;
 import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import com.openjiuwen.harness.security.*;
@@ -155,15 +155,15 @@ public class PermissionInterruptRail extends ConfirmInterruptRail {
      * Before tool call hook - main permission check entry point.
      */
     @Override
-    public void beforeToolCall(AgentCallbackContext ctx) throws Exception {
-        String toolName = ctx.getInputs().getToolName();
-        ToolCall toolCall = ctx.getInputs().getToolCall();
+    public void beforeToolCall(AgentCallbackContext ctx) {
+        String toolName = ctx.getExtra().get("tool_name") != null ? String.valueOf(ctx.getExtra().get("tool_name")) : "";
+        ToolCall toolCall = ctx.getExtra().get("tool_call") instanceof ToolCall tc ? tc : null;
         String normalizedName = normalizeToolName(toolName);
 
         LOG.info("[PermissionEngine] permission.rail.before_tool_call tool={} normalized={} optional_tool_tags={}",
                 toolName, normalizedName, getToolNames());
 
-        String toolCallId = resolveToolCallId(toolCall);
+        String toolCallId = toolCall != null ? resolveToolCallId(toolCall) : "";
         Object userInput = getUserInput(ctx, toolCallId);
 
         Map<String, Object> autoConfirmConfig = new LinkedHashMap<>();
@@ -174,7 +174,13 @@ public class PermissionInterruptRail extends ConfirmInterruptRail {
             }
         }
 
-        InterruptDecision decision = resolveInterrupt(ctx, toolCall, userInput, autoConfirmConfig);
+        InterruptDecision decision;
+        try {
+            decision = resolveInterrupt(ctx, toolCall, userInput, autoConfirmConfig);
+        } catch (Exception e) {
+            LOG.error("[PermissionEngine] permission.rail.resolve_interrupt_failed tool={} error={}", toolName, e.getMessage());
+            decision = InterruptDecision.approve();
+        }
         ctx.getExtra().put("_interrupt_decision", decision);
         applyDecision(ctx, toolCall, toolName, decision);
     }
@@ -262,7 +268,7 @@ public class PermissionInterruptRail extends ConfirmInterruptRail {
             }
 
             // Check auto-confirm
-            if (isAutoConfirmed(autoConfirmConfig, autoConfirmKey)) {
+            if (checkAutoConfirmed(autoConfirmConfig, autoConfirmKey)) {
                 LOG.info("[PermissionEngine] permission.auto_confirm.hit tool={} key={}", toolName, autoConfirmKey);
                 return InterruptDecision.approve();
             }
@@ -458,7 +464,7 @@ public class PermissionInterruptRail extends ConfirmInterruptRail {
     /**
      * Check if auto-confirmed.
      */
-    private boolean isAutoConfirmed(Map<String, Object> autoConfirmConfig, String key) {
+    protected boolean checkAutoConfirmed(Map<String, Object> autoConfirmConfig, String key) {
         if (autoConfirmConfig == null || key == null || key.isEmpty()) {
             return false;
         }

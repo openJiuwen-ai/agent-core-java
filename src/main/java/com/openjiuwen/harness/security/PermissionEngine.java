@@ -38,6 +38,10 @@ public class PermissionEngine {
         this.config = config != null ? config : Map.of();
     }
 
+    public Map<String, Object> getConfig() {
+        return config;
+    }
+
     @SuppressWarnings("unchecked")
     public PermissionResult checkPermission(String toolName, Map<String, Object> toolArgs) {
         if (toolName == null || toolName.isBlank()) {

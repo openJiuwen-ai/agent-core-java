@@ -21,7 +21,7 @@ import java.util.HashSet;
 public class MessageRouter {
     
     private final SubscriptionManager subscriptionManager;
-    private final TeamRuntime runtime;
+    private TeamRuntime runtime;
     
     public MessageRouter(SubscriptionManager subscriptionManager, TeamRuntime runtime) {
         this.subscriptionManager = subscriptionManager;

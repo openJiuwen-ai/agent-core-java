@@ -4,12 +4,14 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.base.BaseOperation;
 import com.openjiuwen.core.sysop.base.OperationMode;
 import com.openjiuwen.core.sysop.protocal.BaseCodeProtocal;
 import com.openjiuwen.core.sysop.result.ExecuteCodeData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -66,5 +68,10 @@ public class CodeOperation extends BaseOperation implements BaseCodeProtocal {
     ) {
         // Stream code execution
         return executeCode(code, language, timeout, environment, options);
+    }
+
+    @Override
+    public List<ToolCard> listTools() {
+        return List.of();
     }
 }

@@ -8,8 +8,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.experimental.SuperBuilder;
 
 import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -25,7 +23,6 @@ import java.util.Optional;
  * Extends TeamConfig with supervisor agent and timeout settings.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
@@ -35,7 +32,6 @@ public class HierarchicalTeamConfig extends TeamConfig {
     private AgentCard supervisorAgent;
     
     /** Timeout in seconds for P2P message communication. */
-    @Builder.Default
     private Double timeout = 1800.0;
     
     public Optional<Double> getTimeout() {

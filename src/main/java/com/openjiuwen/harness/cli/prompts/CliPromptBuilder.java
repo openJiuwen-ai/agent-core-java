@@ -45,7 +45,11 @@ public final class CliPromptBuilder {
         Path current = Paths.get(cwd).toAbsolutePath();
         List<Path> parents = new ArrayList<>();
         parents.add(current);
-        current.getParents().forEach(parents::add);
+        Path p = current.getParent();
+        while (p != null) {
+            parents.add(p);
+            p = p.getParent();
+        }
 
         for (Path parent : parents) {
             for (String marker : ROOT_MARKERS) {

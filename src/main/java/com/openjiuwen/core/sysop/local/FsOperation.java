@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.base.BaseOperation;
 import com.openjiuwen.core.sysop.base.OperationMode;
 import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
@@ -11,7 +12,8 @@ import com.openjiuwen.core.sysop.result.ReadFileData;
 import com.openjiuwen.core.sysop.result.ReadFileResult;
 import com.openjiuwen.core.sysop.result.WriteFileData;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
-import com.openjiuwen.core.sysop.result.ListFilesData;
+import com.openjiuwen.core.sysop.result.FileSystemData;
+import com.openjiuwen.core.sysop.result.FileSystemItem;
 import com.openjiuwen.core.sysop.result.ListFilesResult;
 
 import java.io.IOException;
@@ -118,9 +120,14 @@ public class FsOperation extends BaseOperation implements BaseFsProtocal {
                     .filter(name -> pattern == null || name.matches(pattern))
                     .collect(Collectors.toList());
 
-            ListFilesData data = ListFilesData.builder()
-                    .path(path)
-                    .files(files)
+            List<FileSystemItem> items = files.stream()
+                    .map(f -> FileSystemItem.builder().name(f).type("file").build())
+                    .collect(Collectors.toList());
+
+            FileSystemData data = FileSystemData.builder()
+                    .totalCount(items.size())
+                    .listItems(items)
+                    .rootPath(path)
                     .build();
 
             return CompletableFuture.completedFuture(ListFilesResult.success(data));
@@ -141,9 +148,14 @@ public class FsOperation extends BaseOperation implements BaseFsProtocal {
                     .map(p -> p.getFileName().toString())
                     .collect(Collectors.toList());
 
-            ListFilesData data = ListFilesData.builder()
-                    .path(path)
-                    .files(dirs)
+            List<FileSystemItem> items = dirs.stream()
+                    .map(d -> FileSystemItem.builder().name(d).type("directory").build())
+                    .collect(Collectors.toList());
+
+            FileSystemData data = FileSystemData.builder()
+                    .totalCount(items.size())
+                    .listItems(items)
+                    .rootPath(path)
                     .build();
 
             return CompletableFuture.completedFuture(ListFilesResult.success(data));
@@ -160,5 +172,10 @@ public class FsOperation extends BaseOperation implements BaseFsProtocal {
     ) {
         // Search files recursively
         return listFiles(path, pattern, options);
+    }
+
+    @Override
+    public List<ToolCard> listTools() {
+        return List.of();
     }
 }

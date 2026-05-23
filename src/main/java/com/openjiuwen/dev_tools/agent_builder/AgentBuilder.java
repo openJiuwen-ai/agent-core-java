@@ -4,7 +4,8 @@
 
 package com.openjiuwen.dev_tools.agent_builder;
 
-import com.openjiuwen.core.common.utils.JsonUtils;
+import com.openjiuwen.core.common.security.JsonUtils;
+import com.openjiuwen.dev_tools.agent_builder.builders.AgentBuilderFactory;
 import com.openjiuwen.dev_tools.agent_builder.builders.BaseAgentBuilder;
 import com.openjiuwen.dev_tools.agent_builder.executor.AgentBuildExecutor;
 import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
@@ -65,50 +66,55 @@ public class AgentBuilder {
      * @return Build result dict containing status and corresponding data
      */
     public Map<String, Object> buildAgent(String query, String sessionId, String agentType) {
-        AgentBuildExecutor executor = new AgentBuildExecutor(
-                query,
-                sessionId,
-                agentType,
-                historyManagerMap,
-                agentBuilderMap,
-                modelInfo,
-                true
-        );
+        // Get or create history manager for this session
+        HistoryManager historyManager = historyManagerMap.computeIfAbsent(sessionId,
+                k -> new HistoryManager());
 
-        Object result = executor.execute();
+        // Get or create builder for this session
+        BaseAgentBuilder builder = agentBuilderMap.get(sessionId);
+        if (builder == null) {
+            // Create builder based on agent type
+            AgentBuilderEnums.AgentType type = "workflow".equals(agentType)
+                    ? AgentBuilderEnums.AgentType.WORKFLOW
+                    : AgentBuilderEnums.AgentType.LLM_AGENT;
+            builder = AgentBuilderFactory.create(type);
+            agentBuilderMap.put(sessionId, builder);
+        }
 
-        Map<String, Object> statusInfo = executor.getBuildStatus();
-        String state = (String) statusInfo.getOrDefault("state", "unknown");
+        AgentBuildExecutor executor = new AgentBuildExecutor(builder, historyManager);
+
+        Map<String, Object> queryMap = new LinkedHashMap<>();
+        queryMap.put("query", query);
+        queryMap.put("session_id", sessionId);
+        queryMap.put("agent_type", agentType);
+        queryMap.put("model_info", modelInfo);
+
+        Map<String, Object> result = executor.execute(queryMap);
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("status", mapStateToStatus(state, agentType));
+        AgentBuilderEnums.BuildState state = builder.getState();
+        String stateStr = state != null ? state.name().toLowerCase() : "unknown";
+        response.put("status", mapStateToStatus(stateStr, agentType));
         response.put("session_id", sessionId);
         response.put("agent_type", agentType);
 
-        if (result instanceof String) {
-            try {
-                Map<String, Object> dsl = JsonUtils.parseJsonToMap((String) result);
-                response.put("dsl", dsl);
-                response.put("status", "completed");
-            } catch (Exception e) {
-                if ("llm_agent".equals(agentType)) {
-                    response.put("response", result);
+        // Merge result data into response
+        if (result != null) {
+            Object resultData = result.get("result");
+            if (resultData instanceof String resultStr) {
+                try {
+                    Map<String, Object> dsl = JsonUtils.safeJsonLoads(resultStr, Map.class);
+                    response.put("dsl", dsl);
+                    response.put("status", "completed");
+                } catch (Exception e) {
+                    response.put("response", resultData);
                     response.put("status", "clarifying");
-                } else if ("workflow".equals(agentType)) {
-                    String resultStr = (String) result;
-                    if (resultStr.contains("graph") || resultStr.contains("flowchart")) {
-                        response.put("mermaid_code", result);
-                        response.put("status", "processing");
-                    } else {
-                        response.put("response", result);
-                        response.put("status", "requesting");
-                    }
                 }
+            } else if (resultData instanceof Map) {
+                response.put("dsl", resultData);
+                response.put("status", "completed");
             }
-        } else if (result instanceof Map) {
-            response.putAll((Map<String, Object>) result);
-        } else {
-            response.put("response", String.valueOf(result));
+            response.putAll(result);
         }
 
         return response;

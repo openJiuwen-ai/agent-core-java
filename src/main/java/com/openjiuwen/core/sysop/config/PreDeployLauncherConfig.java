@@ -5,7 +5,6 @@
 package com.openjiuwen.core.sysop.config;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -20,7 +19,6 @@ import lombok.EqualsAndHashCode;
  * Mirrors Python's {@code PreDeployLauncherConfig} in {@code sys_operation/config.py}.
  */
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

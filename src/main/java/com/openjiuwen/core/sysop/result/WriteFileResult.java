@@ -12,4 +12,12 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class WriteFileResult extends BaseResult<WriteFileData> {
     public WriteFileResult(int code, String message, WriteFileData data) { super(code, message, data); }
+
+    public static WriteFileResult success(WriteFileData data) {
+        return new WriteFileResult(0, "success", data);
+    }
+
+    public static WriteFileResult failure(String message) {
+        return new WriteFileResult(1, message, null);
+    }
 }

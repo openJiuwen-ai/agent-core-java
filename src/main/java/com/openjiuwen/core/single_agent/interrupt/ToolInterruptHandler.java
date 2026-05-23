@@ -69,13 +69,13 @@ public class ToolInterruptHandler {
             return new InterruptStateResult(null, new ArrayList<>());
         }
 
-        ToolInterruptionState state = ToolInterruptionState.builder()
-                .aiMessage(aiMessage)
-                .iteration(iteration)
-                .interruptedTools(collectResult.interruptedTools)
-                .originalQuery(originalQuery)
-                .autoConfirmMapping(collectResult.autoConfirmMapping)
-                .build();
+        ToolInterruptionState state = ToolInterruptionState.create(
+                aiMessage,
+                iteration,
+                originalQuery,
+                collectResult.interruptedTools,
+                collectResult.autoConfirmMapping
+        );
 
         return new InterruptStateResult(state, collectResult.payloads);
     }
@@ -176,7 +176,7 @@ public class ToolInterruptHandler {
             List<Object[]> payloads,
             Map<String, String> autoConfirmMapping
     ) {
-        ToolCall tc = toolResult.getToolCall().orElse(toolCall);
+        ToolCall tc = (ToolCall) toolResult.getToolCall().orElse(toolCall);
         String outerId = tc.getId();
         String innerId = outerId;
 
@@ -286,14 +286,10 @@ public class ToolInterruptHandler {
                 if (payload instanceof OutputSchema schema) {
                     stateOutputs.add(schema);
                 } else {
-                    stateOutputs.add(OutputSchema.builder()
-                            .type(InterruptConstants.INTERACTION)
-                            .index(idx)
-                            .payload(InteractionOutput.builder()
-                                    .id(innerId)
-                                    .value(payload)
-                                    .build())
-                            .build());
+                    stateOutputs.add(new OutputSchema(
+                            InterruptConstants.INTERACTION,
+                            idx,
+                            new InteractionOutput(innerId, payload)));
                 }
                 idx++;
             }
@@ -314,12 +310,12 @@ public class ToolInterruptHandler {
             ModelContext context,
             Session session,
             InvokeInputs invokeInputs,
-            List<Object> subAgentOutputs
+            List<Object[]> payloads
     ) {
         // Persist tool interruption state and return interrupt dict
         // Note: context_engine.save_contexts is called separately
         save(state, session);
-        Map<String, Object> result = buildInterruptResult(subAgentOutputs);
+        Map<String, Object> result = buildInterruptResult(payloads);
         invokeInputs.setResult(result);
         return CompletableFuture.completedFuture(result);
     }
@@ -352,7 +348,7 @@ public class ToolInterruptHandler {
         InvokeInputs invokeInputs = resumeCtx.getInvokeInputs();
 
         int resumeIteration = state.getIteration();
-        Loggers.getLogger().info("Resuming tool interrupt from iteration {}", resumeIteration + 1);
+        Loggers.AGENT.info("Resuming tool interrupt from iteration {}", resumeIteration + 1);
 
         saveAutoConfirmFromState(state, userInput, session);
 
@@ -434,17 +430,21 @@ public class ToolInterruptHandler {
     public static ToolCall buildSubAgentResumeToolCall(ToolCall toolCall, Object userInput) {
         Map<String, Object> args = new HashMap<>();
         try {
-            if (toolCall.getArguments() instanceof String argStr) {
-                args = JSON_MAPPER.readValue(argStr, Map.class);
-            } else if (toolCall.getArguments() instanceof Map argMap) {
-                args = new HashMap<>(argMap);
+            if (toolCall.getArguments() instanceof String argStr && !argStr.isEmpty()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parsed = JSON_MAPPER.readValue(argStr, Map.class);
+                args = new HashMap<>(parsed);
             }
         } catch (JsonProcessingException e) {
             args = new HashMap<>();
         }
 
         args.put("query", userInput);
-        toolCall.setArguments(args);
+        try {
+            toolCall.setArguments(JSON_MAPPER.writeValueAsString(args));
+        } catch (JsonProcessingException e) {
+            toolCall.setArguments(args.toString());
+        }
         return toolCall;
     }
 

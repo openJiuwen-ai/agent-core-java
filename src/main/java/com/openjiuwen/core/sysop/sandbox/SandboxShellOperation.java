@@ -8,6 +8,8 @@ import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.ShellType;
 import com.openjiuwen.core.sysop.registry.Operation;
+import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
+import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
@@ -136,11 +138,12 @@ public class SandboxShellOperation extends BaseShellOperation {
         }
         if (raw instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) raw;
-            return ExecuteCmdResult.builder()
+            ExecuteCmdData data = ExecuteCmdData.builder()
                     .exitCode(map.get("exit_code") != null ? ((Number) map.get("exit_code")).intValue() : 0)
                     .stdout((String) map.get("stdout"))
                     .stderr((String) map.get("stderr"))
                     .build();
+            return ExecuteCmdResult.success(data);
         }
         throw new RuntimeException("Invalid execute_cmd result type: " + raw.getClass().getName());
     }
@@ -163,10 +166,11 @@ public class SandboxShellOperation extends BaseShellOperation {
                 }
                 if (item instanceof Map) {
                     Map<?, ?> map = (Map<?, ?>) item;
-                    return ExecuteCmdStreamResult.builder()
-                            .chunk((String) map.get("chunk"))
-                            .isStdout(map.get("is_stdout") != null ? (Boolean) map.get("is_stdout") : true)
+                    ExecuteCmdChunkData chunkData = ExecuteCmdChunkData.builder()
+                            .text((String) map.get("chunk"))
+                            .type(map.get("is_stdout") != null && (Boolean) map.get("is_stdout") ? "stdout" : "stderr")
                             .build();
+                    return new ExecuteCmdStreamResult(0, "success", chunkData);
                 }
                 throw new RuntimeException("Invalid stream result type: " + item.getClass().getName());
             }

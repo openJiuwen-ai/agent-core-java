@@ -96,7 +96,7 @@ public final class PermissionPatterns {
             Path relative = resolvedParent.relativize(resolvedChild);
             String relStr = relative.toString();
             return !relStr.startsWith("..") && !relStr.equals("..");
-        } catch (IllegalArgumentException | IOException e) {
+        } catch (IllegalArgumentException e) {
             return false;
         }
     }
@@ -160,7 +160,7 @@ public final class PermissionPatterns {
         }
 
         Path cfgPath = configYamlPath.toAbsolutePath().normalize();
-        if (!cfgPath.getParent().exists()) {
+        if (!Files.exists(cfgPath.getParent())) {
             LOG.warn("[PermissionPatterns] permission.write_yaml.abort reason=parent_dir_not_exists path={}", cfgPath);
             return false;
         }

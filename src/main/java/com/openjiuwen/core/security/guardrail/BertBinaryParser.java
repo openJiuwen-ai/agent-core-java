@@ -92,14 +92,14 @@ public class BertBinaryParser implements ModelOutputParser {
             // Format 1: {predicted_class: int, confidence: float}
             if (map.containsKey("predicted_class")) {
                 int predictedClass = toInt(map.get("predicted_class"));
-                double confidence = toDouble(map.getOrDefault("confidence", 0.0));
+                double confidence = toDouble(map.containsKey("confidence") ? map.get("confidence") : 0.0);
                 return new int[]{predictedClass, (int) confidence};
             }
             
             // Format 2: {label: int, score/confidence: float}
             if (map.containsKey("label")) {
                 int predictedClass = toInt(map.get("label"));
-                double confidence = toDouble(map.getOrDefault("score", map.getOrDefault("confidence", 0.0)));
+                double confidence = toDouble(map.containsKey("score") ? map.get("score") : (map.containsKey("confidence") ? map.get("confidence") : 0.0));
                 return new int[]{predictedClass, (int) confidence};
             }
             

@@ -52,7 +52,9 @@ public final class ParsingUtils {
                         Map<String, Object> merged = new LinkedHashMap<>(schemaMap);
                         merged.remove(kw);
                         if (nonNull.get(0) instanceof Map) {
-                            merged.putAll((Map<?, ?>) nonNull.get(0));
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> subMap = (Map<String, Object>) nonNull.get(0);
+                            merged.putAll(subMap);
                         }
                         schemaMap = merged;
                         break;

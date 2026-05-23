@@ -63,12 +63,12 @@ public final class PlaywrightAgents {
     public static AgentConfig fromSettings(RuntimeSettings settings) {
         return AgentConfig.builder()
                 .name("browser_agent")
-                .provider(settings.getProvider())
-                .apiKey(settings.getApiKey())
-                .apiBase(settings.getApiBase())
-                .modelName(settings.getModelName())
-                .mcpConfig(settings.getMcpCfg())
-                .guardrails(settings.getGuardrails())
+                .provider(settings.provider())
+                .apiKey(settings.apiKey())
+                .apiBase(settings.apiBase())
+                .modelName(settings.modelName())
+                .mcpConfig(settings.mcpCfg() != null ? Map.of("mcp", settings.mcpCfg()) : null)
+                .guardrails(settings.guardrails() != null ? List.of(settings.guardrails()) : List.of())
                 .build();
     }
 }
