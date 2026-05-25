@@ -82,6 +82,7 @@ public class End extends WorkflowComponent {
      * <p>
      * Mirrors Python's {@code End.set_mix()}.
      */
+    @Override
     public void setMix() {
         this.mix = true;
     }
@@ -159,7 +160,7 @@ public class End extends WorkflowComponent {
         } else {
             if (inputsMap != null) {
                 for (Map.Entry<String, Object> entry : inputsMap.entrySet()) {
-                    frames.add(Map.of("output", Map.of(entry.getKey(), entry.getValue())));
+                    frames.add(wrapOutput(entry.getKey(), entry.getValue()));
                 }
             }
         }
@@ -197,10 +198,10 @@ public class End extends WorkflowComponent {
                 Object value = entry.getValue();
                 if (value instanceof Iterator<?> iterator) {
                     while (iterator.hasNext()) {
-                        chunks.add(Map.of(path, iterator.next()));
+                        chunks.add(wrapOutput(path, iterator.next()));
                     }
                 } else {
-                    chunks.add(Map.of(path, value));
+                    chunks.add(wrapOutput(path, value));
                 }
             }
             return Map.of("output", chunks);
@@ -340,7 +341,7 @@ public class End extends WorkflowComponent {
                 while (true) {
                     if (currentIterator != null) {
                         if (currentIterator.hasNext()) {
-                            nextFrame = Map.of("output", Map.of(currentPath, currentIterator.next()));
+                            nextFrame = wrapOutput(currentPath, currentIterator.next());
                             return;
                         }
                         currentIterator = null;
@@ -359,11 +360,19 @@ public class End extends WorkflowComponent {
                         currentIterator = iterator;
                         continue;
                     }
-                    nextFrame = Map.of("output", Map.of(path, value));
+                    nextFrame = wrapOutput(path, value);
                     return;
                 }
             }
         };
+    }
+
+    private static Map<String, Object> wrapOutput(String key, Object value) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put(key, value);
+        Map<String, Object> frame = new LinkedHashMap<>();
+        frame.put("output", output);
+        return frame;
     }
 
     // ==================== Template rendering ====================

@@ -305,6 +305,7 @@ public class InMemoryCheckpointer extends Checkpointer {
             Map<String, Object> updates = stateUpdatesBlobs.get(workflowId);
             if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
                 workflowState.setUpdates(deepCopyMap(updates));
+                workflowState.commit();
             }
         }
 

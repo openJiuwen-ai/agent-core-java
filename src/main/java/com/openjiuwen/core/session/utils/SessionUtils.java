@@ -5,7 +5,6 @@
 package com.openjiuwen.core.session.utils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -150,7 +149,7 @@ public final class SessionUtils {
                         if (!isLast && i + 1 < paths.size() && paths.get(i + 1) instanceof Integer) {
                             map.put(strPath, new ArrayList<>());
                         } else {
-                            map.put(strPath, new HashMap<>());
+                            map.put(strPath, new LinkedHashMap<>());
                         }
                     }
                     if (isLast) {
@@ -405,7 +404,7 @@ public final class SessionUtils {
             for (int i = currentLength; i < targetIndex; i++) {
                 container.add(null);
             }
-            container.add(isFinalIndex ? new HashMap<>() : new ArrayList<>());
+            container.add(isFinalIndex ? new LinkedHashMap<>() : new ArrayList<>());
             return true;
         } catch (Exception e) {
             return false;

@@ -6,7 +6,6 @@ package com.openjiuwen.core.session.state;
 
 import com.openjiuwen.core.session.utils.SessionUtils;
 
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
@@ -24,14 +23,14 @@ public class InMemoryStateLike implements StateLike {
      * Auto-generated for codecheck compliance.
      */
     public InMemoryStateLike() {
-        this.state = new HashMap<>();
+        this.state = new LinkedHashMap<>();
     }
 
     /**
      * Auto-generated for codecheck compliance.
      */
     public InMemoryStateLike(Map<String, Object> initialState) {
-        this.state = initialState != null ? new HashMap<>(initialState) : new HashMap<>();
+        this.state = initialState != null ? new LinkedHashMap<>(initialState) : new LinkedHashMap<>();
     }
 
     @Override
@@ -109,7 +108,7 @@ public class InMemoryStateLike implements StateLike {
     @SuppressWarnings("unchecked")
     static Map<String, Object> deepCopyMap(Map<String, Object> source) {
         if (source == null) {
-            return new HashMap<>();
+            return new LinkedHashMap<>();
         }
         return (Map<String, Object>) deepCopy(source);
     }

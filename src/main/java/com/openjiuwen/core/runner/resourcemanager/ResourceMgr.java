@@ -224,17 +224,25 @@ public class ResourceMgr {
      * Auto-generated for codecheck compliance.
      */
     public Result<ToolCard> addTool(Tool tool, Object tag) {
+        return addTool(tool, tag, false);
+    }
+
+    public Result<ToolCard> addTool(Tool tool, Object tag, boolean refresh) {
         validateResource(tool, "tool", Tool.class);
         if (tag != null) {
             validateTag(tag);
         }
+        if (refresh) {
+            refreshExistingResourceIfNeeded(tool.getCard().getId(), tag);
+        }
         return innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool");
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Result<ToolCard>> addTools(List<Tool> tools, Object tag) {
+        return addTools(tools, tag, false);
+    }
+
+    public List<Result<ToolCard>> addTools(List<Tool> tools, Object tag, boolean refresh) {
         if (tools == null || tools.isEmpty()) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
                     "resource_type", "tool", "reason", "tool list cannot be empty");
@@ -244,6 +252,9 @@ public class ResourceMgr {
         }
         List<Result<ToolCard>> results = new ArrayList<>();
         for (Tool tool : tools) {
+            if (refresh) {
+                refreshExistingResourceIfNeeded(tool.getCard().getId(), tag);
+            }
             results.add(innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool"));
         }
         return results;
@@ -851,6 +862,14 @@ public class ResourceMgr {
     }
 
     // ========== Internal Methods ==========
+
+    private void refreshExistingResourceIfNeeded(String resourceId, Object tag) {
+        if (!tagMgr.hasResource(resourceId)) {
+            return;
+        }
+        innerRemoveResources(resourceId, tag, TagMatchStrategy.ALL, true, "tool");
+        logger.info("refreshed existing resource, id={}", resourceId);
+    }
 
     @SuppressWarnings("unchecked")
     private <C> Result<C> innerAddResource(String resourceId, Object resource,

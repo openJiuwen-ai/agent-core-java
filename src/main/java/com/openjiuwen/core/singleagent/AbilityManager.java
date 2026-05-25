@@ -75,11 +75,17 @@ public class AbilityManager implements ToolRegistry {
 
     private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
-            tools.put(toolCard.getName(), toolCard);
+            String key = (toolCard.getName() == null || toolCard.getName().isBlank())
+                    ? toolCard.getId() : toolCard.getName();
+            tools.put(key, toolCard);
         } else if (ability instanceof WorkflowCard wfCard) {
-            workflows.put(wfCard.getName(), wfCard);
+            String key = (wfCard.getName() == null || wfCard.getName().isBlank())
+                    ? wfCard.getId() : wfCard.getName();
+            workflows.put(key, wfCard);
         } else if (ability instanceof AgentCard agentCard) {
-            agents.put(agentCard.getName(), agentCard);
+            String key = (agentCard.getName() == null || agentCard.getName().isBlank())
+                    ? agentCard.getId() : agentCard.getName();
+            agents.put(key, agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
         } else {

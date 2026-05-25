@@ -42,9 +42,11 @@ public class ToolCard extends BaseCard {
      * Auto-generated for codecheck compliance.
      */
     public ToolInfo toolInfo() {
+        String effectiveName = (getName() == null || getName().isBlank()) ? getId() : getName();
+        String effectiveDesc = (getDescription() == null || getDescription().isBlank()) ? "" : getDescription();
         return ToolInfo.builder()
-                .name(getName())
-                .description(getDescription())
+                .name(effectiveName)
+                .description(effectiveDesc)
                 .parameters(inputParams)
                 .build();
     }

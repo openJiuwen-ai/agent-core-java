@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.session.state;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -59,7 +59,7 @@ public class WorkflowStateCollection implements State {
         this.globalState = globalState;
         this.compState = compState;
         this.workflowState = workflowState;
-        this.traceState = traceState != null ? traceState : new HashMap<>();
+        this.traceState = traceState != null ? traceState : new LinkedHashMap<>();
         this.parentId = parentId != null ? parentId : "";
         this.nodeId = nodeId != null ? nodeId : State.DEFAULT_NODE_ID;
     }
@@ -98,7 +98,7 @@ public class WorkflowStateCollection implements State {
      * Auto-generated for codecheck compliance.
      */
     public void updateTrace(Object span) {
-        Map<String, Object> spanMap = new HashMap<>();
+        Map<String, Object> spanMap = new LinkedHashMap<>();
         spanMap.put(nodeId, span);
         traceState.putAll(spanMap);
     }
@@ -111,7 +111,7 @@ public class WorkflowStateCollection implements State {
         if (compState == null) {
             return;
         }
-        Map<String, Object> wrappedData = new HashMap<>();
+        Map<String, Object> wrappedData = new LinkedHashMap<>();
         wrappedData.put(nodeId, data);
         compState.updateById(nodeId, wrappedData);
     }
@@ -158,7 +158,7 @@ public class WorkflowStateCollection implements State {
      * Auto-generated for codecheck compliance.
      */
     public Map<String, Object> dump() {
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("io_state", ioState.getState());
         result.put("io_state_updates", ioState.getUpdates());
         result.put("global_state", globalState.getState());
@@ -228,7 +228,7 @@ public class WorkflowStateCollection implements State {
         if (ioState == null || results == null) {
             return;
         }
-        Map<String, Object> wrappedData = new HashMap<>();
+        Map<String, Object> wrappedData = new LinkedHashMap<>();
         wrappedData.put(nodeId, results);
         ioState.updateById(nodeId, wrappedData);
     }
@@ -294,7 +294,7 @@ public class WorkflowStateCollection implements State {
      * Auto-generated for codecheck compliance.
      */
     public Map<String, Object> getState() {
-        return new HashMap<>();
+        return new LinkedHashMap<>();
     }
 
     @Override
