@@ -4,6 +4,8 @@ package com.openjiuwen.tests.unit_tests.core.common.clients;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Mirrors Python's {@code test_client_registry} in
  * {@code tests.unit_tests.core.common.clients.test_client_registry}.

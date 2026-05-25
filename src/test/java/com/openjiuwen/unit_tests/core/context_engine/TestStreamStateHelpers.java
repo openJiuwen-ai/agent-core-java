@@ -171,7 +171,7 @@ class TestStreamStateHelpers {
 
     private ContextCompressionMetric createTestMetric(int time) {
         ContextCompressionMetric metric = new ContextCompressionMetric();
-        metric.setTime(time);
+        metric.setTime(String.valueOf(time));
         return metric;
     }
 }

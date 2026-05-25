@@ -4,6 +4,7 @@
 package com.openjiuwen.core.singleagent.legacy;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -52,11 +53,12 @@ class BackwardCompatibilityTest {
     @DisplayName("legacy ReActAgent can be instantiated")
     void testLegacyReActAgentCanBeInstantiated() {
         assertThatNoException().isThrownBy(() -> {
-            var card = AgentCard.builder()
-                    .name("legacy_test")
+            var config = LegacyReActAgentConfig.builder()
+                    .id("legacy_test")
+                    .version("1.0")
                     .description("Legacy agent test")
                     .build();
-            var agent = new com.openjiuwen.core.singleagent.legacy.ReActAgent(card);
+            var agent = new com.openjiuwen.core.singleagent.legacy.ReActAgent(config);
             assertThat(agent).isNotNull();
         });
     }
@@ -65,11 +67,12 @@ class BackwardCompatibilityTest {
     @DisplayName("legacy LegacyReActAgent can be instantiated")
     void testLegacyLegacyReActAgentCanBeInstantiated() {
         assertThatNoException().isThrownBy(() -> {
-            var card = AgentCard.builder()
-                    .name("legacy_compat_test")
+            var config = LegacyReActAgentConfig.builder()
+                    .id("legacy_compat_test")
+                    .version("1.0")
                     .description("Legacy compat test")
                     .build();
-            var agent = new com.openjiuwen.core.singleagent.legacy.LegacyReActAgent(card);
+            var agent = new com.openjiuwen.core.singleagent.legacy.LegacyReActAgent(config);
             assertThat(agent).isNotNull();
         });
     }

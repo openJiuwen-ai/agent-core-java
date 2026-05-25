@@ -153,4 +153,59 @@ public class DeepAgent extends BaseAgent {
         }
         return null;
     }
+
+    /**
+     * Fire a callback event on the agent.
+     * Placeholder implementation - full callback system deferred.
+     */
+    public void fireCallback(String eventName, Map<String, Object> data) {
+        // Placeholder - actual implementation would notify registered rails
+    }
+
+    /**
+     * Cancel a running task.
+     * Placeholder implementation - full task management deferred.
+     */
+    public void cancelTask(String taskId) {
+        // Placeholder - actual implementation would cancel task via task manager
+    }
+
+    /**
+     * Spawn a subagent task.
+     * Placeholder implementation - full subagent spawning deferred.
+     */
+    public void spawnSubagentTask(String taskId, String subagentType, String description, String subSessionId) {
+        // Placeholder - actual implementation would spawn subagent via task loop
+    }
+    
+    private String currentMode = "normal";
+    private String planSlug = null;
+    
+    /**
+     * Get the current agent mode.
+     */
+    public String getCurrentMode() {
+        return currentMode;
+    }
+    
+    /**
+     * Set the agent mode.
+     */
+    public void setCurrentMode(String mode) {
+        this.currentMode = mode != null ? mode : "normal";
+    }
+    
+    /**
+     * Get the plan slug.
+     */
+    public String getPlanSlug() {
+        return planSlug;
+    }
+    
+    /**
+     * Set the plan slug.
+     */
+    public void setPlanSlug(String slug) {
+        this.planSlug = slug;
+    }
 }

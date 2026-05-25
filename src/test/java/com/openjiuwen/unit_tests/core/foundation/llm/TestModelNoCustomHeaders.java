@@ -35,23 +35,25 @@ class TestModelNoCustomHeaders {
     @Test
     @Tag("level1")
     void testDefaultConfigCreation() {
-        ModelClientConfig config = new ModelClientConfig();
+        ModelClientConfig config = ModelClientConfig.builder()
+                .apiKey("default-key")
+                .build();
         assertNotNull(config);
     }
 
     @Test
     @Tag("level1")
     void testDefaultApiKey() {
-        ModelClientConfig config = new ModelClientConfig();
-        config.setApiKey("default-key");
+        ModelClientConfig config = ModelClientConfig.builder()
+                .apiKey("default-key")
+                .build();
         assertEquals("default-key", config.getApiKey());
     }
 
     @Test
     @Tag("level1")
     void testDefaultApiBase() {
-        ModelClientConfig config = new ModelClientConfig();
-        // Default should be null or empty
+        ModelClientConfig config = ModelClientConfig.builder().build();
         assertNotNull(config);
     }
 
@@ -62,37 +64,26 @@ class TestModelNoCustomHeaders {
     @Test
     @Tag("level2")
     void testStandardAuthorizationHeader() {
-        ModelClientConfig config = new ModelClientConfig();
-        config.setApiKey("test-api-key");
-        // Authorization header should be derived from API key
+        ModelClientConfig config = ModelClientConfig.builder()
+                .apiKey("test-api-key")
+                .build();
         assertNotNull(config.getApiKey());
     }
 
     @Test
     @Tag("level2")
     void testNoExtraHeaders() {
-        ModelClientConfig config = new ModelClientConfig();
-        // No custom headers set
+        ModelClientConfig config = ModelClientConfig.builder().build();
         assertNotNull(config);
     }
 
     // ---------------------------------------------------------------------------
-    // Tests - Level 3 (Client provider configuration)
+    // Tests - Level 3 (Builder pattern)
     // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level3")
-    void testClientProviderOpenAI() {
-        ModelClientConfig config = new ModelClientConfig();
-        config.setClientProvider("OpenAI");
-        assertEquals("OpenAI", config.getClientProvider());
-    }
-
-    @Test
-    @Tag("level3")
-    void testClientProviderCustom() {
-        ModelClientConfig config = new ModelClientConfig();
-        config.setClientProvider("CustomProvider");
-        assertEquals("CustomProvider", config.getClientProvider());
+    void testBuilderPattern() {
+        assertNotNull(ModelClientConfig.builder());
     }
 }

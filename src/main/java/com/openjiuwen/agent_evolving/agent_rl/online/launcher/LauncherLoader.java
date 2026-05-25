@@ -4,7 +4,9 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.launcher;
 
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,23 +21,104 @@ public class LauncherLoader {
 
     /**
      * Load configuration from YAML file with CLI overrides.
+     * <p>
+     * Mirrors Python's load_runtime_config using OmegaConf.
      * 
      * @param configFile YAML config file path (optional)
      * @param cliOverrides CLI argument overrides
      * @return Loaded configuration map
      */
     public static Map<String, Object> loadConfig(String configFile, Map<String, Object> cliOverrides) {
-        // Start with default config
+        // Start with default config (mirrors Python: base_layer = OmegaConf.create(BUILTIN_ONLINE_RL_CONFIG))
         Map<String, Object> config = getDefaultConfig();
         
-        // TODO: Load YAML config file if provided
+        // Load YAML config file if provided
+        // Mirrors Python: layered_cfgs.append(OmegaConf.load(resolved_path))
+        if (configFile != null && !configFile.isEmpty()) {
+            try {
+                java.nio.file.Path configPath = java.nio.file.Paths.get(configFile);
+                if (java.nio.file.Files.exists(configPath)) {
+                    Map<String, Object> yamlConfig = loadYamlConfig(configPath);
+                    deepMerge(config, yamlConfig);
+                }
+            } catch (Exception e) {
+                // Log warning but continue with defaults
+                System.err.println("Warning: Failed to load config file: " + e.getMessage());
+            }
+        }
         
-        // Apply CLI overrides
+        // Apply CLI overrides (mirrors Python: layered_cfgs.append(OmegaConf.create(cli_overrides)))
         if (cliOverrides != null) {
             deepMerge(config, cliOverrides);
         }
         
         return config;
+    }
+    
+    /**
+     * Load YAML configuration file.
+     * <p>
+     * Simple YAML loader using basic parsing.
+     * For production, consider using Jackson YAML or SnakeYAML.
+     */
+    private static Map<String, Object> loadYamlConfig(java.nio.file.Path configPath) throws IOException {
+        // Simple YAML loading - in production, use Jackson or SnakeYAML
+        // This is a placeholder that reads the file as properties for basic key-value pairs
+        // Full YAML parsing would require a proper YAML library
+        
+        Map<String, Object> result = new HashMap<>();
+        List<String> lines = java.nio.file.Files.readAllLines(configPath);
+        
+        for (String line : lines) {
+            line = line.trim();
+            // Skip comments and empty lines
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            // Parse simple key: value pairs
+            int colonIndex = line.indexOf(':');
+            if (colonIndex > 0) {
+                String key = line.substring(0, colonIndex).trim();
+                String value = line.substring(colonIndex + 1).trim();
+                // Remove quotes if present
+                if ((value.startsWith("\"") && value.endsWith("\"")) ||
+                    (value.startsWith("'") && value.endsWith("'"))) {
+                    value = value.substring(1, value.length() - 1);
+                }
+                // Try to parse as number or boolean
+                Object parsedValue = parseValue(value);
+                result.put(key, parsedValue);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Parse a string value to appropriate type (Integer, Double, Boolean, or String).
+     */
+    private static Object parseValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        // Try boolean
+        if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
+            return Boolean.parseBoolean(value);
+        }
+        // Try integer
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            // Not an integer
+        }
+        // Try double
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            // Not a number
+        }
+        // Return as string
+        return value;
     }
 
     /**

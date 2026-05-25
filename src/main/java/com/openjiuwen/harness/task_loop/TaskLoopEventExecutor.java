@@ -73,11 +73,84 @@ public class TaskLoopEventExecutor {
 
     /**
      * Invoke inner agent.
+     * <p>
+     * Mirrors Python's ReAct loop execution logic:
+     * {@code result = await agent.react_agent.invoke(effective, session, _streaming=True)}
      */
     private Object invokeInnerAgent(Map<String, Object> input) {
-        // Placeholder - actual implementation depends on deep agent
         LOG.debug("[TaskLoopEventExecutor] invoke_inner_agent input={}", input);
-        return Collections.singletonMap("output", "Task execution result");
+        
+        if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {
+            try {
+                // Get the inner ReAct agent (delegate)
+                com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent = da.getDelegate();
+                if (reactAgent == null) {
+                    LOG.warn("[TaskLoopEventExecutor] react_agent delegate is null, returning empty result");
+                    Map<String, Object> emptyResult = new HashMap<>();
+                    emptyResult.put("output", "");
+                    emptyResult.put("result_type", "error");
+                    emptyResult.put("error", "No react_agent configured");
+                    return emptyResult;
+                }
+                
+                // Build effective input with query and conversation_id
+                Map<String, Object> effective = new HashMap<>(input);
+                
+                // Fire before_task_iteration callback if available
+                fireBeforeTaskIteration(da, effective);
+                
+                // Invoke the inner ReAct agent with a session
+                String sessionId = (String) effective.getOrDefault("conversation_id", "");
+                com.openjiuwen.core.session.Session session = 
+                    new com.openjiuwen.core.session.internal.AgentTeamSession(sessionId, "deep_agent");
+                Object result = reactAgent.invoke(effective, session);
+                
+                // Fire after_task_iteration callback if available
+                fireAfterTaskIteration(da, result);
+                
+                return result;
+            } catch (Exception e) {
+                LOG.error("[TaskLoopEventExecutor] invoke_inner_agent failed", e);
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("output", "");
+                errorResult.put("result_type", "error");
+                errorResult.put("error", e.getMessage());
+                return errorResult;
+            }
+        }
+        
+        // Fallback result when deep agent is not configured
+        LOG.warn("[TaskLoopEventExecutor] deep_agent not properly configured");
+        Map<String, Object> fallbackResult = new HashMap<>();
+        fallbackResult.put("output", "");
+        fallbackResult.put("result_type", "error");
+        fallbackResult.put("error", "DeepAgent not configured");
+        return fallbackResult;
+    }
+    
+    /**
+     * Fire before_task_iteration callback on agent rails.
+     */
+    private void fireBeforeTaskIteration(com.openjiuwen.harness.DeepAgent agent, Map<String, Object> input) {
+        try {
+            // Notify rails about task iteration start
+            agent.fireCallback("before_task_iteration", input);
+        } catch (Exception e) {
+            LOG.debug("[TaskLoopEventExecutor] before_task_iteration callback skipped", e);
+        }
+    }
+    
+    /**
+     * Fire after_task_iteration callback on agent rails.
+     */
+    private void fireAfterTaskIteration(com.openjiuwen.harness.DeepAgent agent, Object result) {
+        try {
+            Map<String, Object> callbackInput = new HashMap<>();
+            callbackInput.put("result", result);
+            agent.fireCallback("after_task_iteration", callbackInput);
+        } catch (Exception e) {
+            LOG.debug("[TaskLoopEventExecutor] after_task_iteration callback skipped", e);
+        }
     }
 
     /**

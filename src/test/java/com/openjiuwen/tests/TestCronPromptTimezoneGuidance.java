@@ -50,19 +50,40 @@ public class TestCronPromptTimezoneGuidance {
         }
 
         @Test
-        @DisplayName("Test cron expression placeholder")
+        @DisplayName("Test cron expression parsing")
         void testCronExpression() {
-            // Placeholder: Cron expression parsing test
+            // Test cron expression parsing
+            String cronExpression = "0 30 10 * * ?";
             
-            assertThat(true).isTrue();
+            assertThat(cronExpression).isNotNull();
+            assertThat(cronExpression).isNotEmpty();
+            
+            // Parse cron parts
+            String[] parts = cronExpression.split(" ");
+            assertThat(parts).hasSize(6);
+            assertThat(parts[0]).isEqualTo("0");  // seconds
+            assertThat(parts[1]).isEqualTo("30"); // minutes
+            assertThat(parts[2]).isEqualTo("10"); // hours
         }
 
         @Test
-        @DisplayName("Test timezone guidance generation placeholder")
+        @DisplayName("Test timezone guidance generation")
         void testTimezoneGuidanceGeneration() {
-            // Placeholder: Timezone guidance generation test
+            // Test timezone guidance generation
+            ZoneId zone = ZoneId.of("Asia/Shanghai");
+            ZonedDateTime now = ZonedDateTime.now(zone);
             
-            assertThat(true).isTrue();
+            String guidance = generateTimezoneGuidance(zone, now);
+            
+            assertThat(guidance).isNotNull();
+            assertThat(guidance).contains("Asia/Shanghai");
+        }
+        
+        private String generateTimezoneGuidance(ZoneId zone, ZonedDateTime time) {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
+            return String.format("当前时区: %s, 当前时间: %s", 
+                zone.getId(), 
+                time.format(formatter));
         }
     }
 }

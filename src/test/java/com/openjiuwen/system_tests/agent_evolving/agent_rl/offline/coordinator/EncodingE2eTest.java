@@ -25,7 +25,10 @@ class EncodingE2eTest {
                     List<?> contentList = (List<?>) content;
                     StringBuilder sb = new StringBuilder();
                     for (Object c : contentList) {
-                        if (c instanceof Map) sb.append(((Map<?, ?>) c).getOrDefault("text", String.valueOf(c)));
+                        if (c instanceof Map) {
+                            Object textVal = ((Map<?, ?>) c).get("text");
+                            sb.append(textVal != null ? textVal.toString() : String.valueOf(c));
+                        }
                     }
                     content = sb.toString();
                 }

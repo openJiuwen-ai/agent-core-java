@@ -23,7 +23,7 @@ class TestChromaIndexer {
     @Test
     void testInitSuccess() {
         // Test successful initialization
-        VectorStore vectorStore = new InMemoryVectorStore();
+        VectorStore vectorStore = new InMemoryVectorStore("test_collection");
         ChromaIndexer indexer = new ChromaIndexer(vectorStore);
         assertNotNull(indexer);
     }
@@ -31,7 +31,7 @@ class TestChromaIndexer {
     @Test
     void testIndexerIsIndexer() {
         // Test that ChromaIndexer implements Indexer interface
-        VectorStore vectorStore = new InMemoryVectorStore();
+        VectorStore vectorStore = new InMemoryVectorStore("test_collection");
         ChromaIndexer indexer = new ChromaIndexer(vectorStore);
         assertTrue(indexer instanceof com.openjiuwen.core.retrieval.indexing.indexer.Indexer);
     }
@@ -39,7 +39,7 @@ class TestChromaIndexer {
     @Test
     void testClose() {
         // Test close method
-        VectorStore vectorStore = new InMemoryVectorStore();
+        VectorStore vectorStore = new InMemoryVectorStore("test_collection");
         ChromaIndexer indexer = new ChromaIndexer(vectorStore);
         indexer.close();
         // No exception expected

@@ -10,33 +10,57 @@ import java.util.List;
 /**
  * Memory tools factory.
  * <p>
- * Mirrors Python's memory tools module.
+ * Mirrors Python's {@code create_memory_tools} function in
+ * {@code openjiuwen.harness.tools.memory}.
  */
 public class MemoryTools {
 
-    public static List<Object> createMemoryTools() {
+    /**
+     * Create all memory tools.
+     * <p>
+     * Mirrors Python's {@code create_memory_tools()} function.
+     */
+    public static List<Object> createMemoryTools(Object memoryContext, String language, String agentId) {
         List<Object> tools = new ArrayList<>();
-        // Stub - returns empty list for now
+        tools.add(new MemorySearchTool(language, agentId, memoryContext));
+        tools.add(new MemoryGetTool(language, agentId, memoryContext));
+        tools.add(new WriteMemoryTool(language, agentId, memoryContext));
+        tools.add(new EditMemoryTool(language, agentId, memoryContext));
         return tools;
     }
 
-    public static Object createWriteMemoryTool() {
-        return new Object();
+    /**
+     * Create memory tools with default context.
+     */
+    public static List<Object> createMemoryTools() {
+        return createMemoryTools(null, "en", null);
     }
 
-    public static Object createReadMemoryTool() {
-        return new Object();
+    /**
+     * Create write memory tool.
+     */
+    public static WriteMemoryTool createWriteMemoryTool(Object memoryContext, String language, String agentId) {
+        return new WriteMemoryTool(language, agentId, memoryContext);
     }
 
-    public static Object createSearchMemoryTool() {
-        return new Object();
+    /**
+     * Create read memory tool.
+     */
+    public static MemoryGetTool createReadMemoryTool(Object memoryContext, String language, String agentId) {
+        return new MemoryGetTool(language, agentId, memoryContext);
     }
 
-    public static Object createDeleteMemoryTool() {
-        return new Object();
+    /**
+     * Create search memory tool.
+     */
+    public static MemorySearchTool createSearchMemoryTool(Object memoryContext, String language, String agentId) {
+        return new MemorySearchTool(language, agentId, memoryContext);
     }
 
-    public static Object createUpdateMemoryTool() {
-        return new Object();
+    /**
+     * Create edit memory tool.
+     */
+    public static EditMemoryTool createEditMemoryTool(Object memoryContext, String language, String agentId) {
+        return new EditMemoryTool(language, agentId, memoryContext);
     }
 }

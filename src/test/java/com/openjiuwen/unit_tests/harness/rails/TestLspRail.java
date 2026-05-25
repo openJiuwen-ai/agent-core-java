@@ -6,6 +6,7 @@ package com.openjiuwen.unit_tests.harness.rails;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for LspRail — initialization, tool registration, cleanup.

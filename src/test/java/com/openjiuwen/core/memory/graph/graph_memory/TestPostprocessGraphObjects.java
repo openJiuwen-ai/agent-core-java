@@ -138,7 +138,8 @@ class TestPostprocessGraphObjects {
         @Test
         @DisplayName("entity merge can be created")
         void testEntityMergeCanBeCreated() {
-            GraphMemoryStates.EntityMerge merge = new GraphMemoryStates.EntityMerge();
+            Entity entity = new Entity();
+            GraphMemoryStates.EntityMerge merge = new GraphMemoryStates.EntityMerge(entity);
             assertNotNull(merge);
         }
     }

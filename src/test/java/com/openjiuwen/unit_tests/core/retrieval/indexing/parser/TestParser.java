@@ -4,6 +4,7 @@
 
 package com.openjiuwen.unit_tests.core.retrieval.indexing.parser;
 
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
 
@@ -26,7 +27,7 @@ class TestParser {
     static class ConcreteParser extends Parser {
 
         @Override
-        protected String parseContent(String doc, Object llmClient, Map<String, Object> options) {
+        protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
             return doc;
         }
 

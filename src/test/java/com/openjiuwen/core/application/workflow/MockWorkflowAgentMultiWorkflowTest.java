@@ -4,7 +4,9 @@
 package com.openjiuwen.core.application.workflow;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.AfterEach;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +29,33 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DisplayName("WorkflowAgent Multi Workflow")
 class MockWorkflowAgentMultiWorkflowTest {
+
+    /**
+     * Minimal mock session implementation for testing.
+     */
+    static class MockSession implements Session {
+        private final String sessionId;
+        private final Map<String, Object> state = new HashMap<>();
+
+        MockSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> newState) {
+            state.putAll(newState);
+        }
+    }
 
     @BeforeEach
     void setUp() {
@@ -51,14 +81,14 @@ class MockWorkflowAgentMultiWorkflowTest {
         agent.addWorkflows(List.of(workflow));
 
         String conversationId = UUID.randomUUID().toString();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of(
+        Session mockSession = new MockSession(conversationId);
+        ControllerOutput output = agent.invoke(Map.of(
                 "query", "hello",
                 "conversation_id", conversationId
-        ));
+        ), mockSession);
 
-        assertThat(result).isInstanceOf(Map.class);
-        assertThat(result.get("result_type")).isEqualTo("answer");
+        assertThat(output).isNotNull();
+        assertThat(output.getType()).isEqualTo("answer");
     }
 
     @Test
@@ -76,13 +106,13 @@ class MockWorkflowAgentMultiWorkflowTest {
         agent.addWorkflows(List.of(workflow1, workflow2));
 
         String conversationId = UUID.randomUUID().toString();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of(
+        Session mockSession = new MockSession(conversationId);
+        ControllerOutput output = agent.invoke(Map.of(
                 "query", "hello",
                 "conversation_id", conversationId
-        ));
+        ), mockSession);
 
-        assertThat(result).isInstanceOf(Map.class);
-        assertThat(result.get("result_type")).isEqualTo("answer");
+        assertThat(output).isNotNull();
+        assertThat(output.getType()).isEqualTo("answer");
     }
 }

@@ -581,7 +581,7 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
             assertTrue(builder.hasSection(TeamSectionName.INFO));
             assertTrue(builder.hasSection(TeamSectionName.MEMBERS));
@@ -589,7 +589,7 @@ class TestTeamRail {
             assertEquals(1, backend.listMembersCalls);
 
             // The members section excluded the leader (self exclusion)
-            PromptSection membersSection = builder.getSection(TeamSectionName.MEMBERS);
+            PromptSection membersSection = builder.getSection(TeamSectionName.MEMBERS).orElse(null);
             String membersRender = membersSection.render("cn");
             assertTrue(membersRender.contains("Dev"));
             assertFalse(membersRender.contains("Leader"));
@@ -619,9 +619,9 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
-            rail.beforeModelCall(null).join();
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
+            rail.beforeModelCall(null);
+            rail.beforeModelCall(null);
 
             // Three model calls, three probes each, but only one full fetch
             assertEquals(3, backend.teamMtimeCalls);
@@ -656,18 +656,18 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
-            PromptSection firstMembers = builder.getSection(TeamSectionName.MEMBERS);
+            PromptSection firstMembers = builder.getSection(TeamSectionName.MEMBERS).orElse(null);
             String firstRender = firstMembers.render("cn");
             assertTrue(firstRender.contains("Dev"));
             assertFalse(firstRender.contains("Newbie"));
 
             // Simulate spawn_member: add a row and bump mtime
             backend.addMember(new StubMember("dev2", "Newbie", "fresh"), 2);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
-            PromptSection secondMembers = builder.getSection(TeamSectionName.MEMBERS);
+            PromptSection secondMembers = builder.getSection(TeamSectionName.MEMBERS).orElse(null);
             String secondRender = secondMembers.render("cn");
             assertTrue(secondRender.contains("Newbie"));
             assertEquals(2, backend.listMembersCalls);
@@ -700,9 +700,9 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
             // mtime stays at 42 -- a real status update would not bump it
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
             assertEquals(1, backend.listMembersCalls);
         }
 
@@ -730,17 +730,17 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
-            PromptSection firstInfo = builder.getSection(TeamSectionName.INFO);
+            PromptSection firstInfo = builder.getSection(TeamSectionName.INFO).orElse(null);
             String first = firstInfo.render("cn");
             assertTrue(first.contains(".team/beta/"));
 
             // Trigger a roster refresh (members mtime bump)
             backend.setTeam(new StubTeam("Beta-renamed", "Test"), 99);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
-            PromptSection secondInfo = builder.getSection(TeamSectionName.INFO);
+            PromptSection secondInfo = builder.getSection(TeamSectionName.INFO).orElse(null);
             String second = secondInfo.render("cn");
             assertTrue(second.contains(".team/beta/"));
             assertTrue(second.contains("Beta-renamed"));
@@ -770,7 +770,7 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
             String prompt = builder.build();
             int idxRole = prompt.indexOf("# 团队角色");
@@ -811,7 +811,7 @@ class TestTeamRail {
                     backend
             );
             rail.init(agent);
-            rail.beforeModelCall(null).join();
+            rail.beforeModelCall(null);
 
             assertTrue(builder.hasSection(TeamSectionName.ROLE));
             assertTrue(builder.hasSection(TeamSectionName.INFO));

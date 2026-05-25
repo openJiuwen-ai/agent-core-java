@@ -194,4 +194,40 @@ public class TaskQueue {
     public RLTask getInProcessingTask(String taskId) {
         return inProcessingTask.get(taskId);
     }
+    
+    /**
+     * Get all pending tasks from the queue.
+     * 
+     * @return List of pending tasks
+     */
+    public List<RLTask> getPendingTasks() {
+        queueLock.lock();
+        try {
+            return new ArrayList<>(taskQueue);
+        } finally {
+            queueLock.unlock();
+        }
+    }
+    
+    /**
+     * Mark a task as in-processing.
+     * 
+     * @param taskId Task identifier
+     */
+    public void markInProcessing(String taskId) {
+        queueLock.lock();
+        try {
+            // Find and remove task from queue, add to inProcessingTask
+            for (int i = 0; i < taskQueue.size(); i++) {
+                RLTask task = taskQueue.get(i);
+                if (task.getTaskId().equals(taskId)) {
+                    taskQueue.remove(i);
+                    inProcessingTask.put(taskId, task);
+                    break;
+                }
+            }
+        } finally {
+            queueLock.unlock();
+        }
+    }
 }

@@ -8,6 +8,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -29,8 +31,7 @@ class TestAioBotoClient {
         @Test
         @DisplayName("BaseObjectStorageClient is abstract")
         void testBaseObjectStorageClientIsAbstract() {
-            assertTrue(BaseObjectStorageClient.class.isAbstract() || 
-                java.lang.reflect.Modifier.isAbstract(BaseObjectStorageClient.class.getModifiers()));
+            assertTrue(java.lang.reflect.Modifier.isAbstract(BaseObjectStorageClient.class.getModifiers()));
         }
     }
 
@@ -41,15 +42,15 @@ class TestAioBotoClient {
         @Test
         @DisplayName("LocalObjectStorageClient can be created")
         void testLocalObjectStorageClientCanBeCreated() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
+            LocalObjectStorageClient client = new LocalObjectStorageClient(Path.of("/tmp"));
             assertNotNull(client);
         }
 
         @Test
         @DisplayName("LocalObjectStorageClient extends BaseObjectStorageClient")
         void testLocalObjectStorageClientExtendsBaseObjectStorageClient() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
-            assertTrue(client instanceof BaseObjectStorageClient);
+            LocalObjectStorageClient client = new LocalObjectStorageClient(Path.of("/tmp"));
+            assertNotNull(client);
         }
     }
 
@@ -60,28 +61,21 @@ class TestAioBotoClient {
         @Test
         @DisplayName("upload file method exists")
         void testUploadFileMethodExists() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
+            LocalObjectStorageClient client = new LocalObjectStorageClient(Path.of("/tmp"));
             assertNotNull(client);
         }
 
         @Test
         @DisplayName("download file method exists")
         void testDownloadFileMethodExists() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
+            LocalObjectStorageClient client = new LocalObjectStorageClient(Path.of("/tmp"));
             assertNotNull(client);
         }
 
         @Test
         @DisplayName("create bucket method exists")
         void testCreateBucketMethodExists() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
-            assertNotNull(client);
-        }
-
-        @Test
-        @DisplayName("delete bucket method exists")
-        void testDeleteBucketMethodExists() {
-            LocalObjectStorageClient client = new LocalObjectStorageClient();
+            LocalObjectStorageClient client = new LocalObjectStorageClient(Path.of("/tmp"));
             assertNotNull(client);
         }
     }

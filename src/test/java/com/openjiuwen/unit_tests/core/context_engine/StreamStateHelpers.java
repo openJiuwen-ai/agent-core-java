@@ -133,6 +133,16 @@ public class StreamStateHelpers {
     }
 
     /**
+     * Assertion with default final status.
+     */
+    public static void assertContextStatePair(
+            List<ContextCompressionState> states,
+            String processorType,
+            String phase) {
+        assertContextStatePair(states, processorType, phase, "completed");
+    }
+
+    /**
      * Simplified assertion with default phase and final status.
      */
     public static void assertContextStatePair(

@@ -81,28 +81,80 @@ public class SessionSpawnExecutor {
 
     /**
      * Get task metadata from task manager.
+     * <p>
+     * Mirrors Python's: {@code await self._task_manager.get_task(TaskFilter(task_id=task_id))}
      */
     private Map<String, Object> getTaskMetadata(String taskId) {
-        // Placeholder - actual implementation depends on task manager
+        if (taskManager instanceof com.openjiuwen.core.common.task_manager.TaskManager tm) {
+            try {
+                // Use getTask to query task by ID directly
+                com.openjiuwen.core.common.task_manager.Task task = tm.getTask(taskId);
+                if (task != null) {
+                    Map<String, Object> metadata = task.getMetadata();
+                    return metadata != null ? new ConcurrentHashMap<>(metadata) : new ConcurrentHashMap<>();
+                }
+            } catch (Exception e) {
+                LOG.warn("[SessionSpawnExecutor] Failed to get task metadata for task_id={}", taskId, e);
+            }
+        }
         return new ConcurrentHashMap<>();
     }
 
     /**
      * Create subagent instance.
+     * <p>
+     * Mirrors Python's: {@code self._deep_agent.create_subagent(subagent_type, cid)}
+     * Note: Currently uses a placeholder implementation as subagent creation is deferred.
      */
     private Object createSubagent(String subagentType, String sessionId) {
-        // Placeholder - actual implementation depends on deep agent
         LOG.debug("[SessionSpawnExecutor] create_subagent type={}, session_id={}", subagentType, sessionId);
-        return null;
+        
+        if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {
+            // Return the DeepAgent itself as a placeholder for subagent creation
+            // Full subagent factory implementation is deferred
+            LOG.info("[SessionSpawnExecutor] Using DeepAgent delegate as subagent placeholder");
+            return da.getDelegate();
+        }
+        throw new IllegalStateException("DeepAgent not properly configured for subagent creation");
     }
 
     /**
      * Invoke subagent with query.
+     * <p>
+     * Mirrors Python's: {@code result = await subagent.invoke({"query": query, "conversation_id": cid})}
      */
     private Object invokeSubagent(Object subagent, String query, String sessionId) {
-        // Placeholder - actual implementation depends on subagent interface
         LOG.debug("[SessionSpawnExecutor] invoke_subagent query={}, session_id={}", query, sessionId);
-        return Collections.singletonMap("output", "Subagent result placeholder");
+        
+        if (subagent instanceof com.openjiuwen.core.singleagent.BaseAgent agent) {
+            try {
+                // Build invocation input map
+                Map<String, Object> input = new HashMap<>();
+                input.put("query", query);
+                input.put("conversation_id", sessionId);
+                
+                // Create a simple AgentTeamSession for invocation
+                com.openjiuwen.core.session.Session session = 
+                    new com.openjiuwen.core.session.internal.AgentTeamSession(sessionId, "subagent");
+                
+                // Invoke agent and return result
+                Object result = agent.invoke(input, session);
+                return result;
+            } catch (Exception e) {
+                LOG.error("[SessionSpawnExecutor] Failed to invoke subagent", e);
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("output", "");
+                errorResult.put("error", e.getMessage());
+                return errorResult;
+            }
+        }
+        
+        // Fallback: return placeholder result
+        LOG.warn("[SessionSpawnExecutor] Subagent not a BaseAgent, using fallback");
+        Map<String, Object> fallbackResult = new HashMap<>();
+        fallbackResult.put("output", "");
+        fallbackResult.put("error", "Subagent invocation not supported");
+        return fallbackResult;
     }
 
     /**

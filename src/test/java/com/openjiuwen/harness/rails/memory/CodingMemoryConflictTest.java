@@ -5,6 +5,7 @@ package com.openjiuwen.harness.rails.memory;
 
 import com.openjiuwen.core.memory.lite.CodingMemoryToolContext;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
@@ -45,16 +46,15 @@ class CodingMemoryConflictTest {
         LocalWorkConfig workConfig = new LocalWorkConfig();
         workConfig.setWorkDir(workDir);
         card.setWorkConfig(workConfig);
-        var addResult = Runner.resourceMgr().addSysOperation(card);
-        if (addResult.isErr()) {
-            throw new RuntimeException("add_sys_operation failed: " + addResult.getMsg());
+        var addResult = Runner.resourceMgr().addSysOperation(card, null);
+        if (addResult.isError()) {
+            throw new RuntimeException("add_sys_operation failed: " + addResult.getError().getMessage());
         }
         Path cmDir = Path.of(workDir).resolve("coding_memory");
         Files.createDirectories(cmDir);
         codingMemoryDir = cmDir.toString();
-        sysOp = Runner.resourceMgr().getSysOperation(sysOperationId);
-        Workspace workspace = new Workspace();
-        workspace.setRootPath(workDir);
+        sysOp = Runner.resourceMgr().getSysOperation(sysOperationId, null, TagMatchStrategy.ALL);
+        Workspace workspace = new Workspace(workDir, "cn");
         CodingMemoryToolContext.bind(workspace, sysOp, codingMemoryDir);
     }
 
@@ -62,7 +62,7 @@ class CodingMemoryConflictTest {
     void tearDown() throws IOException {
         CodingMemoryToolContext.reset();
         try {
-            Runner.resourceMgr().removeSysOperation(sysOperationId);
+            Runner.resourceMgr().removeSysOperation(sysOperationId, null, TagMatchStrategy.ALL, true);
         } finally {
             if (tmpDir != null) {
                 Runner.stop();
@@ -96,7 +96,7 @@ class CodingMemoryConflictTest {
                         assertNotNull(readResult.get("content"));
                     }
                 }
-                Map<String, Object> editResult = CodingMemoryToolContext.edit("developer_role.md",
+                Map<String, Object> editResult = CodingMemoryToolContext.staticEdit("developer_role.md",
                         "User develops backend services using Python and Django framework.",
                         "User develops backend services using Python, Django, and also has experience with FastAPI.");
                 assertTrue((Boolean) editResult.get("success"));
@@ -122,7 +122,7 @@ class CodingMemoryConflictTest {
             if (Boolean.TRUE.equals(result2.get("conflict_detected"))) {
                 Map<String, Object> readResult = CodingMemoryToolContext.read("project_setup.md", null, null);
                 assertTrue((Boolean) readResult.get("success"));
-                Map<String, Object> editResult = CodingMemoryToolContext.edit("project_setup.md",
+                Map<String, Object> editResult = CodingMemoryToolContext.staticEdit("project_setup.md",
                         "Step 3: Run migrations",
                         "Step 3: Run database migrations and verify connection");
                 assertTrue((Boolean) editResult.get("success"));

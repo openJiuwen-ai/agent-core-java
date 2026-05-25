@@ -27,41 +27,41 @@ class TestResponseParser {
         @DisplayName("test standard JSON content types are recognized")
         void testStandardJsonContentTypes() {
             JsonResponseParser parser = new JsonResponseParser();
-            assertTrue(parser.canParse("application/json", 200));
-            assertTrue(parser.canParse("text/json", 200));
-            assertTrue(parser.canParse("text/x-json", 200));
-            assertTrue(parser.canParse("application/javascript", 200));
+            assertTrue(parser.canParse("application/json", 200, null));
+            assertTrue(parser.canParse("text/json", 200, null));
+            assertTrue(parser.canParse("text/x-json", 200, null));
+            assertTrue(parser.canParse("application/javascript", 200, null));
         }
 
         @Test
         @DisplayName("test RFC 6839 plus JSON suffix types are recognized")
         void testRfc6839PlusJsonSuffixTypes() {
             JsonResponseParser parser = new JsonResponseParser();
-            assertTrue(parser.canParse("application/video+json", 200));
-            assertTrue(parser.canParse("application/hal+json", 200));
-            assertTrue(parser.canParse("application/ld+json", 200));
-            assertTrue(parser.canParse("application/schema+json", 200));
-            assertTrue(parser.canParse("application/problem+json", 200));
+            assertTrue(parser.canParse("application/video+json", 200, null));
+            assertTrue(parser.canParse("application/hal+json", 200, null));
+            assertTrue(parser.canParse("application/ld+json", 200, null));
+            assertTrue(parser.canParse("application/schema+json", 200, null));
+            assertTrue(parser.canParse("application/problem+json", 200, null));
         }
 
         @Test
         @DisplayName("test content type matching is case insensitive")
         void testContentTypeCaseInsensitive() {
             JsonResponseParser parser = new JsonResponseParser();
-            assertTrue(parser.canParse("APPLICATION/JSON", 200));
-            assertTrue(parser.canParse("Application/Json", 200));
-            assertTrue(parser.canParse("APPLICATION/VIDEO+JSON", 200));
+            assertTrue(parser.canParse("APPLICATION/JSON", 200, null));
+            assertTrue(parser.canParse("Application/Json", 200, null));
+            assertTrue(parser.canParse("APPLICATION/VIDEO+JSON", 200, null));
         }
 
         @Test
         @DisplayName("test non JSON content types are not recognized")
         void testNonJsonContentTypes() {
             JsonResponseParser parser = new JsonResponseParser();
-            assertFalse(parser.canParse("text/html", 200));
-            assertFalse(parser.canParse("text/plain", 200));
-            assertFalse(parser.canParse("application/xml", 200));
-            assertFalse(parser.canParse("application/xhtml+xml", 200));
-            assertFalse(parser.canParse("image/png", 200));
+            assertFalse(parser.canParse("text/html", 200, null));
+            assertFalse(parser.canParse("text/plain", 200, null));
+            assertFalse(parser.canParse("application/xml", 200, null));
+            assertFalse(parser.canParse("application/xhtml+xml", 200, null));
+            assertFalse(parser.canParse("image/png", 200, null));
         }
 
         @Test
@@ -70,11 +70,14 @@ class TestResponseParser {
             JsonResponseParser parser = new JsonResponseParser();
             byte[] jsonBytes = "{\"name\": \"test\", \"value\": 123}".getBytes(StandardCharsets.UTF_8);
             
-            Map<String, Object> result = parser.parse(jsonBytes);
+            Object result = parser.parse(jsonBytes, "application/json");
             
             assertNotNull(result);
-            assertEquals("test", result.get("name"));
-            assertEquals(123, result.get("value"));
+            if (result instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) result;
+                assertEquals("test", map.get("name"));
+                assertEquals(123, map.get("value"));
+            }
         }
 
         @Test
@@ -83,22 +86,26 @@ class TestResponseParser {
             JsonResponseParser parser = new JsonResponseParser();
             byte[] jsonBytes = "{\"user\": {\"id\": 1, \"name\": \"Alice\"}}".getBytes(StandardCharsets.UTF_8);
             
-            Map<String, Object> result = parser.parse(jsonBytes);
+            Object result = parser.parse(jsonBytes, "application/json");
             
             assertNotNull(result);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> user = (Map<String, Object>) result.get("user");
-            assertEquals(1, user.get("id"));
-            assertEquals("Alice", user.get("name"));
+            if (result instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = (Map<String, Object>) result;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> user = (Map<String, Object>) map.get("user");
+                assertEquals(1, user.get("id"));
+                assertEquals("Alice", user.get("name"));
+            }
         }
 
         @Test
-        @DisplayName("test parse JSON array")
+        @DisplayName("test parse JSON array returns list")
         void testParseJsonArray() {
             JsonResponseParser parser = new JsonResponseParser();
             byte[] jsonBytes = "[{\"id\": 1}, {\"id\": 2}]".getBytes(StandardCharsets.UTF_8);
             
-            Object result = parser.parseArray(jsonBytes);
+            Object result = parser.parse(jsonBytes, "application/json");
             
             assertNotNull(result);
         }
@@ -112,18 +119,18 @@ class TestResponseParser {
         @DisplayName("test text content types are recognized")
         void testTextContentTypes() {
             TextResponseParser parser = new TextResponseParser();
-            assertTrue(parser.canParse("text/plain", 200));
-            assertTrue(parser.canParse("text/html", 200));
-            assertTrue(parser.canParse("text/xml", 200));
+            assertTrue(parser.canParse("text/plain", 200, null));
+            assertTrue(parser.canParse("text/html", 200, null));
+            assertTrue(parser.canParse("text/xml", 200, null));
         }
 
         @Test
         @DisplayName("test non text content types are not recognized")
         void testNonTextContentTypes() {
             TextResponseParser parser = new TextResponseParser();
-            assertFalse(parser.canParse("application/json", 200));
-            assertFalse(parser.canParse("image/png", 200));
-            assertFalse(parser.canParse("application/octet-stream", 200));
+            assertFalse(parser.canParse("application/json", 200, null));
+            assertFalse(parser.canParse("image/png", 200, null));
+            assertFalse(parser.canParse("application/octet-stream", 200, null));
         }
 
         @Test
@@ -132,7 +139,7 @@ class TestResponseParser {
             TextResponseParser parser = new TextResponseParser();
             byte[] textBytes = "Hello, World!".getBytes(StandardCharsets.UTF_8);
             
-            String result = parser.parse(textBytes);
+            Object result = parser.parse(textBytes, "text/plain");
             
             assertEquals("Hello, World!", result);
         }

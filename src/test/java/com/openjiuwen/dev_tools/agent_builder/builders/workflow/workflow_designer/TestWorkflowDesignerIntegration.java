@@ -18,14 +18,13 @@ class TestWorkflowDesignerIntegration {
 
     @Test
     void designerCreation() {
-        WorkflowDesigner designer = new WorkflowDesigner(null);
+        WorkflowDesigner designer = new WorkflowDesigner();
         assertThat(designer).isNotNull();
     }
 
     @Test
     void designerWithNonNullLlm() {
-        Object mockLlm = new Object();
-        WorkflowDesigner designer = new WorkflowDesigner(mockLlm);
+        WorkflowDesigner designer = new WorkflowDesigner();
         assertThat(designer).isNotNull();
     }
 }

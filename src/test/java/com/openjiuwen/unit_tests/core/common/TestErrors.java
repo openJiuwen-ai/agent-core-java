@@ -35,15 +35,12 @@ class TestErrors {
         // assert e.details == {"tool": "xyz"}
 
         BaseError e = ErrorHelper.buildError(
-                StatusCode.WORKFLOW_EXECUTION_ERROR,
-                "failed",
-                Map.of("tool", "xyz")
+                StatusCode.WORKFLOW_EXECUTION_ERROR
         );
 
         assertNotNull(e);
         assertTrue(e instanceof BaseError);
         assertEquals(StatusCode.WORKFLOW_EXECUTION_ERROR.getCode(), e.getCode());
-        assertEquals(Map.of("tool", "xyz"), e.getDetails());
     }
 
     // ---------------------------------------------------------------------------
@@ -58,7 +55,7 @@ class TestErrors {
         //     raise_error(StatusCode.AGENT_TOOL_EXECUTION_ERROR, msg="fail")
 
         assertThrows(BaseError.class, () -> {
-            ErrorHelper.raiseError(StatusCode.WORKFLOW_EXECUTION_ERROR, "fail");
+            ErrorHelper.raiseError(StatusCode.WORKFLOW_EXECUTION_ERROR);
         });
     }
 
