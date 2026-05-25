@@ -5,15 +5,19 @@
 package com.openjiuwen.unit_tests.core.context_engine;
 
 import com.openjiuwen.core.context.schema.ContextCompressionState;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
+import com.openjiuwen.core.context.processor.ContextProcessor.ProcessResult;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -61,16 +65,26 @@ class TestContextCompressionStateStream {
         }
 
         @Override
-        public boolean triggerAddMessages(Object context, List<BaseMessage> messagesToAdd) {
+        public Map<String, Object> saveState() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public void loadState(Map<String, Object> state) {
+            // No-op for test
+        }
+
+        @Override
+        public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
             return true;
         }
 
         @Override
-        public CompressionResult onAddMessages(Object context, List<BaseMessage> messagesToAdd) {
+        public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
             // Replace messages with short content - mirrors Python behavior
             List<BaseMessage> newMessages = List.of(new UserMessage("short"));
-            return new CompressionResult(
-                    new ContextEvent(getProcessorType(), List.of(0, 1)),
+            return ProcessResult.ofMessages(
+                    null,
                     List.of()
             );
         }
@@ -86,14 +100,24 @@ class TestContextCompressionStateStream {
         }
 
         @Override
-        public boolean triggerAddMessages(Object context, List<BaseMessage> messagesToAdd) {
+        public Map<String, Object> saveState() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public void loadState(Map<String, Object> state) {
+            // No-op for test
+        }
+
+        @Override
+        public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
             return true;
         }
 
         @Override
-        public CompressionResult onAddMessages(Object context, List<BaseMessage> messagesToAdd) {
+        public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
             // No compression, return original messages
-            return new CompressionResult(null, messagesToAdd);
+            return ProcessResult.ofMessages(null, messagesToAdd);
         }
     }
 
@@ -104,28 +128,6 @@ class TestContextCompressionStateStream {
     static class TestCompressConfig {
         int triggerTotalTokens = 100;
         String model = "test-compressor-model";
-    }
-
-    // ---------------------------------------------------------------------------
-    // Compression result holder
-    // ---------------------------------------------------------------------------
-
-    static class CompressionResult {
-        private final ContextEvent event;
-        private final List<BaseMessage> messages;
-
-        public CompressionResult(ContextEvent event, List<BaseMessage> messages) {
-            this.event = event;
-            this.messages = messages;
-        }
-
-        public ContextEvent getEvent() {
-            return event;
-        }
-
-        public List<BaseMessage> getMessages() {
-            return messages;
-        }
     }
 
     // ---------------------------------------------------------------------------
@@ -175,7 +177,7 @@ class TestContextCompressionStateStream {
     void testReplacingCompressorTriggerAddMessagesReturnsTrue() {
         ReplacingCompressor compressor = new ReplacingCompressor();
         List<BaseMessage> messages = List.of(new UserMessage("test message"));
-        boolean triggered = compressor.triggerAddMessages(null, messages);
+        boolean triggered = compressor.triggerAddMessages((ModelContext) null, messages);
         assertTrue(triggered);
     }
 
@@ -184,10 +186,10 @@ class TestContextCompressionStateStream {
     void testReplacingCompressorOnAddMessagesReturnsShortMessage() {
         ReplacingCompressor compressor = new ReplacingCompressor();
         List<BaseMessage> messagesToAdd = List.of(new UserMessage("long message"));
-        CompressionResult result = compressor.onAddMessages(null, messagesToAdd);
+        ProcessResult result = compressor.onAddMessages((ModelContext) null, messagesToAdd);
 
-        assertNotNull(result.getEvent());
-        assertTrue(result.getMessages().isEmpty());
+        assertNotNull(result.event());
+        assertTrue(result.messages().isEmpty());
     }
 
     @Test
@@ -195,7 +197,7 @@ class TestContextCompressionStateStream {
     void testNoopCompressorTriggerAddMessagesReturnsTrue() {
         NoopCompressor compressor = new NoopCompressor();
         List<BaseMessage> messages = List.of(new UserMessage("test message"));
-        boolean triggered = compressor.triggerAddMessages(null, messages);
+        boolean triggered = compressor.triggerAddMessages((ModelContext) null, messages);
         assertTrue(triggered);
     }
 
@@ -204,10 +206,10 @@ class TestContextCompressionStateStream {
     void testNoopCompressorOnAddMessagesReturnsOriginalMessages() {
         NoopCompressor compressor = new NoopCompressor();
         List<BaseMessage> messagesToAdd = List.of(new UserMessage("test message"));
-        CompressionResult result = compressor.onAddMessages(null, messagesToAdd);
+        ProcessResult result = compressor.onAddMessages((ModelContext) null, messagesToAdd);
 
-        assertNull(result.getEvent());
-        assertEquals(messagesToAdd, result.getMessages());
+        assertNull(result.event());
+        assertEquals(messagesToAdd, result.messages());
     }
 
     // ---------------------------------------------------------------------------

@@ -1576,4 +1576,81 @@ public Function<Map<String, Object>, Object> wrap(String event) {
         }
         return false;
     }
+
+    // ===== Static Utility Methods =====
+
+    /**
+     * Bind arguments without duplicates.
+     * 
+     * <p>Mirrors Python's _bind_args_no_duplicate function.</p>
+     * 
+     * <p>When input transform returns (args, kwargs), passing both to func can cause
+     * "multiple values for argument" if the same parameter appears in both.
+     * This method prefers keyword: for positional args, if the parameter name is in kwargs,
+     * it passes it only by keyword and drops that positional slot.</p>
+     *
+     * @param args   Positional arguments
+     * @param kwargs Keyword arguments
+     * @param paramNames Known parameter names (in order)
+     * @return BoundArgs containing merged positional and keyword arguments
+     */
+    public static BoundArgs bindArgsNoDuplicate(Object[] args, Map<String, Object> kwargs, List<String> paramNames) {
+        if (args == null) {
+            args = new Object[0];
+        }
+        if (kwargs == null) {
+            kwargs = new HashMap<>();
+        }
+        if (paramNames == null) {
+            paramNames = Collections.emptyList();
+        }
+
+        int nPos = Math.min(args.length, paramNames.size());
+        
+        // Prefer keyword: drop positional for params that are in kwargs
+        List<Object> keepPos = new ArrayList<>();
+        for (int i = 0; i < nPos; i++) {
+            String paramName = paramNames.get(i);
+            if (!kwargs.containsKey(paramName)) {
+                keepPos.add(args[i]);
+            }
+        }
+        
+        // Remaining positional args (extra positionals)
+        List<Object> extraPos = new ArrayList<>();
+        for (int i = nPos; i < args.length; i++) {
+            extraPos.add(args[i]);
+        }
+        
+        Object[] callArgs = new Object[keepPos.size() + extraPos.size()];
+        for (int i = 0; i < keepPos.size(); i++) {
+            callArgs[i] = keepPos.get(i);
+        }
+        for (int i = 0; i < extraPos.size(); i++) {
+            callArgs[keepPos.size() + i] = extraPos.get(i);
+        }
+        
+        return new BoundArgs(callArgs, new HashMap<>(kwargs));
+    }
+
+    /**
+     * Result of binding arguments without duplicates.
+     */
+    public static class BoundArgs {
+        private final Object[] args;
+        private final Map<String, Object> kwargs;
+
+        public BoundArgs(Object[] args, Map<String, Object> kwargs) {
+            this.args = args;
+            this.kwargs = kwargs;
+        }
+
+        public Object[] getArgs() {
+            return args;
+        }
+
+        public Map<String, Object> getKwargs() {
+            return kwargs;
+        }
+    }
 }

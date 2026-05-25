@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.tools.lsp;
 
-import com.openjiuwen.harness.tools.lsp.LspTool;
+import com.openjiuwen.harness.tools.LspTool;
 import com.openjiuwen.harness.tools.lsp.LspOperation;
 import com.openjiuwen.harness.tools.lsp.LspToolInput;
 

@@ -4,34 +4,43 @@
 
 package com.openjiuwen.core.foundation.store.graph;
 
+import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
+
 import java.util.Map;
 
 /**
  * Graph Database Indexing Options.
  * <p>
- * Mirrors Python's {@code GraphStoreIndexConfig}.
+ * Mirrors Python's {@code GraphStoreIndexConfig} from
+ * <code>openjiuwen/core/foundation/store/graph/database_config.py</code>.
  */
 public class GraphStoreIndexConfig {
 
-    private final String indexType;
+    private final VectorField indexType;
+    private final String distanceMetric;
     private final Map<String, Object> extraConfigs;
     private final BM25Config bm25Config;
     private final Map<String, Object> bm25AnalyzerSettings;
 
-    public GraphStoreIndexConfig(String indexType, Map<String, Object> extraConfigs,
+    public GraphStoreIndexConfig(VectorField indexType, String distanceMetric, Map<String, Object> extraConfigs,
                                  BM25Config bm25Config, Map<String, Object> bm25AnalyzerSettings) {
         this.indexType = indexType;
+        this.distanceMetric = distanceMetric != null ? distanceMetric : "cosine";
         this.extraConfigs = extraConfigs != null ? Map.copyOf(extraConfigs) : Map.of();
         this.bm25Config = bm25Config != null ? bm25Config : new BM25Config();
         this.bm25AnalyzerSettings = bm25AnalyzerSettings;
     }
 
     public GraphStoreIndexConfig() {
-        this(null, Map.of(), new BM25Config(), null);
+        this(null, "cosine", Map.of(), new BM25Config(), null);
     }
 
-    public String getIndexType() {
+    public VectorField getIndexType() {
         return indexType;
+    }
+
+    public String getDistanceMetric() {
+        return distanceMetric;
     }
 
     public Map<String, Object> getExtraConfigs() {

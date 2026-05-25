@@ -9,7 +9,7 @@ import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
-import com.openjiuwen.core.common.logging.DefaultLogger;
+import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import com.openjiuwen.core.common.logging.LoguruLogger;
 
 /**

@@ -5,9 +5,7 @@
 package com.openjiuwen.unit_tests.extensions.context_evolver;
 
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
-import com.openjiuwen.extensions.context_evolver.summary.task.ace.PersistMemoryOp;
-import com.openjiuwen.extensions.context_evolver.summary.task.reasoning_bank.PersistMemoryOp;
-import com.openjiuwen.extensions.context_evolver.summary.task.reme.PersistMemoryOp;
+// Note: PersistMemoryOp classes are referenced with fully qualified names due to same class name in different packages
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;

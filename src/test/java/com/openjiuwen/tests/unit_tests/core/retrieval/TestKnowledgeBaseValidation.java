@@ -4,7 +4,7 @@
 package com.openjiuwen.tests.unit_tests.core.retrieval;
 
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
-import com.openjiuwen.core.retrieval.knowledge_base.KnowledgeBase;
+import com.openjiuwen.core.retrieval.KnowledgeBase;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

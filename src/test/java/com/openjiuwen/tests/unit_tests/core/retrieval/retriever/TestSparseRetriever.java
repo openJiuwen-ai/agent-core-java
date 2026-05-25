@@ -3,7 +3,7 @@
  */
 package com.openjiuwen.tests.unit_tests.core.retrieval.retriever;
 
-import com.openjiuwen.core.common.exception.errors.BaseError;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.retriever.SparseRetriever;

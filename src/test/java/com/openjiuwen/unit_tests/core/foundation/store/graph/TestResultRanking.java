@@ -87,7 +87,7 @@ class TestResultRanking {
 
     @Nested
     @DisplayName("Result Ranking Tests")
-    class TestResultRanking {
+    class TestRankingOperations {
 
         @Test
         @DisplayName("rank by score")

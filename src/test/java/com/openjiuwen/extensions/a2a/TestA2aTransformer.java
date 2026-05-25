@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.a2a;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 /**
  * Test A2A transformer functionality.

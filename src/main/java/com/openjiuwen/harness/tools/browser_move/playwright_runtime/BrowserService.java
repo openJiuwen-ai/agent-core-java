@@ -324,4 +324,6 @@ public class BrowserService {
     public boolean isConnectionHealthy() { return connectionHealthy; }
     public boolean isLastHeartbeatOk() { return lastHeartbeatOk; }
     public boolean isStarted() { return started; }
+    
+    public void setStarted(boolean started) { this.started = started; }
 }

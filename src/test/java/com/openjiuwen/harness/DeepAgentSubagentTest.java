@@ -181,7 +181,7 @@ class DeepAgentSubagentTest extends DeepAgentE2ETest {
         }
 
         @Test
-        void testSessionsCancelScenario6CancelCompletedTask() {
+        void testSessionsCancelScenario6CancelCompletedTask() throws Exception {
             String fixedTaskId = "cancel_s6_task_id";
             SleepSubAgent fastAgent = new SleepSubAgent(0, "completed quickly");
             Map<String, Object> result = fastAgent.invoke(Map.of());

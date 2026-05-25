@@ -8,6 +8,8 @@ import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.ShellType;
 import com.openjiuwen.core.sysop.registry.Operation;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
@@ -72,6 +74,12 @@ public class SandboxShellOperation extends BaseShellOperation {
         } catch (Exception e) {
             throw new RuntimeException("execute_cmd_stream failed", e);
         }
+    }
+
+    @Override
+    public ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd, String shellType) {
+        // TODO: Implement background execution via sandbox
+        return ExecuteCmdBackgroundResult.failure("Background execution not yet implemented for sandbox");
     }
 
     /**

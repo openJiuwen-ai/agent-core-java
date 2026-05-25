@@ -5,6 +5,7 @@ package com.openjiuwen.core.application.workflow;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.workflow.Workflow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,11 +61,24 @@ class MockWorkflowAgentConcurrentTest {
                 agent.addWorkflows(List.of(workflow));
 
                 String conversationId = UUID.randomUUID().toString();
+                Session session = new Session() {
+                    @Override
+                    public String getSessionId() {
+                        return conversationId;
+                    }
+                    @Override
+                    public Object getState(String key) {
+                        return null;
+                    }
+                    @Override
+                    public void updateState(Map<String, Object> state) {
+                    }
+                };
                 @SuppressWarnings("unchecked")
                 Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of(
                         "query", "hello_" + idx,
                         "conversation_id", conversationId
-                ));
+                ), session);
                 return result;
             }));
         }

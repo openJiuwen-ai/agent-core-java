@@ -186,7 +186,6 @@ class DeepAgentE2ETest {
             return iterationEvents.computeIfAbsent(idx, k -> new CompletableFuture<>());
         }
 
-        @Override
         public void beforeTaskIteration(AgentCallbackContext ctx) {
             int count = iterationCount.incrementAndGet();
             iterationEvent(count).complete(null);

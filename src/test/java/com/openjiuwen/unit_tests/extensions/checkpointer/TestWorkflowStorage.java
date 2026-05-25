@@ -4,8 +4,8 @@
 
 package com.openjiuwen.unit_tests.extensions.checkpointer;
 
-import com.openjiuwen.core.session.internal.agent.AgentSession;
-import com.openjiuwen.core.session.internal.workflow.WorkflowSession;
+import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.state.agent_state.StateCollection;
 import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;

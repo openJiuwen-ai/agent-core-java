@@ -60,7 +60,7 @@ class PlaywrightRuntimeSystemTest {
                     "error", result.get("error")
             );
         } finally {
-            runtime.getService().started = false;
+            runtime.getService().setStarted(false);
         }
     }
 

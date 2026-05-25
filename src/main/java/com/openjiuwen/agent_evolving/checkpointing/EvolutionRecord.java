@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_evolving.checkpointing;
 
+import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,12 +23,27 @@ public class EvolutionRecord {
     private String timestamp;
     private String context;
     private EvolutionPatch change;
+    private EvolutionTarget target;
     private boolean applied = false;
     private double score = 0.6;
     private UsageStats usageStats;
     private String skillVersion;
 
     public EvolutionRecord() {
+        this.id = "ev_" + UUID.randomUUID().toString().substring(0, 8);
+        this.timestamp = Instant.now().toString();
+        this.usageStats = new UsageStats();
+    }
+
+    public EvolutionRecord(String source, EvolutionTarget target, EvolutionPatch change,
+                           String context, long durationMs) {
+        this.id = "ev_" + UUID.randomUUID().toString().substring(0, 8);
+        this.source = source;
+        this.target = target;
+        this.change = change;
+        this.context = context;
+        this.timestamp = Instant.now().toString();
+        this.usageStats = new UsageStats();
     }
 
     public EvolutionRecord(String id, String source, String timestamp, String context,

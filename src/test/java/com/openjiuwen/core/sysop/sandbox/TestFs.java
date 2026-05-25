@@ -10,7 +10,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.result.*;
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.*;
 

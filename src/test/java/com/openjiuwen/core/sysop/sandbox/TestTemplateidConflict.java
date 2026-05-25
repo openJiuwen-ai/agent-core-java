@@ -13,7 +13,7 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.*;
 

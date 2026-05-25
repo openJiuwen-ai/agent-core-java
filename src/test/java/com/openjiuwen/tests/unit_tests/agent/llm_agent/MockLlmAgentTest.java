@@ -210,7 +210,7 @@ class MockLlmAgentTest {
             agentConfig.setMemoryScopeId("scope_001");
             agentConfig.setAgentMemoryConfig(AgentMemoryConfig.builder()
                     .enableLongTermMem(true)
-                    .enableFragmentMemory(true)
+                    .enableUserProfile(true)  // enables fragment memory via derived logic
                     .enableSummaryMemory(false)
                     .build());
 
@@ -245,7 +245,7 @@ class MockLlmAgentTest {
             agentConfig.setMemoryScopeId("scope_001");
             agentConfig.setAgentMemoryConfig(AgentMemoryConfig.builder()
                     .enableLongTermMem(true)
-                    .enableFragmentMemory(true)
+                    .enableUserProfile(true)  // enables fragment memory via derived logic
                     .build());
 
             LlmAgent agent = LlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());

@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.tools.powershell;
 
-import com.openjiuwen.harness.tools.PowerShellTool;
-import com.openjiuwen.core.common.exception.codes.StatusCode;
+import com.openjiuwen.harness.tools.shell.powershell.PowerShellTool;
+import com.openjiuwen.core.common.exception.StatusCode;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;

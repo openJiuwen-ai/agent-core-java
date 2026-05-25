@@ -6,6 +6,8 @@ package com.openjiuwen.unit_tests.harness.rails;
 
 import org.junit.jupiter.api.*;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 /**
  * Unit tests for ask_user rail with DeepAgent.
  * <p>

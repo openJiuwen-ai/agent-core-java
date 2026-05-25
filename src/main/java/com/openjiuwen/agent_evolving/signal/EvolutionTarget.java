@@ -12,7 +12,8 @@ package com.openjiuwen.agent_evolving.signal;
 public enum EvolutionTarget {
     DESCRIPTION("description"),
     BODY("body"),
-    SCRIPT("script");
+    SCRIPT("script"),
+    TEAM_SKILL("team_skill");
 
     private final String value;
 

@@ -264,6 +264,7 @@ public enum StatusCode {
     RETRIEVAL_INDEXING_PATH_NOT_FOUND(155107, "retrieval indexing_path not found, reason: {error_msg}"),
     RETRIEVAL_INDEXING_ADD_DOC_RUNTIME_ERROR(155108, "retrieval indexing_add_doc runtime error, reason: {error_msg}"),
     RETRIEVAL_INDEXING_VECTOR_FIELD_INVALID(155109, "retrieval indexing_vector_field is invalid, reason: {error_msg}"),
+    RETRIEVAL_INDEXING_FETCH_ERROR(155110, "retrieval indexing_fetch error, reason: {error_msg}"),
 
     RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT(155200, "retrieval retriever_mode is not supported, reason: {error_msg}"),
     RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID(155201, "retrieval retriever_score_threshold is invalid, reason: {error_msg}"),

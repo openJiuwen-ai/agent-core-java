@@ -5,7 +5,10 @@
 package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.workflow.components.Session;
+import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.workflow.component.Start;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.EndConfig;
 
 import java.util.Map;
 
@@ -20,7 +23,7 @@ public class MockNodes {
     /**
      * Base class for mock workflow nodes.
      */
-    public static abstract class MockNodeBase implements WorkflowComponent {
+    public static abstract class MockNodeBase extends WorkflowComponent {
         protected String nodeId;
 
         public MockNodeBase(String nodeId) {
@@ -44,7 +47,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             return inputs;
         }
     }
@@ -61,7 +64,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             return inputs;
         }
     }
@@ -75,7 +78,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             return inputs;
         }
     }
@@ -91,7 +94,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             times++;
             Map<String, Object> result = Map.of("count", times);
             return result;
@@ -114,7 +117,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) throws Exception {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) throws Exception {
             Thread.sleep(waitMillis);
             return inputs;
         }
@@ -131,7 +134,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             runtime++;
             Object value = session.getGlobalState("a");
             if (value != null) {
@@ -157,7 +160,7 @@ public class MockNodes {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
             runtime++;
             Object value = session.getGlobalState("a");
             if (value instanceof Integer v && v < 20) {
@@ -174,11 +177,11 @@ public class MockNodes {
     /**
      * Node that adds 10 to input (for checkpoint testing).
      */
-    public static class AddTenNode4Cp implements WorkflowComponent {
+    public static class AddTenNode4Cp extends WorkflowComponent {
         private boolean raiseException = true;
 
         @Override
-        public Object invoke(Object inputs, Session session, ModelContext context) throws Exception {
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) throws Exception {
             if (raiseException) {
                 raiseException = false;
                 throw new RuntimeException("inner error: " + ((Map<?, ?>) inputs).get("source"));

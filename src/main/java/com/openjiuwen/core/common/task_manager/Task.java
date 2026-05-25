@@ -48,6 +48,16 @@ public class Task {
         this.group = group;
     }
 
+    public Task(String taskId, String name, String group, Double timeout, Map<String, Object> metadata) {
+        this.taskId = taskId;
+        this.name = name;
+        this.group = group;
+        this.timeout = timeout;
+        if (metadata != null) {
+            this.metadata = metadata;
+        }
+    }
+
     public boolean isTerminal() {
         return status.isTerminal();
     }
@@ -58,6 +68,10 @@ public class Task {
 
     public String getError() {
         return exception != null ? exception.getMessage() : null;
+    }
+
+    public void setError(String error) {
+        this.exception = new RuntimeException(error);
     }
 
     public void complete(Object result) {
@@ -85,6 +99,28 @@ public class Task {
     public CompletableFuture<Object> getDoneFuture() {
         return doneFuture;
     }
+    
+    /**
+     * Alias for getDoneFuture() for compatibility.
+     */
+    public CompletableFuture<?> getFuture() {
+        return doneFuture;
+    }
+    
+    /**
+     * Set future - for compatibility with older code.
+     */
+    public void setFuture(CompletableFuture<?> future) {
+        // Note: This is a no-op since doneFuture is final and pre-initialized
+        // The method exists for API compatibility only
+    }
+    
+    /**
+     * Set cancelledBy - for compatibility.
+     */
+    public void setCancelledBy(String cancelledBy) {
+        this.cancelledBy = cancelledBy;
+    }
 
     // Getters and setters
     public String getTaskId() { return taskId; }
@@ -103,6 +139,7 @@ public class Task {
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public Instant getFinishedAt() { return finishedAt; }
     public Object getResult() { return result; }
+    public void setResult(Object result) { this.result = result; }
     public Exception getException() { return exception; }
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }

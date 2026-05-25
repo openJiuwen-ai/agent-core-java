@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
 
+import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
+import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
+
 /**
  * Runtime executor for single rollout execution.
  * <p>
@@ -13,11 +16,19 @@ package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
 public class RuntimeExecutor {
 
     private Object agentFactory;
+    private Object taskDataFn;
+    private Object rewardFn;
     private Object config;
 
     public RuntimeExecutor(Object agentFactory, Object config) {
         this.agentFactory = agentFactory;
         this.config = config;
+    }
+
+    public RuntimeExecutor(Object agentFactory, Object taskDataFn, Object rewardFn) {
+        this.agentFactory = agentFactory;
+        this.taskDataFn = taskDataFn;
+        this.rewardFn = rewardFn;
     }
 
     /**
@@ -28,6 +39,17 @@ public class RuntimeExecutor {
      */
     public Object execute(Object prompt) {
         // TODO: Create agent and execute rollout
+        return null;
+    }
+
+    /**
+     * Execute a RLTask and return rollout message.
+     *
+     * @param task RLTask to execute
+     * @return RolloutMessage result
+     */
+    public RolloutMessage execute(RLTask task) {
+        // TODO: Implement task execution
         return null;
     }
 
@@ -45,6 +67,10 @@ public class RuntimeExecutor {
 
     public Object getAgentFactory() { return agentFactory; }
     public void setAgentFactory(Object agentFactory) { this.agentFactory = agentFactory; }
+    public Object getTaskDataFn() { return taskDataFn; }
+    public void setTaskDataFn(Object taskDataFn) { this.taskDataFn = taskDataFn; }
+    public Object getRewardFn() { return rewardFn; }
+    public void setRewardFn(Object rewardFn) { this.rewardFn = rewardFn; }
     public Object getConfig() { return config; }
     public void setConfig(Object config) { this.config = config; }
 }

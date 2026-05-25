@@ -5,7 +5,7 @@
 package com.openjiuwen.unit_tests.extensions.runner.pulsar_mq;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.runner_config.*;
+import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.runner.drunner.server_adapter.AgentAdapter;
 import com.openjiuwen.core.common.exception.StatusCode;

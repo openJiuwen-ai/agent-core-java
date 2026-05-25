@@ -5,7 +5,7 @@
 package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.openjiuwen.core.foundation.tool.auth.ToolAuthResult;
-import com.openjiuwen.core.foundation.tool.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.client.SseClient;
 import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 

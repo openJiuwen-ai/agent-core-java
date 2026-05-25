@@ -34,6 +34,21 @@ public class RolloutWithReward {
         this.inputPromptIds = inputPromptIds != null ? new ArrayList<>(inputPromptIds) : new ArrayList<>();
         this.outputResponseIds = outputResponseIds != null ? new ArrayList<>(outputResponseIds) : new ArrayList<>();
     }
+    
+    /**
+     * Full constructor for RolloutWithReward.
+     */
+    public RolloutWithReward(Integer turnId, String taskId, String rolloutId, 
+                            List<Integer> inputPromptIds, List<Integer> outputResponseIds,
+                            Double reward, Integer nTurns) {
+        this.turnId = turnId;
+        this.taskId = taskId;
+        this.rolloutId = rolloutId;
+        this.inputPromptIds = inputPromptIds != null ? new ArrayList<>(inputPromptIds) : new ArrayList<>();
+        this.outputResponseIds = outputResponseIds != null ? new ArrayList<>(outputResponseIds) : new ArrayList<>();
+        this.reward = reward;
+        this.nTurns = nTurns;
+    }
 
     // Getters and setters
     public Integer getTurnId() { return turnId; }

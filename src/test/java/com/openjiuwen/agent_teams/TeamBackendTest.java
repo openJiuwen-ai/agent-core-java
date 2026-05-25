@@ -6,6 +6,11 @@ package com.openjiuwen.agent_teams;
 
 import org.junit.jupiter.api.Test;
 
+import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agent_teams.schema.status.ExecutionStatus;
+import com.openjiuwen.agent_teams.schema.TaskStatus;
+import com.openjiuwen.agent_teams.schema.status.MemberStatus;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

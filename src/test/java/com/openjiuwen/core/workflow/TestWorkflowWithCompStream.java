@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow;
 
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 /**
  * Test workflow with component streaming.

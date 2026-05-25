@@ -8,7 +8,7 @@ import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.openjiuwen.harness.cli.ui.Repl;
+import com.openjiuwen.harness.cli.ui.CliRepl;
 
 /**
  * Tests for auto-harness REPL entry.
@@ -25,13 +25,13 @@ class TestAutoHarnessRepl {
     @Test
     @Tag("level0")
     void testReplExists() {
-        assertNotNull(Repl.class);
+        assertNotNull(CliRepl.class);
     }
 
     @Test
     @Tag("level0")
     void testReplHasMethods() {
-        assertTrue(Repl.class.getDeclaredMethods().length > 0);
+        assertTrue(CliRepl.class.getDeclaredMethods().length > 0);
     }
 
     // ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ class TestAutoHarnessRepl {
     void testSubcmdRunGoalKeepsFullFlow() {
         // Python: test_subcmd_run_goal_keeps_full_flow
         // Validates REPL /run subcommand maintains full orchestrator flow
-        assertNotNull(Repl.class);
+        assertNotNull(CliRepl.class);
     }
 
     // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ class TestAutoHarnessRepl {
     void testPromptSessionStub() {
         // Python uses prompt_toolkit for REPL session
         // Java equivalent: verify REPL class can be instantiated conceptually
-        assertNotNull(Repl.class.getConstructors());
+        assertNotNull(CliRepl.class.getConstructors());
     }
 
     // ---------------------------------------------------------------------------

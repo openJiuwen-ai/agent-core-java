@@ -4,6 +4,8 @@ package com.openjiuwen.tests.unit_tests.core.common.utils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Mirrors Python's {@code test_url_utils} in
  * {@code tests.unit_tests.core.common.utils.test_url_utils}.

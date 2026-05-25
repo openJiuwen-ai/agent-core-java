@@ -4,6 +4,10 @@
 
 package com.openjiuwen.core.memory.graph.graph_memory;
 
+import com.openjiuwen.core.foundation.store.graph.Relation;
+import com.openjiuwen.core.foundation.store.graph.Entity;
+import com.openjiuwen.core.memory.graph.extraction.ExtractionModels;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

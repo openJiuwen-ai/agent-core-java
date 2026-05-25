@@ -5,7 +5,7 @@ package com.openjiuwen.tests.unit_tests.core.retrieval.vector_store;
 
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.vector_store.ChromaVectorStore;
-import com.openjiuwen.core.retrieval.vector_store.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

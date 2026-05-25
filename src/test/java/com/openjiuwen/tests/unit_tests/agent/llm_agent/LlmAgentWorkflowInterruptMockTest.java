@@ -46,24 +46,24 @@ class LlmAgentWorkflowInterruptMockTest {
     }
 
     private static ModelConfig createModel() {
-        return ModelConfig.builder()
-                .modelProvider("OpenAI")
-                .modelInfo(BaseModelInfo.builder()
-                        .model("gpt-3.5-turbo")
+        return new ModelConfig(
+                "OpenAI",
+                BaseModelInfo.builder()
+                        .modelName("gpt-3.5-turbo")
                         .apiBase("https://api.openai.com")
                         .apiKey("mock_key")
                         .temperature(0.7)
                         .topP(0.9)
                         .timeout(30)
-                        .build())
-                .build();
+                        .build()
+        );
     }
 
     private static ModelRequestConfig createModelRequestConfig() {
         return ModelRequestConfig.builder()
                 .modelName("gpt-3.5-turbo")
-                .temperature(0.7f)
-                .topP(0.9f)
+                .temperature(0.7)
+                .topP(0.9)
                 .build();
     }
 
@@ -112,30 +112,26 @@ class LlmAgentWorkflowInterruptMockTest {
                         ))
                         .usageMetadata(UsageMetadata.builder()
                                 .modelName("gpt-3.5-turbo")
-                                .finishReason("tool_calls")
-                                .promptTokens(150)
-                                .completionTokens(25)
+                                .inputTokens(150)
+                                .outputTokens(25)
                                 .build())
                         .build(),
                 AssistantMessage.builder()
                         .content("{\n  \"location\": null,\n  \"time\": \"today\"\n}")
                         .usageMetadata(UsageMetadata.builder()
                                 .modelName("gpt-3.5-turbo")
-                                .finishReason("stop")
                                 .build())
                         .build(),
                 AssistantMessage.builder()
                         .content("{\n  \"location\": \"上海\",\n  \"time\": \"today\"\n}")
                         .usageMetadata(UsageMetadata.builder()
                                 .modelName("gpt-3.5-turbo")
-                                .finishReason("stop")
                                 .build())
                         .build(),
                 AssistantMessage.builder()
                         .content("我已经为您查询了上海的天气信息。根据返回的结果：上海 | today，这表明查询已成功完成。如果需要更详细的天气数据，请告诉我。")
                         .usageMetadata(UsageMetadata.builder()
                                 .modelName("gpt-3.5-turbo")
-                                .finishReason("stop")
                                 .build())
                         .build()
         );
@@ -258,15 +254,15 @@ class LlmAgentWorkflowInterruptMockTest {
 
     @Test
     void test_llm_agent_workflow_tagged_with_agent_id() {
-        ModelConfig modelConfig = ModelConfig.builder()
-                .modelProvider("OpenAI")
-                .modelInfo(BaseModelInfo.builder()
-                        .model("gpt-3.5-turbo")
+        ModelConfig modelConfig = new ModelConfig(
+                "OpenAI",
+                BaseModelInfo.builder()
+                        .modelName("gpt-3.5-turbo")
                         .apiBase("mock_url")
                         .apiKey("mock_key")
                         .temperature(0.7)
-                        .build())
-                .build();
+                        .build()
+        );
 
         WorkflowSchema workflowSchema = WorkflowSchema.builder()
                 .id("test_wf")
@@ -301,11 +297,11 @@ class LlmAgentWorkflowInterruptMockTest {
         var makeAgentWithWorkflow = new java.util.function.BiFunction<String, String, LlmAgent>() {
             @Override
             public LlmAgent apply(String agentId, String wfId) {
-                ModelConfig mc = ModelConfig.builder()
-                        .modelProvider("OpenAI")
-                        .modelInfo(BaseModelInfo.builder()
-                                .model("gpt-3.5-turbo").apiBase("mock").apiKey("mock").build())
-                        .build();
+                ModelConfig mc = new ModelConfig(
+                        "OpenAI",
+                        BaseModelInfo.builder()
+                                .modelName("gpt-3.5-turbo").apiBase("mock").apiKey("mock").build()
+                );
                 WorkflowSchema ws = WorkflowSchema.builder()
                         .id(wfId).name(wfId).version("1.0").description("wf").build();
                 LlmAgentConfig config = LlmAgent.createLlmAgentConfig(

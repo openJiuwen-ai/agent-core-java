@@ -9,6 +9,7 @@ import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorS
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.schema.ACEMemory;
 import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankMemory;
+import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankMemoryItem;
 import com.openjiuwen.extensions.context_evolver.schema.ReMeMemory;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
@@ -259,9 +260,9 @@ public class TestFileConnector {
         return embedding;
     }
 
-    private ReasoningBankMemory.ReasoningBankMemoryItem createReasoningBankItem(
+    private ReasoningBankMemoryItem createReasoningBankItem(
             String title, String description, String content) {
-        ReasoningBankMemory.ReasoningBankMemoryItem item = new ReasoningBankMemory.ReasoningBankMemoryItem();
+        ReasoningBankMemoryItem item = new ReasoningBankMemoryItem();
         item.setTitle(title);
         item.setDescription(description);
         item.setContent(content);

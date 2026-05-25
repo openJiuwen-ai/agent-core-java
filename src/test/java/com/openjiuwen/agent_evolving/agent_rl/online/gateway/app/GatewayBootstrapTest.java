@@ -244,7 +244,7 @@ class GatewayBootstrapTest {
         }
 
         @Override
-        public RedisTrajectoryStorePipeline pipeline() {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline pipeline() {
             return new FakePipeline(this);
         }
     }
@@ -259,43 +259,43 @@ class GatewayBootstrapTest {
         }
 
         @Override
-        public RedisTrajectoryStorePipeline zrem(String key, Object... members) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zrem(String key, Object... members) {
             ops.add(() -> results.add(redis.zrem(key, members)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline hset(String key, Map<String, Object> mapping) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hset(String key, Map<String, Object> mapping) {
             ops.add(() -> results.add(redis.hset(key, mapping)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline zadd(String key, Map<String, Double> mapping) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zadd(String key, Map<String, Double> mapping) {
             ops.add(() -> results.add(redis.zadd(key, mapping)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline sadd(String key, Object... members) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline sadd(String key, Object... members) {
             ops.add(() -> results.add(redis.sadd(key, members)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline zcard(String key) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zcard(String key) {
             ops.add(() -> results.add(redis.zcard(key)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline hget(String key, String field) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hget(String key, String field) {
             ops.add(() -> results.add(redis.hget(key, field)));
             return this;
         }
 
         @Override
-        public RedisTrajectoryStorePipeline hmget(String key, List<String> fields) {
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hmget(String key, List<String> fields) {
             ops.add(() -> results.add(redis.hmget(key, fields)));
             return this;
         }

@@ -42,24 +42,24 @@ class LlmAgentInterruptTest {
     }
 
     private static ModelConfig createModel() {
-        return ModelConfig.builder()
-                .modelProvider("")
-                .modelInfo(BaseModelInfo.builder()
-                        .model("")
+        return new ModelConfig(
+                "",
+                BaseModelInfo.builder()
+                        .modelName("")
                         .apiBase("")
                         .apiKey("")
                         .temperature(0.7)
                         .topP(0.9)
                         .timeout(30)
-                        .build())
-                .build();
+                        .build()
+        );
     }
 
     private static ModelRequestConfig createModelRequestConfig() {
         return ModelRequestConfig.builder()
                 .modelName("gpt-3.5-turbo")
-                .temperature(0.7f)
-                .topP(0.9f)
+                .temperature(0.7)
+                .topP(0.9)
                 .build();
     }
 
@@ -124,17 +124,17 @@ class LlmAgentInterruptTest {
         StartComponent startComponent = new StartComponent();
         EndComponent endComponent = new EndComponent(Map.of("responseTemplate", "{{output}}"));
 
-        ModelConfig modelConfig = ModelConfig.builder()
-                .modelProvider("OpenAI")
-                .modelInfo(BaseModelInfo.builder()
-                        .model("gpt-4")
+        ModelConfig modelConfig = new ModelConfig(
+                "OpenAI",
+                BaseModelInfo.builder()
+                        .modelName("gpt-4")
                         .apiBase("mock-url")
                         .apiKey("mock-key")
                         .temperature(0.7)
                         .topP(0.9)
                         .timeout(30)
-                        .build())
-                .build();
+                        .build()
+        );
 
         QuestionerConfig questionerConfig = new QuestionerConfig(
                 createModelRequestConfig(),
@@ -243,7 +243,7 @@ class LlmAgentInterruptTest {
         workflowAgent.addWorkflows(List.of(flow));
 
         Object result = workflowAgent.invoke(
-                Map.of("conversation_id", "12345", "query", "查询今天天气"));
+                Map.of("conversation_id", "12345", "query", "查询今天天气"), null);
 
         if (result instanceof List) {
             List<?> resultList = (List<?>) result;
@@ -253,7 +253,7 @@ class LlmAgentInterruptTest {
                     InteractiveInput interactiveInput = new InteractiveInput();
                     interactiveInput.update("questioner", "杭州");
                     workflowAgent.invoke(
-                            Map.of("conversation_id", "12345", "query", interactiveInput));
+                            Map.of("conversation_id", "12345", "query", interactiveInput), null);
                 }
             }
         }

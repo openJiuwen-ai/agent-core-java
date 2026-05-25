@@ -5,7 +5,7 @@
 package com.openjiuwen.unit_tests.extensions.sys_operation.sandbox;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
+import com.openjiuwen.core.sysop.SysOperationCard;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 

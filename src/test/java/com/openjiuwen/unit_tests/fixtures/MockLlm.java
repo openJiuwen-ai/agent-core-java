@@ -5,8 +5,8 @@
 package com.openjiuwen.unit_tests.fixtures;
 
 import com.openjiuwen.core.foundation.llm.*;
-import com.openjiuwen.core.foundation.llm.schema.message.*;
-import com.openjiuwen.core.foundation.tool.ToolInfo;
+import com.openjiuwen.core.foundation.llm.schema.*;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.*;
 
 import java.util.*;
@@ -111,11 +111,11 @@ public class MockLlm {
         AssistantMessage response = responses.isEmpty() ? defaultResponse : responses.get(0);
         
         // Split response into chunks
-        String content = response.getContent();
+        String content = response.getContentAsString();
         int chunkSize = 10;
         for (int i = 0; i < content.length(); i += chunkSize) {
             String chunkContent = content.substring(i, Math.min(i + chunkSize, content.length()));
-            chunks.add(new AssistantMessageChunk(chunkContent));
+            chunks.add(AssistantMessageChunk.builder().content(chunkContent).build());
         }
         
         return CompletableFuture.completedFuture(chunks);
@@ -144,8 +144,11 @@ public class MockLlm {
      */
     public static AssistantMessage createToolCallResponse(String toolName, String toolArgs) {
         AssistantMessage message = new AssistantMessage("");
-        ToolCall toolCall = new ToolCall();
-        toolCall.setFunction(toolName, toolArgs);
+        ToolCall toolCall = ToolCall.builder()
+                .type("function")
+                .name(toolName)
+                .arguments(toolArgs)
+                .build();
         message.setToolCalls(Arrays.asList(toolCall));
         return message;
     }
@@ -160,8 +163,11 @@ public class MockLlm {
         AssistantMessage message = new AssistantMessage("");
         List<ToolCall> calls = new ArrayList<>();
         for (Map<String, String> spec : toolCalls) {
-            ToolCall call = new ToolCall();
-            call.setFunction(spec.get("name"), spec.get("args"));
+            ToolCall call = ToolCall.builder()
+                    .type("function")
+                    .name(spec.get("name"))
+                    .arguments(spec.get("args"))
+                    .build();
             calls.add(call);
         }
         message.setToolCalls(calls);
@@ -218,7 +224,7 @@ public class MockLlm {
             AssistantMessage response = createToolCallResponse("add", "{\"a\": 1, \"b\": 2}");
             
             assertThat(response.getToolCalls()).hasSize(1);
-            assertThat(response.getToolCalls().get(0).getFunction().getName()).isEqualTo("add");
+            assertThat(response.getToolCalls().get(0).getName()).isEqualTo("add");
         }
 
         @Test

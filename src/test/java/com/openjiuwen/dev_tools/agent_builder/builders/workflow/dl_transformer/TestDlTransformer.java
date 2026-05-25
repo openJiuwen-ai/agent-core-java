@@ -4,7 +4,7 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
 
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 /**
  * Test DL transformer functionality.

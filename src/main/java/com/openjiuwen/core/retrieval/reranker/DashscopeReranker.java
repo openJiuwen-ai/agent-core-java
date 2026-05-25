@@ -170,6 +170,6 @@ public class DashscopeReranker extends StandardReranker {
         return apiUrl;
     }
 
-    protected record AssembleResult(Map<String, String> headers, Map<String, Object> params) {
+    public record AssembleResult(Map<String, String> headers, Map<String, Object> params) {
     }
 }

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Tag;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 /**
  * Mirrors Python's {@code status_code_docgen} in
  * {@code tests.unit_tests.core.common.status_code_docgen}.

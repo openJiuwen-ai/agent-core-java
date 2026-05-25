@@ -4,7 +4,6 @@
 
 package com.openjiuwen.examples.mcp.stdio;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -14,6 +13,7 @@ import com.openjiuwen.core.workflow.components.flow.StartComponent;
 import com.openjiuwen.core.workflow.components.tool.ToolComponent;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ClientAsResourcesRunnerTest {
 
-    private static final Logger logger = Loggers.getLogger(ClientAsResourcesRunnerTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClientAsResourcesRunnerTest.class);
     private static final String SERVER_NAME = "text-processor-stdio-server";
     private static final String SERVER_ID = "stdio-text-server-01";
     private static final String WORKFLOW_ID = "stdio_text_workflow";

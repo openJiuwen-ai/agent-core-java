@@ -8,7 +8,7 @@ import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.openjiuwen.core.context_engine.BudgetProcessorState;
+import com.openjiuwen.core.context.BudgetProcessorState;
 
 /**
  * Tests for budget processor state.

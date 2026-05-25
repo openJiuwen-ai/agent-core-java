@@ -4,7 +4,6 @@
 
 package com.openjiuwen.examples.mcp.streamable_http;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
@@ -13,6 +12,7 @@ import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ClientAsToolTest {
 
-    private static final Logger logger = Loggers.getLogger(ClientAsToolTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClientAsToolTest.class);
     private static final String SERVER_URL = "http://127.0.0.1:3002/mcp";
     private static final String SERVER_NAME = "notes-streamable-http-server";
 

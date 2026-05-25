@@ -29,6 +29,13 @@ public class EvolutionPatch {
     public EvolutionPatch() {
     }
 
+    public EvolutionPatch(String section, String action, String content) {
+        this.section = section;
+        this.action = action;
+        this.content = content;
+        this.target = EvolutionTarget.BODY;
+    }
+
     public EvolutionPatch(String section, String action, String content, EvolutionTarget target,
                           String skipReason, String mergeTarget, String scriptFilename,
                           String scriptLanguage, String scriptPurpose) {

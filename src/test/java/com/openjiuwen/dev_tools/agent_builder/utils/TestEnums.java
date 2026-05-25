@@ -5,7 +5,7 @@
 package com.openjiuwen.dev_tools.agent_builder.utils;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.Disabled;
+import org.junit.jupiter.api.Disabled;
 
 /**
  * Test enums functionality.

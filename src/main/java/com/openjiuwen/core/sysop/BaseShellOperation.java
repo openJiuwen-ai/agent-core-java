@@ -7,6 +7,7 @@ package com.openjiuwen.core.sysop;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 
 import java.util.Iterator;
 import java.util.List;
@@ -25,7 +26,7 @@ public abstract class BaseShellOperation extends BaseOperation {
 
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of("executeCmd", "executeCmdStream"));
+        return generateToolCards(List.of("executeCmd", "executeCmdStream", "executeCmdBackground"));
     }
 
     /**
@@ -61,4 +62,19 @@ public abstract class BaseShellOperation extends BaseOperation {
             int timeout,
             Map<String, String> environment,
             Map<String, Object> options);
+
+    /**
+     * Launch a command in the background and return immediately with its PID.
+     * <p>
+     * Mirrors Python's {@code execute_cmd_background} from {@code sys_operation/shell.py}.
+     *
+     * @param command     command to execute
+     * @param cwd         working directory (default: current directory)
+     * @param shellType   shell type (powershell, bash, etc.)
+     * @return background execution result containing the process PID
+     */
+    public abstract ExecuteCmdBackgroundResult executeCmdBackground(
+            String command,
+            String cwd,
+            String shellType);
 }

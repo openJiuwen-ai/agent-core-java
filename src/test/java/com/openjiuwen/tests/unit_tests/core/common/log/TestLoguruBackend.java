@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Tag;
 import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.LoggingUtils;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 /**
  * Mirrors Python's {@code test_loguru_backend} in
  * {@code tests.unit_tests.core.common.log.test_loguru_backend}.

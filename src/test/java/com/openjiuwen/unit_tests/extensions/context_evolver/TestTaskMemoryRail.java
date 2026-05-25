@@ -4,13 +4,13 @@
 
 package com.openjiuwen.unit_tests.extensions.context_evolver;
 
-import com.openjiuwen.core.single_agent.rail.base.AgentCallbackEvent;
-import com.openjiuwen.core.single_agent.rail.base.AgentCallbackContext;
-import com.openjiuwen.core.foundation.llm.UserMessage;
-import com.openjiuwen.core.foundation.llm.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.ToolMessage;
+import com.openjiuwen.core.single_agent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.harness.rails.evolution.ContextEvolutionRail;
-import com.openjiuwen.extensions.context_evolver.service.SummarizeTrajectoriesInput;
+import com.openjiuwen.extensions.context_evolver.SummarizeTrajectoriesInput;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 

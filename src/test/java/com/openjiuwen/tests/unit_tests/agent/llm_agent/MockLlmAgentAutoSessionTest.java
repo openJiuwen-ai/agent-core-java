@@ -36,14 +36,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MockLlmAgentAutoSessionTest {
 
-    private static final ModelConfig MODEL_CONFIG = ModelConfig.builder()
-            .modelProvider("OpenAI")
-            .modelInfo(BaseModelInfo.builder()
-                    .model("gpt-3.5-turbo")
+    private static final ModelConfig MODEL_CONFIG = new ModelConfig(
+            "OpenAI",
+            BaseModelInfo.builder()
+                    .modelName("gpt-3.5-turbo")
                     .apiBase("https://mock.api")
                     .apiKey("mock-key")
-                    .build())
-            .build();
+                    .build()
+    );
 
     private static final ModelClientConfig MODEL_CLIENT_CONFIG = ModelClientConfig.builder()
             .clientProvider("OpenAI")
@@ -121,7 +121,8 @@ class MockLlmAgentAutoSessionTest {
                                     .id("call_001").type("function")
                                     .name("wf_auto").arguments("{\"query\": \"hello\"}")
                                     .build()))
-                            .usageMetadata(UsageMetadata.builder().modelName("mock").finishReason("tool_calls").build())
+                            .usageMetadata(UsageMetadata.builder().modelName("mock").build())
+                            .finishReason("tool_calls")
                             .build(),
                     MockLLMModel.createTextResponse("Collected info: Shanghai. Task complete.")
             ));
@@ -168,7 +169,8 @@ class MockLlmAgentAutoSessionTest {
                                     .id("call_s01").type("function")
                                     .name("wf_stream").arguments("{\"query\": \"weather\"}")
                                     .build()))
-                            .usageMetadata(UsageMetadata.builder().modelName("mock").finishReason("tool_calls").build())
+                            .usageMetadata(UsageMetadata.builder().modelName("mock").build())
+                            .finishReason("tool_calls")
                             .build(),
                     MockLLMModel.createTextResponse("Weather in Beijing is sunny.")
             ));

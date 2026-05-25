@@ -5,7 +5,7 @@
 package com.openjiuwen.unit_tests.extensions.context_evolver;
 
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
-import com.openjiuwen.extensions.context_evolver.schema.AddMemoryRequest;
+import com.openjiuwen.extensions.context_evolver.service.AddMemoryRequest;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;

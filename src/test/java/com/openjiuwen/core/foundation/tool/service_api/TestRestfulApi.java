@@ -32,7 +32,11 @@ class TestRestfulApi {
         @Test
         @DisplayName("RestfulApi can be created")
         void testRestfulApiCanBeCreated() {
-            RestfulApi api = new RestfulApi();
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .url("http://example.com")
+                    .method("GET")
+                    .build();
+            RestfulApi api = new RestfulApi(card);
             assertNotNull(api);
         }
     }
@@ -44,14 +48,20 @@ class TestRestfulApi {
         @Test
         @DisplayName("RestfulApiCard can be created")
         void testRestfulApiCardCanBeCreated() {
-            RestfulApiCard card = new RestfulApiCard();
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .url("http://example.com")
+                    .method("GET")
+                    .build();
             assertNotNull(card);
         }
 
         @Test
         @DisplayName("RestfulApiCard extends ToolCard")
         void testRestfulApiCardExtendsToolCard() {
-            RestfulApiCard card = new RestfulApiCard();
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .url("http://example.com")
+                    .method("GET")
+                    .build();
             assertTrue(card instanceof ToolCard);
         }
     }

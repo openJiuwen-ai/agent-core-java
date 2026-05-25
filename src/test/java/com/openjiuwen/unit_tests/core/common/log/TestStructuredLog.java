@@ -9,7 +9,7 @@ import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.logging.LogManager;
-import com.openjiuwen.core.common.logging.DefaultLogger;
+import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import com.openjiuwen.core.common.logging.events.AgentEvent;
 import com.openjiuwen.core.common.logging.events.BaseLogEvent;
 import com.openjiuwen.core.common.logging.events.LLMEvent;

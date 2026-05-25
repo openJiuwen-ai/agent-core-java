@@ -32,10 +32,27 @@ public class AgentMemoryConfig {
     private boolean enableLongTermMem = true;
 
     @Builder.Default
-    @JsonProperty("enable_fragment_memory")
-    private boolean enableFragmentMemory = true;
+    @JsonProperty("enable_user_profile")
+    private boolean enableUserProfile = true;
+
+    @Builder.Default
+    @JsonProperty("enable_semantic_memory")
+    private boolean enableSemanticMemory = true;
+
+    @Builder.Default
+    @JsonProperty("enable_episodic_memory")
+    private boolean enableEpisodicMemory = true;
 
     @Builder.Default
     @JsonProperty("enable_summary_memory")
     private boolean enableSummaryMemory = true;
+
+    /**
+     * Derived field: fragment memory is enabled if any of user profile, semantic,
+     * or episodic memory is enabled. Mirrors Python's logic in memory_rail.py and
+     * llm_controller.py.
+     */
+    public boolean isEnableFragmentMemory() {
+        return enableUserProfile || enableSemanticMemory || enableEpisodicMemory;
+    }
 }

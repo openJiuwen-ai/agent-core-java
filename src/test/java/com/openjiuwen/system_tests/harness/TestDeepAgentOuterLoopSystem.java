@@ -4,7 +4,7 @@
 
 package com.openjiuwen.system_tests.harness;
 
-import com.openjiuwen.core.session.agent.Session;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;

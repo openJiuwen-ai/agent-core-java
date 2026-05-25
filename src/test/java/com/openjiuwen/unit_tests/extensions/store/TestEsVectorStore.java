@@ -4,7 +4,8 @@
 
 package com.openjiuwen.unit_tests.extensions.store;
 
-import com.openjiuwen.core.foundation.store.base_vector_store.*;
+import com.openjiuwen.spi.store.vector.BaseVectorStore;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.extensions.store.vector.ElasticsearchVectorStore;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;

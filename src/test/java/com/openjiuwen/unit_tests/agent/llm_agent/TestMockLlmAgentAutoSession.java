@@ -5,7 +5,7 @@
 package com.openjiuwen.unit_tests.agent.llm_agent;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.agent.Session;
+import com.openjiuwen.core.session.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

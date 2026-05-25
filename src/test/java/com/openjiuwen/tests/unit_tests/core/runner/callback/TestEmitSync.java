@@ -40,7 +40,7 @@ class TestEmitSync {
         @DisplayName("test_emit_sync - synchronous emit returns result")
         void testEmitSync() {
             Function<Map<String, Object>, Object> callback = (ctx) -> "sync_result";
-            framework.on("event", callback);
+            framework.on("event", callback, "testCallback");
 
             Map<String, Object> context = new HashMap<>();
             Object result = framework.trigger("event", context);
@@ -57,7 +57,7 @@ class TestEmitSync {
                 received.putAll(ctx);
                 return "processed";
             };
-            framework.on("event", callback);
+            framework.on("event", callback, "testCallback");
 
             Map<String, Object> context = new HashMap<>();
             context.put("data", "test_data");
@@ -85,8 +85,8 @@ class TestEmitSync {
                 return "result2";
             };
 
-            framework.on("event", callback1);
-            framework.on("event", callback2);
+            framework.on("event", callback1, "callback1");
+            framework.on("event", callback2, "callback2");
 
             Map<String, Object> context = new HashMap<>();
             framework.trigger("event", context);

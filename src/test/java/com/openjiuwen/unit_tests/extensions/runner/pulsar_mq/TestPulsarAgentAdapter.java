@@ -5,8 +5,8 @@
 package com.openjiuwen.unit_tests.extensions.runner.pulsar_mq;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.runner_config.*;
-import com.openjiuwen.core.single_agent.AgentCard;
+import com.openjiuwen.core.runner.*;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 
@@ -29,7 +29,7 @@ public class TestPulsarAgentAdapter {
     private static final String API_BASE = System.getenv("API_BASE");
     private static final String API_KEY = System.getenv("API_KEY");
     private static final String MODEL_NAME = System.getenv("MODEL_NAME");
-    private static final String MODEL_PROVIDER = System.getenvOrDefault("MODEL_PROVIDER", "openai");
+    private static final String MODEL_PROVIDER = System.getenv("MODEL_PROVIDER") != null ? System.getenv("MODEL_PROVIDER") : "openai";
 
     @BeforeEach
     void setUp() {
@@ -63,7 +63,7 @@ public class TestPulsarAgentAdapter {
     @AfterEach
     void tearDown() {
         // Reset Runner configuration
-        Runner.setConfig(RunnerConfig.defaultConfig());
+        Runner.setConfig(RunnerConfig.DEFAULT);
     }
 
     // ---------------------------------------------------------------------------

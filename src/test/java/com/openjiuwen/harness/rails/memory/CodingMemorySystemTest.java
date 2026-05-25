@@ -3,10 +3,10 @@
  */
 package com.openjiuwen.harness.rails.memory;
 
-import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
+import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.memory.lite.CodingMemoryToolContext;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.sysop.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.harness.workspace.Workspace;

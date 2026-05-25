@@ -23,7 +23,7 @@ class TestWorkflowDesignerPromptsIntegration {
 
     @Test
     void designerInstanceCanBeCreated() {
-        WorkflowDesigner designer = new WorkflowDesigner(null);
+        WorkflowDesigner designer = new WorkflowDesigner();
         assertThat(designer).isNotNull();
     }
 }

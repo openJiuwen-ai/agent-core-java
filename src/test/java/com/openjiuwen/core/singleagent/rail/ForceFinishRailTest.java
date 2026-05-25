@@ -3,8 +3,8 @@
  */
 package com.openjiuwen.core.singleagent.rail;
 
-import com.openjiuwen.core.foundation.llm.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;

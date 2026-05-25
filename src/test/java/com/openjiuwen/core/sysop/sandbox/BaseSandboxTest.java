@@ -57,7 +57,7 @@ public abstract class BaseSandboxTest {
                 .id(cardId)
                 .mode(OperationMode.SANDBOX)
                 .gatewayConfig(SandboxGatewayConfig.builder()
-                        .gatewayUrl("http://local-provider:9999")
+                        .timeoutSeconds(30)
                         .build())
                 .build();
 
