@@ -30,9 +30,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class TaskLoopEventHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(TaskLoopEventHandler.class);
-    
-    /** Task type for deep agent tasks. */
-    public static final String DEEP_TASK_TYPE = "deep_agent_task";
 
     private final Object deepAgent;
     private final AtomicInteger roundId = new AtomicInteger(0);
@@ -154,24 +151,17 @@ public class TaskLoopEventHandler {
         }
     }
     
-/**
+    /**
      * Extract query from event.
      */
     private String extractQuery(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
-            // Extract text from first TextDataFrame if available
-            var inputData = ie.getInputData();
-            if (inputData != null && !inputData.isEmpty()) {
-                var firstFrame = inputData.get(0);
-                if (firstFrame instanceof com.openjiuwen.core.controller.schema.DataFrame.TextDataFrame tf) {
-                    return tf.text();
-                }
-                if (firstFrame instanceof com.openjiuwen.core.controller.schema.DataFrame.JsonDataFrame jf) {
-                    Object query = jf.data().get("query");
-                    return query != null ? query.toString() : null;
-                }
-            }
-}
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
+            return ie.getQuery();
+        }
+        if (event instanceof Map) {
+            Object query = ((Map<?, ?>) event).get("query");
+            return query != null ? query.toString() : null;
+        }
         return null;
     }
     
@@ -179,7 +169,7 @@ public class TaskLoopEventHandler {
      * Extract task_id from event metadata.
      */
     private String extractTaskId(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
             Map<String, Object> metadata = ie.getMetadata();
             if (metadata != null) {
                 Object taskId = metadata.get("task_id");
@@ -193,11 +183,10 @@ public class TaskLoopEventHandler {
      * Extract session_id from event.
      */
     private String extractSessionId(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
-            Map<String, Object> metadata = ie.getMetadata();
-            if (metadata != null) {
-                Object sessionId = metadata.get("session_id");
-                return sessionId != null ? sessionId.toString() : "default";
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
+            Object session = ie.getSession();
+            if (session instanceof com.openjiuwen.core.session.Session s) {
+                return s.getSessionId();
             }
         }
         return "default";
@@ -207,7 +196,7 @@ public class TaskLoopEventHandler {
      * Extract run_kind from event metadata.
      */
     private String extractRunKind(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
             Map<String, Object> metadata = ie.getMetadata();
             if (metadata != null) {
                 Object runKind = metadata.get("run_kind");
@@ -221,7 +210,7 @@ public class TaskLoopEventHandler {
      * Extract run_context from event metadata.
      */
     private String extractRunContext(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
             Map<String, Object> metadata = ie.getMetadata();
             if (metadata != null) {
                 Object runContext = metadata.get("run_context");
@@ -234,40 +223,69 @@ public class TaskLoopEventHandler {
     /**
      * Extract is_follow_up flag from event metadata.
      */
-private boolean extractIsFollowUp(Object event) {
-        if (event instanceof com.openjiuwen.core.controller.schema.InputEvent ie) {
+    private boolean extractIsFollowUp(Object event) {
+        if (event instanceof com.openjiuwen.core.controller.schema.event.InputEvent ie) {
             Map<String, Object> metadata = ie.getMetadata();
             if (metadata != null) {
                 Object isFollowUp = metadata.get("is_follow_up");
-                return isFollowUp != null && Boolean.parseBoolean(isFollowUp.toString());
+                return isFollowUp != null && Boolean.TRUE.equals(isFollowUp);
             }
         }
         return false;
     }
-    
+
     /**
-     * Create a core task.
+     * Handle task completion event.
      */
-    private String createTask(String taskType, Map<String, Object> metadata) {
+    public void handleTaskCompletion(String taskId, Map<String, Object> result) {
+        LOG.debug("[TaskLoopEventHandler] handle_task_completion task_id={}", taskId);
+
+        CompletableFuture<Map<String, Object>> future = currentFuture.get();
+        if (future != null && !future.isDone()) {
+            future.complete(result);
+        }
+    }
+
+    /**
+     * Handle task failure.
+     */
+    public void handleTaskFailure(String taskId, String error) {
+        LOG.warn("[TaskLoopEventHandler] handle_task_failure task_id={} error={}", taskId, error);
+
+        CompletableFuture<Map<String, Object>> future = currentFuture.get();
+        if (future != null && !future.isDone()) {
+            future.completeExceptionally(new RuntimeException(error));
+        }
+    }
+
+    /**
+     * Create core task for execution.
+     * <p>
+     * Mirrors Python's CoreTask creation:
+     * {@code core_task = CoreTask(session_id=..., task_id=..., task_type=..., description=..., status=..., metadata=..., inputs=...)}
+     */
+    public String createTask(String taskType, Map<String, Object> metadata) {
         String taskId = "task_" + UUID.randomUUID().toString().substring(0, 8);
         LOG.info("[TaskLoopEventHandler] create_task task_id={} type={}", taskId, taskType);
         
         if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {
             try {
-                com.openjiuwen.core.common.task_manager.TaskManager taskManager = 
-                    com.openjiuwen.core.common.task_manager.TaskManager.getInstance();
+                // Get task manager from agent
+                com.openjiuwen.core.controller.modules.task_manager.TaskManager taskManager = 
+                    da.getTaskManager();
                 
                 if (taskManager != null) {
-                    Map<String, Object> taskMeta = new HashMap<>(metadata);
-                    taskManager.createTask(
-                        () -> null,
-                        taskId,
-                        taskType,
-                        null,
-                        null,
-                        taskMeta,
-                        true
-                    );
+                    // Create core task
+                    com.openjiuwen.core.controller.schema.task.Task coreTask = 
+                        new com.openjiuwen.core.controller.schema.task.Task();
+                    coreTask.setTaskId(taskId);
+                    coreTask.setTaskType(taskType);
+                    coreTask.setStatus(com.openjiuwen.core.controller.schema.task.TaskStatus.SUBMITTED);
+                    coreTask.setMetadata(metadata);
+                    
+                    // Add task to manager
+                    taskManager.addTask(coreTask);
+                    
                     LOG.debug("[TaskLoopEventHandler] task added to manager task_id={}", taskId);
                 }
             } catch (Exception e) {
@@ -276,5 +294,19 @@ private boolean extractIsFollowUp(Object event) {
         }
         
         return taskId;
+    }
+
+    /**
+     * Push steering message.
+     */
+    public void pushSteering(String msg) {
+        interactionQueues.pushSteer(msg);
+    }
+
+    /**
+     * Push follow-up message.
+     */
+    public void pushFollowUp(String msg) {
+        interactionQueues.pushFollowUp(msg);
     }
 }

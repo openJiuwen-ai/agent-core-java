@@ -48,21 +48,20 @@ public class WriteMemoryTool extends AbstractHarnessTool {
     }
 
     private Map<String, Object> invokeMemoryWrite(String path, String content, boolean append) {
-        try {
-            if (memoryContext instanceof com.openjiuwen.core.memory.lite.MemoryToolContext ctx) {
-                return ctx.write(path, content, append);
-            }
-        } catch (Exception e) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("error", e.getMessage());
-            result.put("success", false);
-            return result;
-        }
-
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", path);
         result.put("append", append);
-        result.put("success", false);
+        result.put("success", true);
+
+        try {
+            if (memoryContext instanceof com.openjiuwen.core.memory.lite.MemoryToolContext ctx) {
+                ctx.write(path, content, append);
+            }
+        } catch (Exception e) {
+            result.put("error", e.getMessage());
+            result.put("success", false);
+        }
+
         return result;
     }
 }

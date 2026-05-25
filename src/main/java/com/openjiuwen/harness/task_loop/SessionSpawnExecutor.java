@@ -85,13 +85,20 @@ public class SessionSpawnExecutor {
      * Mirrors Python's: {@code await self._task_manager.get_task(TaskFilter(task_id=task_id))}
      */
     private Map<String, Object> getTaskMetadata(String taskId) {
-        if (taskManager instanceof com.openjiuwen.core.common.task_manager.TaskManager tm) {
+        if (taskManager instanceof com.openjiuwen.core.controller.modules.task_manager.TaskManager tm) {
             try {
-                // Use getTask to query task by ID directly
-                com.openjiuwen.core.common.task_manager.Task task = tm.getTask(taskId);
-                if (task != null) {
-                    Map<String, Object> metadata = task.getMetadata();
-                    return metadata != null ? new ConcurrentHashMap<>(metadata) : new ConcurrentHashMap<>();
+                // Use TaskFilter to query task by ID
+                com.openjiuwen.core.controller.modules.task_manager.TaskFilter filter = 
+                    new com.openjiuwen.core.controller.modules.task_manager.TaskFilter();
+                filter.setTaskId(taskId);
+                
+                List<?> tasks = tm.getTask(filter);
+                if (tasks != null && !tasks.isEmpty()) {
+                    Object task = tasks.get(0);
+                    if (task instanceof com.openjiuwen.core.controller.schema.task.Task t) {
+                        Map<String, Object> metadata = t.getMetadata();
+                        return metadata != null ? new ConcurrentHashMap<>(metadata) : new ConcurrentHashMap<>();
+                    }
                 }
             } catch (Exception e) {
                 LOG.warn("[SessionSpawnExecutor] Failed to get task metadata for task_id={}", taskId, e);
@@ -104,16 +111,18 @@ public class SessionSpawnExecutor {
      * Create subagent instance.
      * <p>
      * Mirrors Python's: {@code self._deep_agent.create_subagent(subagent_type, cid)}
-     * Note: Currently uses a placeholder implementation as subagent creation is deferred.
      */
     private Object createSubagent(String subagentType, String sessionId) {
         LOG.debug("[SessionSpawnExecutor] create_subagent type={}, session_id={}", subagentType, sessionId);
         
         if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {
-            // Return the DeepAgent itself as a placeholder for subagent creation
-            // Full subagent factory implementation is deferred
-            LOG.info("[SessionSpawnExecutor] Using DeepAgent delegate as subagent placeholder");
-            return da.getDelegate();
+            try {
+                // Create subagent through DeepAgent's subagent factory
+                return da.createSubagent(subagentType, sessionId);
+            } catch (Exception e) {
+                LOG.error("[SessionSpawnExecutor] Failed to create subagent type={}", subagentType, e);
+                throw new RuntimeException("Failed to create subagent: " + e.getMessage(), e);
+            }
         }
         throw new IllegalStateException("DeepAgent not properly configured for subagent creation");
     }
@@ -133,12 +142,8 @@ public class SessionSpawnExecutor {
                 input.put("query", query);
                 input.put("conversation_id", sessionId);
                 
-                // Create a simple AgentTeamSession for invocation
-                com.openjiuwen.core.session.Session session = 
-                    new com.openjiuwen.core.session.internal.AgentTeamSession(sessionId, "subagent");
-                
                 // Invoke agent and return result
-                Object result = agent.invoke(input, session);
+                Object result = agent.invoke(input, sessionId);
                 return result;
             } catch (Exception e) {
                 LOG.error("[SessionSpawnExecutor] Failed to invoke subagent", e);
@@ -149,8 +154,18 @@ public class SessionSpawnExecutor {
             }
         }
         
-        // Fallback: return placeholder result
-        LOG.warn("[SessionSpawnExecutor] Subagent not a BaseAgent, using fallback");
+        // Fallback for generic invocable objects
+        try {
+            if (subagent instanceof java.lang.reflect.Invocable inv) {
+                Map<String, Object> input = new HashMap<>();
+                input.put("query", query);
+                input.put("conversation_id", sessionId);
+                return inv.invoke(null, input);
+            }
+        } catch (Exception e) {
+            LOG.warn("[SessionSpawnExecutor] Generic invocation failed", e);
+        }
+        
         Map<String, Object> fallbackResult = new HashMap<>();
         fallbackResult.put("output", "");
         fallbackResult.put("error", "Subagent invocation not supported");

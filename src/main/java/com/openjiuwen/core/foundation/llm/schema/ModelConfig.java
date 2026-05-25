@@ -12,7 +12,7 @@ package com.openjiuwen.core.foundation.llm.schema;
  * @param modelProvider the model provider name (e.g., "OpenAI", "DashScope")
  * @param modelInfo     the detailed model connection info
  */
-public record   ModelConfig(
+public record ModelConfig(
         String modelProvider,
         BaseModelInfo modelInfo
 ) {

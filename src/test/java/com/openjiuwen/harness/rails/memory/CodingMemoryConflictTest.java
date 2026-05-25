@@ -96,7 +96,7 @@ class CodingMemoryConflictTest {
                         assertNotNull(readResult.get("content"));
                     }
                 }
-                Map<String, Object> editResult = CodingMemoryToolContext.staticEdit("developer_role.md",
+                Map<String, Object> editResult = CodingMemoryToolContext.edit("developer_role.md",
                         "User develops backend services using Python and Django framework.",
                         "User develops backend services using Python, Django, and also has experience with FastAPI.");
                 assertTrue((Boolean) editResult.get("success"));
@@ -122,7 +122,7 @@ class CodingMemoryConflictTest {
             if (Boolean.TRUE.equals(result2.get("conflict_detected"))) {
                 Map<String, Object> readResult = CodingMemoryToolContext.read("project_setup.md", null, null);
                 assertTrue((Boolean) readResult.get("success"));
-                Map<String, Object> editResult = CodingMemoryToolContext.staticEdit("project_setup.md",
+                Map<String, Object> editResult = CodingMemoryToolContext.edit("project_setup.md",
                         "Step 3: Run migrations",
                         "Step 3: Run database migrations and verify connection");
                 assertTrue((Boolean) editResult.get("success"));
