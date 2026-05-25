@@ -20,6 +20,9 @@ public final class MessagerFactory {
         if (config == null || "inprocess".equals(config.getBackend())) {
             return new InProcessMessager(config);
         }
+        if ("pyzmq".equals(config.getBackend())) {
+            return new PyZmqMessager(config);
+        }
         throw new IllegalArgumentException("Unsupported messager backend: " + config.getBackend());
     }
 }

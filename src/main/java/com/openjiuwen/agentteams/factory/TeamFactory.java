@@ -8,10 +8,12 @@ import com.openjiuwen.agentteams.agent.Allocation;
 import com.openjiuwen.agentteams.agent.ModelAllocator;
 import com.openjiuwen.agentteams.agent.ModelAllocators;
 import com.openjiuwen.agentteams.agent.TeamAgent;
+import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.agentteams.tools.database.DatabaseConfig;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -38,6 +40,17 @@ public final class TeamFactory {
       context
           .getMetadata()
           .put("model_allocator_state", new LinkedHashMap<>(allocator.stateDict()));
+    }
+    context.getMetadata().put("teammate_mode", builtSpec.getTeammateMode() != null ? builtSpec.getTeammateMode() : "build_mode");
+    context.getMetadata().put("team_mode", builtSpec.getTeamMode() != null ? builtSpec.getTeamMode() : "default");
+    context.getMetadata().put("enable_hitt", builtSpec.isEnableHitt());
+    context.getMetadata().put("expose_human_agents_to_teammates", builtSpec.isExposeHumanAgentsToTeammates());
+    if (builtSpec.getTransport() != null) {
+      context.getMetadata().put("transport", builtSpec.getTransport());
+    }
+    context.getMetadata().put("storage", builtSpec.getStorage() != null ? builtSpec.getStorage() : "sqlite");
+    if (builtSpec.getConnectionString() != null && !builtSpec.getConnectionString().isBlank()) {
+      context.getMetadata().put("connection_string", builtSpec.getConnectionString());
     }
     return new TeamAgent()
         .attachModelAllocator(allocator, leaderAllocation)

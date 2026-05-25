@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -308,6 +309,25 @@ public class ReActAgent extends BaseAgent {
         return railedModelCall(ctx).orElse(null);
     }
 
+    private void logLlmResponse(AssistantMessage aiMessage) {
+        if (aiMessage == null) {
+            return;
+        }
+        String content = toText(aiMessage.getContent());
+        if (content != null && !content.isEmpty()) {
+            Loggers.AGENT.info("[LLM] <<< response: content=" + content);
+        }
+        if (aiMessage.getToolCalls() != null) {
+            for (ToolCall tc : aiMessage.getToolCalls()) {
+                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName() + "(" + tc.getArguments() + ")");
+            }
+        }
+    }
+
+    static String toText(Object content) {
+        return content instanceof String text ? text : String.valueOf(content);
+    }
+
     /**
      * Execute LLM call with rail before/after/on_exception hooks.
      */
@@ -401,7 +421,11 @@ public class ReActAgent extends BaseAgent {
         }
 
         for (Object tc : toolCalls) {
-            Loggers.AGENT.info("Executing tool: " + tc);
+            if (tc instanceof ToolCall toolCall) {
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+            } else {
+                Loggers.AGENT.info("Executing tool: " + tc);
+            }
         }
 
         var results = getAbilityManager().execute(ctx, toolCalls, session, null);
@@ -424,7 +448,11 @@ public class ReActAgent extends BaseAgent {
         }
 
         for (Object tc : toolCalls) {
-            Loggers.AGENT.info("Executing tool: " + tc);
+            if (tc instanceof ToolCall toolCall) {
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+            } else {
+                Loggers.AGENT.info("Executing tool: " + tc);
+            }
         }
 
         List<ToolExecutionEntry> results = getAbilityManager().execute(ctx, toolCalls, session, null);
@@ -638,6 +666,7 @@ public class ReActAgent extends BaseAgent {
 
                 injectPendingSteering(ctx, context);
                 AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
+                logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
@@ -1084,6 +1113,7 @@ public class ReActAgent extends BaseAgent {
                 if (aiMessage == null) {
                     aiMessage = callModel(ctx, context, systemMessages, tools);
                 }
+                logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
@@ -1198,8 +1228,8 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         Map<String, Object> payload = new HashMap<String, Object>();
-        payload.put("output", finalResult);
-        payload.put("result_type", "answer");
+        payload.put("output", finalResult.get("output"));
+        payload.put("result_type", resultType != null ? resultType : "answer");
         agentSession.writeStream(new OutputSchema("answer", 0, payload));
     }
 
@@ -1207,28 +1237,28 @@ public class ReActAgent extends BaseAgent {
         if (agentSession == null || chunk == null) {
             return;
         }
-        Map<String, Object> payload = new HashMap<String, Object>();
+        if (chunk.getReasoningContent() != null) {
+            Map<String, Object> reasoningPayload = new HashMap<String, Object>();
+            reasoningPayload.put("content", chunk.getReasoningContent());
+            reasoningPayload.put("result_type", "answer");
+            agentSession.writeStream(new OutputSchema("llm_reasoning", index, reasoningPayload));
+        }
         if (chunk.getContent() != null) {
-            payload.put("delta", chunk.getContent());
-            payload.put("content", chunk.getContent());
+            Map<String, Object> contentPayload = new HashMap<String, Object>();
+            contentPayload.put("content", chunk.getContent());
+            contentPayload.put("result_type", "answer");
+            agentSession.writeStream(new OutputSchema("llm_output", index, contentPayload));
         }
         if (chunk.getToolCalls() != null && !chunk.getToolCalls().isEmpty()) {
-            payload.put("tool_calls", cloneToolCalls(chunk.getToolCalls()));
+            Map<String, Object> toolPayload = new HashMap<String, Object>();
+            toolPayload.put("tool_calls", cloneToolCalls(chunk.getToolCalls()));
+            agentSession.writeStream(new OutputSchema("llm_output", index, toolPayload));
         }
         if (chunk.getUsageMetadata() != null) {
-            payload.put("usage_metadata", chunk.getUsageMetadata());
-        }
-        if (chunk.getFinishReason() != null) {
-            payload.put("finish_reason", chunk.getFinishReason());
-        }
-        if (chunk.getParserContent() != null) {
-            payload.put("parser_content", chunk.getParserContent());
-        }
-        if (chunk.getReasoningContent() != null) {
-            payload.put("reasoning_content", chunk.getReasoningContent());
-        }
-        if (!payload.isEmpty()) {
-            agentSession.writeStream(new OutputSchema("answer", index, payload));
+            Map<String, Object> usagePayload = new HashMap<String, Object>();
+            usagePayload.put("usage_metadata", chunk.getUsageMetadata());
+            usagePayload.put("result_type", "answer");
+            agentSession.writeStream(new OutputSchema("llm_usage", 0, usagePayload));
         }
     }
 

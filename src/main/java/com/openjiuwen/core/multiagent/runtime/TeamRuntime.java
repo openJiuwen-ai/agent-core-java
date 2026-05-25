@@ -147,7 +147,15 @@ public class TeamRuntime {
                 .recipient(recipient)
                 .sessionId(sessionId)
                 .build();
-        return agent.invoke(envelope.getMessage(), resolveSession(sessionId, session));
+        AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
+        if (resolvedSession != null) {
+            resolvedSession.setCurrentAgentId(recipient);
+        }
+        Object result = agent.invoke(envelope.getMessage(), resolvedSession);
+        if (resolvedSession != null) {
+            resolvedSession.setCurrentAgentId(null);
+        }
+        return result;
     }
 
     /**
@@ -170,7 +178,13 @@ public class TeamRuntime {
                 .build();
         AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
         for (String subscriber : subscriptionManager.getSubscribers(topicId)) {
+            if (resolvedSession != null) {
+                resolvedSession.setCurrentAgentId(subscriber);
+            }
             resolveAgent(subscriber).invoke(envelope.getMessage(), resolvedSession);
+            if (resolvedSession != null) {
+                resolvedSession.setCurrentAgentId(null);
+            }
         }
     }
 

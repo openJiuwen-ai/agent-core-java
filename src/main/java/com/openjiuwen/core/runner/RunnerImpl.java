@@ -19,6 +19,7 @@ import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
 import com.openjiuwen.core.runner.spawn.SpawnProcesses;
 import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
@@ -366,7 +367,12 @@ public class RunnerImpl {
     public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
                                 Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
-        return invokeAgentGroup(groupInstance, inputs, session, context);
+        AgentGroupSessionApi groupSession = prepareAgentGroupSession(inputs, session);
+        resolveTeamId(agentGroup, groupSession);
+        groupSession.preRun(inputs);
+        Object result = invokeAgentGroup(groupInstance, inputs, groupSession, context);
+        groupSession.postRun();
+        return result;
     }
 
     /**
@@ -383,7 +389,11 @@ public class RunnerImpl {
                                                     ModelContext context, List<StreamMode> streamModes,
                                                     Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
-        return streamAgentGroup(groupInstance, inputs, session, context);
+        AgentGroupSessionApi groupSession = prepareAgentGroupSession(inputs, session, streamModes);
+        resolveTeamId(agentGroup, groupSession);
+        groupSession.preRun(inputs);
+        Iterator<Object> iterator = streamAgentGroup(groupInstance, inputs, groupSession, context);
+        return wrapStreamingIterator(iterator, groupSession);
     }
 
     // ========== Release ==========
@@ -434,6 +444,23 @@ public class RunnerImpl {
             return groupInstance;
         }
         return agentGroup;
+    }
+
+    private void resolveTeamId(Object agentGroup, AgentGroupSessionApi groupSession) {
+        if (agentGroup instanceof String groupId) {
+            groupSession.setTeamId(groupId);
+        } else {
+            Object card = tryReadProperty(agentGroup, "getTeamCard", "teamCard");
+            if (card == null) {
+                card = tryReadProperty(agentGroup, "getCard", "card");
+            }
+            if (card != null) {
+                Object id = tryReadProperty(card, "getId", "id");
+                if (id instanceof String tid) {
+                    groupSession.setTeamId(tid);
+                }
+            }
+        }
     }
 
     /**
@@ -539,6 +566,30 @@ public class RunnerImpl {
 
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session) {
         return prepareAgentSession(agentInstance, inputs, session, null);
+    }
+
+    private AgentGroupSessionApi prepareAgentGroupSession(Object inputs, Object session) {
+        return prepareAgentGroupSession(inputs, session, null);
+    }
+
+    private AgentGroupSessionApi prepareAgentGroupSession(Object inputs, Object session,
+                                                          List<StreamMode> streamModes) {
+        AgentGroupSessionApi groupSession;
+        if (session instanceof AgentGroupSessionApi existingGroupSession) {
+            groupSession = existingGroupSession;
+        } else if (session instanceof AgentSessionApi existingSession) {
+            groupSession = AgentGroupSessionApi.create(existingSession.getSessionId(), null);
+        } else {
+            String sessionId = resolveAgentSessionId(inputs, session);
+            groupSession = AgentGroupSessionApi.create(sessionId, null);
+        }
+        if (inputs instanceof Map<?, ?> inputMap) {
+            Object teamId = inputMap.get("team_id");
+            if (teamId instanceof String tid) {
+                groupSession.setTeamId(tid);
+            }
+        }
+        return groupSession;
     }
 
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session,

@@ -12,6 +12,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -326,7 +327,11 @@ public class ReActAgentEvolve extends BaseAgent {
         }
 
         for (Object tc : toolCalls) {
-            Loggers.AGENT.info("Executing tool: " + tc);
+            if (tc instanceof ToolCall toolCall) {
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+            } else {
+                Loggers.AGENT.info("Executing tool: " + tc);
+            }
         }
 
         var results = getAbilityManager().execute(ctx, toolCalls, ctx.getSession(), null);

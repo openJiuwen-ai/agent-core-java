@@ -282,6 +282,22 @@ public class TeamAgent {
         deliverInput(content, true);
     }
 
+    public void interact(String message) {
+        ensureConfigured();
+        if (streamController != null && streamController.isAgentRunning()) {
+            streamController.steer(message);
+            context.getMetadata().put("last_interact_route", "steer");
+            return;
+        }
+        if (coordinatorLoop != null) {
+            coordinatorLoop.enqueue(InnerEventMessage.builder()
+                    .eventType(InnerEventType.USER_INPUT)
+                    .payload(Map.of("content", message != null ? message : ""))
+                    .build());
+            context.getMetadata().put("last_interact_route", "enqueue");
+        }
+    }
+
     /**
      * Auto-generated for codecheck compliance.
      */

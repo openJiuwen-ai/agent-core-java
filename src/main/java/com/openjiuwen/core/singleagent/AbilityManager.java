@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -315,7 +316,7 @@ public class AbilityManager implements ToolRegistry {
                     continue;
                 }
 
-                String errorMsg = "Ability execution error: " + e.getMessage();
+                String errorMsg = "Ability execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
 
                 Object toolResult = null;
@@ -443,8 +444,17 @@ public class AbilityManager implements ToolRegistry {
         } else if (agents.containsKey(toolName)) {
             AgentCard agentCard = agents.get(toolName);
             String agentId = agentCard.getId() != null ? agentCard.getId() : agentCard.getName();
+            Object agentInstance = Runner.resourceMgr().getAgent(agentId);
+            if (agentInstance == null) {
+                throw buildExecutionError(toolCall, "Agent instance not found in resource_mgr: " + agentId);
+            }
             try {
-                result = Runner.runAgent(agentId, toolArgs, adaptSubtaskSession(session), null);
+                String childSessionId = session != null
+                        ? session.getSessionId() + ":" + toolCall.getId()
+                        : "default_session:" + toolCall.getId();
+                toolArgs.put("conversation_id", childSessionId);
+                AgentSessionApi childSession = AgentSessionApi.create(childSessionId, null, agentCard);
+                result = Runner.runAgent(agentInstance, toolArgs, childSession, null);
             } catch (Exception e) {
                 String errorMsg = "Agent execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -576,7 +586,9 @@ public class AbilityManager implements ToolRegistry {
         if (!(toolObj instanceof Tool tool) || tool.getCard() == null) {
             return;
         }
-        tools.put(tool.getCard().getName(), tool.getCard());
+        String toolName = tool.getCard().getName();
+        Loggers.AGENT.info("Caching MCP tool: name=" + toolName + ", id=" + tool.getCard().getId());
+        tools.put(toolName, tool.getCard());
         appendToolInfo(toolInfos, tool.getCard().toolInfo());
     }
 

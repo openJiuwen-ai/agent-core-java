@@ -43,7 +43,21 @@ public class TeamAgentSpec {
     @Builder.Default
     private String lifecycle = "temporary";
     @Builder.Default
+    private String teammateMode = "build_mode";
+    @Builder.Default
     private String spawnMode = "process";
+    @Builder.Default
+    private String transport = null;
+    @Builder.Default
+    private String storage = "sqlite";
+    @Builder.Default
+    private String connectionString = null;
+    @Builder.Default
+    private String teamMode = null;
+    @Builder.Default
+    private boolean enableHitt = false;
+    @Builder.Default
+    private boolean exposeHumanAgentsToTeammates = false;
     private String language;
     private TeamMemoryConfig memory;
 
@@ -65,9 +79,20 @@ public class TeamAgentSpec {
     public TeamAgentSpec build() {
         this.members = new ArrayList<>(members);
         this.modelPool = new ArrayList<>(modelPool);
+        defaultTransportForSpawnMode();
         validate();
+        validateHittConsistency();
         ensureLeader();
         return this;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public void defaultTransportForSpawnMode() {
+        if (transport == null && "inprocess".equals(spawnMode)) {
+            transport = "inprocess";
+        }
     }
 
     /**
@@ -100,6 +125,22 @@ public class TeamAgentSpec {
             if (member.getRole() == TeamRole.HUMAN_AGENT && !isHumanAgentEnabled) {
                 throw new IllegalArgumentException("human_agent member requires isHumanAgentEnabled=true");
             }
+        }
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public void validateHittConsistency() {
+        if (enableHitt) {
+            return;
+        }
+        boolean hasHumanAgent = members.stream()
+                .anyMatch(member -> member.getRole() == TeamRole.HUMAN_AGENT);
+        if (hasHumanAgent) {
+            throw new IllegalArgumentException(
+                    "predefined_members contains HUMAN_AGENT role(s) but enableHitt=false; "
+                    + "set enableHitt=true or remove the human member(s)");
         }
     }
 

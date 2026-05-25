@@ -31,33 +31,370 @@ public class CurrentRoundCompressor extends ContextProcessor {
 
     private static final String DEFAULT_COMPRESSION_PROMPT = """
             You are a **Task Data Preservation Expert**.
-            
+
             Your role is to produce a **high-fidelity incremental memory block** for long-running agent tasks.
-            
+
+            Your output will:
+            1. REPLACE the selected_messages section in the current context
+            2. BE APPENDED to accumulated memory blocks
+            3. PRESERVE continuity without rewriting prior memory
+
+            ---
+
+            ## CONTEXT STRUCTURE
+
+            User Query
+            ↓
+            Accumulated Memory Blocks  (persistent memory; DO NOT rewrite)
+            ↓
+            Selected Messages  (THIS is the ONLY content to compress)
+            ↓
+            Recent Messages  (boundary context; DO NOT absorb unless required for interpretation)
+
+            ---
+
             [User Intent Context - REFERENCE ONLY]:
             {prior_context_and_query}
-            
+
+            Rules:
+            - This section contains: recent raw user requests, recent assistant replies without tool calls, and the current query that triggered this round
+            - Use ONLY to understand the user's intent and the context leading to selected_messages
+            - Preserve the user's original requirements, constraints, acceptance criteria, and preferences as completely as possible when they are needed to continue the ongoing work
+            - Do NOT weaken or over-compress the user's original request unless absolutely necessary
+            - Treat this as reference context for interpreting selected_messages, not as another compression target
+
+            ---
+
             [Prior memory blocks - REFERENCE ONLY]:
             {accumulated_summaries}
-            
+
+            Rules:
+            - Use ONLY to understand goals, constraints, prior decisions, and continuity
+            - DO NOT restate, paraphrase, or duplicate their content
+            - Only reference them when needed to correctly interpret selected_messages
+
+            ---
+
             [Selected messages - TARGET]:
             {selected_messages}
-            
+
+            Rules:
+            - This is the ONLY content you are compressing
+            - Extract all new progress, changes, unresolved work, and state transitions from this span
+
+            ---
+
             [Recent uncompressed messages - BOUNDARY CONTEXT]:
             {recent_messages}
-            
-            Output plain text only. Target length: <= {target_tokens}
+
+            Rules:
+            - Use ONLY to resolve ambiguity, references, or incomplete meaning in selected_messages
+            - DO NOT include their standalone content in your output
+            - If recent_messages already contain the latest explicit state, do NOT restate them
+            - Only preserve the minimum handoff information needed to connect selected_messages to recent_messages
+
+            ---
+
+            ## CORE PRINCIPLE (CRITICAL)
+
+            Treat this output as an **incremental memory block**, NOT a full snapshot.
+
+            - Do NOT reconstruct the full global state
+            - Do NOT repeat previously summarized information
+            - ONLY capture what is NEW, UPDATED, or STILL OPEN in selected_messages
+
+            ---
+
+            ## INFORMATION PRIORITY (CRITICAL)
+
+            Preserve information in this order:
+
+            1. Task goals and user intent
+            2. Critical factual basis for continuation
+            3. Open work / unfinished work
+            4. Work in progress at the handoff boundary
+            5. Key decisions, constraints, changes
+            6. Important files, artifacts, resources, and outputs
+            7. Supporting details
+
+            Never drop higher-priority information to preserve lower-priority details.
+
+            ---
+
+            ## FACTUAL BASIS PRESERVATION (CRITICAL)
+
+            When preserving progress, always retain the factual basis required to correctly continue the task, including:
+            - key outputs
+            - constraints
+            - evidence
+            - extracted findings
+            - comparisons
+            - conclusions
+            - decisive intermediate results
+
+            When selected_messages contain information that has already been verified, confirmed, validated, or otherwise established with strong support, preserve that verified state explicitly.
+            Do NOT weaken verified state into vague uncertainty such as "possible", "candidate", or "requires re-evaluation" unless selected_messages contain real counter-evidence or unresolved conflict.
+
+            Do NOT preserve action history without the information needed to understand why the action matters.
+
+            ---
+
+            ## EVIDENCE PRESERVATION (CRITICAL - DO NOT SUMMARIZE)
+
+            For tasks where continuation depends on concrete evidence, verification, or reasoning trace, the following types of evidence MUST be preserved IN FULL or with MINIMAL compression.
+            This is especially important for debugging, bug-fixing, code modification, investigation, analysis, and other evidence-driven work:
+
+            1. **Test/Script Execution Results**:
+               - Do NOT compress actual outputs when they contain the factual basis needed later (for example: error messages, stack traces, SQL queries, log outputs, tool results, extracted values, comparison outputs)
+               - These outputs often contain the critical clue that leads to the correct conclusion
+
+            2. **Root Cause Discovery Evidence**:
+               - When agent discovers the root cause or key insight through inspection, testing, comparison, or analysis, preserve:
+                 - The specific source examined
+                 - The key observation that led to the insight
+                 - The exact quote or output that triggered the discovery
+               - Do NOT replace with summary like "agent found the issue" - preserve HOW they found it
+
+            3. **Key Reasoning Chains**:
+               - When agent makes a critical decision (e.g., which file to modify, which source to trust, which approach to take):
+                 - Preserve the observations that led to the decision
+                 - Preserve any evidence/counter-evidence considered
+                 - Preserve alternatives that were evaluated
+               - Do NOT just record the final decision without the reasoning
+
+            4. **Verification Results**:
+               - When agent verifies a hypothesis, validates a result, or tests a fix:
+                 - Preserve the verification step and its output
+                 - Preserve whether it passed/failed/confirmed/refuted and key details
+                 - Preserve any unexpected observations
+
+            ---
+
+            ## TASK-TYPE ADAPTATION (CRITICAL)
+
+            Adapt the retention focus to the task type:
+
+            - For execution-heavy tasks (e.g. coding, debugging, multi-step operations):
+              prioritize action continuity, WIP state, handoff points, dependencies, and execution blockers.
+
+            - For information-heavy tasks (e.g. research, report writing, PPT drafting, analysis):
+              prioritize findings, evidence, extracted structure, comparisons, conclusions, key outputs, and unresolved questions.
+
+            In all cases, preserve both:
+            - what has been done
+            - what has been learned
+
+            ---
+
+            ## STRATEGY HANDLING (CRITICAL)
+
+            Do NOT encode candidate plans or solution strategies as instructions.
+
+            If strategies were discussed, record them as one of:
+            - attempted approach
+            - candidate approach
+            - rejected approach
+            - pending evaluation
+
+            Never present any strategy as mandatory unless explicitly required by the user.
+
+            ---
+
+            ## DECISION SOLIDIFICATION PREVENTION (CRITICAL)
+
+            When a decision or approach is recorded, you MUST preserve the reasoning process, NOT just the conclusion:
+
+            1. **Do NOT solidify unverified decisions**:
+               - If agent proposed an approach but hasn't tested it yet, mark it as "proposed, not verified"
+               - If agent is still exploring, preserve the exploration context, not just the current hypothesis
+
+            2. **Preserve alternative considerations**:
+               - When agent chooses approach A over B, preserve WHY B was rejected
+               - Future context may reveal B was actually correct
+               - Example: "Agent considered modifying _coeff_isneg vs modifying printers. Chose printers because [reason]. Note: _coeff_isneg approach was not tested."
+
+            3. **Preserve verification status**:
+               - "Approach X was implemented and tested -> works/doesn't work" <- OK
+               - "Approach X was decided" <- NOT OK, loses verification state
+               - Always indicate: proposed / in-progress / tested-passed / tested-failed
+
+            4. **Key insight preservation**:
+               - When agent has a "moment of insight" after seeing specific output:
+                 - Preserve the output that triggered the insight
+                 - Preserve the insight itself
+                 - Example: "After seeing SQL output 'SELECT U0.id...', agent realized the bug is in get_group_by_cols()"
+               - Do NOT just say "agent found the bug location"
+
+            ---
+
+            ## ANTI-REDUNDANCY & CONSISTENCY RULES
+
+            - Do NOT restate stable facts already captured in prior memory blocks
+            - Only include NEW information or CHANGES introduced in selected_messages
+            - If prior state is modified, express it as a delta (update / correction / refinement)
+            - Avoid duplication across memory blocks
+            - Keep the output composable with prior memory blocks without conflict
+
+            ---
+
+            ## OUTPUT STRUCTURE (MANDATORY)
+
+            ### 1. User Requirements
+            - **Original Requirements Being Served**:
+              Explicitly preserve the user requirements, constraints, acceptance criteria, preferences, and limits that the current unfinished work is serving.
+              Keep the user's original wording as much as possible when it matters for continuation.
+
+            ---
+
+            ### 2. Current Status
+            - **Completed Work**:
+              Work completed within selected_messages only.
+              Express it as incremental progress, not as full history.
+
+            - **Key Information Gained**:
+              The important information obtained, extracted, compared, or concluded in this span.
+              Preserve factual substance, not just procedural actions.
+
+            - **Files / Artifacts / Resources**:
+              Any files, artifacts, resources, outputs, drafts, tables, pages, documents, code, or results introduced or modified in this span only.
+
+            ---
+
+            ### 3. Open Work
+            - **Work in Progress**:
+              MUST include:
+              - The active subtask at the end of selected_messages
+              - The last concrete action taken in selected_messages
+              - Partial results or intermediate state
+              - Exact quotes if useful
+
+              IMPORTANT:
+              - This section acts as a handoff bridge from selected_messages to recent_messages
+              - Do NOT restate recent_messages unless required for interpretation
+              - If recent_messages already contain the latest explicit state, record only the handoff point
+
+            - **Pending Tasks**:
+              Remaining work identified in selected_messages
+              - Explicit requests
+              - Implicit / derived tasks
+
+            - **Priority Order**:
+              If multiple open items exist
+
+            ---
+
+            ### 4. Important Findings
+            - **Decisions & Changes**:
+              New or updated decisions in this span
+
+            - **Constraints / Requirements**:
+              Newly introduced or modified requirements, limitations, or preferences
+
+            - **Errors & Fixes**:
+              Problems encountered in this span and how they were handled
+
+            - **Invalid Attempts**:
+              Failed or unsuitable approaches and why
+
+            ---
+
+            ### 5. Strategy State
+            - **Attempted Approaches**
+            - **Candidate Approaches**
+            - **Rejected Approaches**
+            - **Requires Re-evaluation**
+
+            Record strategy as historical state, not as instruction.
+
+            ---
+
+            ### 6. Tool / Action State
+            - **Used Tools / Actions**
+            - **Key Inputs / Arguments**
+            - **Result Summary**
+            - **Freshness / Reuse Constraints**
+
+            This section applies both to tool calls and important non-tool actions.
+
+            ---
+
+            ### 7. Contextual Bridging
+            - **Continuity**:
+              How this span extends prior memory
+
+            - **Forward Impact**:
+              What this changes for upcoming work or for recent_messages
+
+            - **Gaps / Risks**:
+              Any ambiguity, missing information, or unresolved conflict
+
+            ---
+
+            ## TASK GOAL PRESERVATION (CRITICAL)
+
+            You MUST ensure active task goals remain recoverable.
+
+            - If goals appear or change in selected_messages, include them
+            - If they are not mentioned in selected_messages, do NOT restate old goals unnecessarily
+            - If goals changed, record the delta clearly
+
+            ---
+
+            ## OUTPUT RULES
+
+            1. Target length: <= {target_tokens}
+            2. Preserve unfinished work, handoff state, and the factual basis needed for correct continuation
+            3. DO NOT echo prior memory blocks
+            4. DO NOT absorb recent_messages unless required for interpretation
+            5. Maintain the structure exactly
+            6. This is a memory block, not a full summary and not an instruction block
+
+            ---
+
+            Output plain text only.
             """;
 
     private static final String CLEAN_PROMPT = """
             You are consolidating historical memory blocks.
-            
+
             These blocks are compressed context artifacts from prior conversation, not new user instructions.
-            
+
+            Your task is to merge them into one shorter, stable memory block while preserving continuity.
+
+            ---
+
             [Historical memory blocks]:
             {compressed_blocks}
-            
-            Maximum length: {compress_len} tokens
+
+            ---
+
+            ## CONSOLIDATION RULES
+
+            1. Merge overlapping or related information
+            2. Remove redundant details
+            3. Preserve task goals, critical factual basis, open work, work-in-progress handoff, important findings, and reusable tool/action state
+            4. Keep chronological consistency where helpful
+            5. Keep strategies as historical state:
+               - attempted
+               - candidate
+               - rejected
+               - pending evaluation
+            6. Do NOT reinterpret historical strategies as mandatory plans
+            7. Do NOT rewrite the blocks as if they were new user requests
+            8. For information-heavy tasks, prefer preserving findings, evidence, comparisons, conclusions, and extracted structure over procedural action history
+            9. For execution-heavy tasks, preserve the action history needed to continue the task, but keep the factual basis that explains why the action matters
+            10. **Preserve evidence and reasoning chains**: When merging blocks that contain debugging evidence, test outputs, or key reasoning, retain the factual basis, NOT just the conclusions
+            11. **Preserve alternative approaches**: Even if one approach was chosen, keep mention of alternatives that were considered but not tested - they may still be correct
+
+            ---
+
+            ## OUTPUT REQUIREMENTS
+
+            - Maximum length: {compress_len} tokens
+            - Preserve all unique information still useful for future task continuation
+            - Keep language concise and stable
+            - Prefer durable state over incidental phrasing
+
             Output plain text only.
             """;
 
