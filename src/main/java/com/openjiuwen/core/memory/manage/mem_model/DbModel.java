@@ -97,12 +97,12 @@ public final class DbModel {
     private static void createUserMessageTable(Connection conn) throws SQLException {
         String sql = "CREATE TABLE IF NOT EXISTS " + USER_MESSAGE_TABLE + " ("
                 + "message_id VARCHAR(64) PRIMARY KEY,"
-                + "user_id VARCHAR(64) NOT NULL,"
-                + "scope_id VARCHAR(64) NOT NULL,"
+                + "user_id VARCHAR(256) NOT NULL,"
+                + "scope_id VARCHAR(128) NOT NULL,"
                 + "content VARCHAR(4096) NOT NULL,"
-                + "session_id VARCHAR(64),"
+                + "session_id VARCHAR(2048),"
                 + "role VARCHAR(32),"
-                + "timestamp VARCHAR(32)"
+                + "timestamp VARCHAR(64)"
                 + ")";
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);

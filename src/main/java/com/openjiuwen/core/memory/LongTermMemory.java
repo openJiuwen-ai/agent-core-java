@@ -365,6 +365,8 @@ public class LongTermMemory {
             if (timestamp == null) {
                 timestamp = OffsetDateTime.now(ZoneId.systemDefault());
             }
+            // Truncate to microseconds to avoid nanosecond-precision timestamp strings exceeding DB column width
+            timestamp = timestamp.truncatedTo(java.time.temporal.ChronoUnit.MICROS);
             String timestampStr = timestamp.format(TIMESTAMP_FMT);
 
             for (int i = 0; i < messages.size(); i++) {
@@ -621,6 +623,7 @@ public class LongTermMemory {
                     searchData.addAll(res);
                 }
             }
+
             searchData.sort((a, b) -> Double.compare(
                     scoreValue(b.get("score")),
                     scoreValue(a.get("score"))));

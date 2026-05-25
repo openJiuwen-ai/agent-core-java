@@ -86,6 +86,23 @@ public class FragmentMemoryManager extends BaseMemoryManager {
             }
         }
 
+        // Fallback: if vector search returned no existing memories, load from KV store directly
+        if (oldMemories.isEmpty()) {
+            for (String memType : FRAGMENT_MEMORY_TYPES) {
+                List<Map<String, Object>> allMems = memStore.getAll(userId, scopeId, memType);
+                if (allMems != null) {
+                    for (Map<String, Object> mem : allMems) {
+                        String memId = String.valueOf(mem.getOrDefault("id", ""));
+                        String memContent = String.valueOf(mem.getOrDefault("mem", ""));
+                        if (!memId.isEmpty() && !oldMemIds.contains(memId)) {
+                            oldMemories.put(memId, decryptMemoryIfNeeded(cryptoKey, memContent));
+                            oldMemIds.add(memId);
+                        }
+                    }
+                }
+            }
+        }
+
         // If no existing memories and only one new memory, skip check
         if (oldMemories.isEmpty() && fragmentMemories.size() == 1) {
             addMemoryToStore(userId, scopeId, fragmentMemories.get(0), semanticStore);
@@ -145,6 +162,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
                 ? FRAGMENT_MEMORY_TYPES
                 : List.of(memType);
 
+        // Step 1: Vector search
         List<String> memIds = new ArrayList<>();
         Map<String, Double> scores = new HashMap<>();
         for (String currentType : memTypes) {
@@ -155,22 +173,49 @@ public class FragmentMemoryManager extends BaseMemoryManager {
             scores.putAll(parsed.scores());
         }
 
+        // Step 2: Load all existing memories from KV store for completeness
+        // (Vector search may miss results with local hash embedding)
+        Set<String> seenIds = new HashSet<>(memIds);
+        List<Map<String, Object>> combinedRes = new ArrayList<>();
+
+        // Add vector search results first
         List<Map<String, Object>> retrieveRes = memStore.batchGet(userId, scopeId, memIds);
-        if (retrieveRes == null || retrieveRes.isEmpty()) {
+        if (retrieveRes != null) {
+            for (Map<String, Object> item : retrieveRes) {
+                String id = String.valueOf(item.getOrDefault("id", ""));
+                item.put("score", scores.getOrDefault(id, 0.0));
+                item.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
+                combinedRes.add(item);
+            }
+        }
+
+        // Supplement with KV store memories not found by vector search
+        for (String currentType : memTypes) {
+            List<Map<String, Object>> typeMems = memStore.getAll(userId, scopeId, currentType);
+            if (typeMems != null) {
+                for (Map<String, Object> mem : typeMems) {
+                    String id = String.valueOf(mem.getOrDefault("id", ""));
+                    if (!id.isEmpty() && seenIds.add(id)) {
+                        mem.put("score", 0.0);
+                        mem.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(mem.getOrDefault("mem", ""))));
+                        combinedRes.add(mem);
+                    }
+                }
+            }
+        }
+
+        if (combinedRes.isEmpty()) {
             return null;
         }
-        for (Map<String, Object> item : retrieveRes) {
-            String id = String.valueOf(item.getOrDefault("id", ""));
-            item.put("score", scores.getOrDefault(id, 0.0));
-            item.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
-        }
-        retrieveRes.sort((a, b) -> Double.compare(
+
+        // Sort by score descending and limit to topK
+        combinedRes.sort((a, b) -> Double.compare(
                 ((Number) b.getOrDefault("score", 0.0)).doubleValue(),
                 ((Number) a.getOrDefault("score", 0.0)).doubleValue()));
-        if (retrieveRes.size() > topK) {
-            return new ArrayList<>(retrieveRes.subList(0, topK));
+        if (combinedRes.size() > topK) {
+            return new ArrayList<>(combinedRes.subList(0, topK));
         }
-        return retrieveRes;
+        return combinedRes;
     }
 
     @Override
@@ -289,6 +334,17 @@ public class FragmentMemoryManager extends BaseMemoryManager {
             throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
                     "memory_type", memory.getMemType().getValue(),
                     "error_msg", "add operation must pass user_id");
+        }
+        // Validate userId: reject overly long or control-character IDs
+        if (userId.length() > 256) {
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                    "memory_type", memory.getMemType().getValue(),
+                    "error_msg", "user_id too long, max 256 chars");
+        }
+        if (userId.chars().anyMatch(c -> c < 0x20 && c != '\t')) {
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                    "memory_type", memory.getMemType().getValue(),
+                    "error_msg", "user_id contains invalid control characters");
         }
         if (scopeId == null || scopeId.isEmpty()) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
