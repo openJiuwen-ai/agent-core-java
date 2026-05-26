@@ -279,6 +279,9 @@ public class WorkflowEventHandler extends EventHandler {
         boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
 
         try {
+            if (agentConfig.getId() == null || agentConfig.getId().isBlank()) {
+                throw new IllegalStateException("Workflow not found: " + workflowId);
+            }
             task.setStatus(TaskStatus.WORKING);
 
             // Get workflow object

@@ -224,7 +224,10 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             throw new RuntimeException("No message in response choice: " + choice);
         }
 
-        Object content = message.getOrDefault("content", "");
+        Object content = message.get("content");
+        if (content == null) {
+            content = "";
+        }
         Object parserContent = parseWithOutputParser(content, outputParser);
         List<ToolCall> toolCalls = AssistantMessage.convertOpenAiToolCalls(asListOfMaps(message.get("tool_calls")));
 

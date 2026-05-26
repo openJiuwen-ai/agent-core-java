@@ -199,6 +199,21 @@ public class LlmEventHandler extends EventHandler {
             );
         }
 
+        ResumeResult plainQueryResume = findInterruptedTaskForPlainQuery(session);
+        if (plainQueryResume != null && displayContent != null && !displayContent.isBlank()) {
+            Loggers.CONTROLLER.info(
+                    "Resuming interrupted workflow from plain query, remaining tasks: {}, saved_iteration: {}",
+                    plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
+            );
+            context.addMessages(plainQueryResume.aiMessage);
+            Task interruptedTask = plainQueryResume.remainingTasks.get(0);
+            setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
+            interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
+            int initialIteration = plainQueryResume.savedIteration != null ? plainQueryResume.savedIteration + 1 : 1;
+            return executeReactLoop(plainQueryResume.remainingTasks, session, initialIteration,
+                    plainQueryResume.aiMessage, context);
+        }
+
         // Normal path: Call LLM to generate plans
         LlmPlanResult planResult = generatePlanFromLlm(event, session, context);
 
@@ -259,8 +274,10 @@ public class LlmEventHandler extends EventHandler {
         List<Task> currentTasks = tasks;
         AssistantMessage currentAiMessage = aiMessage;
         TaskExecutionResult lastResult = null;
+        boolean allowFirstIterationAtLimit = !currentTasks.isEmpty() && iteration == maxIteration;
 
-        while (!currentTasks.isEmpty() && iteration <= maxIteration) {
+        while (!currentTasks.isEmpty() && (iteration < maxIteration || allowFirstIterationAtLimit)) {
+            allowFirstIterationAtLimit = false;
             Loggers.CONTROLLER.info("ReAct Iteration: {} / {}", iteration, maxIteration);
 
             for (int idx = 0; idx < currentTasks.size(); idx++) {
@@ -313,10 +330,8 @@ public class LlmEventHandler extends EventHandler {
         }
 
         Loggers.CONTROLLER.warning("Exceeded max iteration {}, stopping ReAct loop", maxIteration);
-        Map<String, Object> result = new HashMap<>();
-        result.put("output", "Maximum iteration reached");
-        result.put("result_type", "answer");
-        return result;
+        Map<String, Object> result = sendFinalStream("Maximum iteration reached", session);
+        return unwrapResult(result);
     }
 
     // ==================== Task Execution ====================
@@ -695,6 +710,30 @@ public class LlmEventHandler extends EventHandler {
             }
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ResumeResult findInterruptedTaskForPlainQuery(AgentSessionApi session) {
+        Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
+        if (state == null) {
+            return null;
+        }
+        Map<String, Object> interruptedTasks = (Map<String, Object>) state.get("interrupted_tasks");
+        if (interruptedTasks == null || interruptedTasks.isEmpty()) {
+            return null;
+        }
+        Map.Entry<String, Object> firstEntry = interruptedTasks.entrySet().iterator().next();
+        Map<String, Object> taskInfo = (Map<String, Object>) firstEntry.getValue();
+        Map<String, Object> aiMessageData = (Map<String, Object>) taskInfo.get("ai_message");
+        AssistantMessage aiMessage = reconstructAssistantMessage(aiMessageData);
+        List<Task> remainingTasks = deserializeTaskList(
+                (List<Map<String, Object>>) taskInfo.get("remaining_tasks"));
+        Integer savedIteration = (Integer) taskInfo.get("iteration");
+        List<String> componentIds = (List<String>) taskInfo.getOrDefault("component_ids", List.of());
+        if (remainingTasks.isEmpty()) {
+            return null;
+        }
+        return new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds);
     }
 
     @SuppressWarnings("unchecked")

@@ -661,7 +661,7 @@ public class ReActAgent extends BaseAgent {
             }
             List<ToolInfo> tools = getAbilityManager().listToolInfo();
 
-            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
+            for (int iteration = startIteration; iteration + 1 < config.getMaxIterations(); iteration++) {
                 Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
                 injectPendingSteering(ctx, context);

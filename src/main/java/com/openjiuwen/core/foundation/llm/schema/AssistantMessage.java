@@ -181,7 +181,7 @@ public class AssistantMessage extends BaseMessage {
                         .type((String) tc.getOrDefault("type", "function"))
                         .name((String) function.getOrDefault("name", ""))
                         .arguments((String) function.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : null)
+                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : 0)
                         .build());
             } else {
                 result.add(ToolCall.builder()
@@ -189,7 +189,7 @@ public class AssistantMessage extends BaseMessage {
                         .type((String) tc.getOrDefault("type", "function"))
                         .name((String) tc.getOrDefault("name", ""))
                         .arguments((String) tc.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : null)
+                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : 0)
                         .build());
             }
         }
