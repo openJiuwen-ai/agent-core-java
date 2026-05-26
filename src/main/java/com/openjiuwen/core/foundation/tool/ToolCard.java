@@ -160,7 +160,9 @@ public class ToolCard extends BaseCard {
          */
         public ToolCard build() {
             ToolCard card = new ToolCard();
-            card.setId(id);
+            if (id != null) {
+                card.setId(id);
+            }
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);

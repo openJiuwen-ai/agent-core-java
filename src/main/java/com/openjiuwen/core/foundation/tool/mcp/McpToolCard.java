@@ -176,7 +176,9 @@ public class McpToolCard extends ToolCard {
          */
         public McpToolCard build() {
             McpToolCard card = new McpToolCard();
-            card.setId(id);
+            if (id != null) {
+                card.setId(id);
+            }
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);

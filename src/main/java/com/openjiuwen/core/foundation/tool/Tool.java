@@ -33,16 +33,12 @@ public abstract class Tool {
     /**
      * Construct a new tool with the given configuration card.
      *
-     * @param card the tool card; must not be null and must have a valid id
+     * @param card the tool card; must not be null
      * @throws com.openjiuwen.core.common.exception.ToolError if card is invalid
      */
     protected Tool(ToolCard card) {
         if (card == null) {
             throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID, "card", "null", "reason", "card is None");
-        }
-        if (card.getId() == null || card.getId().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID,
-                    "card", card.toString(), "reason", "card id is None or empty");
         }
         this.card = card;
     }

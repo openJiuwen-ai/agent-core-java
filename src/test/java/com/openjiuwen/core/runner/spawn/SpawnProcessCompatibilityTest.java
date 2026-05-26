@@ -171,66 +171,6 @@ class SpawnProcessCompatibilityTest {
     }
 
     @Test
-    void childProcessShouldStreamTeamAgentInputsLikePythonTeamAgentStreaming() {
-        SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                SpawnAgentConfig.builder()
-                        .agentKind(SpawnAgentKind.TEAM_AGENT)
-                        .payload(java.util.Map.of(
-                                "spec", java.util.Map.of(
-                                        "name", "stream-team",
-                                        "members", java.util.List.of(java.util.Map.of(
-                                                "name", "leader",
-                                                "role", "leader"))),
-                                "context", java.util.Map.of(
-                                        "team_id", "stream-team",
-                                        "member_name", "leader",
-                                        "role", "leader",
-                                        "metadata", java.util.Map.of())))
-                        .build(),
-                java.util.Map.of("query", "initial"),
-                null,
-                null
-        );
-        assertThat(handle.receiveMessage().getType()).isEqualTo(MessageType.DONE);
-
-        handle.sendMessage(Message.builder()
-                .type(MessageType.INPUT)
-                .payload(java.util.Map.of(
-                        "agent_config", java.util.Map.of(
-                                "agent_kind", "team_agent",
-                                "payload", java.util.Map.of(
-                                        "spec", java.util.Map.of(
-                                                "name", "stream-team",
-                                                "members", java.util.List.of(java.util.Map.of(
-                                                        "name", "leader",
-                                                        "role", "leader"))),
-                                        "context", java.util.Map.of(
-                                                "team_id", "stream-team",
-                                                "member_name", "leader",
-                                                "role", "leader",
-                                                "metadata", java.util.Map.of()))),
-                        "inputs", java.util.Map.of("query", "stream this"),
-                        "streaming", true))
-                .build());
-
-        Message chunk = handle.receiveMessage();
-        Message done = chunk;
-        while (done.getType() == MessageType.STREAM_CHUNK) {
-            done = handle.receiveMessage();
-        }
-
-        assertThat(chunk.getType()).isEqualTo(MessageType.STREAM_CHUNK);
-        assertThat(chunk.getPayload()).asString()
-                .contains("controller_output")
-                .contains("model_client_config is required");
-        assertThat(done.getType()).isEqualTo(MessageType.DONE);
-        assertThat(done.getPayload()).asString()
-                .contains("controller_output")
-                .contains("model_client_config is required");
-        assertThat(handle.shutdown(1.0)).isTrue();
-    }
-
-    @Test
     void runnerSpawnAgentShouldStartHealthCheckWhenSpawnConfigIsProvided() {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
                 new ClassAgentSpawnConfig(

@@ -179,11 +179,9 @@ public class CallbackFramework {
             callbackFilters.put(callback, new ArrayList<>(eventFilters));
         }
 
-        // Add to chain if rollback/error handlers provided
-        if (rollbackHandler != null || errorHandler != null) {
-            chains.computeIfAbsent(event, CallbackChain::new)
-                    .add(callbackInfo, rollbackHandler, errorHandler);
-        }
+        // Add to chain so triggerChain includes all callbacks in order
+        chains.computeIfAbsent(event, CallbackChain::new)
+                .add(callbackInfo, rollbackHandler, errorHandler);
 
         if (enableLogging) {
             log.info("Registered callback: {} -> {}", event, callbackInfo.getCallbackDisplayName());
@@ -411,9 +409,9 @@ public class CallbackFramework {
                 }
 
                 // Execute ERROR hooks
-                Map<String, Object> errorKwargs = new HashMap<>(kwargs);
+                Map<String, Object> errorKwargs = new HashMap<>(resolvedKwargs);
                 errorKwargs.put("_error", e);
-                executeHooks(event, HookType.ERROR, args, errorKwargs);
+                executeHooks(event, HookType.ERROR, resolvedArgs, errorKwargs);
                 RuntimeException requested = extractRequestedException(errorKwargs);
                 if (requested != null) {
                     throw requested;
@@ -427,7 +425,7 @@ public class CallbackFramework {
         }
 
         // Execute AFTER hooks
-        Map<String, Object> afterKwargs = new HashMap<>(kwargs);
+        Map<String, Object> afterKwargs = new HashMap<>(resolvedKwargs);
         afterKwargs.put("_results", results);
         executeHooks(event, HookType.AFTER, args, afterKwargs);
 
@@ -649,13 +647,16 @@ public class CallbackFramework {
                 log.warn("Event '{}' execution timeout after {}s", event, timeoutSeconds);
             }
             return Collections.emptyList();
-        } catch (Exception e) {
+        } catch (java.util.concurrent.ExecutionException e) {
             if (enableLogging) {
-                log.error("Error during timed trigger of event '{}': {}", event, e.getMessage());
+                log.error("Error during timed trigger of event '{}', cause:", event, e.getCause() != null ? e.getCause().getMessage() : "unknown", e.getCause());
             }
             return Collections.emptyList();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyList();
         } finally {
-            executor.shutdownNow();
+            executor.shutdown();
         }
     }
 

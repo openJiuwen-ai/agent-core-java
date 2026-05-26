@@ -295,6 +295,7 @@ public class Task {
                     markTimeout();
                 } else if (cancelReason != null) {
                     markCancelled();
+                    return;
                 } else {
                     result = value;
                     status = TaskStatus.COMPLETED;
@@ -309,7 +310,7 @@ public class Task {
             synchronized (this) {
                 if (isTimeoutTriggered) {
                     markTimeout();
-                } else {
+                } else if (!isTerminal()) {
                     markCancelled();
                 }
             }
@@ -317,7 +318,7 @@ public class Task {
             synchronized (this) {
                 if (isTimeoutTriggered) {
                     markTimeout();
-                } else {
+                } else if (!isTerminal()) {
                     markCancelled();
                 }
             }

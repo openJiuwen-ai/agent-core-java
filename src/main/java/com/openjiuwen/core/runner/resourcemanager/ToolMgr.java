@@ -172,7 +172,7 @@ public class ToolMgr {
             case "sse" -> new SseClient(config);
             case "stdio" -> new StdioClient(config);
             case "openapi" -> new OpenApiClient(config);
-            case "streamable_http", "streamable-http", "http" -> new StreamableHttpClient(config);
+            case "streamable_http", "streamable-http" -> new StreamableHttpClient(config);
             case "playwright" -> new PlaywrightClient(config);
             default -> throw new UnsupportedOperationException("Unsupported MCP client type: " + config.getClientType());
         };

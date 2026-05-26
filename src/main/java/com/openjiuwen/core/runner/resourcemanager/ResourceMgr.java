@@ -1072,7 +1072,7 @@ public class ResourceMgr {
                     shouldSkipMissingTag));
         } else {
             List<String> serverNames = normalizeStringList(serverName);
-            if (serverNames.isEmpty()) {
+            if (serverNames.isEmpty() || serverNames.stream().anyMatch(String::isEmpty)) {
                 throw ErrorHelper.buildError(errorCode,
                         "server_id", String.valueOf(serverId), "reason", "server_name is empty");
             }
@@ -1211,6 +1211,11 @@ public class ResourceMgr {
             return List.of(sc);
         }
         if (config instanceof List<?> list) {
+            if (list.isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
+                        "server_config", String.valueOf(config),
+                        "reason", "server_config list is empty");
+            }
             return (List<McpServerConfig>) list;
         }
         throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,

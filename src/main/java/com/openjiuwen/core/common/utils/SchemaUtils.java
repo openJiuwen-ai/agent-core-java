@@ -123,6 +123,24 @@ public final class SchemaUtils {
         try {
             Map<String, Object> properties = getMapOrEmpty(schema, "properties");
             List<String> required = getListOrEmpty(schema, "required");
+            Object additionalProperties = schema.get("additionalProperties");
+
+            // Check for extra fields not in schema
+            // Allow extra fields if:
+            // 1. additionalProperties is explicitly true, OR
+            // 2. properties is empty/not defined (no constraint on specific properties)
+            boolean hasPropertyConstraint = !properties.isEmpty();
+            boolean allowAdditional = !(hasPropertyConstraint
+                    && (additionalProperties instanceof Boolean
+                    && ((Boolean) additionalProperties) == Boolean.FALSE));
+            if (!allowAdditional) {
+                for (String field : data.keySet()) {
+                    if (!properties.containsKey(field)) {
+                        throw new IllegalArgumentException(
+                                "Unexpected keyword argument: " + field);
+                    }
+                }
+            }
 
             // Check required fields
             for (String field : required) {

@@ -51,9 +51,6 @@ public class BaseCard {
      * Auto-generated for codecheck compliance.
      */
     public void setId(String id) {
-        if (id == null) {
-            return;
-        }
         this.id = id;
     }
 
