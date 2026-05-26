@@ -288,7 +288,8 @@ public class InMemoryCheckpointer extends Checkpointer {
             }
 
             if (session.state() instanceof WorkflowCommitState workflowState) {
-                stateUpdatesBlobs.put(workflowId, deepCopyMap(workflowState.getUpdates()));
+                Map<String, Object> updates = workflowState.getUpdates();
+                stateUpdatesBlobs.put(workflowId, deepCopyMap(updates));
             }
         }
 

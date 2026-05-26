@@ -4,7 +4,9 @@
 
 package com.openjiuwen.core.graph.store;
 
+import com.openjiuwen.core.graph.pregel.BarrierMessage;
 import com.openjiuwen.core.graph.pregel.Message;
+import com.openjiuwen.core.graph.pregel.TriggerMessage;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
@@ -109,6 +111,14 @@ public class InMemoryStore implements Store {
         }
         if (value instanceof GraphStoreState graphStoreState) {
             return deepCopy(graphStoreState);
+        }
+        if (value instanceof TriggerMessage triggerMessage) {
+            return new TriggerMessage(triggerMessage.getSender(), triggerMessage.getTarget(),
+                    copyValue(triggerMessage.getPayload()));
+        }
+        if (value instanceof BarrierMessage barrierMessage) {
+            return new BarrierMessage(barrierMessage.getSender(), barrierMessage.getTarget(),
+                    copyValue(barrierMessage.getPayload()));
         }
         if (value instanceof Message message) {
             return new Message(message.getSender(), message.getTarget(), copyValue(message.getPayload()));
