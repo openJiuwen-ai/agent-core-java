@@ -51,19 +51,20 @@ public class EditMemoryTool extends AbstractHarnessTool {
     }
 
     private Map<String, Object> invokeMemoryEdit(String path, String oldText, String newText) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("path", path);
-        result.put("success", true);
-
         try {
             if (memoryContext instanceof com.openjiuwen.core.memory.lite.MemoryToolContext ctx) {
-                ctx.edit(path, oldText, newText);
+                return ctx.edit(path, oldText, newText);
             }
         } catch (Exception e) {
+            Map<String, Object> result = new LinkedHashMap<>();
             result.put("error", e.getMessage());
             result.put("success", false);
+            return result;
         }
 
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("path", path);
+        result.put("success", false);
         return result;
     }
 }

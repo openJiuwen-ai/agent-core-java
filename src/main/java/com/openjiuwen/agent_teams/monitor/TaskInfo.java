@@ -102,4 +102,9 @@ public class TaskInfo {
     public void setUpdatedAt(Long updatedAt) {
         this.updatedAt = updatedAt;
     }
+    
+    public static TaskInfo fromInternal(Object task) {
+        // Placeholder: convert internal task model
+        return new TaskInfo("", "", "", "", "pending");
+    }
 }

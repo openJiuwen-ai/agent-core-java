@@ -116,10 +116,15 @@ class TestInMemoryKvStore {
         void testDeleteNonExistentKeyNoError() throws Exception {
             InMemoryKvStore store = new InMemoryKvStore();
 
+            // Deleting a non-existent key should not throw an exception
+            // This matches Python behavior: await kv_store.delete("key") succeeds even if key doesn't exist
             store.delete("nonexistent").get();
 
-            // No exception should be thrown
-            assertTrue(true);
+            // Verify the key still doesn't exist after attempted delete
+            Boolean exists = store.exists("nonexistent").get();
+            assertFalse(exists, "Non-existent key should not exist after delete attempt");
+
+            // No exception should be thrown - test passes if we reach here
         }
     }
 

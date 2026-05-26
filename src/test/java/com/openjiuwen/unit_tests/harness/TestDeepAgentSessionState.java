@@ -4,14 +4,13 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.harness.schema.DeepAgentState;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for DeepAgent session state.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.harness.test_deep_agent_session_state}.
  */
 class TestDeepAgentSessionState {
 
@@ -19,6 +18,7 @@ class TestDeepAgentSessionState {
     @Tag("level0")
     @DisplayName("Session state maintains state correctly")
     void testSessionStateMaintainsState() {
-        assertTrue(true);
+        DeepAgentState state = new DeepAgentState();
+        assertNotNull(state, "DeepAgentState should be constructable");
     }
 }

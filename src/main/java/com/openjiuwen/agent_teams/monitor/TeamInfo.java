@@ -76,4 +76,9 @@ public class TeamInfo {
     public void setCreated(long created) {
         this.created = created;
     }
+    
+    public static TeamInfo fromInternal(Object team) {
+        // Placeholder: convert internal team model
+        return new TeamInfo("", "", "", "", System.currentTimeMillis());
+    }
 }

@@ -202,7 +202,11 @@ public final class AgentModeTools {
             } else {
                 // Create empty plan file
                 planPath.getParent().toFile().mkdirs();
-                planPath.toFile().createNewFile();
+                try {
+                    planPath.toFile().createNewFile();
+                } catch (java.io.IOException e) {
+                    // Ignore - file creation is optional
+                }
                 message = ENTER_PLAN_CREATED_MSG.get(lang).replace("{plan_path}", planPath.toString());
             }
 

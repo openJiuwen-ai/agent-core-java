@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness.rails;
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.DisplayName;
 
 import java.util.*;
 
@@ -17,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Mirrors Python's {@code tests.unit_tests.harness.rails.test_external_memory_rail}.
  */
-@ExtendWith(MockitoExtension.class)
 class TestExternalMemoryRail {
 
     // ---------------------------------------------------------------------------
@@ -59,19 +58,16 @@ class TestExternalMemoryRail {
     // ---------------------------------------------------------------------------
 
     @Nested
+    @DisplayName("Resolve user text for memory tests")
     class TestResolveUserTextForMemory {
 
         @Test
         @Tag("level0")
         @DisplayName("Only query field - returns query directly")
         void testOnlyQuery() {
-            // Python: test_only_query
             MockInputs inputs = new MockInputs("test query");
             MockContext ctx = new MockContext(inputs);
 
-            // In Python: ExternalMemoryRail._resolve_user_text_for_memory(ctx)
-            // Expected result: "test query"
-            
             String result = resolveUserTextForMemory(ctx);
             assertEquals("test query", result);
         }
@@ -80,89 +76,104 @@ class TestExternalMemoryRail {
         @Tag("level0")
         @DisplayName("Only messages - extracts last user message")
         void testOnlyMessages() {
-            // Python: test_only_messages
             List<Map<String, String>> messages = new ArrayList<>();
-            messages.add(Map.of("role", "assistant", "content", "Hello"));
-            messages.add(Map.of("role", "user", "content", "How are you?"));
-            
+            messages.add(Map.of("role", "system", "content", "system message"));
+            messages.add(Map.of("role", "user", "content", "user message 1"));
+            messages.add(Map.of("role", "assistant", "content", "assistant response"));
+            messages.add(Map.of("role", "user", "content", "user message 2"));
+
             MockInputs inputs = new MockInputs(messages);
             MockContext ctx = new MockContext(inputs);
 
             String result = resolveUserTextForMemory(ctx);
-            assertEquals("How are you?", result);
+            assertEquals("user message 2", result);
         }
 
         @Test
         @Tag("level0")
-        @DisplayName("Both query and messages - combines them")
+        @DisplayName("Both query and messages - query takes priority")
         void testBothQueryAndMessages() {
-            // Python: test_both_query_and_messages
-            MockInputs inputs = new MockInputs();
-            inputs.query = "test query";
-            inputs.messages = List.of(Map.of("role", "user", "content", "context msg"));
-            
+            List<Map<String, String>> messages = new ArrayList<>();
+            messages.add(Map.of("role", "user", "content", "message content"));
+
+            MockInputs inputs = new MockInputs("priority query");
+            inputs.messages = messages;
+
             MockContext ctx = new MockContext(inputs);
 
-            // Expected: combined text from both sources
             String result = resolveUserTextForMemory(ctx);
-            assertTrue(result.contains("test query") || result.contains("context msg"));
+            assertEquals("priority query", result);
         }
 
         @Test
         @Tag("level0")
-        @DisplayName("Neither query nor messages - returns empty string")
+        @DisplayName("Neither query nor messages - returns null")
         void testNeitherQueryNorMessages() {
-            // Python: test_neither_query_nor_messages
             MockInputs inputs = new MockInputs();
             MockContext ctx = new MockContext(inputs);
 
             String result = resolveUserTextForMemory(ctx);
-            assertEquals("", result);
+            assertNull(result);
         }
+    }
 
-        // Helper method mirroring Python's _resolve_user_text_for_memory
-        private String resolveUserTextForMemory(MockContext ctx) {
-            MockInputs inputs = ctx.getInputs();
-            
-            if (inputs.getQuery() != null && !inputs.getQuery().isEmpty()) {
-                return inputs.getQuery();
-            }
-            
-            if (inputs.getMessages() != null && !inputs.getMessages().isEmpty()) {
-                // Find last user message
-                for (int i = inputs.getMessages().size() - 1; i >= 0; i--) {
-                    Map<String, String> msg = inputs.getMessages().get(i);
-                    if ("user".equals(msg.get("role"))) {
-                        return msg.get("content");
-                    }
+    // ---------------------------------------------------------------------------
+    // Tests - Level 1: Memory storage
+    // ---------------------------------------------------------------------------
+
+    @Test
+    @Tag("level1")
+    @DisplayName("External memory storage simulation")
+    void testExternalMemoryStorageSimulation() {
+        Map<String, List<String>> memoryStore = new HashMap<>();
+        String userId = "user-001";
+        
+        // Store memories
+        memoryStore.put(userId, new ArrayList<>());
+        memoryStore.get(userId).add("User prefers JSON output");
+        memoryStore.get(userId).add("User is working on Python project");
+        
+        assertEquals(2, memoryStore.get(userId).size());
+        assertTrue(memoryStore.get(userId).contains("User prefers JSON output"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Memory retrieval by context")
+    void testMemoryRetrievalByContext() {
+        List<Map<String, Object>> memories = new ArrayList<>();
+        memories.add(Map.of("content", "Memory 1", "relevance", 0.9));
+        memories.add(Map.of("content", "Memory 2", "relevance", 0.7));
+        memories.add(Map.of("content", "Memory 3", "relevance", 0.5));
+        
+        // Sort by relevance
+        memories.sort((a, b) -> Double.compare((Double) b.get("relevance"), (Double) a.get("relevance")));
+        
+        assertEquals("Memory 1", memories.get(0).get("content"));
+        assertEquals(0.9, memories.get(0).get("relevance"));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helper method
+    // ---------------------------------------------------------------------------
+
+    private String resolveUserTextForMemory(MockContext ctx) {
+        MockInputs inputs = ctx.getInputs();
+        
+        if (inputs.getQuery() != null) {
+            return inputs.getQuery();
+        }
+        
+        if (inputs.getMessages() != null && !inputs.getMessages().isEmpty()) {
+            // Find last user message
+            for (int i = inputs.getMessages().size() - 1; i >= 0; i--) {
+                Map<String, String> msg = inputs.getMessages().get(i);
+                if ("user".equals(msg.get("role"))) {
+                    return msg.get("content");
                 }
             }
-            
-            return "";
         }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests: memory provider integration
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level0")
-    @DisplayName("External memory rail prefetches relevant context")
-    void testExternalMemoryPrefetch() {
-        // Python: test_external_memory_prefetch
-        // Placeholder: Full test requires MockMemoryProvider and rail setup
         
-        assertTrue(true); // Placeholder
-    }
-
-    @Test
-    @Tag("level0")
-    @DisplayName("External memory rail syncs after tool execution")
-    void testExternalMemorySync() {
-        // Python: test_external_memory_sync
-        // Placeholder: Full test requires sync method verification
-        
-        assertTrue(true); // Placeholder
+        return null;
     }
 }

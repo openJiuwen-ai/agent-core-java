@@ -98,4 +98,9 @@ public class MemberInfo {
     public void setMode(String mode) {
         this.mode = mode;
     }
+    
+    public static MemberInfo fromInternal(Object member) {
+        // Placeholder: convert internal member model
+        return new MemberInfo("", "", "", "active", "member");
+    }
 }

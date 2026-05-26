@@ -117,8 +117,21 @@ public class ActionController extends BaseController {
      * <p>
      * Mirrors Python's {@code describe_actions} method.
      */
-    public Map<String, ActionSpec> describeActions() {
-        return new HashMap<>(actionSpecs);
+    @Override
+    public Map<String, Map<String, Object>> describeActions() {
+        Map<String, Map<String, Object>> result = new HashMap<>();
+        for (Map.Entry<String, ActionSpec> entry : actionSpecs.entrySet()) {
+            result.put(entry.getKey(), actionSpecToMap(entry.getValue()));
+        }
+        return result;
+    }
+    
+    private Map<String, Object> actionSpecToMap(ActionSpec spec) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("summary", spec.getSummary());
+        map.put("when_to_use", spec.getWhenToUse());
+        map.put("params", spec.getParams());
+        return map;
     }
 
     /**

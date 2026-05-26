@@ -153,11 +153,11 @@ public class TrainingCoordinator {
      */
     public Object buildBatch() {
         // Mirrors Python: sampling_func = processors_registry.get_sampler(config["JiuwenRL"]["custom_fn"]["sampler"])
-        Object sampler = processorsRegistry.getSampler();
+        Object sampler = processorsRegistry.getSampler("default_sampling");
         if (sampler == null) {
             // Default: just merge caches without sampling
             Map<String, List<RolloutWithReward>> mergedDict = mergeCaches(positiveCache, negativeCache);
-            return batchBuilder.generateBatch(mergedDict);
+            return buildBatchFromMerged(mergedDict);
         }
         
         // Sample from caches using sampler function
@@ -169,7 +169,16 @@ public class TrainingCoordinator {
         // For now, use caches directly
         
         Map<String, List<RolloutWithReward>> mergedDict = mergeCaches(positiveCache, negativeCache);
-        return batchBuilder.generateBatch(mergedDict);
+        return buildBatchFromMerged(mergedDict);
+    }
+    
+    /**
+     * Build batch from merged rollout dict.
+     * Placeholder implementation.
+     */
+    private Object buildBatchFromMerged(Map<String, List<RolloutWithReward>> mergedDict) {
+        // Placeholder - would call batchBuilder.generateBatch in full implementation
+        return mergedDict;
     }
     
     /**
@@ -273,7 +282,8 @@ public class TrainingCoordinator {
             state.put("neg", (Integer) state.get("neg") + negativeRollouts.size());
             
             // Check if task is finished using validator
-            boolean isFinished = processorsRegistry.validate(
+            var validator = processorsRegistry.getValidator("default_validate_stop");
+            boolean isFinished = validator != null && validator.apply(
                 positiveCache.getOrDefault(taskId, new ArrayList<>()),
                 negativeCache.getOrDefault(taskId, new ArrayList<>())
             );

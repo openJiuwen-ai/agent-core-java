@@ -4,70 +4,90 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for DeepAgent public APIs.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.harness.test_deep_agent}.
  */
-class TestDeepAgent {
-
-    // ---------------------------------------------------------------------------
-    // Tests: DeepAgent creation
-    // ---------------------------------------------------------------------------
+class v {
 
     @Test
     @Tag("level0")
-    @DisplayName("DeepAgent can be created with create_deep_agent")
+    @DisplayName("DeepAgent can be created with AgentCard")
     void testDeepAgentCanBeCreated() {
-        // Python: test_create_deep_agent
-        assertTrue(true); // Placeholder - requires create_deep_agent factory
+        AgentCard card = AgentCard.builder()
+            .id("test-agent")
+            .name("Test Agent")
+            .description("Test agent")
+            .build();
+        
+        DeepAgent agent = new DeepAgent(card);
+        assertNotNull(agent);
+        assertEquals("test-agent", agent.getCard().getId());
     }
 
     @Test
     @Tag("level0")
     @DisplayName("DeepAgent initializes with config")
     void testDeepAgentInitializesWithConfig() {
-        // Python: test_deep_agent_config
-        assertTrue(true); // Placeholder - requires DeepAgentConfig
+        AgentCard card = AgentCard.builder()
+            .id("config-test")
+            .name("Config Test")
+            .description("Config test")
+            .build();
+        
+        DeepAgent agent = new DeepAgent(card);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(card);
+        
+        agent.configure(config);
+        assertNotNull(agent);
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: DeepAgent rails
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("DeepAgent registers rails correctly")
     void testDeepAgentRegistersRailsCorrectly() {
-        // Python: test_register_rails
-        assertTrue(true); // Placeholder - requires AgentRail registration
+        AgentCard card = AgentCard.builder()
+            .id("rail-test")
+            .name("Rail Test")
+            .description("Rail test")
+            .build();
+        
+        DeepAgent agent = new DeepAgent(card);
+        assertNotNull(agent.getAbilityManager());
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: DeepAgent subagents
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("DeepAgent configures subagents")
     void testDeepAgentConfiguresSubagents() {
-        // Python: test_subagent_config
-        assertTrue(true); // Placeholder - requires SubAgentConfig
+        AgentCard card = AgentCard.builder()
+            .id("subagent-test")
+            .name("Subagent Test")
+            .description("Subagent test")
+            .build();
+        
+        DeepAgent agent = new DeepAgent(card);
+        assertTrue(agent instanceof com.openjiuwen.core.singleagent.BaseAgent);
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: DeepAgent tools
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("DeepAgent registers tools")
     void testDeepAgentRegistersTools() {
-        // Python: test_tool_registration
-        assertTrue(true); // Placeholder - requires AbilityManager
+        AgentCard card = AgentCard.builder()
+            .id("tool-test")
+            .name("Tool Test")
+            .description("Tool test")
+            .build();
+        
+        DeepAgent agent = new DeepAgent(card);
+        assertNotNull(agent.getAbilityManager());
     }
 }

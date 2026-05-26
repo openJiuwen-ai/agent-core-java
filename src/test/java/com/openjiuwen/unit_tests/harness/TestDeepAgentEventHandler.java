@@ -4,14 +4,13 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for DeepAgent event handler.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.harness.test_deep_agent_event_handler}.
  */
 class TestDeepAgentEventHandler {
 
@@ -19,6 +18,17 @@ class TestDeepAgentEventHandler {
     @Tag("level0")
     @DisplayName("Event handler processes events correctly")
     void testEventHandlerProcessesEvents() {
-        assertTrue(true);
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
+        assertNotNull(handler, "TaskLoopEventHandler should be constructable");
+        assertEquals("deep_agent_task", TaskLoopEventHandler.DEEP_TASK_TYPE,
+            "Task type constant should match");
+    }
+    
+    @Test
+    @Tag("level0")
+    @DisplayName("Event handler has interaction queues")
+    void testEventHandlerHasInteractionQueues() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
+        assertNotNull(handler);
     }
 }

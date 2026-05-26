@@ -58,6 +58,24 @@ public abstract class Chunker implements Processor<List<Document>, List<TextChun
         return chunks;
     }
 
+    /**
+     * Get chunk size.
+     *
+     * @return chunk size in characters
+     */
+    public int getChunkSize() {
+        return chunkSize;
+    }
+
+    /**
+     * Get chunk overlap.
+     *
+     * @return chunk overlap in characters
+     */
+    public int getChunkOverlap() {
+        return chunkOverlap;
+    }
+
     @Override
     public List<TextChunk> process(List<Document> input, Map<String, Object> options) {
         return chunkDocuments(input);

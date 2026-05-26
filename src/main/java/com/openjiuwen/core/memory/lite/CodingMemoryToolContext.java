@@ -118,7 +118,27 @@ public class CodingMemoryToolContext extends LiteMemoryToolContextBase {
      * @param newText  the new text
      * @return result map with success key
      */
-    public static Map<String, Object> edit(String path, String oldText, String newText) {
+    @Override
+    public Map<String, Object> edit(String path, String oldText, String newText) {
+        return doEdit(path, oldText, newText);
+    }
+    
+    /**
+     * Static convenience method for edit operation.
+     *
+     * @param path     the file path
+     * @param oldText  the text to replace
+     * @param newText  the new text
+     * @return result map with success key
+     */
+    public static Map<String, Object> staticEdit(String path, String oldText, String newText) {
+        return doEdit(path, oldText, newText);
+    }
+    
+    /**
+     * Internal edit implementation.
+     */
+    private static Map<String, Object> doEdit(String path, String oldText, String newText) {
         Map<String, Object> result = new HashMap<>();
         try {
             String validatedPath = CodingMemoryTools.validateCodingMemoryPath(path);

@@ -4,14 +4,13 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.harness.rails.HeartbeatRail;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for HeartbeatRail.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.harness.test_heartbeat_rail}.
  */
 class TestHeartbeatRail {
 
@@ -19,6 +18,10 @@ class TestHeartbeatRail {
     @Tag("level0")
     @DisplayName("HeartbeatRail sends heartbeat signals")
     void testHeartbeatRailSendsSignals() {
-        assertTrue(true);
+        HeartbeatRail rail = new HeartbeatRail();
+        assertNotNull(rail, "HeartbeatRail should be constructable");
+        assertEquals(80, HeartbeatRail.PRIORITY, "Priority should be 80");
+        assertTrue(rail instanceof com.openjiuwen.harness.rails.DeepAgentRail,
+            "HeartbeatRail should extend DeepAgentRail");
     }
 }

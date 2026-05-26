@@ -4,14 +4,13 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.harness.subagents.ExploreAgent;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for ExploreAgent.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.harness.test_explore_agent}.
  */
 class TestExploreAgent {
 
@@ -19,6 +18,15 @@ class TestExploreAgent {
     @Tag("level0")
     @DisplayName("ExploreAgent can be created")
     void testExploreAgentCanBeCreated() {
-        assertTrue(true);
+        assertEquals("explore_agent", ExploreAgent.FACTORY_NAME,
+            "Factory name should be 'explore_agent'");
+        
+        String cnPrompt = ExploreAgent.getSystemPrompt("cn");
+        String enPrompt = ExploreAgent.getSystemPrompt("en");
+        
+        assertNotNull(cnPrompt, "Chinese prompt should not be null");
+        assertNotNull(enPrompt, "English prompt should not be null");
+        assertTrue(cnPrompt.contains("探索"), "Chinese prompt should contain '探索'");
+        assertTrue(enPrompt.contains("exploration"), "English prompt should contain 'exploration'");
     }
 }

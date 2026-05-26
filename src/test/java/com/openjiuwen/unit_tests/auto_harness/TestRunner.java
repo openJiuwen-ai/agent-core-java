@@ -4,19 +4,52 @@
 
 package com.openjiuwen.unit_tests.auto_harness;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.runner.Runner;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for Runner.
+ * 
+ * <p>Mirrors Python's test_runner in tests.unit_tests.auto_harness.</p>
  */
-@Disabled("Requires runner configuration")
+@DisplayName("TestRunner")
 class TestRunner {
 
-    @Test
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+    @BeforeEach
+    void setUp() {
+        Runner.start();
+    }
+
+    @AfterEach
+    void tearDown() {
+        Runner.stop();
+    }
+
+    @Nested
+    @DisplayName("Test Runner lifecycle")
+    class TestRunnerLifecycle {
+
+        @Test
+        @Tag("level0")
+        @DisplayName("Test Runner starts successfully")
+        void testRunnerStarts() {
+            assertNotNull(Runner.resourceMgr());
+        }
+
+        @Test
+        @Tag("level0")
+        @DisplayName("Test Runner resource manager available")
+        void testResourceManagerAvailable() {
+            var resourceMgr = Runner.resourceMgr();
+            assertNotNull(resourceMgr);
+        }
     }
 }

@@ -57,4 +57,7 @@ public class EvolutionRail extends DeepAgentRail {
 
     public boolean isEvolutionEnabled() { return evolutionEnabled; }
     public void setEvolutionEnabled(boolean enabled) { this.evolutionEnabled = enabled; }
+    
+    /** Get the evolution trigger mode. */
+    public EvolutionTrigger getTrigger() { return trigger; }
 }

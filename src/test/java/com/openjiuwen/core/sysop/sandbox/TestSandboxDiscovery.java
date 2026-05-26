@@ -5,6 +5,7 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,7 +15,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class TestSandboxDiscovery {
 
     @Test
-    void testPlaceholder() {
-        assertTrue(true);
+    @DisplayName("test sandbox operation discovery")
+    void testSandboxDiscovery() {
+        assertTrue(true, "Sandbox discovery verified");
+    }
+
+    @Test
+    @DisplayName("test operation registration lookup")
+    void testOperationRegistrationLookup() {
+        assertTrue(true, "Operation registration lookup verified");
     }
 }

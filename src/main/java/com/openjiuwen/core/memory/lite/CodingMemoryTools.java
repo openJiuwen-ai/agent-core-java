@@ -81,6 +81,20 @@ public final class CodingMemoryTools {
     }
 
     /**
+     * Get the coding memory workspace.
+     */
+    public static Workspace getCodingMemoryWorkspace() {
+        return codingMemoryWorkspace;
+    }
+
+    /**
+     * Get the coding memory system operation.
+     */
+    public static Object getCodingMemorySysOperation() {
+        return codingMemorySysOperation;
+    }
+
+    /**
      * Validate coding memory path.
      *
      * @param path the path to validate

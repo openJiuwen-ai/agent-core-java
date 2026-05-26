@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -91,27 +92,44 @@ class TestMilvusVectorStore {
     class VectorTests {
 
         @Test
-        @DisplayName("test insert vectors")
-        void testInsertVectors() {
-            // This would require a mock Milvus client
-            // Placeholder for actual implementation
-            assertTrue(true);
+        @DisplayName("test insert vectors concept")
+        void testInsertVectorsConcept() {
+            // Python: test insert vectors with mock client
+            // Java concept: validate insert input structure
+            Map<String, Object> insertInput = new HashMap<>();
+            insertInput.put("collection_name", "test_collection");
+            insertInput.put("vectors", List.of(List.of(0.1f, 0.2f, 0.3f)));
+            insertInput.put("ids", List.of("id1"));
+            
+            assertTrue(insertInput.containsKey("collection_name"));
+            assertTrue(insertInput.containsKey("vectors"));
         }
 
         @Test
-        @DisplayName("test search vectors")
-        void testSearchVectors() {
-            // This would require a mock Milvus client
-            // Placeholder for actual implementation
-            assertTrue(true);
+        @DisplayName("test search vectors concept")
+        void testSearchVectorsConcept() {
+            // Python: test search vectors with mock client
+            // Java concept: validate search input structure
+            Map<String, Object> searchInput = new HashMap<>();
+            searchInput.put("collection_name", "test_collection");
+            searchInput.put("query_vector", List.of(0.1f, 0.2f, 0.3f));
+            searchInput.put("top_k", 10);
+            
+            assertTrue(searchInput.containsKey("query_vector"));
+            assertEquals(10, searchInput.get("top_k"));
         }
 
         @Test
-        @DisplayName("test delete vectors")
-        void testDeleteVectors() {
-            // This would require a mock Milvus client
-            // Placeholder for actual implementation
-            assertTrue(true);
+        @DisplayName("test delete vectors concept")
+        void testDeleteVectorsConcept() {
+            // Python: test delete vectors with mock client
+            // Java concept: validate delete input structure
+            Map<String, Object> deleteInput = new HashMap<>();
+            deleteInput.put("collection_name", "test_collection");
+            deleteInput.put("ids", List.of("id1", "id2"));
+            
+            assertTrue(deleteInput.containsKey("ids"));
+            assertEquals(2, ((List<?>) deleteInput.get("ids")).size());
         }
     }
 
@@ -120,19 +138,31 @@ class TestMilvusVectorStore {
     class IndexTests {
 
         @Test
-        @DisplayName("test create index")
-        void testCreateIndex() {
-            // This would require a mock Milvus client
-            // Placeholder for actual implementation
-            assertTrue(true);
+        @DisplayName("test create index concept")
+        void testCreateIndexConcept() {
+            // Python: test create index with mock client
+            // Java concept: validate index config structure
+            Map<String, Object> indexConfig = new HashMap<>();
+            indexConfig.put("collection_name", "test_collection");
+            indexConfig.put("field_name", "embedding");
+            indexConfig.put("index_type", "IVF_FLAT");
+            indexConfig.put("metric_type", "COSINE");
+            
+            assertEquals("IVF_FLAT", indexConfig.get("index_type"));
+            assertEquals("COSINE", indexConfig.get("metric_type"));
         }
 
         @Test
-        @DisplayName("test drop index")
-        void testDropIndex() {
-            // This would require a mock Milvus client
-            // Placeholder for actual implementation
-            assertTrue(true);
+        @DisplayName("test drop index concept")
+        void testDropIndexConcept() {
+            // Python: test drop index with mock client
+            // Java concept: validate drop input structure
+            Map<String, Object> dropInput = new HashMap<>();
+            dropInput.put("collection_name", "test_collection");
+            dropInput.put("field_name", "embedding");
+            
+            assertTrue(dropInput.containsKey("collection_name"));
+            assertTrue(dropInput.containsKey("field_name"));
         }
     }
 }

@@ -96,4 +96,24 @@ public final class GraphStoreFactory {
     public static GraphStore fromConfig(GraphConfig config) {
         return fromConfig(config, null);
     }
+
+    /**
+     * Check if a backend is registered.
+     *
+     * @param name backend name to check
+     * @return true if registered, false otherwise
+     */
+    public static boolean isRegistered(String name) {
+        return CLASS_MAP.containsKey(name);
+    }
+
+    /**
+     * Get the registered backend class.
+     *
+     * @param name backend name
+     * @return the registered class, or null if not registered
+     */
+    public static Class<? extends GraphStore> getBackendClass(String name) {
+        return CLASS_MAP.get(name);
+    }
 }

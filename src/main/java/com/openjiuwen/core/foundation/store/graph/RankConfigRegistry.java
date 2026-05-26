@@ -40,4 +40,26 @@ public final class RankConfigRegistry {
         Map<String, Object> entry = RANKER_CLS.get(database);
         return entry != null ? entry.get(rankType) : null;
     }
+
+    /**
+     * Check if a database has registered rankers.
+     *
+     * @param database database backend name
+     * @return true if registered, false otherwise
+     */
+    public static boolean hasRanker(String database) {
+        return RANKER_CLS.containsKey(database);
+    }
+
+    /**
+     * Check if a specific ranker type is registered for a database.
+     *
+     * @param database database backend name
+     * @param rankType ranker type (e.g. "weighted", "rrf")
+     * @return true if registered, false otherwise
+     */
+    public static boolean hasRanker(String database, String rankType) {
+        Map<String, Object> entry = RANKER_CLS.get(database);
+        return entry != null && entry.containsKey(rankType);
+    }
 }

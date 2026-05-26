@@ -82,10 +82,10 @@ public class TaskLoopEventExecutor {
         
         if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {
             try {
-                // Get the inner ReAct agent
-                com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent = da.getReactAgent();
+                // Get the inner ReAct agent (delegate)
+                com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent = da.getDelegate();
                 if (reactAgent == null) {
-                    LOG.warn("[TaskLoopEventExecutor] react_agent is null, returning empty result");
+                    LOG.warn("[TaskLoopEventExecutor] react_agent delegate is null, returning empty result");
                     Map<String, Object> emptyResult = new HashMap<>();
                     emptyResult.put("output", "");
                     emptyResult.put("result_type", "error");
@@ -99,9 +99,11 @@ public class TaskLoopEventExecutor {
                 // Fire before_task_iteration callback if available
                 fireBeforeTaskIteration(da, effective);
                 
-                // Invoke the inner ReAct agent with streaming enabled
+                // Invoke the inner ReAct agent with a session
                 String sessionId = (String) effective.getOrDefault("conversation_id", "");
-                Object result = reactAgent.invoke(effective, sessionId);
+                com.openjiuwen.core.session.Session session = 
+                    new com.openjiuwen.core.session.internal.AgentTeamSession(sessionId, "deep_agent");
+                Object result = reactAgent.invoke(effective, session);
                 
                 // Fire after_task_iteration callback if available
                 fireAfterTaskIteration(da, result);

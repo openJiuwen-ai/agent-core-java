@@ -114,16 +114,21 @@ class TestDbBasedKvStore {
             assertNull(store.get("key1").get());
         }
 
-        @Test
-        @DisplayName("delete non-existent key no error")
+@Test
+        @DisplayName("delete non-existent key: no error")
         void testDeleteNonExistentKeyNoError() throws Exception {
             DbConnectionStub conn = new DbConnectionStub();
             DbBasedKvStore store = new DbBasedKvStore(conn);
 
+            // Deleting a non-existent key should not throw an exception
+            // This matches Python behavior: await kv_store.delete("key2") succeeds even if key doesn't exist
             store.delete("nonexistent").get();
 
-            // No exception should be thrown
-            assertTrue(true);
+            // Verify the key still doesn't exist after attempted delete
+            Boolean exists = store.exists("nonexistent").get();
+            assertFalse(exists, "Non-existent key should not exist after delete attempt");
+
+            // No exception should be thrown - test passes if we reach here
         }
     }
 
