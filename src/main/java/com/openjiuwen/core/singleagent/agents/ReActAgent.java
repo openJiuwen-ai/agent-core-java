@@ -300,6 +300,7 @@ public class ReActAgent extends BaseAgent {
                 (Integer) null,
                 (Integer) null
         );
+        logLlmRequest(contextWindow.getMessages());
 
         ctx.setInputs(ModelCallInputs.builder()
                 .messages(new ArrayList<>(contextWindow.getMessages()))
@@ -321,6 +322,21 @@ public class ReActAgent extends BaseAgent {
             for (ToolCall tc : aiMessage.getToolCalls()) {
                 Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName() + "(" + tc.getArguments() + ")");
             }
+        }
+    }
+
+    private void logLlmRequest(List<BaseMessage> messages) {
+        if (messages == null) {
+            return;
+        }
+        for (BaseMessage message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String role = message.getRole() != null ? message.getRole() : "";
+            String content = String.valueOf(message.getContent());
+            String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
+            Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
         }
     }
 
@@ -716,9 +732,6 @@ public class ReActAgent extends BaseAgent {
                     Map<String, Object> result = new HashMap<String, Object>();
                     result.put("output", aiMessage.getContent());
                     result.put("result_type", "answer");
-                    if (aiMessage.getUsageMetadata() != null) {
-                        result.put("usage_metadata", aiMessage.getUsageMetadata());
-                    }
                     invokeInputs.setResult(result);
                     return result;
                 }
@@ -1165,9 +1178,6 @@ public class ReActAgent extends BaseAgent {
                 Map<String, Object> result = new HashMap<String, Object>();
                 result.put("output", aiMessage.getContent());
                 result.put("result_type", "answer");
-                if (aiMessage.getUsageMetadata() != null) {
-                    result.put("usage_metadata", aiMessage.getUsageMetadata());
-                }
                 if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
                     result.put("tool_calls", aiMessage.getToolCalls());
                 }

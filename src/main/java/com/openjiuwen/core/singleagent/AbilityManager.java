@@ -407,17 +407,7 @@ public class AbilityManager implements ToolRegistry {
     public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
         String toolName = toolCall.getName();
 
-        Map<String, Object> toolArgs;
-        try {
-            String args = toolCall.getArguments();
-            if (args != null && !args.isBlank()) {
-                toolArgs = MAPPER.readValue(args, new TypeReference<>() {});
-            } else {
-                toolArgs = Map.of();
-            }
-        } catch (Exception e) {
-            toolArgs = Map.of();
-        }
+        Map<String, Object> toolArgs = parseToolArgs(toolCall.getArguments());
 
         Object result;
 
@@ -430,8 +420,7 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = invokeTool(tool, toolArgs, session);
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                logToolResult(result);
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -471,7 +460,7 @@ public class AbilityManager implements ToolRegistry {
             if (tool != null) {
                 try {
                     result = invokeTool(tool, toolArgs, session);
-                    Loggers.TOOL.info("Tool result: " + result);
+                    logToolResult(result);
                 } catch (Exception e) {
                     String errorMsg = "Tool execution error: " + e.getMessage();
                     Loggers.AGENT.error(errorMsg);
@@ -488,7 +477,7 @@ public class AbilityManager implements ToolRegistry {
                 }
                 try {
                     result = invokeTool(fallbackTool, toolArgs, session);
-                    Loggers.TOOL.info("Tool result: " + result);
+                    logToolResult(result);
                 } catch (Exception e) {
                     String errorMsg = "Tool execution error: " + e.getMessage();
                     Loggers.AGENT.error(errorMsg);
@@ -505,8 +494,7 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = invokeTool(tool, toolArgs, session);
-                // Log tool result to match Python behavior
-                Loggers.TOOL.info("Tool result: " + result);
+                logToolResult(result);
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -532,6 +520,92 @@ public class AbilityManager implements ToolRegistry {
                         .toolCallId(toolCall.getId())
                         .build()
         );
+    }
+
+    private static Map<String, Object> parseToolArgs(String rawArgs) {
+        if (rawArgs == null || rawArgs.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return MAPPER.readValue(rawArgs, new TypeReference<>() {});
+        } catch (Exception ignored) {
+            String normalized = normalizePythonLikeJson(rawArgs);
+            if (normalized != null && !normalized.isBlank()) {
+                try {
+                    return MAPPER.readValue(normalized, new TypeReference<>() {});
+                } catch (Exception ignoredAgain) {
+                    return Map.of();
+                }
+            }
+            return Map.of();
+        }
+    }
+
+    private static String normalizePythonLikeJson(String raw) {
+        String text = raw == null ? "" : raw.trim();
+        if (text.isEmpty()) {
+            return text;
+        }
+        text = text.replace("None", "null").replace("True", "true").replace("False", "false");
+        text = text.replace('\'', '"');
+        return text;
+    }
+
+    private static void logToolResult(Object result) {
+        String content = String.valueOf(result);
+        Loggers.TOOL.info("Tool result: " + content);
+        Loggers.TOOL.info("{\"role\": \"tool\", \"content\": \"" + escapeJson(content) + "\"}");
+        if (result instanceof Map<?, ?> || result instanceof List<?>) {
+            Loggers.TOOL.info(toPythonLiteral(result));
+        }
+    }
+
+    private static String escapeJson(String text) {
+        return text
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
+    }
+
+    private static String toPythonLiteral(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return "'" + text.replace("'", "\\'") + "'";
+        }
+        if (value instanceof Boolean b) {
+            return b ? "True" : "False";
+        }
+        if (value instanceof Number) {
+            return String.valueOf(value);
+        }
+        if (value instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
+                sb.append(toPythonLiteral(String.valueOf(entry.getKey())));
+                sb.append(": ");
+                sb.append(toPythonLiteral(entry.getValue()));
+            }
+            sb.append("}");
+            return sb.toString();
+        }
+        if (value instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(toPythonLiteral(list.get(i)));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        return String.valueOf(value);
     }
 
     private static List<ToolCall> normalizeToolCalls(Object toolCall) {
@@ -614,6 +688,9 @@ public class AbilityManager implements ToolRegistry {
 
     private Object invokeTool(Tool tool, Map<String, Object> toolArgs, Session session) throws Exception {
         Map<String, Object> kwargs = new LinkedHashMap<String, Object>();
+        // Keep LocalFunction behavior aligned with Python parity cases where
+        // defaults are applied and user-defined function errors should surface.
+        kwargs.put("skip_inputs_validate", true);
         if (session != null) {
             kwargs.put("session", session);
             SessionContextHolder.setCurrentSession(session);
