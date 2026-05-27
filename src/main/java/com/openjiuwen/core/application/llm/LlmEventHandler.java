@@ -199,25 +199,29 @@ public class LlmEventHandler extends EventHandler {
             );
         }
 
-        ResumeResult plainQueryResume = findInterruptedTaskForPlainQuery(session);
-        if (plainQueryResume != null && displayContent != null && !displayContent.isBlank()) {
-            Loggers.CONTROLLER.info(
-                    "Resuming interrupted workflow from plain query, remaining tasks: {}, saved_iteration: {}",
-                    plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
-            );
-            context.addMessages(plainQueryResume.aiMessage);
-            Task interruptedTask = plainQueryResume.remainingTasks.get(0);
-            setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
-            interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
-            int initialIteration = plainQueryResume.savedIteration != null ? plainQueryResume.savedIteration + 1 : 1;
-            return executeReactLoop(plainQueryResume.remainingTasks, session, initialIteration,
-                    plainQueryResume.aiMessage, context);
+        ResumeResult plainQueryResume = null;
+        boolean hasPlainQuery = displayContent != null && !displayContent.isBlank();
+        if (hasPlainQuery) {
+            plainQueryResume = findInterruptedTaskForPlainQuery(session);
         }
 
         // Normal path: Call LLM to generate plans
         LlmPlanResult planResult = generatePlanFromLlm(event, session, context);
 
         if (planResult.tasks.isEmpty()) {
+            if (plainQueryResume != null) {
+                Loggers.CONTROLLER.info(
+                        "Resuming interrupted workflow from plain query fallback, remaining tasks: {}, saved_iteration: {}",
+                        plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
+                );
+                Task interruptedTask = plainQueryResume.remainingTasks.get(0);
+                setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
+                interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
+                int plainResumeIteration = plainQueryResume.savedIteration != null
+                        ? plainQueryResume.savedIteration + 1 : 1;
+                return executeReactLoop(plainQueryResume.remainingTasks, session, plainResumeIteration,
+                        plainQueryResume.aiMessage, context);
+            }
             Loggers.CONTROLLER.info("ReAct Iteration: 1 end, No task is generated");
             Map<String, Object> finalResult = sendFinalStream(planResult.llmOutput.getContentAsString(), session);
             return unwrapResult(finalResult);
@@ -258,6 +262,20 @@ public class LlmEventHandler extends EventHandler {
             }
         }
 
+        if (plainQueryResume != null) {
+            Loggers.CONTROLLER.info(
+                    "Resuming interrupted workflow from plain query fallback, remaining tasks: {}, saved_iteration: {}",
+                    plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
+            );
+            Task interruptedTask = plainQueryResume.remainingTasks.get(0);
+            setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
+            interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
+            int plainResumeIteration = plainQueryResume.savedIteration != null
+                    ? plainQueryResume.savedIteration + 1 : 1;
+            return executeReactLoop(plainQueryResume.remainingTasks, session, plainResumeIteration,
+                    plainQueryResume.aiMessage, context);
+        }
+
         return executeReactLoop(planResult.tasks, session, initialIteration,
                 planResult.llmOutput, context);
     }
@@ -274,10 +292,8 @@ public class LlmEventHandler extends EventHandler {
         List<Task> currentTasks = tasks;
         AssistantMessage currentAiMessage = aiMessage;
         TaskExecutionResult lastResult = null;
-        boolean allowFirstIterationAtLimit = !currentTasks.isEmpty() && iteration == maxIteration;
 
-        while (!currentTasks.isEmpty() && (iteration < maxIteration || allowFirstIterationAtLimit)) {
-            allowFirstIterationAtLimit = false;
+        while (!currentTasks.isEmpty() && iteration <= maxIteration) {
             Loggers.CONTROLLER.info("ReAct Iteration: {} / {}", iteration, maxIteration);
 
             for (int idx = 0; idx < currentTasks.size(); idx++) {
@@ -493,7 +509,7 @@ public class LlmEventHandler extends EventHandler {
                 "interrupted_tasks", k -> new HashMap<>());
 
         List<String> componentIds = extractComponentIdsFromInteractionData(
-            getFirstInterrupt(interruptionState.getInteractionData()));
+                interruptionState.getInteractionData());
         String stateKey = workflowId.replace('.', '_');
 
         Map<String, Object> taskInfo = new HashMap<>();
@@ -522,6 +538,12 @@ public class LlmEventHandler extends EventHandler {
 
     private void postTaskCompletion(Task task, TaskExecutionResult result,
                                     AgentSessionApi session, ModelContext context) {
+        if (result.output != null && !result.output.isEmpty() && result.output.get(0) instanceof OutputSchema os) {
+            String type = os.getType();
+            if ("plugin_final".equals(type) || "workflow_final".equals(type)) {
+                Loggers.CONTROLLER.info("payload={}", toPythonLiteral(os.getPayload()));
+            }
+        }
         if (result.metadata != null && result.metadata.get("tool_message") instanceof ToolMessage toolMessage) {
             context.addMessages(toolMessage);
             Loggers.CONTROLLER.info("Added tool_message for completed task: {}", task.getTaskId());
@@ -533,8 +555,7 @@ public class LlmEventHandler extends EventHandler {
                     && !(result.metadata != null && result.metadata.get("tool_message") instanceof ToolMessage)) {
                 String type = os.getType();
                 if ("plugin_final".equals(type) || "workflow_final".equals(type)) {
-                    // Add tool result to context
-                    String content = os.getPayload() != null ? os.getPayload().toString() : "";
+                    String content = extractToolMessageContent(os.getPayload());
                     ToolMessage toolMsg = new ToolMessage(content, task.getTaskId());
                     context.addMessages(toolMsg);
                     Loggers.CONTROLLER.info("Added tool_message for completed task: {}", task.getTaskId());
@@ -549,10 +570,79 @@ public class LlmEventHandler extends EventHandler {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private String extractToolMessageContent(Object payload) {
+        Object toolResult = payload;
+        if (payload instanceof Map<?, ?> payloadMap) {
+            toolResult = payloadMap.containsKey("output") ? payloadMap.get("output") : "";
+        }
+        if (toolResult instanceof WorkflowOutput workflowOutput) {
+            toolResult = workflowOutput.getResult();
+        }
+        if (toolResult == null) {
+            return "";
+        }
+        if (toolResult instanceof Map<?, ?> || toolResult instanceof List<?>) {
+            try {
+                return OBJECT_MAPPER.writeValueAsString(toolResult);
+            } catch (Exception ignored) {
+                return toolResult.toString();
+            }
+        }
+        return toolResult.toString();
+    }
+
+    private String toPythonLiteral(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String s) {
+            return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        if (value instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
+                sb.append(toPythonLiteral(String.valueOf(entry.getKey())))
+                        .append(": ")
+                        .append(toPythonLiteral(entry.getValue()));
+            }
+            sb.append("}");
+            return sb.toString();
+        }
+        if (value instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(toPythonLiteral(list.get(i)));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        return "'" + value.toString().replace("\\", "\\\\").replace("'", "\\'") + "'";
+    }
+
     // ==================== LLM Plan Generation ====================
 
     private LlmPlanResult generatePlanFromLlm(Event event, AgentSessionApi session,
                                                ModelContext context) {
+        if (agentConfig.getWorkflows() != null) {
+            for (WorkflowSchema ws : agentConfig.getWorkflows()) {
+                if (ws.getName() == null || ws.getName().isBlank()) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
+                            "error_msg", "workflow '" + ws.getId() + "' is not registered");
+                }
+            }
+        }
         List<ToolInfo> tools = new ArrayList<>();
         if (abilityManager != null) {
             try {
@@ -997,10 +1087,17 @@ public class LlmEventHandler extends EventHandler {
             if (item instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
                 Object payload = os.getPayload();
                 if (payload != null) {
+                    if (payload instanceof Map<?, ?> map) {
+                        Object id = map.get("id");
+                        if (id instanceof String s && !s.isBlank()) {
+                            componentIds.add(s);
+                            continue;
+                        }
+                    }
                     try {
                         var method = payload.getClass().getMethod("getId");
                         Object id = method.invoke(payload);
-                        if (id instanceof String s) {
+                        if (id instanceof String s && !s.isBlank()) {
                             componentIds.add(s);
                         }
                     } catch (Exception e) {

@@ -168,7 +168,7 @@ public final class ContextUtils {
                 }
             }
 
-            int userIdx = findContiguousUserGroupStart(messages, foundUserIdx);
+            int userIdx = foundUserIdx;
             rounds.add(new int[]{userIdx, assistantIdx != null ? assistantIdx : -1});
             i = userIdx - 1;
         }

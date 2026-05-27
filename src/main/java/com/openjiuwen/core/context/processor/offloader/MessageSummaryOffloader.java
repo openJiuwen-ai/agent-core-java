@@ -225,17 +225,6 @@ its potential use cases, for subsequent on-demand loading of these offloaded inf
     if (summaryConfig == null) {
       return;
     }
-    if (summaryConfig.getMessagesToKeep() != null
-        && summaryConfig.getMessagesThreshold() != null
-        && summaryConfig.getMessagesToKeep() >= summaryConfig.getMessagesThreshold()) {
-      throw ErrorHelper.buildError(
-          StatusCode.CONTEXT_EXECUTION_ERROR,
-          "error_msg",
-          "messages_to_keep "
-              + summaryConfig.getMessagesToKeep()
-              + " cannot larger than messages_threshold "
-              + summaryConfig.getMessagesThreshold());
-    }
   }
 
   /** Auto-generated for codecheck compliance. */

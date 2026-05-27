@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriter;
 
 import java.util.Map;
@@ -127,6 +128,11 @@ public abstract class StateSession extends WrappedSession {
         StreamWriter writer = (StreamWriter) customWriter();
         if (writer != null) {
             writer.write(data);
+            return;
+        }
+        StreamWriter outputWriter = (StreamWriter) streamWriter();
+        if (outputWriter != null) {
+            outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 }

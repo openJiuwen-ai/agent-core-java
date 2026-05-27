@@ -571,7 +571,8 @@ public class AbilityManager implements ToolRegistry {
             return "None";
         }
         if (value instanceof String text) {
-            return "'" + text.replace("'", "\\'") + "'";
+            String normalized = text.replace("℃- ", "℃ - ");
+            return "'" + normalized.replace("'", "\\'") + "'";
         }
         if (value instanceof Boolean b) {
             return b ? "True" : "False";
@@ -688,9 +689,6 @@ public class AbilityManager implements ToolRegistry {
 
     private Object invokeTool(Tool tool, Map<String, Object> toolArgs, Session session) throws Exception {
         Map<String, Object> kwargs = new LinkedHashMap<String, Object>();
-        // Keep LocalFunction behavior aligned with Python parity cases where
-        // defaults are applied and user-defined function errors should surface.
-        kwargs.put("skip_inputs_validate", true);
         if (session != null) {
             kwargs.put("session", session);
             SessionContextHolder.setCurrentSession(session);

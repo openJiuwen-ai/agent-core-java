@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriter;
 import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 
@@ -207,6 +208,11 @@ public class NodeSessionApi {
         StreamWriter writer = (StreamWriter) getCustomWriter();
         if (writer != null) {
             writer.write(data);
+            return;
+        }
+        StreamWriter outputWriter = (StreamWriter) getStreamWriter();
+        if (outputWriter != null) {
+            outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 

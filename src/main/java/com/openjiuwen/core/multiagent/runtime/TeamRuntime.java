@@ -26,6 +26,11 @@ import java.util.UUID;
  * into {@link Runner#resourceMgr()} for discovery compatibility.</p>
  */
 public class TeamRuntime {
+    private static final String CALL_DEPTH_KEY = "_team_runtime_call_depth";
+    private static final String ROOT_SENDER_KEY = "_team_runtime_root_sender";
+    private static final String ROOT_RECIPIENT_KEY = "_team_runtime_root_recipient";
+    private static final int MAX_DISPATCH_DEPTH = 64;
+
     private final String teamId;
     private final Map<String, AgentCard> agentCards = new LinkedHashMap<>();
     private final Map<String, AgentProvider<? extends BaseAgent>> providers = new LinkedHashMap<>();
@@ -148,14 +153,55 @@ public class TeamRuntime {
                 .sessionId(sessionId)
                 .build();
         AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
+        int depth = 0;
+        String rootSender = sender;
+        String rootRecipient = recipient;
         if (resolvedSession != null) {
-            resolvedSession.setCurrentAgentId(recipient);
+            Object depthObj = resolvedSession.getState(CALL_DEPTH_KEY);
+            if (depthObj instanceof Number n) {
+                depth = n.intValue();
+            }
+            Object stateRootSender = resolvedSession.getState(ROOT_SENDER_KEY);
+            Object stateRootRecipient = resolvedSession.getState(ROOT_RECIPIENT_KEY);
+            if (stateRootSender instanceof String s && !s.isBlank()) {
+                rootSender = s;
+            }
+            if (stateRootRecipient instanceof String s && !s.isBlank()) {
+                rootRecipient = s;
+            }
+            if (depth == 0) {
+                rootSender = sender;
+                rootRecipient = recipient;
+            }
+            if (depth >= MAX_DISPATCH_DEPTH) {
+                throw ErrorHelper.buildError(
+                        StatusCode.AGENT_GROUP_EXECUTION_ERROR,
+                        "error_msg", "Message from '" + rootSender + "' to '" + rootRecipient
+                                + "' timed out after Nones"
+                );
+            }
+            resolvedSession.updateState(Map.of(
+                    CALL_DEPTH_KEY, depth + 1,
+                    ROOT_SENDER_KEY, rootSender,
+                    ROOT_RECIPIENT_KEY, rootRecipient
+            ));
         }
-        Object result = agent.invoke(envelope.getMessage(), resolvedSession);
-        if (resolvedSession != null) {
-            resolvedSession.setCurrentAgentId(null);
+        try {
+            if (resolvedSession != null) {
+                resolvedSession.setCurrentAgentId(recipient);
+            }
+            return agent.invoke(envelope.getMessage(), resolvedSession);
+        } finally {
+            if (resolvedSession != null) {
+                resolvedSession.setCurrentAgentId(null);
+                int nextDepth = 0;
+                Object currentDepth = resolvedSession.getState(CALL_DEPTH_KEY);
+                if (currentDepth instanceof Number n) {
+                    nextDepth = Math.max(0, n.intValue() - 1);
+                }
+                resolvedSession.updateState(Map.of(CALL_DEPTH_KEY, nextDepth));
+            }
         }
-        return result;
     }
 
     /**

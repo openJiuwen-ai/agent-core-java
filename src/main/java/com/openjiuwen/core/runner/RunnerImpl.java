@@ -533,13 +533,22 @@ public class RunnerImpl {
     }
 
     private RuntimeException wrapRunnerRuntime(String message, RuntimeException error) {
-        if (error instanceof BaseError baseError) {
-            return baseError;
-        }
-        if (error.getCause() instanceof BaseError baseError) {
+        BaseError baseError = findBaseError(error);
+        if (baseError != null) {
             return baseError;
         }
         return new RuntimeException(message, error);
+    }
+
+    private BaseError findBaseError(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if (cursor instanceof BaseError baseError) {
+                return baseError;
+            }
+            cursor = cursor.getCause();
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

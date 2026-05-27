@@ -190,6 +190,11 @@ public class AgentSessionApi implements Session {
         StreamWriter writer = (StreamWriter) inner.streamWriterManager().getCustomWriter();
         if (writer != null) {
             writer.write(data);
+            return;
+        }
+        StreamWriter outputWriter = (StreamWriter) inner.streamWriterManager().getOutputWriter();
+        if (outputWriter != null) {
+            outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 
