@@ -1,0 +1,264 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.agent_evolving.trajectory;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Mirrors Python's tests.unit_tests.agent_evolving.trajectory.test_builder.TestTrajectoryBuilder.
+ * Tests for TrajectoryBuilder - unified trajectory assembler.
+ */
+class TrajectoryBuilderTest {
+
+    private TrajectoryStep makeStep(StepKind kind, Object detail, Object error) {
+        return TrajectoryStep.builder()
+                .kind(kind != null ? kind.value() : "llm")
+                .inputs(detail)
+                .error(error)
+                .meta(new HashMap<>())
+                .build();
+    }
+
+    @Test
+    void builderInitialization() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("session_123")
+                .source("online")
+                .caseId("case_456")
+                .build();
+
+        assertEquals("session_123", builder.getSessionId());
+        assertEquals("online", builder.getSource());
+        assertEquals("case_456", builder.getCaseId());
+        assertTrue(builder.getSteps().isEmpty());
+        assertEquals(0, builder.getCost().get("input_tokens"));
+        assertEquals(0, builder.getCost().get("output_tokens"));
+    }
+
+    @Test
+    void builderWithoutCaseId() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("session_123")
+                .source("offline")
+                .build();
+
+        assertNull(builder.getCaseId());
+    }
+
+    @Test
+    void recordSingleStep() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        TrajectoryStep step = makeStep(StepKind.LLM, null, null);
+        builder.recordStep(step);
+
+        assertEquals(1, builder.getSteps().size());
+        assertEquals(StepKind.LLM, builder.getSteps().get(0).getKindEnum());
+    }
+
+    @Test
+    void recordMultipleSteps() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        TrajectoryStep step1 = makeStep(StepKind.LLM, null, null);
+        TrajectoryStep step2 = makeStep(StepKind.TOOL, null, null);
+        TrajectoryStep step3 = makeStep(StepKind.LLM, null, null);
+
+        builder.recordStep(step1);
+        builder.recordStep(step2);
+        builder.recordStep(step3);
+
+        assertEquals(3, builder.getSteps().size());
+        assertEquals(StepKind.LLM, builder.getSteps().get(0).getKindEnum());
+        assertEquals(StepKind.TOOL, builder.getSteps().get(1).getKindEnum());
+        assertEquals(StepKind.LLM, builder.getSteps().get(2).getKindEnum());
+    }
+
+    @Test
+    void buildReturnsTrajectory() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("session_123")
+                .source("online")
+                .caseId("case_456")
+                .build();
+
+        TrajectoryStep step = makeStep(StepKind.LLM, null, null);
+        builder.recordStep(step);
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertEquals("session_123", trajectory.getSessionId());
+        assertEquals("online", trajectory.getSource());
+        assertEquals("case_456", trajectory.getCaseId());
+        assertEquals(1, trajectory.getSteps().size());
+        assertNotNull(trajectory.getExecutionId());
+    }
+
+    @Test
+    void buildWithEmptySteps() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertTrue(trajectory.getSteps().isEmpty());
+        assertNull(trajectory.getCost());
+    }
+
+    @Test
+    void costAccumulationFromLlmDetail() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        Map<String, Object> usage = new HashMap<>();
+        usage.put("prompt_tokens", 10);
+        usage.put("completion_tokens", 5);
+
+        LLMCallDetail detail = LLMCallDetail.builder()
+                .model("gpt-4")
+                .messages(List.of(Map.of("role", "user", "content", "hi")))
+                .usage(usage)
+                .build();
+
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("llm")
+                .inputs(detail)
+                .meta(new HashMap<>())
+                .build();
+
+        builder.recordStep(step);
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertNotNull(trajectory.getCost());
+        assertEquals(10, trajectory.getCost().get("input_tokens"));
+        assertEquals(5, trajectory.getCost().get("output_tokens"));
+    }
+
+    @Test
+    void costAccumulationMultipleLlmSteps() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        Map<String, Object> usage1 = new HashMap<>();
+        usage1.put("prompt_tokens", 10);
+        usage1.put("completion_tokens", 5);
+
+        Map<String, Object> usage2 = new HashMap<>();
+        usage2.put("prompt_tokens", 20);
+        usage2.put("completion_tokens", 10);
+
+        LLMCallDetail detail1 = LLMCallDetail.builder()
+                .model("gpt-4")
+                .messages(List.of(Map.of("role", "user", "content", "hi")))
+                .usage(usage1)
+                .build();
+
+        LLMCallDetail detail2 = LLMCallDetail.builder()
+                .model("gpt-4")
+                .messages(List.of(Map.of("role", "user", "content", "hello")))
+                .usage(usage2)
+                .build();
+
+        builder.recordStep(TrajectoryStep.builder().kind("llm").inputs(detail1).meta(new HashMap<>()).build());
+        builder.recordStep(makeStep(StepKind.TOOL, null, null));
+        builder.recordStep(TrajectoryStep.builder().kind("llm").inputs(detail2).meta(new HashMap<>()).build());
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertNotNull(trajectory.getCost());
+        assertEquals(30, trajectory.getCost().get("input_tokens"));
+        assertEquals(15, trajectory.getCost().get("output_tokens"));
+    }
+
+    @Test
+    void costNotAccumulatedForToolSteps() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        ToolCallDetail detail = ToolCallDetail.builder()
+                .toolName("test_tool")
+                .toolDescription("A test tool")
+                .build();
+
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("tool")
+                .inputs(detail)
+                .meta(new HashMap<>())
+                .build();
+
+        builder.recordStep(step);
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertNull(trajectory.getCost());
+    }
+
+    @Test
+    void costNotAccumulatedWithoutUsage() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        LLMCallDetail detail = LLMCallDetail.builder()
+                .model("gpt-4")
+                .messages(List.of(Map.of("role", "user", "content", "hi")))
+                .usage(null)
+                .build();
+
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("llm")
+                .inputs(detail)
+                .meta(new HashMap<>())
+                .build();
+
+        builder.recordStep(step);
+
+        Trajectory trajectory = builder.buildTrajectory();
+
+        assertNull(trajectory.getCost());
+    }
+
+    @Test
+    void differentSources() {
+        TrajectoryBuilder onlineBuilder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .build();
+
+        TrajectoryBuilder offlineBuilder = TrajectoryBuilder.builder()
+                .sessionId("s2")
+                .source("offline")
+                .build();
+
+        Trajectory onlineTraj = onlineBuilder.buildTrajectory();
+        Trajectory offlineTraj = offlineBuilder.buildTrajectory();
+
+        assertEquals("online", onlineTraj.getSource());
+        assertEquals("offline", offlineTraj.getSource());
+    }
+}

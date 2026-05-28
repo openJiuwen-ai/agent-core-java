@@ -42,6 +42,12 @@ public class PendingJudgeStore {
         this.ttlSec = ttlSec;
     }
 
+    /** Protected no-arg constructor for in-memory subclassing (testing/local mode). */
+    protected PendingJudgeStore() {
+        this.redis = null;
+        this.ttlSec = 0;
+    }
+
     public void put(Map<String, Object> sample) {
         String sessionId = String.valueOf(sample.getOrDefault("session_id", ""));
         String trajectoryId = String.valueOf(sample.getOrDefault("trajectory_id", ""));

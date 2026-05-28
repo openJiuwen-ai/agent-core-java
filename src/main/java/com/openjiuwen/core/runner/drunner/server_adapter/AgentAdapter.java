@@ -11,9 +11,11 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Exposes a local agent over the distributed-runner MQ transport.
+ * Mirrors Python's AgentAdapter in agent_adapter.py.
  */
 public class AgentAdapter {
 
@@ -44,6 +46,18 @@ public class AgentAdapter {
 
     public void stop() {
         server.stop();
+    }
+
+    public MqServerAdapter getServer() {
+        return server;
+    }
+
+    public void setInvokeHandler(Function<Map<String, Object>, Object> handler) {
+        server.setInvokeHandler(handler);
+    }
+
+    public void setStreamHandler(Function<Map<String, Object>, Iterator<Object>> handler) {
+        server.setStreamHandler(handler);
     }
 
     private Object handleInvoke(Map<String, Object> inputs) {

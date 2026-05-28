@@ -5,11 +5,15 @@
 package com.openjiuwen.deepagents.middlewares;
 
 /**
- * Deprecated compatibility placeholder for the removed deepagents middleware.
+ * Task Planning Middleware for deep agents.
  *
- * <p>Python `0.1.12` moved active behavior into {@code openjiuwen.harness}.
+ * <p>Mirrors Python's {@code task_planning_middleware} module in {@code openjiuwen.deepagents.middlewares}.
+ *
+ * <p>This middleware handles task planning operations for deep agents,
+ * including task decomposition, task scheduling, and task coordination.
+ *
+ * <p>Placeholder implementation - actual functionality to be implemented.
  */
-@Deprecated(forRemoval = false)
 public class TaskPlanningMiddleware {
 
     /**
@@ -26,7 +30,7 @@ public class TaskPlanningMiddleware {
      * @return the planned task result (placeholder)
      */
     public Object plan(Object task) {
-        throw new UnsupportedOperationException(
-                "TaskPlanningMiddleware is deprecated. Migrate to com.openjiuwen.harness rails.");
+        // Placeholder implementation
+        throw new UnsupportedOperationException("TaskPlanningMiddleware.plan() is not yet implemented");
     }
 }

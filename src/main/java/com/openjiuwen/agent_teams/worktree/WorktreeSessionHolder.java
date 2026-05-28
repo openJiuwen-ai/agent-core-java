@@ -34,7 +34,7 @@ public final class WorktreeSessionHolder {
     public static WorktreeSession requireCurrentSession() {
         WorktreeSession session = CURRENT.get();
         if (session == null) {
-            throw new IllegalStateException("No active worktree session");
+            throw new IllegalStateException("Not in a worktree session");
         }
         return session;
     }

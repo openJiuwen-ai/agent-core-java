@@ -15,14 +15,6 @@ import java.util.Map;
 public class KnowledgeRetrievalInput {
     private String query;
 
-    public String getQuery() {
-        return query;
-    }
-
-    public void setQuery(String query) {
-        this.query = query;
-    }
-
     public static KnowledgeRetrievalInput fromMap(Map<String, Object> inputs) {
         KnowledgeRetrievalInput input = new KnowledgeRetrievalInput();
         if (inputs != null && inputs.containsKey("query")) {

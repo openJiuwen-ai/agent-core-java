@@ -20,6 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.agent_teams.test_persistent_team}.
+ * Tests for TeamAgent session persistence, leader state recovery, and member rebinding.
+ */
 class PersistentTeamSessionRecoveryTest {
 
     @Test

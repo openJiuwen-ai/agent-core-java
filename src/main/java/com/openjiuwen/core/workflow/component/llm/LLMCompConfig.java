@@ -37,25 +37,4 @@ public class LLMCompConfig extends ComponentConfig {
     private Map<String, Object> outputConfig = new LinkedHashMap<>();
     private boolean enableHistory = false;
     private boolean cacheStream = false;
-
-    public String getModelId() { return modelId; }
-    public void setModelId(String modelId) { this.modelId = modelId; }
-    public ModelClientConfig getModelClientConfig() { return modelClientConfig; }
-    public void setModelClientConfig(ModelClientConfig modelClientConfig) { this.modelClientConfig = modelClientConfig; }
-    public ModelRequestConfig getModelConfig() { return modelConfig; }
-    public void setModelConfig(ModelRequestConfig modelConfig) { this.modelConfig = modelConfig; }
-    public List<Map<String, Object>> getTemplateContent() { return templateContent; }
-    public void setTemplateContent(List<Map<String, Object>> templateContent) { this.templateContent = templateContent; }
-    public SystemMessage getSystemPromptTemplate() { return systemPromptTemplate; }
-    public void setSystemPromptTemplate(SystemMessage systemPromptTemplate) { this.systemPromptTemplate = systemPromptTemplate; }
-    public UserMessage getUserPromptTemplate() { return userPromptTemplate; }
-    public void setUserPromptTemplate(UserMessage userPromptTemplate) { this.userPromptTemplate = userPromptTemplate; }
-    public Map<String, Object> getResponseFormat() { return responseFormat; }
-    public void setResponseFormat(Map<String, Object> responseFormat) { this.responseFormat = responseFormat; }
-    public Map<String, Object> getOutputConfig() { return outputConfig; }
-    public void setOutputConfig(Map<String, Object> outputConfig) { this.outputConfig = outputConfig; }
-    public boolean isEnableHistory() { return enableHistory; }
-    public void setEnableHistory(boolean enableHistory) { this.enableHistory = enableHistory; }
-    public boolean isCacheStream() { return cacheStream; }
-    public void setCacheStream(boolean cacheStream) { this.cacheStream = cacheStream; }
 }

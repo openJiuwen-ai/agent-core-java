@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.agent_teams.test_messager}.
+ * Tests for Messagers factory and transport backend selection.
+ */
 class MessagersTest {
 
     @Test

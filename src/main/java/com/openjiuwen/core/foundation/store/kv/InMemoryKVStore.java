@@ -15,6 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * In-memory key-value store with optional expiry support.
+ * <p>
+ * Mirrors Python's {@code InMemoryKVStore} from
+ * {@code foundation/store/kv/in_memory_kv_store.py}.
  */
 public class InMemoryKVStore extends BaseKVStore {
 

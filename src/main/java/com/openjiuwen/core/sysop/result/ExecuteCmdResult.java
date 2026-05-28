@@ -17,4 +17,12 @@ public class ExecuteCmdResult extends BaseResult<ExecuteCmdData> {
     public ExecuteCmdResult(int code, String message, ExecuteCmdData data) {
         super(code, message, data);
     }
+
+    public static ExecuteCmdResult success(ExecuteCmdData data) {
+        return new ExecuteCmdResult(0, "success", data);
+    }
+
+    public static ExecuteCmdResult failure(String message) {
+        return new ExecuteCmdResult(1, message, null);
+    }
 }

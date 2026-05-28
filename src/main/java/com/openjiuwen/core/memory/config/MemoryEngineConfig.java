@@ -42,50 +42,6 @@ public class MemoryEngineConfig {
     @JsonProperty("single_turn_history_summary_max_token")
     private int singleTurnHistorySummaryMaxToken = 128;
 
-    public static MemoryEngineConfigBuilder builder() {
-        return new MemoryEngineConfigBuilder();
-    }
-
-    public ModelRequestConfig getDefaultModelCfg() {
-        return defaultModelCfg;
-    }
-
-    public void setDefaultModelCfg(ModelRequestConfig defaultModelCfg) {
-        this.defaultModelCfg = defaultModelCfg;
-    }
-
-    public ModelClientConfig getDefaultModelClientCfg() {
-        return defaultModelClientCfg;
-    }
-
-    public void setDefaultModelClientCfg(ModelClientConfig defaultModelClientCfg) {
-        this.defaultModelClientCfg = defaultModelClientCfg;
-    }
-
-    public int getInputMsgMaxLen() {
-        return inputMsgMaxLen;
-    }
-
-    public void setInputMsgMaxLen(int inputMsgMaxLen) {
-        this.inputMsgMaxLen = inputMsgMaxLen;
-    }
-
-    public byte[] getCryptoKey() {
-        return cryptoKey;
-    }
-
-    public void setCryptoKey(byte[] cryptoKey) {
-        this.cryptoKey = cryptoKey;
-    }
-
-    public int getSingleTurnHistorySummaryMaxToken() {
-        return singleTurnHistorySummaryMaxToken;
-    }
-
-    public void setSingleTurnHistorySummaryMaxToken(int singleTurnHistorySummaryMaxToken) {
-        this.singleTurnHistorySummaryMaxToken = singleTurnHistorySummaryMaxToken;
-    }
-
     /**
      * Validate crypto key: must be empty or exactly 32 bytes.
      */
@@ -99,49 +55,6 @@ public class MemoryEngineConfig {
                     "config_type", "crypto_key",
                     "error_msg", "crypto_key must be empty or " + MemoryCrypto.AES_KEY_LENGTH + " bytes length"
             );
-        }
-    }
-
-    public static final class MemoryEngineConfigBuilder {
-        private ModelRequestConfig defaultModelCfg;
-        private ModelClientConfig defaultModelClientCfg;
-        private int inputMsgMaxLen = 8192;
-        private byte[] cryptoKey = new byte[0];
-        private int singleTurnHistorySummaryMaxToken = 128;
-
-        public MemoryEngineConfigBuilder defaultModelCfg(ModelRequestConfig defaultModelCfg) {
-            this.defaultModelCfg = defaultModelCfg;
-            return this;
-        }
-
-        public MemoryEngineConfigBuilder defaultModelClientCfg(ModelClientConfig defaultModelClientCfg) {
-            this.defaultModelClientCfg = defaultModelClientCfg;
-            return this;
-        }
-
-        public MemoryEngineConfigBuilder inputMsgMaxLen(int inputMsgMaxLen) {
-            this.inputMsgMaxLen = inputMsgMaxLen;
-            return this;
-        }
-
-        public MemoryEngineConfigBuilder cryptoKey(byte[] cryptoKey) {
-            this.cryptoKey = cryptoKey;
-            return this;
-        }
-
-        public MemoryEngineConfigBuilder singleTurnHistorySummaryMaxToken(int singleTurnHistorySummaryMaxToken) {
-            this.singleTurnHistorySummaryMaxToken = singleTurnHistorySummaryMaxToken;
-            return this;
-        }
-
-        public MemoryEngineConfig build() {
-            MemoryEngineConfig config = new MemoryEngineConfig();
-            config.setDefaultModelCfg(defaultModelCfg);
-            config.setDefaultModelClientCfg(defaultModelClientCfg);
-            config.setInputMsgMaxLen(inputMsgMaxLen);
-            config.setCryptoKey(cryptoKey);
-            config.setSingleTurnHistorySummaryMaxToken(singleTurnHistorySummaryMaxToken);
-            return config;
         }
     }
 }

@@ -16,6 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.experience.test_experience_search_tool}
+ * and {@code tests.unit_tests.auto_harness.experience.test_experience_store}.
+ * Tests for ExperienceStore record/get/search operations and ExperienceSearchTool functionality.
+ */
 class AutoHarnessExperienceTest {
 
     @Test

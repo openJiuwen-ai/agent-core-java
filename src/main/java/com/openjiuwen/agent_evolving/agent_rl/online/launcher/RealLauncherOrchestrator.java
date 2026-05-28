@@ -29,7 +29,11 @@ public class RealLauncherOrchestrator implements LauncherOrchestrator {
     @Override
     public void checkRequiredPorts(List<PortCheck> portsToCheck) {
         for (PortCheck check : portsToCheck) {
-            LauncherHealthChecks.waitForHealth("http://" + LauncherServices.urlHost(check.host()) + ":" + check.port() + "/health", Duration.ofSeconds(1));
+            try {
+                LauncherHealthChecks.waitForHealth("http://" + LauncherServices.urlHost(check.host()) + ":" + check.port() + "/health", Duration.ofSeconds(1));
+            } catch (IOException | InterruptedException e) {
+                throw new RuntimeException("Health check failed for " + check.host() + ":" + check.port(), e);
+            }
         }
     }
 

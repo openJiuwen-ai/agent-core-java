@@ -85,27 +85,6 @@ public class WorkflowAgentConfig {
     @JsonAlias("defaultResponse")
     private DefaultResponse defaultResponse = DefaultResponse.builder().build();
 
-    public List<WorkflowSchema> getWorkflows() { return workflows; }
-    public void setWorkflows(List<WorkflowSchema> workflows) { this.workflows = workflows; }
-    public List<Map<String, String>> getPromptTemplate() { return promptTemplate; }
-    public void setPromptTemplate(List<Map<String, String>> promptTemplate) { this.promptTemplate = promptTemplate; }
-    public List<String> getTools() { return tools; }
-    public void setTools(List<String> tools) { this.tools = tools; }
-    public WorkflowSchema getStartWorkflow() { return startWorkflow; }
-    public void setStartWorkflow(WorkflowSchema startWorkflow) { this.startWorkflow = startWorkflow; }
-    public WorkflowSchema getEndWorkflow() { return endWorkflow; }
-    public void setEndWorkflow(WorkflowSchema endWorkflow) { this.endWorkflow = endWorkflow; }
-    public List<Map<String, Object>> getGlobalVariables() { return globalVariables; }
-    public void setGlobalVariables(List<Map<String, Object>> globalVariables) { this.globalVariables = globalVariables; }
-    public Map<String, Object> getGlobalParams() { return globalParams; }
-    public void setGlobalParams(Map<String, Object> globalParams) { this.globalParams = globalParams; }
-    public ConstrainConfig getConstrain() { return constrain; }
-    public void setConstrain(ConstrainConfig constrain) { this.constrain = constrain; }
-    public DefaultResponse getDefaultResponse() { return defaultResponse; }
-    public void setDefaultResponse(DefaultResponse defaultResponse) { this.defaultResponse = defaultResponse; }
-    public ContextEngineConfig getContextEngineConfig() { return contextEngineConfig; }
-    public void setContextEngineConfig(ContextEngineConfig contextEngineConfig) { this.contextEngineConfig = contextEngineConfig; }
-
     @JsonProperty("context_engine_config")
     @JsonAlias("contextEngineConfig")
     private ContextEngineConfig contextEngineConfig;

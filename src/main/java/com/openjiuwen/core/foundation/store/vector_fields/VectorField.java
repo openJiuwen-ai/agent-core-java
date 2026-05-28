@@ -37,6 +37,16 @@ public abstract class VectorField {
     public abstract String getIndexType();
 
     /**
+     * Get the quantization variant for this index.
+     * Returns null if no variant is specified.
+     *
+     * @return the variant string, or null if not applicable
+     */
+    public String getVariant() {
+        return null;
+    }
+
+    /**
      * Convert the vector field configuration to a dictionary for a specific stage.
      * Filters fields based on the specified stage and merges extra arguments.
      *

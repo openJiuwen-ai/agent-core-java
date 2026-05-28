@@ -29,6 +29,7 @@ import java.util.function.Function;
 
 /**
  * MQ-based server adapter for distributed-runner requests.
+ * Mirrors Python's MqServerAdapter in mq_server_adapter.py.
  */
 public class MqServerAdapter {
 
@@ -36,8 +37,8 @@ public class MqServerAdapter {
 
     private final String adapterId;
     private final String topic;
-    private final Function<Map<String, Object>, Object> invokeHandler;
-    private final Function<Map<String, Object>, Iterator<Object>> streamHandler;
+    private Function<Map<String, Object>, Object> invokeHandler;
+    private Function<Map<String, Object>, Iterator<Object>> streamHandler;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, MessageTask> runningTasks = new ConcurrentHashMap<>();
@@ -54,6 +55,14 @@ public class MqServerAdapter {
         this.topic = topic;
         this.invokeHandler = invokeHandler;
         this.streamHandler = streamHandler;
+    }
+
+    public void setInvokeHandler(Function<Map<String, Object>, Object> handler) {
+        this.invokeHandler = handler;
+    }
+
+    public void setStreamHandler(Function<Map<String, Object>, Iterator<Object>> handler) {
+        this.streamHandler = handler;
     }
 
     public void start() {

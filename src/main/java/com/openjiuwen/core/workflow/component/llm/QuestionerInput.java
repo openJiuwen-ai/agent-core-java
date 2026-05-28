@@ -17,22 +17,6 @@ public class QuestionerInput {
     private Object query = "";
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
-    public Object getQuery() {
-        return query;
-    }
-
-    public void setQuery(Object query) {
-        this.query = query;
-    }
-
-    public Map<String, Object> getExtraFields() {
-        return extraFields;
-    }
-
-    public void setExtraFields(Map<String, Object> extraFields) {
-        this.extraFields = extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
-    }
-
     public static QuestionerInput fromMap(Map<String, Object> inputs) {
         QuestionerInput input = new QuestionerInput();
         if (inputs == null) {

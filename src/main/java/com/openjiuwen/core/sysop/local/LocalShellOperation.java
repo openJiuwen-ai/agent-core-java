@@ -12,6 +12,8 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.result.BaseResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
@@ -173,6 +175,18 @@ public class LocalShellOperation extends BaseShellOperation {
                     ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
             return results.iterator();
         }
+    }
+
+    @Override
+    public ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd, String shellType) {
+        // TODO: Implement background execution
+        // For now, return a placeholder result
+        ExecuteCmdBackgroundData data = ExecuteCmdBackgroundData.builder()
+                .command(command)
+                .cwd(cwd != null ? cwd : ".")
+                .pid(-1L)  // Placeholder indicating not implemented
+                .build();
+        return ExecuteCmdBackgroundResult.failure("Background execution not yet implemented");
     }
 
     // --- Private helpers ---

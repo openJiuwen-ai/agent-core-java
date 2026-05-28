@@ -53,4 +53,13 @@ public interface Session {
     default String getCurrentOperatorId() {
         return null;
     }
+
+    /**
+     * Write a data object to the session's output stream.
+     *
+     * @param data the stream data to write
+     */
+    default void writeStream(Object data) {
+        // Default no-op; implementations override for actual behavior
+    }
 }

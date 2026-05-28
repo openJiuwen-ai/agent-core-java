@@ -1,11 +1,16 @@
 /**
- * Deprecated compatibility placeholders for the removed deepagents middlewares.
+ * Middlewares package - Provides middleware components for deep agent processing.
  *
- * <p>Python `0.1.12` moved active behavior into {@code openjiuwen.harness}.
+ * <p>Mirrors Python's {@code openjiuwen.deepagents.middlewares} package.
+ *
+ * <p>This package contains:
+ * <ul>
+ *   <li>{@link ContextEngineeringMiddleware} - Context engineering middleware</li>
+ *   <li>{@link TaskPlanningMiddleware} - Task planning middleware</li>
+ * </ul>
  */
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-@Deprecated(forRemoval = false)
 package com.openjiuwen.deepagents.middlewares;

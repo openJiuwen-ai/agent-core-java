@@ -111,7 +111,7 @@ public class ReplyTopicSubscription {
         return topic;
     }
 
-    private void onMessage(DmqResponseMessage message) {
+    public void onMessage(DmqResponseMessage message) {
         CollectorKey key = new CollectorKey(
                 message.getSenderId(),
                 message.getMessageId(),

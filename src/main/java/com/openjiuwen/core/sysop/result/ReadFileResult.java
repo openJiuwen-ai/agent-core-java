@@ -12,4 +12,12 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class ReadFileResult extends BaseResult<ReadFileData> {
     public ReadFileResult(int code, String message, ReadFileData data) { super(code, message, data); }
+
+    public static ReadFileResult success(ReadFileData data) {
+        return new ReadFileResult(0, "success", data);
+    }
+
+    public static ReadFileResult failure(String message) {
+        return new ReadFileResult(1, message, null);
+    }
 }

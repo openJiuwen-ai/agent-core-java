@@ -14,25 +14,15 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class ExecuteCodeResult extends BaseResult<ExecuteCodeData> {
 
-    public static ExecuteCodeResultBuilder builder() {
-        return new ExecuteCodeResultBuilder();
-    }
-
     public ExecuteCodeResult(int code, String message, ExecuteCodeData data) {
         super(code, message, data);
     }
 
-    public static final class ExecuteCodeResultBuilder {
-        private int code;
-        private String message;
-        private ExecuteCodeData data;
+    public static ExecuteCodeResult success(ExecuteCodeData data) {
+        return new ExecuteCodeResult(0, "success", data);
+    }
 
-        public ExecuteCodeResultBuilder code(int code) { this.code = code; return this; }
-        public ExecuteCodeResultBuilder message(String message) { this.message = message; return this; }
-        public ExecuteCodeResultBuilder data(ExecuteCodeData data) { this.data = data; return this; }
-
-        public ExecuteCodeResult build() {
-            return new ExecuteCodeResult(code, message, data);
-        }
+    public static ExecuteCodeResult failure(String message) {
+        return new ExecuteCodeResult(1, message, null);
     }
 }

@@ -27,7 +27,6 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.harness.security.PermissionInterruptException;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -391,8 +390,6 @@ public class AbilityManager implements ToolRegistry {
             try {
                 result = tool.invoke(toolArgs, Map.of());
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
-            } catch (PermissionInterruptException interruptException) {
-                throw interruptException;
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -428,8 +425,6 @@ public class AbilityManager implements ToolRegistry {
             try {
                 result = tool.invoke(toolArgs, Map.of());
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
-            } catch (PermissionInterruptException interruptException) {
-                throw interruptException;
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
                 Loggers.AGENT.error(errorMsg);
@@ -462,9 +457,6 @@ public class AbilityManager implements ToolRegistry {
     }
 
     private static ToolExecutionClassification classifyException(Throwable throwable) {
-        if (throwable instanceof PermissionInterruptException) {
-            return ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE;
-        }
         return findInterruptedException(throwable).isPresent()
                 ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
                 : ToolExecutionClassification.ERROR;

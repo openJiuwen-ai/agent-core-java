@@ -2,6 +2,7 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.singleagent.skills.Skill;
 
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class ListSkillTool extends AbstractHarnessTool {
             item.put("name", skill.getName());
             item.put("description", skill.getDescription());
             item.put("directory", skill.getDirectory());
+            item.put("skill_md_path", Path.of(skill.getDirectory()).resolve("SKILL.md").toString());
             return item;
         }).toList();
     }

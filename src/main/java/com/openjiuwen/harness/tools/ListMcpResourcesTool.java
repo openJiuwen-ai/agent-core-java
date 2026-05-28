@@ -2,6 +2,7 @@ package com.openjiuwen.harness.tools;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiFunction;
 
 /**
@@ -27,7 +28,8 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
             return new ToolOutput(false, null, "server_id is required");
         }
         try {
-            return new ToolOutput(true, resourceProvider.apply(serverId, inputs), null);
+            List<Map<String, Object>> data = resourceProvider.apply(serverId, inputs);
+            return new ToolOutput(true, Objects.requireNonNullElseGet(data, List::of), null);
         } catch (Exception e) {
             return new ToolOutput(false, null, e.getMessage());
         }

@@ -10,9 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -158,6 +160,40 @@ public class MultimodalDocument extends Document {
             return "text/plain";
         }
         return null;
+    }
+
+    public Map<String, Object> getDashscopeInput() {
+        Map<String, Object> content = new LinkedHashMap<>();
+        List<String> images = new ArrayList<>();
+        Set<String> hasField = new HashSet<>();
+        for (FieldValue value : data) {
+            if (hasField.contains(value.kind)) {
+                throw RetrievalExceptions.validation("multiple_" + value.kind + "_fields_present");
+            }
+            switch (value.kind) {
+                case "text" -> {
+                    hasField.add(value.kind);
+                    content.put(value.kind, value.data);
+                }
+                case "image" -> images.add(value.data);
+                case "video" -> {
+                    if (value.data.startsWith("data:video/")) {
+                        throw RetrievalExceptions.validation("unsupported_format: video base64 not supported");
+                    }
+                    hasField.add(value.kind);
+                    content.put(value.kind, value.data);
+                }
+                default -> throw RetrievalExceptions.validation("unsupported_format: " + value.kind);
+            }
+        }
+        if (!images.isEmpty()) {
+            if (images.size() == 1) {
+                content.put("image", images.get(0));
+            } else {
+                content.put("multi_images", images);
+            }
+        }
+        return content;
     }
 
     private record FieldValue(String kind, String data, String dataId) {

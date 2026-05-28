@@ -26,6 +26,19 @@ public class JudgeEvaluatorConfig {
         this.modelId = modelId;
     }
 
+    public JudgeEvaluatorConfig(String llmUrl, String modelId, String apiKey, int numVotes,
+                                double temperature, int maxCompletionTokens, int maxRetries,
+                                double retryBackoffSec) {
+        this.llmUrl = llmUrl;
+        this.modelId = modelId;
+        this.apiKey = apiKey != null ? apiKey : "";
+        this.numVotes = numVotes;
+        this.temperature = temperature;
+        this.maxCompletionTokens = maxCompletionTokens;
+        this.maxRetries = maxRetries;
+        this.retryBackoffSec = retryBackoffSec;
+    }
+
     public String getLlmUrl() { return llmUrl; }
     public void setLlmUrl(String llmUrl) { this.llmUrl = llmUrl; }
     public String getModelId() { return modelId; }

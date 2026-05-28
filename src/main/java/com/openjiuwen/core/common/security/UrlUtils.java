@@ -179,4 +179,40 @@ public final class UrlUtils {
             return false;
         }
     }
+
+    /**
+     * Redact password from a URL for safe logging.
+     * <p>
+     * Mirrors Python's {@code openjiuwen.core.common.utils.url_utils.redact_url_password}.
+     *
+     * @param url The URL that may contain credentials
+     * @return URL with password replaced by '***', or original URL if no password present
+     */
+    public static String redactUrlPassword(String url) {
+        if (url == null || url.isEmpty()) {
+            return url;
+        }
+        try {
+            URI uri = new URI(url);
+            String userInfo = uri.getUserInfo();
+            if (userInfo == null || !userInfo.contains(":")) {
+                return url;
+            }
+            String[] parts = userInfo.split(":", 2);
+            String username = parts[0];
+            String newUserInfo = username + ":***";
+            URI redacted = new URI(
+                uri.getScheme(),
+                newUserInfo,
+                uri.getHost(),
+                uri.getPort(),
+                uri.getPath(),
+                uri.getQuery(),
+                uri.getFragment()
+            );
+            return redacted.toString();
+        } catch (Exception e) {
+            return url;
+        }
+    }
 }

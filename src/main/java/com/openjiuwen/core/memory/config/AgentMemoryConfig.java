@@ -32,87 +32,27 @@ public class AgentMemoryConfig {
     private boolean enableLongTermMem = true;
 
     @Builder.Default
-    @JsonProperty("enable_fragment_memory")
-    private boolean enableFragmentMemory = true;
+    @JsonProperty("enable_user_profile")
+    private boolean enableUserProfile = true;
+
+    @Builder.Default
+    @JsonProperty("enable_semantic_memory")
+    private boolean enableSemanticMemory = true;
+
+    @Builder.Default
+    @JsonProperty("enable_episodic_memory")
+    private boolean enableEpisodicMemory = true;
 
     @Builder.Default
     @JsonProperty("enable_summary_memory")
     private boolean enableSummaryMemory = true;
 
-    public AgentMemoryConfig(List<Param> memVariables,
-                             boolean enableLongTermMem,
-                             boolean enableFragmentMemory,
-                             boolean enableSummaryMemory) {
-        this.memVariables = memVariables == null ? new ArrayList<>() : memVariables;
-        this.enableLongTermMem = enableLongTermMem;
-        this.enableFragmentMemory = enableFragmentMemory;
-        this.enableSummaryMemory = enableSummaryMemory;
-    }
-
-    public static AgentMemoryConfigBuilder builder() {
-        return new AgentMemoryConfigBuilder();
-    }
-
-    public List<Param> getMemVariables() {
-        return memVariables;
-    }
-
-    public void setMemVariables(List<Param> memVariables) {
-        this.memVariables = memVariables;
-    }
-
-    public boolean isEnableLongTermMem() {
-        return enableLongTermMem;
-    }
-
-    public void setEnableLongTermMem(boolean enableLongTermMem) {
-        this.enableLongTermMem = enableLongTermMem;
-    }
-
+    /**
+     * Derived field: fragment memory is enabled if any of user profile, semantic,
+     * or episodic memory is enabled. Mirrors Python's logic in memory_rail.py and
+     * llm_controller.py.
+     */
     public boolean isEnableFragmentMemory() {
-        return enableFragmentMemory;
-    }
-
-    public void setEnableFragmentMemory(boolean enableFragmentMemory) {
-        this.enableFragmentMemory = enableFragmentMemory;
-    }
-
-    public boolean isEnableSummaryMemory() {
-        return enableSummaryMemory;
-    }
-
-    public void setEnableSummaryMemory(boolean enableSummaryMemory) {
-        this.enableSummaryMemory = enableSummaryMemory;
-    }
-
-    public static final class AgentMemoryConfigBuilder {
-        private List<Param> memVariables = new ArrayList<>();
-        private boolean enableLongTermMem = true;
-        private boolean enableFragmentMemory = true;
-        private boolean enableSummaryMemory = true;
-
-        public AgentMemoryConfigBuilder memVariables(List<Param> memVariables) {
-            this.memVariables = memVariables;
-            return this;
-        }
-
-        public AgentMemoryConfigBuilder enableLongTermMem(boolean enableLongTermMem) {
-            this.enableLongTermMem = enableLongTermMem;
-            return this;
-        }
-
-        public AgentMemoryConfigBuilder enableFragmentMemory(boolean enableFragmentMemory) {
-            this.enableFragmentMemory = enableFragmentMemory;
-            return this;
-        }
-
-        public AgentMemoryConfigBuilder enableSummaryMemory(boolean enableSummaryMemory) {
-            this.enableSummaryMemory = enableSummaryMemory;
-            return this;
-        }
-
-        public AgentMemoryConfig build() {
-            return new AgentMemoryConfig(memVariables, enableLongTermMem, enableFragmentMemory, enableSummaryMemory);
-        }
+        return enableUserProfile || enableSemanticMemory || enableEpisodicMemory;
     }
 }

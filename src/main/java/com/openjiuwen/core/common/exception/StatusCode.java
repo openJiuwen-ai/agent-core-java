@@ -178,6 +178,9 @@ public enum StatusCode {
     RESOURCE_MCP_SERVER_REMOVE_ERROR(110514, "mcp server remove failed, server_id={server_id}, error=''{reason}''"),
     RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error=''{reason}''"),
 
+    // Callback execution errors
+    CALLBACK_EXECUTION_ABORTED(110600, "callback execution aborted: {reason}"),
+
     // =============================================================================================================
     // 111. Session 111000 – 111999
     // =============================================================================================================
@@ -261,6 +264,7 @@ public enum StatusCode {
     RETRIEVAL_INDEXING_PATH_NOT_FOUND(155107, "retrieval indexing_path not found, reason: {error_msg}"),
     RETRIEVAL_INDEXING_ADD_DOC_RUNTIME_ERROR(155108, "retrieval indexing_add_doc runtime error, reason: {error_msg}"),
     RETRIEVAL_INDEXING_VECTOR_FIELD_INVALID(155109, "retrieval indexing_vector_field is invalid, reason: {error_msg}"),
+    RETRIEVAL_INDEXING_FETCH_ERROR(155110, "retrieval indexing_fetch error, reason: {error_msg}"),
 
     RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT(155200, "retrieval retriever_mode is not supported, reason: {error_msg}"),
     RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID(155201, "retrieval retriever_score_threshold is invalid, reason: {error_msg}"),
@@ -333,6 +337,20 @@ public enum StatusCode {
     TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR(173001, "toolchain feedback_template execution error, reason: {error_msg}"),
     TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR(173002, "toolchain bad_case_template execution error, reason: {error_msg}"),
 
+    // Optimization Toolchain - Tool Self-optimization 174025 - 174049
+    TOOLCHAIN_EVOLVING_TOOL_CALL_CONFIG_ERROR(174025, "toolchain optimizer tool_call config error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_PARAM_ERROR(174026, "toolchain optimizer tool_call parameter error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_RUNTIME_ERROR(174027, "toolchain optimizer tool_call runtime error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_EXAMPLE_STAGE_EXECUTION_ERROR(174028, "toolchain optimizer tool_call example_stage execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_BEAM_SEARCH_EXECUTION_ERROR(174029, "toolchain optimizer tool_call beam_search execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_EVALUATOR_EXECUTION_ERROR(174030, "toolchain optimizer tool_call evaluator execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_LLM_CALL_EXECUTION_ERROR(174031, "toolchain optimizer tool_call llm_call execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_REVIEWER_EXECUTION_ERROR(174032, "toolchain optimizer tool_call reviewer execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_SCHEMA_EXTRACT_EXECUTION_ERROR(174033, "toolchain optimizer tool_call schema_extract execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_OUTPUT_PARSE_ERROR(174034, "toolchain optimizer tool_call output parse error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_LOGGING_EXECUTION_ERROR(174035, "toolchain optimizer tool_call logging execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_TOOL_CALL_RESULT_PERSIST_EXECUTION_ERROR(174036, "toolchain optimizer tool_call result persist execution error, reason: {error_msg}"),
+
     // =============================================================================================================
     // Foundation 180000 – 189999
     // =============================================================================================================
@@ -395,6 +413,10 @@ public enum StatusCode {
     COMMON_URL_INPUT_INVALID(188004, "common url_input is invalid, reason: {error_msg}"),
     COMMON_SSL_CERT_INVALID(188005, "common ssl_cert is invalid, reason: {error_msg}"),
 
+    // Task Manager 188100 - 188199
+    COMMON_TASK_NOT_FOUND(188100, "common task not found, task_id: {task_id}"),
+    COMMON_TASK_CONFIG_ERROR(188101, "common task config error, reason: {error_msg}"),
+
     // Schema 189000 - 189999
     SCHEMA_VALIDATE_INVALID(189001, "validate data with schema failed, error=''{reason}'', data={data}"),
     SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error=''{reason}'', data={data}"),
@@ -414,7 +436,8 @@ public enum StatusCode {
     SYS_OPERATION_FS_EXECUTION_ERROR(199003, "file system operation execution error, execution: {execution}, reason: {error_msg}"),
     SYS_OPERATION_SHELL_EXECUTION_ERROR(199004, "shell operation execution error, execution: {execution}, reason: {error_msg}"),
     SYS_OPERATION_CODE_EXECUTION_ERROR(199005, "code operation execution error, execution: {execution}, reason: {error_msg}"),
-    SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}");
+    SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}"),
+    SYS_OPERATION_SANDBOX_GATEWAY_ERROR(199007, "sandbox gateway error, operation: {operation}, error: {error_msg}");
 
     private final int code;
     private final String errmsg;

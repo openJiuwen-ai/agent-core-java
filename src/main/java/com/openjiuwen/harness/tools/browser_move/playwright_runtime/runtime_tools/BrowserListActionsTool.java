@@ -5,19 +5,18 @@ import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserAgent
 
 import java.util.Map;
 
+/**
+ * List available custom browser actions and detailed parameter guidance.
+ *
+ * <p>Mirrors Python's {@code BrowserListActionsTool} in
+ * {@code openjiuwen.harness.tools.browser_move.playwright_runtime.runtime_tools}.</p>
+ */
 public class BrowserListActionsTool extends BrowserRuntimeTool {
     public BrowserListActionsTool(BrowserAgentRuntime runtime) { super(runtime, card("browser_list_custom_actions")); }
+
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        return new ToolOutput(true, Map.of(
-                "ok", true,
-                "actions", java.util.List.of(
-                        "browser_cancel",
-                        "browser_clear_cancel",
-                        "browser_custom_action",
-                        "browser_list_custom_actions",
-                        "browser_runtime_health"
-                )
-        ), null);
+        Map<String, Object> result = runtime.listActions();
+        return new ToolOutput(true, result, null);
     }
 }

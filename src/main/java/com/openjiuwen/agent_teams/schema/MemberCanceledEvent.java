@@ -1,0 +1,21 @@
+// Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+
+package com.openjiuwen.agent_teams.schema;
+
+/**
+ * Event published when a member is canceled.
+ * 
+ * Mirrors Python's agent_teams.schema.events.MemberCanceledEvent
+ * 
+ * @since 0.1.12
+ */
+public class MemberCanceledEvent extends BaseEventMessage {
+    
+    public MemberCanceledEvent() {
+        super();
+    }
+    
+    public MemberCanceledEvent(String teamName, String memberName) {
+        super(teamName, memberName);
+    }
+}

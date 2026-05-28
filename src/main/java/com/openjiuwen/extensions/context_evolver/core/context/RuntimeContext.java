@@ -41,6 +41,17 @@ public class RuntimeContext {
     public Object get(String key, Object defaultValue) {
         return data.getOrDefault(key, defaultValue);
     }
+
+    /**
+     * Get a value from context with default (alias for get).
+     *
+     * @param key          context key
+     * @param defaultValue default value
+     * @return value or default
+     */
+    public Object getOrDefault(String key, Object defaultValue) {
+        return data.getOrDefault(key, defaultValue);
+    }
     
     /**
      * Set a value in context.
@@ -102,6 +113,44 @@ public class RuntimeContext {
             return (Boolean) value;
         }
         return defaultValue;
+    }
+
+    /**
+     * Get query from context.
+     * Convenience method mirroring Python's attribute access pattern.
+     *
+     * @return query string or null
+     */
+    public String getQuery() {
+        return getString("query");
+    }
+
+    /**
+     * Set query in context.
+     *
+     * @param query query string
+     */
+    public void setQuery(String query) {
+        set("query", query);
+    }
+
+    /**
+     * Get user ID from context.
+     * Convenience method mirroring Python's attribute access pattern.
+     *
+     * @return user ID string or null
+     */
+    public String getUserId() {
+        return getString("user_id");
+    }
+
+    /**
+     * Set user ID in context.
+     *
+     * @param userId user ID string
+     */
+    public void setUserId(String userId) {
+        set("user_id", userId);
     }
     
     /**

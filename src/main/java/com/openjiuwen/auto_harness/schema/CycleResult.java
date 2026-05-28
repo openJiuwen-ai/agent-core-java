@@ -5,6 +5,8 @@ package com.openjiuwen.auto_harness.schema;
  */
 public class CycleResult {
 
+    private String taskId = "";
+    private TaskStatus status = TaskStatus.SUCCESS;
     private boolean success;
     private String summary = "";
     private String prUrl = "";
@@ -12,6 +14,10 @@ public class CycleResult {
     private boolean reverted;
     private String errorLog = "";
 
+    public String getTaskId() { return taskId; }
+    public void setTaskId(String taskId) { this.taskId = taskId; }
+    public TaskStatus getStatus() { return status; }
+    public void setStatus(TaskStatus status) { this.status = status; }
     public boolean isSuccess() { return success; }
     public void setSuccess(boolean success) { this.success = success; }
     public String getSummary() { return summary; }

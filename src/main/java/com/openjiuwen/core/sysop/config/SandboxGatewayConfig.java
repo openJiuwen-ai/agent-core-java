@@ -13,7 +13,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Remote sandbox gateway connection configuration.
+ * Sandbox gateway configuration.
+ * <p>
+ * Contains isolation settings, launcher configuration, timeouts, and authentication.
  * <p>
  * Mirrors Python's {@code SandboxGatewayConfig} in {@code sys_operation/config.py}.
  */
@@ -23,13 +25,16 @@ import java.util.Map;
 @AllArgsConstructor
 public class SandboxGatewayConfig {
 
-    /** Remote sandbox gateway service endpoint. */
+    /** Isolation and naming strategy for the sandbox container. */
     @Builder.Default
-    private String gatewayUrl = "";
+    private SandboxIsolationConfig isolation = new SandboxIsolationConfig();
 
-    /** Global request parameters. */
+    /** How to obtain/connect sandbox runtime. */
+    private SandboxLauncherConfig launcherConfig;
+
+    /** Unified timeout in seconds (request + readiness). */
     @Builder.Default
-    private Map<String, Object> params = new HashMap<>();
+    private int timeoutSeconds = 30;
 
     /** Authentication HTTP headers. */
     @Builder.Default

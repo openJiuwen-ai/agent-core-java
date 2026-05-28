@@ -84,12 +84,4 @@ public class CallbackMetrics {
         }
         return result;
     }
-
-    public int getCallCount() {
-        return callCount;
-    }
-
-    public double getMaxTime() {
-        return maxTime;
-    }
 }

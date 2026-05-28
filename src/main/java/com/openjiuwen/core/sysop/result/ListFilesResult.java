@@ -12,4 +12,12 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class ListFilesResult extends BaseResult<FileSystemData> {
     public ListFilesResult(int code, String message, FileSystemData data) { super(code, message, data); }
+
+    public static ListFilesResult success(FileSystemData data) {
+        return new ListFilesResult(0, "success", data);
+    }
+
+    public static ListFilesResult failure(String message) {
+        return new ListFilesResult(1, message, null);
+    }
 }

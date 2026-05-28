@@ -24,35 +24,4 @@ public class VectorSearchResult {
     /** All field values from the matched document. */
     @Builder.Default
     private final Map<String, Object> fields = Map.of();
-
-    public static VectorSearchResultBuilder builder() {
-        return new VectorSearchResultBuilder();
-    }
-
-    public double getScore() {
-        return score;
-    }
-
-    public Map<String, Object> getFields() {
-        return fields;
-    }
-
-    public static final class VectorSearchResultBuilder {
-        private double score;
-        private Map<String, Object> fields = Map.of();
-
-        public VectorSearchResultBuilder score(double score) {
-            this.score = score;
-            return this;
-        }
-
-        public VectorSearchResultBuilder fields(Map<String, Object> fields) {
-            this.fields = fields;
-            return this;
-        }
-
-        public VectorSearchResult build() {
-            return new VectorSearchResult(score, fields != null ? fields : Map.of());
-        }
-    }
 }

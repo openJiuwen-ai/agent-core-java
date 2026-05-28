@@ -18,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.agent_teams.test_messager}
+ * and {@code tests.unit_tests.agent_teams.worktree.test_backend}.
+ * Tests for InProcessMessager pub/sub, TeamBackend message persistence, and task storage.
+ */
 class AgentTeamsTransportAndBackendTest {
 
     @AfterEach

@@ -22,30 +22,6 @@ public class Skill {
     private String description;
     private String directory;
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(String directory) {
-        this.directory = directory;
-    }
-
     @Override
     public String toString() {
         return "Skill: " + name + "\nDescription: " + description + "\nDirectory: " + directory;
