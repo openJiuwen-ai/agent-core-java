@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for DeepAgent event executor.
+ *
+ * <p>Mirrors Python's {@code test_deep_agent_event_executor} in
+ * {@code tests.unit_tests.harness.test_deep_agent_event_executor}.
  */
 class TestDeepAgentEventExecutor {
 

@@ -59,6 +59,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Milvus-backed vector store for retrieval.
+ *
+ * <p>Mirrors Python's {@code MilvusVectorStore} in
+ * {@code openjiuwen.core.foundation.store.vector.milvus_vector_store}.
  */
 public class MilvusVectorStore implements VectorStore {
 

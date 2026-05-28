@@ -4,8 +4,9 @@
 
 package com.openjiuwen.multi_agent.builtin_teams.handoff;
 
-import org.junit.jupiter.api.Test;
+import com.openjiuwen.core.multiagent.teams.handoff.HandoffSignal;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,18 +20,64 @@ class TestHandoffSignal {
 
     @Nested
     class TestHandoffSignalData {
-        @Test void testSignalType() {}
-        @Test void testSignalPayload() {}
-        @Test void testSignalTimestamp() {}
-        @Test void testSignalFromAgent() {}
-        @Test void testSignalToAgent() {}
+
+        @Test
+        void testTargetStored() {
+            HandoffSignal signal = new HandoffSignal("agent_b");
+            assertEquals("agent_b", signal.getTarget());
+        }
+
+        @Test
+        void testMessageDefaultsToEmptyOptional() {
+            assertTrue(new HandoffSignal("b").getMessage().isEmpty());
+        }
+
+        @Test
+        void testReasonDefaultsToEmptyOptional() {
+            assertTrue(new HandoffSignal("b").getReason().isEmpty());
+        }
+
+        @Test
+        void testCustomMessage() {
+            HandoffSignal signal = new HandoffSignal("b", "context", null);
+            assertEquals("context", signal.getMessage().orElseThrow());
+        }
+
+        @Test
+        void testCustomReason() {
+            HandoffSignal signal = new HandoffSignal("b", null, "needs billing");
+            assertEquals("needs billing", signal.getReason().orElseThrow());
+        }
+
+        @Test
+        void testEqualityBasedOnValues() {
+            HandoffSignal left = new HandoffSignal("b", "m", "r");
+            HandoffSignal right = new HandoffSignal("b", "m", "r");
+            assertEquals(left, right);
+        }
+
+        @Test
+        void testInequalityDifferentTarget() {
+            assertNotEquals(new HandoffSignal("a"), new HandoffSignal("b"));
+        }
     }
 
     @Nested
-    class TestSignalTypes {
-        @Test void testHandoffSignal() {}
-        @Test void testCompleteSignal() {}
-        @Test void testErrorSignal() {}
-        @Test void testInterruptSignal() {}
+    class TestSignalConstants {
+
+        @Test
+        void testConstantTargetKeyValue() {
+            assertEquals("__handoff_to__", HandoffSignal.HANDOFF_TARGET_KEY);
+        }
+
+        @Test
+        void testConstantMessageKeyValue() {
+            assertEquals("__handoff_message__", HandoffSignal.HANDOFF_MESSAGE_KEY);
+        }
+
+        @Test
+        void testConstantReasonKeyValue() {
+            assertEquals("__handoff_reason__", HandoffSignal.HANDOFF_REASON_KEY);
+        }
     }
 }

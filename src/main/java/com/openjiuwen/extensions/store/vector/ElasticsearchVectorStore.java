@@ -59,6 +59,18 @@ public class ElasticsearchVectorStore {
         return indexPrefix + "__" + collectionName;
     }
 
+    public String getIndexPrefix() {
+        return indexPrefix;
+    }
+
+    public Map<String, Map<String, Object>> getMetadataCache() {
+        return metadataCache;
+    }
+
+    public String getIndexName(String collectionName) {
+        return indexName(collectionName);
+    }
+
     /**
      * Create a collection with the given schema.
      *

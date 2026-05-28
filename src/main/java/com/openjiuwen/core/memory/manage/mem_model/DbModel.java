@@ -16,6 +16,9 @@ import java.sql.*;
 /**
  * Database model: table definitions and creation logic.
  * Translates Python's SQLAlchemy declarative models to JDBC DDL.
+ *
+ * <p>Mirrors Python's {@code DbModel} in
+ * {@code openjiuwen.core.memory.manage.mem_model.db_model}.
  */
 public final class DbModel {
 

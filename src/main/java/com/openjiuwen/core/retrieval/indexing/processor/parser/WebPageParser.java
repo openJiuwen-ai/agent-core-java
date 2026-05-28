@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 
 /**
  * Generic web page parser.
+ *
+ * <p>Mirrors Python's {@code WebPageParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.web_page_parser}.
  */
 public class WebPageParser extends Parser {
 
@@ -71,7 +74,21 @@ public class WebPageParser extends Parser {
 
     @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        return null;
+        // For URL-based parsing, we need to fetch HTML first
+        // This mirrors Python's parse_url logic simplified for synchronous use
+        if (!supports(doc)) {
+            throw RetrievalExceptions.validation("Not a valid HTTP URL: " + doc);
+        }
+        
+        String html = fetchHtml(doc);
+        String title = extractFirst(html, TITLE_META_PATTERN, extractFirst(html, TITLE_PATTERN, ""));
+        String text = extractReadableText(html, ARTICLE_PATTERN);
+        
+        // Return the parsed text content with optional title prefix
+        if (!title.isEmpty()) {
+            return title + "\n\n" + text;
+        }
+        return text;
     }
 
     @Override

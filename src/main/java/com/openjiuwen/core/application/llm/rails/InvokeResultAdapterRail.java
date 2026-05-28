@@ -62,11 +62,98 @@ public class InvokeResultAdapterRail {
 
     /**
      * After invoke callback.
+     * <p>
+     * Mirrors Python's {@code after_invoke} method which:
+     * <ul>
+     *   <li>Gets raw_result from ctx.inputs.result</li>
+     *   <li>Converts using _convert_dict_to_schema</li>
+     *   <li>Stores converted result in ctx.extra["invoke_result"]</li>
+     * </ul>
      *
      * @param ctx the agent callback context
      */
     public void afterInvoke(Object ctx) {
-        // TODO: Implement result conversion and storage in ctx.extra
+        if (ctx == null) {
+            return;
+        }
+
+        try {
+            // Get raw_result from ctx.inputs
+            Map<String, Object> rawResult = null;
+
+            // Try to get inputs attribute from context
+            if (ctx instanceof Map) {
+                rawResult = (Map<String, Object>) ((Map<?, ?>) ctx).get("inputs");
+            } else {
+                // Try reflection for AgentCallbackContext-like objects
+                try {
+                    Object inputs = ctx.getClass().getMethod("getInputs").invoke(ctx);
+                    if (inputs instanceof Map) {
+                        rawResult = (Map<String, Object>) inputs;
+                    } else if (inputs != null) {
+                        // Try to get result from inputs object
+                        Object result = inputs.getClass().getMethod("getResult").invoke(inputs);
+                        if (result instanceof Map) {
+                            rawResult = (Map<String, Object>) result;
+                        }
+                    }
+                } catch (Exception e) {
+                    // Fallback: try direct result attribute
+                    try {
+                        Object result = ctx.getClass().getMethod("getResult").invoke(ctx);
+                        if (result instanceof Map) {
+                            rawResult = (Map<String, Object>) result;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            if (rawResult == null) {
+                return;
+            }
+
+            // Convert raw result to schema
+            Object convertedResult = convertDictToSchema(rawResult);
+
+            // Store in ctx.extra
+            if (ctx instanceof Map) {
+                Map<String, Object> ctxMap = (Map<String, Object>) ctx;
+                Object extraObj = ctxMap.computeIfAbsent("extra", k -> new HashMap<String, Object>());
+                if (extraObj instanceof Map<?, ?> extraMap) {
+                    ((Map<String, Object>) extraMap).put(INVOKE_RESULT_KEY, convertedResult);
+                }
+            } else {
+                // Try reflection for AgentCallbackContext-like objects
+                try {
+                    Object extra = ctx.getClass().getMethod("getExtra").invoke(ctx);
+                    if (extra instanceof Map) {
+                        ((Map<String, Object>) extra).put(INVOKE_RESULT_KEY, convertedResult);
+                    } else if (extra == null) {
+                        // Create new extra map if not exists
+                        Map<String, Object> newExtra = new HashMap<>();
+                        newExtra.put(INVOKE_RESULT_KEY, convertedResult);
+                        try {
+                            ctx.getClass().getMethod("setExtra", Map.class).invoke(ctx, newExtra);
+                        } catch (Exception setEx) {
+                            // Try direct field access
+                            try {
+                                java.lang.reflect.Field extraField = ctx.getClass().getDeclaredField("extra");
+                                extraField.setAccessible(true);
+                                extraField.set(ctx, newExtra);
+                            } catch (Exception fieldEx) {
+                                // Unable to set extra - log and continue
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    // Unable to get extra - log and continue
+                }
+            }
+
+        } catch (Exception e) {
+            // Handle any exceptions gracefully
+        }
     }
 
     /**

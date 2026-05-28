@@ -33,6 +33,9 @@ import java.util.UUID;
 
 /**
  * Standard chunk-based knowledge base.
+ *
+ * <p>Mirrors Python's {@code SimpleKnowledgeBase} in
+ * {@code openjiuwen.core.retrieval.simple_knowledge_base}.
  */
 public class SimpleKnowledgeBase extends KnowledgeBase {
 

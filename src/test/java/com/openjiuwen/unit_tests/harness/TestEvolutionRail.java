@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for EvolutionRail.
+ *
+ * <p>Mirrors Python's {@code test_evolution_rail} in
+ * {@code tests.unit_tests.harness.test_evolution_rail}.
  */
 class TestEvolutionRail {
 

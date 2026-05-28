@@ -24,6 +24,9 @@ import java.util.Map;
 
 /**
  * Retriever that adds iterative query rewriting and triple reading on top of a base retriever.
+ *
+ * <p>Mirrors Python's {@code AgenticRetriever} in
+ * {@code openjiuwen.core.retrieval.retriever.agentic_retriever}.
  */
 public class AgenticRetriever extends AbstractRetriever {
 

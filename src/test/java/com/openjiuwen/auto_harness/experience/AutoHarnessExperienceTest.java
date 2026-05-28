@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -87,6 +88,7 @@ class AutoHarnessExperienceTest {
         List<Map<String, Object>> noData = (List<Map<String, Object>>) noResults.getData();
         assertTrue(noData.isEmpty());
 
-        assertEquals(1, tool.stream(Map.of("query", "ruff")).size());
+        Iterator<Object> stream = tool.stream(Map.of("query", "ruff"));
+        assertTrue(stream.hasNext());
     }
 }

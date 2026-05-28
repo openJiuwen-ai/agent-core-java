@@ -9,6 +9,9 @@ import java.security.SecureRandom;
 
 /**
  * Generates unique memory IDs using timestamp + random + user hash.
+ *
+ * <p>Mirrors Python's {@code DataIdManager} in
+ * {@code openjiuwen.core.memory.manage.mem_model.data_id_manager}.
  */
 public class DataIdManager {
 

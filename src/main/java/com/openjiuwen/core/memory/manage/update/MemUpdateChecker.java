@@ -19,6 +19,9 @@ import java.util.stream.Collectors;
  * Memory update checker for detecting redundancy and conflicts between memories.
  * Uses LLM with a prompt template to analyze whether new memories are redundant,
  * conflicting, or can coexist with existing memories.
+ *
+ * <p>Mirrors Python's {@code MemUpdateChecker} in
+ * {@code openjiuwen.core.memory.manage.update.mem_update_checker}.
  */
 public class MemUpdateChecker {
 

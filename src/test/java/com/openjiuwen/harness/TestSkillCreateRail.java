@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for SkillCreateRail.
  * <p>
  * Tests skill creation rail functionality.
+ *
+ * <p>Mirrors Python's {@code test_skill_create_rail} in
+ * {@code tests.unit_tests.harness.test_skill_create_rail}.
  */
 class TestSkillCreateRail {
 

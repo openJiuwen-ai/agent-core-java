@@ -13,6 +13,9 @@ import java.util.Optional;
 
 /**
  * Playwright MCP client that delegates to SSE or stdio depending on the configured server path.
+ *
+ * <p>Mirrors Python's {@code PlaywrightClient} in
+ * {@code openjiuwen.core.foundation.tool.mcp.client.playwright_client}.
  */
 public class PlaywrightClient implements McpClient {
 

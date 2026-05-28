@@ -8,6 +8,9 @@ import com.openjiuwen.spi.store.vector.CollectionSchema;
 
 /**
  * Chroma-compatible field helpers.
+ *
+ * <p>Mirrors Python's {@code ChromaFields} in
+ * {@code openjiuwen.core.foundation.store.vector_fields.chroma_fields}.
  */
 public final class ChromaFields {
 

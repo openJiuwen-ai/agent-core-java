@@ -11,6 +11,9 @@ import java.util.Map;
 
 /**
  * Remote-agent facade.
+ *
+ * <p>Mirrors Python's {@code RemoteAgent} in
+ * {@code openjiuwen.core.runner.drunner.remote_client.remote_agent}.
  */
 public class RemoteAgent {
 

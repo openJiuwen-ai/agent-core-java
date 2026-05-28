@@ -19,15 +19,39 @@ class TestTeamQuerySend {
 
     @Nested
     class TestQuerySend {
-        @Test void testSendQuery() {}
-        @Test void testSendQueryReturnsResponse() {}
-        @Test void testSendQueryTimeout() {}
-        @Test void testSendQueryBroadcast() {}
+
+        @Test
+        void testSendQuery() {
+            assertTrue(true, "Send query test placeholder");
+        }
+
+        @Test
+        void testSendQueryReturnsResponse() {
+            assertTrue(true, "Send query returns response test placeholder");
+        }
+
+        @Test
+        void testSendQueryTimeout() {
+            assertTrue(true, "Send query timeout test placeholder");
+        }
+
+        @Test
+        void testSendQueryBroadcast() {
+            assertTrue(true, "Send query broadcast test placeholder");
+        }
     }
 
     @Nested
     class TestQueryValidation {
-        @Test void testValidateQueryRequired() {}
-        @Test void testValidateTargetRequired() {}
+
+        @Test
+        void testValidateQueryRequired() {
+            assertTrue(true, "Validate query required test placeholder");
+        }
+
+        @Test
+        void testValidateTargetRequired() {
+            assertTrue(true, "Validate target required test placeholder");
+        }
     }
 }

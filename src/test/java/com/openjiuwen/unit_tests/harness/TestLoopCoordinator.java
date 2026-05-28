@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for LoopCoordinator.
+ *
+ * <p>Mirrors Python's {@code test_loop_coordinator} in
+ * {@code tests.unit_tests.harness.test_loop_coordinator}.
  */
 class TestLoopCoordinator {
 

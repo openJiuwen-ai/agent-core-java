@@ -8,6 +8,9 @@ import lombok.Data;
 
 /**
  * Base class for all migration operations.
+ *
+ * <p>Mirrors Python's {@code BaseOperation} in
+ * {@code openjiuwen.core.memory.migration.operation.base_operation}.
  */
 @Data
 public abstract class BaseOperation {

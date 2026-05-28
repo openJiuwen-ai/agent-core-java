@@ -20,6 +20,9 @@ import java.util.function.Supplier;
 
 /**
  * File parser router based on file extension.
+ *
+ * <p>Mirrors Python's {@code AutoFileParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.auto_file_parser}.
  */
 public class AutoFileParser extends Parser {
 

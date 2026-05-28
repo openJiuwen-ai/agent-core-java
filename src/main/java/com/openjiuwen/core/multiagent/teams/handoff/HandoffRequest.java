@@ -39,6 +39,14 @@ public class HandoffRequest {
     
     /** Session ID for stream I/O. */
     private String sessionId;
+
+    public HandoffRequest(Object inputMessage) {
+        this(inputMessage, new ArrayList<>(), null);
+    }
+
+    public HandoffRequest(Object inputMessage, List<Map<String, Object>> history) {
+        this(inputMessage, history, null);
+    }
     
     /**
      * Get session ID, returning empty string if not attached.

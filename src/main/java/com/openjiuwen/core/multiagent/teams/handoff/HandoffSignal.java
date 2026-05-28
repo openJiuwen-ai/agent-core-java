@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -44,6 +45,24 @@ public final class HandoffSignal {
     public String getTarget() { return target; }
     public Optional<String> getMessage() { return Optional.ofNullable(message); }
     public Optional<String> getReason() { return Optional.ofNullable(reason); }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof HandoffSignal that)) {
+            return false;
+        }
+        return Objects.equals(target, that.target)
+                && Objects.equals(message, that.message)
+                && Objects.equals(reason, that.reason);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(target, message, reason);
+    }
     
     @Override
     public String toString() {

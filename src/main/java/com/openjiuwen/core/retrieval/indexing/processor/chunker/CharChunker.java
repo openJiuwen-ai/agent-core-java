@@ -9,6 +9,9 @@ import java.util.List;
 
 /**
  * Character window chunker.
+ *
+ * <p>Mirrors Python's {@code CharChunker} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.chunker.char_chunker}.
  */
 public class CharChunker extends Chunker {
 

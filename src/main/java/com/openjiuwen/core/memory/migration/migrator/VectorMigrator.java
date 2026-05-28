@@ -21,6 +21,9 @@ import java.util.Set;
 
 /**
  * Vector store migrator.
+ *
+ * <p>Mirrors Python's {@code VectorMigrator} in
+ * {@code openjiuwen.core.memory.migration.migrator.vector_migrator}.
  */
 public class VectorMigrator {
 

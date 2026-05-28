@@ -84,4 +84,11 @@ public class SysOperation {
     public OperationMode getMode() {
         return mode;
     }
+
+    public String getWorkDir() {
+        if (runConfig instanceof LocalWorkConfig localWorkConfig) {
+            return localWorkConfig.getWorkDir();
+        }
+        return null;
+    }
 }

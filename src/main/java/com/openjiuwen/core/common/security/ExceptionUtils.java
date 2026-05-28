@@ -6,6 +6,9 @@ package com.openjiuwen.core.common.security;
 
 /**
  * Exception formatting utilities.
+ *
+ * <p>Mirrors Python's {@code ExceptionUtils} in
+ * {@code openjiuwen.core.common.security.exception_utils}.
  */
 public final class ExceptionUtils {
 

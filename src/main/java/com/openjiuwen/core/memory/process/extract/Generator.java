@@ -23,6 +23,9 @@ import java.util.Map;
 
 /**
  * Generates all memory units (variables, summary, fragment) from conversation messages.
+ *
+ * <p>Mirrors Python's {@code Generator} in
+ * {@code openjiuwen.core.memory.process.extract.generator}.
  */
 public class Generator {
 

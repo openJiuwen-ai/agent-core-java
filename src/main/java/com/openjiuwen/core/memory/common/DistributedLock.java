@@ -13,6 +13,9 @@ import java.util.UUID;
 
 /**
  * Synchronous distributed lock using KV store exclusive_set.
+ *
+ * <p>Mirrors Python's {@code DistributedLock} in
+ * {@code openjiuwen.core.memory.common.distributed_lock}.
  */
 public class DistributedLock implements AutoCloseable {
 

@@ -12,6 +12,9 @@ import java.util.Map;
 
 /**
  * Knowledge triple.
+ *
+ * <p>Mirrors Python's {@code Triple} in
+ * {@code openjiuwen.core.retrieval.common.triple}.
  */
 @Getter
 @Setter

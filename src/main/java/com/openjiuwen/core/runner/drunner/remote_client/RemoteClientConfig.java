@@ -14,6 +14,9 @@ import java.util.Map;
 
 /**
  * Remote client configuration.
+ *
+ * <p>Mirrors Python's {@code RemoteClientConfig} in
+ * {@code openjiuwen.core.runner.drunner.remote_client.remote_client_config}.
  */
 @Data
 @Builder

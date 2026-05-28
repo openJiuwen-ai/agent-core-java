@@ -12,6 +12,9 @@ import java.util.Map;
 
 /**
  * User-facing retrieval result.
+ *
+ * <p>Mirrors Python's {@code RetrievalResult} in
+ * {@code openjiuwen.core.retrieval.common.retrieval_result}.
  */
 @Getter
 @Setter

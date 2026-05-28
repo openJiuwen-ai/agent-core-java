@@ -1,0 +1,357 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.agent_teams.team_workspace;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
+
+/**
+ * Team shared workspace manager.
+ * <p>
+ * Handles locking, versioning, sync, and conflict detection for the team
+ * shared workspace directory. File I/O is delegated to SysOperation tools
+ * via the .team/ symlink mount — this module manages only metadata and
+ * version control.
+ * <p>
+ * Two operating modes:
+ * - LOCAL: single _team_workspace/ directory, symlink mount, in-memory locks.
+ * - DISTRIBUTED: per-node clone, git push/pull sync, leader-coordinated locks
+ *   (Phase 3).
+ * <p>
+ * Mirrors Python's {@code TeamWorkspaceManager} in
+ * {@code openjiuwen.agent_teams.team_workspace.manager}.
+ */
+public class WorkspaceManager {
+
+    private static final Logger logger = Logger.getLogger(WorkspaceManager.class.getName());
+
+    private final TeamWorkspaceConfig config;
+    private final String workspacePath;
+    private final String teamName;
+    private final WorkspaceMode mode;
+    private final EventPublisher publishEvent;
+
+    // Local lock state
+    private final Map<String, WorkspaceFileLock> locks;
+    private final ReentrantLock lockMutex;
+
+    // Distributed coordination
+    private final Object messager;
+    private final String leaderId;
+    private final String nodeId;
+
+    /**
+     * Create WorkspaceManager.
+     *
+     * @param config        Workspace configuration
+     * @param workspacePath Path to workspace directory
+     * @param teamName      Team name
+     * @param mode          LOCAL or DISTRIBUTED mode
+     * @param messager      Optional messager for distributed coordination
+     * @param leaderId      Leader node identifier
+     * @param nodeId        Current node identifier
+     * @param publishEvent  Event publisher callback
+     */
+    public WorkspaceManager(
+            TeamWorkspaceConfig config,
+            String workspacePath,
+            String teamName,
+            WorkspaceMode mode,
+            Object messager,
+            String leaderId,
+            String nodeId,
+            EventPublisher publishEvent) {
+        this.config = config;
+        this.workspacePath = workspacePath;
+        this.teamName = teamName;
+        this.mode = mode;
+        this.publishEvent = publishEvent;
+        this.messager = messager;
+        this.leaderId = leaderId;
+        this.nodeId = nodeId;
+        this.locks = new HashMap<>();
+        this.lockMutex = new ReentrantLock();
+    }
+
+    // ── Initialization ───────────────────────────────────────
+
+    /**
+     * Initialize workspace directory and git repo.
+     *
+     * @param remoteUrl Git remote URL for distributed workspace repo
+     */
+    public CompletableFuture<Void> initialize(String remoteUrl) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                Path wsPath = Path.of(workspacePath);
+                Files.createDirectories(wsPath);
+
+                // Create artifact directories
+                for (String dir : config.getArtifactDirs()) {
+                    Files.createDirectories(wsPath.resolve(dir));
+                }
+
+                // Create skills directory
+                Files.createDirectories(wsPath.resolve("skills"));
+
+                if (!config.isVersionControl()) {
+                    logger.info("Workspace " + workspacePath + 
+                        " initialized as plain shared directory (version_control disabled)");
+                    return;
+                }
+
+                Path gitDir = wsPath.resolve(".git");
+                if (Files.isDirectory(gitDir)) {
+                    logger.fine("Workspace already initialized at " + workspacePath);
+                    return;
+                }
+
+                if (mode == WorkspaceMode.DISTRIBUTED && remoteUrl != null && 
+                    !leaderId.equals(nodeId)) {
+                    // Remote node: clone the workspace repo
+                    runGitClone(remoteUrl, wsPath);
+                    logger.info("Cloned workspace repo from " + remoteUrl);
+                } else {
+                    // Leader or LOCAL: init fresh repo
+                    runGitInit(wsPath);
+                    runGitEmptyCommit(wsPath, "Initialize team workspace");
+                    if (remoteUrl != null) {
+                        runGitAddRemote(wsPath, remoteUrl);
+                    }
+                    logger.info("Initialized workspace git repo at " + workspacePath);
+                }
+            } catch (Exception e) {
+                logger.warning("Failed to initialize workspace: " + e.getMessage());
+            }
+        });
+    }
+
+    // ── Lock Management ───────────────────────────────────────
+
+    /**
+     * Acquire a lock on a file path.
+     *
+     * @param path        File path to lock
+     * @param memberId    Member identifier requesting the lock
+     * @param memberName  Display name of member
+     * @return true if lock acquired successfully
+     */
+    public CompletableFuture<Boolean> acquireLock(String path, String memberId, String memberName) {
+        return CompletableFuture.supplyAsync(() -> {
+            lockMutex.lock();
+            try {
+                WorkspaceFileLock existing = locks.get(path);
+                if (existing != null && !existing.isExpired()) {
+                    if (existing.getHolderId().equals(memberId)) {
+                        return true;  // Already held by same member
+                    }
+                    return false;  // Locked by another member
+                }
+                WorkspaceFileLock newLock = new WorkspaceFileLock(
+                    path, memberId, memberName, System.currentTimeMillis()
+                );
+                locks.put(path, newLock);
+                logger.info("Lock acquired on " + path + " by " + memberName);
+                return true;
+            } finally {
+                lockMutex.unlock();
+            }
+        });
+    }
+
+    /**
+     * Release a lock on a file path.
+     *
+     * @param path     File path to unlock
+     * @param memberId Member releasing the lock
+     * @return true if lock was released
+     */
+    public boolean releaseLock(String path, String memberId) {
+        lockMutex.lock();
+        try {
+            WorkspaceFileLock lock = locks.get(path);
+            if (lock != null && lock.getHolderId().equals(memberId)) {
+                locks.remove(path);
+                logger.info("Lock released on " + path + " by " + memberId);
+                return true;
+            }
+            return false;
+        } finally {
+            lockMutex.unlock();
+        }
+    }
+
+    /**
+     * Get current lock on a path.
+     *
+     * @param path File path
+     * @return Current lock or null
+     */
+    public WorkspaceFileLock getLock(String path) {
+        return locks.get(path);
+    }
+
+    /**
+     * List all active locks.
+     */
+    public List<WorkspaceFileLock> listLocks() {
+        return List.copyOf(locks.values());
+    }
+
+    // ── Version Control ───────────────────────────────────────
+
+    /**
+     * Auto-commit a file after write.
+     *
+     * @param relativePath Relative path in workspace
+     * @param memberName   Member making the change
+     */
+    public CompletableFuture<Void> autoCommit(String relativePath, String memberName) {
+        return CompletableFuture.runAsync(() -> {
+            if (!config.isVersionControl()) {
+                return;
+            }
+            try {
+                runGitAdd(workspacePath, relativePath);
+                runGitCommit(workspacePath, "Update " + relativePath + " by " + memberName);
+                if (mode == WorkspaceMode.DISTRIBUTED) {
+                    runGitPush(workspacePath);
+                }
+            } catch (Exception e) {
+                logger.warning("Auto-commit failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Get commit history for a file.
+     *
+     * @param path File path
+     * @return List of commit info
+     */
+    public CompletableFuture<List<Map<String, Object>>> getHistory(String path) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!config.isVersionControl()) {
+                return List.of();
+            }
+            return runGitLog(workspacePath, path);
+        });
+    }
+
+    // ── Git helper stubs ───────────────────────────────────────
+
+    private void runGitInit(Path cwd) {
+        // Placeholder: git init
+    }
+
+    private void runGitEmptyCommit(Path cwd, String message) {
+        // Placeholder: git commit --allow-empty -m message
+    }
+
+    private void runGitAddRemote(Path cwd, String remoteUrl) {
+        // Placeholder: git remote add origin remoteUrl
+    }
+
+    private void runGitClone(String remoteUrl, Path target) {
+        // Placeholder: git clone remoteUrl target
+    }
+
+    private void runGitAdd(String cwd, String path) {
+        // Placeholder: git add path
+    }
+
+    private void runGitCommit(String cwd, String message) {
+        // Placeholder: git commit -m message
+    }
+
+    private void runGitPush(String cwd) {
+        // Placeholder: git push
+    }
+
+    private List<Map<String, Object>> runGitLog(String cwd, String path) {
+        // Placeholder: git log --oneline path
+        return List.of();
+    }
+
+    // ── Getters ───────────────────────────────────────
+
+    public String getWorkspacePath() { return workspacePath; }
+    public String getTeamName() { return teamName; }
+    public WorkspaceMode getMode() { return mode; }
+    public TeamWorkspaceConfig getConfig() { return config; }
+    public EventPublisher getEventPublisher() { return publishEvent; }
+
+    // ── Inner classes ───────────────────────────────────────
+
+    /**
+     * Event publisher callback interface.
+     */
+    public interface EventPublisher {
+        void publishEvent(String eventType, Object event);
+    }
+
+    /**
+     * Workspace mode enum.
+     */
+    public enum WorkspaceMode {
+        LOCAL,
+        DISTRIBUTED
+    }
+
+    /**
+     * Workspace configuration.
+     */
+    public static class TeamWorkspaceConfig {
+        private List<String> artifactDirs;
+        private boolean versionControl;
+        private ConflictStrategy conflictStrategy;
+
+        public List<String> getArtifactDirs() { return artifactDirs; }
+        public boolean isVersionControl() { return versionControl; }
+        public ConflictStrategy getConflictStrategy() { return conflictStrategy; }
+    }
+
+    /**
+     * Conflict strategy enum.
+     */
+    public enum ConflictStrategy {
+        LOCK,
+        OVERWRITE,
+        MERGE
+    }
+
+    /**
+     * File lock state.
+     */
+    public static class WorkspaceFileLock {
+        private final String path;
+        private final String holderId;
+        private final String holderName;
+        private final long acquiredAt;
+
+        public WorkspaceFileLock(String path, String holderId, String holderName, long acquiredAt) {
+            this.path = path;
+            this.holderId = holderId;
+            this.holderName = holderName;
+            this.acquiredAt = acquiredAt;
+        }
+
+        public String getPath() { return path; }
+        public String getHolderId() { return holderId; }
+        public String getHolderName() { return holderName; }
+        public long getAcquiredAt() { return acquiredAt; }
+
+        public boolean isExpired() {
+            long TTL = 30_000;  // 30 seconds
+            return System.currentTimeMillis() - acquiredAt > TTL;
+        }
+    }
+}

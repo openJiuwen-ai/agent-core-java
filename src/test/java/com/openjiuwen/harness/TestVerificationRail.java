@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for VerificationRail.
  * <p>
  * Tests verification rail functionality for task completion.
+ *
+ * <p>Mirrors Python's {@code test_verification_rail} in
+ * {@code tests.unit_tests.harness.test_verification_rail}.
  */
 class TestVerificationRail {
 

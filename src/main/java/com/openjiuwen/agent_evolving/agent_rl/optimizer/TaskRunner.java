@@ -107,14 +107,49 @@ public final class TaskRunner {
     
     /**
      * Copy to local path.
+     * <p>
+     * Mirrors Python's {@code copy_to_local} from {@code verl.utils.fs}.
+     * <p>
+     * For remote sources (hf://, s3://), requires external framework integration.
+     * For local sources, performs direct file copy.
+     *
+     * @param source Source path (local, hf://, or s3://)
+     * @param target Target path
+     * @return Target path if successful, null if failed
      */
     public static Path copyToLocal(String source, Path target) {
+        if (source == null || target == null) {
+            return null;
+        }
+        
         try {
-            if (source.startsWith("hf://") || source.startsWith("s3://")) {
-                // PLACEHOLDER: Remote file copy
-                logger.warning("Remote file copy placeholder: " + source);
+            // Handle remote sources - PLACEHOLDER until framework integration
+            if (source.startsWith("hf://") || source.startsWith("s3://") || 
+                source.startsWith("http://") || source.startsWith("https://")) {
+                logger.warning("Remote file copy not implemented for: " + source + 
+                    ". Requires HuggingFace/S3 SDK integration. Returning target as-is.");
+                // For remote sources, we cannot copy without external dependencies
+                // Return null to indicate the copy was not performed
+                return null;
             }
-            return target;
+            
+            // Handle local file copy
+            Path sourcePath = Paths.get(source);
+            if (Files.exists(sourcePath)) {
+                // Create parent directories if needed
+                if (target.getParent() != null && !Files.exists(target.getParent())) {
+                    Files.createDirectories(target.getParent());
+                }
+                
+                // Copy file
+                Files.copy(sourcePath, target, StandardCopyOption.REPLACE_EXISTING);
+                logger.info("Copied file from " + source + " to " + target);
+                return target;
+            }
+            
+            // Source doesn't exist locally
+            logger.warning("Source file does not exist: " + source);
+            return null;
         } catch (Exception e) {
             logger.warning("Failed to copy to local: " + e.getMessage());
             return null;

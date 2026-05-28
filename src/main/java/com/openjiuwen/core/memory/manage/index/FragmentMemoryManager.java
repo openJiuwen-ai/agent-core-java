@@ -21,6 +21,9 @@ import java.util.*;
 
 /**
  * Manages fragment (user profile) memory CRUD with encryption and vector storage.
+ *
+ * <p>Mirrors Python's {@code FragmentMemoryManager} in
+ * {@code openjiuwen.core.memory.manage.index.fragment_memory_manager}.
  */
 public class FragmentMemoryManager extends BaseMemoryManager {
 

@@ -12,6 +12,9 @@ import java.util.Set;
 
 /**
  * Deduplicated triple memory.
+ *
+ * <p>Mirrors Python's {@code TripleMemory} in
+ * {@code openjiuwen.core.retrieval.common.triple_memory}.
  */
 public class TripleMemory {
 

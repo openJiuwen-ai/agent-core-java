@@ -17,6 +17,9 @@ import java.util.Map;
 /**
  * Abstract base class for memory manager implementations.
  * Each subclass manages a specific type of memory data.
+ *
+ * <p>Mirrors Python's {@code BaseMemoryManager} in
+ * {@code openjiuwen.core.memory.manage.index.base_memory_manager}.
  */
 public abstract class BaseMemoryManager {
 

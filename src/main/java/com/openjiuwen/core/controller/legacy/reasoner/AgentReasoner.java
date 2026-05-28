@@ -15,6 +15,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * Minimal legacy reasoner composed of an intent detector and a planner.
+ *
+ * <p>Mirrors Python's {@code AgentReasoner} in
+ * {@code openjiuwen.core.controller.legacy.reasoner.agent_reasoner}.
  */
 @Data
 @NoArgsConstructor

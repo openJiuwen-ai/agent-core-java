@@ -13,6 +13,9 @@ import java.util.List;
  *
  * <p>Combines SkillManager and RemoteSkillUtil functionalities,
  * providing skill registration, tool management, and prompt generation.</p>
+ *
+ * <p>Mirrors Python's {@code SkillUtil} in
+ * {@code openjiuwen.core.single_agent.skills.skill_util}.
  */
 public class SkillUtil {
 

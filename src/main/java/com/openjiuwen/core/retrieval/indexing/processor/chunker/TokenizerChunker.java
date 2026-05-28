@@ -12,6 +12,9 @@ import java.util.function.Function;
 
 /**
  * Token-aware chunker backed by {@link SentenceSplitter}.
+ *
+ * <p>Mirrors Python's {@code TokenizerChunker} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.chunker.tokenizer_chunker}.
  */
 public class TokenizerChunker extends Chunker {
 
