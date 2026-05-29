@@ -223,7 +223,7 @@ public class TaskManager {
       }
       try {
         results.add(task.waitFor());
-      } catch (InterruptedException | ExecutionException e) {
+      } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
         if (isReturnExceptions) {
           results.add(e);
         } else {
@@ -269,7 +269,7 @@ public class TaskManager {
             task.getTaskId(),
             task.getName(),
             task.getStatus());
-      } catch (InterruptedException | ExecutionException | CancellationException e) {
+      } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
         log.info(
             "TaskManager waitAll exception: taskId={} name={} errorType={} message={}",
             task.getTaskId(),

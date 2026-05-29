@@ -555,6 +555,13 @@ public class ResourceMgr {
 
         for (McpServerConfig config : configs) {
             try {
+                // Validate client type
+                if (!"sse".equals(config.getClientType()) && !"stdio".equals(config.getClientType())
+                        && !"streamable_http".equals(config.getClientType())) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
+                            "param", "client_type",
+                            "reason", "Unsupported MCP client type: " + config.getClientType());
+                }
                 List<McpToolCard> cards = resourceRegistry.tool().addToolServer(config, expiryTime);
                 for (McpToolCard card : cards) {
                     idToCard.put(card.getId(), card);
@@ -1072,7 +1079,11 @@ public class ResourceMgr {
                     shouldSkipMissingTag));
         } else {
             List<String> serverNames = normalizeStringList(serverName);
-            if (serverNames.isEmpty() || serverNames.stream().anyMatch(String::isEmpty)) {
+            if (serverNames.isEmpty()) {
+                throw ErrorHelper.buildError(errorCode,
+                        "server_id", String.valueOf(serverId), "reason", "server_name is empty");
+            }
+            if (serverNames.stream().anyMatch(String::isEmpty)) {
                 throw ErrorHelper.buildError(errorCode,
                         "server_id", String.valueOf(serverId), "reason", "server_name is empty");
             }
@@ -1207,6 +1218,12 @@ public class ResourceMgr {
 
     @SuppressWarnings("unchecked")
     private static List<McpServerConfig> normalizeServerConfigs(Object config) {
+        if (config == null) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
+                    "server_config", String.valueOf(config),
+                    "reason", "MCP server configuration cannot be empty or None"
+            );
+        }
         if (config instanceof McpServerConfig sc) {
             return List.of(sc);
         }
@@ -1214,13 +1231,32 @@ public class ResourceMgr {
             if (list.isEmpty()) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
                         "server_config", String.valueOf(config),
-                        "reason", "server_config list is empty");
+                        "reason", "server_config list is empty"
+                );
             }
-            return (List<McpServerConfig>) list;
+            List<McpServerConfig> result = new ArrayList<>();
+            for (int i = 0; i < list.size(); i++) {
+                Object item = list.get(i);
+                if (item == null) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
+                            "server_config", String.valueOf(config),
+                            "reason", "Invalid MCP server configuration at index " + i + ": configuration cannot be null"
+                    );
+                }
+                if (!(item instanceof McpServerConfig)) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
+                            "server_config", String.valueOf(config),
+                            "reason", "Invalid MCP server configuration type at index " + i + ": expected McpServerConfig"
+                    );
+                }
+                result.add((McpServerConfig) item);
+            }
+            return result;
         }
         throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID,
                 "server_config", String.valueOf(config),
-                "reason", "Invalid MCP server configuration type");
+                "reason", "Invalid MCP server configuration type"
+        );
     }
 
     private Object findWorkflowByAlternateId(String workflowId) {

@@ -6,6 +6,8 @@ package com.openjiuwen.core.common.task_manager;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Registry for common task-manager tasks with weak-reference storage.
  */
 public class TaskRegistry {
-    private final Map<String, WeakReference<Task>> tasks = new ConcurrentHashMap<>();
-    private final Map<String, Set<String>> groups = new ConcurrentHashMap<>();
+    private final Map<String, WeakReference<Task>> tasks = new LinkedHashMap<>();
+    private final Map<String, Set<String>> groups = new LinkedHashMap<>();
 
     /**
      * Auto-generated for codecheck compliance.
@@ -25,7 +27,7 @@ public class TaskRegistry {
     public void add(Task task) {
         tasks.put(task.getTaskId(), new WeakReference<>(task));
         if (task.getGroup() != null && !task.getGroup().isBlank()) {
-            groups.computeIfAbsent(task.getGroup(), ignored -> ConcurrentHashMap.newKeySet()).add(task.getTaskId());
+            groups.computeIfAbsent(task.getGroup(), ignored -> new LinkedHashSet<>()).add(task.getTaskId());
         }
     }
 
@@ -123,7 +125,7 @@ public class TaskRegistry {
      */
     public Collection<String> keys() {
         cleanupStaleReferences();
-        return new ArrayList<>(tasks.keySet());
+        return new ArrayList<>(tasks.keySet()); // LinkedHashMap preserves insertion order
     }
 
     /**

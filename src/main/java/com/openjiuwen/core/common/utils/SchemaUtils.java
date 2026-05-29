@@ -126,13 +126,11 @@ public final class SchemaUtils {
             Object additionalProperties = schema.get("additionalProperties");
 
             // Check for extra fields not in schema
-            // Allow extra fields if:
-            // 1. additionalProperties is explicitly true, OR
-            // 2. properties is empty/not defined (no constraint on specific properties)
+            // Default to false when additionalProperties is not specified (matches Python behavior)
             boolean hasPropertyConstraint = !properties.isEmpty();
-            boolean allowAdditional = !(hasPropertyConstraint
-                    && (additionalProperties instanceof Boolean
-                    && ((Boolean) additionalProperties) == Boolean.FALSE));
+            boolean allowAdditional = !hasPropertyConstraint
+                    || (additionalProperties instanceof Boolean
+                    && ((Boolean) additionalProperties));
             if (!allowAdditional) {
                 for (String field : data.keySet()) {
                     if (!properties.containsKey(field)) {
