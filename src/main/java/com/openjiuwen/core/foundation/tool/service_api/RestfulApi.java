@@ -102,6 +102,11 @@ public class RestfulApi extends Tool {
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         double finalTimeout = this.timeout;
         try {
+            // Check for empty URL before proceeding (Python parity)
+            if (this.url == null || this.url.isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR,
+                        "method", "invoke", "reason", "", "card", card.toString());
+            }
             // Schema validation: format inputs against inputParams if defined
             Map<String, Object> validatedInputs = inputs;
             Map<String, Object> inputParams = card.getInputParams();
