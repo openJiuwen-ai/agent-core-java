@@ -26,6 +26,7 @@ import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloaderCo
 import com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessor;
 import com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessorConfig;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.token.SimpleTokenCounter;
 import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.sysop.SysOperation;
@@ -138,6 +139,7 @@ public class ContextEngine {
             List<BaseMessage> historyMessages,
             TokenCounter tokenCounter) {
 
+        TokenCounter effectiveTokenCounter = tokenCounter != null ? tokenCounter : new SimpleTokenCounter();
         contextId = processContextId(contextId);
         String sessionId = session != null ? session.getSessionId() : "default_session_id";
         String fullContextId = sessionId + "_" + contextId;
@@ -161,7 +163,7 @@ public class ContextEngine {
                 config,
                 historyMessages != null ? historyMessages : new ArrayList<>(),
                 processorInstances,
-                tokenCounter,
+                effectiveTokenCounter,
                 session,
                 workspace,
                 sysOperation);

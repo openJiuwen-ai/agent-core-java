@@ -64,7 +64,18 @@ public class SimpleTokenCounter extends TokenCounter {
         if (text == null || text.isEmpty()) {
             return 0;
         }
-        return Math.max(1, text.length() / CHARS_PER_TOKEN);
+        int chineseCount = 0;
+        int otherCount = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS) {
+                chineseCount++;
+            } else {
+                otherCount++;
+            }
+        }
+        int weighted = chineseCount * 8 + otherCount;
+        return Math.max(1, weighted / CHARS_PER_TOKEN);
     }
 
     @Override
