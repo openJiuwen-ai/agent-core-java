@@ -16,13 +16,15 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
 import com.openjiuwen.harness.HarnessFactory;
+import com.openjiuwen.harness.rails.TaskPlanningRail;
+import com.openjiuwen.harness.rails.skills.SkillUseRail;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.logging.Logger;
 
 /**
@@ -105,8 +107,7 @@ public final class AutoHarnessAgentFactory {
         rails.add(buildSkillRail(config, skills));
 
         if (enableTaskPlanning) {
-            // TaskPlanningRail would be added here if available
-            // For now, we skip this as it requires additional implementation
+            rails.add(new TaskPlanningRail());
         }
 
         if (extraRails != null) {
@@ -361,10 +362,16 @@ public final class AutoHarnessAgentFactory {
      * @return Configured skill rail
      */
     private static AgentRail buildSkillRail(AutoHarnessConfig config, List<String> skillNames) {
-        // In a full implementation, this would create a SkillUseRail
-        // with skills_dir and enabled_skills
-        // For now, return null as skill rails require additional infrastructure
-        return null;
+        List<String> skillsDir = new ArrayList<>();
+        skillsDir.add(SKILLS_DIR);
+        return new SkillUseRail(
+                skillsDir,
+                SkillUseRail.SKILL_MODE_ALL,
+                true,
+                true,
+                new LinkedHashSet<>(skillNames != null ? skillNames : List.of()),
+                null
+        );
     }
 
     // ── Helper Methods ───────────────────────────────────────

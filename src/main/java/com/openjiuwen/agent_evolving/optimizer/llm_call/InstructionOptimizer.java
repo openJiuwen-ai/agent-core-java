@@ -39,6 +39,8 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
 
     private static final String SYSTEM_PROMPT = "system_prompt";
     private static final String USER_PROMPT = "user_prompt";
+    private static final String SYSTEM_PROMPT_OPTIMIZED = "system_prompt_optimized";
+    private static final String USER_PROMPT_OPTIMIZED = "user_prompt_optimized";
     private static final String TOOLS_DESCRIPTION = "None";
 
     private final Model model;
@@ -46,7 +48,7 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
     private final PromptTemplate promptInstructionOptimizeBothTemplate;
     private final PromptTemplate createPromptTextualGradientTemplate;
     private final PromptTemplate createBadCaseTemplate;
-    private final PromptTemplate placeholderRestoreTemplate;
+    private final PromptTemplate promptVariableRestoreTemplate;
 
     /**
      * Create instruction optimizer.
@@ -73,8 +75,8 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         this.createBadCaseTemplate = PromptTemplate.builder()
                 .content(InstructionOptimizerTemplates.CREATE_BAD_CASE_TEMPLATE)
                 .build();
-        this.placeholderRestoreTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.PLACEHOLDER_RESTORE_TEMPLATE)
+        this.promptVariableRestoreTemplate = PromptTemplate.builder()
+                .content(InstructionOptimizerTemplates.PROMPT_VARIABLE_RESTORE_TEMPLATE)
                 .build();
     }
 
@@ -88,12 +90,42 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
                 continue;
             }
 
+            param.setGradient(SYSTEM_PROMPT_OPTIMIZED, null);
+            param.setGradient(USER_PROMPT_OPTIMIZED, null);
+
+            if (getBadCases().isEmpty()) {
+                continue;
+            }
+
             String textualGradient = generateTextualGradient(op);
             if (!isTargetFrozen(op, SYSTEM_PROMPT)) {
                 param.setGradient(SYSTEM_PROMPT, textualGradient);
             }
             if (!isTargetFrozen(op, USER_PROMPT)) {
                 param.setGradient(USER_PROMPT, textualGradient);
+            }
+
+            boolean hasSys = targets.contains(SYSTEM_PROMPT) && !isTargetFrozen(op, SYSTEM_PROMPT);
+            boolean hasUsr = targets.contains(USER_PROMPT) && !isTargetFrozen(op, USER_PROMPT);
+
+            if (hasSys && hasUsr) {
+                String[] result = optimizeBoth(op, param);
+                if (hasText(result[0])) {
+                    param.setGradient(SYSTEM_PROMPT_OPTIMIZED, result[0]);
+                }
+                if (hasText(result[1])) {
+                    param.setGradient(USER_PROMPT_OPTIMIZED, result[1]);
+                }
+            } else if (hasSys) {
+                String value = optimizeSingle(op, param, SYSTEM_PROMPT);
+                if (hasText(value)) {
+                    param.setGradient(SYSTEM_PROMPT_OPTIMIZED, value);
+                }
+            } else if (hasUsr) {
+                String value = optimizeSingle(op, param, USER_PROMPT);
+                if (hasText(value)) {
+                    param.setGradient(USER_PROMPT_OPTIMIZED, value);
+                }
             }
         }
     }
@@ -105,32 +137,13 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             String opId = entry.getKey();
             TextualParameter param = entry.getValue();
-            Object op = operators.get(opId);
-            if (op == null) {
-                continue;
+            String systemPrompt = param.getGradient(SYSTEM_PROMPT_OPTIMIZED);
+            String userPrompt = param.getGradient(USER_PROMPT_OPTIMIZED);
+            if (hasText(systemPrompt)) {
+                updates.put(opId, SYSTEM_PROMPT, systemPrompt);
             }
-
-            boolean hasSys = targets.contains(SYSTEM_PROMPT) && !isTargetFrozen(op, SYSTEM_PROMPT);
-            boolean hasUsr = targets.contains(USER_PROMPT) && !isTargetFrozen(op, USER_PROMPT);
-
-            if (hasSys && hasUsr) {
-                String[] result = optimizeBoth(op, param);
-                if (result[0] != null) {
-                    updates.put(opId, SYSTEM_PROMPT, result[0]);
-                }
-                if (result[1] != null) {
-                    updates.put(opId, USER_PROMPT, result[1]);
-                }
-            } else if (hasSys) {
-                String value = optimizeSingle(op, param, SYSTEM_PROMPT);
-                if (value != null) {
-                    updates.put(opId, SYSTEM_PROMPT, value);
-                }
-            } else if (hasUsr) {
-                String value = optimizeSingle(op, param, USER_PROMPT);
-                if (value != null) {
-                    updates.put(opId, USER_PROMPT, value);
-                }
+            if (hasText(userPrompt)) {
+                updates.put(opId, USER_PROMPT, userPrompt);
             }
         }
 
@@ -178,10 +191,10 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         String optimizedUserPrompt = extractTag(response, "USER_PROMPT_OPTIMIZED");
 
         if (optimizedSystemPrompt != null) {
-            optimizedSystemPrompt = restorePlaceholders(systemPrompt, optimizedSystemPrompt);
+            optimizedSystemPrompt = restorePromptVariables(systemPrompt, optimizedSystemPrompt);
         }
         if (optimizedUserPrompt != null) {
-            optimizedUserPrompt = restorePlaceholders(userPrompt, optimizedUserPrompt);
+            optimizedUserPrompt = restorePromptVariables(userPrompt, optimizedUserPrompt);
         }
 
         return new String[]{optimizedSystemPrompt, optimizedUserPrompt};
@@ -202,7 +215,7 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         String response = invokeModel(messages);
         String optimized = extractTag(response, "PROMPT_OPTIMIZED");
         if (optimized != null) {
-            return restorePlaceholders(targetPrompt, optimized);
+            return restorePromptVariables(targetPrompt, optimized);
         }
         return null;
     }
@@ -237,7 +250,7 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
                 .replace("</prompt_base>", "");
     }
 
-    private String restorePlaceholders(String originalPrompt, String optimizedPrompt) {
+    private String restorePromptVariables(String originalPrompt, String optimizedPrompt) {
         List<String> originalKeys = new PromptAssembler(originalPrompt, "{{", "}}").getInputKeys();
         List<String> optimizedKeys = new PromptAssembler(optimizedPrompt, "{{", "}}").getInputKeys();
 
@@ -247,26 +260,30 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
             return optimizedPrompt;
         }
 
-        String restoredPrompt = invokeModel(placeholderRestoreTemplate.format(Map.of(
+        String restoredPrompt = invokeModel(promptVariableRestoreTemplate.format(Map.of(
                 "original_prompt", originalPrompt,
                 "revised_prompt", optimizedPrompt,
-                "all_placeholders", originalKeys.toString(),
-                "missing_placeholders", missing.toString()
+                "all_prompt_variables", originalKeys.toString(),
+                "missing_prompt_variables", missing.toString()
         )).toMessages());
 
         List<String> restoredKeys = new PromptAssembler(restoredPrompt, "{{", "}}").getInputKeys();
         LinkedHashSet<String> stillMissing = new LinkedHashSet<>(originalKeys);
         stillMissing.removeAll(restoredKeys);
         if (!stillMissing.isEmpty()) {
-            String appendedPlaceholders = stillMissing.stream()
-                    .map(placeholder -> "{{" + placeholder + "}}")
+            String appendedPromptVariables = stillMissing.stream()
+                    .map(variable -> "{{" + variable + "}}")
                     .collect(Collectors.joining("\n"));
-            return restoredPrompt + "\n" + appendedPlaceholders;
+            return restoredPrompt + "\n" + appendedPromptVariables;
         }
         return restoredPrompt;
     }
 
     private static String nullToEmpty(String value) {
         return value != null ? value : "";
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isEmpty();
     }
 }

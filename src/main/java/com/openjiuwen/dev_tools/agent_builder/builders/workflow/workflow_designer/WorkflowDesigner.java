@@ -18,6 +18,32 @@ import java.util.*;
 public class WorkflowDesigner {
 
     private static final Logger LOG = LoggerFactory.getLogger(WorkflowDesigner.class);
+    private final Object llm;
+
+    public WorkflowDesigner() {
+        this(null);
+    }
+
+    public WorkflowDesigner(Object llm) {
+        this.llm = llm;
+    }
+
+    public Object getLlm() {
+        return llm;
+    }
+
+    public static String parseReflectionResult(String reflectionResult) {
+        if (reflectionResult == null) {
+            return "";
+        }
+        for (String separator : List.of("## New Workflow Design", " New Workflow Design")) {
+            int index = reflectionResult.indexOf(separator);
+            if (index >= 0) {
+                return reflectionResult.substring(index + separator.length()).strip();
+            }
+        }
+        return reflectionResult;
+    }
 
     /** Design a workflow from the given requirements. */
     public Map<String, Object> design(Map<String, Object> requirements) {

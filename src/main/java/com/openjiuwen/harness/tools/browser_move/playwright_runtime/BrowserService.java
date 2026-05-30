@@ -29,6 +29,7 @@ public class BrowserService {
     boolean lastHeartbeatOk = true;
     private String lastFailureSummary;
     private CompletableFuture<Void> heartbeatTask;
+    private volatile boolean shutdownRequested;
 
     private final Map<String, String> cancelStore = new ConcurrentHashMap<>();
     private final Map<String, BrowserTaskProgressState> progressStates = new ConcurrentHashMap<>();
@@ -54,16 +55,22 @@ public class BrowserService {
         connectionHealthy = true;
     }
 
-    public void startHeartbeat() {
+    public synchronized void startHeartbeat() {
         if (heartbeatTask != null && !heartbeatTask.isDone()) {
             return;
         }
+        shutdownRequested = false;
         heartbeatTask = CompletableFuture.runAsync(this::heartbeatLoop);
     }
 
     protected void heartbeatLoop() {
-        connectionHealthy = true;
-        lastHeartbeatOk = true;
+        synchronized (this) {
+            if (shutdownRequested) {
+                return;
+            }
+            connectionHealthy = true;
+            lastHeartbeatOk = true;
+        }
     }
 
     public Map<String, Object> runTask(String task, String sessionId, String requestId, Integer timeoutS) {
@@ -198,9 +205,9 @@ public class BrowserService {
     public BrowserTaskProgressState getProgressState(String sessionId) {
         String sid = sessionId != null ? sessionId.trim() : "";
         if (sid.isEmpty()) {
-            return new BrowserTaskProgressState();
+            return null;
         }
-        return progressStates.getOrDefault(sid, new BrowserTaskProgressState());
+        return progressStates.get(sid);
     }
 
     protected BrowserTaskProgressState getOrCreateProgressState(String sessionId) {
@@ -216,20 +223,16 @@ public class BrowserService {
         if (state == null || state.isEmpty()) {
             return null;
         }
-        Map<String, Object> exported = new LinkedHashMap<>();
-        exported.put("request_id", state.getRequestId());
-        exported.put("status", state.getStatus());
-        exported.put("completed_steps", state.getCompletedSteps());
-        exported.put("remaining_steps", state.getRemainingSteps());
-        exported.put("next_step", state.getNextStep());
-        exported.put("completion_evidence", state.getCompletionEvidence());
-        exported.put("missing_requirements", state.getMissingRequirements());
-        return exported;
+        return state.toDict();
     }
 
     public void setProgressState(String sessionId, BrowserTaskProgressState progressState) {
         String sid = sessionId != null ? sessionId.trim() : "";
         if (sid.isEmpty() || progressState == null) {
+            return;
+        }
+        if (progressState.isEmpty()) {
+            progressStates.remove(sid);
             return;
         }
         progressStates.put(sid, progressState);
@@ -303,11 +306,14 @@ public class BrowserService {
     }
 
     public void shutdown() {
-        started = false;
-        connectionHealthy = false;
-        lastHeartbeatOk = false;
+        shutdownRequested = true;
         if (heartbeatTask != null && !heartbeatTask.isDone()) {
             heartbeatTask.cancel(true);
+        }
+        synchronized (this) {
+            started = false;
+            connectionHealthy = false;
+            lastHeartbeatOk = false;
         }
         cancelStore.clear();
         progressStates.clear();

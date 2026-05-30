@@ -26,7 +26,11 @@ public abstract class BaseShellOperation extends BaseOperation {
 
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of("executeCmd", "executeCmdStream", "executeCmdBackground"));
+        List<ToolCard> toolCards = generateToolCards(List.of("executeCmd", "executeCmdStream", "executeCmdBackground"));
+        for (ToolCard toolCard : toolCards) {
+            toolCard.getInputParams().put("required", List.of("command"));
+        }
+        return toolCards;
     }
 
     /**

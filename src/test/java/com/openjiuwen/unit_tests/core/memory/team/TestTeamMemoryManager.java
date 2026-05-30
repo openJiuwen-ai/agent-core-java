@@ -4,6 +4,9 @@
 
 package com.openjiuwen.unit_tests.core.memory.team;
 
+import com.openjiuwen.core.memory.team.MemberMemoryToolkit;
+import com.openjiuwen.core.memory.team.TeamMemoryManager;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -114,14 +117,15 @@ class TestTeamMemoryManager {
         @Test
         @DisplayName("init toolkit is idempotent")
         void testInitToolkitIdempotent() {
-            AgentStub agent = new AgentStub();
-            TeamMemoryManagerStub manager = new TeamMemoryManagerStub();
+            TeamMemoryManager manager = new TeamMemoryManager(
+                    "member", "team", "leader", "temporary", "general",
+                    null, "cn", "passive", false, null, new Object(), null);
 
-            manager.init(agent);
-            manager.init(agent); // Second call should be idempotent
+            assertTrue(manager.initToolkit().join());
+            MemberMemoryToolkit toolkit = manager.getToolkit();
 
-            assertEquals(2, agent.abilityManager.registeredTools.size());
-            assertTrue(manager.initialized);
+            assertTrue(manager.initToolkit().join());
+            assertSame(toolkit, manager.getToolkit());
         }
     }
 

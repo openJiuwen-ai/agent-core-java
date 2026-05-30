@@ -6,7 +6,10 @@ package com.openjiuwen.agent_teams.spawn;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
@@ -113,24 +116,30 @@ public class InProcessHandle {
     // ------------------------------------------------------------------
 
     /**
-     * Cancel the task and wait for completion.
+     * Wait for graceful task completion, then force cancel on timeout.
      *
      * @param timeout Timeout in seconds (default 10.0)
-     * @return true if the task finished within timeout
+     * @return true if the task finished before timeout, false if force killed
      */
     public boolean shutdown(double timeout) {
         shutdownRequested.set(true);
         if (task == null || task.isDone()) {
             return true;
         }
-        task.cancel(true);
+        long timeoutMillis = Math.max(0L, Math.round(timeout * 1000));
         try {
-            // Wait for completion (with timeout)
-            Thread.sleep((long) (timeout * 1000));
-        } catch (InterruptedException ie) {
+            task.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            return true;
+        } catch (TimeoutException e) {
+            forceKill();
+            return false;
+        } catch (CancellationException | ExecutionException e) {
+            return true;
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            forceKill();
+            return false;
         }
-        return task.isDone();
     }
 
     /**

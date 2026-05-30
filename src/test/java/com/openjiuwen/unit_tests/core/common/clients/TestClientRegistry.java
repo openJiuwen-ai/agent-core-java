@@ -4,12 +4,21 @@
 
 package com.openjiuwen.unit_tests.core.common.clients;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.common.clients.ClientRegistry;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for client registry.
@@ -19,24 +28,20 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TestClientRegistry {
 
-    private Object registry;
+    private ClientRegistry registry;
 
     @BeforeEach
     void setUp() {
-        registry = getTestRegistry();
+        registry = new ClientRegistry();
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test register client decorator")
     void testRegisterClientDecorator() {
-        // Register a test client using decorator pattern
-        String clientName = "test_client";
-        String clientType = "test";
-        
-        registerClient(registry, clientName, clientType, kwargs -> createMockClient());
-        
-        List<String> clients = listClients(registry);
+        registry.registerClient("test_client", "test", kwargs -> createMockClient());
+
+        List<String> clients = registry.listClients();
         assertTrue(clients.contains("test_test_client"), "Client should be registered");
     }
 
@@ -44,166 +49,120 @@ class TestClientRegistry {
     @Tag("level0")
     @DisplayName("Test register class")
     void testRegisterClass() {
-        // Register a class as a client
+        registry.registerClass(TestClient.class);
+
         String fullName = "database_mysql";
-        
-        registerClass(registry, "mysql", "database", TestClient.class);
-        
-        List<String> clients = listClients(registry);
+        List<String> clients = registry.listClients();
         assertTrue(clients.contains(fullName), "Class should be registered");
-        
-        // Test client retrieval with parameters
-        Map<String, Object> config = getClient(registry, fullName, Map.of("host", "localhost"));
-        assertEquals("localhost", config.get("host"), "Config should have host parameter");
+        assertTrue(clients.contains(fullName), "Class should stay registered");
+
+        TestClient instance = (TestClient) registry.getClient(fullName, Map.of("host", "localhost"));
+        assertEquals("localhost", instance.config.get("host"), "Config should have host parameter");
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test get client by name")
     void testGetClientByName() {
-        String clientName = "redis";
-        String clientType = "cache";
-        
         Object mockInstance = createMockClient();
-        registerClient(registry, clientName, clientType, kwargs -> mockInstance);
-        
-        Object result = getClientInstance(registry, clientName, clientType);
+        registry.registerClient("redis", "cache", kwargs -> mockInstance);
+
+        Object result = registry.getClient("redis", "cache");
         assertSame(mockInstance, result, "Should return the registered instance");
-        
-        unregister(registry, clientName, clientType);
+
+        registry.unregister("redis", "cache");
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test get client without client type")
     void testGetClientWithoutClientType() {
-        String clientName = "default_client";
-        
         Object mockInstance = createMockClient();
-        registerClient(registry, clientName, null, kwargs -> mockInstance);
-        
-        Object result = getClientInstance(registry, clientName, null);
+        registry.registerClient("default_client", null, kwargs -> mockInstance);
+
+        Object result = registry.getClient("default_client");
         assertSame(mockInstance, result, "Should return the registered instance without client type");
-        
-        unregister(registry, clientName, null);
+
+        registry.unregister("default_client", null);
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test get client empty name")
     void testGetClientEmptyName() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            getClientInstance(registry, "", null);
-        }, "Should throw exception for empty name");
+        assertThrows(IllegalArgumentException.class, () -> registry.getClient("", (String) null),
+                "Should throw exception for empty name");
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test get client unknown")
     void testGetClientUnknown() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            getClientInstance(registry, "unknown_client", null);
-        }, "Should throw exception for unknown client");
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> registry.getClient("unknown_client", (String) null),
+                "Should throw exception for unknown client");
+        assertTrue(thrown.getMessage().contains("Unknown client type"));
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test get client creation failure")
     void testGetClientCreationFailure() {
-        String clientName = "failing";
-        String clientType = "test";
-        
-        registerClient(registry, clientName, clientType, kwargs -> {
+        registry.registerClient("failing", "test", kwargs -> {
             throw new RuntimeException("Creation failed");
         });
-        
-        assertThrows(RuntimeException.class, () -> {
-            getClientInstance(registry, clientName, clientType);
-        }, "Should throw exception when creation fails");
-    }
 
-    @Test
-    @Tag("level0")
-    @DisplayName("Test list clients")
-    void testListClients() {
-        registerClient(registry, "client1", "type1", kwargs -> createMockClient());
-        registerClient(registry, "client2", "type2", kwargs -> createMockClient());
-        
-        List<String> clients = listClients(registry);
-        assertTrue(clients.size() >= 2, "Should have at least 2 registered clients");
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> registry.getClient("failing", "test"),
+                "Should throw exception when creation fails");
+        assertTrue(thrown.getMessage().contains("Failed to create client"));
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test unregister")
     void testUnregister() {
-        String clientName = "to_unregister";
-        String clientType = "test";
-        
-        registerClient(registry, clientName, clientType, kwargs -> createMockClient());
-        assertTrue(listClients(registry).contains("test_to_unregister"));
-        
-        unregister(registry, clientName, clientType);
-        assertFalse(listClients(registry).contains("test_to_unregister"), "Client should be unregistered");
+        registry.registerClient("redis", "cache", kwargs -> createMockClient());
+
+        registry.unregister("redis", "cache");
+
+        assertFalse(registry.listClients().contains("cache_redis"), "Client should be unregistered");
     }
 
     @Test
     @Tag("level0")
     @DisplayName("Test unregister not found")
     void testUnregisterNotFound() {
-        // Unregistering non-existent client should not throw
-        assertDoesNotThrow(() -> {
-            unregister(registry, "non_existent", "test");
-        });
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> registry.unregister("nonexistent"),
+                "Should throw when unregistering a missing client");
+        assertTrue(thrown.getMessage().contains("not registered"));
     }
 
-    // Helper methods - placeholders for actual registry operations
-    private Object getTestRegistry() {
-        return new Object();
-    }
+    @Test
+    @Tag("level0")
+    @DisplayName("Test list clients")
+    void testListClients() {
+        registry.registerClient("client1", "type1", kwargs -> createMockClient());
+        registry.registerClient("client2", "type2", kwargs -> createMockClient());
 
-    private void registerClient(Object registry, String name, String type, ClientFactory factory) {
-        // Placeholder for actual registration
-    }
-
-    private void registerClass(Object registry, String name, String type, Class<?> clazz) {
-        // Placeholder for actual class registration
-    }
-
-    private List<String> listClients(Object registry) {
-        return new ArrayList<>();
-    }
-
-    private Map<String, Object> getClient(Object registry, String name, Map<String, Object> params) {
-        return new HashMap<>(params);
-    }
-
-    private Object getClientInstance(Object registry, String name, String type) {
-        if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("Client name cannot be empty");
-        }
-        throw new IllegalArgumentException("Unknown client type: " + name);
-    }
-
-    private void unregister(Object registry, String name, String type) {
-        // Placeholder for actual unregistration
+        List<String> clients = registry.listClients();
+        assertTrue(clients.contains("type1_client1"));
+        assertTrue(clients.contains("type2_client2"));
     }
 
     private Object createMockClient() {
         return new Object();
     }
 
-    @FunctionalInterface
-    private interface ClientFactory {
-        Object create(Map<String, Object> kwargs);
-    }
-
-    // Test client class
     private static class TestClient {
+        static final String __client_name__ = "mysql";
+        static final String __client_type__ = "database";
+
         private final Map<String, Object> config;
 
-        public TestClient(Map<String, Object> kwargs) {
-            this.config = new HashMap<>(kwargs);
+        TestClient(Map<String, Object> kwargs) {
+            this.config = Map.copyOf(kwargs);
         }
     }
 }

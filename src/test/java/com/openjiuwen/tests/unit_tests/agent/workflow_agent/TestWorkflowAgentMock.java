@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.tests.unit_tests.agent.workflow_agent;
 
+import com.openjiuwen.core.runner.Runner;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
 
@@ -19,14 +20,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("WorkflowAgent Mock Tests")
 class TestWorkflowAgentMock {
 
+    private String previousLlmSslVerify;
+
     @BeforeEach
     void setUp() {
-        // Placeholder setup
+        previousLlmSslVerify = System.getProperty("LLM_SSL_VERIFY");
+        System.setProperty("LLM_SSL_VERIFY", "false");
+        Runner.start();
     }
 
     @AfterEach
     void tearDown() {
-        // Placeholder teardown
+        Runner.stop();
+        if (previousLlmSslVerify == null) {
+            System.clearProperty("LLM_SSL_VERIFY");
+        } else {
+            System.setProperty("LLM_SSL_VERIFY", previousLlmSslVerify);
+        }
     }
 
     @Test

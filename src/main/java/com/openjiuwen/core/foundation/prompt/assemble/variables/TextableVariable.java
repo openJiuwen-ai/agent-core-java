@@ -10,6 +10,8 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,14 +78,7 @@ public class TextableVariable extends Variable {
             Object val = kwargs;
             try {
                 for (String node : placeholder.split("\\.")) {
-                    if (val instanceof Map<?, ?> m) {
-                        val = m.get(node);
-                    } else {
-                        // Attempt reflection as a last resort
-                        var field = val.getClass().getMethod(
-                                "get" + node.substring(0, 1).toUpperCase() + node.substring(1));
-                        val = field.invoke(val);
-                    }
+                    val = resolveNode(val, node);
                 }
             } catch (Exception e) {
                 throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
@@ -97,5 +92,60 @@ public class TextableVariable extends Variable {
             formattedText = formattedText.replace(placeholderStr, String.valueOf(val));
         }
         this.value = formattedText;
+    }
+
+    private Object resolveNode(Object value, String node) throws ReflectiveOperationException {
+        if (value instanceof Map<?, ?> map) {
+            return map.get(node);
+        }
+        if (value == null) {
+            throw new NoSuchFieldException(node);
+        }
+
+        String suffix = node.substring(0, 1).toUpperCase() + node.substring(1);
+        for (String methodName : List.of("get" + suffix, "is" + suffix)) {
+            Method method = findNoArgMethod(value.getClass(), methodName);
+            if (method != null) {
+                return method.invoke(value);
+            }
+        }
+
+        Field field = findField(value.getClass(), node);
+        if (field != null) {
+            return field.get(value);
+        }
+        throw new NoSuchFieldException(node);
+    }
+
+    private Method findNoArgMethod(Class<?> type, String name) {
+        try {
+            Method method = type.getMethod(name);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException e) {
+            try {
+                Method method = type.getDeclaredMethod(name);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                return null;
+            }
+        }
+    }
+
+    private Field findField(Class<?> type, String name) {
+        try {
+            Field field = type.getField(name);
+            field.setAccessible(true);
+            return field;
+        } catch (NoSuchFieldException e) {
+            try {
+                Field field = type.getDeclaredField(name);
+                field.setAccessible(true);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+                return null;
+            }
+        }
     }
 }

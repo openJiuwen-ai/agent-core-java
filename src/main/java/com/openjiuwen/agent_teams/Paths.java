@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * keeps creation (TeamAgent, Blueprint) and cleanup (TeamBackend.clean_team)
  * in sync: a future move of the root only needs to update this module.
  * 
- * Mirrors Python's agent_teams.paths
+ * Mirrors Python's {@code paths.py} module in {@code openjiuwen.agent_teams.paths}.
  * 
  * @since 0.1.12
  */

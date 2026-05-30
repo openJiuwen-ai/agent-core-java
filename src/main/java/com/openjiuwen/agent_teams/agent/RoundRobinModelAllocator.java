@@ -4,8 +4,6 @@
 
 package com.openjiuwen.agent_teams.agent;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
@@ -33,7 +31,7 @@ public class RoundRobinModelAllocator implements ModelAllocator {
      */
     public RoundRobinModelAllocator(List<ModelPoolEntry> pool) {
         this.pool = pool != null ? new ArrayList<>(pool) : new ArrayList<>();
-        this.poolDigest = computePoolDigest(this.pool);
+        this.poolDigest = ModelAllocators.poolDigest(this.pool);
         this.index = 0;
         this.groups = new LinkedHashMap<>();
 
@@ -51,7 +49,7 @@ public class RoundRobinModelAllocator implements ModelAllocator {
         ModelPoolEntry entry = pool.get(index % pool.size());
         index++;
         List<ModelPoolEntry> group = groups.getOrDefault(entry.getModelName(), Arrays.asList(entry));
-        int groupIdx = groupIndexOf(entry, group);
+        int groupIdx = ModelAllocators.groupIndexOf(entry, group);
         return new Allocation(entry, groupIdx);
     }
 
@@ -78,46 +76,13 @@ public class RoundRobinModelAllocator implements ModelAllocator {
             Object rawIndex = state.get("index");
             if (rawIndex instanceof Number) {
                 index = ((Number) rawIndex).intValue();
+            } else if (rawIndex instanceof String text) {
+                index = Integer.parseInt(text);
             } else {
                 index = 0;
             }
         } catch (Exception e) {
             index = 0;
         }
-    }
-
-    /**
-     * Compute stable digest of a pool's structural shape.
-     */
-    private static String computePoolDigest(List<ModelPoolEntry> pool) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            for (ModelPoolEntry entry : pool) {
-                md.update(entry.getModelName().getBytes());
-                md.update((byte) 0);
-                md.update(entry.getApiBaseUrl().getBytes());
-                md.update((byte) 0x1f);
-            }
-            byte[] digest = md.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            return "";
-        }
-    }
-
-    /**
-     * Return entry's position within group by reference identity.
-     */
-    private static int groupIndexOf(ModelPoolEntry entry, List<ModelPoolEntry> group) {
-        for (int i = 0; i < group.size(); i++) {
-            if (group.get(i) == entry) {
-                return i;
-            }
-        }
-        return 0;
     }
 }

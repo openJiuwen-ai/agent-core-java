@@ -222,9 +222,9 @@ class TestSemantics {
         }
 
         @Test
-        @DisplayName("test echo is not silent")
-        void testEchoIsNotSilent() {
-            assertFalse(BashSemanticsUtils.isSilent("echo hello"));
+        @DisplayName("test echo neutral segment is treated as silent")
+        void testEchoNeutralSegmentIsTreatedAsSilent() {
+            assertTrue(BashSemanticsUtils.isSilent("echo hello"));
         }
     }
 }

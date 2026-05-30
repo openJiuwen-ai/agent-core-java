@@ -18,14 +18,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Mock LlmAgent Tests")
 class MockLlmAgentTest {
 
+    private String previousLlmSslVerify;
+    private String previousIsSensitive;
+
     @BeforeEach
     void setUp() {
-        // Placeholder setup
+        previousLlmSslVerify = System.getProperty("LLM_SSL_VERIFY");
+        previousIsSensitive = System.getProperty("IS_SENSITIVE");
+        System.setProperty("LLM_SSL_VERIFY", "false");
+        System.setProperty("IS_SENSITIVE", "false");
     }
 
     @AfterEach
     void tearDown() {
-        // Placeholder teardown
+        restoreProperty("LLM_SSL_VERIFY", previousLlmSslVerify);
+        restoreProperty("IS_SENSITIVE", previousIsSensitive);
     }
 
     @Test
@@ -33,5 +40,13 @@ class MockLlmAgentTest {
     @Tag("level0")
     void testPlaceholder() {
         assertThat(true).isTrue();
+    }
+
+    private void restoreProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
     }
 }

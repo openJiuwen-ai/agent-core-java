@@ -4,18 +4,17 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.rail;
 
+import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal trajectory converter for RL online rail batches.
+ * Convert a complete Rail trajectory into a rail-v1 upload payload.
  * <p>
  * Mirrors Python's {@code OnlineTrajectoryConverter} in
  * {@code openjiuwen.agent_evolving.agent_rl.online.rail.converter}.
@@ -23,172 +22,215 @@ import java.util.Map;
 public class OnlineTrajectoryConverter {
 
     private final String tenantId;
+    private final String modelId;
+    private final boolean sessionDone;
 
     public OnlineTrajectoryConverter(String tenantId) {
-        this.tenantId = tenantId;
+        this(tenantId, null, false);
     }
 
-    public OnlineRlBatch convert(Trajectory trajectory) {
-        OnlineRlBatch batch = new OnlineRlBatch();
-        batch.setTenantId(tenantId);
-        if (trajectory == null || trajectory.getSteps() == null) {
-            return batch;
-        }
-        for (TrajectoryStep step : trajectory.getSteps()) {
-            if (!"llm".equals(step.getKind())) {
+    public OnlineTrajectoryConverter(String tenantId, String modelId, boolean sessionDone) {
+        this.tenantId = tenantId;
+        this.modelId = modelId;
+        this.sessionDone = sessionDone;
+    }
+
+    public RailV1Batch convert(Trajectory trajectory) {
+        return convert(trajectory, null, null);
+    }
+
+    public RailV1Batch convert(Trajectory trajectory, String tenantId, Boolean sessionDone) {
+        String trajectoryId = trajectory != null && trajectory.getExecutionId() != null ? trajectory.getExecutionId() : "";
+        String sessionId = trajectory != null && trajectory.getSessionId() != null ? trajectory.getSessionId() : "";
+        List<PerTurnSample> samples = new ArrayList<>();
+        String resolvedModelId = modelId != null && !modelId.isEmpty() ? modelId : "";
+
+        List<TrajectoryStep> steps = trajectory != null && trajectory.getSteps() != null ? trajectory.getSteps() : List.of();
+        for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
+            TrajectoryStep step = steps.get(stepIndex);
+            if (!"llm".equals(step.getKind()) || !(step.getDetail() instanceof LLMCallDetail detail)) {
                 continue;
             }
-            OnlineRlSample sample = new OnlineRlSample();
-            extractMessages(step, sample);
-            extractPromptIds(step, sample);
-            extractResponseTokens(step, sample);
-            extractResponseLogprobs(step, sample);
-            sample.setResponseText(extractResponseText(step.getOutputs()));
-            batch.getSamples().add(sample);
+            if (resolvedModelId.isEmpty() && detail.getModel() != null) {
+                resolvedModelId = detail.getModel();
+            }
+
+            List<Map<String, Object>> messages = new ArrayList<>();
+            for (Object message : detailMessages(detail)) {
+                messages.add(TrajectoryConverterHelper.messageToDict(message));
+            }
+            Map<String, Object> response = TrajectoryConverterHelper.responseToDict(detail.getResponse());
+            String responseText = TrajectoryConverterHelper.extractText(response.get("content"));
+            if (responseText.strip().isEmpty() && response.isEmpty()) {
+                continue;
+            }
+
+            Map<String, Object> detailMeta = new LinkedHashMap<>(detail.getMeta() != null ? detail.getMeta() : Map.of());
+            Object providerResponseJson = detailMeta.get("provider_response_json");
+            Object tokenSource = TrajectoryConverterHelper.truthy(providerResponseJson) ? providerResponseJson : detail.getResponse();
+            List<Integer> responseTokens = firstIntList(
+                    step.getMeta().get("completion_token_ids"),
+                    step.getMeta().get("response_tokens"),
+                    LlmResponseExtractor.extractTokenIds(tokenSource)
+            );
+            List<Integer> promptIds = firstIntList(
+                    step.getMeta().get("prompt_token_ids"),
+                    step.getMeta().get("prompt_ids"),
+                    LlmResponseExtractor.extractPromptIds(tokenSource)
+            );
+            List<Double> logprobs = firstDoubleList(
+                    TrajectoryConverterHelper.coerceLogprobs(step.getMeta().get("logprobs")),
+                    LlmResponseExtractor.extractLogprobs(tokenSource)
+            );
+
+            Map<String, Object> mergedMeta = new LinkedHashMap<>(detailMeta);
+            mergedMeta.putAll(step.getMeta() != null ? step.getMeta() : Map.of());
+
+            Object renderFingerprint = TrajectoryConverterHelper.firstTruthy(
+                    step.getMeta().get("render_fingerprint"),
+                    TrajectoryConverterHelper.fingerprintPayload(messages, detail.getTools())
+            );
+
+            samples.add(PerTurnSample.builder()
+                    .trajectoryId(trajectoryId)
+                    .stepIndex(stepIndex)
+                    .sessionId(sessionId)
+                    .modelId(detail.getModel() != null && !detail.getModel().isEmpty() ? detail.getModel() : resolvedModelId)
+                    .messages(messages)
+                    .response(response)
+                    .responseText(responseText)
+                    .responseTokens(responseTokens)
+                    .logprobs(logprobs)
+                    .promptIds(promptIds)
+                    .renderFingerprint(asMap(renderFingerprint))
+                    .tools(TrajectoryConverterHelper.jsonValue(detail.getTools()))
+                    .meta(mergedMeta)
+                    .build());
         }
-        return batch;
+
+        Map<String, Object> trajectoryMetaMap = trajectory != null && trajectory.getMeta() != null
+                ? trajectory.getMeta()
+                : Map.of();
+        Object statusValue = TrajectoryConverterHelper.firstTruthy(trajectoryMetaMap.get("status"), "ok");
+        Map<String, Object> extra = new LinkedHashMap<>(trajectoryMetaMap);
+        extra.put("source", trajectory != null ? trajectory.getSource() : null);
+        extra.put("case_id", trajectory != null ? trajectory.getCaseId() : null);
+        extra.put("cost", trajectory != null ? trajectory.getCost() : null);
+
+        TrajectoryMeta meta = TrajectoryMeta.builder()
+                .trajectoryId(trajectoryId)
+                .sessionId(sessionId)
+                .status(String.valueOf(statusValue))
+                .totalTurns(samples.size())
+                .extra(extra)
+                .build();
+
+        return RailV1Batch.builder()
+                .protocolVersion("rail-v1")
+                .sessionId(sessionId)
+                .tenantId(tenantId != null ? tenantId : this.tenantId)
+                .trajectoryId(trajectoryId)
+                .modelId(resolvedModelId)
+                .samples(samples)
+                .trajectoryMeta(meta)
+                .prevFeedback(extractPrevFeedback(trajectory))
+                .sessionDone(sessionDone == null ? this.sessionDone : sessionDone)
+                .build();
     }
 
-    @SuppressWarnings("unchecked")
-    private static void extractMessages(TrajectoryStep step, OnlineRlSample sample) {
-        Object inputs = step.getInputs();
-        if (inputs instanceof Map<?, ?> map) {
-            Object messages = map.get("messages");
-            if (messages instanceof List<?> list) {
-                for (Object item : list) {
-                    sample.getMessages().add(messageToDict(item));
+    public static Map<String, Object> extractPrevFeedback(Trajectory trajectory) {
+        List<TrajectoryStep> steps = trajectory != null && trajectory.getSteps() != null ? trajectory.getSteps() : List.of();
+        for (TrajectoryStep step : steps) {
+            if (!"llm".equals(step.getKind()) || !(step.getDetail() instanceof LLMCallDetail detail)) {
+                continue;
+            }
+            for (Object message : detailMessages(detail)) {
+                Map<String, Object> msg = TrajectoryConverterHelper.messageToDict(message);
+                if (!"user".equals(msg.get("role"))) {
+                    continue;
                 }
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void extractPromptIds(TrajectoryStep step, OnlineRlSample sample) {
-        Map<String, Object> meta = step.getMeta();
-        Object provider = meta != null ? meta.get("provider_response_json") : null;
-        if (provider instanceof Map<?, ?> map) {
-            Object prompt = map.get("prompt_token_ids");
-            if (prompt instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Number n) {
-                        sample.getPromptIds().add(n.intValue());
-                    }
+                String rawUserText = TrajectoryConverterHelper.extractText(msg.get("content")).strip();
+                if (rawUserText.isEmpty()) {
+                    return null;
                 }
+                Map<String, Object> feedback = new LinkedHashMap<>();
+                feedback.put("raw_user_text", rawUserText);
+                feedback.put("source", "first_user_msg_of_next_batch");
+                return feedback;
             }
         }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
-    private static void extractResponseTokens(TrajectoryStep step, OnlineRlSample sample) {
-        Map<String, Object> meta = step.getMeta();
-        Object provider = meta != null ? meta.get("provider_response_json") : null;
-        if (provider instanceof Map<?, ?> map) {
-            Object choices = map.get("choices");
-            if (choices instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> choice) {
-                Object tokenIds = choice.get("token_ids");
-                if (tokenIds instanceof List<?> tokenList) {
-                    for (Object item : tokenList) {
-                        if (item instanceof Number n) {
-                            sample.getResponseTokens().add(n.intValue());
-                        }
-                    }
-                }
-            }
-        }
+    private static List<?> detailMessages(LLMCallDetail detail) {
+        Object messages = detail.getMessages();
+        return messages instanceof List<?> list ? list : List.of();
     }
 
     @SuppressWarnings("unchecked")
-    private static void extractResponseLogprobs(TrajectoryStep step, OnlineRlSample sample) {
-        Map<String, Object> meta = step.getMeta();
-        Object provider = meta != null ? meta.get("provider_response_json") : null;
-        if (provider instanceof Map<?, ?> map) {
-            Object choices = map.get("choices");
-            if (choices instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> choice) {
-                Object logprobs = choice.get("logprobs");
-                if (logprobs instanceof List<?> logprobList) {
-                    for (Object item : logprobList) {
-                        if (item instanceof Number n) {
-                            sample.getResponseLogprobs().add(n.doubleValue());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static String extractResponseText(Object outputs) {
-        if (outputs instanceof Map<?, ?> map) {
-            Object content = map.get("content");
-            if (content != null) {
-                return String.valueOf(content);
-            }
-            Object response = map.get("response");
-            if (response instanceof Map<?, ?> responseMap && responseMap.get("content") != null) {
-                return String.valueOf(responseMap.get("content"));
-            }
-        }
-        return outputs == null ? "" : String.valueOf(outputs);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> messageToDict(Object message) {
-        if (message instanceof Map<?, ?> map) {
+    private static Map<String, Object> asMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
             Map<String, Object> out = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : map.entrySet()) {
-                out.put(String.valueOf(e.getKey()), e.getValue());
-            }
+            map.forEach((key, val) -> out.put(String.valueOf(key), val));
             return out;
         }
-        Map<String, Object> dumped = tryModelDump(message);
-        if (dumped != null) {
-            return dumped;
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        Object role = readField(message, "role");
-        Object content = readField(message, "content");
-        out.put("role", role != null ? String.valueOf(role) : "unknown");
-        out.put("content", content != null ? content : "");
-        return out;
+        return new LinkedHashMap<>();
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> tryModelDump(Object value) {
-        if (value == null) {
+    private static List<Integer> firstIntList(Object... candidates) {
+        for (Object candidate : candidates) {
+            List<Integer> converted = toIntList(candidate);
+            if (converted != null && !converted.isEmpty()) {
+                return converted;
+            }
+        }
+        return null;
+    }
+
+    private static List<Double> firstDoubleList(Object... candidates) {
+        for (Object candidate : candidates) {
+            List<Double> converted = toDoubleList(candidate);
+            if (converted != null && !converted.isEmpty()) {
+                return converted;
+            }
+        }
+        return null;
+    }
+
+    private static List<Integer> toIntList(Object value) {
+        if (!(value instanceof List<?> list)) {
             return null;
         }
-        try {
-            Method method = value.getClass().getMethod("model_dump");
-            Object result = method.invoke(value);
-            if (result instanceof Map<?, ?> map) {
-                Map<String, Object> out = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> e : map.entrySet()) {
-                    out.put(String.valueOf(e.getKey()), e.getValue());
+        List<Integer> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Number number) {
+                out.add(number.intValue());
+            } else if (item != null) {
+                try {
+                    out.add(Integer.parseInt(String.valueOf(item)));
+                } catch (NumberFormatException ignored) {
                 }
-                return out;
             }
-        } catch (Exception ignored) {
-            return null;
         }
-        return null;
+        return out.isEmpty() ? null : out;
     }
 
-    private static Object readField(Object target, String fieldName) {
-        if (target == null) {
+    private static List<Double> toDoubleList(Object value) {
+        if (!(value instanceof List<?> list)) {
             return null;
         }
-        Class<?> type = target.getClass();
-        while (type != null) {
-            try {
-                Field field = type.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.get(target);
-            } catch (NoSuchFieldException ignored) {
-                type = type.getSuperclass();
-            } catch (IllegalAccessException ignored) {
-                return null;
+        List<Double> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Number number) {
+                out.add(number.doubleValue());
+            } else if (item != null) {
+                try {
+                    out.add(Double.parseDouble(String.valueOf(item)));
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
-        return null;
+        return out.isEmpty() ? null : out;
     }
 }

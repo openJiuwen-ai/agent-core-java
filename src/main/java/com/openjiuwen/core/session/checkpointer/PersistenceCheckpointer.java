@@ -241,7 +241,8 @@ public class PersistenceCheckpointer extends Checkpointer {
 
         @Override
         public void clear(String id) {
-            // id is agentId here — needs sessionId too; use clear(agentId, sessionId)
+            throw new UnsupportedOperationException(
+                    "Agent checkpoint clear requires both agentId and sessionId; use clear(agentId, sessionId)");
         }
 
         public void clear(String agentId, String sessionId) {
@@ -375,7 +376,8 @@ public class PersistenceCheckpointer extends Checkpointer {
 
         @Override
         public void clear(String id) {
-            // id is workflowId here — needs sessionId too
+            throw new UnsupportedOperationException(
+                    "Workflow checkpoint clear requires both workflowId and sessionId; use clear(workflowId, sessionId)");
         }
 
         public void clear(String workflowId, String sessionId) {

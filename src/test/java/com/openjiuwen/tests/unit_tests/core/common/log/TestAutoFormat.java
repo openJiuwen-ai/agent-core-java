@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.tests.unit_tests.core.common.log;
 
+import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
 
@@ -127,60 +128,11 @@ class TestAutoFormat {
     }
 
     /**
-     * Simple auto-format message implementation for testing.
-     * In production, this would use StructuredLoggerMixin._auto_format_message.
+     * Delegate to the production implementation that mirrors Python's
+     * StructuredLoggerMixin._auto_format_message.
      */
     private String autoFormatMessage(Object msg, Object[] args) {
-        if (args == null || args.length == 0) {
-            return String.valueOf(msg);
-        }
-        String msgStr = String.valueOf(msg);
-        // Simple implementation: check for {} style placeholders first
-        if (msgStr.contains("{}") || msgStr.matches(".\\{[0-9]+.*\\}.*")) {
-            return formatBraceStyle(msgStr, args);
-        }
-        // Then check for % style placeholders
-        if (msgStr.contains("%s") || msgStr.contains("%d")) {
-            return formatPercentStyle(msgStr, args);
-        }
-        return msgStr;
-    }
-
-    private String formatBraceStyle(String msg, Object[] args) {
-        String result = msg;
-        int argIndex = 0;
-        for (Object arg : args) {
-            if (result.contains("{}")) {
-                result = result.replaceFirst("\\{}", String.valueOf(arg));
-            } else if (result.contains("{" + argIndex + "}")) {
-                result = result.replace("{" + argIndex + "}", String.valueOf(arg));
-            } else if (result.contains("{:")) {
-                // Handle format spec
-                result = result.replaceFirst("\\{:[^}]+\\}", formatWithSpec(arg, result));
-            }
-            argIndex++;
-        }
-        return result;
-    }
-
-    private String formatPercentStyle(String msg, Object[] args) {
-        String result = msg;
-        for (Object arg : args) {
-            if (result.contains("%s")) {
-                result = result.replaceFirst("%s", String.valueOf(arg));
-            } else if (result.contains("%d")) {
-                result = result.replaceFirst("%d", String.valueOf(arg));
-            }
-        }
-        return result;
-    }
-
-    private String formatWithSpec(Object arg, String template) {
-        // Simple format spec handling
-        if (template.contains(".2f")) {
-            return String.format("%.2f", arg);
-        }
-        return String.valueOf(arg);
+        return StructuredLoggerMixin.autoFormatMessage(String.valueOf(msg), args);
     }
 
     @Test

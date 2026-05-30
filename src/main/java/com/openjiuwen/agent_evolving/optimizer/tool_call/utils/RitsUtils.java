@@ -66,6 +66,9 @@ public class RitsUtils {
     public static String getRitsResponse(String modelId, String prompt, String llmApiKey) {
         try {
             Object response = ritsResponse(modelId, prompt, llmApiKey, null, false, Map.of());
+            if (response == null) {
+                return null;
+            }
             return response instanceof String text ? text : OBJECT_MAPPER.writeValueAsString(response);
         } catch (Exception e) {
             Loggers.AGENT.error("Cannot complete LLM call. Error: {}", e.getMessage());
@@ -144,7 +147,7 @@ public class RitsUtils {
 
     private static String stringifyContent(Object content) throws Exception {
         if (content == null) {
-            return "";
+            return null;
         }
         if (content instanceof String text) {
             return text;

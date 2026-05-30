@@ -36,11 +36,9 @@ class TestBatchBuilder {
     // -- helper factories ---------------------------------------------------
 
     private static RolloutWithReward rollout(int pidLen, int ridLen, double reward, List<Integer> lossMask) {
-        List<Integer> allPromptIds = Arrays.asList(1, 2, 3, 4);
-        List<Integer> allResponseIds = Arrays.asList(10, 20, 30);
         RolloutWithReward r = new RolloutWithReward();
-        r.inputPromptIds = allPromptIds.subList(0, Math.min(pidLen, allPromptIds.size()));
-        r.outputResponseIds = allResponseIds.subList(0, Math.min(ridLen, allResponseIds.size()));
+        r.inputPromptIds = promptIds(pidLen);
+        r.outputResponseIds = responseIds(ridLen);
         r.reward = reward;
         r.nTurns = 1;
         r.lossMask = lossMask;
@@ -49,6 +47,22 @@ class TestBatchBuilder {
 
     private static RolloutWithReward rollout(int pidLen, int ridLen, double reward) {
         return rollout(pidLen, ridLen, reward, null);
+    }
+
+    private static List<Integer> promptIds(int length) {
+        List<Integer> ids = new ArrayList<>();
+        for (int i = 0; i < length; i++) {
+            ids.add(i + 1);
+        }
+        return ids;
+    }
+
+    private static List<Integer> responseIds(int length) {
+        List<Integer> ids = new ArrayList<>();
+        for (int i = 0; i < length; i++) {
+            ids.add((i + 1) * 10);
+        }
+        return ids;
     }
 
     // -- TestPaddingAndMask -------------------------------------------------

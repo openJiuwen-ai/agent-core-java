@@ -280,7 +280,8 @@ public class ProcessHandler {
                     if (elapsedMs >= (long) overallTimeoutSeconds * 1000) {
                         Loggers.SYS_OPERATION.error("Stream execution time out, timeout={}s",
                                 overallTimeoutSeconds);
-                        process.destroyForcibly();
+                        destroyProcessTreeForcibly();
+                        joinReadersAfterTermination();
                         return StreamEvent.builder()
                                 .type(StreamEventType.ERROR)
                                 .data("execution timeout after " + overallTimeoutSeconds + " seconds")
@@ -316,6 +317,29 @@ public class ProcessHandler {
                             .data(exitCode)
                             .build();
                 }
+            }
+        }
+
+        private void destroyProcessTreeForcibly() {
+            process.descendants()
+                    .filter(ProcessHandle::isAlive)
+                    .forEach(ProcessHandle::destroyForcibly);
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+            try {
+                process.waitFor(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private void joinReadersAfterTermination() {
+            try {
+                stdoutReader.join(1000);
+                stderrReader.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }

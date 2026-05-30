@@ -3,6 +3,7 @@ package com.openjiuwen.agent_evolving.optimizer.llm_call;
 import com.openjiuwen.agent_evolving.dataset.Case;
 import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.operator.Operator;
@@ -14,13 +15,24 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class InstructionOptimizerTest {
+
+    @Test
+    void constructorStartsWithEmptyParameters() {
+        InstructionOptimizer optimizer = new InstructionOptimizer(mock(Model.class));
+
+        assertTrue(optimizer.parameters().isEmpty());
+    }
 
     @Test
     void llmCallOptimizerBaseUsesLlmDomainAndPromptTargets() {
@@ -28,6 +40,20 @@ class InstructionOptimizerTest {
 
         assertEquals("llm", optimizer.getDomain());
         assertEquals(List.of("system_prompt", "user_prompt"), optimizer.defaultTargets());
+    }
+
+    @Test
+    void backwardWithoutBoundParametersRaises() {
+        InstructionOptimizer optimizer = new InstructionOptimizer(mock(Model.class));
+
+        assertThrows(BaseError.class, () -> optimizer.backward(List.of()));
+    }
+
+    @Test
+    void stepWithoutBoundParametersRaises() {
+        InstructionOptimizer optimizer = new InstructionOptimizer(mock(Model.class));
+
+        assertThrows(BaseError.class, optimizer::step);
     }
 
     @Test
@@ -54,7 +80,7 @@ class InstructionOptimizerTest {
     }
 
     @Test
-    void stepAppendsStillMissingPlaceholdersAfterRestoreAttempt() throws Exception {
+    void stepAppendsStillMissingPromptVariablesAfterRestoreAttempt() throws Exception {
         Model model = mock(Model.class);
         when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(message("Gradient text"))
@@ -85,6 +111,102 @@ class InstructionOptimizerTest {
         Updates updates = optimizer.step();
 
         assertTrue(updates == null || updates.isEmpty());
+    }
+
+    @Test
+    void backwardWithOnlyPassingCasesSkipsModelAndReturnsEmptyUpdates() throws Exception {
+        Model model = mock(Model.class);
+        InstructionOptimizer optimizer = new InstructionOptimizer(model);
+        optimizer.bind(Map.of("op1", operator("op1")), List.of("system_prompt"), Map.of());
+
+        optimizer.backward(List.of(badCase("case-4", 1.0, Map.of("output", "right"))));
+        Updates updates = optimizer.step();
+
+        assertTrue(updates.isEmpty());
+        verify(model, times(0))
+                .invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void stepReturnsCachedPromptsWithoutCallingModelAgain() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(message("Gradient text"))
+                .thenReturn(message("<PROMPT_OPTIMIZED>New system prompt</PROMPT_OPTIMIZED>"));
+
+        InstructionOptimizer optimizer = new InstructionOptimizer(model);
+        optimizer.bind(Map.of("op1", operator("op1")), List.of("system_prompt"), Map.of());
+        optimizer.backward(List.of(badCase("case-4", 0.0, Map.of("output", "wrong"))));
+
+        verify(model, times(2))
+                .invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
+
+        Updates first = optimizer.step();
+        Updates second = optimizer.step();
+
+        assertEquals("New system prompt", first.get("op1", "system_prompt"));
+        assertEquals("New system prompt", second.get("op1", "system_prompt"));
+        verify(model, times(2))
+                .invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void mixedScoresStillOptimizeFromBadCases() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(message("Gradient text"))
+                .thenReturn(message("<PROMPT_OPTIMIZED>System from bad cases</PROMPT_OPTIMIZED>"));
+
+        InstructionOptimizer optimizer = new InstructionOptimizer(model);
+        optimizer.bind(Map.of("op1", operator("op1")), List.of("system_prompt"), Map.of());
+        optimizer.backward(List.of(
+                badCase("case-5", 1.0, Map.of("output", "right")),
+                badCase("case-6", 0.0, Map.of("output", "wrong"))
+        ));
+
+        Updates updates = optimizer.step();
+
+        assertEquals("System from bad cases", updates.get("op1", "system_prompt"));
+        verify(model, times(2))
+                .invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void userPromptOnlyReturnsOptimizedPrompt() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(message("Gradient text"))
+                .thenReturn(message("<PROMPT_OPTIMIZED>Use the query carefully: {{query}}</PROMPT_OPTIMIZED>"));
+
+        InstructionOptimizer optimizer = new InstructionOptimizer(model);
+        optimizer.bind(Map.of("op1", operator("op1")), List.of("user_prompt"), Map.of());
+        optimizer.backward(List.of(badCase("case-7", 0.0, Map.of("output", "wrong"))));
+
+        Updates updates = optimizer.step();
+
+        assertEquals("Use the query carefully: {{query}}", updates.get("op1", "user_prompt"));
+    }
+
+    @Test
+    void backwardWithNoBadCasesClearsStaleOptimizedPromptsAndSkipsModel() throws Exception {
+        Model model = mock(Model.class);
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(message("Gradient text"))
+                .thenReturn(message("<PROMPT_OPTIMIZED>New system prompt</PROMPT_OPTIMIZED>"));
+
+        InstructionOptimizer optimizer = new InstructionOptimizer(model);
+        optimizer.bind(Map.of("op1", operator("op1")), List.of("system_prompt"), Map.of());
+        optimizer.backward(List.of(badCase("case-5", 0.0, Map.of("output", "wrong"))));
+        assertEquals("New system prompt", optimizer.step().get("op1", "system_prompt"));
+
+        reset(model);
+        optimizer.backward(List.of(badCase("case-6", 1.0, Map.of("output", "right"))));
+
+        Updates updates = optimizer.step();
+
+        assertTrue(updates.isEmpty());
+        verify(model, times(0))
+                .invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
     }
 
     private static AssistantMessage message(String content) {

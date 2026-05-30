@@ -5,9 +5,11 @@
 package com.openjiuwen.agent_teams.schema;
 
 import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.agent.ModelPoolEntry;
 import com.openjiuwen.agent_teams.constants.TeamConstants;
 import com.openjiuwen.agent_teams.workspace.TeamWorkspaceConfig;
 import com.openjiuwen.agent_teams.worktree.WorktreeConfig;
+import com.openjiuwen.core.memory.team.TeamMemoryConfig;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,12 +31,16 @@ public class TeamAgentSpec {
     private TeamLifecycle lifecycle = TeamLifecycle.TEMPORARY;
     private String teammateMode = "build_mode";
     private String spawnMode = "process";
+    private String teamMode;
+    private List<ModelPoolEntry> modelPool = new ArrayList<>();
+    private String modelPoolStrategy = "round_robin";
     private LeaderSpec leader = new LeaderSpec();
     private List<TeamMemberSpec> predefinedMembers = new ArrayList<>();
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private String language;
     private WorktreeConfig worktree;
     private TeamWorkspaceConfig workspace;
+    private TeamMemoryConfig memory;
     private boolean enableHitt;
 
     public Map<String, DeepAgentSpec> getAgents() {
@@ -75,6 +81,30 @@ public class TeamAgentSpec {
 
     public void setSpawnMode(String spawnMode) {
         this.spawnMode = spawnMode;
+    }
+
+    public String getTeamMode() {
+        return teamMode;
+    }
+
+    public void setTeamMode(String teamMode) {
+        this.teamMode = teamMode;
+    }
+
+    public List<ModelPoolEntry> getModelPool() {
+        return new ArrayList<>(modelPool);
+    }
+
+    public void setModelPool(List<ModelPoolEntry> modelPool) {
+        this.modelPool = modelPool != null ? new ArrayList<>(modelPool) : new ArrayList<>();
+    }
+
+    public String getModelPoolStrategy() {
+        return modelPoolStrategy;
+    }
+
+    public void setModelPoolStrategy(String modelPoolStrategy) {
+        this.modelPoolStrategy = modelPoolStrategy != null ? modelPoolStrategy : "round_robin";
     }
 
     public LeaderSpec getLeader() {
@@ -125,6 +155,14 @@ public class TeamAgentSpec {
         this.workspace = workspace;
     }
 
+    public TeamMemoryConfig getMemory() {
+        return memory;
+    }
+
+    public void setMemory(TeamMemoryConfig memory) {
+        this.memory = memory;
+    }
+
     public boolean isEnableHitt() {
         return enableHitt;
     }
@@ -136,11 +174,25 @@ public class TeamAgentSpec {
     public TeamAgent build() {
         validateReservedMemberNames();
         injectHumanAgentIfEnabled();
+        propagateResolvedLanguage();
         return TeamAgent.fromSpec(this);
     }
 
+    public static String resolveLanguage(String language) {
+        if ("cn".equals(language) || "en".equals(language)) {
+            return language;
+        }
+        String envLanguage = System.getenv("AGENT_PROMPT_LANGUAGE");
+        if ("cn".equals(envLanguage) || "en".equals(envLanguage)) {
+            return envLanguage;
+        }
+        return "cn";
+    }
+
     private void validateReservedMemberNames() {
-        if (leader != null && TeamConstants.RESERVED_MEMBER_NAMES.contains(leader.getMemberName())) {
+        Set<String> leaderForbiddenNames = new HashSet<>(TeamConstants.RESERVED_MEMBER_NAMES);
+        leaderForbiddenNames.remove(TeamConstants.DEFAULT_LEADER_MEMBER_NAME);
+        if (leader != null && leaderForbiddenNames.contains(leader.getMemberName())) {
             throw new IllegalArgumentException("Leader member name is reserved by the runtime: '" + leader.getMemberName() + "'");
         }
         Set<String> seen = new HashSet<>();
@@ -161,6 +213,15 @@ public class TeamAgentSpec {
                 throw new IllegalArgumentException(
                         "Duplicate predefined member name: '" + memberName + "'"
                 );
+            }
+        }
+    }
+
+    private void propagateResolvedLanguage() {
+        String resolvedLanguage = resolveLanguage(language);
+        for (DeepAgentSpec roleSpec : agents.values()) {
+            if (roleSpec != null && roleSpec.getLanguage() == null) {
+                roleSpec.setLanguage(resolvedLanguage);
             }
         }
     }

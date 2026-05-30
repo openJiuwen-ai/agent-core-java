@@ -98,7 +98,7 @@ public abstract class BaseOptimizer {
         if (operators == null) {
             operators = new HashMap<>();
         }
-        this.targets = targets != null ? new ArrayList<>(targets) : defaultTargets();
+        this.targets = targets != null && !targets.isEmpty() ? new ArrayList<>(targets) : defaultTargets();
         this.operators = filterOperators(operators, this.targets);
         this.parameters = new HashMap<>();
         for (String opId : this.operators.keySet()) {

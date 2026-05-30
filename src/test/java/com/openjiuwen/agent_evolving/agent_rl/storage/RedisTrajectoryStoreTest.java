@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class RedisTrajectoryStoreTest {
 
@@ -75,6 +76,41 @@ class RedisTrajectoryStoreTest {
 
         assertEquals(List.of(), store.getUsersAboveThreshold(1));
         assertEquals(Set.of(), redis.smembers("rl:traj_users"));
+    }
+
+    @Test
+    void saveSampleUsesPythonUserIdOrFallbackSemantics() {
+        FakeRedis redis = new FakeRedis();
+        RedisTrajectoryStore store = new RedisTrajectoryStore(redis);
+
+        Map<String, Object> blankUser = sample("s1");
+        blankUser.put("user_id", "");
+        store.saveSample(blankUser, "fallback-user");
+
+        Map<String, Object> whitespaceUser = sample("s2");
+        whitespaceUser.put("user_id", "   ");
+        store.saveSample(whitespaceUser, "fallback-user");
+
+        assertEquals("fallback-user", redis.hashes.get("rl:traj:s1").get("user_id"));
+        assertEquals("   ", redis.hashes.get("rl:traj:s2").get("user_id"));
+        assertEquals(1, store.getPendingCount("fallback-user"));
+        assertEquals(1, store.getPendingCount("   "));
+        assertEquals(0, store.getPendingCount("online"));
+    }
+
+    @Test
+    void saveSampleFallsBackForPythonFalseyMetadataValues() {
+        FakeRedis redis = new FakeRedis();
+        RedisTrajectoryStore store = new RedisTrajectoryStore(redis);
+        Map<String, Object> source = sample("s1");
+        source.put("created_at", "");
+        source.put("session_id", "");
+
+        store.saveSample(source, "online");
+
+        Map<String, Object> hash = redis.hashes.get("rl:traj:s1");
+        assertEquals("default", hash.get("session_id"));
+        assertFalse(String.valueOf(hash.get("created_at")).isEmpty());
     }
 
     private static Map<String, Object> sample(String sampleId) {

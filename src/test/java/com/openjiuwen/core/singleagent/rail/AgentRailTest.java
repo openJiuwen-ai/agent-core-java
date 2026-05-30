@@ -32,6 +32,16 @@ class AgentRailTest {
         }
 
         @Override
+        public void beforeTaskIteration(AgentCallbackContext ctx) {
+            events.add("beforeTaskIteration");
+        }
+
+        @Override
+        public void afterTaskIteration(AgentCallbackContext ctx) {
+            events.add("afterTaskIteration");
+        }
+
+        @Override
         public void beforeModelCall(AgentCallbackContext ctx) {
             events.add("beforeModelCall");
         }
@@ -125,9 +135,11 @@ class AgentRailTest {
     void testGetCallbacksAllHooksOverridden() {
         AllHooksRail rail = new AllHooksRail();
         Map<AgentCallbackEvent, Consumer<AgentCallbackContext>> callbacks = rail.getCallbacks();
-        assertThat(callbacks).hasSize(8);
+        assertThat(callbacks).hasSize(10);
         assertThat(callbacks).containsKey(AgentCallbackEvent.BEFORE_INVOKE);
         assertThat(callbacks).containsKey(AgentCallbackEvent.AFTER_INVOKE);
+        assertThat(callbacks).containsKey(AgentCallbackEvent.BEFORE_TASK_ITERATION);
+        assertThat(callbacks).containsKey(AgentCallbackEvent.AFTER_TASK_ITERATION);
         assertThat(callbacks).containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL);
         assertThat(callbacks).containsKey(AgentCallbackEvent.AFTER_MODEL_CALL);
         assertThat(callbacks).containsKey(AgentCallbackEvent.ON_MODEL_EXCEPTION);

@@ -27,6 +27,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Query rewriter with template loading, JSON parsing, and optional context-aware compression.
+ *
+ * <p>Mirrors Python's {@code QueryRewriter} in
+ * {@code openjiuwen.core.retrieval.query_rewriter.query_rewriter}.</p>
  */
 public class QueryRewriter {
 
@@ -212,8 +215,9 @@ public class QueryRewriter {
     }
 
     private String llmCall(String prompt) {
+        AssistantMessage response;
         try {
-            AssistantMessage response = llmClient.invoke(
+            response = llmClient.invoke(
                     List.of(Map.of("role", "user", "content", prompt)),
                     null,
                     0.0f,
@@ -224,15 +228,13 @@ public class QueryRewriter {
                     null,
                     null,
                     Map.of());
-            if (response == null) {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, "LLM returned null");
-            }
-            return response.getContentAsString();
-        } catch (RuntimeException ex) {
-            throw ex;
         } catch (Exception ex) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, ex.getMessage());
         }
+        if (response == null) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, "LLM returned null");
+        }
+        return response.getContentAsString();
     }
 
     private void ensureLlm() {

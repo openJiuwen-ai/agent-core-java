@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.TrajectoryStep.
+ * Mirrors Python's {@code TrajectoryStep} in {@code openjiuwen.agent_evolving.trajectory.types}.
  */
 public class TrajectoryStep {
 
@@ -128,7 +128,20 @@ public class TrajectoryStep {
         public Builder meta(Map<String, Object> meta) { this.meta = meta; return this; }
 
         public TrajectoryStep build() {
-            return new TrajectoryStep(kind, operatorId, agentId, role, nodeId, inputs, outputs, error, startTimeMs, endTimeMs, meta);
+            TrajectoryStep step = new TrajectoryStep(
+                    kind,
+                    operatorId,
+                    agentId,
+                    role,
+                    nodeId,
+                    inputs,
+                    outputs,
+                    error,
+                    startTimeMs,
+                    endTimeMs,
+                    meta);
+            step.setDetail(detail);
+            return step;
         }
     }
 }

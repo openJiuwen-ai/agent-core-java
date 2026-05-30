@@ -154,21 +154,35 @@ class TestRuntime {
         }
 
         @Test
-        @DisplayName("test run custom action uses controller - NOT IMPLEMENTED")
+        @DisplayName("test run custom action uses controller")
         void testRunCustomActionUsesController() {
             // Python: test_run_custom_action_uses_controller_with_bound_runtime
-            // NOTE: Java's BrowserAgentRuntime does not have run_custom_action method
+            BrowserAgentRuntime runtime = makeRuntime();
 
-            assertTrue(true, "Java BrowserAgentRuntime lacks run_custom_action - test documented for parity");
+            Map<String, Object> result = runtime.runCustomAction(
+                    "browser_task",
+                    "session-1",
+                    "request-1",
+                    Map.of("task", "Submit onboarding form", "timeout_s", 120)
+            );
+
+            assertEquals(Boolean.TRUE, result.get("ok"));
+            assertEquals("browser_task", result.get("action"));
+            assertEquals("session-1", result.get("session_id"));
+            assertEquals("request-1", result.get("request_id"));
+            assertEquals("Submit onboarding form", result.get("final"));
+            assertEquals(120, result.get("timeout_s"));
         }
 
         @Test
-        @DisplayName("test list actions returns controller metadata - NOT IMPLEMENTED")
+        @DisplayName("test runtime ready registers controller actions")
         void testListActionsReturnsControllerMetadata() {
             // Python: test_list_actions_returns_controller_metadata
-            // NOTE: Java's BrowserAgentRuntime does not have list_actions method
+            BrowserAgentRuntime runtime = makeRuntime();
+            runtime.ensureRuntimeReady();
 
-            assertTrue(true, "Java BrowserAgentRuntime lacks list_actions - test documented for parity");
+            assertTrue(runtime.getController().listActions().contains("browser_task"));
+            assertTrue(runtime.getController().describeActions().containsKey("browser_task"));
         }
 
         @Test

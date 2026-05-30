@@ -47,7 +47,7 @@ public final class MemoryToolOps {
         if (workspace == null) {
             return new ValidationResult(false, "Workspace not initialized");
         }
-        if (path == null || path.contains("..") || path.startsWith("/")) {
+        if (path == null || path.contains("..") || new File(path).isAbsolute()) {
             return new ValidationResult(false, "Invalid path: directory traversal not allowed");
         }
 
@@ -146,6 +146,9 @@ public final class MemoryToolOps {
                 }
 
                 Map<String, Object> status = getManagerStatus(ctx);
+                result.put("query", query);
+                result.put("max_results", maxResults);
+                result.put("min_score", minScore);
                 result.put("results", searchResults);
                 result.put("provider", status.get("provider"));
                 result.put("model", status.get("model"));
@@ -367,9 +370,9 @@ public final class MemoryToolOps {
                     result.put("error", "Edit failed, no available sys_operation.");
                 }
             } catch (Exception e) {
-                LOG.error("Edit failed: {}", e.getMessage(), e);
+                LOG.error("Edit failed: {}", rootMessage(e), e);
                 result.put("success", false);
-                result.put("error", e.getMessage());
+                result.put("error", rootMessage(e));
             }
 
             return result;
@@ -439,9 +442,9 @@ public final class MemoryToolOps {
                 result.put("truncated", viewResult.truncated);
 
             } catch (Exception e) {
-                LOG.error("Read failed: {}", e.getMessage(), e);
+                LOG.error("Read failed: {}", rootMessage(e), e);
                 result.put("success", false);
-                result.put("error", e.getMessage());
+                result.put("error", rootMessage(e));
             }
 
             return result;
@@ -509,6 +512,15 @@ public final class MemoryToolOps {
         return count;
     }
 
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message != null ? message : current.getClass().getSimpleName();
+    }
+
     // ==================== Reflection-based Manager Operations ====================
 
     @SuppressWarnings("unchecked")
@@ -570,14 +582,18 @@ public final class MemoryToolOps {
     private static boolean invokeFsWriteFile(Object sysOp, String path, String content, boolean append) throws Exception {
         try {
             var fsMethod = sysOp.getClass().getMethod("fs");
+            fsMethod.setAccessible(true);
             Object fs = fsMethod.invoke(sysOp);
             var writeMethod = fs.getClass().getMethod("writeFile", String.class, String.class, boolean.class, boolean.class);
+            writeMethod.setAccessible(true);
             Object writeResult = writeMethod.invoke(fs, path, content, true, append);
             // Extract size from result if possible
             try {
                 var dataMethod = writeResult.getClass().getMethod("getData");
+                dataMethod.setAccessible(true);
                 Object data = dataMethod.invoke(writeResult);
                 var sizeMethod = data.getClass().getMethod("getSize");
+                sizeMethod.setAccessible(true);
                 return ((Number) sizeMethod.invoke(data)).intValue() > 0;
             } catch (Exception e) {
                 return true;
@@ -591,12 +607,16 @@ public final class MemoryToolOps {
     private static String invokeFsReadFile(Object sysOp, String path) throws Exception {
         try {
             var fsMethod = sysOp.getClass().getMethod("fs");
+            fsMethod.setAccessible(true);
             Object fs = fsMethod.invoke(sysOp);
             var readMethod = fs.getClass().getMethod("readFile", String.class);
+            readMethod.setAccessible(true);
             Object readResult = readMethod.invoke(fs, path);
             var dataMethod = readResult.getClass().getMethod("getData");
+            dataMethod.setAccessible(true);
             Object data = dataMethod.invoke(readResult);
             var contentMethod = data.getClass().getMethod("getContent");
+            contentMethod.setAccessible(true);
             return (String) contentMethod.invoke(data);
         } catch (NoSuchMethodException e) {
             LOG.error("sysOperation does not have required fs().readFile() method");
@@ -607,13 +627,17 @@ public final class MemoryToolOps {
     private static String invokeFsReadFileWithRange(Object sysOp, String path, Integer offset, Integer limit) throws Exception {
         try {
             var fsMethod = sysOp.getClass().getMethod("fs");
+            fsMethod.setAccessible(true);
             Object fs = fsMethod.invoke(sysOp);
             int[] lineRange = lineRangeToFsRead(offset, limit);
             var readMethod = fs.getClass().getMethod("readFile", String.class, int[].class);
+            readMethod.setAccessible(true);
             Object readResult = readMethod.invoke(fs, path, lineRange);
             var dataMethod = readResult.getClass().getMethod("getData");
+            dataMethod.setAccessible(true);
             Object data = dataMethod.invoke(readResult);
             var contentMethod = data.getClass().getMethod("getContent");
+            contentMethod.setAccessible(true);
             return (String) contentMethod.invoke(data);
         } catch (NoSuchMethodException e) {
             LOG.error("sysOperation does not have required fs().readFile() method");

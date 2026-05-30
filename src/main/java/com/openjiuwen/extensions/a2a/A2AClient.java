@@ -20,10 +20,19 @@ public class A2AClient {
     private static final Logger LOG = LoggerFactory.getLogger(A2AClient.class);
 
     private final Map<String, Object> card;
+    private boolean closed;
+
+    public A2AClient() {
+        this(new LinkedHashMap<>());
+    }
 
     public A2AClient(Map<String, Object> card) {
-        this.card = card;
+        this.card = card != null ? new LinkedHashMap<>(card) : new LinkedHashMap<>();
         LOG.info("[A2AClient] Created with card");
+    }
+
+    public Map<String, Object> getCard() {
+        return Collections.unmodifiableMap(card);
     }
 
     /** Invoke the remote agent. */
@@ -35,8 +44,25 @@ public class A2AClient {
         return result;
     }
 
+    public Map<String, Object> sendRequest(Map<String, Object> request) {
+        return A2ATransformer.toA2aRequest(request);
+    }
+
+    public Map<String, Object> receiveResponse(Map<String, Object> response) {
+        return A2ATransformer.fromA2aResponse(response);
+    }
+
     /** Close the client. */
     public void close() {
+        closed = true;
         LOG.info("[A2AClient] Closed");
+    }
+
+    public void stop() {
+        close();
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 }

@@ -12,6 +12,9 @@ import java.util.Map;
 
 /**
  * Structured representation of Markdown content.
+ *
+ * <p>Mirrors Python's {@code MarkdownContent} in
+ * {@code openjiuwen.core.foundation.llm.output_parsers.markdown_output_parser}.</p>
  */
 @Data
 public class MarkdownContent {

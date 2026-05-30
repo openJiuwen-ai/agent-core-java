@@ -14,7 +14,7 @@ import java.net.http.HttpResponse;
  * <p>
  * Mirrors Python's concrete HTTPX transport wiring for upstream calls.
  */
-public class JavaNetGatewayHttpTransport implements GatewayHttpTransport {
+public class JavaNetGatewayHttpTransport implements GatewayHttpTransport, AutoCloseable {
 
     private final HttpClient httpClient;
 
@@ -26,5 +26,10 @@ public class JavaNetGatewayHttpTransport implements GatewayHttpTransport {
     public GatewayHttpResponse send(HttpRequest request) throws IOException, InterruptedException {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         return new GatewayHttpResponse(response.statusCode(), response.body());
+    }
+
+    @Override
+    public void close() {
+        httpClient.close();
     }
 }

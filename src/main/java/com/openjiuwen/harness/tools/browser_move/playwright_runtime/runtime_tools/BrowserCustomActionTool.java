@@ -19,10 +19,6 @@ public class BrowserCustomActionTool extends BrowserRuntimeTool {
         runtime.ensureRuntimeReady();
 
         String action = getStringInput(inputs, "action", "");
-        if (action.isEmpty()) {
-            return new ToolOutput(false, null, "action parameter is required");
-        }
-
         String sessionId = getStringInput(inputs, "session_id", "");
         String requestId = getStringInput(inputs, "request_id", "");
         Map<String, Object> params = inputs.containsKey("params") && inputs.get("params") instanceof Map

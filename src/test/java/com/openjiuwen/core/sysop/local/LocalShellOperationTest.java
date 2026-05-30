@@ -197,10 +197,11 @@ class LocalShellOperationTest {
     @DisplayName("Shell list tools")
     void testShellListTools() {
         var tools = shell().listTools();
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
         var toolNames = tools.stream().map(t -> t.getName()).toList();
         assertTrue(toolNames.contains("executeCmd"));
         assertTrue(toolNames.contains("executeCmdStream"));
+        assertTrue(toolNames.contains("executeCmdBackground"));
     }
 
     @Test

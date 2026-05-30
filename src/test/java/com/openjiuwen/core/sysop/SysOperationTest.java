@@ -2,6 +2,8 @@
 package com.openjiuwen.core.sysop;
 
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.PreDeployLauncherConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +35,9 @@ class SysOperationTest {
     @DisplayName("SysOperation uses card mode when specified")
     void testExplicitMode() {
         SysOperationCard card = createCard("test", OperationMode.SANDBOX);
+        card.setGatewayConfig(SandboxGatewayConfig.builder()
+                .launcherConfig(PreDeployLauncherConfig.create("http://local-provider:9999", "local"))
+                .build());
         SysOperation sysOp = new SysOperation(card);
         assertEquals(OperationMode.SANDBOX, sysOp.getMode());
     }

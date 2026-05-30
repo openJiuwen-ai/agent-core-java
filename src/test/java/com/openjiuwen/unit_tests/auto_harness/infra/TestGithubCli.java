@@ -4,78 +4,28 @@
 
 package com.openjiuwen.unit_tests.auto_harness.infra;
 
+import com.openjiuwen.auto_harness.infra.GitHubCli;
+import com.openjiuwen.auto_harness.infra.GitHubCliStatus;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for GitHub CLI preflight helpers.
- * <p>
- * Mirrors Python's test_github_cli.py from
- * <code>tests/unit_tests/auto_harness/infra/test_github_cli.py</code>.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_github_cli}.</p>
  */
 @DisplayName("GitHub CLI Tests")
 class TestGithubCli {
-
-    // Stub classes
-    static class GhStatus {
-        boolean available;
-        boolean authenticated;
-        boolean installedNow;
-
-        GhStatus(boolean available, boolean authenticated, boolean installedNow) {
-            this.available = available;
-            this.authenticated = authenticated;
-            this.installedNow = installedNow;
-        }
-    }
-
-    static class ProcessResult {
-        int returncode;
-        String stderr;
-        String stdout;
-
-        ProcessResult(int returncode, String stderr, String stdout) {
-            this.returncode = returncode;
-            this.stderr = stderr;
-            this.stdout = stdout;
-        }
-    }
-
-    // Helper method simulating ensure_github_cli_ready
-    static GhStatus ensureGithubCliReady(
-        java.util.function.Function<String, String> whichMock,
-        java.util.function.Function<List<String>, ProcessResult> runMock,
-        List<String> messages
-    ) {
-        String ghPath = whichMock.apply("gh");
-        if (ghPath == null || ghPath.isEmpty()) {
-            // Try to install
-            ProcessResult installResult = runMock.apply(List.of("brew", "install", "gh"));
-            if (installResult.returncode != 0) {
-                messages.add("GitHub CLI installation failed");
-                return new GhStatus(false, false, false);
-            }
-            ghPath = whichMock.apply("gh");
-            if (ghPath == null || ghPath.isEmpty()) {
-                return new GhStatus(false, false, false);
-            }
-        }
-
-        ProcessResult authResult = runMock.apply(List.of(ghPath, "auth", "status"));
-        if (authResult.returncode == 0) {
-            messages.add("已登录 GitHub CLI");
-            return new GhStatus(true, true, false);
-        } else {
-            messages.add("建议先执行 `gh auth login --web`");
-            return new GhStatus(true, false, false);
-        }
-    }
 
     @Nested
     @DisplayName("GitHub CLI Ready Tests")
@@ -85,66 +35,72 @@ class TestGithubCli {
         @DisplayName("gh present and authenticated")
         void testGithubCliPresentAndAuthenticated() {
             List<String> messages = new ArrayList<>();
+            GitHubCli.Which which = name -> "/usr/bin/gh";
+            GitHubCli.CommandRunner runner = command -> new GitHubCli.ProcessResult(0, "", "");
 
-            java.util.function.Function<String, String> whichMock = (name) -> "/usr/bin/gh";
-            java.util.function.Function<List<String>, ProcessResult> runMock = (cmd) ->
-                new ProcessResult(0, "", "");
+            GitHubCliStatus status = GitHubCli.ensureGithubCliReady(
+                    messages::add,
+                    which,
+                    runner,
+                    List::of);
 
-            GhStatus status = ensureGithubCliReady(whichMock, runMock, messages);
-
-            assertTrue(status.available);
-            assertTrue(status.authenticated);
-            assertFalse(status.installedNow);
-            assertTrue(messages.stream().anyMatch(m -> m.contains("已登录")));
+            assertTrue(status.isAvailable());
+            assertTrue(status.isAuthenticated());
+            assertFalse(status.isInstalledNow());
+            assertEquals("/usr/bin/gh", status.getPath());
+            assertTrue(messages.stream().anyMatch(message -> message.contains("\u5df2\u767b\u5f55")));
         }
 
         @Test
         @DisplayName("gh missing installs and prompts authentication")
         void testGithubCliMissingInstallsAndPromptsAuthentication() {
             List<String> messages = new ArrayList<>();
-            boolean[] installed = {false};
-
-            java.util.function.Function<String, String> whichMock = (name) -> {
-                if (!installed[0]) {
-                    installed[0] = true;
-                    return ""; // First call: not installed
+            List<List<String>> runCalls = new ArrayList<>();
+            Iterator<String> whichValues = List.of("", "/usr/local/bin/gh").iterator();
+            GitHubCli.Which which = name -> whichValues.hasNext() ? whichValues.next() : "/usr/local/bin/gh";
+            GitHubCli.CommandRunner runner = command -> {
+                runCalls.add(List.copyOf(command));
+                if (command.size() >= 3 && command.subList(1, 3).equals(List.of("auth", "status"))) {
+                    return new GitHubCli.ProcessResult(1, "not logged in", "");
                 }
-                return "/usr/local/bin/gh"; // Second call: installed
+                return new GitHubCli.ProcessResult(0, "", "");
             };
 
-            java.util.function.Function<List<String>, ProcessResult> runMock = (cmd) -> {
-                if (cmd.get(1).equals("install")) {
-                    return new ProcessResult(0, "", "");
-                }
-                if (cmd.get(1).equals("auth") && cmd.get(2).equals("status")) {
-                    return new ProcessResult(1, "not logged in", "");
-                }
-                return new ProcessResult(0, "", "");
-            };
+            GitHubCliStatus status = GitHubCli.ensureGithubCliReady(
+                    messages::add,
+                    which,
+                    runner,
+                    () -> List.of(new GitHubCli.InstallCommand(List.of("brew", "install", "gh"), "brew install gh")));
 
-            GhStatus status = ensureGithubCliReady(whichMock, runMock, messages);
-
-            assertTrue(status.available);
-            assertTrue(status.installedNow);
-            assertFalse(status.authenticated);
-            assertTrue(messages.stream().anyMatch(m -> m.contains("auth login")));
+            assertTrue(status.isAvailable());
+            assertTrue(status.isInstalledNow());
+            assertFalse(status.isAuthenticated());
+            assertEquals(List.of("brew", "install", "gh"), runCalls.get(0));
+            assertEquals(List.of("/usr/local/bin/gh", "auth", "status"), runCalls.get(1));
+            assertTrue(String.join("\n", messages).contains("gh auth login --web"));
         }
 
         @Test
         @DisplayName("gh missing and install fails")
         void testGithubCliMissingAndInstallFails() {
             List<String> messages = new ArrayList<>();
+            GitHubCli.Which which = name -> "";
+            GitHubCli.CommandRunner runner = command -> new GitHubCli.ProcessResult(1, "permission denied", "");
 
-            java.util.function.Function<String, String> whichMock = (name) -> "";
-            java.util.function.Function<List<String>, ProcessResult> runMock = (cmd) ->
-                new ProcessResult(1, "install failed", "");
+            GitHubCliStatus status = GitHubCli.ensureGithubCliReady(
+                    messages::add,
+                    which,
+                    runner,
+                    () -> List.of(new GitHubCli.InstallCommand(
+                            List.of("apt-get", "install", "-y", "gh"),
+                            "apt-get install -y gh")));
 
-            GhStatus status = ensureGithubCliReady(whichMock, runMock, messages);
-
-            assertFalse(status.available);
-            assertFalse(status.authenticated);
-            assertFalse(status.installedNow);
-            assertTrue(messages.stream().anyMatch(m -> m.contains("failed")));
+            assertFalse(status.isAvailable());
+            assertFalse(status.isAuthenticated());
+            assertFalse(status.isInstalledNow());
+            String joined = String.join("\n", messages);
+            assertTrue(joined.contains("\u81ea\u52a8\u5b89\u88c5 `gh` \u5931\u8d25"));
+            assertTrue(joined.contains("https://cli.github.com/"));
         }
     }
 }

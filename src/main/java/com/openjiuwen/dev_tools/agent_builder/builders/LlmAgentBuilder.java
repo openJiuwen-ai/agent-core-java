@@ -20,6 +20,7 @@ import java.util.*;
 public class LlmAgentBuilder extends BaseAgentBuilder {
 
     private static final Logger LOG = LoggerFactory.getLogger(LlmAgentBuilder.class);
+    public static final Map<String, String> RESOURCE_UNIQUE_KEY = Map.of("plugins", "tool_id");
 
     public LlmAgentBuilder(ProgressReporter progressReporter) {
         super(progressReporter);

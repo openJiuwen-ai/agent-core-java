@@ -4,168 +4,111 @@
 
 package com.openjiuwen.unit_tests.auto_harness.infra;
 
+import com.openjiuwen.auto_harness.infra.SessionBudgetController;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.lang.reflect.Method;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for SessionBudgetController.
- * <p>
- * Mirrors Python's test_session_budget.py from
- * <code>tests/unit_tests/auto_harness/infra/test_session_budget.py</code>.
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_session_budget}.
  */
 @DisplayName("Session Budget Tests")
 class TestSessionBudget {
 
-    // SessionBudgetController class mirroring Python's behavior
-    static class SessionBudgetController {
-        private double wallClockSecs;
-        private double costLimitUsd;
-        private double taskTimeoutSecs;
-        private long startTimeNanos;
-        private double currentCostUsd;
-
-        public SessionBudgetController() {
-            this.wallClockSecs = 0;
-            this.costLimitUsd = 0;
-            this.taskTimeoutSecs = 0;
-            this.currentCostUsd = 0;
-        }
-
-        public SessionBudgetController(double wallClockSecs, double costLimitUsd, double taskTimeoutSecs) {
-            this.wallClockSecs = wallClockSecs;
-            this.costLimitUsd = costLimitUsd;
-            this.taskTimeoutSecs = taskTimeoutSecs;
-            this.currentCostUsd = 0;
-        }
-
-        public void start() {
-            this.startTimeNanos = System.nanoTime();
-        }
-
-        public double elapsedSecs() {
-            if (startTimeNanos == 0) return 0.0;
-            return (System.nanoTime() - startTimeNanos) / 1_000_000_000.0;
-        }
-
-        public double remainingSecs() {
-            return wallClockSecs - elapsedSecs();
-        }
-
-        public boolean shouldStop() {
-            if (wallClockSecs > 0 && elapsedSecs() >= wallClockSecs) return true;
-            if (costLimitUsd > 0 && currentCostUsd >= costLimitUsd) return true;
-            return false;
-        }
-
-        public void addCost(double cost) {
-            this.currentCostUsd += cost;
-        }
-
-        public double remainingCostUsd() {
-            return Math.max(0, costLimitUsd - currentCostUsd);
-        }
-
-        public boolean checkTaskBudget() {
-            if (taskTimeoutSecs > 0 && elapsedSecs() + taskTimeoutSecs > wallClockSecs) return false;
-            return true;
-        }
-
-        // For testing: backdate start time
-        public void setStartTimeNanos(long nanos) {
-            this.startTimeNanos = nanos;
-        }
+    @Test
+    void testInitialState() {
+        SessionBudgetController ctrl = new SessionBudgetController();
+        assertEquals(0.0, ctrl.getElapsedSecs());
+        assertFalse(ctrl.isShouldStop());
     }
 
-    @Nested
-    @DisplayName("SessionBudgetController Tests")
-    class TestSessionBudgetController {
+    @Test
+    void testRemainingBeforeStart() {
+        SessionBudgetController ctrl = new SessionBudgetController(100.0, 10.0, 1200.0);
+        assertEquals(100.0, ctrl.getRemainingSecs());
+    }
 
-        @Test
-        @DisplayName("initial values")
-        void testInitialValues() {
-            SessionBudgetController ctrl = new SessionBudgetController();
-            assertEquals(0.0, ctrl.elapsedSecs());
-            assertFalse(ctrl.shouldStop());
-        }
+    @Test
+    void testStartRecordsTime() {
+        SessionBudgetController ctrl = new SessionBudgetController(100.0, 10.0, 1200.0);
+        ctrl.start();
+        assertTrue(ctrl.getElapsedSecs() >= 0.0);
+        assertTrue(ctrl.getRemainingSecs() <= 100.0);
+    }
 
-        @Test
-        @DisplayName("remaining before start")
-        void testRemainingBeforeStart() {
-            SessionBudgetController ctrl = new SessionBudgetController(100.0, 0, 0);
-            assertEquals(100.0, ctrl.remainingSecs());
-        }
+    @Test
+    void testWallClockExceeded() throws ReflectiveOperationException {
+        SessionBudgetController ctrl = new SessionBudgetController(10.0, 10.0, 1200.0);
+        ctrl.start();
+        setStartForTest(ctrl, monotonicSeconds() - 11.0);
+        assertTrue(ctrl.isShouldStop());
+    }
 
-        @Test
-        @DisplayName("start records time")
-        void testStartRecordsTime() {
-            SessionBudgetController ctrl = new SessionBudgetController(100.0, 0, 0);
-            ctrl.start();
-            assertTrue(ctrl.elapsedSecs() >= 0.0);
-            assertTrue(ctrl.remainingSecs() <= 100.0);
-        }
+    @Test
+    void testCostExceeded() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 1.0, 1200.0);
+        ctrl.start();
+        ctrl.addCost(1.5);
+        assertTrue(ctrl.isShouldStop());
+    }
 
-        @Test
-        @DisplayName("wall clock exceeded")
-        void testWallClockExceeded() {
-            SessionBudgetController ctrl = new SessionBudgetController(10.0, 0, 0);
-            ctrl.start();
-            // Simulate time passing by backdating start
-            ctrl.setStartTimeNanos(System.nanoTime() - 11_000_000_000L);
-            assertTrue(ctrl.shouldStop());
-        }
+    @Test
+    void testCostNotExceeded() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 10.0, 1200.0);
+        ctrl.start();
+        ctrl.addCost(0.5);
+        assertFalse(ctrl.isShouldStop());
+    }
 
-        @Test
-        @DisplayName("cost exceeded")
-        void testCostExceeded() {
-            SessionBudgetController ctrl = new SessionBudgetController(0, 1.0, 0);
-            ctrl.start();
-            ctrl.addCost(1.5);
-            assertTrue(ctrl.shouldStop());
-        }
+    @Test
+    void testRemainingCost() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 5.0, 1200.0);
+        ctrl.addCost(2.0);
+        assertEquals(3.0, ctrl.getRemainingCostUsd());
+    }
 
-        @Test
-        @DisplayName("cost not exceeded")
-        void testCostNotExceeded() {
-            SessionBudgetController ctrl = new SessionBudgetController(0, 10.0, 0);
-            ctrl.start();
-            ctrl.addCost(0.5);
-            assertFalse(ctrl.shouldStop());
-        }
+    @Test
+    void testRemainingCostFloor() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 1.0, 1200.0);
+        ctrl.addCost(5.0);
+        assertEquals(0.0, ctrl.getRemainingCostUsd());
+    }
 
-        @Test
-        @DisplayName("remaining cost")
-        void testRemainingCost() {
-            SessionBudgetController ctrl = new SessionBudgetController(0, 5.0, 0);
-            ctrl.addCost(2.0);
-            assertEquals(3.0, ctrl.remainingCostUsd());
-        }
+    @Test
+    void testCheckTaskBudgetSufficient() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 10.0, 600.0);
+        ctrl.start();
+        assertTrue(ctrl.checkTaskBudget());
+    }
 
-        @Test
-        @DisplayName("remaining cost when exceeded")
-        void testRemainingCostExceeded() {
-            SessionBudgetController ctrl = new SessionBudgetController(0, 1.0, 0);
-            ctrl.addCost(5.0);
-            assertEquals(0.0, ctrl.remainingCostUsd());
-        }
+    @Test
+    void testCheckTaskBudgetInsufficient() throws ReflectiveOperationException {
+        SessionBudgetController ctrl = new SessionBudgetController(100.0, 10.0, 600.0);
+        ctrl.start();
+        setStartForTest(ctrl, monotonicSeconds() - 90.0);
+        assertFalse(ctrl.checkTaskBudget());
+    }
 
-        @Test
-        @DisplayName("check task budget sufficient")
-        void testCheckTaskBudgetSufficient() {
-            SessionBudgetController ctrl = new SessionBudgetController(3600.0, 0, 600.0);
-            ctrl.start();
-            assertTrue(ctrl.checkTaskBudget());
-        }
+    @Test
+    void testCheckTaskBudgetCustomTimeout() {
+        SessionBudgetController ctrl = new SessionBudgetController(3600.0, 10.0, 600.0);
+        ctrl.start();
+        assertTrue(ctrl.checkTaskBudget(10.0));
+    }
 
-        @Test
-        @DisplayName("check task budget insufficient")
-        void testCheckTaskBudgetInsufficient() {
-            SessionBudgetController ctrl = new SessionBudgetController(100.0, 0, 600.0);
-            ctrl.start();
-            ctrl.setStartTimeNanos(System.nanoTime() - 90_000_000_000L);
-            assertFalse(ctrl.checkTaskBudget());
-        }
+    private static void setStartForTest(SessionBudgetController ctrl, double start)
+            throws ReflectiveOperationException {
+        Method method = SessionBudgetController.class.getDeclaredMethod("setStartForTest", double.class);
+        method.setAccessible(true);
+        method.invoke(ctrl, start);
+    }
+
+    private static double monotonicSeconds() {
+        return System.nanoTime() / 1_000_000_000.0;
     }
 }

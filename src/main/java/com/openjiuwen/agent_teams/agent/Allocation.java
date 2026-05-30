@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_teams.agent;
 
+import com.openjiuwen.agent_teams.schema.TeamModelConfig;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -34,9 +36,9 @@ public class Allocation {
         return groupIndex;
     }
 
-    public Map<String, Object> toTeamModelConfig() {
+    public TeamModelConfig toTeamModelConfig() {
         if (entry == null) {
-            return new LinkedHashMap<>();
+            return null;
         }
         return entry.toTeamModelConfig();
     }

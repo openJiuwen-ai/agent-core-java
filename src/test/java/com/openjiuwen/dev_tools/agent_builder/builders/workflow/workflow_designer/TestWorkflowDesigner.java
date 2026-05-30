@@ -5,7 +5,9 @@
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.workflow_designer;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Nested;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test WorkflowDesigner functionality.
@@ -13,10 +15,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_workflow_designer.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/workflow_designer/test_workflow_designer.py}.
  *
- * <p>Note: WorkflowDesigner source class requires translation before tests can be implemented.
- * Tests are disabled pending WorkflowDesigner.java implementation.
  */
-@Disabled("WorkflowDesigner.java source class requires translation before tests can be implemented")
 class TestWorkflowDesigner {
 
     /**
@@ -24,16 +23,22 @@ class TestWorkflowDesigner {
      * <p>
      * Mirrors Python's {@code TestWorkflowDesignerInit} class.
      */
-    static class TestInit {
+    @Nested
+    class TestInit {
 
         @Test
         void testInitSuccess() {
-            // Placeholder - requires WorkflowDesigner.java
+            Object llm = new Object();
+            WorkflowDesigner designer = new WorkflowDesigner(llm);
+
+            assertSame(llm, designer.getLlm());
         }
 
         @Test
         void testInitWithNullLlm() {
-            // Placeholder - requires WorkflowDesigner.java
+            WorkflowDesigner designer = new WorkflowDesigner(null);
+
+            assertNull(designer.getLlm());
         }
     }
 
@@ -42,21 +47,28 @@ class TestWorkflowDesigner {
      * <p>
      * Mirrors Python's {@code TestWorkflowDesignerParseReflectionResult} class.
      */
-    static class TestParseReflectionResult {
+    @Nested
+    class TestParseReflectionResult {
 
         @Test
         void testParseWithChineseSeparator() {
-            // Placeholder - requires WorkflowDesigner.java
+            String result = WorkflowDesigner.parseReflectionResult(
+                    "## 闂璇勪及\n鏃犻棶棰榎n## New Workflow Design\nFinal design");
+
+            assertTrue(result.contains("Final design"));
         }
 
         @Test
         void testParseWithEnglishSeparator() {
-            // Placeholder - requires WorkflowDesigner.java
+            String result = WorkflowDesigner.parseReflectionResult("Evaluation\n New Workflow Design\nFinal design");
+
+            assertTrue(result.contains("Final design"));
         }
 
         @Test
         void testParseWithoutSeparator() {
-            // Placeholder - requires WorkflowDesigner.java
+            assertEquals("Just design content",
+                    WorkflowDesigner.parseReflectionResult("Just design content"));
         }
     }
 }

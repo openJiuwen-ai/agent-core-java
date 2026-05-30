@@ -29,16 +29,14 @@ class TestStreamableHttpClientDetailed {
         @Test
         @DisplayName("client can be created")
         void testClientCanBeCreated() {
-            McpServerConfig config = new McpServerConfig();
-            StreamableHttpClient client = new StreamableHttpClient(config);
+            StreamableHttpClient client = new StreamableHttpClient("http://127.0.0.1:8930/mcp");
             assertNotNull(client);
         }
 
         @Test
         @DisplayName("client is McpClient")
         void testClientIsMcpClient() {
-            McpServerConfig config = new McpServerConfig();
-            StreamableHttpClient client = new StreamableHttpClient(config);
+            StreamableHttpClient client = new StreamableHttpClient("http://127.0.0.1:8930/mcp");
             assertTrue(client instanceof com.openjiuwen.core.foundation.tool.mcp.McpClient);
         }
     }

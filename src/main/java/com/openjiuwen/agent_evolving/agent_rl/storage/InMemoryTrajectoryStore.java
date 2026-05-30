@@ -35,13 +35,13 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
         }
 
         Map<String, Object> normalized = deepCopy(sample);
-        String normalizedUserId = normalizeUserId(normalized.get("user_id"), userId);
+        String normalizedUserId = pythonOrString(normalized.get("user_id"), userId, DEFAULT_USER_ID);
         normalized.put("user_id", normalizedUserId);
         normalized.put("_store_status", "pending");
 
         Map<String, Object> old = samples.get(sampleId);
         if (old != null) {
-            removeFromStatusIndex(sampleId, normalizeUserId(old.get("user_id"), DEFAULT_USER_ID), String.valueOf(old.get("_store_status")));
+            removeFromStatusIndex(sampleId, String.valueOf(old.get("user_id")), String.valueOf(old.get("_store_status")));
         }
         samples.put(sampleId, normalized);
         addToStatusIndex(sampleId, normalizedUserId, "pending");
@@ -49,7 +49,7 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
 
     @Override
     public synchronized int getPendingCount(String userId) {
-        return statusIndex.getOrDefault(normalizeUserId(null, userId), Map.of())
+        return statusIndex.getOrDefault(userId, Map.of())
                 .getOrDefault("pending", List.of())
                 .size();
     }
@@ -67,8 +67,7 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
 
     @Override
     public synchronized List<Map<String, Object>> fetchAndMarkTraining(String userId, int limit) {
-        String normalizedUserId = normalizeUserId(null, userId);
-        List<String> pending = new ArrayList<>(statusIndex.getOrDefault(normalizedUserId, Map.of()).getOrDefault("pending", List.of()));
+        List<String> pending = new ArrayList<>(statusIndex.getOrDefault(userId, Map.of()).getOrDefault("pending", List.of()));
         int cappedLimit = Math.max(1, limit);
         List<Map<String, Object>> out = new ArrayList<>();
         for (String sampleId : pending.subList(0, Math.min(cappedLimit, pending.size()))) {
@@ -76,8 +75,8 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
             if (sample == null) {
                 continue;
             }
-            removeFromStatusIndex(sampleId, normalizedUserId, "pending");
-            addToStatusIndex(sampleId, normalizedUserId, "training");
+            removeFromStatusIndex(sampleId, userId, "pending");
+            addToStatusIndex(sampleId, userId, "training");
             sample.put("_store_status", "training");
             out.add(deepCopy(sample));
         }
@@ -130,7 +129,7 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
             if (sample == null) {
                 continue;
             }
-            String userId = normalizeUserId(sample.get("user_id"), DEFAULT_USER_ID);
+            String userId = pythonOrString(sample.get("user_id"), DEFAULT_USER_ID);
             removeFromStatusIndex(sampleId, userId, fromStatus);
             addToStatusIndex(sampleId, userId, toStatus);
             sample.put("_store_status", toStatus);
@@ -153,10 +152,38 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
         bucket.remove(sampleId);
     }
 
-    private static String normalizeUserId(Object explicitUserId, String fallbackUserId) {
-        String resolved = explicitUserId != null ? String.valueOf(explicitUserId) : String.valueOf(fallbackUserId != null ? fallbackUserId : DEFAULT_USER_ID);
-        String trimmed = resolved.trim();
-        return trimmed.isEmpty() ? DEFAULT_USER_ID : trimmed;
+    private static String pythonOrString(Object first, Object... fallbacks) {
+        if (pythonTruthy(first)) {
+            return String.valueOf(first);
+        }
+        for (Object fallback : fallbacks) {
+            if (pythonTruthy(fallback)) {
+                return String.valueOf(fallback);
+            }
+        }
+        return "";
+    }
+
+    private static boolean pythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence chars) {
+            return !chars.isEmpty();
+        }
+        if (value instanceof java.util.Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 
     private static Map<String, Object> deepCopy(Map<String, Object> sample) {

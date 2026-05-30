@@ -9,6 +9,7 @@ import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import java.util.*;
@@ -229,14 +230,14 @@ public class SkillRewriter {
     /**
      * Format records grouped by target and section for prompt.
      */
-    private String formatExperiencesBySection(List<EvolutionRecord> records) {
+    String formatExperiencesBySection(List<EvolutionRecord> records) {
         // Group by (target, section)
-        Map<String, List<EvolutionRecord>> groups = new LinkedHashMap<>();
+        Map<String, List<EvolutionRecord>> groups = new TreeMap<>();
         for (EvolutionRecord record : records) {
             String target = record.getChange() != null && record.getChange().getTarget() != null
                     ? record.getChange().getTarget().getValue() : "unknown";
             String section = record.getChange() != null ? record.getChange().getSection() : "unknown";
-            String key = target + "/" + section;
+            String key = target + " / " + section;
             groups.computeIfAbsent(key, k -> new ArrayList<>()).add(record);
         }
 
@@ -271,6 +272,10 @@ public class SkillRewriter {
         if (response == null) {
             return "";
         }
+        if (response instanceof BaseMessage message) {
+            Object content = message.getContent();
+            return content != null ? String.valueOf(content) : "";
+        }
         // Check for content attribute (AssistantMessage)
         if (response instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) response;
@@ -285,7 +290,7 @@ public class SkillRewriter {
     /**
      * Extract markdown content from LLM output.
      */
-    private static String extractMarkdown(String raw) {
+    static String extractMarkdown(String raw) {
         if (raw == null) {
             return null;
         }
@@ -340,7 +345,7 @@ public class SkillRewriter {
     /**
      * Validate rewritten content.
      */
-    private static boolean validateOutput(String original, String rewritten) {
+    static boolean validateOutput(String original, String rewritten) {
         // Check front-matter preserved
         if (original.startsWith("---")) {
             if (!rewritten.startsWith("---")) {
@@ -370,9 +375,9 @@ public class SkillRewriter {
     /**
      * Generate a summary of the rewrite.
      */
-    private String generateSummary(List<EvolutionRecord> records, String original, String rewritten) {
-        Map<String, Integer> targetCounts = new LinkedHashMap<>();
-        Map<String, Integer> sectionCounts = new LinkedHashMap<>();
+    String generateSummary(List<EvolutionRecord> records, String original, String rewritten) {
+        Map<String, Integer> targetCounts = new TreeMap<>();
+        Map<String, Integer> sectionCounts = new TreeMap<>();
         for (EvolutionRecord record : records) {
             String target = record.getChange() != null && record.getChange().getTarget() != null
                     ? record.getChange().getTarget().getValue() : "unknown";

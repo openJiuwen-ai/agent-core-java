@@ -63,7 +63,7 @@ class TestLongTermMemoryMigrationIntegration {
         void testKvMigrationDuringRegister() {
             // Test that migration is automatically triggered during register.
             // Set initial version
-            kvStore.set(KvMigrator.KV_SCHEMA_VERSION, 1);
+            kvStore.set(KvMigrator.KV_SCHEMA_VERSION, "1");
             kvStore.set("old_key", "old_value");
 
             // Register migration operation
@@ -86,14 +86,14 @@ class TestLongTermMemoryMigrationIntegration {
             assertTrue(result);
             assertNull(kvStore.get("old_key"));
             assertEquals("old_value", kvStore.get("new_key"));
-            assertEquals(2, kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
+            assertEquals("2", kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
         }
 
         @Test
         @DisplayName("test idempotent migration")
         void testIdempotentMigration() {
             // Test that migration is idempotent - running multiple times doesn't cause issues.
-            kvStore.set(KvMigrator.KV_SCHEMA_VERSION, 0);
+            kvStore.set(KvMigrator.KV_SCHEMA_VERSION, "0");
 
             UpdateKVOperation op = new UpdateKVOperation(
                     new OperationMetadata(1, "Initialize"),
@@ -119,7 +119,7 @@ class TestLongTermMemoryMigrationIntegration {
 
             assertEquals("true", kvStore.get("initialized"));
             assertEquals("value", kvStore.get("data"));
-            assertEquals(1, kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
+            assertEquals("1", kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
         }
 
         @Test

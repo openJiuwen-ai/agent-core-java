@@ -15,6 +15,9 @@ import com.openjiuwen.harness.lsp.query.LspSymbol;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +30,33 @@ import java.util.Map;
  * {@code openjiuwen.harness.tools.lsp_tool._tool}.
  */
 public final class LspToolSupport {
+
+    private static final Map<Integer, String> SYMBOL_KIND_MAP = Map.ofEntries(
+            Map.entry(1, "File"),
+            Map.entry(2, "Module"),
+            Map.entry(3, "Namespace"),
+            Map.entry(4, "Package"),
+            Map.entry(5, "Class"),
+            Map.entry(6, "Method"),
+            Map.entry(7, "Property"),
+            Map.entry(8, "Field"),
+            Map.entry(9, "Constructor"),
+            Map.entry(10, "Enum"),
+            Map.entry(11, "Interface"),
+            Map.entry(12, "Function"),
+            Map.entry(13, "Variable"),
+            Map.entry(14, "Constant"),
+            Map.entry(15, "String"),
+            Map.entry(16, "Number"),
+            Map.entry(17, "Boolean"),
+            Map.entry(18, "Array"),
+            Map.entry(19, "Object"),
+            Map.entry(20, "Key"),
+            Map.entry(21, "Null"),
+            Map.entry(22, "EnumMember"),
+            Map.entry(23, "Event"),
+            Map.entry(24, "Operator"),
+            Map.entry(25, "TypeParameter"));
 
     private LspToolSupport() {
     }
@@ -107,6 +137,76 @@ public final class LspToolSupport {
             return "No diagnostics found.";
         }
         return data == null ? "No diagnostics found." : String.valueOf(data);
+    }
+
+    public static String operationToMethod(LspOperation operation) {
+        return switch (operation) {
+            case GO_TO_DEFINITION -> "textDocument/definition";
+            case FIND_REFERENCES -> "textDocument/references";
+            case DOCUMENT_SYMBOL -> "textDocument/documentSymbol";
+            case WORKSPACE_SYMBOL -> "workspace/symbol";
+            case GO_TO_IMPLEMENTATION -> "textDocument/implementation";
+            case PREPARE_CALL_HIERARCHY -> "textDocument/prepareCallHierarchy";
+            case INCOMING_CALLS -> "callHierarchy/incomingCalls";
+            case OUTGOING_CALLS -> "callHierarchy/outgoingCalls";
+        };
+    }
+
+    public static boolean needsGitignoreFilter(LspOperation operation) {
+        return operation == LspOperation.FIND_REFERENCES
+                || operation == LspOperation.GO_TO_DEFINITION
+                || operation == LspOperation.GO_TO_IMPLEMENTATION
+                || operation == LspOperation.WORKSPACE_SYMBOL;
+    }
+
+    public static String resolvePath(String filePath, Path workspace) {
+        if (filePath == null || filePath.isBlank()) {
+            return null;
+        }
+        try {
+            Path path = Path.of(filePath);
+            if (path.isAbsolute()) {
+                Path absolute = path.normalize();
+                if (workspace != null && !absolute.startsWith(workspace.toAbsolutePath().normalize())) {
+                    return null;
+                }
+                return absolute.toString();
+            }
+            Path base = workspace != null ? workspace.toAbsolutePath().normalize() : Path.of("").toAbsolutePath();
+            Path resolved = base.resolve(path).normalize();
+            if (!resolved.startsWith(base)) {
+                return null;
+            }
+            return resolved.toString();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    public static Map<Integer, String> symbolKindMap() {
+        return SYMBOL_KIND_MAP;
+    }
+
+    public static String symbolKindName(int kind) {
+        return SYMBOL_KIND_MAP.getOrDefault(kind, "?");
+    }
+
+    public static String formatUri(String uri) {
+        if (uri == null) {
+            return "";
+        }
+        if (!uri.startsWith("file://")) {
+            return uri;
+        }
+        String path = uri.substring("file://".length());
+        if (path.length() >= 3 && path.charAt(0) == '/' && path.charAt(2) == ':') {
+            path = path.substring(1);
+        }
+        return URLDecoder.decode(path, StandardCharsets.UTF_8);
+    }
+
+    public static String formatLocation(LspLocation location) {
+        return location.getFilePath() + ":" + location.getLine() + ":" + location.getCharacter();
     }
 
     private static String formatLocationResult(Object data, String emptyMessage) {
@@ -301,10 +401,6 @@ public final class LspToolSupport {
             }
         }
         return String.join("\n", lines);
-    }
-
-    private static String formatLocation(LspLocation location) {
-        return location.getFilePath() + ":" + location.getLine() + ":" + location.getCharacter();
     }
 
     private static Integer countOf(Object data) {

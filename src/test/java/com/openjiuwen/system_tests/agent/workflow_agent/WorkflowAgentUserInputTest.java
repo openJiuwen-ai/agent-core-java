@@ -58,7 +58,11 @@ class WorkflowAgentUserInputTest {
     @Test
     void testUserInputComponentReturnsDict() {
         Map<String, Object> requestDict = new LinkedHashMap<>();
-        requestDict.put("name", Map.of("description", "Your name", "required", true, "default", null));
+        Map<String, Object> nameFieldConfig = new LinkedHashMap<>();
+        nameFieldConfig.put("description", "Your name");
+        nameFieldConfig.put("required", true);
+        nameFieldConfig.put("default", null);
+        requestDict.put("name", nameFieldConfig);
         requestDict.put("email", Map.of("description", "Your email", "required", false, "default", ""));
 
         assertTrue(requestDict.containsKey("name"));

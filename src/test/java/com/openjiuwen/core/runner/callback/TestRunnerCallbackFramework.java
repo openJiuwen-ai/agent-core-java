@@ -517,11 +517,11 @@ class TestRunnerCallbackFramework {
     }
 
     private boolean hasMethod(Object obj, String methodName) {
-        try {
-            obj.getClass().getMethod(methodName);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
+        for (var method : obj.getClass().getMethods()) {
+            if (method.getName().equals(methodName)) {
+                return true;
+            }
         }
+        return false;
     }
 }

@@ -4,7 +4,16 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.judge;
 
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpTransport;
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.HttpUpstreamGatewayClient;
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.JavaNetGatewayHttpTransport;
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.RetryPolicy;
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
@@ -30,8 +39,9 @@ public class JudgeScorer {
     private final double retryBackoffSec;
     private final double timeout;
     private final boolean ownedClient;
-    private final Object httpClient; // httpx.AsyncClient equivalent
+    private final Object httpClient;
     private final JudgeEvaluatorConfig config;
+    private final JudgeEvaluator evaluator;
 
     /**
      * Initialize judge scorer client.
@@ -63,7 +73,11 @@ public class JudgeScorer {
         this.retryBackoffSec = Math.max(0.0, retryBackoffSec);
         this.timeout = timeout;
         this.ownedClient = httpClient == null;
-        this.httpClient = httpClient; // Placeholder for actual HTTP client
+        this.httpClient = httpClient != null
+            ? httpClient
+            : HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(Math.max(1L, (long) timeout)))
+                .build();
         
         this.config = new JudgeEvaluatorConfig(
             this.judgeUrl,
@@ -75,15 +89,19 @@ public class JudgeScorer {
             this.maxRetries,
             this.retryBackoffSec
         );
+        this.evaluator = new JudgeEvaluator(toUpstreamClient(this.httpClient));
     }
 
     /**
      * Close owned HTTP client if created internally.
      */
     public void close() {
-        if (ownedClient && httpClient != null) {
-            // Close HTTP client if owned
-            // Requires actual HTTP client implementation
+        if (ownedClient && httpClient instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Failed to close judge HTTP client", exception);
+            }
         }
     }
 
@@ -105,15 +123,14 @@ public class JudgeScorer {
         int turnNum
     ) {
         return CompletableFuture.supplyAsync(() -> {
-            Map<String, Object> result = evaluateJudgeScores(
-                httpClient,
+            Map<String, Object> result = new LinkedHashMap<>(evaluator.evaluateJudgeScores(
                 config,
                 responseText,
                 instructionText,
                 followupUserFeedback,
                 sessionId,
                 turnNum
-            );
+            ).toMap());
             
             // Remove internal fields
             result.remove("model");
@@ -134,33 +151,24 @@ public class JudgeScorer {
         return parseJudgeScores(content);
     }
 
-    // -- Placeholder methods for evaluator integration --
-
-    private Map<String, Object> evaluateJudgeScores(
-        Object client,
-        JudgeEvaluatorConfig config,
-        String responseText,
-        String instructionText,
-        String followupUserFeedback,
-        String sessionId,
-        int turnNum
-    ) {
-        // Requires actual JudgeEvaluator implementation
-        // Placeholder returns a basic score result
-        Map<String, Object> result = new HashMap<>();
-        result.put("score", 0.5);
-        result.put("normalized_score", 0.5);
-        result.put("votes", new HashMap<String, Object>());
-        result.put("raw_response", "");
-        return result;
+    private static Map<String, Object> parseJudgeScores(String content) {
+        Map<String, Object> scores = JudgeScoring.parseJudgeScores(content, false);
+        return scores != null ? scores : new HashMap<>();
     }
 
-    private static Map<String, Object> parseJudgeScores(String content) {
-        // Requires actual scoring parser implementation
-        Map<String, Object> scores = new HashMap<>();
-        scores.put("score", 0.5);
-        scores.put("normalized_score", 0.5);
-        return scores;
+    private UpstreamGatewayClient toUpstreamClient(Object client) {
+        RetryPolicy retryPolicy = new RetryPolicy(maxRetries, retryBackoffSec, Math.max(retryBackoffSec, 2.0));
+        Duration requestTimeout = Duration.ofSeconds(Math.max(1L, (long) timeout));
+        if (client instanceof UpstreamGatewayClient upstreamGatewayClient) {
+            return upstreamGatewayClient;
+        }
+        if (client instanceof GatewayHttpTransport transport) {
+            return new HttpUpstreamGatewayClient(transport, judgeUrl, retryPolicy, requestTimeout);
+        }
+        if (client instanceof HttpClient jdkClient) {
+            return new HttpUpstreamGatewayClient(new JavaNetGatewayHttpTransport(jdkClient), judgeUrl, retryPolicy, requestTimeout);
+        }
+        throw new IllegalArgumentException("Unsupported judge HTTP client: " + client.getClass().getName());
     }
 
     // -- Getters --

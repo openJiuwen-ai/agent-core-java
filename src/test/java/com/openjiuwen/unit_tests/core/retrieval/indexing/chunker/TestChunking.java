@@ -94,7 +94,7 @@ class TestChunking {
         assertNotNull(chunksNoOverlap);
         
         // High overlap - more shared content between chunks
-        Chunker highOverlap = new TextChunker(20, 10, "char");
+        Chunker highOverlap = new TextChunker(10, 5, "char");
         List<String> chunksHighOverlap = highOverlap.chunkText(text);
         assertNotNull(chunksHighOverlap);
         

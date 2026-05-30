@@ -53,13 +53,13 @@ public class JudgeDispatcher {
 
     public Map<String, Object> finalizeSample(Map<String, Object> sample, String feedback, String tag) {
         Map<String, Object> finalized = new LinkedHashMap<>(sample);
-        String sessionId = String.valueOf(finalized.getOrDefault("session_id", ""));
-        int turnNum = intValue(finalized.get("turn_num"), intValue(finalized.get("step_index"), 0));
+        String sessionId = pythonStr(firstTruthy(finalized.get("session_id"), ""));
+        int turnNum = intValue(firstTruthy(finalized.get("turn_num"), finalized.get("step_index"), 0), 0);
         Map<String, Object> trajectory = mapValue(finalized.get("trajectory"));
-        String responseText = String.valueOf(trajectory.getOrDefault("response_text", finalized.getOrDefault("response_text", "")));
+        String responseText = pythonStr(firstTruthy(trajectory.get("response_text"), finalized.get("response_text"), ""));
         List<Map<String, Object>> messages = listOfMaps(mapValue(finalized.get("request")).get("messages"));
         String instructionText = GatewayMessageUtils.extractLastUserInstruction(messages);
-        if (instructionText.isBlank()) {
+        if (instructionText.isEmpty()) {
             instructionText = feedback;
         }
 
@@ -68,7 +68,8 @@ public class JudgeDispatcher {
             try {
                 judge = judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum);
             } catch (Exception exception) {
-                judge = Map.of("score", 0.0, "votes", List.of("fail"), "details", Map.of(), "error", exception.getMessage());
+                String error = exception.getMessage() != null ? exception.getMessage() : exception.toString();
+                judge = Map.of("score", 0.0, "votes", List.of("fail"), "details", Map.of(), "error", error);
             }
         } else {
             judge = Map.of("score", 0.0, "votes", List.of("skip"), "details", Map.of(), "error", tag);
@@ -76,7 +77,9 @@ public class JudgeDispatcher {
 
         finalized.put("judge", judge);
         finalized.put("judge_feedback", Map.of("tag", tag, "followup_user_feedback", feedback));
-        finalized.putIfAbsent("sample_id", UUID.randomUUID().toString());
+        if (!finalized.containsKey("sample_id")) {
+            finalized.put("sample_id", UUID.randomUUID().toString());
+        }
         return finalized;
     }
 
@@ -91,7 +94,7 @@ public class JudgeDispatcher {
         if (raw == null) {
             raw = prevFeedback.get("feedback");
         }
-        return String.valueOf(raw != null ? raw : "");
+        return pythonStr(firstTruthy(raw, ""));
     }
 
     @SuppressWarnings("unchecked")
@@ -115,5 +118,46 @@ public class JudgeDispatcher {
             }
         }
         return fallback;
+    }
+
+    private static Object firstTruthy(Object... values) {
+        if (values == null || values.length == 0) {
+            return "";
+        }
+        for (Object value : values) {
+            if (isPythonTruthy(value)) {
+                return value;
+            }
+        }
+        return values[values.length - 1];
+    }
+
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof List<?> list) {
+            return !list.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static String pythonStr(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return value == null ? "None" : String.valueOf(value);
     }
 }

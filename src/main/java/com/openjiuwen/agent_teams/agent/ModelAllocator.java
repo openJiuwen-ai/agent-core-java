@@ -4,7 +4,6 @@
 
 package com.openjiuwen.agent_teams.agent;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +27,15 @@ public interface ModelAllocator {
      * @return Allocation or null
      */
     Allocation allocate(String modelName);
+
+    /**
+     * Return the next allocation without a model-name hint.
+     *
+     * @return Allocation or null
+     */
+    default Allocation allocate() {
+        return allocate(null);
+    }
 
     /**
      * Return a JSON-friendly snapshot of allocator counters.

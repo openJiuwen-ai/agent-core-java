@@ -23,7 +23,7 @@ public class TodoItem {
 
     public TodoItem(String id, String content, String activeForm, String description, TodoStatus status,
                     List<String> dependsOn, String resultSummary, Map<String, Object> metaData, String selectedModelId) {
-        this.id = id;
+        this.id = id == null || id.isBlank() ? UUID.randomUUID().toString() : id;
         this.content = content == null ? "" : content;
         this.activeForm = activeForm == null ? "" : activeForm;
         this.description = description == null ? "" : description;
@@ -34,8 +34,25 @@ public class TodoItem {
         this.selectedModelId = selectedModelId;
     }
 
+    public TodoItem(String id, String content) {
+        this(id, content, "", "", TodoStatus.PENDING, List.of(), null, Map.of(), null);
+    }
+
+    public static TodoItem create(String content) {
+        return create(content, "", "", TodoStatus.PENDING, null);
+    }
+
+    public static TodoItem create(String content, String selectedModelId) {
+        return create(content, "", "", TodoStatus.PENDING, selectedModelId);
+    }
+
     public static TodoItem create(String content, String activeForm, String description, TodoStatus status, String selectedModelId) {
-        return new TodoItem(UUID.randomUUID().toString(), content, activeForm, description, status, List.of(), null, Map.of(), selectedModelId);
+        String safeContent = content == null ? "" : content;
+        String resolvedActiveForm = activeForm == null || activeForm.isBlank()
+                ? "Executing " + safeContent
+                : activeForm;
+        return new TodoItem(UUID.randomUUID().toString(), safeContent, resolvedActiveForm, description,
+                status, List.of(), null, Map.of(), selectedModelId);
     }
 
     public static TodoItem fromMap(Map<String, Object> map) {

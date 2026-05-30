@@ -12,7 +12,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.trajectory.builder.TrajectoryBuilder.
+ * Mirrors Python's {@code TrajectoryBuilder} in
+ * {@code openjiuwen.agent_evolving.trajectory.builder}.
  * Trajectory assembler for both online and offline paths.
  *
  * Responsibilities:

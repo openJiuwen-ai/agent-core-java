@@ -20,7 +20,9 @@ import java.util.Map;
 public class CreateTaskTool extends TeamTool {
 
     public CreateTaskTool(TeamBackend team) {
-        super(toolCard("team.create_task", "create_task", "Create one or more team tasks."), team);
+        super(toolCard("team.create_task", "create_task", "Create one or more team tasks.", Map.of(
+                "tasks", arrayParam("Task specs")
+        ), List.of("tasks")), team);
     }
 
     @Override
@@ -46,14 +48,23 @@ public class CreateTaskTool extends TeamTool {
                 failures.add(Map.of("spec", specLabel(spec), "reason", "missing required title/content"));
                 continue;
             }
-            @SuppressWarnings("unchecked")
-            List<String> dependsOn = spec.get("depends_on") instanceof List<?> deps ? (List<String>) deps : List.of();
-            TaskRecord record = team.createTask(title, content, stringValue(spec.get("task_id")), dependsOn);
+            List<String> dependsOn = stringList(spec.get("depends_on"));
+            List<String> dependedBy = stringList(spec.get("depended_by"));
+            TaskRecord record = dependedBy.isEmpty()
+                    ? team.createTask(title, content, stringValue(spec.get("task_id")), dependsOn)
+                    : team.createTaskWithPriority(title, content, stringValue(spec.get("task_id")), dependsOn, dependedBy);
+            if (record == null) {
+                failures.add(Map.of("spec", specLabel(spec), "reason", "circular dependency"));
+                continue;
+            }
             created.add(taskBrief(record));
         }
 
         if (created.isEmpty() && !failures.isEmpty()) {
             return new TeamToolOutput(false, null, "All task creations failed");
+        }
+        if (created.size() == 1 && failures.isEmpty()) {
+            return new TeamToolOutput(true, created.get(0), null);
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("tasks", created);
@@ -76,7 +87,4 @@ public class CreateTaskTool extends TeamTool {
         return brief;
     }
 
-    private static String stringValue(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
 }

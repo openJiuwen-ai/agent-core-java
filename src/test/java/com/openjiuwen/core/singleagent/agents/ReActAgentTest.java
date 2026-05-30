@@ -171,6 +171,8 @@ class ReActAgentTest {
         AgentRail allHooksRail = new AgentRail() {
             @Override public void beforeInvoke(AgentCallbackContext ctx) {}
             @Override public void afterInvoke(AgentCallbackContext ctx) {}
+            @Override public void beforeTaskIteration(AgentCallbackContext ctx) {}
+            @Override public void afterTaskIteration(AgentCallbackContext ctx) {}
             @Override public void beforeModelCall(AgentCallbackContext ctx) {}
             @Override public void afterModelCall(AgentCallbackContext ctx) {}
             @Override public void onModelException(AgentCallbackContext ctx) {}

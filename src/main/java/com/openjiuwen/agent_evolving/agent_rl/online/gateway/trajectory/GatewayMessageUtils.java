@@ -26,13 +26,11 @@ public final class GatewayMessageUtils {
             StringBuilder builder = new StringBuilder();
             for (Object item : list) {
                 if (item instanceof Map<?, ?> map && "text".equals(String.valueOf(map.get("type")))) {
-                    Object text = map.get("text");
-                    if (text != null && !String.valueOf(text).isBlank()) {
-                        if (!builder.isEmpty()) {
-                            builder.append(' ');
-                        }
-                        builder.append(text);
+                    if (!builder.isEmpty()) {
+                        builder.append(' ');
                     }
+                    Object text = map.containsKey("text") ? map.get("text") : "";
+                    builder.append(text != null ? String.valueOf(text) : "");
                 }
             }
             return builder.toString().trim();
@@ -48,7 +46,7 @@ public final class GatewayMessageUtils {
             Map<String, Object> message = messages.get(i);
             if (message != null && "user".equals(message.get("role"))) {
                 String text = flattenMessageContent(message.get("content"));
-                if (!text.isBlank()) {
+                if (!text.isEmpty()) {
                     return text;
                 }
             }

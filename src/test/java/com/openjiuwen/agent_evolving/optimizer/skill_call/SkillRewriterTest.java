@@ -4,219 +4,435 @@
 
 package com.openjiuwen.agent_evolving.optimizer.skill_call;
 
+import com.openjiuwen.agent_evolving.checkpointing.EvolutionLog;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
 import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.stubbing.OngoingStubbing;
 
-import java.util.HashMap;
+import java.lang.reflect.Field;
+import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
- * Tests for SkillRewriter prompt generation and patch application.
+ * Tests for SkillRewriter.
  *
  * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.optimizer.skill_call.test_skill_rewriter}.
  */
 class SkillRewriterTest {
 
     @Test
-    void testBuildRewritePromptContainsSkillContent() {
-        String skillContent = "# Test Skill\n\nThis is a test skill.";
-        Map<String, Object> context = new HashMap<>();
-        context.put("skill_content", skillContent);
-
-        String prompt = buildRewritePrompt(skillContent, "Add troubleshooting section");
-
-        assertTrue(prompt.contains(skillContent));
-        assertTrue(prompt.contains("Add troubleshooting section"));
+    void testInitWithDefaults() throws Exception {
+        Model llm = mock(Model.class);
+        SkillRewriter rewriter = new SkillRewriter(llm, "gpt-4", null);
+        assertSame(llm, readField(rewriter, "llm"));
+        assertEquals("gpt-4", readField(rewriter, "model"));
+        assertEquals("cn", readField(rewriter, "language"));
     }
 
     @Test
-    void testBuildRewritePromptIncludesExistingExperiences() {
-        EvolutionRecord record1 = EvolutionRecord.builder()
-                .id("ev_001")
+    void testInitWithLanguage() throws Exception {
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "gpt-4", "en");
+        assertEquals("en", readField(rewriter, "language"));
+    }
+
+    @Test
+    void testUpdateLlm() throws Exception {
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "m1", "cn");
+        Model newLlm = mock(Model.class);
+        rewriter.updateLlm(newLlm, "m2");
+        assertSame(newLlm, readField(rewriter, "llm"));
+        assertEquals("m2", readField(rewriter, "model"));
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenNoSkillContent() throws Exception {
+        Model llm = mock(Model.class);
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+        assertNull(rewriter.rewrite("test-skill", makeStore("", Collections.emptyList()), 0.0, false, ""));
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenNoEvolutionRecords() throws Exception {
+        Model llm = mock(Model.class);
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+        assertNull(rewriter.rewrite("test-skill", makeStore("# Test Skill", Collections.emptyList()),
+                0.0, false, ""));
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenAllRecordsBelowMinScore() throws Exception {
+        Model llm = mock(Model.class);
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+        EvolutionStore store = makeStore("# Test Skill", List.of(makeRecord("ev_001", "test content", 0.3,
+                EvolutionTarget.BODY, "Troubleshooting", null)));
+        assertNull(rewriter.rewrite("test-skill", store, 0.5, false, ""));
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenAllRecordsSkipped() throws Exception {
+        Model llm = mock(Model.class);
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+        EvolutionStore store = makeStore("# Test Skill", List.of(makeRecord("ev_001", "test content", 0.7,
+                EvolutionTarget.BODY, "Troubleshooting", "irrelevant")));
+        assertNull(rewriter.rewrite("test-skill", store, 0.0, false, ""));
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void testRewriteSuccessReturnsResult() throws Exception {
+        String original = frontMatterSkill("Some instructions here.");
+        String rewritten = frontMatterSkill("Updated instructions with integrated experience.");
+        EvolutionStore store = makeStore(original, List.of(makeRecord("ev_001", "New guidance")));
+        when(store.deleteRecords("test-skill", List.of("ev_001"))).thenReturn(1);
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n" + rewritten + "\n```"),
+                "dummy", "cn");
+
+        SkillRewriter.SkillRewriteResult result = rewriter.rewrite("test-skill", store, 0.0, false, "");
+
+        assertNotNull(result);
+        assertEquals("test-skill", result.getSkillName());
+        assertEquals(original, result.getOriginalContent());
+        assertEquals(rewritten.strip(), result.getRewrittenContent());
+        assertTrue(result.getConsumedRecordIds().contains("ev_001"));
+        assertEquals(1, result.getRecordsCleaned());
+        verify(store).writeSkillContent("test-skill", rewritten.strip());
+        verify(store).deleteRecords("test-skill", List.of("ev_001"));
+    }
+
+    @Test
+    void testRewriteDryRunNoSideEffects() throws Exception {
+        EvolutionStore store = makeStore("# Test Skill\n\nOriginal content.", List.of(makeRecord("ev_001")));
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n# Test Skill\n\nUpdated content.\n```"),
+                "dummy", "cn");
+
+        SkillRewriter.SkillRewriteResult result = rewriter.rewrite("test-skill", store, 0.0, true, "");
+
+        assertNotNull(result);
+        assertEquals(0, result.getRecordsCleaned());
+        verify(store, never()).writeSkillContent(any(), any());
+        verify(store, never()).deleteRecords(any(), any());
+    }
+
+    @Test
+    void testRewriteFiltersByMinScore() throws Exception {
+        EvolutionStore store = makeStore("# Test Skill", List.of(
+                makeRecord("ev_high", "high", 0.8, EvolutionTarget.BODY, "Troubleshooting", null),
+                makeRecord("ev_low", "low", 0.3, EvolutionTarget.BODY, "Troubleshooting", null)));
+        when(store.deleteRecords(eq("test-skill"), anyList())).thenReturn(1);
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n# Test Skill\n\nUpdated.\n```"),
+                "dummy", "cn");
+
+        SkillRewriter.SkillRewriteResult result = rewriter.rewrite("test-skill", store, 0.5, false, "");
+
+        assertNotNull(result);
+        assertEquals(List.of("ev_high"), result.getConsumedRecordIds());
+    }
+
+    @Test
+    void testRewritePreservesFrontMatter() throws Exception {
+        String original = frontMatterSkill("Content here.");
+        String rewritten = frontMatterSkill("Updated content.");
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n" + rewritten + "\n```"),
+                "dummy", "cn");
+
+        SkillRewriter.SkillRewriteResult result = rewriter.rewrite("test-skill",
+                makeStore(original, List.of(makeRecord("ev_001"))), 0.0, false, "");
+
+        assertNotNull(result);
+        assertTrue(result.getRewrittenContent().startsWith("---"));
+    }
+
+    @Test
+    void testRewriteFailsValidationWhenFrontMatterMissing() throws Exception {
+        String original = "---\nname: my-skill\n---\n\n# My Skill";
+        String rewritten = "# My Skill\n\nNo front matter here.";
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n" + rewritten + "\n```"),
+                "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore(original, List.of(makeRecord("ev_001"))), 0.0, false, ""));
+    }
+
+    @Test
+    void testRewriteReturnsNullOnLlmException() throws Exception {
+        Model llm = mock(Model.class);
+        whenInvoke(llm).thenThrow(new RuntimeException("network error"));
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore("# Test Skill", List.of(makeRecord("ev_001"))), 0.0, false, ""));
+    }
+
+    @Test
+    void testRewriteReturnsNullOnUnparseableOutput() throws Exception {
+        Model llm = mockModelResponses("not valid markdown output");
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore("# Test Skill", List.of(makeRecord("ev_001"))), 0.0, false, ""));
+        verifyInvokeCount(llm, 2);
+    }
+
+    @Test
+    void testRewriteRetryOnMalformedOutput() throws Exception {
+        Model llm = mockModelResponses("not markdown", "```markdown\n# Test Skill\n\nFixed.\n```");
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+
+        SkillRewriter.SkillRewriteResult result = rewriter.rewrite("test-skill",
+                makeStore("# Test Skill", List.of(makeRecord("ev_001"))), 0.0, false, "");
+
+        assertNotNull(result);
+        verifyInvokeCount(llm, 2);
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenRetryAlsoFails() throws Exception {
+        Model llm = mockModelResponses("still not valid");
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore("# Test Skill", List.of(makeRecord("ev_001"))), 0.0, false, ""));
+        verifyInvokeCount(llm, 2);
+    }
+
+    @Test
+    void testRewriteFailsWhenContentTooShort() throws Exception {
+        String original = "# Test Skill\n\n" + "x".repeat(1000);
+        String rewritten = "# Test";
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n" + rewritten + "\n```"),
+                "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore(original, List.of(makeRecord("ev_001"))), 0.0, false, ""));
+    }
+
+    @Test
+    void testRewriteFailsWhenNoHeadings() throws Exception {
+        String original = "# Test Skill\n\nContent.";
+        String rewritten = "Just plain text without any headings.";
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n" + rewritten + "\n```"),
+                "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill",
+                makeStore(original, List.of(makeRecord("ev_001"))), 0.0, false, ""));
+    }
+
+    @Test
+    void testRewritePassesUserQueryIntoPrompt() throws Exception {
+        Model llm = mockModelResponses("```markdown\n# Test Skill\n\nUpdated.\n```");
+        SkillRewriter rewriter = new SkillRewriter(llm, "dummy", "en");
+
+        assertNotNull(rewriter.rewrite("test-skill",
+                makeStore("# Test Skill", List.of(makeRecord("ev_001"))), 0.0, true, "prefer concise guidance"));
+
+        ArgumentCaptor<Object> messages = ArgumentCaptor.forClass(Object.class);
+        verify(llm).invoke(messages.capture(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        UserMessage message = (UserMessage) ((List<?>) messages.getValue()).get(0);
+        assertTrue(String.valueOf(message.getContent()).contains("prefer concise guidance"));
+    }
+
+    @Test
+    void testRewriteReturnsNullWhenWriteFails() throws Exception {
+        EvolutionStore store = makeStore("# Test Skill", List.of(makeRecord("ev_001")));
+        when(store.writeSkillContent(any(), any())).thenReturn(false);
+        SkillRewriter rewriter = new SkillRewriter(mockModelResponses("```markdown\n# Test Skill\n\nUpdated.\n```"),
+                "dummy", "cn");
+
+        assertNull(rewriter.rewrite("test-skill", store, 0.0, false, ""));
+        verify(store, never()).deleteRecords(any(), any());
+    }
+
+    @Test
+    void testFormatExperiencesBySection() {
+        List<EvolutionRecord> records = List.of(
+                makeRecord("ev_001", "Body content A", 0.8, EvolutionTarget.BODY, "Troubleshooting", null),
+                makeRecord("ev_002", "Body content B", 0.6, EvolutionTarget.BODY, "Troubleshooting", null),
+                makeRecord("ev_003", "Desc content", 0.9, EvolutionTarget.DESCRIPTION, "Instructions", null));
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "dummy", "cn");
+
+        String result = rewriter.formatExperiencesBySection(records);
+
+        assertTrue(result.contains("body / Troubleshooting"));
+        assertTrue(result.contains("description / Instructions"));
+        assertTrue(result.contains("ev_001"));
+        assertTrue(result.contains("ev_002"));
+        assertTrue(result.contains("ev_003"));
+        assertTrue(result.indexOf("ev_001") < result.indexOf("ev_002"));
+    }
+
+    @Test
+    void testFormatExperiencesEmpty() {
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "dummy", "cn");
+        assertTrue(rewriter.formatExperiencesBySection(Collections.emptyList()).contains("无有效经验记录"));
+    }
+
+    @Test
+    void testExtractFromMarkdownCodeBlock() {
+        assertEquals("# Content\n\nText.",
+                SkillRewriter.extractMarkdown("```markdown\n# Content\n\nText.\n```"));
+    }
+
+    @Test
+    void testExtractFromGenericCodeBlock() {
+        assertEquals("# Content\n\nText.",
+                SkillRewriter.extractMarkdown("```\n# Content\n\nText.\n```"));
+    }
+
+    @Test
+    void testExtractRawWhenStartsWithFrontMatter() {
+        String raw = "---\nname: test\n---\n\n# Content";
+        assertEquals(raw, SkillRewriter.extractMarkdown(raw));
+    }
+
+    @Test
+    void testExtractReturnsNullForInvalid() {
+        assertNull(SkillRewriter.extractMarkdown("just plain text without markdown"));
+    }
+
+    @Test
+    void testValidateOutputAcceptsValidMarkdown() {
+        assertTrue(SkillRewriter.validateOutput("# Test Skill\n\nContent.",
+                "# Test Skill\n\nUpdated content."));
+    }
+
+    @Test
+    void testValidateOutputRejectsMissingFrontMatter() {
+        assertFalse(SkillRewriter.validateOutput("---\nname: test\n---\n\n# Test",
+                "# Test\n\nNo front matter"));
+    }
+
+    @Test
+    void testGenerateSummaryCn() {
+        List<EvolutionRecord> records = List.of(
+                makeRecord("ev_001", "content", 0.7, EvolutionTarget.BODY, "Troubleshooting", null),
+                makeRecord("ev_002", "content", 0.7, EvolutionTarget.DESCRIPTION, "Instructions", null));
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "dummy", "cn");
+
+        String summary = rewriter.generateSummary(records, "Line 1\nLine 2", "Line 1\nLine 2\nLine 3");
+
+        assertTrue(summary.contains("2 条"));
+        assertTrue(summary.contains("body"));
+        assertTrue(summary.contains("description"));
+        assertTrue(summary.contains("2 -> 3"));
+    }
+
+    @Test
+    void testGenerateSummaryEn() {
+        SkillRewriter rewriter = new SkillRewriter(mock(Model.class), "dummy", "en");
+
+        String summary = rewriter.generateSummary(List.of(makeRecord("ev_001")),
+                "Line 1", "Line 1\nLine 2");
+
+        assertTrue(summary.contains("1 experience"));
+        assertTrue(summary.contains("body"));
+        assertTrue(summary.contains("1 -> 2"));
+    }
+
+    @Test
+    void testPromptsDefinedForCnAndEn() {
+        assertTrue(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_CN.contains("{skill_content}"));
+        assertTrue(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_CN.contains("{experiences_by_section}"));
+        assertTrue(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_CN.contains("{user_query}"));
+        assertTrue(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_EN.contains("{user_query}"));
+        assertSame(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_CN, SkillRewriterPrompts.getPrompt("cn"));
+        assertSame(SkillRewriterPrompts.SKILL_REWRITE_PROMPT_EN, SkillRewriterPrompts.getPrompt("en"));
+    }
+
+    @Test
+    void testRetryPromptsDefined() {
+        assertTrue(SkillRewriterPrompts.RETRY_PROMPT_CN.contains("{broken_preview}"));
+        assertTrue(SkillRewriterPrompts.RETRY_PROMPT_EN.contains("{broken_preview}"));
+        assertSame(SkillRewriterPrompts.RETRY_PROMPT_CN, SkillRewriterPrompts.getRetryPrompt("cn"));
+        assertSame(SkillRewriterPrompts.RETRY_PROMPT_EN, SkillRewriterPrompts.getRetryPrompt("en"));
+    }
+
+    private static EvolutionStore makeStore(String skillContent, List<EvolutionRecord> entries) {
+        EvolutionStore store = mock(EvolutionStore.class);
+        when(store.readSkillContent("test-skill")).thenReturn(skillContent);
+        when(store.loadEvolutionLog("test-skill")).thenReturn(EvolutionLog.builder()
+                .skillId("test-skill")
+                .entries(entries)
+                .build());
+        when(store.writeSkillContent(any(), any())).thenReturn(true);
+        when(store.deleteRecords(any(), any())).thenReturn(0);
+        return store;
+    }
+
+    private static Model mockModelResponses(String... responses) throws Exception {
+        Model llm = mock(Model.class);
+        OngoingStubbing<AssistantMessage> stubbing = whenInvoke(llm);
+        for (String response : responses) {
+            stubbing = stubbing.thenReturn(new AssistantMessage(response));
+        }
+        return llm;
+    }
+
+    private static OngoingStubbing<AssistantMessage> whenInvoke(Model llm) throws Exception {
+        return when(llm.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()));
+    }
+
+    private static void verifyInvokeCount(Model llm, int count) throws Exception {
+        verify(llm, times(count)).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private static Object readField(SkillRewriter rewriter, String name) throws Exception {
+        Field field = SkillRewriter.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(rewriter);
+    }
+
+    private static EvolutionRecord makeRecord(String recordId) {
+        return makeRecord(recordId, "test content", 0.7, EvolutionTarget.BODY, "Troubleshooting", null);
+    }
+
+    private static EvolutionRecord makeRecord(String recordId, String content) {
+        return makeRecord(recordId, content, 0.7, EvolutionTarget.BODY, "Troubleshooting", null);
+    }
+
+    private static EvolutionRecord makeRecord(String recordId, String content, double score,
+                                              EvolutionTarget target, String section, String skipReason) {
+        return EvolutionRecord.builder()
+                .id(recordId)
                 .source("execution_failure")
+                .timestamp("2026-01-01T00:00:00+00:00")
+                .context("test context")
                 .change(EvolutionPatch.builder()
-                        .section("Troubleshooting")
+                        .section(section)
                         .action("append")
-                        .content("Use fallback method")
-                        .target(EvolutionTarget.BODY)
+                        .content(content)
+                        .target(target)
+                        .skipReason(skipReason)
                         .build())
+                .applied(false)
+                .score(score)
                 .build();
-
-        String prompt = buildRewritePromptWithExperiences(
-                "# Test Skill",
-                "Update instructions",
-                List.of(record1)
-        );
-
-        assertTrue(prompt.contains("Troubleshooting"));
-        assertTrue(prompt.contains("Use fallback method"));
     }
 
-    @Test
-    void testParseRewriteResponseValidJson() {
-        String response = """
-            {
-              "section": "Troubleshooting",
-              "action": "append",
-              "content": "New troubleshooting content",
-              "target": "body"
-            }
-            """;
-
-        EvolutionPatch patch = parseRewriteResponse(response);
-
-        assertEquals("Troubleshooting", patch.getSection());
-        assertEquals("append", patch.getAction());
-        assertEquals("New troubleshooting content", patch.getContent());
-        assertEquals(EvolutionTarget.BODY, patch.getTarget());
-    }
-
-    @Test
-    void testParseRewriteResponseWithMarkdown() {
-        String response = """
-            ```json
-            {
-              "section": "Examples",
-              "action": "replace",
-              "content": "Updated example",
-              "target": "body"
-            }
-            ```
-            """;
-
-        EvolutionPatch patch = parseRewriteResponse(response);
-
-        assertEquals("Examples", patch.getSection());
-        assertEquals("replace", patch.getAction());
-    }
-
-    @Test
-    void testParseRewriteResponseInvalidReturnsNull() {
-        String response = "This is not valid JSON";
-
-        EvolutionPatch patch = parseRewriteResponse(response);
-        assertNull(patch);
-    }
-
-    @Test
-    void testApplyPatchToSkillContent() {
-        String skillContent = "# Test Skill\n\n## Instructions\n\nFollow these steps.";
-        EvolutionPatch patch = EvolutionPatch.builder()
-                .section("Instructions")
-                .action("append")
-                .content("\n\nAdditional step: check logs.")
-                .target(EvolutionTarget.BODY)
-                .build();
-
-        String updated = applyPatch(skillContent, patch);
-
-        assertTrue(updated.contains("Additional step: check logs."));
-    }
-
-    @Test
-    void testApplyReplacePatch() {
-        String skillContent = "# Test Skill\n\n## Instructions\n\nOld instructions.";
-        EvolutionPatch patch = EvolutionPatch.builder()
-                .section("Instructions")
-                .action("replace")
-                .content("New instructions.")
-                .target(EvolutionTarget.BODY)
-                .build();
-
-        String updated = applyPatch(skillContent, patch);
-
-        assertTrue(updated.contains("New instructions."));
-        assertFalse(updated.contains("Old instructions."));
-    }
-
-    // Helper methods mirroring Python rewriter logic
-
-    private String buildRewritePrompt(String skillContent, String instruction) {
+    private static String frontMatterSkill(String body) {
         return """
-            You are a skill rewriter. Your task is to improve the skill based on the instruction.
-            
-            Current skill content:
-            %s
-            
-            Instruction:
-            %s
-            
-            Please provide your changes in JSON format with section, action, and content fields.
-            """.formatted(skillContent, instruction);
-    }
+                ---
+                name: test-skill
+                description: A test skill
+                ---
 
-    private String buildRewritePromptWithExperiences(String skillContent, String instruction,
-                                                      List<EvolutionRecord> existingExperiences) {
-        StringBuilder sb = new StringBuilder(buildRewritePrompt(skillContent, instruction));
-        sb.append("\n\nExisting experiences:\n");
-        for (EvolutionRecord record : existingExperiences) {
-            sb.append("- Section: ").append(record.getChange().getSection())
-              .append(", Action: ").append(record.getChange().getAction())
-              .append(", Content: ").append(record.getChange().getContent())
-              .append("\n");
-        }
-        return sb.toString();
-    }
+                # Test Skill
 
-    private EvolutionPatch parseRewriteResponse(String response) {
-        try {
-            // Extract JSON from markdown code blocks if present
-            String json = response;
-            if (response.contains("```json")) {
-                int start = response.indexOf("```json") + 7;
-                int end = response.indexOf("```", start);
-                if (end > start) {
-                    json = response.substring(start, end).trim();
-                }
-            } else if (response.contains("```")) {
-                int start = response.indexOf("```") + 3;
-                int end = response.indexOf("```", start);
-                if (end > start) {
-                    json = response.substring(start, end).trim();
-                }
-            }
-
-            // Simple JSON parsing (in real implementation, use Jackson/Gson)
-            if (!json.contains("{")) {
-                return null;
-            }
-
-            Map<String, Object> data = new HashMap<>();
-            // Extract values (simplified)
-            return EvolutionPatch.fromDict(data);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String applyPatch(String skillContent, EvolutionPatch patch) {
-        String sectionHeader = "## " + patch.getSection();
-
-        if (!skillContent.contains(sectionHeader)) {
-            // Section doesn't exist, append at end
-            return skillContent + "\n\n" + sectionHeader + "\n\n" + patch.getContent();
-        }
-
-        int sectionStart = skillContent.indexOf(sectionHeader);
-        int nextSectionStart = findNextSection(skillContent, sectionStart + sectionHeader.length());
-
-        if ("append".equals(patch.getAction())) {
-            return skillContent.substring(0, nextSectionStart) + patch.getContent() + skillContent.substring(nextSectionStart);
-        } else if ("replace".equals(patch.getAction())) {
-            return skillContent.substring(0, sectionStart + sectionHeader.length()) + "\n\n" + patch.getContent() +
-                   skillContent.substring(nextSectionStart);
-        }
-
-        return skillContent;
-    }
-
-    private int findNextSection(String content, int fromIndex) {
-        int nextSection = content.indexOf("\n## ", fromIndex);
-        return nextSection > 0 ? nextSection : content.length();
+                %s
+                """.formatted(body);
     }
 }

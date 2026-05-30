@@ -1,164 +1,55 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.tests.unit_tests.cli;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.harness.cli.AutoHarnessCliSupport;
+import com.openjiuwen.harness.cli.ui.CliRepl;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * Mirrors Python's {@code test_auto_harness_repl.py} in {@code tests.unit_tests.cli}.
- * 
- * Tests for AutoHarness REPL entry point behavior.
+ * Mirrors Python's {@code tests.unit_tests.cli.test_auto_harness_repl}.
  */
-@Tag("unit-test")
-@Disabled("Requires CLI configuration and mock prompt_toolkit")
 class TestAutoHarnessRepl {
 
-    // -----------------------------------------------------------------------
-    // Mock classes
-    // -----------------------------------------------------------------------
+    @Test
+    void testSubcmdRunGoalKeepsFullFlow(@TempDir Path tempDir) throws IOException {
+        Path repo = makeFakeRepo(tempDir, "agent-core");
+        Path neutralCwd = Files.createDirectories(tempDir.resolve("cwd"));
 
-    static class AutoHarnessConfig {
-        String optimizationGoal;
-        String localRepo;
-        String workspace;
+        AutoHarnessCliSupport.PreparedRun prepared = new CliRepl()
+                .subcmdRun(List.of("--goal", "分析差距 claude-code"), tempDir.toString(), neutralCwd);
 
-        public String getOptimizationGoal() { return optimizationGoal; }
-        public void setOptimizationGoal(String goal) { this.optimizationGoal = goal; }
-        public String getLocalRepo() { return localRepo; }
-        public void setLocalRepo(String repo) { this.localRepo = repo; }
-        public String getWorkspace() { return workspace; }
-        public void setWorkspace(String workspace) { this.workspace = workspace; }
+        assertEquals("分析差距 claude-code", prepared.getConfig().getOptimizationGoal());
+        assertEquals(repo.toAbsolutePath().normalize().toString(), prepared.getConfig().getLocalRepo());
+        assertEquals(repo.toAbsolutePath().normalize().toString(), prepared.getConfig().getWorkspace());
+        assertNull(prepared.getTasks());
     }
-
-    static class OutputSchema {
-        String type;
-        int index;
-        Map<String, Object> payload;
-
-        OutputSchema(String type, int index, Map<String, Object> payload) {
-            this.type = type;
-            this.index = index;
-            this.payload = payload;
-        }
-    }
-
-    static class MockOrchestrator {
-        List<Object> results = new ArrayList<>();
-        
-        public Iterator<OutputSchema> runSessionStream(List<String> tasks) {
-            List<OutputSchema> outputs = new ArrayList<>();
-            outputs.add(new OutputSchema("message", 0, Map.of("content", "ok")));
-            return outputs.iterator();
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Tests
-    // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("Test subcmd run goal keeps full flow")
-    void testSubcmdRunGoalKeepsFullFlow() throws Exception {
-        // Create temp directory structure
-        Path tmpPath = Files.createTempDirectory("test_repl");
-        Path repo = tmpPath.resolve("agent-core");
-        Files.createDirectories(repo);
+    void testNaturalLanguageDispatchRunsFullFlow(@TempDir Path tempDir) throws IOException {
+        Path neutralCwd = Files.createDirectories(tempDir.resolve("cwd"));
+
+        AutoHarnessCliSupport.PreparedRun prepared = new CliRepl()
+                .cmdAutoHarness("/auto-harness 分析差距 claude-code", tempDir.toString(), neutralCwd);
+
+        assertEquals("分析差距 claude-code", prepared.getConfig().getOptimizationGoal());
+        assertNull(prepared.getTasks());
+    }
+
+    private static Path makeFakeRepo(Path parent, String name) throws IOException {
+        Path repo = Files.createDirectories(parent.resolve(name));
         Files.createDirectories(repo.resolve(".git"));
-        Files.writeString(repo.resolve("pyproject.toml"), "[project]\nname='x'\n");
-        
-        // Create config
-        AutoHarnessConfig config = new AutoHarnessConfig();
-        config.setOptimizationGoal("分析差距 claude-code");
-        config.setLocalRepo(repo.toString());
-        config.setWorkspace(repo.toString());
-        
-        // Verify config
-        assertNotNull(config);
-        assertEquals("分析差距 claude-code", config.getOptimizationGoal());
-        assertEquals(repo.toString(), config.getLocalRepo());
-        assertEquals(repo.toString(), config.getWorkspace());
-        
-        // Cleanup
-        deleteDirectory(tmpPath.toFile());
-    }
-
-    @Test
-    @DisplayName("Test natural language dispatch runs full flow")
-    void testNaturalLanguageDispatchRunsFullFlow() throws Exception {
-        // Create temp directory structure
-        Path tmpPath = Files.createTempDirectory("test_repl");
-        Path repo = tmpPath.resolve("agent-core");
-        Files.createDirectories(repo);
-        
-        // Create mock orchestrator
-        MockOrchestrator orch = new MockOrchestrator();
-        
-        // Run with null tasks (full flow)
-        Iterator<OutputSchema> stream = orch.runSessionStream(null);
-        List<OutputSchema> results = new ArrayList<>();
-        while (stream.hasNext()) {
-            results.add(stream.next());
-        }
-        
-        assertEquals(1, results.size());
-        assertEquals("message", results.get(0).type);
-        
-        // Cleanup
-        deleteDirectory(tmpPath.toFile());
-    }
-
-    @Test
-    @DisplayName("Test output schema structure")
-    void testOutputSchemaStructure() {
-        OutputSchema output = new OutputSchema("message", 0, Map.of("content", "test"));
-        
-        assertEquals("message", output.type);
-        assertEquals(0, output.index);
-        assertNotNull(output.payload);
-        assertEquals("test", output.payload.get("content"));
-    }
-
-    @Test
-    @DisplayName("Test config setting and getting")
-    void testConfigSettingAndGetting() {
-        AutoHarnessConfig config = new AutoHarnessConfig();
-        
-        config.setOptimizationGoal("test goal");
-        config.setLocalRepo("/path/to/repo");
-        config.setWorkspace("/path/to/workspace");
-        
-        assertEquals("test goal", config.getOptimizationGoal());
-        assertEquals("/path/to/repo", config.getLocalRepo());
-        assertEquals("/path/to/workspace", config.getWorkspace());
-    }
-
-    private void deleteDirectory(File directory) {
-        if (directory.exists()) {
-            File[] files = directory.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        deleteDirectory(file);
-                    } else {
-                        file.delete();
-                    }
-                }
-            }
-            directory.delete();
-        }
-    }
-
-    @Test
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+        Files.writeString(repo.resolve("pyproject.toml"), "[project]\nname='x'\n", StandardCharsets.UTF_8);
+        Files.createDirectories(repo.resolve("openjiuwen"));
+        return repo;
     }
 }

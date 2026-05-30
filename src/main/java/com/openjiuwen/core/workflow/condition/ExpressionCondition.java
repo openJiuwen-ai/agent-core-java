@@ -32,6 +32,8 @@ import java.util.regex.Pattern;
 public class ExpressionCondition extends Condition {
 
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}]*)\\}");
+    private static final Pattern PROHIBITED_PATTERN = Pattern.compile(
+            "(__class__|__bases__|__subclasses__|__module__|__dict__|__import__)");
 
     private final String expression;
     private final List<String> matches;
@@ -103,6 +105,8 @@ public class ExpressionCondition extends Condition {
      * Evaluate the expression with the given variable bindings.
      */
     private boolean evaluateExpression(String expr, Map<String, Object> inputs) {
+        rejectProhibitedOperations(expr);
+
         // Preprocess: replace operators
         String processed = convertCondition(expr);
 
@@ -114,7 +118,9 @@ public class ExpressionCondition extends Condition {
         }
 
         try {
-            Object result = parseOrExpression(new ExpressionParser(processed.trim()));
+            ExpressionParser parser = new ExpressionParser(processed.trim());
+            Object result = parseOrExpression(parser);
+            parser.ensureEof();
             return toBoolean(result);
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().startsWith("[")) {
@@ -143,6 +149,8 @@ public class ExpressionCondition extends Condition {
         String processed = protectedExpr.toString()
                 .replace("&&", " AND ")
                 .replace("||", " OR ")
+                .replaceAll("\\band\\b", "AND")
+                .replaceAll("\\bor\\b", "OR")
                 .replaceAll("\\btrue\\b", "TRUE_VAL")
                 .replaceAll("\\bfalse\\b", "FALSE_VAL")
                 .replaceAll("\\blength\\(", "len(")
@@ -154,11 +162,20 @@ public class ExpressionCondition extends Condition {
         return processed;
     }
 
+    private static void rejectProhibitedOperations(String expr) {
+        Matcher matcher = PROHIBITED_PATTERN.matcher(expr);
+        if (matcher.find()) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "disallowed operation: access to special attribute '"
+                            + matcher.group(1) + "' is prohibited");
+        }
+    }
+
     // ==================== Recursive Descent Parser ====================
 
     private static Object parseOrExpression(ExpressionParser parser) {
         Object left = parseAndExpression(parser);
-        while (parser.matchKeyword("OR")) {
+        while (parser.matchKeyword("OR") || parser.matchKeyword("or")) {
             Object right = parseAndExpression(parser);
             left = toBoolean(left) || toBoolean(right);
         }
@@ -167,7 +184,7 @@ public class ExpressionCondition extends Condition {
 
     private static Object parseAndExpression(ExpressionParser parser) {
         Object left = parseNotExpression(parser);
-        while (parser.matchKeyword("AND")) {
+        while (parser.matchKeyword("AND") || parser.matchKeyword("and")) {
             Object right = parseNotExpression(parser);
             left = toBoolean(left) && toBoolean(right);
         }
@@ -206,9 +223,21 @@ public class ExpressionCondition extends Condition {
             } else if (parser.matchKeyword("NOT_IN")) {
                 Object right = parseAddSub(parser);
                 left = !objectIn(left, right);
+            } else if (parser.matchKeyword("not")) {
+                if (!parser.matchKeyword("in")) {
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR,
+                            "error_msg", "expected 'in' after 'not'");
+                }
+                Object right = parseAddSub(parser);
+                left = !objectIn(left, right);
             } else if (parser.matchKeyword("in")) {
                 Object right = parseAddSub(parser);
                 left = objectIn(left, right);
+            } else if (parser.matchKeyword("is")) {
+                boolean negate = parser.matchKeyword("not");
+                Object right = parseAddSub(parser);
+                boolean same = objectIs(left, right);
+                left = negate ? !same : same;
             } else {
                 break;
             }
@@ -272,8 +301,10 @@ public class ExpressionCondition extends Condition {
 
         // Parenthesized expression
         if (parser.matchChar('(')) {
+            parser.enterNesting();
             Object result = parseOrExpression(parser);
             parser.expect(')');
+            parser.exitNesting();
             return result;
         }
 
@@ -365,8 +396,13 @@ public class ExpressionCondition extends Condition {
             return (Boolean) value ? "True" : "False";
         }
         if (value instanceof List) {
-            StringBuilder sb = new StringBuilder("[");
             List<?> list = (List<?>) value;
+            if (list.size() > Constant.MAX_COLLECTION_SIZE) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "collection size exceeds maximum allowed size of "
+                                + Constant.MAX_COLLECTION_SIZE);
+            }
+            StringBuilder sb = new StringBuilder("[");
             for (int i = 0; i < list.size(); i++) {
                 if (i > 0) sb.append(",");
                 sb.append(toLiteral(list.get(i)));
@@ -407,6 +443,10 @@ public class ExpressionCondition extends Condition {
         return left.equals(right);
     }
 
+    private static boolean objectIs(Object left, Object right) {
+        return left == right;
+    }
+
     @SuppressWarnings("unchecked")
     private static int objectCompare(Object left, Object right) {
         if (left instanceof Number && right instanceof Number) {
@@ -430,8 +470,29 @@ public class ExpressionCondition extends Condition {
     }
 
     private static Object numericOp(Object left, Object right, char op) {
-        if (op == '+' && (left instanceof String || right instanceof String)) {
-            return String.valueOf(left) + String.valueOf(right);
+        if (op == '+') {
+            if (left instanceof String && right instanceof String) {
+                return (String) left + right;
+            }
+            if (left instanceof List<?> leftList && right instanceof List<?> rightList) {
+                int size = leftList.size() + rightList.size();
+                if (size > Constant.MAX_COLLECTION_SIZE) {
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                            "error_msg", "operation would create collection exceeding maximum size of "
+                                    + Constant.MAX_COLLECTION_SIZE);
+                }
+                List<Object> combined = new ArrayList<>(leftList);
+                combined.addAll(rightList);
+                return combined;
+            }
+        }
+        if (op == '*') {
+            if (left instanceof List<?> list && right instanceof Number number) {
+                return repeatList(list, number.intValue());
+            }
+            if (right instanceof List<?> list && left instanceof Number number) {
+                return repeatList(list, number.intValue());
+            }
         }
         if (!(left instanceof Number) || !(right instanceof Number)) {
             throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
@@ -469,6 +530,23 @@ public class ExpressionCondition extends Condition {
                 "error_msg", "object of type '" + typeName(value) + "' has no len()");
     }
 
+    private static List<Object> repeatList(List<?> list, int times) {
+        if (times < 0) {
+            times = 0;
+        }
+        long targetSize = (long) list.size() * times;
+        if (targetSize > Constant.MAX_COLLECTION_SIZE) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "operation would create collection exceeding maximum size of "
+                            + Constant.MAX_COLLECTION_SIZE);
+        }
+        List<Object> repeated = new ArrayList<>((int) targetSize);
+        for (int i = 0; i < times; i++) {
+            repeated.addAll(list);
+        }
+        return repeated;
+    }
+
     private static boolean safeIsEmpty(Object value) {
         if (value == null) return true;
         if (value instanceof Number || value instanceof Boolean) {
@@ -490,6 +568,7 @@ public class ExpressionCondition extends Condition {
     private static class ExpressionParser {
         private final String input;
         private int pos;
+        private int nestingDepth;
 
         ExpressionParser(String input) {
             this.input = input;
@@ -568,6 +647,29 @@ public class ExpressionCondition extends Condition {
                         "error_msg", "expected '" + c + "' at position " + pos);
             }
             pos++;
+        }
+
+        void ensureEof() {
+            skipWhitespace();
+            if (pos < input.length()) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR,
+                        "error_msg", "unexpected trailing input at position " + pos);
+            }
+        }
+
+        void enterNesting() {
+            nestingDepth++;
+            if (nestingDepth > Constant.MAX_AST_DEPTH) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "expression nesting depth exceeds maximum allowed depth of "
+                                + Constant.MAX_AST_DEPTH);
+            }
+        }
+
+        void exitNesting() {
+            if (nestingDepth > 0) {
+                nestingDepth--;
+            }
         }
 
         String readString() {

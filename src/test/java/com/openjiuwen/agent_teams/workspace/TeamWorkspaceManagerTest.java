@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for TeamWorkspaceManager.
  * 
- * <p>Mirrors Python's openjiuwen.agent_teams.team_workspace.manager
+ * <p>Mirrors Python's {@code TeamWorkspaceManager} in
+ * {@code openjiuwen.agent_teams.team_workspace.manager}.
  * Ported from Python: agent-core-0.1.12/openjiuwen/agent_teams/team_workspace/manager.py
  * 
  * <p>NOTE: Python has no dedicated test file for TeamWorkspaceManager.
@@ -34,6 +35,11 @@ class TeamWorkspaceManagerTest {
 
     private WorkspaceFileLock createLock(String filePath, String holderId, int timeoutSeconds) {
         String acquiredAt = Instant.now().toString();
+        return new WorkspaceFileLock(filePath, holderId, holderId + "-name", acquiredAt, timeoutSeconds);
+    }
+
+    private WorkspaceFileLock createExpiredLock(String filePath, String holderId, int timeoutSeconds) {
+        String acquiredAt = Instant.now().minusSeconds(timeoutSeconds + 1L).toString();
         return new WorkspaceFileLock(filePath, holderId, holderId + "-name", acquiredAt, timeoutSeconds);
     }
 
@@ -92,14 +98,11 @@ class TeamWorkspaceManagerTest {
 
     @Test
     @DisplayName("Test acquireLock replaces expired lock")
-    void testAcquireLockExpired() throws InterruptedException {
+    void testAcquireLockExpired() {
         TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
-        // Create a lock with very short TTL
-        WorkspaceFileLock expiredLock = createLock("/tmp/workspace/file.txt", "holder1", 1);
+        WorkspaceFileLock expiredLock = createExpiredLock("/tmp/workspace/file.txt", "holder1", 1);
         manager.acquireLock(expiredLock);
-        
-        Thread.sleep(50); // Let lock expire
-        
+
         WorkspaceFileLock newLock = createLock("/tmp/workspace/file.txt", "holder2", 3600);
         assertTrue(manager.acquireLock(newLock));
         assertEquals("holder2", manager.getLock("/tmp/workspace/file.txt").getHolderId());

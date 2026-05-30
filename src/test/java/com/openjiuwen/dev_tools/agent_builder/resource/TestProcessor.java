@@ -4,8 +4,13 @@
 
 package com.openjiuwen.dev_tools.agent_builder.resource;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test processor functionality.
@@ -13,10 +18,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_processor.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/resource/test_processor.py}.
  *
- * <p>Note: Processor source class requires translation before tests can be implemented.
- * Tests are disabled pending Processor.java implementation.
  */
-@Disabled("Processor.java source class requires translation before tests can be implemented")
 class TestProcessor {
 
     /**
@@ -24,11 +26,17 @@ class TestProcessor {
      * <p>
      * Mirrors Python's {@code TestTypeMap} class.
      */
-    static class TestTypeMap {
+    @Nested
+    class TestTypeMap {
 
         @Test
         void testTypeMapValues() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.TYPE_MAP.get(1));
+            assertEquals("integer", PluginProcessor.TYPE_MAP.get(2));
+            assertEquals("number", PluginProcessor.TYPE_MAP.get(3));
+            assertEquals("boolean", PluginProcessor.TYPE_MAP.get(4));
+            assertEquals("array", PluginProcessor.TYPE_MAP.get(5));
+            assertEquals("object", PluginProcessor.TYPE_MAP.get(6));
         }
     }
 
@@ -37,31 +45,40 @@ class TestProcessor {
      * <p>
      * Mirrors Python's {@code TestConvertType} class.
      */
-    static class TestConvertType {
+    @Nested
+    class TestConvertType {
 
         @Test
         void testConvertIntType() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.convertType(1));
+            assertEquals("integer", PluginProcessor.convertType(2));
+            assertEquals("number", PluginProcessor.convertType(3));
+            assertEquals("boolean", PluginProcessor.convertType(4));
+            assertEquals("array", PluginProcessor.convertType(5));
+            assertEquals("object", PluginProcessor.convertType(6));
         }
 
         @Test
         void testConvertStringType() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.convertType("string"));
+            assertEquals("integer", PluginProcessor.convertType("integer"));
+            assertEquals("custom", PluginProcessor.convertType("custom"));
         }
 
         @Test
         void testConvertUnknownIntType() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.convertType(999));
         }
 
         @Test
         void testConvertNullType() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.convertType(null));
         }
 
         @Test
         void testConvertOtherType() {
-            // Placeholder - requires Processor.java
+            assertEquals("string", PluginProcessor.convertType(List.of(1, 2, 3)));
+            assertEquals("string", PluginProcessor.convertType(Map.of("key", "value")));
         }
     }
 
@@ -70,21 +87,57 @@ class TestProcessor {
      * <p>
      * Mirrors Python's {@code TestPluginProcessor} class.
      */
-    static class TestPluginProcessor {
+    @Nested
+    class TestPluginProcessor {
 
         @Test
         void testPreprocessEmptyList() {
-            // Placeholder - requires Processor.java
+            PluginProcessor.PreprocessResult result = PluginProcessor.preprocess(List.of());
+
+            assertTrue(result.pluginDict().isEmpty());
+            assertTrue(result.toolPluginIdMap().isEmpty());
         }
 
         @Test
         void testPreprocessNull() {
-            // Placeholder - requires Processor.java
+            PluginProcessor.PreprocessResult result = PluginProcessor.preprocess(null);
+
+            assertTrue(result.pluginDict().isEmpty());
+            assertTrue(result.toolPluginIdMap().isEmpty());
         }
 
         @Test
         void testPreprocessSinglePlugin() {
-            // Placeholder - requires Processor.java
+            Map<String, Object> tool = Map.of(
+                    "tool_id", "tool_001",
+                    "tool_name", "Test Tool",
+                    "desc", "A test tool",
+                    "code", "print('hello')",
+                    "language", "python",
+                    "input_parameters", List.of(Map.of("name", "param1", "desc", "First param", "type", 1)),
+                    "output_parameters", List.of(Map.of("name", "result", "desc", "Result", "type", 1)));
+            Map<String, Object> plugin = Map.of(
+                    "plugin_id", "plugin_001",
+                    "plugin_name", "Test Plugin",
+                    "plugin_desc", "A test plugin",
+                    "plugin_version", "1.0.0",
+                    "tools", List.of(tool));
+
+            PluginProcessor.PreprocessResult result = PluginProcessor.preprocess(List.of(plugin));
+
+            assertTrue(result.pluginDict().containsKey("plugin_001"));
+            assertEquals("plugin_001", result.toolPluginIdMap().get("tool_001"));
+            Map<String, Object> formattedPlugin = result.pluginDict().get("plugin_001");
+            assertEquals("Test Plugin", formattedPlugin.get("plugin_name"));
+            assertEquals("A test plugin", formattedPlugin.get("plugin_desc"));
+            @SuppressWarnings("unchecked")
+            Map<String, Map<String, Object>> tools =
+                    (Map<String, Map<String, Object>>) formattedPlugin.get("tools");
+            assertTrue(tools.containsKey("tool_001"));
+            assertEquals("Test Tool", tools.get("tool_001").get("tool_name"));
+            assertEquals("A test tool", tools.get("tool_001").get("tool_desc"));
+            assertEquals("print('hello')", tools.get("tool_001").get("code"));
+            assertEquals("python", tools.get("tool_001").get("language"));
         }
     }
 }

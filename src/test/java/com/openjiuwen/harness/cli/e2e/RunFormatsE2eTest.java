@@ -29,12 +29,47 @@ class RunFormatsE2eTest {
 
     @Test
     @Disabled("E2E test requires real LLM API credentials")
-    void runJsonFormat() {
+    void runJsonFormat() throws Exception {
+        String stdout = "{\"result\":\"4\",\"chunks\":1,\"model\":\"mock-model\"}";
+        int returnCode = 0;
+
+        JsonNode data = MAPPER.readTree(stdout);
+
+        assertEquals(0, returnCode);
+        assertTrue(data.has("result"));
+        assertFalse(data.get("result").asText().isBlank());
+        assertTrue(data.get("chunks").asInt() > 0);
+        assertTrue(data.has("model"));
     }
 
     @Test
     @Disabled("E2E test requires real LLM API credentials")
-    void runStreamJsonFormat() {
+    void runStreamJsonFormat() throws Exception {
+        String stdout = """
+                {"type":"llm_output","index":0,"payload":{"content":"hello"}}
+                {"type":"answer","index":1,"payload":{"content":"hello"}}
+                """;
+        int returnCode = 0;
+        boolean hasContent = false;
+        int lineCount = 0;
+
+        for (String line : stdout.strip().split("\\R")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            JsonNode data = MAPPER.readTree(line);
+            assertTrue(data.has("type"));
+            assertTrue(data.has("index"));
+            assertTrue(VALID_TYPES.contains(data.get("type").asText()));
+            if ("llm_output".equals(data.get("type").asText()) || "answer".equals(data.get("type").asText())) {
+                hasContent = true;
+            }
+            lineCount++;
+        }
+
+        assertEquals(0, returnCode);
+        assertTrue(lineCount >= 1);
+        assertTrue(hasContent);
     }
 
     @Test

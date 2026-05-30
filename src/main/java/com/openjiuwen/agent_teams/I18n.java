@@ -13,7 +13,7 @@ import java.util.Map;
  * (dispatcher nudges, backend message content, default persona) so they can
  * be switched between Chinese and English without source edits.
  * 
- * Mirrors Python's agent_teams.i18n
+ * Mirrors Python's {@code i18n.py} module in {@code openjiuwen.agent_teams.i18n}.
  * 
  * Usage:
  *     I18n.setLanguage("en");

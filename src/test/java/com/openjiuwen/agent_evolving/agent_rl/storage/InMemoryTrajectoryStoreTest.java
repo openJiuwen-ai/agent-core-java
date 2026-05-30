@@ -91,6 +91,25 @@ class InMemoryTrajectoryStoreTest {
         assertNotSame(firstFetch.getFirst(), sample("s1"));
     }
 
+    @Test
+    void saveSampleUsesPythonUserIdOrFallbackSemantics() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+        Map<String, Object> blankUser = sample("s1");
+        blankUser.put("user_id", "");
+        store.saveSample(blankUser, "fallback-user");
+
+        Map<String, Object> whitespaceUser = sample("s2");
+        whitespaceUser.put("user_id", "   ");
+        store.saveSample(whitespaceUser, "fallback-user");
+
+        assertEquals(1, store.getPendingCount("fallback-user"));
+        assertEquals(1, store.getPendingCount("   "));
+        assertEquals(0, store.getPendingCount("online"));
+
+        assertEquals("s1", store.fetchAndMarkTraining("fallback-user", 1).getFirst().get("sample_id"));
+        assertEquals("s2", store.fetchAndMarkTraining("   ", 1).getFirst().get("sample_id"));
+    }
+
     private static Map<String, Object> sample(String sampleId) {
         Map<String, Object> sample = new LinkedHashMap<>();
         sample.put("sample_id", sampleId);

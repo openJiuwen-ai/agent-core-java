@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for OpenVikingMemoryProvider.
  * <p>
- * Mirrors Python's test file from tests/unit_tests/core/memory/external/.
+ * Mirrors Python's {@code test_openviking_memory_provider.py} in
+ * {@code tests.unit_tests.core.memory.external}.
  */
 @DisplayName("OpenViking Memory Provider Tests")
 class TestOpenVikingMemoryProvider {

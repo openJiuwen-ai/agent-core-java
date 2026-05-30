@@ -60,7 +60,7 @@ public class MessageBus {
     public MessageBus(MessageBusConfig config, TeamRuntime runtime) {
         this.config = config;
         this.teamId = config.getTeamId().orElse("default");
-        this.subscriptionManager = new SubscriptionManager();
+        this.subscriptionManager = runtime != null ? runtime.getSubscriptionManager() : new SubscriptionManager();
         this.router = new MessageRouter(subscriptionManager, runtime);
         this.runtime = runtime;
         

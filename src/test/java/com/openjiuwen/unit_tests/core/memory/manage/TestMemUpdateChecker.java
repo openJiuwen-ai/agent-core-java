@@ -4,11 +4,14 @@
 
 package com.openjiuwen.unit_tests.core.memory.manage;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.memory.manage.update.MemUpdateChecker;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.*;
 
@@ -21,17 +24,19 @@ import java.util.*;
  * Tests for MemUpdateChecker class that detects redundancy
  * and conflicts between memories using LLM analysis.
  */
+@ExtendWith(MockitoExtension.class)
 @Disabled("Requires MemUpdateChecker implementation")
 class TestMemUpdateChecker {
 
     // ==================== Test Fixtures ====================
 
-    private Object checker;
-    private Object mockModelClient;
+    private MemUpdateChecker checker;
+    private Model mockModelClient;
 
     @BeforeEach
     void setUp() {
-        // Create a MemUpdateChecker instance for testing
+        checker = new MemUpdateChecker();
+        mockModelClient = mock(Model.class);
     }
 
     // ==================== Check Method Tests ====================

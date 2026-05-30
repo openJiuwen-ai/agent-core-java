@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for TeamWorkspace models.
  * 
- * <p>Mirrors Python's openjiuwen.agent_teams.team_workspace.models
+ * <p>Mirrors Python's {@code models.py} module in
+ * {@code openjiuwen.agent_teams.team_workspace.models}.
  * Ported from Python: agent-core-0.1.12/openjiuwen/agent_teams/team_workspace/models.py
  * 
  * <p>NOTE: Python has no dedicated test file for models.

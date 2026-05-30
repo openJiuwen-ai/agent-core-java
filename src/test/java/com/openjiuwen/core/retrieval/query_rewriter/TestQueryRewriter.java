@@ -30,8 +30,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -318,7 +318,8 @@ class TestQueryRewriter {
         @DisplayName("compress with valid mock response")
         void testCompressValidMock() throws Exception {
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage(makeCompressResponse()));
             ModelContext mockContext = mock(ModelContext.class);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
@@ -336,7 +337,8 @@ class TestQueryRewriter {
         @DisplayName("compress with invalid JSON raises")
         void testCompressInvalidJsonRaises() throws Exception {
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage("not valid json at all"));
             ModelContext mockContext = mock(ModelContext.class);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
@@ -351,7 +353,8 @@ class TestQueryRewriter {
         @DisplayName("compress LLM invoke failure raises")
         void testCompressLlmInvokeFailureRaises() throws Exception {
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenThrow(new RuntimeException("network error"));
             ModelContext mockContext = mock(ModelContext.class);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
@@ -372,14 +375,15 @@ class TestQueryRewriter {
         void testRewriteValidMock() throws Exception {
             String currentQuery = "那运费呢？";
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage(makeFullRewriteResponse(currentQuery)));
             List<BaseMessage> contextMessages = new ArrayList<>();
             contextMessages.add(new UserMessage("你好"));
             contextMessages.add(new AssistantMessage("你好！"));
             ModelContext mockContext = mock(ModelContext.class);
             when(mockContext.getMessages(anyInt(), eq(true))).thenReturn(contextMessages);
-            when(mockContext.getMessages((Integer) null, eq(true))).thenReturn(contextMessages);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenReturn(contextMessages);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             Map<String, Object> result = qr.rewrite(currentQuery);
             assertEquals(currentQuery, result.get("standalone_query"));
@@ -393,14 +397,15 @@ class TestQueryRewriter {
             String currentQuery = "测试";
             String payload = makeFullRewriteResponse(currentQuery);
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage("这是回答：\n" + payload + "\n以上是结果。"));
             List<BaseMessage> contextMessages = new ArrayList<>();
             contextMessages.add(new UserMessage("你好"));
             contextMessages.add(new AssistantMessage("你好！"));
             ModelContext mockContext = mock(ModelContext.class);
             when(mockContext.getMessages(anyInt(), eq(true))).thenReturn(contextMessages);
-            when(mockContext.getMessages((Integer) null, eq(true))).thenReturn(contextMessages);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenReturn(contextMessages);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             Map<String, Object> result = qr.rewrite(currentQuery);
             assertEquals(currentQuery, result.get("standalone_query"));
@@ -410,14 +415,15 @@ class TestQueryRewriter {
         @DisplayName("rewrite invalid output raises")
         void testRewriteInvalidOutputRaises() throws Exception {
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage("not json"));
             List<BaseMessage> contextMessages = new ArrayList<>();
             contextMessages.add(new UserMessage("你好"));
             contextMessages.add(new AssistantMessage("你好！"));
             ModelContext mockContext = mock(ModelContext.class);
             when(mockContext.getMessages(anyInt(), eq(true))).thenReturn(contextMessages);
-            when(mockContext.getMessages((Integer) null, eq(true))).thenReturn(contextMessages);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenReturn(contextMessages);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             BaseError ex = assertThrows(BaseError.class, () -> qr.rewrite("问题"));
             assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID, ex.getStatus());
@@ -453,7 +459,8 @@ class TestQueryRewriter {
         void testRewriteCompressFailureFallback() throws Exception {
             String currentQuery = "总结一下";
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage(makeFullRewriteResponse(currentQuery)));
             List<BaseMessage> contextMessages = new ArrayList<>();
             for (int i = 0; i < 6; i++) {
@@ -462,7 +469,7 @@ class TestQueryRewriter {
             }
             ModelContext mockContext = mock(ModelContext.class);
             when(mockContext.getMessages(anyInt(), eq(true))).thenReturn(contextMessages);
-            when(mockContext.getMessages((Integer) null, eq(true))).thenReturn(contextMessages);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenReturn(contextMessages);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             Map<String, Object> result = qr.rewrite(currentQuery);
             assertEquals(currentQuery, result.get("standalone_query"));
@@ -488,14 +495,15 @@ class TestQueryRewriter {
         void testRewriteWithTrailingCommaMock() throws Exception {
             String broken = "{\"before\":\"x\",\"intention\":\"y\",\"standalone_query\":\"x\",\"references\":{},\"missing\":[],\"typo\":[],\"gibberish\":[],\"from_history\":\"\",}";
             BaseModelClient mockClient = mock(BaseModelClient.class);
-            when(mockClient.invoke(any(), any(), anyFloat(), anyFloat(), anyString(), any(), anyString(), any(), anyFloat(), anyMap()))
+            when(mockClient.invoke(any(), any(), anyFloat(), nullable(Float.class), nullable(String.class),
+                    nullable(Integer.class), nullable(String.class), any(), nullable(Float.class), anyMap()))
                     .thenReturn(new AssistantMessage(broken));
             List<BaseMessage> contextMessages = new ArrayList<>();
             contextMessages.add(new UserMessage("你好"));
             contextMessages.add(new AssistantMessage("你好！"));
             ModelContext mockContext = mock(ModelContext.class);
             when(mockContext.getMessages(anyInt(), eq(true))).thenReturn(contextMessages);
-            when(mockContext.getMessages((Integer) null, eq(true))).thenReturn(contextMessages);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenReturn(contextMessages);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             Map<String, Object> result = qr.rewrite("x");
             assertEquals("x", result.get("standalone_query"));

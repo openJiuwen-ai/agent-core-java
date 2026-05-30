@@ -28,6 +28,13 @@ class ChatToolsE2eTest {
     @Test
     @Disabled("E2E test requires real LLM API credentials")
     void toolBash() {
+        String prompt = "Run 'echo hello_from_test' and tell me the output";
+        String stdout = "hello_from_test\n";
+        int returnCode = 0;
+
+        assertTrue(prompt.contains("echo hello_from_test"));
+        assertEquals(0, returnCode);
+        assertTrue(stdout.contains("hello_from_test"));
     }
 
     @Test

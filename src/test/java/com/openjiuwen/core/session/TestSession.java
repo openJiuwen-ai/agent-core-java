@@ -217,8 +217,14 @@ class TestSession {
             Object result5 = SessionUtils.getBySchema(Map.of("result", List.of("abc", "cde")), source);
             assertEquals(Map.of("result", List.of("abc", "cde")), result5);
 
-            Object result6 = SessionUtils.getBySchema(Map.of("result", Map.of("abc", "cde", "result", "${1}")), source);
-            assertEquals(Map.of("result", Map.of("abc", "cde", "result", null)), result6);
+            Map<String, Object> nestedSchema6 = new HashMap<>();
+            nestedSchema6.put("abc", "cde");
+            nestedSchema6.put("result", "${1}");
+            Object result6 = SessionUtils.getBySchema(Map.of("result", nestedSchema6), source);
+            Map<String, Object> expectedNested6 = new HashMap<>();
+            expectedNested6.put("abc", "cde");
+            expectedNested6.put("result", null);
+            assertEquals(Map.of("result", expectedNested6), result6);
 
             Object result7 = SessionUtils.getBySchema(Map.of("a", "${a.b[-1]}"), source);
             assertEquals(Map.of("a", 3), result7);
@@ -233,7 +239,10 @@ class TestSession {
             assertEquals(Map.of("result", "dd"), result8);
 
             Object result9 = SessionUtils.getBySchema(Map.of("result", List.of("${abc}", "cde")), source);
-            assertEquals(Map.of("result", List.of(null, "cde")), result9);
+            List<Object> expectedList9 = new ArrayList<>();
+            expectedList9.add(null);
+            expectedList9.add("cde");
+            assertEquals(Map.of("result", expectedList9), result9);
 
             Object result10 = SessionUtils.getBySchema(Map.of("result", Map.of("abc", "cde", "result", "${a}")), source);
             assertTrue(result10 instanceof Map);
@@ -256,7 +265,11 @@ class TestSession {
             Map<String, Object> b = new HashMap<>();
             Map<String, Object> b1 = new HashMap<>();
             b1.put("b11", "1");
-            b1.put("b12", List.of(1, 2, null));
+            List<Object> b12 = new ArrayList<>();
+            b12.add(1);
+            b12.add(2);
+            b12.add(null);
+            b1.put("b12", b12);
             b1.put("b13", "2");
             b.put("b1", b1);
             data.put("b", b);

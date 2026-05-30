@@ -265,13 +265,11 @@ class TestHeartbeat {
         }
 
         @Test
-        @DisplayName("test get progress state creates new if missing")
-        void testGetProgressStateCreatesNewIfMissing() {
+        @DisplayName("test get progress state returns null if missing")
+        void testGetProgressStateReturnsNullIfMissing() {
             BrowserService svc = makeService();
 
-            BrowserTaskProgressState state = svc.getProgressState("session1");
-
-            assertNotNull(state);
+            assertNull(svc.getProgressState("session1"));
         }
 
         @Test

@@ -12,9 +12,11 @@ import com.openjiuwen.agent_teams.interaction.UserInbox;
 import com.openjiuwen.agent_teams.schema.DeepAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamLifecycle;
+import com.openjiuwen.agent_teams.schema.TeamModelConfig;
 import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 import com.openjiuwen.agent_teams.schema.TeamRuntimeContext;
+import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import com.openjiuwen.agent_teams.schema.status.ExecutionStatus;
 import com.openjiuwen.agent_teams.schema.status.MemberMode;
 import com.openjiuwen.agent_teams.schema.status.MemberStatus;
@@ -29,10 +31,12 @@ import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Minimal Java TeamAgent that composes an internal DeepAgent leader runtime.
@@ -53,6 +57,9 @@ public class TeamAgent extends BaseAgent {
     private HumanAgentInbox humanAgentInbox;
     private RecoveryManager recoveryManager;
     private SessionManager sessionManager;
+    private ModelAllocator modelAllocator;
+    private Allocation leaderAllocation;
+    private final List<Consumer<Object>> eventListeners = new ArrayList<>();
 
     public TeamAgent(AgentCard card) {
         super(card);
@@ -75,6 +82,7 @@ public class TeamAgent extends BaseAgent {
         }
         this.spec = teamAgentSpec;
         this.runtimeContext = buildRuntimeContext(teamAgentSpec);
+        configureModelAllocation(teamAgentSpec, this.runtimeContext);
         this.deepAgent = buildLeaderDeepAgent(teamAgentSpec);
         this.teamBackend = buildTeamBackend(teamAgentSpec);
         this.firstIterationGate = new FirstIterationGate();
@@ -88,6 +96,7 @@ public class TeamAgent extends BaseAgent {
         this.humanAgentInbox = new HumanAgentInbox(this.teamBackend);
         this.coordinatorLoop = new CoordinatorLoop(runtimeContext.getRole(), this::onCoordinationEvent);
         this.recoveryManager = new RecoveryManager(this.spec, this.runtimeContext, this.teamBackend);
+        this.recoveryManager.setModelAllocator(this.modelAllocator);
         this.sessionManager = new SessionManager(this::getLifecycle, this::getTeamBackend, this.recoveryManager);
         this.deepAgent.getDelegate().registerRail(firstIterationGate);
         this.teamBackend.registerPredefinedMembers();
@@ -138,8 +147,20 @@ public class TeamAgent extends BaseAgent {
         return sessionManager;
     }
 
+    public ModelAllocator getModelAllocator() {
+        return modelAllocator;
+    }
+
+    public Allocation getLeaderAllocation() {
+        return leaderAllocation;
+    }
+
     public TeamDispatcher getDispatcher() {
         return dispatcher;
+    }
+
+    public List<Consumer<Object>> getEventListeners() {
+        return new ArrayList<>(eventListeners);
     }
 
     public String getTeamName() {
@@ -199,9 +220,23 @@ public class TeamAgent extends BaseAgent {
     }
 
     public void notifyEvent(String eventType, Map<String, Object> payload) {
+        EventMessage message = new EventMessage(eventType, payload != null ? payload : Map.of());
         if (coordinatorLoop != null) {
-            coordinatorLoop.wake(new CoordinationEvent(eventType, payload));
+            coordinatorLoop.wake(new CoordinationEvent(eventType, payload != null ? payload : Map.of()));
         }
+        for (Consumer<Object> listener : new ArrayList<>(eventListeners)) {
+            listener.accept(message);
+        }
+    }
+
+    public void addEventListener(Consumer<Object> handler) {
+        if (handler != null) {
+            eventListeners.add(handler);
+        }
+    }
+
+    public void removeEventListener(Consumer<Object> handler) {
+        eventListeners.remove(handler);
     }
 
     public TeamMember spawnMember(TeamMemberSpec spec, AgentCard card) {
@@ -275,6 +310,48 @@ public class TeamAgent extends BaseAgent {
         }
     }
 
+    public void persistAllocatorState() {
+        if (recoveryManager != null && sessionManager != null) {
+            recoveryManager.persistAllocatorState(sessionManager.getTeamSession());
+        }
+    }
+
+    public void updateModelPool(List<ModelPoolEntry> newPool) {
+        if (runtimeContext == null || runtimeContext.getTeamSpec() == null) {
+            return;
+        }
+        List<ModelPoolEntry> merged = ModelPoolEntry.inheritPoolIds(runtimeContext.getTeamSpec().getModelPool(), newPool);
+        runtimeContext.getTeamSpec().setModelPool(merged);
+        if (spec != null) {
+            spec.setModelPool(merged);
+            this.modelAllocator = ModelAllocators.buildModelAllocator(spec, runtimeContext.getTeamSpec());
+        }
+        this.leaderAllocation = null;
+        if (recoveryManager != null) {
+            recoveryManager.setModelAllocator(modelAllocator);
+        }
+        if (sessionManager != null && sessionManager.getTeamSession() != null) {
+            recoveryManager.persistLeaderConfig(sessionManager.getTeamSession());
+        }
+    }
+
+    public void attachModelAllocator(ModelAllocator allocator, Allocation leaderAllocation) {
+        this.modelAllocator = allocator;
+        this.leaderAllocation = leaderAllocation;
+        if (leaderAllocation != null && runtimeContext != null) {
+            runtimeContext.setMemberModel(leaderAllocation.toTeamModelConfig());
+        }
+        if (recoveryManager != null) {
+            recoveryManager.setModelAllocator(allocator);
+        }
+    }
+
+    public void restoreAllocatorState(Map<String, Object> state) {
+        if (modelAllocator != null) {
+            modelAllocator.loadStateDict(state);
+        }
+    }
+
     @Override
     public Object invoke(Object inputs, Session session) {
         registerCurrentSession(session);
@@ -303,8 +380,10 @@ public class TeamAgent extends BaseAgent {
         teamSpec.setTeamName(spec.getTeamName());
         teamSpec.setDisplayName(spec.getTeamName());
         teamSpec.setLeaderMemberName(context.getMemberName());
-        teamSpec.setLanguage(spec.getLanguage());
+        teamSpec.setLanguage(TeamAgentSpec.resolveLanguage(spec.getLanguage()));
         teamSpec.setMetadata(spec.getMetadata());
+        teamSpec.setModelPool(spec.getModelPool());
+        teamSpec.setModelPoolStrategy(spec.getModelPoolStrategy());
         context.setTeamSpec(teamSpec);
         return context;
     }
@@ -315,6 +394,7 @@ public class TeamAgent extends BaseAgent {
             DeepAgentConfig fallback = new DeepAgentConfig();
             fallback.setCard(createLeaderCard(spec));
             fallback.setSystemPrompt("You are the leader of the team '" + spec.getTeamName() + "'.");
+            applyTeamModelConfig(fallback, runtimeContext != null ? runtimeContext.getMemberModel() : null);
             return com.openjiuwen.harness.HarnessFactory.createDeepAgent(fallback);
         }
         DeepAgentConfig config = leaderSpec.getConfig();
@@ -325,6 +405,8 @@ public class TeamAgent extends BaseAgent {
         String teamPrompt = "\n\nYou are coordinating the agent team '" + spec.getTeamName()
                 + "' as leader '" + runtimeContext.getMemberName() + "'.";
         config.setSystemPrompt(basePrompt + teamPrompt);
+        applyTeamModelConfig(config, runtimeContext != null && runtimeContext.getMemberModel() != null
+                ? runtimeContext.getMemberModel() : leaderSpec.getModel());
         return com.openjiuwen.harness.HarnessFactory.createDeepAgent(config);
     }
 
@@ -349,6 +431,57 @@ public class TeamAgent extends BaseAgent {
         return card;
     }
 
+    private void configureModelAllocation(TeamAgentSpec spec, TeamRuntimeContext context) {
+        if (context == null || context.getTeamSpec() == null || context.getTeamSpec().getModelPool().isEmpty()) {
+            modelAllocator = null;
+            leaderAllocation = null;
+            return;
+        }
+        if (modelAllocator == null) {
+            modelAllocator = ModelAllocators.buildModelAllocator(spec, context.getTeamSpec());
+        }
+        if (leaderAllocation == null && modelAllocator != null) {
+            String leaderModelName = spec.getLeader() != null ? spec.getLeader().getModelName() : null;
+            leaderAllocation = modelAllocator.allocate(leaderModelName);
+        }
+        TeamModelConfig leaderModel = leaderAllocation != null ? leaderAllocation.toTeamModelConfig() : null;
+        context.setMemberModel(leaderModel);
+        validateLeaderModelResolved(spec, leaderModel, context.getTeamSpec());
+    }
+
+    private void validateLeaderModelResolved(
+            TeamAgentSpec spec,
+            TeamModelConfig leaderModel,
+            com.openjiuwen.agent_teams.schema.TeamSpec teamSpec
+    ) {
+        DeepAgentSpec leaderAgent = spec.getAgents().get("leader");
+        boolean hasExplicitModel = leaderAgent != null && (
+                leaderAgent.getModel() != null
+                        || (leaderAgent.getConfig() != null && leaderAgent.getConfig().getModelClientConfig() != null)
+        );
+        if (leaderModel != null || hasExplicitModel || teamSpec == null || teamSpec.getModelPool().isEmpty()) {
+            return;
+        }
+        List<String> names = teamSpec.getModelPool().stream()
+                .map(ModelPoolEntry::getModelName)
+                .distinct()
+                .sorted()
+                .toList();
+        String leaderName = spec.getLeader() != null ? spec.getLeader().getModelName() : null;
+        String cause = leaderName != null && !leaderName.isBlank() && !names.contains(leaderName)
+                ? "leader.model_name='" + leaderName + "' is not present in the pool (available names: " + names + ")"
+                : "model_pool_strategy='by_model_name' requires leader.model_name to be set to one of the pool names";
+        throw new IllegalArgumentException("agent team config invalid: " + cause);
+    }
+
+    private static void applyTeamModelConfig(DeepAgentConfig config, TeamModelConfig modelConfig) {
+        if (config == null || modelConfig == null) {
+            return;
+        }
+        config.setModelClientConfig(modelConfig.getModelClientConfig());
+        config.setModelRequestConfig(modelConfig.getModelRequestConfig());
+    }
+
     private Map<String, Object> serializeRuntimeContext() {
         Map<String, Object> result = new LinkedHashMap<>();
         if (runtimeContext == null) {
@@ -363,7 +496,8 @@ public class TeamAgent extends BaseAgent {
                     "team_name", runtimeContext.getTeamSpec().getTeamName(),
                     "display_name", runtimeContext.getTeamSpec().getDisplayName(),
                     "leader_member_name", runtimeContext.getTeamSpec().getLeaderMemberName(),
-                    "language", runtimeContext.getTeamSpec().getLanguage()
+                    "language", runtimeContext.getTeamSpec().getLanguage(),
+                    "model_pool_strategy", runtimeContext.getTeamSpec().getModelPoolStrategy()
             ));
         }
         return result;

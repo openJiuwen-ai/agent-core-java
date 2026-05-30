@@ -4,8 +4,10 @@
 
 package com.openjiuwen.dev_tools.agent_builder.utils;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test enums functionality.
@@ -13,10 +15,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_enums.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/utils/test_enums.py}.
  *
- * <p>Note: Enums source class requires translation before tests can be implemented.
- * Tests are disabled pending Enums.java implementation.
  */
-@Disabled("Enums.java source class requires translation before tests can be implemented")
 class TestEnums {
 
     /**
@@ -24,26 +23,33 @@ class TestEnums {
      * <p>
      * Mirrors Python's {@code TestAgentType} class.
      */
-    static class TestAgentType {
+    @Nested
+    class TestAgentType {
 
         @Test
         void testAgentTypeValues() {
-            // Placeholder - requires Enums.java
+            assertEquals("llm_agent", AgentBuilderEnums.AgentType.LLM_AGENT.getValue());
+            assertEquals("workflow", AgentBuilderEnums.AgentType.WORKFLOW.getValue());
         }
 
         @Test
         void testAgentTypeIsStringEnum() {
-            // Placeholder - requires Enums.java
+            assertInstanceOf(String.class, AgentBuilderEnums.AgentType.LLM_AGENT.getValue());
+            assertInstanceOf(String.class, AgentBuilderEnums.AgentType.WORKFLOW.getValue());
         }
 
         @Test
         void testAgentTypeFromString() {
-            // Placeholder - requires Enums.java
+            assertEquals(AgentBuilderEnums.AgentType.LLM_AGENT,
+                    AgentBuilderEnums.AgentType.fromValue("llm_agent"));
+            assertEquals(AgentBuilderEnums.AgentType.WORKFLOW,
+                    AgentBuilderEnums.AgentType.fromValue("workflow"));
         }
 
         @Test
         void testAgentTypeInvalidValue() {
-            // Placeholder - requires Enums.java
+            assertThrows(IllegalArgumentException.class,
+                    () -> AgentBuilderEnums.AgentType.fromValue("invalid_type"));
         }
     }
 
@@ -52,21 +58,31 @@ class TestEnums {
      * <p>
      * Mirrors Python's {@code TestBuildState} class.
      */
-    static class TestBuildState {
+    @Nested
+    class TestBuildState {
 
         @Test
         void testBuildStateValues() {
-            // Placeholder - requires Enums.java
+            assertEquals("initial", AgentBuilderEnums.BuildState.INITIAL.getValue());
+            assertEquals("processing", AgentBuilderEnums.BuildState.PROCESSING.getValue());
+            assertEquals("completed", AgentBuilderEnums.BuildState.COMPLETED.getValue());
         }
 
         @Test
         void testBuildStateIsStringEnum() {
-            // Placeholder - requires Enums.java
+            assertInstanceOf(String.class, AgentBuilderEnums.BuildState.INITIAL.getValue());
+            assertInstanceOf(String.class, AgentBuilderEnums.BuildState.PROCESSING.getValue());
+            assertInstanceOf(String.class, AgentBuilderEnums.BuildState.COMPLETED.getValue());
         }
 
         @Test
         void testBuildStateFromString() {
-            // Placeholder - requires Enums.java
+            assertEquals(AgentBuilderEnums.BuildState.INITIAL,
+                    AgentBuilderEnums.BuildState.fromValue("initial"));
+            assertEquals(AgentBuilderEnums.BuildState.PROCESSING,
+                    AgentBuilderEnums.BuildState.fromValue("processing"));
+            assertEquals(AgentBuilderEnums.BuildState.COMPLETED,
+                    AgentBuilderEnums.BuildState.fromValue("completed"));
         }
     }
 
@@ -75,11 +91,28 @@ class TestEnums {
      * <p>
      * Mirrors Python's {@code TestProgressStage} class.
      */
-    static class TestProgressStage {
+    @Nested
+    class TestProgressStage {
 
         @Test
         void testProgressStageValues() {
-            // Placeholder - requires Enums.java
+            assertEquals("initializing", AgentBuilderEnums.ProgressStage.INITIALIZING.getValue());
+            assertEquals("clarifying", AgentBuilderEnums.ProgressStage.CLARIFYING.getValue());
+            assertEquals("resource_retrieving", AgentBuilderEnums.ProgressStage.RESOURCE_RETRIEVING.getValue());
+            assertEquals("completed", AgentBuilderEnums.ProgressStage.COMPLETED.getValue());
+            assertEquals("error", AgentBuilderEnums.ProgressStage.ERROR.getValue());
+            assertEquals("optimizing", AgentBuilderEnums.ProgressStage.OPTIMIZING.getValue());
+            assertEquals("generating_config", AgentBuilderEnums.ProgressStage.GENERATING_CONFIG.getValue());
+            assertEquals("transforming_dsl", AgentBuilderEnums.ProgressStage.TRANSFORMING_DSL.getValue());
+            assertEquals("detecting_intention", AgentBuilderEnums.ProgressStage.DETECTING_INTENTION.getValue());
+            assertEquals("generating_workflow_design",
+                    AgentBuilderEnums.ProgressStage.GENERATING_WORKFLOW_DESIGN.getValue());
+            assertEquals("generating_dl", AgentBuilderEnums.ProgressStage.GENERATING_DL.getValue());
+            assertEquals("validating_dl", AgentBuilderEnums.ProgressStage.VALIDATING_DL.getValue());
+            assertEquals("refining_dl", AgentBuilderEnums.ProgressStage.REFINING_DL.getValue());
+            assertEquals("transforming_mermaid", AgentBuilderEnums.ProgressStage.TRANSFORMING_MERMAID.getValue());
+            assertEquals("transforming_workflow_dsl",
+                    AgentBuilderEnums.ProgressStage.TRANSFORMING_WORKFLOW_DSL.getValue());
         }
     }
 
@@ -88,11 +121,16 @@ class TestEnums {
      * <p>
      * Mirrors Python's {@code TestProgressStatus} class.
      */
-    static class TestProgressStatus {
+    @Nested
+    class TestProgressStatus {
 
         @Test
         void testProgressStatusValues() {
-            // Placeholder - requires Enums.java
+            assertEquals("pending", AgentBuilderEnums.ProgressStatus.PENDING.getValue());
+            assertEquals("running", AgentBuilderEnums.ProgressStatus.RUNNING.getValue());
+            assertEquals("success", AgentBuilderEnums.ProgressStatus.SUCCESS.getValue());
+            assertEquals("failed", AgentBuilderEnums.ProgressStatus.FAILED.getValue());
+            assertEquals("warning", AgentBuilderEnums.ProgressStatus.WARNING.getValue());
         }
     }
 }

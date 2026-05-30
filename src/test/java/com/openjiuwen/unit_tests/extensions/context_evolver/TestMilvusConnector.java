@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * Unit tests for MilvusConnector – End-to-end CRUD + search.
@@ -188,7 +189,7 @@ public class TestMilvusConnector {
         assertThat(cosineSimilarity(v1, v3)).isEqualTo(0.0);
         
         // Partial similarity
-        assertThat(cosineSimilarity(v1, v4)).isBetween(0.5, 0.7);
+        assertThat(cosineSimilarity(v1, v4)).isCloseTo(1.0 / Math.sqrt(2.0), within(1e-12));
     }
 
     // ---------------------------------------------------------------------------

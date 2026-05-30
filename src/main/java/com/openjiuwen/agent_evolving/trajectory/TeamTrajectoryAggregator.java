@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agent_evolving.trajectory;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,8 +28,37 @@ public class TeamTrajectoryAggregator {
      * @param teamId Team identifier
      */
     public TeamTrajectoryAggregator(TrajectoryStore store, String teamId) {
+        if (store == null) {
+            throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
+        }
         this.store = store;
         this.teamId = teamId;
+    }
+
+    /**
+     * Create aggregator with a file-backed trajectory directory.
+     *
+     * @param trajectoriesDir Directory containing trajectory JSONL files
+     * @param teamId Team identifier
+     */
+    public TeamTrajectoryAggregator(Path trajectoriesDir, String teamId) {
+        this(createFileStore(trajectoriesDir), teamId);
+    }
+
+    /**
+     * Preserve Python's constructor validation when no store is provided.
+     *
+     * @param teamId Team identifier
+     */
+    public TeamTrajectoryAggregator(String teamId) {
+        throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
+    }
+
+    private static TrajectoryStore createFileStore(Path trajectoriesDir) {
+        if (trajectoriesDir == null) {
+            throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
+        }
+        return new FileTrajectoryStore(trajectoriesDir);
     }
 
     /**
@@ -97,6 +127,16 @@ public class TeamTrajectoryAggregator {
      * Aggregate all member trajectories for the given session.
      *
      * @param sessionId Session to aggregate
+     * @return TeamTrajectory with merged view
+     */
+    public TeamTrajectory aggregate(String sessionId) {
+        return aggregate(sessionId, true);
+    }
+
+    /**
+     * Aggregate all member trajectories for the given session.
+     *
+     * @param sessionId Session to aggregate
      * @param filterCollaborative If true, apply filterMemberTrajectory
      * @return TeamTrajectory with merged view
      */
@@ -109,8 +149,8 @@ public class TeamTrajectoryAggregator {
         Map<String, Trajectory> members = new LinkedHashMap<>();
         for (Trajectory traj : trajectories) {
             String mid = traj.getMeta() != null
-                    ? (String) traj.getMeta().getOrDefault("member_id", traj.getExecutionId().substring(0, 8))
-                    : traj.getExecutionId().substring(0, 8);
+                    ? (String) traj.getMeta().getOrDefault("member_id", executionPrefix(traj.getExecutionId()))
+                    : executionPrefix(traj.getExecutionId());
             Trajectory processed = traj;
             if (filterCollaborative && !mid.equals("leader")) {
                 processed = filterMemberTrajectory(traj);
@@ -126,6 +166,13 @@ public class TeamTrajectoryAggregator {
 
         Trajectory combined = merge(members, sessionId);
         return new TeamTrajectory(teamId, sessionId, combined, members);
+    }
+
+    private static String executionPrefix(String executionId) {
+        if (executionId == null) {
+            return "";
+        }
+        return executionId.substring(0, Math.min(8, executionId.length()));
     }
 
     /**
@@ -245,6 +292,9 @@ public class TeamTrajectoryAggregator {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> detailMap = (Map<String, Object>) detail;
                 Object toolNameObj = detailMap.get("tool_name");
+                if (toolNameObj == null) {
+                    toolNameObj = detailMap.get("toolName");
+                }
                 toolName = toolNameObj != null ? String.valueOf(toolNameObj) : "";
             }
             toolName = toolName.toLowerCase();
@@ -257,12 +307,15 @@ public class TeamTrajectoryAggregator {
                 String argsStr = "";
                 if (detail instanceof ToolCallDetail) {
                     argsStr = String.valueOf(((ToolCallDetail) detail).getCallArgs());
-} else if (detail instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> detailMap = (Map<String, Object>) detail;
-                Object argsObj = detailMap.get("call_args");
-                argsStr = argsObj != null ? String.valueOf(argsObj) : "";
-            }
+                } else if (detail instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> detailMap = (Map<String, Object>) detail;
+                    Object argsObj = detailMap.get("call_args");
+                    if (argsObj == null) {
+                        argsObj = detailMap.get("callArgs");
+                    }
+                    argsStr = argsObj != null ? String.valueOf(argsObj) : "";
+                }
                 if (argsStr.toLowerCase().contains("skill")) {
                     return true;
                 }

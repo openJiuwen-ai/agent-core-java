@@ -4,6 +4,15 @@
 
 package com.openjiuwen.agent_teams;
 
+import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
@@ -125,20 +134,28 @@ public class RuntimeManager {
             );
         }
         if ("fresh".equals(resolution.kind)) {
-            Object freshAgent = createFreshAgent(spec);
             preRun(teamSession, inputs);
+            Object freshAgent = createFreshAgent(spec);
             setActive(teamName, sessionId, freshAgent);
             return CompletableFuture.completedFuture(
-                new TeamRuntimeActivation(freshAgent, teamSession, "fresh")
+                new TeamRuntimeActivation(freshAgent, teamSession, "create")
+            );
+        }
+        if ("invalid".equals(resolution.kind)) {
+            logger.warning("Refusing to create team " + teamName +
+                " on existing invalid session " + sessionId + ": " +
+                (resolution.reason != null ? resolution.reason : "unknown checkpoint mismatch"));
+            return CompletableFuture.completedFuture(
+                new TeamRuntimeActivation(activeAgent, teamSession, "invalid_session")
             );
         }
 
         // Default: create fresh agent
-        Object newAgent = createFreshAgent(spec);
         preRun(teamSession, inputs);
+        Object newAgent = createFreshAgent(spec);
         setActive(teamName, sessionId, newAgent);
         return CompletableFuture.completedFuture(
-            new TeamRuntimeActivation(newAgent, teamSession, "new")
+            new TeamRuntimeActivation(newAgent, teamSession, "create")
         );
     }
 
@@ -179,7 +196,11 @@ public class RuntimeManager {
             return CompletableFuture.completedFuture(null);
         }
         logger.info("Deactivating runtime for team " + activeTeamName);
-        // Cleanup agent resources
+        if (activeAgent instanceof TeamAgent agent) {
+            agent.stopCoordination();
+        } else {
+            invokeNoArg(activeAgent, "stopCoordination");
+        }
         activeAgent = null;
         activeTeamName = null;
         activeSessionId = null;
@@ -188,44 +209,122 @@ public class RuntimeManager {
     }
 
     private Object buildSession(Object spec, Object session) {
-        // Placeholder: build AgentTeamSession from spec and session parameter
-        return session;
+        if (session instanceof Session) {
+            return session;
+        }
+        String teamName = getTeamName(spec);
+        Map<String, Object> envs = new LinkedHashMap<>();
+        envs.put("team_id", teamName);
+        envs.put("team_name", teamName);
+        if (session instanceof String sessionId && !sessionId.isBlank()) {
+            return AgentSessionApi.create(sessionId, envs, null);
+        }
+        return AgentSessionApi.create(null, envs, null);
     }
 
     private String getSessionId(Object session) {
-        // Placeholder: extract session ID from session object
-        return session != null ? session.toString() : "";
+        if (session instanceof Session typedSession) {
+            return typedSession.getSessionId();
+        }
+        Object value = invokeNoArg(session, "getSessionId");
+        return value != null ? String.valueOf(value) : "";
     }
 
     private String getTeamName(Object spec) {
-        // Placeholder: extract team name from spec
-        return "unknown";
+        if (spec instanceof TeamAgentSpec teamSpec) {
+            return teamSpec.getTeamName();
+        }
+        Object value = invokeNoArg(spec, "getTeamName");
+        return value != null ? String.valueOf(value) : "unknown";
     }
 
     private TeamSessionResolution resolveSessionCheckpoint(Object session, String teamName) {
-        // Placeholder: resolve checkpoint for session
-        return new TeamSessionResolution("fresh", null);
+        if (!(session instanceof Session typedSession)) {
+            return new TeamSessionResolution("fresh", null);
+        }
+        String sessionId = typedSession.getSessionId();
+        if (!CheckpointerFactory.getCheckpointer().sessionExists(sessionId)) {
+            preRun(typedSession, null);
+            return new TeamSessionResolution("fresh", null);
+        }
+
+        preRun(typedSession, null);
+        Object checkpointTeamName = typedSession.getState("team_name");
+        if (checkpointTeamName == null) {
+            return new TeamSessionResolution("invalid", "checkpoint has no persisted team_name");
+        }
+        if (!teamName.equals(String.valueOf(checkpointTeamName))) {
+            return new TeamSessionResolution("invalid", "checkpoint team_name='" + checkpointTeamName + "'");
+        }
+        return new TeamSessionResolution("recoverable", null);
     }
 
     private void preRun(Object session, Object inputs) {
-        // Placeholder: call session.preRun(inputs)
+        Object normalizedInputs = inputs instanceof Map<?, ?> ? inputs : null;
+        if (session instanceof AgentSessionApi api) {
+            api.preRun(normalizedInputs);
+            return;
+        }
+        invoke(session, "preRun", normalizedInputs);
     }
 
     private void recoverForExistingSession(Object agent, Object session) {
-        // Placeholder: recover existing agent for session
+        if (agent instanceof TeamAgent teamAgent && session instanceof Session typedSession) {
+            teamAgent.recoverForExistingSession(typedSession);
+            return;
+        }
+        invoke(agent, "recoverForExistingSession", session);
     }
 
     private void resumePersistentTeam(Object agent, Object session) {
-        // Placeholder: resume persistent team
+        if (agent instanceof TeamAgent teamAgent && session instanceof Session typedSession) {
+            teamAgent.resumeForNewSession(typedSession);
+            return;
+        }
+        invoke(agent, "resumeForNewSession", session);
     }
 
     private Object recoverForNewSession(Object spec, Object session) {
-        // Placeholder: recover agent for new session
-        return null;
+        Object agent = createFreshAgent(spec);
+        recoverForExistingSession(agent, session);
+        return agent;
     }
 
     private Object createFreshAgent(Object spec) {
-        // Placeholder: create fresh agent from spec
+        if (spec instanceof TeamAgentSpec teamSpec) {
+            return teamSpec.build();
+        }
+        return invokeNoArg(spec, "build");
+    }
+
+    private static Object invokeNoArg(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to call " + methodName + " on " + target.getClass().getName(), e);
+        }
+    }
+
+    private static Object invoke(Object target, String methodName, Object argument) {
+        if (target == null) {
+            return null;
+        }
+        for (Method method : target.getClass().getMethods()) {
+            if (!method.getName().equals(methodName) || method.getParameterCount() != 1) {
+                continue;
+            }
+            try {
+                return method.invoke(target, argument);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Failed to call " + methodName + " on " + target.getClass().getName(), e);
+            }
+        }
         return null;
     }
 

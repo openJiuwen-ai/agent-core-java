@@ -4,6 +4,14 @@
 
 package com.openjiuwen.agent_teams.worktree;
 
+import com.openjiuwen.agent_teams.worktree.models.GitBackend;
+import com.openjiuwen.agent_teams.worktree.models.WorktreeBackend;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -22,11 +30,33 @@ public class WorktreeCleanup {
 
     private static final Logger logger = Logger.getLogger(WorktreeCleanup.class.getName());
 
-    // Ephemeral worktree naming patterns
     private static final Pattern[] EPHEMERAL_PATTERNS = {
         Pattern.compile("^teammate-[0-9a-f]{8}$"),
         Pattern.compile("^agent-[0-9a-f]{7}$")
     };
+
+    private final GitProbe gitProbe;
+
+    public WorktreeCleanup() {
+        this(new DefaultGitProbe());
+    }
+
+    public WorktreeCleanup(GitProbe gitProbe) {
+        this.gitProbe = gitProbe != null ? gitProbe : new DefaultGitProbe();
+    }
+
+    /**
+     * Injectable facade for git safety checks.
+     */
+    public interface GitProbe {
+        CompletableFuture<String> findCanonicalGitRoot(String cwd);
+
+        CompletableFuture<List<String>> statusPorcelain(String cwd);
+
+        CompletableFuture<Boolean> hasUnpushedCommits(String cwd);
+
+        CompletableFuture<Void> worktreePrune(String repoRoot);
+    }
 
     /**
      * Check if a slug matches ephemeral worktree naming patterns.
@@ -35,13 +65,67 @@ public class WorktreeCleanup {
      * @return true if the slug matches any ephemeral pattern
      */
     public static boolean isEphemeralSlug(String slug) {
-        if (slug == null) return false;
-        for (Pattern p : EPHEMERAL_PATTERNS) {
-            if (p.matcher(slug).matches()) {
+        if (slug == null) {
+            return false;
+        }
+        for (Pattern pattern : EPHEMERAL_PATTERNS) {
+            if (pattern.matcher(slug).matches()) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Compatibility entry point for existing Java callers.
+     *
+     * @param config Worktree configuration with cleanupAfterDays
+     * @param currentWorktreePath Path of the active worktree to skip
+     * @return Number of worktrees removed
+     */
+    public CompletableFuture<Integer> cleanupStaleWorktrees(
+            WorktreeConfig config,
+            String currentWorktreePath) {
+        if (config == null) {
+            return CompletableFuture.completedFuture(0);
+        }
+        return cleanupStaleWorktrees(
+                config,
+                new GitBackend(config),
+                currentWorktreePath,
+                System.getProperty("user.dir"),
+                null);
+    }
+
+    /**
+     * Clean up expired ephemeral worktrees.
+     *
+     * @param config Worktree configuration with cleanupAfterDays
+     * @param backend Backend used to remove worktrees
+     * @return Number of worktrees removed
+     */
+    public CompletableFuture<Integer> cleanupStaleWorktrees(WorktreeConfig config, WorktreeBackend backend) {
+        return cleanupStaleWorktrees(config, backend, null);
+    }
+
+    /**
+     * Clean up expired ephemeral worktrees.
+     *
+     * @param config Worktree configuration with cleanupAfterDays
+     * @param backend Backend used to remove worktrees
+     * @param currentWorktreePath Path of the active worktree to skip
+     * @return Number of worktrees removed
+     */
+    public CompletableFuture<Integer> cleanupStaleWorktrees(
+            WorktreeConfig config,
+            WorktreeBackend backend,
+            String currentWorktreePath) {
+        return cleanupStaleWorktrees(
+                config,
+                backend,
+                currentWorktreePath,
+                System.getProperty("user.dir"),
+                null);
     }
 
     /**
@@ -54,102 +138,134 @@ public class WorktreeCleanup {
      * 4. Check for unpushed commits (git rev-list)
      * 5. Skip on any check failure
      *
-     * @param config             Worktree configuration with cleanup_after_days
+     * @param config Worktree configuration with cleanupAfterDays
+     * @param backend Backend used to remove worktrees
      * @param currentWorktreePath Path of the active worktree to skip
+     * @param cwd Current working directory used to locate the canonical git root
+     * @param workspaceRoot Agent workspace root containing the .worktrees directory
      * @return Number of worktrees removed
      */
     public CompletableFuture<Integer> cleanupStaleWorktrees(
             WorktreeConfig config,
-            String currentWorktreePath) {
-        return CompletableFuture.supplyAsync(() -> {
-            int removed = 0;
-            try {
-                // Find canonical git root
-                String repoRoot = findCanonicalGitRoot();
-                if (repoRoot == null) {
-                    return 0;
+            WorktreeBackend backend,
+            String currentWorktreePath,
+            String cwd,
+            String workspaceRoot) {
+        if (config == null || backend == null) {
+            return CompletableFuture.completedFuture(0);
+        }
+        return CompletableFuture.supplyAsync(() -> cleanupStaleWorktreesSync(
+                config,
+                backend,
+                currentWorktreePath,
+                cwd,
+                workspaceRoot));
+    }
+
+    private int cleanupStaleWorktreesSync(
+            WorktreeConfig config,
+            WorktreeBackend backend,
+            String currentWorktreePath,
+            String cwd,
+            String workspaceRoot) {
+        String repoRoot = gitProbe.findCanonicalGitRoot(cwd).join();
+        if (repoRoot == null || repoRoot.isBlank()) {
+            return 0;
+        }
+        if (workspaceRoot == null || workspaceRoot.isBlank()) {
+            return 0;
+        }
+
+        Path worktreesDir = Path.of(SlugUtils.worktreesDir(workspaceRoot));
+        if (!Files.exists(worktreesDir)) {
+            return 0;
+        }
+
+        int removed = 0;
+        long cutoffMs = System.currentTimeMillis() - Duration.ofDays(config.getCleanupAfterDays()).toMillis();
+        try (var stream = Files.list(worktreesDir)) {
+            for (Path entry : stream.toList()) {
+                String slug = entry.getFileName().toString();
+                if (!isEphemeralSlug(slug)) {
+                    continue;
                 }
 
-                // Get worktrees directory
-                String worktreesDir = getWorktreesDir();
-                if (worktreesDir == null) {
-                    return 0;
+                String worktreePath = entry.toString();
+                if (isSamePath(worktreePath, currentWorktreePath)) {
+                    continue;
                 }
 
-                // List worktree entries
-                java.nio.file.Path wtDirPath = java.nio.file.Path.of(worktreesDir);
-                if (!java.nio.file.Files.exists(wtDirPath)) {
-                    return 0;
+                long lastModified = Files.getLastModifiedTime(entry).toMillis();
+                if (lastModified >= cutoffMs) {
+                    continue;
                 }
 
-                // Calculate cutoff time
-                long cutoffMs = System.currentTimeMillis() - 
-                    (config.getCleanupAfterDays() * 24L * 60 * 60 * 1000);
-
-                // Iterate and cleanup
-                try (var stream = java.nio.file.Files.list(wtDirPath)) {
-                    for (java.nio.file.Path entry : stream.toList()) {
-                        String slug = entry.getFileName().toString();
-                        
-                        // Check ephemeral pattern
-                        if (!isEphemeralSlug(slug)) {
-                            continue;
-                        }
-                        
-                        // Skip current worktree
-                        String wtPath = entry.toString();
-                        if (currentWorktreePath != null && wtPath.equals(currentWorktreePath)) {
-                            continue;
-                        }
-                        
-                        // Check age
-                        long lastModified = java.nio.file.Files.getLastModifiedTime(entry).toMillis();
-                        if (lastModified > cutoffMs) {
-                            continue;  // Not old enough
-                        }
-                        
-                        // Safety checks: no uncommitted changes, no unpushed commits
-                        if (hasUncommittedChanges(wtPath) || hasUnpushedCommits(wtPath, repoRoot)) {
-                            logger.info("Skipping worktree " + slug + " - safety check failed");
-                            continue;
-                        }
-                        
-                        // Remove worktree
-                        worktreePrune(wtPath);
-                        removed++;
-                        logger.info("Cleaned up stale worktree: " + slug);
-                    }
+                if (!isSafeToRemove(worktreePath)) {
+                    logger.info("Skipping worktree " + slug + " - safety check failed");
+                    continue;
                 }
-            } catch (Exception e) {
-                logger.warning("Cleanup failed: " + e.getMessage());
+
+                if (Boolean.TRUE.equals(backend.remove(worktreePath, repoRoot).join())) {
+                    removed++;
+                    logger.info("Cleaned up stale worktree: " + slug);
+                }
             }
-            return removed;
-        });
+        } catch (Exception e) {
+            logger.warning("Cleanup failed: " + e.getMessage());
+        }
+
+        if (removed > 0) {
+            gitProbe.worktreePrune(repoRoot).join();
+        }
+        return removed;
     }
 
-    // ── Git helper stubs ───────────────────────────────────────
+    private boolean isSafeToRemove(String worktreePath) {
+        try {
+            CompletableFuture<List<String>> changesFuture = gitProbe.statusPorcelain(worktreePath);
+            CompletableFuture<Boolean> unpushedFuture = gitProbe.hasUnpushedCommits(worktreePath);
+            CompletableFuture.allOf(changesFuture, unpushedFuture).join();
 
-    private String findCanonicalGitRoot() {
-        // Placeholder: git rev-parse --show-toplevel
-        return null;
+            List<String> changes = changesFuture.join();
+            Boolean unpushed = unpushedFuture.join();
+            return changes != null && changes.isEmpty() && Boolean.FALSE.equals(unpushed);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
-    private String getWorktreesDir() {
-        // Placeholder: <workspace>/.agent_teams/worktrees
-        return null;
+    private static boolean isSamePath(String left, String right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        try {
+            return Objects.equals(
+                    Path.of(left).toAbsolutePath().normalize(),
+                    Path.of(right).toAbsolutePath().normalize());
+        } catch (Exception e) {
+            return left.equals(right);
+        }
     }
 
-    private boolean hasUncommittedChanges(String worktreePath) {
-        // Placeholder: git status --porcelain
-        return false;
-    }
+    private static class DefaultGitProbe implements GitProbe {
+        @Override
+        public CompletableFuture<String> findCanonicalGitRoot(String cwd) {
+            return Git.findCanonicalGitRoot(cwd);
+        }
 
-    private boolean hasUnpushedCommits(String worktreePath, String repoRoot) {
-        // Placeholder: git rev-list @{u}..HEAD
-        return false;
-    }
+        @Override
+        public CompletableFuture<List<String>> statusPorcelain(String cwd) {
+            return Git.statusPorcelain(cwd);
+        }
 
-    private void worktreePrune(String worktreePath) {
-        // Placeholder: git worktree prune
+        @Override
+        public CompletableFuture<Boolean> hasUnpushedCommits(String cwd) {
+            return Git.hasUnpushedCommits(cwd);
+        }
+
+        @Override
+        public CompletableFuture<Void> worktreePrune(String repoRoot) {
+            return Git.worktreePrune(repoRoot);
+        }
     }
 }

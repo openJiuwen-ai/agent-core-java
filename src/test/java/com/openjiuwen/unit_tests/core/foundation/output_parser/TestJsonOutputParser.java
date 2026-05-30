@@ -4,6 +4,7 @@
 
 package com.openjiuwen.unit_tests.core.foundation.output_parser;
 
+import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,11 +24,11 @@ import java.util.concurrent.CompletableFuture;
  */
 class TestJsonOutputParser {
 
-    private Object parser;
+    private JsonOutputParser parser;
 
     @BeforeEach
     void setUp() {
-        // Initialize parser - placeholder
+        parser = new JsonOutputParser();
     }
 
     // ==================== Parse Valid JSON Tests ====================

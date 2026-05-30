@@ -4,9 +4,12 @@
 
 package com.openjiuwen.agent_teams.team_workspace;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -221,6 +224,9 @@ public class WorkspaceManager {
             }
             try {
                 runGitAdd(workspacePath, relativePath);
+                if (!hasStagedChanges(workspacePath)) {
+                    return;
+                }
                 runGitCommit(workspacePath, "Update " + relativePath + " by " + memberName);
                 if (mode == WorkspaceMode.DISTRIBUTED) {
                     runGitPush(workspacePath);
@@ -246,39 +252,113 @@ public class WorkspaceManager {
         });
     }
 
-    // ── Git helper stubs ───────────────────────────────────────
+    // ── Git helpers ───────────────────────────────────────
 
     private void runGitInit(Path cwd) {
-        // Placeholder: git init
+        runGit(cwd, true, "git", "init");
     }
 
     private void runGitEmptyCommit(Path cwd, String message) {
-        // Placeholder: git commit --allow-empty -m message
+        runGit(cwd, true, "git", "commit", "--allow-empty", "-m", message);
     }
 
     private void runGitAddRemote(Path cwd, String remoteUrl) {
-        // Placeholder: git remote add origin remoteUrl
+        GitResult existing = runGit(cwd, false, "git", "remote", "get-url", "origin");
+        if (existing.exitCode() == 0) {
+            return;
+        }
+        runGit(cwd, true, "git", "remote", "add", "origin", remoteUrl);
     }
 
     private void runGitClone(String remoteUrl, Path target) {
-        // Placeholder: git clone remoteUrl target
+        Path parent = target.getParent();
+        if (parent != null) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to create clone parent " + parent, e);
+            }
+        }
+        runGit(parent != null ? parent : Path.of("."), true, "git", "clone", remoteUrl, target.toString());
     }
 
     private void runGitAdd(String cwd, String path) {
-        // Placeholder: git add path
+        runGit(Path.of(cwd), true, "git", "add", "--", path);
     }
 
     private void runGitCommit(String cwd, String message) {
-        // Placeholder: git commit -m message
+        runGit(Path.of(cwd), true, "git", "commit", "-m", message);
     }
 
     private void runGitPush(String cwd) {
-        // Placeholder: git push
+        GitResult result = runGit(Path.of(cwd), false, "git", "push", "origin", "main");
+        if (result.exitCode() != 0) {
+            logger.warning("Workspace push failed: " + result.stderr());
+        }
     }
 
     private List<Map<String, Object>> runGitLog(String cwd, String path) {
-        // Placeholder: git log --oneline path
-        return List.of();
+        GitResult result = runGit(
+            Path.of(cwd),
+            false,
+            "git",
+            "log",
+            "--max-count=10",
+            "--format=%H|%an|%ai|%s",
+            "--",
+            path
+        );
+        if (result.exitCode() != 0 || result.stdout().isBlank()) {
+            return List.of();
+        }
+        return result.stdout().lines()
+            .map(line -> line.split("\\|", 4))
+            .filter(parts -> parts.length == 4)
+            .map(parts -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("commit", parts[0]);
+                item.put("author", parts[1]);
+                item.put("date", parts[2]);
+                item.put("message", parts[3]);
+                return item;
+            })
+            .toList();
+    }
+
+    private boolean hasStagedChanges(String cwd) {
+        GitResult result = runGit(Path.of(cwd), false, "git", "diff", "--cached", "--quiet");
+        return result.exitCode() == 1;
+    }
+
+    private GitResult runGit(Path cwd, boolean check, String... command) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(command);
+            builder.directory(cwd.toFile());
+            Process process = builder.start();
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            int exitCode = process.waitFor();
+            if (check && exitCode != 0) {
+                throw new IllegalStateException(
+                    "Git command failed (" + String.join(" ", command) + ") at " + cwd + ": " + stderr
+                );
+            }
+            return new GitResult(exitCode, stdout, stderr);
+        } catch (IOException e) {
+            if (check) {
+                throw new IllegalStateException("Failed to start git command at " + cwd, e);
+            }
+            return new GitResult(127, "", e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (check) {
+                throw new IllegalStateException("Interrupted while running git command at " + cwd, e);
+            }
+            return new GitResult(130, "", "Interrupted");
+        }
+    }
+
+    private record GitResult(int exitCode, String stdout, String stderr) {
     }
 
     // ── Getters ───────────────────────────────────────

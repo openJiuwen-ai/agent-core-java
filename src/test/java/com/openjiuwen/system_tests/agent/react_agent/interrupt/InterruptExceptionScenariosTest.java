@@ -87,7 +87,7 @@ class InterruptExceptionScenariosTest {
         Map<String, Object> result = new HashMap<>();
         result.put("result_type", "interrupt");
         result.put("interrupt_ids", List.of("id_remaining"));
-        result.put("state", List.of());
+        result.put("state", List.of(Map.of("payload", Map.of("tool_name", "action"))));
 
         assertInterruptResult(result, 1);
     }

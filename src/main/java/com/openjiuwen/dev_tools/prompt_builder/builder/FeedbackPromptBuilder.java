@@ -31,7 +31,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
     private static final Logger log = LoggerFactory.getLogger(FeedbackPromptBuilder.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private static final String INSERT_STR = "[鐢ㄦ埛瑕佹彃鍏ョ殑浣嶇疆]";
+    private static final String INSERT_STR = "[用户要插入的位置]";
     private static final String MODE_GENERAL = "general";
     private static final String MODE_SELECT = "select";
     private static final String MODE_INSERT = "insert";

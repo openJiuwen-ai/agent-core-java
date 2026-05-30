@@ -166,16 +166,20 @@ public class WorkflowAgent extends ControllerAgent {
         if (tools == null || tools.isEmpty()) {
             return;
         }
+        List<String> configTools = agentConfig.getTools() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getTools());
         for (Tool tool : tools) {
             if (tool == null || tool.getCard() == null) {
                 continue;
             }
             getAbilityManager().add(tool.getCard());
             Runner.resourceMgr().addTool(tool, getCard().getId());
-            if (agentConfig.getTools() != null && !agentConfig.getTools().contains(tool.getCard().getName())) {
-                agentConfig.getTools().add(tool.getCard().getName());
+            if (!configTools.contains(tool.getCard().getName())) {
+                configTools.add(tool.getCard().getName());
             }
         }
+        agentConfig.setTools(configTools);
     }
 
     /**
@@ -189,10 +193,13 @@ public class WorkflowAgent extends ControllerAgent {
         }
         String agentId = getCard() != null ? getCard().getId() : null;
         boolean canRegisterWorkflowResource = agentId != null && !agentId.isBlank();
+        List<WorkflowSchema> configWorkflows = agentConfig.getWorkflows() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getWorkflows());
         for (Workflow workflow : workflows) {
             WorkflowCard card = workflow.getCard();
             getAbilityManager().add(card);
-            agentConfig.getWorkflows().add(WorkflowSchema.builder()
+            configWorkflows.add(WorkflowSchema.builder()
                     .id(card.getId())
                     .name(card.getName())
                     .version(card.getVersion())
@@ -212,6 +219,7 @@ public class WorkflowAgent extends ControllerAgent {
                 Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
             }
         }
+        agentConfig.setWorkflows(configWorkflows);
     }
 
     // ==================== Private Helpers ====================
@@ -253,7 +261,10 @@ public class WorkflowAgent extends ControllerAgent {
                 sessionId = s;
             }
         }
-        return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
+        List<StreamMode> effectiveStreamModes = streamModes == null || streamModes.isEmpty()
+                ? null
+                : streamModes;
+        return AgentSessionApi.create(sessionId, null, getCard(), effectiveStreamModes);
     }
 
     private ControllerOutput normalizeInvokeOutput(ControllerOutput result) {

@@ -4,6 +4,9 @@
 
 package com.openjiuwen.auto_harness.rails;
 
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.harness.rails.context_engineer.ContextProcessorRail;
+
 /**
  * Auto-harness context rail.
  *
@@ -11,15 +14,30 @@ package com.openjiuwen.auto_harness.rails;
  *
  * <p>Mirrors Python's {@code AutoHarnessContextRail} in {@code openjiuwen.auto_harness.rails.context_rail}.</p>
  */
-public class ContextRail {
+public class ContextRail extends ContextProcessorRail {
+    private final boolean preset;
+
+    public ContextRail() {
+        this(true);
+    }
+
+    public ContextRail(boolean preset) {
+        super();
+        this.preset = preset;
+    }
+
+    public boolean isPreset() {
+        return preset;
+    }
 
     /**
      * Do not inject workspace/tools/context prompt sections.
      *
      * @param ctx the agent callback context
      */
-    public void beforeModelCall(Object ctx) {
-        // No injection
+    @Override
+    public void beforeModelCall(AgentCallbackContext ctx) {
+        // Intentionally empty.
     }
 
     /**
@@ -27,7 +45,8 @@ public class ContextRail {
      *
      * @param agent the agent
      */
+    @Override
     public void uninit(Object agent) {
-        // No mutation
+        // Intentionally empty.
     }
 }

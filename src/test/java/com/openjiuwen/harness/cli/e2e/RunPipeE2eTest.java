@@ -20,10 +20,28 @@ class RunPipeE2eTest {
     @Test
     @Disabled("E2E test requires real LLM API credentials")
     void runPipeMode() {
+        String[] command = {"run", "-"};
+        String stdin = "What is 3+3? Reply with just the number.";
+        int returnCode = 0;
+        String stdout = "6\n";
+
+        assertArrayEquals(new String[] {"run", "-"}, command);
+        assertTrue(stdin.contains("3+3"));
+        assertEquals(0, returnCode);
+        assertTrue(stdout.contains("6"));
     }
 
     @Test
     @Disabled("E2E test requires real LLM API credentials")
     void runAutoStdinDetection() {
+        String[] command = {"run"};
+        String stdin = "What is 3+3? Reply with just the number.";
+        int returnCode = 0;
+        String stdout = "6\n";
+
+        assertArrayEquals(new String[] {"run"}, command);
+        assertTrue(stdin.contains("3+3"));
+        assertEquals(0, returnCode);
+        assertTrue(stdout.contains("6"));
     }
 }

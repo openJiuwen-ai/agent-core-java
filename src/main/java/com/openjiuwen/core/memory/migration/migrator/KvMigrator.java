@@ -23,6 +23,9 @@ import java.util.function.Consumer;
 
 /**
  * KV data migrator with backup and rollback support.
+ *
+ * <p>Mirrors Python's {@code KVMigrator} in
+ * {@code openjiuwen.core.memory.migration.migrator.kv_migrator}.</p>
  */
 public class KvMigrator {
 

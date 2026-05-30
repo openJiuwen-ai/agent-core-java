@@ -53,13 +53,17 @@ class TestMilvusMigrate {
 
     static class VectorMigratorStub {
         CollectionSchemaStub schema;
+        boolean initialCollectionCreated;
 
         VectorMigratorStub(CollectionSchemaStub schema) {
             this.schema = schema;
         }
 
         void createInitialCollection() {
-            // Create collection with initial schema
+            if (schema == null || schema.fields.isEmpty()) {
+                throw new IllegalStateException("initial schema must contain fields");
+            }
+            initialCollectionCreated = true;
         }
 
         void addScalarField(String name, String dtype) {
@@ -100,6 +104,7 @@ class TestMilvusMigrate {
 
             assertEquals("test_collection", schema.name);
             assertEquals(2, schema.fields.size());
+            assertTrue(migrator.initialCollectionCreated);
         }
     }
 

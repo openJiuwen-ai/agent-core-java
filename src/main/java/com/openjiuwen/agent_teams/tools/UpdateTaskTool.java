@@ -18,7 +18,14 @@ import java.util.Map;
 public class UpdateTaskTool extends TeamTool {
 
     public UpdateTaskTool(TeamBackend team) {
-        super(toolCard("team.update_task", "update_task", "Update, cancel, or reassign a task."), team);
+        super(toolCard("team.update_task", "update_task", "Update, cancel, or reassign a task.", Map.of(
+                "task_id", stringParam("Task id"),
+                "status", stringParam("New status"),
+                "title", stringParam("New title"),
+                "content", stringParam("New content"),
+                "assignee", stringParam("Assignee"),
+                "add_blocked_by", arrayParam("Dependencies to add")
+        ), List.of("task_id")), team);
     }
 
     @Override
@@ -31,6 +38,7 @@ public class UpdateTaskTool extends TeamTool {
         String title = stringValue(inputs.get("title"));
         String content = stringValue(inputs.get("content"));
         String assignee = stringValue(inputs.get("assignee"));
+        List<String> addBlockedBy = stringList(inputs.get("add_blocked_by"));
 
         if ("*".equals(taskId) && "cancelled".equalsIgnoreCase(status)) {
             return new TeamToolOutput(true, Map.of("cancelled_count", team.cancelAllTasks()), null);
@@ -60,18 +68,20 @@ public class UpdateTaskTool extends TeamTool {
             }
             updatedFields.add("assignee");
         }
+        if (!addBlockedBy.isEmpty()) {
+            if (!team.addBlockedBy(taskId, addBlockedBy)) {
+                return new TeamToolOutput(false, null, "Circular dependency detected");
+            }
+            updatedFields.add("blocked_by");
+        }
         if (updatedFields.isEmpty()) {
             return new TeamToolOutput(false, null,
-                    "No update specified — provide status, title, content, or assignee");
+                    "No update specified: provide status, title, content, assignee, or add_blocked_by");
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("task_id", taskId);
         data.put("status", "updated");
         data.put("updated_fields", updatedFields);
         return new TeamToolOutput(true, data, null);
-    }
-
-    private static String stringValue(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

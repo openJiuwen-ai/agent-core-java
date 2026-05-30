@@ -30,6 +30,8 @@ class MessagersTest {
     @Test
     void pyzmqTransportFailsClosedOnRealIo() {
         PyZmqMessager messager = new PyZmqMessager(new MessagerTransportConfig());
+        assertThrows(UnsupportedOperationException.class, messager::start);
+        assertThrows(UnsupportedOperationException.class, messager::stop);
         assertThrows(UnsupportedOperationException.class,
                 () -> messager.unsubscribe("topic:team"));
     }

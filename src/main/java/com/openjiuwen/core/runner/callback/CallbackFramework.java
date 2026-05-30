@@ -36,6 +36,9 @@ import java.util.function.Predicate;
 /**
  * Production-ready callback framework for Java.
  * <p>
+ * Mirrors Python's {@code AsyncCallbackFramework} in
+ * {@code openjiuwen.core.runner.callback.framework}.
+ * <p>
  * A comprehensive event-driven framework with support for:
  * <ul>
  *   <li>Priority-based callback execution</li>
@@ -349,11 +352,13 @@ if (enableLogging) {
                 // Execute callback with metrics
                 long startTime = System.nanoTime();
 
-                // Build the kwargs map for the callback
-                Map<String, Object> callbackKwargs = new HashMap<>(finalKwargs);
-                callbackKwargs.put("_args", finalArgs);
-
-                Object result = callbackInfo.getCallback().apply(callbackKwargs);
+                CallbackKwargs callbackKwargs = prepareCallbackKwargs(finalKwargs, finalArgs);
+                Object result;
+                try {
+                    result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
+                } finally {
+                    callbackKwargs.restoreInternalArgs();
+                }
 
                 double executionTime = (System.nanoTime() - startTime) / 1_000_000_000.0;
 
@@ -495,20 +500,23 @@ if (enableLogging) {
                     Map<String, Object> fk = filterResult.getModifiedKwargs() != null
                             ? filterResult.getModifiedKwargs() : finalKwargs;
 
-                    Map<String, Object> callbackKwargs = new HashMap<>(fk);
-                    callbackKwargs.put("_args", fa);
+                    CallbackKwargs callbackKwargs = prepareCallbackKwargs(fk, fa);
 
                     Object result;
-                    if (callbackInfo.getTimeout() != null && callbackInfo.getTimeout() > 0) {
-                        ExecutorService inner = Executors.newSingleThreadExecutor();
-                        try {
-                            Future<Object> innerFuture = inner.submit(() -> callbackInfo.getCallback().apply(callbackKwargs));
-                            result = innerFuture.get((long) (callbackInfo.getTimeout() * 1000), TimeUnit.MILLISECONDS);
-                        } finally {
-                            inner.shutdownNow();
+                    try {
+                        if (callbackInfo.getTimeout() != null && callbackInfo.getTimeout() > 0) {
+                            ExecutorService inner = Executors.newSingleThreadExecutor();
+                            try {
+                                Future<Object> innerFuture = inner.submit(() -> callbackInfo.getCallback().apply(callbackKwargs.kwargs));
+                                result = innerFuture.get((long) (callbackInfo.getTimeout() * 1000), TimeUnit.MILLISECONDS);
+                            } finally {
+                                inner.shutdownNow();
+                            }
+                        } else {
+                            result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
                         }
-                    } else {
-                        result = callbackInfo.getCallback().apply(callbackKwargs);
+                    } finally {
+                        callbackKwargs.restoreInternalArgs();
                     }
 
                     if (callbackInfo.isOnce()) {
@@ -582,10 +590,14 @@ if (enableLogging) {
                 Map<String, Object> fk = filterResult.getModifiedKwargs() != null
                         ? filterResult.getModifiedKwargs() : finalKwargs;
 
-                Map<String, Object> callbackKwargs = new HashMap<>(fk);
-                callbackKwargs.put("_args", fa);
+                CallbackKwargs callbackKwargs = prepareCallbackKwargs(fk, fa);
 
-                Object result = callbackInfo.getCallback().apply(callbackKwargs);
+                Object result;
+                try {
+                    result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
+                } finally {
+                    callbackKwargs.restoreInternalArgs();
+                }
 
                 if (condition.test(result)) {
                     if (enableLogging) {
@@ -729,11 +741,15 @@ if (enableLogging) {
                 Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
                         ? filterResult.getModifiedKwargs() : kwargs;
 
-                Map<String, Object> callbackKwargs = new HashMap<>(finalKwargs);
-                callbackKwargs.put("_args", finalArgs);
+                CallbackKwargs callbackKwargs = prepareCallbackKwargs(finalKwargs, finalArgs);
 
                 long startTime = System.nanoTime();
-                Object result = callbackInfo.getCallback().apply(callbackKwargs);
+                Object result;
+                try {
+                    result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
+                } finally {
+                    callbackKwargs.restoreInternalArgs();
+                }
                 double executionTime = (System.nanoTime() - startTime) / 1_000_000_000.0;
 
                 if (enableMetrics) {
@@ -1440,6 +1456,44 @@ if (enableLogging) {
             return new RuntimeException(throwable);
         }
         return null;
+    }
+
+    private static CallbackKwargs prepareCallbackKwargs(Map<String, Object> kwargs, Object[] args) {
+        boolean hadArgs = kwargs.containsKey("_args");
+        Object previousArgs = kwargs.get("_args");
+        try {
+            kwargs.put("_args", args);
+            return new CallbackKwargs(kwargs, true, hadArgs, previousArgs);
+        } catch (UnsupportedOperationException | IllegalArgumentException e) {
+            Map<String, Object> copy = new HashMap<>(kwargs);
+            copy.put("_args", args);
+            return new CallbackKwargs(copy, false, false, null);
+        }
+    }
+
+    private static final class CallbackKwargs {
+        private final Map<String, Object> kwargs;
+        private final boolean restoreOriginal;
+        private final boolean hadArgs;
+        private final Object previousArgs;
+
+        private CallbackKwargs(Map<String, Object> kwargs, boolean restoreOriginal, boolean hadArgs, Object previousArgs) {
+            this.kwargs = kwargs;
+            this.restoreOriginal = restoreOriginal;
+            this.hadArgs = hadArgs;
+            this.previousArgs = previousArgs;
+        }
+
+        private void restoreInternalArgs() {
+            if (!restoreOriginal) {
+                return;
+            }
+            if (hadArgs) {
+                kwargs.put("_args", previousArgs);
+            } else {
+                kwargs.remove("_args");
+            }
+        }
     }
 
     // ========== Wrap Decorators (Mirrors Python decorator.py) ==========

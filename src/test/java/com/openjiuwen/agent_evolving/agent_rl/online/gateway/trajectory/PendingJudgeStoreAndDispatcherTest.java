@@ -17,8 +17,8 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for PendingJudgeStore.
  * 
- * <p>Mirrors Python's openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.pending_judge_store
- * Ported from Python: agent-core-0.1.12/openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/pending_judge_store.py
+ * <p>Mirrors Python's {@code PendingJudgeStore} in
+ * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.pending_judge_store}.</p>
  * 
  * <p>NOTE: Python has no dedicated test file for pending_judge_store. Tests are derived from
  * the Python implementation behavior.

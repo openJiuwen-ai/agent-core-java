@@ -8,7 +8,8 @@ import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -88,7 +89,7 @@ class MockWorkflowAgentMultiWorkflowTest {
         ), mockSession);
 
         assertThat(output).isNotNull();
-        assertThat(output.getType()).isEqualTo("answer");
+        assertAnswerResult(output, "hello");
     }
 
     @Test
@@ -113,6 +114,18 @@ class MockWorkflowAgentMultiWorkflowTest {
         ), mockSession);
 
         assertThat(output).isNotNull();
-        assertThat(output.getType()).isEqualTo("answer");
+        assertAnswerResult(output, "hello");
+    }
+
+    private static void assertAnswerResult(ControllerOutput output, String expectedQuery) {
+        assertThat(output.getType()).isEqualTo("task_completion");
+        Map<String, Object> result = output.getDataAsMap();
+        assertThat(result).isNotNull();
+        assertThat(result.get("result_type")).isEqualTo("answer");
+        assertThat(result.get("output")).isInstanceOf(WorkflowOutput.class);
+
+        WorkflowOutput workflowOutput = (WorkflowOutput) result.get("output");
+        assertThat(workflowOutput.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+        assertThat(String.valueOf(workflowOutput.getResult())).contains(expectedQuery);
     }
 }

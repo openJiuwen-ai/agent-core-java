@@ -4,20 +4,21 @@
 
 package com.openjiuwen.core.common.logging;
 
-import java.util.regex.Matcher;
+import java.util.IllegalFormatException;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
  * Mixin-style utility for structured logging with auto-format detection.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.common.logging.structured_logger.StructuredLoggerMixin}.
+ * Mirrors Python's {@code StructuredLoggerMixin} in
+ * {@code openjiuwen.core.common.logging.base_impl}.
  * Automatically detects and applies either percent-style (%s, %d) or brace-style ({}, {0}) formatting.
  */
 public final class StructuredLoggerMixin {
 
-    private static final Pattern PERCENT_PATTERN = Pattern.compile("%[sdf]");
-    private static final Pattern BRACE_POSITIONAL_PATTERN = Pattern.compile("\\{}");
-    private static final Pattern BRACE_INDEXED_PATTERN = Pattern.compile("\\{(\\d+)\\}");
+    private static final Pattern BRACE_PLACEHOLDER_PATTERN = Pattern.compile(
+            "\\{(?:\\d*|[a-zA-Z_]\\w*)?(?:![rsa])?(?::[^}]*)?\\}");
 
     private StructuredLoggerMixin() {
         // Utility class - no instances
@@ -36,93 +37,138 @@ public final class StructuredLoggerMixin {
      */
     public static String autoFormatMessage(String message, Object[] args) {
         if (args == null || args.length == 0) {
-            return message;
+            return String.valueOf(message);
         }
 
-        // Check for percent-style formatting
-        Matcher percentMatcher = PERCENT_PATTERN.matcher(message);
-        if (percentMatcher.find()) {
-            return formatPercentStyle(message, args);
+        String msg = String.valueOf(message);
+        if (BRACE_PLACEHOLDER_PATTERN.matcher(msg).find()) {
+            String formatted = formatBraceStyle(msg, args);
+            if (formatted != null) {
+                return formatted;
+            }
         }
 
-        // Check for indexed brace style {0}, {1}
-        Matcher indexedMatcher = BRACE_INDEXED_PATTERN.matcher(message);
-        if (indexedMatcher.find()) {
-            return formatIndexedBraceStyle(message, args);
+        try {
+            return String.format(Locale.ROOT, msg, args);
+        } catch (IllegalFormatException | NullPointerException exception) {
+            return msg;
         }
-
-        // Check for positional brace style {}
-        Matcher positionalMatcher = BRACE_POSITIONAL_PATTERN.matcher(message);
-        if (positionalMatcher.find()) {
-            return formatPositionalBraceStyle(message, args);
-        }
-
-        // No placeholders found, return original message
-        return message;
     }
 
-    private static String formatPercentStyle(String message, Object[] args) {
-        // Simple percent-style formatting
-        Object[] convertedArgs = new Object[args.length];
-        for (int i = 0; i < args.length; i++) {
-            convertedArgs[i] = args[i];
-        }
-        // Use String.format pattern matching
+    private static String formatBraceStyle(String message, Object[] args) {
         StringBuilder result = new StringBuilder();
-        int argIndex = 0;
+        int autoIndex = 0;
         int i = 0;
         while (i < message.length()) {
-            if (i < message.length() - 1 && message.charAt(i) == '%') {
-                char next = message.charAt(i + 1);
-                if (next == 's' || next == 'd' || next == 'f') {
-                    if (argIndex < args.length) {
-                        result.append(args[argIndex]);
-                        argIndex++;
-                        i += 2;
-                        continue;
-                    }
-                }
+            char ch = message.charAt(i);
+            if (ch == '{' && i + 1 < message.length() && message.charAt(i + 1) == '{') {
+                result.append('{');
+                i += 2;
+                continue;
             }
-            result.append(message.charAt(i));
-            i++;
+            if (ch == '}' && i + 1 < message.length() && message.charAt(i + 1) == '}') {
+                result.append('}');
+                i += 2;
+                continue;
+            }
+            if (ch != '{') {
+                result.append(ch);
+                i++;
+                continue;
+            }
+
+            int end = message.indexOf('}', i + 1);
+            if (end < 0) {
+                return null;
+            }
+            String placeholder = message.substring(i + 1, end);
+            ParsedPlaceholder parsed = parsePlaceholder(placeholder);
+            if (parsed == null) {
+                return null;
+            }
+            int index = parsed.index >= 0 ? parsed.index : autoIndex++;
+            if (index >= args.length) {
+                return null;
+            }
+            String formatted = formatBraceArgument(args[index], parsed);
+            if (formatted == null) {
+                return null;
+            }
+            result.append(formatted);
+            i = end + 1;
         }
         return result.toString();
     }
 
-    private static String formatIndexedBraceStyle(String message, Object[] args) {
-        // Indexed brace style {0}, {1}, etc.
-        Pattern pattern = Pattern.compile("\\{(\\d+)\\}");
-        Matcher matcher = pattern.matcher(message);
-        StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            int index = Integer.parseInt(matcher.group(1));
-            if (index < args.length) {
-                matcher.appendReplacement(result, String.valueOf(args[index]));
+    private static ParsedPlaceholder parsePlaceholder(String placeholder) {
+        int conversionPos = placeholder.indexOf('!');
+        int specPos = placeholder.indexOf(':');
+        int fieldEnd = placeholder.length();
+        if (conversionPos >= 0) {
+            fieldEnd = Math.min(fieldEnd, conversionPos);
+        }
+        if (specPos >= 0) {
+            fieldEnd = Math.min(fieldEnd, specPos);
+        }
+
+        String field = placeholder.substring(0, fieldEnd);
+        int index = -1;
+        if (!field.isEmpty()) {
+            if (!field.chars().allMatch(Character::isDigit)) {
+                return null;
+            }
+            index = Integer.parseInt(field);
+        }
+
+        Character conversion = null;
+        if (conversionPos >= 0) {
+            int conversionEnd = specPos >= 0 && specPos > conversionPos ? specPos : placeholder.length();
+            if (conversionEnd != conversionPos + 2) {
+                return null;
+            }
+            conversion = placeholder.charAt(conversionPos + 1);
+            if (conversion != 'r' && conversion != 's' && conversion != 'a') {
+                return null;
+            }
+        }
+
+        String spec = specPos >= 0 ? placeholder.substring(specPos + 1) : "";
+        return new ParsedPlaceholder(index, conversion, spec);
+    }
+
+    private static String formatBraceArgument(Object arg, ParsedPlaceholder placeholder) {
+        Object value = arg;
+        if (placeholder.conversion != null) {
+            if (placeholder.conversion == 'r' || placeholder.conversion == 'a') {
+                value = repr(arg);
             } else {
-                matcher.appendReplacement(result, matcher.group());
+                value = pythonString(arg);
             }
         }
-        matcher.appendTail(result);
-        return result.toString();
+        if (!placeholder.formatSpec.isEmpty()) {
+            try {
+                return String.format(Locale.ROOT, "%" + placeholder.formatSpec, value);
+            } catch (IllegalFormatException exception) {
+                return null;
+            }
+        }
+        return String.valueOf(value);
     }
 
-    private static String formatPositionalBraceStyle(String message, Object[] args) {
-        // Positional brace style {} - replace sequentially
-        StringBuilder result = new StringBuilder();
-        int argIndex = 0;
-        int i = 0;
-        while (i < message.length()) {
-            if (i < message.length() - 1 && message.charAt(i) == '{' && message.charAt(i + 1) == '}') {
-                if (argIndex < args.length) {
-                    result.append(args[argIndex]);
-                    argIndex++;
-                    i += 2;
-                    continue;
-                }
-            }
-            result.append(message.charAt(i));
-            i++;
+    private static String pythonString(Object value) {
+        return value == null ? "None" : String.valueOf(value);
+    }
+
+    private static String repr(Object value) {
+        if (value == null) {
+            return "None";
         }
-        return result.toString();
+        if (value instanceof String string) {
+            return "'" + string.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        return String.valueOf(value);
+    }
+
+    private record ParsedPlaceholder(int index, Character conversion, String formatSpec) {
     }
 }

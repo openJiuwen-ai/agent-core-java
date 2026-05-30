@@ -29,41 +29,45 @@ public class PyZmqMessager implements Messager {
 
     @Override
     public void start() {
-        // no-op placeholder until a Java ZMQ transport is introduced
+        throw unsupported();
     }
 
     @Override
     public void stop() {
-        // no-op placeholder until a Java ZMQ transport is introduced
+        throw unsupported();
     }
 
     @Override
     public void publish(String topicId, EventMessage message) {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
     }
 
     @Override
     public void subscribe(String topicId, MessagerHandler handler) {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
     }
 
     @Override
     public void unsubscribe(String topicId) {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
     }
 
     @Override
     public void send(String agentId, EventMessage message) {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
     }
 
     @Override
     public void registerDirectMessageHandler(MessagerHandler handler) {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
     }
 
     @Override
     public void unregisterDirectMessageHandler() {
-        throw new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
+        throw unsupported();
+    }
+
+    private static UnsupportedOperationException unsupported() {
+        return new UnsupportedOperationException("PyZmqMessager requires an optional Java ZeroMQ transport dependency");
     }
 }

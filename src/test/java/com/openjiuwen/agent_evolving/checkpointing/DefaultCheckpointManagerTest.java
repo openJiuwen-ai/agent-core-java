@@ -3,6 +3,7 @@ package com.openjiuwen.agent_evolving.checkpointing;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -133,6 +134,42 @@ class DefaultCheckpointManagerTest {
         Map<String, Object> restored = manager.restore(agent, checkpoint);
 
         assertEquals(7, restored.get("start_epoch"));
+    }
+
+    @Test
+    void pendingChangesCanBeAddedListedDiscardedAndCommitted() {
+        DefaultCheckpointManager manager = new DefaultCheckpointManager("run_pending", "v1", 1, true);
+        EvolutionRecord first = new EvolutionRecord();
+        EvolutionRecord second = new EvolutionRecord();
+        PendingChange change = PendingChange.make("search", List.of(first, second));
+        PendingChange discarded = new PendingChange(
+                change.getOperatorId(),
+                "search",
+                "experience_entry",
+                List.of(new EvolutionRecord()),
+                "2026-01-01T00:00:00Z",
+                "discard_me"
+        );
+
+        manager.addPending(change.getOperatorId(), change);
+        manager.addPending(change.getOperatorId(), discarded);
+
+        List<PendingChange> listed = manager.getPending(change.getOperatorId());
+        listed.clear();
+        assertEquals(2, manager.getPending(change.getOperatorId()).size());
+
+        manager.discardPending(change.getOperatorId(), "discard_me");
+
+        assertEquals(1, manager.getPending(change.getOperatorId()).size());
+        assertEquals(2, manager.commitPending(change.getOperatorId(), null));
+        assertEquals(List.of(), manager.getPending(change.getOperatorId()));
+    }
+
+    @Test
+    void commitPendingReturnsZeroForMissingOperator() {
+        DefaultCheckpointManager manager = new DefaultCheckpointManager("run_pending", "v1", 1, true);
+
+        assertEquals(0, manager.commitPending("missing", null));
     }
 
     static final class FakeAgent {

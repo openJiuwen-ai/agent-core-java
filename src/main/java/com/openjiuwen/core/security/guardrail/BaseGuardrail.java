@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.GuardrailError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.callback.HookType;
 
@@ -23,12 +24,16 @@ import java.util.function.Function;
 
 /**
  * Base class for guardrails that integrate with {@link CallbackFramework}.
+ *
+ * <p>Mirrors Python's {@code BaseGuardrail} in
+ * {@code openjiuwen.core.security.guardrail.guardrail}.</p>
  */
 public abstract class BaseGuardrail {
 
     protected static final LoggerProtocol LOGGER = Loggers.RUNNER;
 
     protected final List<String> events = new ArrayList<>();
+    protected final List<String> registeredEvents = new ArrayList<>();
     protected final Map<String, Function<Map<String, Object>, Object>> registeredCallbacks = new ConcurrentHashMap<>();
 
     protected GuardrailBackend backend;
@@ -65,6 +70,14 @@ public abstract class BaseGuardrail {
 
     public GuardrailBackend getBackend() {
         return backend;
+    }
+
+    public List<String> getRegisteredEvents() {
+        return new ArrayList<>(registeredEvents);
+    }
+
+    public boolean isEventRegistered(String event) {
+        return registeredEvents.contains(event);
     }
 
     public boolean isEnableLogging() {
@@ -109,6 +122,55 @@ public abstract class BaseGuardrail {
     }
 
     /**
+     * Callback-framework wrapper around {@link #detect(String, Object[], Map)}.
+     *
+     * <p>Python keeps this separate as {@code _detect_callback}: {@code detect}
+     * returns a {@link GuardrailResult}, while the callback wrapper turns risky
+     * results into guardrail exceptions and returns {@code None} on safe input.</p>
+     */
+    protected Object detectCallback(String eventName, Object[] args, Map<String, Object> kwargs) {
+        try {
+            GuardrailResult result = detect(eventName, args, kwargs);
+            if (result == null || result.isSafe()) {
+                return null;
+            }
+
+            Map<String, Object> riskInfo = buildRiskInfo(eventName, result);
+            String riskType = (String) riskInfo.get("risk_type");
+            if (result.getRiskLevel() == RiskLevel.CRITICAL) {
+                throw new AbortError("Critical security risk detected: " + riskType);
+            }
+
+            throw new GuardrailError(
+                    StatusCode.GUARDRAIL_BLOCKED,
+                    "Guardrail blocked: " + riskType + " risk detected",
+                    riskInfo,
+                    null,
+                    riskInfo
+            );
+        } catch (RuntimeException runtimeException) {
+            throw runtimeException;
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
+    }
+
+    protected void addRegisteredEvent(String event) {
+        registeredEvents.add(event);
+    }
+
+    private Map<String, Object> buildRiskInfo(String eventName, GuardrailResult result) {
+        Map<String, Object> riskInfo = new LinkedHashMap<>();
+        riskInfo.put("risk_type", result.getRiskType() == null ? "unknown" : result.getRiskType());
+        riskInfo.put("risk_level", result.getRiskLevel() == null ? "UNKNOWN" : result.getRiskLevel().name());
+        riskInfo.put("event", String.valueOf(eventName));
+        if (result.getDetails() != null) {
+            riskInfo.putAll(result.getDetails());
+        }
+        return riskInfo;
+    }
+
+    /**
      * Register this guardrail with a callback framework.
      */
     public void register(CallbackFramework framework) {
@@ -128,30 +190,14 @@ public abstract class BaseGuardrail {
 
             Function<Map<String, Object>, Object> callback = kwargs -> {
                 Object[] args = kwargs != null && kwargs.get("_args") instanceof Object[] arr ? arr : new Object[0];
-                try {
-                    GuardrailResult result = detect(event, args, kwargs);
-                    if (!result.isSafe()) {
-                        Map<String, Object> params = new LinkedHashMap<>();
-                        params.put("risk_type", result.getRiskType() == null ? "unknown" : result.getRiskType());
-                        params.put("risk_level", result.getRiskLevel() == null ? "UNKNOWN" : result.getRiskLevel().name());
-                        params.put("event", event);
-                        if (result.getDetails() != null) {
-                            params.putAll(result.getDetails());
-                        }
-                        throw new GuardrailError(StatusCode.GUARDRAIL_BLOCKED, params);
-                    }
-                    return result;
-                } catch (RuntimeException runtimeException) {
-                    throw runtimeException;
-                } catch (Exception exception) {
-                    throw new RuntimeException(exception);
-                }
+                return detectCallback(event, args, kwargs);
             };
 
             framework.register(event, callback, 100, false, "guardrail",
                     Set.of("guardrail", getClass().getSimpleName()),
                     null, null, null, 0, 0.0, null, callbackName(event));
             registeredCallbacks.put(event, callback);
+            addRegisteredEvent(event);
 
             if (enableLogging) {
                 LOGGER.info("Registered guardrail {} for event {}", getClass().getSimpleName(), event);
@@ -170,6 +216,7 @@ public abstract class BaseGuardrail {
             framework.unregister(entry.getKey(), entry.getValue());
         }
         registeredCallbacks.clear();
+        registeredEvents.clear();
     }
 
     private String callbackName(String event) {

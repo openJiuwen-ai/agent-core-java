@@ -7,21 +7,19 @@ package com.openjiuwen.agent_teams.worktree;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
 import java.util.random.RandomGenerator;
 
 /**
  * Worktree tools for entering and exiting git worktree sessions.
- * <p>
- * Provides EnterWorktreeTool and ExitWorktreeTool implementations.
- * Both delegate to WorktreeManager for actual worktree lifecycle operations.
- * <p>
- * Mirrors Python's {@code tools} module in
- * {@code openjiuwen.agent_teams.worktree.tools}.
+ *
+ * <p>Provides enter/exit tool adapters that delegate lifecycle operations to
+ * {@link WorktreeManager} and share session state through
+ * {@link WorktreeSessionHolder}.</p>
+ *
+ * <p>Mirrors Python's {@code tools} module in
+ * {@code openjiuwen.agent_teams.worktree.tools}.</p>
  */
 public class WorktreeTools {
-
-    private static final Logger logger = Logger.getLogger(WorktreeTools.class.getName());
 
     private final WorktreeManager manager;
 
@@ -29,98 +27,109 @@ public class WorktreeTools {
         this.manager = manager;
     }
 
-    // ── EnterWorktreeTool ───────────────────────────────────────
-
     /**
      * Create or enter an isolated git worktree.
      */
     public CompletableFuture<ToolOutput> enterWorktree(Map<String, Object> inputs, String memberName, String teamName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // Check existing session
-            WorktreeModels.WorktreeSession existing = getCurrentSession();
-            if (existing != null) {
-                return new ToolOutput(true, null, Map.of(
-                    "worktree_path", existing.getWorktreeCwd(),
-                    "worktree_branch", existing.getBranchName(),
-                    "message", "Already in worktree: " + existing.getSlug()
-                ));
-            }
+        WorktreeSession existing = getCurrentSession();
+        if (existing != null) {
+            return CompletableFuture.completedFuture(new ToolOutput(false,
+                "Already in worktree '" + existing.getSlug() + "'. Exit first with exit_worktree.",
+                null
+            ));
+        }
 
-            // Get or generate slug
-            String slug = (String) inputs.get("name");
-            if (slug == null || slug.isEmpty()) {
-                slug = generateRandomSlug();
-            }
+        Map<String, Object> safeInputs = inputs != null ? inputs : Map.of();
+        String slug = readString(safeInputs, "name");
+        if (slug == null || slug.isBlank()) {
+            slug = generateRandomSlug();
+        }
 
-            // Validate slug
-            if (!validateSlug(slug)) {
-                return new ToolOutput(false, "Invalid worktree name: " + slug, null);
-            }
+        try {
+            SlugUtils.validateSlug(slug);
+        } catch (IllegalArgumentException e) {
+            return CompletableFuture.completedFuture(new ToolOutput(false, e.getMessage(), null));
+        }
 
-            try {
-                // Create worktree
-                WorktreeModels.WorktreeCreateResult result = manager.createWorktree(slug, memberName, teamName);
-                if (!result.isSuccess()) {
-                    return new ToolOutput(false, result.getError(), null);
-                }
-
-                // Set session
-                setCurrentSession(new WorktreeModels.WorktreeSession(
-                    manager.getOriginalCwd(),
-                    result.getWorktreePath(),
-                    slug,
-                    result.getBranchName(),
-                    result.getHeadCommit()
-                ));
-
-                return new ToolOutput(true, null, Map.of(
-                    "worktree_path", result.getWorktreePath(),
-                    "worktree_branch", result.getBranchName(),
-                    "message", "Entered worktree: " + slug
-                ));
-            } catch (Exception e) {
-                return new ToolOutput(false, "Failed to enter worktree: " + e.getMessage(), null);
-            }
-        });
+        try {
+            WorktreeSession session = manager.enter(slug, memberName, teamName);
+            setCurrentSession(session);
+            return CompletableFuture.completedFuture(new ToolOutput(true, null, dataOf(
+                "worktree_path", session.getWorktreePath(),
+                "worktree_branch", session.getBranchName(),
+                "message", "Created worktree at " + session.getWorktreePath()
+                    + " on branch " + session.getBranchName() + ". CWD switched to worktree."
+            )));
+        } catch (RuntimeException e) {
+            return CompletableFuture.completedFuture(
+                new ToolOutput(false, "Failed to create worktree: " + e.getMessage(), null)
+            );
+        }
     }
-
-    // ── ExitWorktreeTool ───────────────────────────────────────
 
     /**
      * Exit and optionally remove a git worktree.
      */
     public CompletableFuture<ToolOutput> exitWorktree(Map<String, Object> inputs) {
-        return CompletableFuture.supplyAsync(() -> {
-            WorktreeModels.WorktreeSession session = getCurrentSession();
-            if (session == null) {
-                return new ToolOutput(false, "Not in a worktree", null);
-            }
+        WorktreeSession session = getCurrentSession();
+        if (session == null) {
+            return CompletableFuture.completedFuture(new ToolOutput(false, "No active worktree session to exit.", null));
+        }
 
-            String slug = session.getSlug();
-            boolean cleanup = Boolean.TRUE.equals(inputs.get("cleanup"));
+        Map<String, Object> safeInputs = inputs != null ? inputs : Map.of();
+        String action = readString(safeInputs, "action");
+        boolean cleanup = readBoolean(safeInputs, "cleanup");
+        if (action == null || action.isBlank()) {
+            action = cleanup ? "remove" : "keep";
+        }
+        if (!"keep".equals(action) && !"remove".equals(action)) {
+            return CompletableFuture.completedFuture(new ToolOutput(false, "'action' must be 'keep' or 'remove'.", null));
+        }
 
-            try {
-                // Restore original cwd
-                manager.restoreOriginalCwd(session.getOriginalCwd());
+        boolean discard = readBoolean(safeInputs, "discard_changes")
+            || readBoolean(safeInputs, "discardChanges")
+            || cleanup;
 
-                // Optionally cleanup worktree
-                if (cleanup) {
-                    manager.removeWorktree(slug);
+        try {
+            WorktreeChangeSummary summary = null;
+            if ("remove".equals(action)) {
+                summary = manager.summarizeChanges();
+                if (!discard && summary != null && (summary.isHasChanges() || summary.getAheadCount() > 0)) {
+                    return CompletableFuture.completedFuture(new ToolOutput(false,
+                        "Worktree has changes. Set discard_changes=true to proceed.",
+                        null
+                    ));
                 }
-
-                // Clear session
+                if (!removeWorktree(discard)) {
+                    return CompletableFuture.completedFuture(new ToolOutput(false, "Failed to remove worktree.", null));
+                }
+            } else {
                 clearCurrentSession();
-
-                return new ToolOutput(true, null, Map.of(
-                    "message", "Exited worktree: " + slug + (cleanup ? " (removed)" : "")
-                ));
-            } catch (Exception e) {
-                return new ToolOutput(false, "Failed to exit worktree: " + e.getMessage(), null);
             }
-        });
-    }
 
-    // ── Helper methods ───────────────────────────────────────
+            restoreOriginalCwd(session.getOriginalCwd());
+            String branch = session.getBranchName() != null ? session.getBranchName() : "unknown";
+            String message = "keep".equals(action)
+                ? "Kept worktree (branch " + branch + "). Returned to " + session.getOriginalCwd()
+                : "Removed worktree (branch " + branch + "). Returned to " + session.getOriginalCwd();
+            Map<String, Object> data = dataOf(
+                "action", action,
+                "original_cwd", session.getOriginalCwd(),
+                "worktree_path", session.getWorktreePath(),
+                "worktree_branch", session.getBranchName(),
+                "message", message
+            );
+            if (summary != null && discard) {
+                data.put("discarded_files", summary.isHasChanges() ? 1 : 0);
+                data.put("discarded_commits", summary.getAheadCount());
+            }
+            return CompletableFuture.completedFuture(new ToolOutput(true, null, data));
+        } catch (RuntimeException e) {
+            return CompletableFuture.completedFuture(
+                new ToolOutput(false, "Failed to exit worktree: " + e.getMessage(), null)
+            );
+        }
+    }
 
     private String generateRandomSlug() {
         String[] adjectives = {"swift", "bright", "calm", "keen", "bold"};
@@ -128,31 +137,58 @@ public class WorktreeTools {
         RandomGenerator rand = RandomGenerator.getDefault();
         String adj = adjectives[rand.nextInt(adjectives.length)];
         String noun = nouns[rand.nextInt(nouns.length)];
-        String suffix = Integer.toHexString(rand.nextInt(256));
+        String suffix = String.format("%04x", rand.nextInt(0x10000));
         return adj + "-" + noun + "-" + suffix;
     }
 
-    private boolean validateSlug(String slug) {
-        if (slug == null || slug.isEmpty()) return false;
-        // Must be alphanumeric with hyphens, max 32 chars
-        return slug.matches("^[a-z0-9-]+$") && slug.length() <= 32;
+    private WorktreeSession getCurrentSession() {
+        return WorktreeSessionHolder.getCurrentSession();
     }
 
-    private WorktreeModels.WorktreeSession getCurrentSession() {
-        // Placeholder: get from context
-        return null;
+    private void setCurrentSession(WorktreeSession session) {
+        WorktreeSessionHolder.setCurrentSession(session);
     }
 
-    private void setCurrentSession(WorktreeModels.WorktreeSession session) {
-        // Placeholder: set in context
+    private boolean removeWorktree(boolean discardChanges) {
+        return manager.removeCurrent(discardChanges);
     }
 
     private void clearCurrentSession() {
-        // Placeholder: clear from context
+        WorktreeSessionHolder.setCurrentSession(null);
     }
 
-    // ── Tool output ───────────────────────────────────────
+    private void restoreOriginalCwd(String cwd) {
+        // Java has no process-local chdir. The restored cwd is reported in ToolOutput,
+        // and callers with CwdState should update that context from the returned data.
+    }
 
+    private static String readString(Map<String, Object> inputs, String key) {
+        Object value = inputs.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static boolean readBoolean(Map<String, Object> inputs, String key) {
+        Object value = inputs.get(key);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static Map<String, Object> dataOf(Object... keysAndValues) {
+        Map<String, Object> data = new HashMap<>();
+        for (int i = 0; i + 1 < keysAndValues.length; i += 2) {
+            Object value = keysAndValues[i + 1];
+            if (value != null) {
+                data.put(String.valueOf(keysAndValues[i]), value);
+            }
+        }
+        return data;
+    }
+
+    /**
+     * Tool output.
+     */
     public static class ToolOutput {
         private final boolean success;
         private final String error;
@@ -164,29 +200,16 @@ public class WorktreeTools {
             this.data = data != null ? data : new HashMap<>();
         }
 
-        public boolean isSuccess() { return success; }
-        public String getError() { return error; }
-        public Map<String, Object> getData() { return data; }
-    }
+        public boolean isSuccess() {
+            return success;
+        }
 
-    // ── WorktreeManager stub ───────────────────────────────────────
+        public String getError() {
+            return error;
+        }
 
-    /**
-     * Worktree manager interface (stub).
-     */
-    public static class WorktreeManager {
-        public WorktreeModels.WorktreeCreateResult createWorktree(String slug, String memberName, String teamName) {
-            // Placeholder
-            return WorktreeModels.WorktreeCreateResult.failure("Not implemented");
-        }
-        public void removeWorktree(String slug) {
-            // Placeholder
-        }
-        public String getOriginalCwd() {
-            return System.getProperty("user.dir");
-        }
-        public void restoreOriginalCwd(String cwd) {
-            // Placeholder
+        public Map<String, Object> getData() {
+            return data;
         }
     }
 }

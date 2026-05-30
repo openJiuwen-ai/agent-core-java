@@ -24,12 +24,43 @@ class BaseMetricTest {
     }
 
     @Test
+    void testHigherIsBetterDefaultsTrue() {
+        TestMetric metric = new TestMetric("test_metric");
+        assertTrue(metric.isHigherIsBetter());
+    }
+
+    @Test
     void testMetricComputeReturnsScore() {
         TestMetric metric = new TestMetric("accuracy");
-        Object result = metric.compute("predicted answer", "expected answer", new HashMap<>());
+        Object result = metric.compute("expected answer", "expected answer", new HashMap<>());
 
         assertTrue(result instanceof Double);
         assertEquals(1.0, (Double) result);
+    }
+
+    @Test
+    void testComputeBatchReturnsScores() {
+        TestMetric metric = new TestMetric("batch_metric");
+
+        List<Object> results = metric.computeBatch(List.of("a", "b", "a"), List.of("a", "a", "a"));
+
+        assertIterableEquals(List.of(1.0, 0.0, 1.0), results);
+    }
+
+    @Test
+    void testComputeBatchEmpty() {
+        TestMetric metric = new TestMetric("batch_metric");
+
+        assertTrue(metric.computeBatch(List.of(), List.of()).isEmpty());
+    }
+
+    @Test
+    void testComputeBatchStopsAtShorterInput() {
+        TestMetric metric = new TestMetric("batch_metric");
+
+        List<Object> results = metric.computeBatch(List.of("a", "b", "c"), List.of("a"));
+
+        assertIterableEquals(List.of(1.0), results);
     }
 
     @Test
@@ -104,7 +135,7 @@ class BaseMetricTest {
             if (prediction == null || label == null) {
                 return 0.0;
             }
-            return prediction.equals(label) ? 1.0 : 0.5;
+            return prediction.equals(label) ? 1.0 : 0.0;
         }
     }
 

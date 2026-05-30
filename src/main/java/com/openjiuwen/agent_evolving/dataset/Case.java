@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.dataset.case.Case.
+ * Mirrors Python's {@code Case} in {@code openjiuwen.agent_evolving.dataset.case}.
  */
 public class Case {
 

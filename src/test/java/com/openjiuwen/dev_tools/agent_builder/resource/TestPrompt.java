@@ -4,8 +4,16 @@
 
 package com.openjiuwen.dev_tools.agent_builder.resource;
 
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test resource prompt constants.
@@ -13,10 +21,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_prompt.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/resource/test_prompt.py}.
  *
- * <p>Note: Prompt source class requires translation before tests can be implemented.
- * Tests are disabled pending Prompt.java implementation.
  */
-@Disabled("Prompt.java source class requires translation before tests can be implemented")
 class TestPrompt {
 
     /**
@@ -24,26 +29,33 @@ class TestPrompt {
      * <p>
      * Mirrors Python's {@code TestRetrieveSystemPrompt} class.
      */
-    static class TestRetrieveSystemPrompt {
+    @Nested
+    class TestRetrieveSystemPrompt {
 
         @Test
         void testPromptIsString() {
-            // Placeholder - requires Prompt.java
+            assertFalse(Prompt.RETRIEVE_SYSTEM_PROMPT.isBlank());
         }
 
         @Test
         void testPromptContainsKeySections() {
-            // Placeholder - requires Prompt.java
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Persona"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Task Description"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Input Information"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Selection Rules"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Output Format"));
         }
 
         @Test
         void testPromptContainsPlaceholders() {
-            // Placeholder - requires Prompt.java
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("{{dialog_history}}"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("{{plugin_info_list}}"));
         }
 
         @Test
         void testPromptContainsJsonFormat() {
-            // Placeholder - requires Prompt.java
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("tool_id_list"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("```json"));
         }
     }
 
@@ -52,21 +64,34 @@ class TestPrompt {
      * <p>
      * Mirrors Python's {@code TestRetrieveSystemTemplate} class.
      */
-    static class TestRetrieveSystemTemplate {
+    @Nested
+    class TestRetrieveSystemTemplate {
 
         @Test
         void testTemplateIsPromptTemplate() {
-            // Placeholder - requires Prompt.java
+            assertInstanceOf(PromptTemplate.class, Prompt.RETRIEVE_SYSTEM_TEMPLATE);
         }
 
         @Test
         void testTemplateFormat() {
-            // Placeholder - requires Prompt.java
+            PromptTemplate result = Prompt.RETRIEVE_SYSTEM_TEMPLATE.format(Map.of(
+                    "dialog_history", "User: Hello",
+                    "plugin_info_list", "[{'plugin_name': 'Test'}]"));
+
+            List<BaseMessage> messages = result.toMessages();
+            assertFalse(messages.isEmpty());
+            assertInstanceOf(SystemMessage.class, messages.get(0));
         }
 
         @Test
         void testTemplateContainsFormattedContent() {
-            // Placeholder - requires Prompt.java
+            PromptTemplate result = Prompt.RETRIEVE_SYSTEM_TEMPLATE.format(Map.of(
+                    "dialog_history", "User: Test query",
+                    "plugin_info_list", "[{'plugin_name': 'Calculator'}]"));
+
+            String content = result.toMessages().get(0).getContentAsString();
+            assertTrue(content.contains("User: Test query"));
+            assertTrue(content.contains("Calculator"));
         }
     }
 }

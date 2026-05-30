@@ -8,9 +8,16 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -148,6 +155,10 @@ public final class LlmResilience {
         if (response == null) {
             return "";
         }
+        if (response instanceof BaseMessage message) {
+            Object content = message.getContent();
+            return content != null ? String.valueOf(content) : "";
+        }
         if (response instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) response;
             Object content = map.get("content");
@@ -219,17 +230,7 @@ ctx.getLastError(),
             String currentPrompt = (ctx.isUseRetryPrompt() && retryPrompt != null) ? retryPrompt : prompt;
 
             try {
-                Object response = llm.invoke(
-                        Collections.singletonList(new UserMessage(currentPrompt)),
-                        null,
-                        temperature,
-                        null,
-                        model,
-                        null,
-                        null,
-                        null,
-                        (float) timeoutSecs,
-                        null);
+                Object response = invokeWithTimeout(llm, model, currentPrompt, temperature, timeoutSecs);
                 String raw = responseToText(response);
                 ctx.setLastResponse(raw);
 
@@ -243,7 +244,7 @@ ctx.getLastError(),
                                 ctx.getLastError(),
                                 raw);
                     }
-                    sleepBeforeRetry(policy, ctx);
+                    sleepBeforeRetry(policy, ctx, attempt);
                     continue;
                 }
 
@@ -264,9 +265,9 @@ ctx.getLastError(),
                                     "unusable_response",
                                     attempt,
                                     ctx.getLastError(),
-                                    raw);
+                                raw);
                         }
-                        sleepBeforeRetry(policy, ctx);
+                        sleepBeforeRetry(policy, ctx, attempt);
                         continue;
                     }
                 }
@@ -275,11 +276,19 @@ ctx.getLastError(),
 
             } catch (Exception exc) {
                 ctx.setLastError(exc);
+                if (ctx.elapsedSecs() >= policy.getTotalBudgetSecs()) {
+                    raiseLlmResilienceError(
+                            StatusCode.TOOLCHAIN_EVOLVING_TOOL_CALL_LLM_CALL_EXECUTION_ERROR,
+                            "total_budget_exceeded",
+                            attempt,
+                            exc,
+                            ctx.getLastResponse());
+                }
                 if (retryPrompt != null && attempt < policy.getMaxAttempts() && isTimeoutLike(exc)) {
                     ctx.setUseRetryPrompt(true);
                     Loggers.AGENT.info("[llm_resilience] attempt {} timed out; retrying with shorter prompt",
                             attempt, policy.getMaxAttempts());
-                    sleepBeforeRetry(policy, ctx);
+                    sleepBeforeRetry(policy, ctx, attempt);
                     continue;
                 }
                 raiseLlmResilienceError(
@@ -299,6 +308,41 @@ ctx.getLastError(),
                 ctx.getLastError(),
                 ctx.getLastResponse());
         return null;
+    }
+
+    private static Object invokeWithTimeout(
+            Model llm,
+            String model,
+            String prompt,
+            Float temperature,
+            double timeoutSecs) throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Object> future = executor.submit(() -> llm.invoke(
+                Collections.singletonList(new UserMessage(prompt)),
+                null,
+                temperature,
+                null,
+                model,
+                null,
+                null,
+                null,
+                (float) timeoutSecs,
+                null));
+        try {
+            long timeoutMs = Math.max(1L, (long) Math.ceil(timeoutSecs * 1000.0));
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw e;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(cause);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     /**
@@ -323,7 +367,8 @@ ctx.getLastError(),
     /**
      * Sleep before retry with exponential backoff respecting remaining budget.
      */
-    private static void sleepBeforeRetry(LLMInvokePolicy policy, RetryContext ctx) throws InterruptedException {
+    private static void sleepBeforeRetry(LLMInvokePolicy policy, RetryContext ctx, int attempt)
+            throws InterruptedException {
         if (policy.getBackoffBaseSecs() <= 0) {
             return;
         }
@@ -333,7 +378,7 @@ ctx.getLastError(),
             return;
         }
 
-        double backoffSecs = policy.getBackoffBaseSecs();
+        double backoffSecs = policy.getBackoffBaseSecs() * Math.pow(2.0, Math.max(attempt - 1, 0));
         long sleepMs = (long) (Math.min(backoffSecs, remainingBudget) * 1000);
         Thread.sleep(sleepMs);
     }

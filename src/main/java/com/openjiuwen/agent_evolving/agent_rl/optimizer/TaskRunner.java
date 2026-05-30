@@ -3,6 +3,10 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.optimizer;
 
+import com.openjiuwen.agent_evolving.agent_rl.optimizer.runtime.PpoRayRuntimeEnvHelper;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Logger;
@@ -17,63 +21,64 @@ public final class TaskRunner {
     
     private static final Logger logger = Logger.getLogger(TaskRunner.class.getName());
     
-    // Agent core directory (project root)
-    private static final Path AGENT_CORE_DIR = Paths.get("")
-        .toAbsolutePath()
-        .getParent()
-        .getParent()
-        .getParent()
-        .getParent();
+    // Agent core directory (Python project root)
+    private static final Path AGENT_CORE_DIR = resolveAgentCoreDir();
+
+    private static volatile RemoteArtifactResolver remoteArtifactResolver;
     
     private TaskRunner() {
         // Utility class
+    }
+
+    @FunctionalInterface
+    public interface RemoteArtifactResolver {
+        Path copyToLocal(String source, Path target) throws IOException;
+    }
+
+    public record ModelComponentRef(String componentType, Path modelPath, Map<String, Object> options) {
+        public ModelComponentRef {
+            Objects.requireNonNull(componentType, "componentType must not be null");
+            Objects.requireNonNull(modelPath, "modelPath must not be null");
+            options = Map.copyOf(options == null ? Map.of() : options);
+        }
+    }
+
+    public record ModelComponents(ModelComponentRef tokenizer, ModelComponentRef processor) {
+        public ModelComponents {
+            Objects.requireNonNull(tokenizer, "tokenizer must not be null");
+            Objects.requireNonNull(processor, "processor must not be null");
+        }
+    }
+
+    public static void setRemoteArtifactResolver(RemoteArtifactResolver resolver) {
+        remoteArtifactResolver = resolver;
     }
     
     /**
      * Get PPO Ray runtime environment configuration.
      */
     public static Map<String, Object> getPpoRayRuntimeEnv() {
-        Map<String, String> envVars = new HashMap<>();
-        
-        envVars.put("TOKENIZERS_PARALLELISM", "true");
-        envVars.put("NCCL_DEBUG", "WARN");
-        envVars.put("VLLM_LOGGING_LEVEL", "WARN");
-        envVars.put("VLLM_ALLOW_RUNTIME_LORA_UPDATING", "true");
-        envVars.put("CUDA_DEVICE_MAX_CONNECTIONS", "1");
-        envVars.put("NCCL_CUMEM_ENABLE", "0");
-        envVars.put("VLLM_ASCEND_ENABLE_NZ", "0");
-        
-        // Build PYTHONPATH equivalent
-        String agentCorePath = AGENT_CORE_DIR.toString();
-        String existingPath = System.getenv("PYTHONPATH");
-        
-        List<String> pathParts = new ArrayList<>();
-        pathParts.add(agentCorePath);
-        
-        if (existingPath != null && !existingPath.isEmpty()) {
-            for (String entry : existingPath.split(":")) {
-                entry = entry.trim();
-                if (entry.isEmpty()) continue;
-                
-                Path normalized = Paths.get(entry).toAbsolutePath();
-                
-                // Skip package subdirs that would break imports
-                if (normalized.toString().endsWith("openjiuwen/agent_evolving")) {
-                    continue;
-                }
-                
-                if (!pathParts.contains(normalized.toString())) {
-                    pathParts.add(normalized.toString());
-                }
+        return PpoRayRuntimeEnvHelper.buildRuntimeEnv(
+            AGENT_CORE_DIR.toString(),
+            System.getenv("PYTHONPATH"),
+            System.getenv()
+        );
+    }
+
+    private static Path resolveAgentCoreDir() {
+        Path cwd = Paths.get("").toAbsolutePath().normalize();
+        List<Path> candidates = new ArrayList<>();
+        candidates.add(cwd);
+        candidates.add(cwd.resolve("agent-core-0.1.12"));
+        if (cwd.getParent() != null) {
+            candidates.add(cwd.getParent().resolve("agent-core-0.1.12"));
+        }
+        for (Path candidate : candidates) {
+            if (Files.isDirectory(candidate.resolve("openjiuwen"))) {
+                return candidate;
             }
         }
-        
-        envVars.put("PYTHONPATH", String.join(":", pathParts));
-        
-        Map<String, Object> runtimeEnv = new HashMap<>();
-        runtimeEnv.put("env_vars", envVars);
-        
-        return runtimeEnv;
+        return cwd;
     }
     
     /**
@@ -85,23 +90,60 @@ public final class TaskRunner {
     
     /**
      * Load HF tokenizer.
-     * PLACEHOLDER: Requires HuggingFace tokenizer integration.
      */
     public static Object loadTokenizer(String modelPath) {
-        throw new UnsupportedOperationException(
-            "loadTokenizer requires HuggingFace tokenizer Java binding. " +
-            "Placeholder until HF tokenizer integration is available."
+        return loadTokenizer(modelPath, false);
+    }
+
+    /**
+     * Load HF tokenizer metadata after resolving the model path locally.
+     */
+    public static ModelComponentRef loadTokenizer(String modelPath, boolean trustRemoteCode) {
+        Path localModelPath = copyToLocal(modelPath);
+        return new ModelComponentRef(
+            "tokenizer",
+            localModelPath,
+            Map.of("trust_remote_code", trustRemoteCode)
         );
     }
     
     /**
      * Load HF processor.
-     * PLACEHOLDER: Requires HuggingFace processor integration.
      */
     public static Object loadProcessor(String modelPath) {
-        throw new UnsupportedOperationException(
-            "loadProcessor requires HuggingFace processor Java binding. " +
-            "Placeholder until HF processor integration is available."
+        return loadProcessor(modelPath, true);
+    }
+
+    /**
+     * Load HF processor metadata after resolving the model path locally.
+     */
+    public static ModelComponentRef loadProcessor(String modelPath, boolean useFast) {
+        Path localModelPath = copyToLocal(modelPath);
+        return new ModelComponentRef(
+            "processor",
+            localModelPath,
+            Map.of("use_fast", useFast)
+        );
+    }
+
+    /**
+     * Mirrors Python's BaseTaskRunner._init_model_components(config).
+     */
+    public static ModelComponents initModelComponents(Map<String, Object> config) {
+        String modelPath = stringAt(config, "actor_rollout_ref", "model", "path");
+        boolean trustRemoteCode = booleanAt(config, false, "data", "trust_remote_code");
+        Path localModelPath = copyToLocal(modelPath);
+        return new ModelComponents(
+            new ModelComponentRef(
+                "tokenizer",
+                localModelPath,
+                Map.of("trust_remote_code", trustRemoteCode)
+            ),
+            new ModelComponentRef(
+                "processor",
+                localModelPath,
+                Map.of("use_fast", true)
+            )
         );
     }
     
@@ -110,49 +152,135 @@ public final class TaskRunner {
      * <p>
      * Mirrors Python's {@code copy_to_local} from {@code verl.utils.fs}.
      * <p>
-     * For remote sources (hf://, s3://), requires external framework integration.
+     * For remote sources (hf://, s3://), delegates to the configured resolver.
      * For local sources, performs direct file copy.
      *
      * @param source Source path (local, hf://, or s3://)
      * @param target Target path
-     * @return Target path if successful, null if failed
+     * @return Resolved local path
      */
+    public static Path copyToLocal(String source) {
+        return copyToLocal(source, null);
+    }
+
     public static Path copyToLocal(String source, Path target) {
-        if (source == null || target == null) {
-            return null;
+        if (source == null || source.isBlank()) {
+            throw new IllegalArgumentException("source must not be blank");
         }
-        
+
         try {
-            // Handle remote sources - PLACEHOLDER until framework integration
-            if (source.startsWith("hf://") || source.startsWith("s3://") || 
-                source.startsWith("http://") || source.startsWith("https://")) {
-                logger.warning("Remote file copy not implemented for: " + source + 
-                    ". Requires HuggingFace/S3 SDK integration. Returning target as-is.");
-                // For remote sources, we cannot copy without external dependencies
-                // Return null to indicate the copy was not performed
-                return null;
-            }
-            
-            // Handle local file copy
-            Path sourcePath = Paths.get(source);
-            if (Files.exists(sourcePath)) {
-                // Create parent directories if needed
-                if (target.getParent() != null && !Files.exists(target.getParent())) {
-                    Files.createDirectories(target.getParent());
+            if (isRemoteSource(source)) {
+                RemoteArtifactResolver resolver = remoteArtifactResolver;
+                if (resolver == null) {
+                    throw new IllegalStateException("remote artifact resolver is not configured for " + source);
                 }
-                
-                // Copy file
-                Files.copy(sourcePath, target, StandardCopyOption.REPLACE_EXISTING);
-                logger.info("Copied file from " + source + " to " + target);
-                return target;
+                Path resolvedTarget = target != null ? target : defaultRemoteTarget(source);
+                Path resolved = resolver.copyToLocal(source, resolvedTarget);
+                if (resolved == null) {
+                    throw new IllegalStateException("remote artifact resolver returned null for " + source);
+                }
+                return resolved.toAbsolutePath().normalize();
             }
-            
-            // Source doesn't exist locally
-            logger.warning("Source file does not exist: " + source);
-            return null;
-        } catch (Exception e) {
-            logger.warning("Failed to copy to local: " + e.getMessage());
-            return null;
+
+            Path sourcePath = Paths.get(source).toAbsolutePath().normalize();
+            if (!Files.exists(sourcePath)) {
+                throw new IllegalArgumentException("source path does not exist: " + source);
+            }
+            if (target == null) {
+                return sourcePath;
+            }
+
+            Path targetPath = target.toAbsolutePath().normalize();
+            if (Files.isDirectory(sourcePath)) {
+                copyDirectory(sourcePath, targetPath);
+            } else {
+                if (targetPath.getParent() != null) {
+                    Files.createDirectories(targetPath.getParent());
+                }
+                Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            logger.info("Copied artifact from " + sourcePath + " to " + targetPath);
+            return targetPath;
+        } catch (IOException exception) {
+            throw new UncheckedIOException("failed to copy artifact from " + source, exception);
         }
+    }
+
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        try (var stream = Files.walk(source)) {
+            for (Path path : stream.sorted(Comparator.naturalOrder()).toList()) {
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative);
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(destination);
+                } else {
+                    if (destination.getParent() != null) {
+                        Files.createDirectories(destination.getParent());
+                    }
+                    Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    private static boolean isRemoteSource(String source) {
+        return source.startsWith("hf://")
+            || source.startsWith("s3://")
+            || source.startsWith("http://")
+            || source.startsWith("https://");
+    }
+
+    private static Path defaultRemoteTarget(String source) {
+        String safeName = Integer.toHexString(source.hashCode());
+        return Paths.get(System.getProperty("java.io.tmpdir"), "openjiuwen-agent-rl-cache", safeName);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapAt(Map<String, Object> root, String... path) {
+        Object current = root;
+        for (String part : path) {
+            if (!(current instanceof Map<?, ?> currentMap)) {
+                return Map.of();
+            }
+            current = currentMap.get(part);
+        }
+        if (current instanceof Map<?, ?> result) {
+            return (Map<String, Object>) result;
+        }
+        return Map.of();
+    }
+
+    private static String stringAt(Map<String, Object> root, String... path) {
+        if (root == null) {
+            throw new IllegalArgumentException("config must not be null");
+        }
+        if (path.length == 0) {
+            throw new IllegalArgumentException("path must not be empty");
+        }
+        Map<String, Object> parent = path.length == 1
+            ? root
+            : mapAt(root, Arrays.copyOf(path, path.length - 1));
+        Object value = parent.get(path[path.length - 1]);
+        if (value == null || String.valueOf(value).isBlank()) {
+            throw new IllegalArgumentException("missing config value: " + String.join(".", path));
+        }
+        return String.valueOf(value);
+    }
+
+    private static boolean booleanAt(Map<String, Object> root, boolean defaultValue, String... path) {
+        if (root == null || path.length == 0) {
+            return defaultValue;
+        }
+        Map<String, Object> parent = path.length == 1
+            ? root
+            : mapAt(root, Arrays.copyOf(path, path.length - 1));
+        Object value = parent.get(path[path.length - 1]);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 }

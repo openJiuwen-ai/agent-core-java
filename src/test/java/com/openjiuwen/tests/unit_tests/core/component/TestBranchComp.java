@@ -147,6 +147,7 @@ class TestBranchComp {
     static class Workflow {
         Map<String, WorkflowComponent> components = new LinkedHashMap<>();
         Map<String, List<String>> connections = new HashMap<>();
+        Map<String, BranchRouter> conditionalConnections = new HashMap<>();
         String startComp;
         String endComp;
 
@@ -169,7 +170,10 @@ class TestBranchComp {
         }
 
         void addConditionalConnection(String from, BranchRouter router) {
-            // Add conditional routing
+            conditionalConnections.put(from, router);
+            for (BranchRule branch : router.branches) {
+                addConnection(from, branch.target);
+            }
         }
     }
 
@@ -208,12 +212,18 @@ class TestBranchComp {
         workflow.setEndComp("end", new WorkflowComponent("end"));
         workflow.addConnection("a", "end");
         workflow.addConnection("b", "end");
+        BranchRouter router = new BranchRouter();
+        router.addBranch("len(${start.d}) > 2", "a");
+        router.addBranch("len(${start.d}) < 2", "b");
+        workflow.addConditionalConnection("start", router);
 
         assertNotNull(workflow.startComp);
         assertNotNull(workflow.endComp);
         assertEquals(4, workflow.components.size());
         assertTrue(workflow.connections.containsKey("a"));
         assertTrue(workflow.connections.containsKey("b"));
+        assertSame(router, workflow.conditionalConnections.get("start"));
+        assertEquals(List.of("a", "b"), workflow.connections.get("start"));
     }
 
     @Test

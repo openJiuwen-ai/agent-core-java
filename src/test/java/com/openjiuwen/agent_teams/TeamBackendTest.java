@@ -22,7 +22,7 @@ class TeamBackendTest {
     @Test
     void teamRoleEnumValues() {
         TeamRole[] roles = TeamRole.values();
-        assertEquals(2, roles.length);
+        assertArrayEquals(new TeamRole[] {TeamRole.LEADER, TeamRole.TEAMMATE, TeamRole.HUMAN_AGENT}, roles);
     }
 
     @Test

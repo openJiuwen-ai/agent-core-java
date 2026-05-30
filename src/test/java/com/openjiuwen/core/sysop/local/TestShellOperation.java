@@ -228,7 +228,7 @@ class TestShellOperation {
         BaseShellOperation shell = sysOp.shell();
         var tools = shell.listTools();
 
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
 
         List<String> toolNames = new ArrayList<>();
         for (var tool : tools) {
@@ -236,6 +236,7 @@ class TestShellOperation {
         }
         assertTrue(toolNames.contains("executeCmd"));
         assertTrue(toolNames.contains("executeCmdStream"));
+        assertTrue(toolNames.contains("executeCmdBackground"));
 
         var execTool = tools.stream()
                 .filter(t -> "executeCmd".equals(t.getName()))

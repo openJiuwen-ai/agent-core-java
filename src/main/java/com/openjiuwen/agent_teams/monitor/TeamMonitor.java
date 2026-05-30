@@ -4,6 +4,13 @@
 
 package com.openjiuwen.agent_teams.monitor;
 
+import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agent_teams.schema.task.TaskStatus;
+import com.openjiuwen.agent_teams.tools.Team;
+import com.openjiuwen.agent_teams.tools.TeamBackend;
+
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +49,7 @@ public class TeamMonitor {
     private final Object teamAgent;  // TeamAgent
     private final ConcurrentLinkedQueue<MonitorEvent> eventQueue;
     private final AtomicBoolean started;
+    private final Consumer<Object> listener;
 
     /**
      * Initialize the monitor.
@@ -58,6 +66,7 @@ public class TeamMonitor {
         this.teamAgent = teamAgent;
         this.eventQueue = new ConcurrentLinkedQueue<>();
         this.started = new AtomicBoolean(false);
+        this.listener = this::onEvent;
     }
 
     public String getTeamId() {
@@ -80,7 +89,7 @@ public class TeamMonitor {
             return;
         }
         // Register event listener (duck-typed call)
-        addEventListener(this::onEvent);
+        addEventListener(listener);
         started.set(true);
         logger.info("TeamMonitor started for team " + teamId);
     }
@@ -92,9 +101,8 @@ public class TeamMonitor {
         if (!started.get()) {
             return;
         }
-        removeEventListener(this::onEvent);
+        removeEventListener(listener);
         started.set(false);
-        eventQueue.offer(null);  // Sentinel to signal end
         logger.info("TeamMonitor stopped for team " + teamId);
     }
 
@@ -243,36 +251,164 @@ public class TeamMonitor {
     // ------------------------------------------------------------------
 
     private void addEventListener(Consumer<Object> listener) {
-        // Placeholder: should call teamAgent.addEventListener(listener)
-        // Implementation depends on TeamAgent interface
+        if (teamAgent instanceof TeamAgent agent) {
+            agent.addEventListener(listener);
+            return;
+        }
+        invokeListenerMethod("addEventListener", listener);
     }
 
     private void removeEventListener(Consumer<Object> listener) {
-        // Placeholder: should call teamAgent.removeEventListener(listener)
+        if (teamAgent instanceof TeamAgent agent) {
+            agent.removeEventListener(listener);
+            return;
+        }
+        invokeListenerMethod("removeEventListener", listener);
     }
 
     private CompletableFuture<Object> queryTeamAsync(String teamId) {
-        // Placeholder: should call db.team.getTeam(teamId)
-        return CompletableFuture.completedFuture(null);
+        if (db instanceof TeamBackend backend) {
+            Team team = new Team(
+                    backend.getTeamName(),
+                    backend.getTeamName(),
+                    backend.getMemberName(),
+                    null,
+                    null,
+                    System.currentTimeMillis(),
+                    System.currentTimeMillis()
+            );
+            return CompletableFuture.completedFuture(team);
+        }
+        return CompletableFuture.completedFuture(invokeObjectMethod(db, "getTeam", teamId));
     }
 
     private CompletableFuture<List<Object>> queryTeamMembersAsync(String teamId, String status) {
-        // Placeholder: should call db.member.getTeamMembers(teamId, status)
-        return CompletableFuture.completedFuture(new ArrayList<>());
+        if (db instanceof TeamBackend backend) {
+            List<Object> members = backend.listMembers().stream()
+                    .filter(member -> status == null || status.isBlank()
+                            || status.equalsIgnoreCase(member.getStatus().name()))
+                    .map(member -> (Object) member)
+                    .toList();
+            return CompletableFuture.completedFuture(members);
+        }
+        Object result = invokeObjectMethod(db, "getTeamMembers", teamId, status);
+        return CompletableFuture.completedFuture(asObjectList(result));
     }
 
     private CompletableFuture<Object> queryMemberAsync(String memberName, String teamId) {
-        // Placeholder: should call db.member.getMember(memberName, teamId)
-        return CompletableFuture.completedFuture(null);
+        if (db instanceof TeamBackend backend) {
+            return CompletableFuture.completedFuture(backend.getMember(memberName));
+        }
+        return CompletableFuture.completedFuture(invokeObjectMethod(db, "getMember", memberName, teamId));
     }
 
     private CompletableFuture<List<Object>> queryTeamTasksAsync(String teamId, String status) {
-        // Placeholder: should call db.task.getTeamTasks(teamId, status)
-        return CompletableFuture.completedFuture(new ArrayList<>());
+        if (db instanceof TeamBackend backend) {
+            TaskStatus taskStatus = parseTaskStatus(status);
+            List<Object> tasks = backend.getTaskManager().listByStatus(taskStatus).stream()
+                    .map(task -> (Object) task)
+                    .toList();
+            return CompletableFuture.completedFuture(tasks);
+        }
+        Object result = invokeObjectMethod(db, "getTeamTasks", teamId, status);
+        return CompletableFuture.completedFuture(asObjectList(result));
     }
 
     private CompletableFuture<List<Object>> queryMessagesAsync(String teamId, String toMember, String fromMember) {
-        // Placeholder: should call db.message.getMessages(...)
-        return CompletableFuture.completedFuture(new ArrayList<>());
+        if (db instanceof TeamBackend backend) {
+            List<Object> messages = new ArrayList<>();
+            messages.addAll(backend.getMessages(toMember, false, fromMember));
+            if (toMember == null) {
+                messages.addAll(backend.getBroadcastMessages(false, fromMember));
+            }
+            return CompletableFuture.completedFuture(messages);
+        }
+        Object result = toMember != null
+                ? invokeObjectMethod(db, "getMessages", teamId, toMember, fromMember)
+                : invokeObjectMethod(db, "getTeamMessages", teamId);
+        return CompletableFuture.completedFuture(asObjectList(result));
+    }
+
+    public static TeamMonitor createMonitor(TeamAgent teamAgent) {
+        if (teamAgent == null) {
+            throw new IllegalArgumentException("teamAgent cannot be null");
+        }
+        if (teamAgent.getRuntimeContext() == null || teamAgent.getRuntimeContext().getRole() != TeamRole.LEADER) {
+            throw new IllegalArgumentException("TeamMonitor can only be bound to a leader TeamAgent");
+        }
+        TeamBackend backend = teamAgent.getTeamBackend();
+        if (backend == null) {
+            throw new IllegalArgumentException("TeamAgent has no team backend configured");
+        }
+        return new TeamMonitor(backend.getTeamName(), "", backend, teamAgent);
+    }
+
+    private void invokeListenerMethod(String methodName, Consumer<Object> listener) {
+        if (teamAgent == null) {
+            return;
+        }
+        try {
+            Method method = teamAgent.getClass().getMethod(methodName, Consumer.class);
+            method.invoke(teamAgent, listener);
+        } catch (NoSuchMethodException e) {
+            String snakeName = "addEventListener".equals(methodName) ? "add_event_listener" : "remove_event_listener";
+            try {
+                Method method = teamAgent.getClass().getMethod(snakeName, Object.class);
+                method.invoke(teamAgent, listener);
+            } catch (ReflectiveOperationException ignored) {
+                // Duck-typed monitor: missing listener methods mean there is no event source to attach.
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to call " + methodName + " on " + teamAgent.getClass().getName(), e);
+        }
+    }
+
+    private static Object invokeObjectMethod(Object target, String methodName, Object... args) {
+        if (target == null) {
+            return null;
+        }
+        for (Method method : target.getClass().getMethods()) {
+            if (!method.getName().equals(methodName) || method.getParameterCount() != args.length) {
+                continue;
+            }
+            try {
+                Object value = method.invoke(target, args);
+                if (value instanceof CompletableFuture<?> future) {
+                    return future.join();
+                }
+                if (value instanceof java.util.Optional<?> optional) {
+                    return optional.orElse(null);
+                }
+                return value;
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Failed to call " + methodName + " on " + target.getClass().getName(), e);
+            }
+        }
+        return null;
+    }
+
+    private static List<Object> asObjectList(Object value) {
+        if (value instanceof CompletableFuture<?> future) {
+            return asObjectList(future.join());
+        }
+        if (value instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        if (value == null) {
+            return new ArrayList<>();
+        }
+        return new ArrayList<>(List.of(value));
+    }
+
+    private static TaskStatus parseTaskStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        for (TaskStatus candidate : TaskStatus.values()) {
+            if (candidate.name().equalsIgnoreCase(status)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 }

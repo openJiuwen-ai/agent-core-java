@@ -6,16 +6,27 @@ package com.openjiuwen.unit_tests.agent.llm_agent;
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.components.llm.FieldInfo;
@@ -50,8 +61,11 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("TestMockLlmAgentAutoSession")
 class TestMockLlmAgentAutoSession {
 
+    private static final String MOCK_PROVIDER = "MockAutoSessionOpenAI";
+    private static final Deque<AssistantMessage> MOCK_RESPONSES = new ArrayDeque<>();
+
     private static final ModelConfig MODEL_CONFIG = new ModelConfig(
-            "OpenAI",
+            MOCK_PROVIDER,
             BaseModelInfo.builder()
                     .modelName("gpt-3.5-turbo")
                     .apiBase("https://mock.api")
@@ -60,7 +74,7 @@ class TestMockLlmAgentAutoSession {
     );
 
     private static final ModelClientConfig MODEL_CLIENT_CONFIG = ModelClientConfig.builder()
-            .clientProvider("OpenAI")
+            .clientProvider(MOCK_PROVIDER)
             .apiKey("sk-fake")
             .apiBase("https://mock.api/v1")
             .verifySsl(false)
@@ -69,6 +83,51 @@ class TestMockLlmAgentAutoSession {
     private static final ModelRequestConfig MODEL_REQUEST_CONFIG = ModelRequestConfig.builder()
             .modelName("gpt-3.5-turbo")
             .build();
+
+    private static void setMockResponses(AssistantMessage... responses) {
+        MOCK_RESPONSES.clear();
+        MOCK_RESPONSES.addAll(Arrays.asList(responses));
+    }
+
+    private static AssistantMessage toolCallResponse(String id, String workflowName, String arguments) {
+        return AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(ToolCall.builder()
+                        .id(id)
+                        .type("function")
+                        .name(workflowName)
+                        .arguments(arguments)
+                        .build()))
+                .usageMetadata(UsageMetadata.builder()
+                        .modelName("mock")
+                        .build())
+                .finishReason("tool_calls")
+                .build();
+    }
+
+    private static AssistantMessage textResponse(String content) {
+        return AssistantMessage.builder()
+                .content(content)
+                .usageMetadata(UsageMetadata.builder()
+                        .modelName("mock")
+                        .build())
+                .finishReason("stop")
+                .build();
+    }
+
+    private static void registerMockModelFactory() {
+        Model.registerFactory(new Model.ModelClientFactory() {
+            @Override
+            public String providerName() {
+                return MOCK_PROVIDER;
+            }
+
+            @Override
+            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+                return new MockModelClient(modelConfig, clientConfig);
+            }
+        });
+    }
 
     private static LlmAgentConfig makeAgentConfig(String agentId, List<WorkflowSchema> workflows) {
         return LlmAgent.createLlmAgentConfig(
@@ -131,13 +190,101 @@ class TestMockLlmAgentAutoSession {
                 .build();
     }
 
+    private static List<?> outputItems(Object result) {
+        if (result instanceof ControllerOutput controllerOutput && controllerOutput.getData() instanceof List<?> list) {
+            return list;
+        }
+        if (result instanceof List<?> list) {
+            return list;
+        }
+        return List.of(result);
+    }
+
+    private static List<OutputSchema> interactionChunks(List<?> chunks) {
+        List<OutputSchema> interactions = new ArrayList<>();
+        for (Object chunk : chunks) {
+            if (chunk instanceof OutputSchema os && "__interaction__".equals(os.getType())) {
+                interactions.add(os);
+            }
+        }
+        return interactions;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String collectOutputText(List<?> chunks) {
+        StringBuilder text = new StringBuilder();
+        for (Object chunk : chunks) {
+            if (chunk instanceof OutputSchema os && os.getPayload() instanceof Map<?, ?> payload) {
+                Object output = ((Map<String, Object>) payload).get("output");
+                if (output != null) {
+                    text.append(output);
+                }
+            }
+        }
+        return text.toString();
+    }
+
+    private static final class MockModelClient extends BaseModelClient {
+        private MockModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+            super(modelConfig, modelClientConfig);
+        }
+
+        @Override
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                                       Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                                       Map<String, Object> kwargs) {
+            AssistantMessage response = MOCK_RESPONSES.pollFirst();
+            return response != null ? response : textResponse("Task complete.");
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                                                      String model, Integer maxTokens, String stop,
+                                                      BaseOutputParser outputParser, Float timeout,
+                                                      Map<String, Object> kwargs) {
+            AssistantMessage response = invoke(messages, tools, temperature, topP, model, maxTokens,
+                    stop, outputParser, timeout, kwargs);
+            AssistantMessageChunk chunk = AssistantMessageChunk.builder()
+                    .content(response.getContent())
+                    .toolCalls(response.getToolCalls())
+                    .usageMetadata(response.getUsageMetadata())
+                    .finishReason(response.getFinishReason())
+                    .build();
+            return List.of(chunk).iterator();
+        }
+
+        @Override
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                                                     String negativePrompt, int n, boolean promptExtend,
+                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("image generation is not used in this test");
+        }
+
+        @Override
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                                                      String languageType, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("speech generation is not used in this test");
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                                                     String model, String size, String resolution, int duration,
+                                                     boolean promptExtend, boolean watermark, String negativePrompt,
+                                                     Integer seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("video generation is not used in this test");
+        }
+    }
+
     @BeforeEach
     void setUp() {
+        registerMockModelFactory();
+        MOCK_RESPONSES.clear();
         Runner.start();
     }
 
     @AfterEach
     void tearDown() {
+        MOCK_RESPONSES.clear();
         Runner.stop();
     }
 
@@ -151,6 +298,10 @@ class TestMockLlmAgentAutoSession {
         @SuppressWarnings("unchecked")
         void testInvokeAutoSessionWorkflowInterruptAndResume() {
             String wfId = "wf_auto";
+            setMockResponses(
+                    toolCallResponse("call_001", wfId, "{\"query\": \"hello\"}"),
+                    textResponse("Collected info: Shanghai. Task complete.")
+            );
             Workflow flow = makeSingleQuestionerWorkflow(wfId);
             LlmAgentConfig agentConfig = makeAgentConfig("agent_invoke_auto", List.of(makeWorkflowSchema(flow)));
 
@@ -164,14 +315,11 @@ class TestMockLlmAgentAutoSession {
             );
 
             assertNotNull(result);
-            if (result instanceof List) {
-                List<?> resultList = (List<?>) result;
-                assertTrue(resultList.size() > 0);
-                if (resultList.get(0) instanceof OutputSchema) {
-                    OutputSchema first = (OutputSchema) resultList.get(0);
-                    assertEquals("__interaction__", first.getType());
-                }
-            }
+            List<?> resultChunks = outputItems(result);
+            List<OutputSchema> interactions = interactionChunks(resultChunks);
+            assertEquals(1, interactions.size());
+            assertInstanceOf(InteractionOutput.class, interactions.get(0).getPayload());
+            assertEquals("questioner", ((InteractionOutput) interactions.get(0).getPayload()).getId());
 
             // --- 2nd invoke: resume with user answer ---
             InteractiveInput userInput = new InteractiveInput();
@@ -182,6 +330,7 @@ class TestMockLlmAgentAutoSession {
             );
 
             assertNotNull(result2);
+            assertTrue(collectOutputText(outputItems(result2)).contains("Shanghai"));
         }
     }
 
@@ -195,6 +344,10 @@ class TestMockLlmAgentAutoSession {
         @SuppressWarnings("unchecked")
         void testStreamAutoSessionWorkflowInterruptAndResume() {
             String wfId = "wf_stream";
+            setMockResponses(
+                    toolCallResponse("call_s01", wfId, "{\"query\": \"weather\"}"),
+                    textResponse("Weather in Beijing is sunny.")
+            );
             Workflow flow = makeSingleQuestionerWorkflow(wfId);
             LlmAgentConfig agentConfig = makeAgentConfig("agent_stream_auto", List.of(makeWorkflowSchema(flow)));
 
@@ -208,7 +361,7 @@ class TestMockLlmAgentAutoSession {
             Iterator<Object> streamIter = (Iterator<Object>) agent.stream(
                     Map.of("query", "weather query", "conversation_id", convId),
                     null,
-                    List.of()
+                    List.of(StreamMode.OUTPUT)
             );
 
             while (streamIter.hasNext()) {
@@ -222,7 +375,9 @@ class TestMockLlmAgentAutoSession {
                 allChunks.add(chunk);
             }
 
-            assertTrue(interactionChunks.size() >= 0, "Expected interaction chunks");
+            assertEquals(1, interactionChunks.size(), "Expected one interaction chunk");
+            assertInstanceOf(InteractionOutput.class, interactionChunks.get(0).getPayload());
+            assertEquals("questioner", ((InteractionOutput) interactionChunks.get(0).getPayload()).getId());
 
             // --- 2nd stream: resume, expect final answer ---
             InteractiveInput userInput = new InteractiveInput();
@@ -234,7 +389,7 @@ class TestMockLlmAgentAutoSession {
             Iterator<Object> streamIter2 = (Iterator<Object>) agent.stream(
                     Map.of("query", userInput, "conversation_id", convId),
                     null,
-                    List.of()
+                    List.of(StreamMode.OUTPUT)
             );
 
             while (streamIter2.hasNext()) {
@@ -248,7 +403,9 @@ class TestMockLlmAgentAutoSession {
                 allChunks2.add(chunk);
             }
 
+            assertEquals(0, interactionChunks2.size(), "Expected no interaction chunks after resume");
             assertTrue(allChunks2.size() > 0, "Expected final output chunks");
+            assertTrue(collectOutputText(allChunks2).contains("Beijing"));
         }
     }
 }

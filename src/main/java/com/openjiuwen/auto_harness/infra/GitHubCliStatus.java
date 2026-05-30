@@ -16,6 +16,16 @@ public class GitHubCliStatus {
     private boolean installedNow;
     private String path = "";
 
+    public GitHubCliStatus() {
+    }
+
+    public GitHubCliStatus(boolean available, boolean authenticated, boolean installedNow, String path) {
+        this.available = available;
+        this.authenticated = authenticated;
+        this.installedNow = installedNow;
+        this.path = path == null ? "" : path;
+    }
+
     public boolean isAvailable() { return available; }
     public void setAvailable(boolean available) { this.available = available; }
     public boolean isAuthenticated() { return authenticated; }

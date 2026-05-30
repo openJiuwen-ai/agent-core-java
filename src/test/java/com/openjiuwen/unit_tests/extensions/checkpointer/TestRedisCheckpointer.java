@@ -6,27 +6,21 @@ package com.openjiuwen.unit_tests.extensions.checkpointer;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
-import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.core.session.state.agent_state.StateCollection;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
-import com.openjiuwen.extensions.checkpointer.redis.storage.AgentStorage;
 import com.openjiuwen.extensions.checkpointer.redis.storage.GraphStore;
-import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 /**
  * Tests for RedisCheckpointer core functionality.
@@ -40,6 +34,7 @@ import static org.mockito.Mockito.*;
 public class TestRedisCheckpointer {
 
     private RedisStore redisStore;
+    private InMemoryRedisClient redisClient;
     private RedisCheckpointer checkpointer;
     private AgentSession mockAgentSession;
     private String sessionId;
@@ -47,17 +42,14 @@ public class TestRedisCheckpointer {
 
     @BeforeEach
     void setUp() {
-        // Skip setup if Redis not available
-        // In production, this would connect to Redis
-        redisStore = mock(RedisStore.class);
+        redisClient = new InMemoryRedisClient();
+        redisStore = new RedisStore(redisClient);
         checkpointer = new RedisCheckpointer(redisStore, null);
         
         sessionId = "test_session_" + UUID.randomUUID().toString().substring(0, 8);
         agentId = "test_agent_" + UUID.randomUUID().toString().substring(0, 8);
         
-        mockAgentSession = mock(AgentSession.class);
-        when(mockAgentSession.sessionId()).thenReturn(sessionId);
-        when(mockAgentSession.agentId()).thenReturn(agentId);
+        mockAgentSession = createAgentSession(sessionId, agentId);
     }
 
     @AfterEach
@@ -69,32 +61,25 @@ public class TestRedisCheckpointer {
     // Test fixtures helpers
     // ---------------------------------------------------------------------------
 
+    private AgentSession createAgentSession(String newSessionId, String newAgentId) {
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike(newAgentId, newAgentId, "agent"));
+        return new AgentSession(newSessionId, config, null);
+    }
+
     private AgentSession createMockAgentSession() {
-        AgentSession session = mock(AgentSession.class);
         String newSessionId = "test_session_" + UUID.randomUUID().toString().substring(0, 8);
         String newAgentId = "test_agent_" + UUID.randomUUID().toString().substring(0, 8);
-        
-        when(session.sessionId()).thenReturn(newSessionId);
-        when(session.agentId()).thenReturn(newAgentId);
-        
-        StateCollection state = mock(StateCollection.class);
-        when(session.state()).thenReturn(state);
-        
-        return session;
+        return createAgentSession(newSessionId, newAgentId);
     }
 
     private WorkflowSession createMockWorkflowSession(AgentSession parent) {
         String workflowId = "test_workflow_" + UUID.randomUUID().toString().substring(0, 8);
-        WorkflowSession session = mock(WorkflowSession.class);
-        
-        when(session.sessionId()).thenReturn(parent.sessionId());
-        when(session.workflowId()).thenReturn(workflowId);
-        when(session.parent()).thenReturn(parent);
-        
-        StateCollection state = mock(StateCollection.class);
-        when(session.state()).thenReturn(state);
-        
-        return session;
+        return createWorkflowSession(parent, workflowId, parent.sessionId());
+    }
+
+    private WorkflowSession createWorkflowSession(AgentSession parent, String workflowId, String workflowSessionId) {
+        return new WorkflowSession(workflowId, parent, workflowSessionId, null, null);
     }
 
     // ---------------------------------------------------------------------------
@@ -105,48 +90,27 @@ public class TestRedisCheckpointer {
     @DisplayName("Test pre_agent_execute saves and recovers agent state")
     @Tag("level0")
     void testPreAgentExecuteSavesAndRecoversAgentState() {
-        // Setup mock state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key1", "value1");
-        stateData.put("key2", 42);
-        when(state.getState()).thenReturn(stateData);
-        when(mockAgentSession.state()).thenReturn(state);
+        mockAgentSession.state().update(Map.of("key1", "value1", "key2", 42));
 
         // Save state
         checkpointer.preAgentExecute(mockAgentSession, null);
         checkpointer.interruptAgentExecute(mockAgentSession);
 
         // Create new session and recover
-        AgentSession newSession = createMockAgentSession();
-        when(newSession.sessionId()).thenReturn(sessionId);
-        when(newSession.agentId()).thenReturn(agentId);
-        
-        StateCollection newState = mock(StateCollection.class);
-        when(newState.getState()).thenReturn(new HashMap<>());
-        when(newSession.state()).thenReturn(newState);
-
-        // Mock agent storage to return saved state
-        AgentStorage agentStorage = checkpointer.getAgentStorage();
-        when(redisStore.get(any())).thenReturn(Optional.of(serializeState(stateData)));
+        AgentSession newSession = createAgentSession(sessionId, agentId);
 
         // Recover
         checkpointer.preAgentExecute(newSession, null);
 
         // Verify state was recovered
-        verify(newState, atLeastOnce()).update(any());
+        assertThat(newSession.state().get("key1")).isEqualTo("value1");
+        assertThat(newSession.state().get("key2")).isEqualTo(42);
     }
 
     @Test
     @DisplayName("Test pre_agent_execute with inputs")
     @Tag("level0")
     void testPreAgentExecuteWithInputs() {
-        // Setup mock state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        when(state.getState()).thenReturn(stateData);
-        when(mockAgentSession.state()).thenReturn(state);
-
         // Execute with inputs
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("test_input", "test_value");
@@ -154,13 +118,11 @@ public class TestRedisCheckpointer {
         checkpointer.preAgentExecute(mockAgentSession, inputs);
 
         // Verify inputs were set - INTERACTIVE_INPUT is set in agent_state
-        verify(state).update(argThat(map -> {
-            if (map instanceof Map) {
-                Map<?, ?> m = (Map<?, ?>) map;
-                return m.containsKey(Constant.INTERACTIVE_INPUT);
-            }
-            return false;
-        }));
+        Map<String, Object> stateData = mockAgentSession.state().getState();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentState = (Map<String, Object>) stateData.get("agent_state");
+        assertThat(agentState).containsKey(Constant.INTERACTIVE_INPUT);
+        assertThat(agentState.get(Constant.INTERACTIVE_INPUT)).isEqualTo(List.of(inputs));
     }
 
     // ---------------------------------------------------------------------------
@@ -171,19 +133,13 @@ public class TestRedisCheckpointer {
     @DisplayName("Test interrupt_agent_execute saves state")
     @Tag("level0")
     void testInterruptAgentExecuteSavesState() {
-        // Setup mock state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(mockAgentSession.state()).thenReturn(state);
+        mockAgentSession.state().update(Map.of("key", "value"));
 
         // Execute interrupt
         checkpointer.interruptAgentExecute(mockAgentSession);
 
         // Verify state was saved by checking exists
-        // In real test, would verify with RedisStore
-        verify(state, atLeastOnce()).getState();
+        assertThat(checkpointer.getAgentStorage().exists(mockAgentSession).join()).isTrue();
     }
 
     // ---------------------------------------------------------------------------
@@ -194,18 +150,13 @@ public class TestRedisCheckpointer {
     @DisplayName("Test post_agent_execute saves state")
     @Tag("level0")
     void testPostAgentExecuteSavesState() {
-        // Setup mock state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(mockAgentSession.state()).thenReturn(state);
+        mockAgentSession.state().update(Map.of("key", "value"));
 
         // Execute post
         checkpointer.postAgentExecute(mockAgentSession);
 
         // Verify state was saved
-        verify(state, atLeastOnce()).getState();
+        assertThat(checkpointer.getAgentStorage().exists(mockAgentSession).join()).isTrue();
     }
 
     // ---------------------------------------------------------------------------
@@ -221,30 +172,22 @@ public class TestRedisCheckpointer {
         String workflowId = workflowSession.workflowId();
         
         // Set some state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("workflow_key", "workflow_value");
-        when(state.getState()).thenReturn(stateData);
-        when(workflowSession.state()).thenReturn(state);
+        ((WorkflowCommitState) workflowSession.state())
+                .updateAndCommitWorkflowState(Map.of("workflow_key", "workflow_value"));
 
         // Save state via workflow storage
-        WorkflowStorage workflowStorage = checkpointer.getWorkflowStorage();
+        checkpointer.getWorkflowStorage().save(workflowSession).join();
         
         // Create new session and recover
-        WorkflowSession newSession = createMockWorkflowSession(mockAgentSession);
-        when(newSession.sessionId()).thenReturn(sessionId);
-        when(newSession.workflowId()).thenReturn(workflowId);
-        
-        StateCollection newState = mock(StateCollection.class);
-        when(newState.getState()).thenReturn(new HashMap<>());
-        when(newSession.state()).thenReturn(newState);
+        WorkflowSession newSession = createWorkflowSession(mockAgentSession, workflowId, sessionId);
 
         // Recover with inputs
         InteractiveInput inputs = new InteractiveInput();
         checkpointer.preWorkflowExecute(newSession, inputs);
 
-        // Verify state was recovered (would call setState in real scenario)
-        verify(newState, atLeast(0)).getState();
+        // Verify state was recovered
+        assertThat(((WorkflowCommitState) newSession.state()).getWorkflow("workflow_key"))
+                .isEqualTo("workflow_value");
     }
 
     // ---------------------------------------------------------------------------
@@ -258,18 +201,16 @@ public class TestRedisCheckpointer {
         // Create workflow session
         WorkflowSession workflowSession = createMockWorkflowSession(mockAgentSession);
         
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(workflowSession.state()).thenReturn(state);
+        ((WorkflowCommitState) workflowSession.state()).updateAndCommitWorkflowState(Map.of("key", "value"));
+        checkpointer.getWorkflowStorage().save(workflowSession).join();
+        assertThat(checkpointer.getWorkflowStorage().exists(workflowSession).join()).isTrue();
 
         // Execute with success result
         Map<String, Object> result = new HashMap<>();
         checkpointer.postWorkflowExecute(workflowSession, result, null);
 
-        // In real test, would verify state was cleared via workflowStorage.exists()
-        verify(state, atLeastOnce()).getState();
+        // Verify state was cleared
+        assertThat(checkpointer.getWorkflowStorage().exists(workflowSession).join()).isFalse();
     }
 
     @Test
@@ -279,11 +220,7 @@ public class TestRedisCheckpointer {
         // Create workflow session
         WorkflowSession workflowSession = createMockWorkflowSession(mockAgentSession);
         
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(workflowSession.state()).thenReturn(state);
+        ((WorkflowCommitState) workflowSession.state()).updateAndCommitWorkflowState(Map.of("key", "value"));
 
         // Execute with exception
         Exception exception = new RuntimeException("Test error");
@@ -294,7 +231,7 @@ public class TestRedisCheckpointer {
          .hasMessageContaining("Test error");
 
         // Verify state was saved
-        verify(state, atLeastOnce()).getState();
+        assertThat(checkpointer.getWorkflowStorage().exists(workflowSession).join()).isTrue();
     }
 
     @Test
@@ -304,11 +241,7 @@ public class TestRedisCheckpointer {
         // Create workflow session
         WorkflowSession workflowSession = createMockWorkflowSession(mockAgentSession);
         
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(workflowSession.state()).thenReturn(state);
+        ((WorkflowCommitState) workflowSession.state()).updateAndCommitWorkflowState(Map.of("key", "value"));
 
         // Execute with interrupt result
         Map<String, Object> result = new HashMap<>();
@@ -317,7 +250,7 @@ public class TestRedisCheckpointer {
         checkpointer.postWorkflowExecute(workflowSession, result, null);
 
         // Verify state was saved
-        verify(state, atLeastOnce()).getState();
+        assertThat(checkpointer.getWorkflowStorage().exists(workflowSession).join()).isTrue();
     }
 
     // ---------------------------------------------------------------------------
@@ -328,21 +261,17 @@ public class TestRedisCheckpointer {
     @DisplayName("Test release with specific agent_id")
     @Tag("level0")
     void testReleaseWithAgentId() {
-        // Setup mock state
-        StateCollection state = mock(StateCollection.class);
-        Map<String, Object> stateData = new HashMap<>();
-        stateData.put("key", "value");
-        when(state.getState()).thenReturn(stateData);
-        when(mockAgentSession.state()).thenReturn(state);
+        mockAgentSession.state().update(Map.of("key", "value"));
 
         // Save state
         checkpointer.interruptAgentExecute(mockAgentSession);
+        assertThat(checkpointer.getAgentStorage().exists(mockAgentSession).join()).isTrue();
 
         // Release agent
         checkpointer.release(sessionId, agentId);
 
-        // Verify release was called
-        verify(redisStore, atLeast(0)).deleteByPrefix(any(), anyInt());
+        // Verify state was cleared
+        assertThat(checkpointer.getAgentStorage().exists(mockAgentSession).join()).isFalse();
     }
 
     @Test
@@ -351,11 +280,17 @@ public class TestRedisCheckpointer {
     void testReleaseWithoutAgentIdDeletesAllSessionKeys() {
         String testSessionId = "test_session_" + UUID.randomUUID().toString().substring(0, 8);
 
+        redisStore.set(testSessionId + ":key1", "value1");
+        redisStore.set(testSessionId + ":key2", "value2");
+        redisStore.set("other_session:key3", "value3");
+
         // Release session
         checkpointer.release(testSessionId);
 
-        // Verify deleteByPrefix was called with session prefix
-        verify(redisStore).deleteByPrefix(testSessionId + ":", 500);
+        // Verify session keys were deleted and other session keys remain
+        assertThat(redisStore.exists(testSessionId + ":key1")).isFalse();
+        assertThat(redisStore.exists(testSessionId + ":key2")).isFalse();
+        assertThat(redisStore.exists("other_session:key3")).isTrue();
     }
 
     @Test
@@ -418,8 +353,53 @@ public class TestRedisCheckpointer {
     // Helper methods
     // ---------------------------------------------------------------------------
 
-    private byte[] serializeState(Map<String, Object> state) {
-        // Placeholder for serialization
-        return new byte[0];
+    private static final class InMemoryRedisClient {
+        private final Map<String, Object> values = new LinkedHashMap<>();
+
+        public synchronized void set(String key, Object value) {
+            values.put(key, value);
+        }
+
+        public synchronized boolean set(String key, Object value, Boolean nx, Integer expiry) {
+            if (Boolean.TRUE.equals(nx) && values.containsKey(key)) {
+                return false;
+            }
+            values.put(key, value);
+            return true;
+        }
+
+        public synchronized Object get(String key) {
+            return values.get(key);
+        }
+
+        public synchronized long exists(String key) {
+            return values.containsKey(key) ? 1L : 0L;
+        }
+
+        public synchronized long delete(String... keys) {
+            long deleted = 0L;
+            for (String key : keys) {
+                if (values.remove(key) != null) {
+                    deleted++;
+                }
+            }
+            return deleted;
+        }
+
+        public synchronized List<String> scanIter(String pattern) {
+            String prefix = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
+            List<String> keys = new ArrayList<>();
+            for (String key : values.keySet()) {
+                if (key.startsWith(prefix)) {
+                    keys.add(key);
+                }
+            }
+            keys.sort(String::compareTo);
+            return keys;
+        }
+
+        public synchronized boolean expire(String key, int ttlSeconds) {
+            return values.containsKey(key);
+        }
     }
 }

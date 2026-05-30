@@ -29,7 +29,7 @@ public final class FormHandlerManager {
     private Class<? extends FormHandler<?>> defaultHandlerClass;
 
     private FormHandlerManager() {
-        this.defaultHandlerClass = null;
+        this.defaultHandlerClass = DefaultFormHandler.class;
     }
 
     /**
@@ -88,17 +88,15 @@ public final class FormHandlerManager {
      */
     @SuppressWarnings("unchecked")
     public <T> FormHandler<T> getHandler(String handlerType) {
-        FormHandler<?> handler = handlerMap.get(handlerType);
+        FormHandler<?> handler = handlerType == null ? null : handlerMap.get(handlerType);
         if (handler != null) {
             return (FormHandler<T>) handler;
         }
-        if (defaultHandlerClass != null) {
-            try {
-                return (FormHandler<T>) defaultHandlerClass.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                LOG.error("Failed to instantiate default handler: {}", e.getMessage());
-            }
+        try {
+            return (FormHandler<T>) defaultHandlerClass.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            LOG.error("Failed to instantiate default handler: {}", e.getMessage());
+            return null;
         }
-        return (FormHandler<T>) new DefaultFormHandler();
     }
 }

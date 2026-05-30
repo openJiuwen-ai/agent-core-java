@@ -416,6 +416,7 @@ class TestStandardReranker {
             String query = "test query";
             MultimodalDocument doc = new MultimodalDocument();
             doc.addField("text", "Hello world");
+            doc.setText("Hello world");
             
             StandardReranker.CandidateBatch batch = StandardReranker.prepareCandidates(List.of(doc));
             

@@ -3,119 +3,212 @@
  */
 package com.openjiuwen.tests.unit_tests.agent_builder.prompt_builder;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.builder.MetaTemplateBuilder;
-import org.junit.jupiter.api.*;
+import com.openjiuwen.dev_tools.prompt_builder.builder.PromptTemplatesZh;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Mirrors Python's {@code test_meta_template_builder.py} in 
+ * Mirrors Python's {@code test_meta_template_builder.py} in
  * {@code tests.unit_tests.agent_builder.prompt_builder}.
  */
 @Tag("unit-test")
 class TestMetaTemplateBuilder {
 
     private static final String META_TEMPLATE_NAME_PREFIX = "META_TEMPLATE_";
+    private static final String MOCK_PROVIDER = "MocKMetaTemplateLLM";
+    private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
+
+    @BeforeAll
+    static void registerMockFactory() {
+        if (FACTORY_REGISTERED.compareAndSet(false, true)) {
+            Model.registerFactory(new MockMetaTemplateModelFactory());
+        }
+    }
+
+    private MetaTemplateBuilder createBuilder() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(MOCK_PROVIDER)
+                .apiKey("")
+                .apiBase("")
+                .build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
+                .modelName("")
+                .build();
+        return new MetaTemplateBuilder(requestConfig, clientConfig);
+    }
 
     @Test
     @DisplayName("Test register custom template")
-    void testRegisterCustomTemplate() throws Exception {
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-            .clientProvider("mock")
-            .apiKey("test-key")
-            .apiBase("https://api.example.com")
-            .build();
-        ModelRequestConfig requestConfig = new ModelRequestConfig();
-        
-        MetaTemplateBuilder builder = new MetaTemplateBuilder(requestConfig, clientConfig);
+    void testRegisterCustomTemplate() {
+        MetaTemplateBuilder builder = createBuilder();
 
-        // Register string template
         String template = "this is a string meta template";
         builder.registerMetaTemplate("custom_general", template);
         PromptTemplate metaTemplate = builder.getMetaTemplate(META_TEMPLATE_NAME_PREFIX + "custom_general");
         assertEquals(template, metaTemplate.getContent());
         builder.popMetaTemplate(META_TEMPLATE_NAME_PREFIX + "custom_general");
 
-        // Register PromptTemplate object
         PromptTemplate promptTemplate = PromptTemplate.builder()
-            .content("this is a string meta template")
-            .build();
+                .content("this is a string meta template")
+                .build();
         builder.registerMetaTemplate("custom_general", promptTemplate);
         metaTemplate = builder.getMetaTemplate(META_TEMPLATE_NAME_PREFIX + "custom_general");
         assertEquals(promptTemplate.getContent(), metaTemplate.getContent());
         builder.popMetaTemplate(META_TEMPLATE_NAME_PREFIX + "custom_general");
 
-        // Register invalid type template
-        final Object invalidTemplate = new Object[]{ "this is a invalid tuple meta template" };
-        assertThrows(Exception.class, () -> {
-            builder.registerMetaTemplate("custom_general", invalidTemplate);
-        });
+        Object invalidTemplate = new Object[] {"this is a invalid tuple meta template"};
+        assertThrows(Exception.class, () -> builder.registerMetaTemplate("custom_general", invalidTemplate));
     }
 
     @Test
     @DisplayName("Test build with default meta template")
-    @Disabled("Requires mock LLM client")
     void testBuildWithDefaultMetaTemplate() throws Exception {
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-            .clientProvider("mock")
-            .apiKey("test-key")
-            .apiBase("https://api.example.com")
-            .build();
-        ModelRequestConfig requestConfig = new ModelRequestConfig();
-        
-        MetaTemplateBuilder builder = new MetaTemplateBuilder(requestConfig, clientConfig);
+        MetaTemplateBuilder builder = createBuilder();
+        String prompt = "你是一个旅行助手";
 
-        // Build with default template
-        String response = builder.build("你是一个旅行助手").get();
-        assertNotNull(response);
+        String response = builder.build(prompt).get();
+        assertEquals(expectedGeneralContent(prompt), response);
 
-        // Build with general template type
-        response = builder.build("你是一个旅行助手", "general").get();
-        assertNotNull(response);
+        response = builder.build(prompt, null, "general").get();
+        assertEquals(expectedGeneralContent(prompt), response);
 
-        // Build with plan template type
-        response = builder.build("你是一个旅行助手", "plan").get();
-        assertNotNull(response);
+        response = builder.build(prompt, null, "plan").get();
+        assertEquals(expectedPlanContent(prompt), response);
     }
 
     @Test
     @DisplayName("Test build with custom meta template")
-    @Disabled("Requires mock LLM client")
     void testBuildWithCustomMetaTemplate() throws Exception {
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-            .clientProvider("mock")
-            .apiKey("test-key")
-            .apiBase("https://api.example.com")
-            .build();
-        ModelRequestConfig requestConfig = new ModelRequestConfig();
-        
-        MetaTemplateBuilder builder = new MetaTemplateBuilder(requestConfig, clientConfig);
+        MetaTemplateBuilder builder = createBuilder();
+        String prompt = "你是一个旅行助手";
 
-        // Build with invalid template type
-        assertThrows(Exception.class, () -> {
-            builder.build("你是一个旅行助手", "other").get();
-        });
+        assertThrows(Exception.class, () -> builder.build(prompt, null, "other").get());
 
-        // Build with custom template
         String template = "you are a custom meta template";
         builder.registerMetaTemplate("custom_general", template);
-        
-        String response = builder.build("你是一个旅行助手", "other", "custom_general").get();
+        assertThrows(Exception.class, () -> builder.build(prompt, null, "other", "not_defined").get());
+
+        String response = builder.build(prompt, null, "other", "custom_general").get();
         assertEquals(template, response);
     }
 
-    @Test
-    @DisplayName("Placeholder test")
-    @Tag("level0")
-    void testPlaceholder() {
-        assertTrue(true);
+    private static String expectedGeneralContent(String prompt) {
+        List<BaseMessage> messages = new ArrayList<>();
+        messages.addAll(PromptTemplatesZh.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE.toMessages());
+        messages.addAll(PromptTemplatesZh.PROMPT_BUILD_GENERAL_META_USER_TEMPLATE.format(Map.of(
+                "instruction", prompt,
+                "tools", "None"
+        )).toMessages());
+        return concatenateMessages(messages);
+    }
+
+    private static String expectedPlanContent(String prompt) {
+        List<BaseMessage> messages = new ArrayList<>();
+        messages.addAll(PromptTemplatesZh.PROMPT_BUILD_PLAN_META_SYSTEM_TEMPLATE.toMessages());
+        messages.addAll(PromptTemplatesZh.PROMPT_BUILD_PLAN_META_USER_TEMPLATE.format(Map.of(
+                "instruction", prompt,
+                "tools", "None"
+        )).toMessages());
+        return concatenateMessages(messages);
+    }
+
+    private static String concatenateMessages(List<BaseMessage> messages) {
+        StringBuilder sb = new StringBuilder();
+        for (BaseMessage message : messages) {
+            sb.append(message.getContentAsString());
+        }
+        return sb.toString();
+    }
+
+    private static final class MockMetaTemplateModelFactory implements Model.ModelClientFactory {
+        @Override
+        public String providerName() {
+            return MOCK_PROVIDER;
+        }
+
+        @Override
+        public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+            return new MockMetaTemplateModelClient(modelConfig, clientConfig);
+        }
+    }
+
+    private static final class MockMetaTemplateModelClient extends BaseModelClient {
+
+        MockMetaTemplateModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+            super(modelConfig, modelClientConfig);
+        }
+
+        @Override
+        protected void validateConfig() {
+        }
+
+        @Override
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                                       Integer maxTokens, String stop, BaseOutputParser outputParser,
+                                       Float timeout, Map<String, Object> kwargs) {
+            StringBuilder content = new StringBuilder();
+            if (messages instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof BaseMessage msg) {
+                        content.append(msg.getContentAsString());
+                    }
+                }
+            }
+            return new AssistantMessage(content.toString());
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                                                      String model, Integer maxTokens, String stop,
+                                                      BaseOutputParser outputParser, Float timeout,
+                                                      Map<String, Object> kwargs) {
+            return List.<AssistantMessageChunk>of().iterator();
+        }
+
+        @Override
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                                                     String negativePrompt, int n, boolean promptExtend,
+                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                                                      String languageType, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                                                     String model, String size, String resolution, int duration,
+                                                     boolean promptExtend, boolean watermark, String negativePrompt,
+                                                     Integer seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
+        }
     }
 }

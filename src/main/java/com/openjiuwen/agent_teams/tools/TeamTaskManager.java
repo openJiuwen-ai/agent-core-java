@@ -305,6 +305,47 @@ public class TeamTaskManager {
         return true;
     }
 
+    public boolean assign(String taskId, String assignee) {
+        TaskRecord record = tasks.get(taskId);
+        if (record == null || assignee == null || assignee.isBlank()) {
+            return false;
+        }
+        record.setAssignee(assignee);
+        record.setStatus(TaskStatus.CLAIMED);
+        publishEvent(TaskEvent.claimed(teamName, taskId, assignee));
+        return true;
+    }
+
+    public boolean addBlockedBy(String taskId, List<String> dependencies) {
+        TaskRecord record = tasks.get(taskId);
+        if (record == null || dependencies == null || dependencies.isEmpty()) {
+            return false;
+        }
+        for (String dep : dependencies) {
+            if (taskId.equals(dep) || transitivelyDependsOn(dep, List.of(taskId))) {
+                return false;
+            }
+        }
+        for (String dep : dependencies) {
+            if (dep == null || dep.isBlank()) {
+                continue;
+            }
+            if (!record.getBlockedBy().contains(dep)) {
+                record.getBlockedBy().add(dep);
+            }
+            TaskRecord upstream = tasks.get(dep);
+            if (upstream != null && !upstream.getBlocks().contains(taskId)) {
+                upstream.getBlocks().add(taskId);
+            }
+        }
+        if (!record.getBlockedBy().isEmpty()
+                && (record.getStatus() == TaskStatus.PENDING || record.getStatus() == TaskStatus.CLAIMED)) {
+            record.setStatus(TaskStatus.BLOCKED);
+        }
+        publishEvent(TaskEvent.updated(teamName, taskId));
+        return true;
+    }
+
     /**
      * Claim a task asynchronously.
      *
@@ -358,6 +399,17 @@ public class TeamTaskManager {
             return false;
         }
         record.setStatus(TaskStatus.CANCELLED);
+        for (String blockedTaskId : new ArrayList<>(record.getBlocks())) {
+            TaskRecord blocked = tasks.get(blockedTaskId);
+            if (blocked == null) {
+                continue;
+            }
+            blocked.getBlockedBy().remove(taskId);
+            if (blocked.getBlockedBy().isEmpty() && blocked.getStatus() == TaskStatus.BLOCKED) {
+                blocked.setStatus(TaskStatus.PENDING);
+                publishEvent(TaskEvent.unblocked(teamName, blockedTaskId, TaskStatus.PENDING.name().toLowerCase()));
+            }
+        }
         publishEvent(TaskEvent.cancelled(teamName, taskId));
         return true;
     }

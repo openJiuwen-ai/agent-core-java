@@ -14,7 +14,7 @@ import java.util.List;
  */
 public class PipelineSelectionArtifact {
 
-    private static final String META_EVOLVE_PIPELINE = "meta_evolve";
+    private static final String META_EVOLVE_PIPELINE = "meta_evolve_pipeline";
 
     private String pipelineName = META_EVOLVE_PIPELINE;
     private String reason = "";

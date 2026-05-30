@@ -34,6 +34,10 @@ public class ToolOutput {
         return error;
     }
 
+    public static ToolOutput of(boolean success, Object data, String error) {
+        return new ToolOutput(success, data, error);
+    }
+
     public static ToolOutput success(Object data) {
         return new ToolOutput(true, data, null);
     }

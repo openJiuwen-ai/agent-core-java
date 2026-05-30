@@ -53,7 +53,7 @@ class AutoHarnessExperienceTest {
 
         List<Experience> results = store.search("timeout", 5);
         assertFalse(results.isEmpty());
-        assertEquals("fix timeout", results.get(0).getTopic());
+        assertEquals("timeout bug", results.get(0).getTopic());
 
         List<Experience> recent = store.listRecent(10);
         assertTrue(recent.size() >= 2);

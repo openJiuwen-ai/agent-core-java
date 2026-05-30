@@ -4,6 +4,13 @@
 
 package com.openjiuwen.agent_teams.spawn;
 
+import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.schema.DeepAgentSpec;
+import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
+import com.openjiuwen.agent_teams.schema.TeamRuntimeContext;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
@@ -34,46 +41,38 @@ public class InProcessSpawn {
             Object ctx,
             String initialMessage,
             String sessionId) {
-        
-        // Extract spec from team agent
-        Object spec = getSpec(teamAgent);
-        String teamName = getTeamName(spec, ctx);
-        String memberName = getMemberName(ctx);
+
+        TeamAgent leader = requireTeamAgent(teamAgent);
+        TeamRuntimeContext runtimeContext = requireRuntimeContext(ctx);
+        TeamAgentSpec spec = getSpec(leader);
+        String teamName = getTeamName(spec, runtimeContext);
+        String memberName = getMemberName(runtimeContext);
         String cardId = memberName != null ? teamName + "_" + memberName : "unknown";
-        
-        // Get agent spec for the role
-        Object agentSpec = getAgentSpec(spec, ctx);
-        Object card = getOrCreateCard(agentSpec, cardId, memberName, ctx);
-        
-        // Create teammate agent
-        Object teammate = createTeamAgent(card);
-        configureTeammate(teammate, spec, ctx);
-        
-        // Determine initial query
-        String query = initialMessage != null ? initialMessage : 
+
+        DeepAgentSpec agentSpec = getAgentSpec(spec, runtimeContext);
+        AgentCard card = getOrCreateCard(agentSpec, cardId, memberName, runtimeContext);
+        ensureMemberRuntime(leader, card, runtimeContext);
+
+        String query = initialMessage != null ?
+            initialMessage :
             "Join the team and wait for your first assignment.";
-        
-        // Create run task
+
         CompletableFuture<Object> task = CompletableFuture.supplyAsync(() -> {
-            // Set session id in context if provided
-            if (sessionId != null) {
-                setSessionId(sessionId);
-            }
-            
-            logger.info("[inprocess] teammate " + memberName + " started");
-            try {
-                return runAgentTeam(teammate, query, sessionId);
-            } catch (Exception e) {
-                if (e.getCause() instanceof InterruptedException) {
-                    logger.info("[inprocess] teammate " + memberName + " cancelled");
-                    throw new RuntimeException("Cancelled", e);
+            return runWithSessionId(sessionId, () -> {
+                logger.info("[inprocess] teammate " + memberName + " started");
+                try {
+                    return runAgentTeam(leader, memberName, query);
+                } catch (RuntimeException e) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        logger.info("[inprocess] teammate " + memberName + " cancelled");
+                    } else {
+                        logger.severe("[inprocess] teammate " + memberName + " crashed: " + e.getMessage());
+                    }
+                    throw e;
                 }
-                logger.severe("[inprocess] teammate " + memberName + " crashed: " + e.getMessage());
-                throw new RuntimeException("Crashed", e);
-            }
+            });
         });
-        
-        // Create handle
+
         InProcessHandle handle = new InProcessHandle(
             "inproc-" + memberName,
             task
@@ -98,49 +97,115 @@ public class InProcessSpawn {
     }
 
     // ------------------------------------------------------------------
-    // Duck-typed helper methods (placeholder implementations)
+    // Typed helper methods
     // ------------------------------------------------------------------
 
-    private static Object getSpec(Object teamAgent) {
-        // Placeholder: extract spec from team agent
-        return null;
+    private static TeamAgent requireTeamAgent(Object teamAgent) {
+        if (teamAgent instanceof TeamAgent typed) {
+            return typed;
+        }
+        throw new IllegalArgumentException("teamAgent must be a TeamAgent");
     }
 
-    private static String getTeamName(Object spec, Object ctx) {
-        // Placeholder: get team name from spec or context
+    private static TeamRuntimeContext requireRuntimeContext(Object ctx) {
+        if (ctx instanceof TeamRuntimeContext typed) {
+            return typed;
+        }
+        throw new IllegalArgumentException("ctx must be a TeamRuntimeContext");
+    }
+
+    private static TeamAgentSpec getSpec(TeamAgent teamAgent) {
+        TeamAgentSpec spec = teamAgent.getSpec();
+        if (spec == null) {
+            throw new IllegalStateException("TeamAgent is not configured");
+        }
+        return spec;
+    }
+
+    private static String getTeamName(TeamAgentSpec spec, TeamRuntimeContext ctx) {
+        if (ctx.getTeamSpec() != null && ctx.getTeamSpec().getTeamName() != null
+                && !ctx.getTeamSpec().getTeamName().isBlank()) {
+            return ctx.getTeamSpec().getTeamName();
+        }
+        if (spec.getTeamName() != null && !spec.getTeamName().isBlank()) {
+            return spec.getTeamName();
+        }
         return "unknown";
     }
 
-    private static String getMemberName(Object ctx) {
-        // Placeholder: get member name from context
-        return "teammate";
+    private static String getMemberName(TeamRuntimeContext ctx) {
+        String memberName = ctx.getMemberName();
+        return memberName != null && !memberName.isBlank() ? memberName : "teammate";
     }
 
-    private static Object getAgentSpec(Object spec, Object ctx) {
-        // Placeholder: get agent spec for role from spec
-        return null;
+    private static DeepAgentSpec getAgentSpec(TeamAgentSpec spec, TeamRuntimeContext ctx) {
+        Map<String, DeepAgentSpec> agents = spec.getAgents();
+        if (agents == null || agents.isEmpty()) {
+            return null;
+        }
+        String roleKey = ctx.getRole() != null ? ctx.getRole().name().toLowerCase() : null;
+        DeepAgentSpec agentSpec = roleKey != null ? agents.get(roleKey) : null;
+        return agentSpec != null ? agentSpec : agents.get("leader");
     }
 
-    private static Object getOrCreateCard(Object agentSpec, String cardId, String memberName, Object ctx) {
-        // Placeholder: get existing card or create new one
-        return null;
+    private static AgentCard getOrCreateCard(
+            DeepAgentSpec agentSpec,
+            String cardId,
+            String memberName,
+            TeamRuntimeContext ctx) {
+        AgentCard card = agentSpec != null && agentSpec.getConfig() != null
+                ? agentSpec.getConfig().getCard()
+                : null;
+        if (card != null) {
+            return card;
+        }
+        AgentCard generated = new AgentCard();
+        generated.setId(cardId);
+        generated.setName(memberName != null ? memberName : "unknown");
+        String persona = ctx.getPersona();
+        generated.setDescription(persona != null && !persona.isBlank() ? "Teammate: " + persona : "Teammate");
+        return generated;
     }
 
-    private static Object createTeamAgent(Object card) {
-        // Placeholder: create TeamAgent instance
-        return null;
+    private static void ensureMemberRuntime(TeamAgent leader, AgentCard card, TeamRuntimeContext ctx) {
+        String memberName = getMemberName(ctx);
+        if (!leader.getTeamBackend().hasMember(memberName)) {
+            leader.getTeamBackend().spawnMember(
+                memberName,
+                card.getName() != null ? card.getName() : memberName,
+                card,
+                ctx.getPersona(),
+                null,
+                com.openjiuwen.agent_teams.schema.status.MemberStatus.READY,
+                com.openjiuwen.agent_teams.schema.status.ExecutionStatus.IDLE
+            );
+        } else if (leader.getTeamBackend().getMemberRuntime(memberName) == null) {
+            leader.getTeamBackend().ensureMemberRuntime(memberName);
+        }
     }
 
-    private static void configureTeammate(Object teammate, Object spec, Object ctx) {
-        // Placeholder: configure teammate with spec and context
+    private static Object runAgentTeam(TeamAgent leader, String memberName, String query) {
+        return leader.runMember(memberName, query);
     }
 
-    private static void setSessionId(String sessionId) {
-        // Placeholder: set session id in context (like contextvars)
+    private interface ThrowingSupplier {
+        Object get();
     }
 
-    private static Object runAgentTeam(Object teammate, String query, String sessionId) {
-        // Placeholder: call Runner.runAgentTeam
-        return null;
+    private static Object runWithSessionId(String sessionId, ThrowingSupplier supplier) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return supplier.get();
+        }
+        String previous = SpawnContext.getSessionId();
+        try {
+            SpawnContext.setSessionId(sessionId);
+            return supplier.get();
+        } finally {
+            if (previous == null || previous.isBlank()) {
+                SpawnContext.resetSessionId();
+            } else {
+                SpawnContext.setSessionId(previous);
+            }
+        }
     }
 }

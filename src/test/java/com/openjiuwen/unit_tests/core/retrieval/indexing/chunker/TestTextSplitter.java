@@ -8,6 +8,7 @@ import com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.RecursiveCharacterTextSplitter;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.common.exception.ValidationError;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -96,10 +97,10 @@ class TestTextSplitter {
      */
     @Test
     @Tag("level0")
-    @DisplayName("Splitting text into chunks")
+        @DisplayName("Splitting text into chunks")
     void testSplitText() {
         RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(20, 5);
-        Document doc = new Document("This is a sample text for testing the splitting functionality.", null);
+        Document doc = new Document("This is a sample text for testing the splitting functionality.");
         List<TextChunk> chunks = splitter.split(doc);
         assertNotNull(chunks, "Chunks should not be null");
         assertFalse(chunks.isEmpty(), "Chunks should not be empty");
@@ -138,7 +139,7 @@ class TestTextSplitter {
         @DisplayName("Splitting short text produces single chunk")
         void testSplitShortText() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 10);
-            Document doc = new Document("Short text", "doc_1");
+            Document doc = new Document("doc_1", "Short text");
             List<TextChunk> chunks = splitter.split(doc);
             
             assertEquals(1, chunks.size(), "Short text should produce exactly one chunk");
@@ -155,7 +156,7 @@ class TestTextSplitter {
         void testSplitLongText() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(10, 2);
             String longText = "This is a longer text that needs to be split into multiple chunks";
-            Document doc = new Document(longText, "doc_1");
+            Document doc = new Document("doc_1", longText);
             List<TextChunk> chunks = splitter.split(doc);
             
             assertTrue(chunks.size() > 1, "Long text should produce multiple chunks");
@@ -176,7 +177,7 @@ class TestTextSplitter {
         void testSplitWithOverlap() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(10, 3);
             String text = "This is a test text for splitting";
-            Document doc = new Document(text, "doc_1");
+            Document doc = new Document("doc_1", text);
             List<TextChunk> chunks = splitter.split(doc);
             
             assertTrue(chunks.size() >= 1, "Should produce at least one chunk");
@@ -221,7 +222,7 @@ class TestTextSplitter {
         @DisplayName("Empty document produces empty chunks")
         void testSplitEmptyDocument() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 20);
-            Document doc = new Document("", "doc_1");
+            Document doc = new Document("doc_1", "");
             List<TextChunk> chunks = splitter.split(doc);
             
             assertTrue(chunks.isEmpty(), "Empty document should produce empty chunks");
@@ -234,10 +235,8 @@ class TestTextSplitter {
         @DisplayName("Null text produces empty chunks")
         void testSplitNullText() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 20);
-            Document doc = new Document(null, "doc_1");
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertTrue(chunks.isEmpty(), "Null text should produce empty chunks");
+            assertThrows(ValidationError.class, () -> new Document("doc_1", null),
+                    "Document text is required, matching Python Document validation");
         }
 
         /**
@@ -248,7 +247,7 @@ class TestTextSplitter {
         void testLargeChunkSize() {
             RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(1000, 100);
             String text = "Small text";
-            Document doc = new Document(text, "doc_1");
+            Document doc = new Document("doc_1", text);
             List<TextChunk> chunks = splitter.split(doc);
             
             assertEquals(1, chunks.size(), "Text smaller than chunk size should produce single chunk");

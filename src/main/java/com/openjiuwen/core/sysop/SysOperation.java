@@ -4,10 +4,16 @@
 
 package com.openjiuwen.core.sysop;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.sysop.config.ContainerScope;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.registry.OperationDef;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
+import com.openjiuwen.core.sysop.sandbox.SandboxRunConfig;
 
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +40,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SysOperation {
 
+    private static final String TEMPLATE_SESSION_PLACEHOLDER = "{session_id}";
+
     private final OperationMode mode;
     private final Object runConfig;
     private final Map<String, BaseOperation> instances = new ConcurrentHashMap<>();
@@ -43,8 +51,59 @@ public class SysOperation {
         if (this.mode == OperationMode.LOCAL) {
             this.runConfig = card.getWorkConfig() != null ? card.getWorkConfig() : new LocalWorkConfig();
         } else {
-            this.runConfig = card.getGatewayConfig() != null ? card.getGatewayConfig() : new SandboxGatewayConfig();
+            SandboxGatewayConfig gatewayConfig = validateSandboxGatewayConfig(card.getGatewayConfig());
+            this.runConfig = new SandboxRunConfig(
+                    gatewayConfig,
+                    generateIsolationKeyTemplate(
+                            gatewayConfig.getIsolation().getPrefix(),
+                            gatewayConfig.getIsolation().getContainerScope(),
+                            gatewayConfig.getIsolation().getCustomId(),
+                            gatewayConfig.getLauncherConfig().getLauncherType(),
+                            gatewayConfig.getLauncherConfig().getSandboxType()));
         }
+    }
+
+    private static SandboxGatewayConfig validateSandboxGatewayConfig(SandboxGatewayConfig gatewayConfig) {
+        SandboxGatewayConfig config = gatewayConfig != null ? gatewayConfig : new SandboxGatewayConfig();
+        SandboxLauncherConfig launcherConfig = config.getLauncherConfig();
+        if (launcherConfig == null) {
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires launcher_config");
+        }
+        if (launcherConfig.getLauncherType() == null || launcherConfig.getLauncherType().isBlank()) {
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires launcher_type");
+        }
+        if (launcherConfig.getSandboxType() == null || launcherConfig.getSandboxType().isBlank()) {
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg", "sandbox mode requires sandbox_type");
+        }
+        if (config.getIsolation() == null) {
+            config.setIsolation(new SandboxIsolationConfig());
+        }
+        return config;
+    }
+
+    private static String generateIsolationKeyTemplate(String isolationPrefix, ContainerScope containerScope,
+                                                       String customId, String launcherType, String sandboxType) {
+        String prefix = isolationPrefix == null || isolationPrefix.isBlank() ? "" : isolationPrefix + "_";
+        ContainerScope scope = containerScope != null ? containerScope : ContainerScope.SESSION;
+
+        String identity;
+        if (scope == ContainerScope.SYSTEM) {
+            identity = "system";
+        } else if (scope == ContainerScope.CUSTOM) {
+            if (customId == null || customId.isBlank()) {
+                throw new IllegalArgumentException("container_scope is CUSTOM but custom_id is null");
+            }
+            identity = customId;
+        } else if (scope == ContainerScope.SESSION) {
+            identity = TEMPLATE_SESSION_PLACEHOLDER;
+        } else {
+            identity = "default";
+        }
+
+        return scope.getValue() + "_" + launcherType + "_" + sandboxType + "_" + prefix + identity;
     }
 
     /**

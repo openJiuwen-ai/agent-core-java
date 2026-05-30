@@ -7,7 +7,7 @@ package com.openjiuwen.agent_evolving.trajectory;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.ToolCallDetail.
+ * Mirrors Python's {@code ToolCallDetail} in {@code openjiuwen.agent_evolving.trajectory.types}.
  * Complete tool call execution data.
  */
 public class ToolCallDetail {

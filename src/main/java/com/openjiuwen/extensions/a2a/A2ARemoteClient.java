@@ -15,6 +15,11 @@ import java.util.*;
 public class A2ARemoteClient extends A2AClient {
 
     private final String endpoint;
+    private boolean connected;
+
+    public A2ARemoteClient(String endpoint) {
+        this(endpoint, Map.of());
+    }
 
     public A2ARemoteClient(String endpoint, Map<String, Object> card) {
         super(card);
@@ -23,5 +28,19 @@ public class A2ARemoteClient extends A2AClient {
 
     public String getEndpoint() {
         return endpoint;
+    }
+
+    public boolean connectToRemote() {
+        connected = endpoint != null && !endpoint.isBlank();
+        return connected;
+    }
+
+    public void disconnectFromRemote() {
+        connected = false;
+        stop();
+    }
+
+    public boolean isConnected() {
+        return connected;
     }
 }

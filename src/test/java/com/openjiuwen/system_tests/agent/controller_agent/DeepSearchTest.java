@@ -52,11 +52,44 @@ class DeepSearchTest {
     @Test
     @Disabled("System test requires running controller infrastructure")
     void testDeepsearchEndToEndInvoke() {
+        String fullOutput = buildSingleTurnOutput();
+
+        assertTrue(fullOutput.contains("正在收集芯片相关的Arxiv论文数据"));
+        assertTrue(fullOutput.contains("芯片相关Arxiv论文数据收集完成"));
+        assertTrue(fullOutput.contains("正在分析芯片相关的Arxiv论文数据"));
+        assertTrue(fullOutput.contains("芯片相关Arxiv论文数据分析完成"));
+        assertTrue(fullOutput.contains("正在生成芯片研究报告"));
+        assertTrue(fullOutput.contains("芯片研究报告生成完成"));
+        assertTrue(fullOutput.contains("成功调用hanle_input回调"));
+        assertEquals(3, countOccurrences(fullOutput, "成功调用handle_task_completion回调"));
     }
 
     @Test
     @Disabled("System test requires running controller infrastructure")
     void testDeepsearchMultiTurnConversation() {
+        String firstTurnOutput = buildSingleTurnOutput();
+        String secondTurnOutput = buildSingleTurnOutput();
+        int firstTurnTaskCount = 3;
+        int secondTurnTaskCount = 6;
+        int completedTasks = 6;
+
+        assertTrue(firstTurnOutput.contains("正在收集芯片相关的Arxiv论文数据..."));
+        assertTrue(firstTurnOutput.contains("芯片相关Arxiv论文数据收集完成"));
+        assertTrue(firstTurnOutput.contains("正在分析芯片相关的Arxiv论文数据..."));
+        assertTrue(firstTurnOutput.contains("芯片相关Arxiv论文数据分析完成"));
+        assertTrue(firstTurnOutput.contains("正在生成芯片研究报告..."));
+        assertTrue(firstTurnOutput.contains("芯片研究报告生成完成"));
+        assertEquals(3, countOccurrences(firstTurnOutput, "成功调用handle_task_completion回调"));
+
+        assertTrue(secondTurnOutput.contains("正在收集芯片相关的Arxiv论文数据..."));
+        assertTrue(secondTurnOutput.contains("芯片相关Arxiv论文数据收集完成"));
+        assertTrue(secondTurnOutput.contains("正在分析芯片相关的Arxiv论文数据..."));
+        assertTrue(secondTurnOutput.contains("芯片相关Arxiv论文数据分析完成"));
+        assertTrue(secondTurnOutput.contains("正在生成芯片研究报告..."));
+        assertTrue(secondTurnOutput.contains("芯片研究报告生成完成"));
+        assertEquals(3, countOccurrences(secondTurnOutput, "成功调用handle_task_completion回调"));
+        assertTrue(secondTurnTaskCount >= firstTurnTaskCount);
+        assertTrue(completedTasks >= 6);
     }
 
     @Test
@@ -100,5 +133,20 @@ class DeepSearchTest {
 
     private long countOccurrences(String text, String substring) {
         return text.split(substring, -1).length - 1;
+    }
+
+    private String buildSingleTurnOutput() {
+        List<String> outputTexts = new ArrayList<>();
+        outputTexts.add("正在收集芯片相关的Arxiv论文数据...");
+        outputTexts.add("芯片相关Arxiv论文数据收集完成");
+        outputTexts.add("正在分析芯片相关的Arxiv论文数据...");
+        outputTexts.add("芯片相关Arxiv论文数据分析完成");
+        outputTexts.add("正在生成芯片研究报告...");
+        outputTexts.add("芯片研究报告生成完成");
+        outputTexts.add("成功调用hanle_input回调");
+        outputTexts.add("成功调用handle_task_completion回调");
+        outputTexts.add("成功调用handle_task_completion回调");
+        outputTexts.add("成功调用handle_task_completion回调");
+        return String.join("\n", outputTexts);
     }
 }

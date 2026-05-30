@@ -10,6 +10,7 @@ import com.openjiuwen.agent_teams.schema.status.MemberStatus;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,7 +22,12 @@ import java.util.Map;
 public class SpawnMemberTool extends TeamTool {
 
     public SpawnMemberTool(TeamBackend team) {
-        super(toolCard("team.spawn_member", "spawn_member", "Create a new team member."), team);
+        super(toolCard("team.spawn_member", "spawn_member", "Create a new team member.", Map.of(
+                "member_name", stringParam("Member name"),
+                "display_name", stringParam("Display name"),
+                "desc", stringParam("Member description"),
+                "prompt", stringParam("Startup prompt")
+        ), List.of("member_name", "display_name")), team);
     }
 
     @Override
@@ -52,7 +58,4 @@ public class SpawnMemberTool extends TeamTool {
         return new TeamToolOutput(true, data, null);
     }
 
-    private static String stringValue(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
 }

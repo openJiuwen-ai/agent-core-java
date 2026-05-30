@@ -40,8 +40,12 @@ public class ListSkillTool extends AbstractHarnessTool {
             item.put("name", skill.getName());
             item.put("description", skill.getDescription());
             item.put("directory", skill.getDirectory());
-            item.put("skill_md_path", Path.of(skill.getDirectory()).resolve("SKILL.md").toString());
+            item.put("skill_md_path", normalizePath(Path.of(skill.getDirectory()).resolve("SKILL.md").toString()));
             return item;
         }).toList();
+    }
+
+    private static String normalizePath(String path) {
+        return path == null ? "" : path.replace('\\', '/');
     }
 }

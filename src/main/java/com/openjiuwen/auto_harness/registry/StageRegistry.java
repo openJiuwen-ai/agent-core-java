@@ -9,4 +9,18 @@ public class StageRegistry extends BaseRegistry<StageSpec> {
     public StageRegistry() {
         super(StageSpec::getName);
     }
+
+    public void register(StageSpec spec) {
+        super.register(spec);
+    }
+
+    @Override
+    public StageSpec get(String name) {
+        return super.get(name);
+    }
+
+    @Override
+    public StageSpec require(String name) {
+        return super.require(name);
+    }
 }

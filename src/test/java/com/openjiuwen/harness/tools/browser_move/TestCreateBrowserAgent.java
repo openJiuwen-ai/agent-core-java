@@ -32,6 +32,7 @@ import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -108,12 +109,30 @@ class TestCreateBrowserAgent {
     private List<Tool> createFakeTools(int count) {
         List<Tool> tools = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            Tool tool = mock(Tool.class);
-            ToolCard card = mock(ToolCard.class);
-            when(tool.getCard()).thenReturn(card);
-            tools.add(tool);
+            ToolCard card = ToolCard.builder()
+                    .id("fake-tool-" + i)
+                    .name("fake-tool-" + i)
+                    .description("fake browser helper tool")
+                    .build();
+            tools.add(new FakeTool(card));
         }
         return tools;
+    }
+
+    private static final class FakeTool extends Tool {
+        private FakeTool(ToolCard card) {
+            super(card);
+        }
+
+        @Override
+        public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            return Map.of();
+        }
+
+        @Override
+        public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            return List.of().iterator();
+        }
     }
 
     // Helper to set private field via reflection
@@ -426,14 +445,12 @@ class TestCreateBrowserAgent {
             // Python: test_settings_forwarded_to_runtime_constructor
             // Assert that settings are passed to BrowserAgentRuntime constructor
             RuntimeSettings settings = createFakeSettings();
-            ArgumentCaptor<String> providerCaptor = ArgumentCaptor.forClass(String.class);
-            ArgumentCaptor<String> apiKeyCaptor = ArgumentCaptor.forClass(String.class);
-            ArgumentCaptor<String> apiBaseCaptor = ArgumentCaptor.forClass(String.class);
-            ArgumentCaptor<String> modelNameCaptor = ArgumentCaptor.forClass(String.class);
-            ArgumentCaptor<McpServerConfig> mcpCaptor = ArgumentCaptor.forClass(McpServerConfig.class);
-            ArgumentCaptor<BrowserRunGuardrails> guardrailsCaptor = ArgumentCaptor.forClass(BrowserRunGuardrails.class);
+            List<List<?>> constructorArgs = new ArrayList<>();
 
-            try (MockedConstruction<BrowserAgentRuntime> mockedRuntime = Mockito.mockConstruction(BrowserAgentRuntime.class)) {
+            try (MockedConstruction<BrowserAgentRuntime> mockedRuntime = Mockito.mockConstruction(
+                    BrowserAgentRuntime.class,
+                    (mock, context) -> constructorArgs.add(new ArrayList<>(context.arguments()))
+            )) {
                 try (MockedStatic<HarnessFactory> mockedFactory = Mockito.mockStatic(HarnessFactory.class)) {
                     mockedFactory.when(() -> HarnessFactory.createDeepAgent(any(DeepAgentConfig.class)))
                             .thenReturn(mock(DeepAgent.class));
@@ -446,10 +463,14 @@ class TestCreateBrowserAgent {
 
                         // Verify BrowserAgentRuntime was constructed with correct settings
                         assertEquals(1, mockedRuntime.constructed().size());
-                        BrowserAgentRuntime runtime = mockedRuntime.constructed().get(0);
-
-                        // Verify constructor arguments via Mockito's construction mock verification
-                        verify(runtime); // The mock construction captures arguments
+                        assertEquals(1, constructorArgs.size());
+                        List<?> args = constructorArgs.get(0);
+                        assertEquals(settings.provider(), args.get(0));
+                        assertEquals(settings.apiKey(), args.get(1));
+                        assertEquals(settings.apiBase(), args.get(2));
+                        assertEquals(settings.modelName(), args.get(3));
+                        assertSame(settings.mcpCfg(), args.get(4));
+                        assertSame(settings.guardrails(), args.get(5));
                     }
                 }
             }

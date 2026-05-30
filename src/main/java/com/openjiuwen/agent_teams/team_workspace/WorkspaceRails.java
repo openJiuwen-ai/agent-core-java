@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_teams.team_workspace;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -28,6 +31,7 @@ public class WorkspaceRails {
     public static final String TEAM_PREFIX = ".team/";
     public static final Set<String> WRITE_TOOLS = Set.of("write_file", "edit_file");
     public static final Set<String> READ_TOOLS = Set.of("read_file", "glob", "grep", "list_files");
+    private static final ThreadLocal<String> TEAM_WORKSPACE_CONTEXT = new ThreadLocal<>();
 
     private final WorkspaceManager workspaceManager;
     private final String memberName;
@@ -150,11 +154,44 @@ public class WorkspaceRails {
     }
 
     private void setTeamWorkspace(String path) {
-        // Placeholder: set team workspace in context
+        if (path == null || path.isBlank()) {
+            TEAM_WORKSPACE_CONTEXT.remove();
+        } else {
+            TEAM_WORKSPACE_CONTEXT.set(path);
+        }
+    }
+
+    public static String getTeamWorkspace() {
+        return TEAM_WORKSPACE_CONTEXT.get();
+    }
+
+    public static void clearTeamWorkspace() {
+        TEAM_WORKSPACE_CONTEXT.remove();
     }
 
     private CompletableFuture<Void> runGitPull(String cwd) {
-        // Placeholder: git pull
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture.runAsync(() -> {
+            try {
+                GitResult result = runCommand(Path.of(cwd), "git", "pull", "--rebase", "--autostash", "origin", "main");
+                if (result.exitCode() != 0) {
+                    logger.warning("Workspace pull failed: " + result.stderr());
+                }
+            } catch (Exception e) {
+                logger.warning("Workspace pull failed: " + e.getMessage());
+            }
+        });
+    }
+
+    private GitResult runCommand(Path cwd, String... command) throws IOException, InterruptedException {
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.directory(cwd.toFile());
+        Process process = builder.start();
+        String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        int exitCode = process.waitFor();
+        return new GitResult(exitCode, stdout, stderr);
+    }
+
+    private record GitResult(int exitCode, String stdout, String stderr) {
     }
 }

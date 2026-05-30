@@ -5,6 +5,7 @@
 package com.openjiuwen.unit_tests.core.retrieval.common;
 
 import com.openjiuwen.core.retrieval.common.Triple;
+import com.openjiuwen.core.common.exception.BaseError;
 
 import org.junit.jupiter.api.Test;
 
@@ -51,33 +52,18 @@ class TestTriple {
     @Test
     void testMissingRequiredFieldsAll() {
         // Test missing required fields - all missing
-        assertThrows(IllegalArgumentException.class, () -> new Triple());
+        assertThrows(BaseError.class, () -> new Triple(null, null, null));
     }
 
     @Test
     void testMissingRequiredFieldsSubjectOnly() {
         // Test missing required fields - subject only
-        Triple triple = new Triple();
-        assertThrows(IllegalArgumentException.class, () -> triple.setSubject("Alice"));
-        // Actually the setter throws immediately, so we need to test differently
-        // Test: setting subject only, then trying to create without other fields
-        assertThrows(IllegalArgumentException.class, () -> {
-            Triple t = new Triple();
-            t.setSubject("Alice");
-            // predicate and object still null, getters would return null
-        });
+        assertThrows(BaseError.class, () -> new Triple("Alice", null, null));
     }
 
     @Test
     void testMissingRequiredFieldsSubjectAndPredicate() {
         // Test missing required fields - subject and predicate provided, object missing
-        assertThrows(IllegalArgumentException.class, () -> {
-            Triple triple = new Triple();
-            triple.setSubject("Alice");
-            triple.setPredicate("knows");
-            // object is still null
-            triple.getObject(); // This doesn't throw
-            // But validation happens on construction or setter
-        });
+        assertThrows(BaseError.class, () -> new Triple("Alice", "knows", null));
     }
 }

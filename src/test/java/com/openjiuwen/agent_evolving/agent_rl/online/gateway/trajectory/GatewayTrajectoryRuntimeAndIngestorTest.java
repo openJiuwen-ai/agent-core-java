@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GatewayTrajectoryRuntimeAndIngestorTest {
 
@@ -61,10 +62,67 @@ class GatewayTrajectoryRuntimeAndIngestorTest {
         assertEquals(List.of(-0.1, -0.2), trajectory.get("response_logprobs"));
     }
 
-    static final class FakeRedis implements RedisTrajectoryStoreBackend {
+    @Test
+    void gatewayTrajectoryRuntimeStagesRailSamplesInRedisPendingStore() throws Exception {
+        Path tmp = Files.createTempDirectory("gateway-runtime-rail");
+        GatewayConfig config = new GatewayConfig(18080);
+        config.setModelId("dummy-model");
+        config.setRecordDir(tmp.toString());
+        FakeRedis redis = new FakeRedis();
+        GatewayTrajectoryRuntime runtime = new GatewayTrajectoryRuntime(config, redis);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("protocol_version", "rail-v1");
+        payload.put("session_id", "session-1");
+        payload.put("trajectory_id", "traj-1");
+        payload.put("samples", List.of(Map.of(
+                "messages", List.of(Map.of("role", "user", "content", "hello")),
+                "response", Map.of("role", "assistant", "content", "pong"),
+                "prompt_ids", List.of(1, 2),
+                "response_tokens", List.of(3),
+                "logprobs", List.of(-0.5)
+        )));
+
+        Map<String, Object> result = runtime.getRailIngestor().ingestRailBatch(payload);
+
+        assertEquals(1, result.get("accepted"));
+        assertTrue(redis.kv.containsKey("pending_judge:session-1:traj-1:0"));
+        assertEquals(24 * 3600, redis.ttl.get("pending_judge_session:session-1"));
+    }
+
+    static final class FakeRedis implements RedisTrajectoryStoreBackend, PendingJudgeStore.TestablePendingJudgeBackend {
+        final Map<String, String> kv = new LinkedHashMap<>();
         final Map<String, Map<String, Object>> hashes = new LinkedHashMap<>();
         final Map<String, Set<Object>> sets = new LinkedHashMap<>();
         final Map<String, Map<Object, Double>> zsets = new LinkedHashMap<>();
+        final Map<String, Integer> ttl = new LinkedHashMap<>();
+
+        @Override
+        public void set(String key, String value, int ttlSec) {
+            kv.put(key, value);
+        }
+
+        @Override
+        public void expire(String key, int ttlSec) {
+            ttl.put(key, ttlSec);
+        }
+
+        @Override
+        public List<String> zrange(String key, int start, int end) {
+            List<Map.Entry<Object, Double>> entries = new ArrayList<>(zsets.getOrDefault(key, Map.of()).entrySet());
+            entries.sort(Map.Entry.comparingByValue());
+            List<String> members = entries.stream().map(entry -> String.valueOf(entry.getKey())).toList();
+            int normalizedEnd = end == -1 ? members.size() - 1 : end;
+            if (members.isEmpty() || start > normalizedEnd) {
+                return List.of();
+            }
+            return new ArrayList<>(members.subList(start, Math.min(normalizedEnd + 1, members.size())));
+        }
+
+        @Override
+        public Object get(String key) {
+            return kv.get(key);
+        }
 
         @Override
         public RedisTrajectoryStoreFetchScript registerFetchAndMarkScript(String luaSource) {
@@ -163,12 +221,23 @@ class GatewayTrajectoryRuntimeAndIngestorTest {
         }
     }
 
-    static final class FakePipeline implements RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline {
+    static final class FakePipeline implements RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline,
+            PendingJudgeStore.TestablePendingJudgePipeline {
         private final FakeRedis redis;
         private final List<Operation> operations = new ArrayList<>();
 
         FakePipeline(FakeRedis redis) {
             this.redis = redis;
+        }
+
+        @Override
+        public void delete(String key) {
+            operations.add(() -> redis.kv.remove(key));
+        }
+
+        @Override
+        public void zremSingle(String key, String member) {
+            operations.add(() -> redis.zrem(key, member));
         }
 
         @Override

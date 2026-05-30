@@ -4,6 +4,7 @@
 package com.openjiuwen.core.application.workflow;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.workflow.Workflow;
@@ -62,23 +63,31 @@ class MockWorkflowAgentConcurrentTest {
 
                 String conversationId = UUID.randomUUID().toString();
                 Session session = new Session() {
+                    private final Map<String, Object> state = new ConcurrentHashMap<>();
+
                     @Override
                     public String getSessionId() {
                         return conversationId;
                     }
                     @Override
                     public Object getState(String key) {
-                        return null;
+                        return state.get(key);
                     }
                     @Override
                     public void updateState(Map<String, Object> state) {
+                        if (state != null) {
+                            this.state.putAll(state);
+                        }
                     }
                 };
-                @SuppressWarnings("unchecked")
-                Map<String, Object> result = (Map<String, Object>) agent.invoke(Map.of(
+                ControllerOutput output = agent.invoke(Map.of(
                         "query", "hello_" + idx,
                         "conversation_id", conversationId
                 ), session);
+                assertThat(output).isNotNull();
+                assertThat(output.getType()).isEqualTo("task_completion");
+                Map<String, Object> result = output.getDataAsMap();
+                assertThat(result).isNotNull();
                 return result;
             }));
         }

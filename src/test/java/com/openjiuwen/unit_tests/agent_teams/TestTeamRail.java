@@ -508,6 +508,7 @@ class TestTeamRail {
                     null
             );
             rail.init(agent);
+            rail.beforeModelCall(null);
 
             Map<String, PromptSection> sections = builder.getAllSections();
             assertTrue(sections.containsKey(TeamSectionName.ROLE));
@@ -541,6 +542,7 @@ class TestTeamRail {
                     null
             );
             rail.init(agent);
+            rail.beforeModelCall(null);
 
             Map<String, PromptSection> sections = builder.getAllSections();
             assertFalse(sections.containsKey(TeamSectionName.WORKFLOW));

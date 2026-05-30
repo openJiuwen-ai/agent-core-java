@@ -56,9 +56,11 @@ class TestChromaVectorStore {
 
     static class ChromaVectorStoreStub {
         Map<String, CollectionSchemaStub> collections = new HashMap<>();
+        Map<String, List<VectorRecordStub>> vectorsByCollection = new HashMap<>();
 
         void createCollection(String name, CollectionSchemaStub schema) {
             collections.put(name, schema);
+            vectorsByCollection.computeIfAbsent(name, key -> new ArrayList<>());
         }
 
         CollectionSchemaStub getCollection(String name) {
@@ -66,12 +68,44 @@ class TestChromaVectorStore {
         }
 
         void addVectors(String collectionName, List<float[]> vectors, List<String> ids) {
-            // Add vectors to collection
+            if (!collections.containsKey(collectionName)) {
+                throw new IllegalArgumentException("Collection does not exist: " + collectionName);
+            }
+            if (vectors.size() != ids.size()) {
+                throw new IllegalArgumentException("vectors and ids must have the same size");
+            }
+            List<VectorRecordStub> records = vectorsByCollection.computeIfAbsent(collectionName, key -> new ArrayList<>());
+            for (int i = 0; i < vectors.size(); i++) {
+                records.add(new VectorRecordStub(ids.get(i), vectors.get(i).clone()));
+            }
         }
 
         List<Map<String, Object>> search(String collectionName, float[] queryVector, int topK) {
             List<Map<String, Object>> results = new ArrayList<>();
+            for (VectorRecordStub record : vectorsByCollection.getOrDefault(collectionName, List.of())) {
+                if (results.size() >= topK) {
+                    break;
+                }
+                results.add(Map.of(
+                        "id", record.id,
+                        "vector", record.vector
+                ));
+            }
             return results;
+        }
+
+        int vectorCount(String collectionName) {
+            return vectorsByCollection.getOrDefault(collectionName, List.of()).size();
+        }
+    }
+
+    static class VectorRecordStub {
+        String id;
+        float[] vector;
+
+        VectorRecordStub(String id, float[] vector) {
+            this.id = id;
+            this.vector = vector;
         }
     }
 
@@ -114,6 +148,7 @@ class TestChromaVectorStore {
 
             // Verify vectors were added
             assertNotNull(store.getCollection("test"));
+            assertEquals(1, store.vectorCount("test"));
         }
     }
 
@@ -129,9 +164,12 @@ class TestChromaVectorStore {
             store.createCollection("test", schema);
 
             float[] queryVector = {0.1f, 0.2f, 0.3f};
+            store.addVectors("test", List.of(new float[]{0.1f, 0.2f, 0.3f}), List.of("doc1"));
             List<Map<String, Object>> results = store.search("test", queryVector, 10);
 
             assertNotNull(results);
+            assertEquals(1, results.size());
+            assertEquals("doc1", results.get(0).get("id"));
         }
     }
 }

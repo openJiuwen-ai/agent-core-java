@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.multiagent.teamruntime;
 
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.Set;
 import java.util.HashSet;
@@ -45,8 +43,15 @@ public class MessageRouter {
                 new IllegalArgumentException("P2P message requires recipient"));
         }
         
-        // TODO: Implement actual agent invocation
-        return CompletableFuture.completedFuture(null);
+        if (runtime == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("MessageRouter requires a TeamRuntime for P2P routing"));
+        }
+        return CompletableFuture.supplyAsync(() -> runtime.dispatchToAgent(
+                recipient,
+                envelope.getMessage(),
+                envelope.getSessionId().orElse(null)
+        ));
     }
     
     /**
@@ -66,9 +71,11 @@ public class MessageRouter {
         Set<CompletableFuture<Void>> futures = new HashSet<>();
         
         for (String agentId : subscribers) {
-            // Create individual delivery future
             CompletableFuture<Void> delivery = CompletableFuture.runAsync(() -> {
-                // TODO: Implement actual agent delivery
+                if (runtime == null) {
+                    throw new IllegalStateException("MessageRouter requires a TeamRuntime for Pub-Sub routing");
+                }
+                runtime.dispatchToAgent(agentId, envelope.getMessage(), envelope.getSessionId().orElse(null));
             });
             futures.add(delivery);
         }

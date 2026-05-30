@@ -1,11 +1,9 @@
 package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.controller.legacy.BaseController;
-import com.openjiuwen.core.controller.legacy.event.Event;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.harness.tools.browser_move.controllers.ActionController;
+import com.openjiuwen.harness.tools.browser_move.controllers.BaseController;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,12 +33,7 @@ public class BrowserAgentRuntime {
     }
 
     protected BaseController createDefaultController() {
-        return new BaseController() {
-            @Override
-            protected Map<String, Object> handleEvent(Event event, Session session) {
-                return Collections.emptyMap();
-            }
-        };
+        return new ActionController();
     }
 
     public BrowserService getService() {
@@ -77,6 +70,10 @@ public class BrowserAgentRuntime {
                 : "";
         if (playwrightServerId.isEmpty() && service.getMcpCfg() != null) {
             playwrightServerId = service.getMcpCfg().getServerName() != null ? service.getMcpCfg().getServerName() : "";
+        }
+        bindRuntimeToController();
+        if (controller instanceof ActionController actionController) {
+            actionController.registerBuiltinActions();
         }
         this.runtimeReady = true;
     }
@@ -144,6 +141,11 @@ public class BrowserAgentRuntime {
             if (codeExecutor != null) {
                 bindCodeExecutorToController();
             }
+            if (controller instanceof ActionController actionController) {
+                ActionController.ActionResult actionResult =
+                        actionController.executeAction(action, sessionId, requestId, params).join();
+                return actionResultToMap(actionResult);
+            }
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("ok", true);
@@ -157,22 +159,50 @@ public class BrowserAgentRuntime {
     }
 
     protected void bindRuntimeToController() {
+        if (controller != null) {
+            controller.bindRuntime(this);
+        }
     }
 
     protected void bindCodeExecutorToController() {
+        if (controller != null && codeExecutor != null) {
+            controller.bindCodeExecutor(codeExecutor);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> actionResultToMap(ActionController.ActionResult actionResult) {
+        if (actionResult == null) {
+            return Map.of("ok", false, "error", "action returned null");
+        }
+        Object data = actionResult.getData();
+        if (data instanceof Map<?, ?> rawMap) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            result.putIfAbsent("ok", actionResult.isOk());
+            result.putIfAbsent("action", actionResult.getAction());
+            result.putIfAbsent("session_id", actionResult.getSessionId());
+            result.putIfAbsent("request_id", actionResult.getRequestId());
+            result.putIfAbsent("error", actionResult.getError());
+            return result;
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", actionResult.isOk());
+        result.put("action", actionResult.getAction());
+        result.put("session_id", actionResult.getSessionId());
+        result.put("request_id", actionResult.getRequestId());
+        result.put("data", data);
+        result.put("error", actionResult.getError());
+        return result;
     }
 
     public Map<String, Object> listActions() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("ok", true);
-        result.put("actions", List.of(
-                "browser_cancel",
-                "browser_clear_cancel",
-                "browser_custom_action",
-                "browser_list_custom_actions",
-                "browser_runtime_health"
-        ));
-        result.put("details", describeActions());
+        result.put("actions", controller.listActions());
+        result.put("details", controller.describeActions());
         return result;
     }
 

@@ -40,6 +40,7 @@ public final class CustomizedPipeline {
             Map<String, Object> config,
             Object toolCallable
     ) {
+        Objects.requireNonNull(config, "config");
         String toolName = (String) tool.get("name");
 
         SimpleApiWrapper callApiFn;
@@ -68,44 +69,72 @@ public final class CustomizedPipeline {
 
         BeamSearch singleSearch = new BeamSearch(
                 method,
-                (Integer) config.getOrDefault("beam_width", 2),
-                (Integer) config.getOrDefault("expand_num", 3),
-                (Integer) config.getOrDefault("max_depth", 2),
-                (Integer) config.getOrDefault("num_workers", 2),
-                (Integer) config.getOrDefault("verbose", 1) == 1,
+                requiredInt(config, "beam_width"),
+                requiredInt(config, "expand_num"),
+                requiredInt(config, "max_depth"),
+                requiredInt(config, "num_workers"),
+                requiredBoolean(config, "verbose"),
                 true,  // earlyStop
                 true,  // checkValid
                 3.0,   // maxScore
-                (Integer) config.getOrDefault("top_k", 5)
+                requiredInt(config, "top_k")
         );
 
         List<List<Object>> result = singleSearch.search(tool);
 
         // Save results
-        String saveDir = (String) config.get("save_dir");
-        if (saveDir != null) {
-            String saveFilename = toolName + ".json";
-            Path savePath = Paths.get(saveDir, saveFilename);
+        String saveDir = requiredString(config, "save_dir");
+        String saveFilename = toolName + ".json";
+        Path savePath = Paths.get(saveDir, saveFilename);
 
-            try {
-                Files.createDirectories(savePath.getParent());
+        try {
+            Files.createDirectories(savePath.getParent());
 
-                List<Object> mergedResult = new ArrayList<>();
-                // Merge with existing results if file exists
-                if (Files.exists(savePath)) {
-                    String content = Files.readString(savePath);
-                    @SuppressWarnings("unchecked")
-                    List<Object> existing = OBJECT_MAPPER.readValue(content, List.class);
-                    mergedResult.addAll(existing);
-                }
-                mergedResult.addAll(result);
-
-                Files.writeString(savePath, OBJECT_MAPPER.writeValueAsString(mergedResult));
-            } catch (Exception e) {
-                Loggers.AGENT.error("Failed to save results: {}", e.getMessage());
+            List<Object> mergedResult = new ArrayList<>();
+            // Merge with existing results if file exists
+            if (Files.exists(savePath)) {
+                String content = Files.readString(savePath);
+                @SuppressWarnings("unchecked")
+                List<Object> existing = OBJECT_MAPPER.readValue(content, List.class);
+                mergedResult.addAll(existing);
             }
+            mergedResult.addAll(result);
+
+            Files.writeString(savePath, OBJECT_MAPPER.writeValueAsString(mergedResult));
+        } catch (Exception e) {
+            Loggers.AGENT.error("Failed to save results: {}", e.getMessage());
         }
 
         return new ArrayList<>(result);
+    }
+
+    private static int requiredInt(Map<String, Object> config, String key) {
+        Object value = requireConfigValue(config, key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+    private static boolean requiredBoolean(Map<String, Object> config, String key) {
+        Object value = requireConfigValue(config, key);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static String requiredString(Map<String, Object> config, String key) {
+        return String.valueOf(requireConfigValue(config, key));
+    }
+
+    private static Object requireConfigValue(Map<String, Object> config, String key) {
+        if (!config.containsKey(key)) {
+            throw new IllegalArgumentException("Missing required config key: " + key);
+        }
+        return config.get(key);
     }
 }

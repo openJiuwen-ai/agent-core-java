@@ -19,6 +19,7 @@ public class TeamRuntimeContext {
     private String memberName;
     private String persona = "";
     private TeamSpec teamSpec;
+    private TeamModelConfig memberModel;
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public TeamRole getRole() {
@@ -51,6 +52,14 @@ public class TeamRuntimeContext {
 
     public void setTeamSpec(TeamSpec teamSpec) {
         this.teamSpec = teamSpec;
+    }
+
+    public TeamModelConfig getMemberModel() {
+        return memberModel;
+    }
+
+    public void setMemberModel(TeamModelConfig memberModel) {
+        this.memberModel = memberModel;
     }
 
     public Map<String, Object> getMetadata() {

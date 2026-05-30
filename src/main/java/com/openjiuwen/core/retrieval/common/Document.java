@@ -13,6 +13,9 @@ import java.util.UUID;
 
 /**
  * Document model.
+ *
+ * <p>Mirrors Python's {@code Document} in
+ * {@code openjiuwen.core.foundation.store.base_reranker}.</p>
  */
 @Getter
 @Setter

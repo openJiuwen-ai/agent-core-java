@@ -155,12 +155,13 @@ class TestHandlerManager {
         }
 
         @Test
-        @DisplayName("get handler returns null for unknown type")
-        void testGetHandlerReturnsNullForUnknownType() {
+        @DisplayName("get handler returns default for unknown type")
+        void testGetHandlerReturnsDefaultForUnknownType() {
             FormHandlerManager manager = FormHandlerManager.getInstance();
 
             FormHandler<?> handler = manager.getHandler("unknown_type");
-            assertNull(handler);
+            assertNotNull(handler);
+            assertTrue(handler instanceof DefaultFormHandler);
         }
 
         @Test
@@ -174,16 +175,22 @@ class TestHandlerManager {
             // Register with empty should not add
             manager.register("", DefaultFormHandler.class);
 
-            // Both should not be registered
-            assertNull(manager.getHandler(null));
-            assertNull(manager.getHandler(""));
+            // Python logs invalid keys and still falls back through get_handler().
+            assertDefaultHandler(manager.getHandler(null));
+            assertDefaultHandler(manager.getHandler(""));
         }
 
         @Test
         @DisplayName("register default handler")
         void testRegisterDefaultHandler() {
             FormHandlerManager manager = FormHandlerManager.getInstance();
-            assertNotNull(manager);
+            manager.registerDefaultHandler(DefaultFormHandler.class);
+            assertDefaultHandler(manager.getHandler("unregistered_type"));
         }
+    }
+
+    private static void assertDefaultHandler(FormHandler<?> handler) {
+        assertNotNull(handler);
+        assertTrue(handler instanceof DefaultFormHandler);
     }
 }

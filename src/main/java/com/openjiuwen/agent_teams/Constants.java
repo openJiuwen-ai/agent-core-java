@@ -12,7 +12,7 @@ import java.util.Set;
  * of truth instead of scattered string literals. Adding a new reserved name
  * means updating this module and nothing else.
  * 
- * Mirrors Python's agent_teams.constants
+ * Mirrors Python's {@code constants.py} module in {@code openjiuwen.agent_teams.constants}.
  * 
  * @since 0.1.12
  */

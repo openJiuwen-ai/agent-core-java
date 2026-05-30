@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_evolving.optimizer.skill_call;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
 import com.openjiuwen.agent_evolving.checkpointing.UsageStats;
@@ -13,6 +16,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * LLM-based experience scorer and maintainer.
@@ -20,6 +25,15 @@ import java.util.*;
  * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.skill_call.experience_scorer.ExperienceScorer}.
  */
 public class ExperienceScorer {
+
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private static final TypeReference<List<Map<String, Object>>> LIST_OF_MAPS =
+            new TypeReference<>() {
+            };
+    private static final TypeReference<Map<String, Object>> MAP_OF_OBJECTS =
+            new TypeReference<>() {
+            };
+    private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[[\\s\\S]*\\]");
 
     private Model llm;
     private String model;
@@ -170,8 +184,9 @@ public class ExperienceScorer {
                         counts.put("errors", counts.get("errors") + 1);
                     }
                 } else if ("MERGE".equals(actionType)) {
-                    List<String> removeIds = (List<String>) action.get("merge_remove_ids");
-                    String newContent = (String) action.get("new_content");
+                    List<String> removeIds = coerceStringList(action.getOrDefault("merge_remove_ids",
+                            Collections.emptyList()));
+                    String newContent = String.valueOf(action.getOrDefault("new_content", ""));
                     boolean mergeResult = store.mergeRecords(skillName, recordId, removeIds, newContent);
                     if (mergeResult) {
                         counts.put("merged", counts.get("merged") + 1);
@@ -179,7 +194,7 @@ public class ExperienceScorer {
                         counts.put("errors", counts.get("errors") + 1);
                     }
                 } else if ("REFINE".equals(actionType)) {
-                    String refinedContent = (String) action.get("new_content");
+                    String refinedContent = String.valueOf(action.getOrDefault("new_content", ""));
                     boolean refineResult = store.updateRecordContent(skillName, recordId, refinedContent);
                     if (refineResult) {
                         counts.put("refined", counts.get("refined") + 1);
@@ -203,7 +218,7 @@ public class ExperienceScorer {
         return counts;
     }
 
-    private static String formatPresentedExperiences(List<EvolutionRecord> records) {
+    static String formatPresentedExperiences(List<EvolutionRecord> records) {
         List<String> lines = new ArrayList<>();
         for (EvolutionRecord record : records) {
             String content = record.getChange() != null ? record.getChange().getContent() : "";
@@ -213,7 +228,7 @@ public class ExperienceScorer {
         return String.join("\n", lines);
     }
 
-    private static String formatScoredExperiences(List<EvolutionRecord> records) {
+    static String formatScoredExperiences(List<EvolutionRecord> records) {
         List<String> lines = new ArrayList<>();
         for (EvolutionRecord record : records) {
             UsageStats stats = record.getUsageStats() != null ? record.getUsageStats() : new UsageStats();
@@ -230,7 +245,6 @@ public class ExperienceScorer {
         if (raw == null || raw.strip().isEmpty()) {
             return null;
         }
-        // Simplified JSON parsing - in production use Jackson/Gson
         raw = raw.strip();
         raw = raw.replaceAll("^```(?:json)?\\s*", "");
         raw = raw.replaceAll("```\\s*$", "");
@@ -238,14 +252,44 @@ public class ExperienceScorer {
         raw = raw.replaceAll(",\\s*([}\\]])", "$1");
         raw = raw.strip();
 
-        // Use simple regex-based parsing for basic JSON arrays
-        if (raw.startsWith("[") && raw.endsWith("]")) {
-            List<Map<String, Object>> results = new ArrayList<>();
-            // Parse objects in array - simplified
-            String inner = raw.substring(1, raw.length() - 1).trim();
-            // For complex JSON, use proper library
-            return results.isEmpty() ? null : results;
+        List<Map<String, Object>> parsed = parseJsonValue(raw);
+        if (parsed != null) {
+            return parsed;
         }
+
+        Matcher matcher = JSON_ARRAY_PATTERN.matcher(raw);
+        if (matcher.find()) {
+            return parseJsonValue(matcher.group(0));
+        }
+
         return null;
+    }
+
+    private static List<Map<String, Object>> parseJsonValue(String raw) {
+        try {
+            if (raw.startsWith("[")) {
+                return JSON_MAPPER.readValue(raw, LIST_OF_MAPS);
+            }
+            if (raw.startsWith("{")) {
+                Map<String, Object> data = JSON_MAPPER.readValue(raw, MAP_OF_OBJECTS);
+                return Collections.singletonList(data);
+            }
+            return null;
+        } catch (JsonProcessingException exc) {
+            return null;
+        }
+    }
+
+    private static List<String> coerceStringList(Object value) {
+        if (!(value instanceof List<?> values)) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : values) {
+            if (item != null) {
+                result.add(String.valueOf(item));
+            }
+        }
+        return result;
     }
 }

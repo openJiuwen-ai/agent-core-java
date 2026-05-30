@@ -145,7 +145,7 @@ public class Trainer {
             if (candidates != null) {
                 validationResult = selectBestCandidateOnVal(agent, operators, candidates, effectiveValCases);
             } else {
-                applyUpdates(operators, updated instanceof Updates updates ? updates : new Updates());
+                applyUpdates(operators, coerceUpdates(updated));
                 validationResult = evaluate(agent, effectiveValCases);
             }
 
@@ -428,6 +428,25 @@ public class Trainer {
             }
         }
         return candidates;
+    }
+
+    private Updates coerceUpdates(Object updated) {
+        if (updated == null) {
+            return new Updates();
+        }
+        if (updated instanceof Updates updates) {
+            return updates;
+        }
+        if (updated instanceof Map<?, ?> map) {
+            Updates updates = new Updates();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() instanceof UpdateKey key) {
+                    updates.put(key, entry.getValue());
+                }
+            }
+            return updates;
+        }
+        return new Updates();
     }
 
     private Callable<PredictionAndSession> buildPredictionTask(Object agent, Case caseData) {

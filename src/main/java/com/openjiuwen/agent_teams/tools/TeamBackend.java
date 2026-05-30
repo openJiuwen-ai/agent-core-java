@@ -284,6 +284,10 @@ public class TeamBackend {
         return messager;
     }
 
+    public TeamBackendStore getStore() {
+        return store;
+    }
+
     public List<TeamMember> listMembers() {
         return new ArrayList<>(members.values());
     }
@@ -294,7 +298,7 @@ public class TeamBackend {
             return false;
         }
         member.setExecutionStatus(ExecutionStatus.IDLE);
-        member.setStatus(force ? MemberStatus.SHUTDOWN : MemberStatus.READY);
+        member.setStatus(force ? MemberStatus.SHUTDOWN : MemberStatus.SHUTDOWN_REQUESTED);
         return true;
     }
 
@@ -339,8 +343,22 @@ public class TeamBackend {
         return taskManager.add(title, content, taskId, dependencies);
     }
 
+    public TaskRecord createTaskWithPriority(
+            String title,
+            String content,
+            String taskId,
+            List<String> dependencies,
+            List<String> dependedBy
+    ) {
+        return taskManager.addWithPriority(title, content, taskId, dependencies, dependedBy);
+    }
+
     public List<TaskSummary> listTasks() {
-        return taskManager.list();
+        return listTasks(null);
+    }
+
+    public List<TaskSummary> listTasks(TaskStatus status) {
+        return taskManager.listByStatus(status);
     }
 
     public TaskDetail getTask(String taskId) {
@@ -384,14 +402,18 @@ public class TeamBackend {
         if (task == null) {
             return false;
         }
-        if (task.getStatus() == TaskStatus.CLAIMED && task.getAssignee() != null && !task.getAssignee().equals(assignee)) {
+        if (!hasMember(assignee)) {
             return false;
         }
-        return taskManager.claim(taskId, assignee);
+        return taskManager.assign(taskId, assignee);
     }
 
     public boolean updateTask(String taskId, String title, String content) {
         return taskManager.update(taskId, title, content);
+    }
+
+    public boolean addBlockedBy(String taskId, List<String> dependencies) {
+        return taskManager.addBlockedBy(taskId, dependencies);
     }
 
     public boolean cancelTask(String taskId) {
@@ -412,6 +434,39 @@ public class TeamBackend {
         return messageManager.sendMessage(content, toMemberName, fromMemberName);
     }
 
+    public void createTeam(
+            String displayName,
+            String desc,
+            String leaderDisplayName,
+            String leaderDesc
+    ) {
+        store.createTeam(displayName, desc, memberName, leaderDisplayName, leaderDesc);
+        AgentCard card = new AgentCard();
+        card.setName(memberName);
+        card.setDescription(leaderDisplayName != null && !leaderDisplayName.isBlank() ? leaderDisplayName : memberName);
+        spawnMember(
+                memberName,
+                leaderDisplayName != null && !leaderDisplayName.isBlank() ? leaderDisplayName : memberName,
+                card,
+                leaderDesc,
+                null,
+                MemberStatus.READY,
+                ExecutionStatus.IDLE
+        );
+    }
+
+    public boolean canCleanTeam() {
+        for (TeamMember member : members.values()) {
+            if (member.getMemberName().equals(memberName)) {
+                continue;
+            }
+            if (member.getStatus() != MemberStatus.SHUTDOWN) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Deliver a point-to-point message and trigger the recipient's minimal Java
      * runtime execution path.
@@ -421,8 +476,11 @@ public class TeamBackend {
      * in {@code openjiuwen.agent_teams.agent.dispatcher} / spawn runtime.
      */
     public Map<String, Object> deliverMessage(String content, String toMemberName, String fromMemberName) {
+        if (toMemberName == null || toMemberName.isBlank()) {
+            return null;
+        }
         String messageId = sendMessage(content, toMemberName, fromMemberName);
-        Object runtimeResult = runMember(toMemberName, content);
+        Object runtimeResult = hasMember(toMemberName) ? runMember(toMemberName, content) : null;
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message_id", messageId);
         result.put("runtime_result", runtimeResult);

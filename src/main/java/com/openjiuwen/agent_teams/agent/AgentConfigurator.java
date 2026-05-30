@@ -4,7 +4,36 @@
 
 package com.openjiuwen.agent_teams.agent;
 
-import java.util.*;
+import com.openjiuwen.agent_teams.Paths;
+import com.openjiuwen.agent_teams.schema.DeepAgentSpec;
+import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
+import com.openjiuwen.agent_teams.schema.TeamModelConfig;
+import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agent_teams.schema.TeamRuntimeContext;
+import com.openjiuwen.agent_teams.schema.TeamSpec;
+import com.openjiuwen.agent_teams.schema.status.MemberMode;
+import com.openjiuwen.agent_teams.tools.AgentTeamsToolRegistry;
+import com.openjiuwen.agent_teams.tools.TeamBackend;
+import com.openjiuwen.agent_teams.workspace.TeamWorkspaceConfig;
+import com.openjiuwen.agent_teams.workspace.TeamWorkspaceManager;
+import com.openjiuwen.agent_teams.worktree.WorktreeConfig;
+import com.openjiuwen.agent_teams.worktree.WorktreeManager;
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.memory.team.TeamMemoryConfig;
+import com.openjiuwen.core.memory.team.TeamMemoryManager;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
+import com.openjiuwen.harness.HarnessFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Agent configuration, setup, and initialization for TeamAgent.
@@ -21,16 +50,19 @@ import java.util.*;
  */
 public class AgentConfigurator {
 
-    private Object card;
+    private final Object card;
     private Object spec;
     private Object ctx;
     private String rolePolicy;
     private Object workspaceManager;
+    private boolean workspaceInitialized;
     private Object worktreeManager;
     private Object memoryManager;
-    private Object modelAllocator;
+    private ModelAllocator modelAllocator;
+    private Object teamBackend;
+    private Object deepAgent;
     private List<Object> registeredTools;
-    
+
     /**
      * Create AgentConfigurator.
      *
@@ -40,96 +72,233 @@ public class AgentConfigurator {
         this.card = card;
         this.registeredTools = new ArrayList<>();
     }
-    
+
     /**
      * Initialize with spec and context.
      *
      * @param spec TeamAgentSpec
-     * @param ctx TeamRuntimeContext
+     * @param ctx  TeamRuntimeContext
      */
     public void initialize(Object spec, Object ctx) {
         this.spec = spec;
         this.ctx = ctx;
-        
-        // Load role policy
+
         this.rolePolicy = loadRolePolicy();
-        
-        // Setup workspace and worktree
         setupWorkspace();
         setupWorktree();
-        
-        // Setup memory manager
         setupMemoryManager();
     }
-    
+
     /**
      * Configure and build the DeepAgent.
      *
      * @return Configured DeepAgent instance
      */
     public Object buildAgent() {
-        // Register tools
         registerDefaultTools();
-        
-        // Allocate models
         allocateModels();
-        
-        // Build DeepAgent
         return constructDeepAgent();
     }
-    
-    /**
-     * Get the role policy string.
-     */
+
     public String getRolePolicy() {
         return rolePolicy;
     }
-    
-    /**
-     * Get registered tools.
-     */
+
     public List<Object> getRegisteredTools() {
-        return registeredTools;
+        return new ArrayList<>(registeredTools);
     }
-    
+
+    public Object getWorkspaceManager() {
+        return workspaceManager;
+    }
+
+    public boolean isWorkspaceInitialized() {
+        return workspaceInitialized;
+    }
+
+    public Object getWorktreeManager() {
+        return worktreeManager;
+    }
+
+    public Object getMemoryManager() {
+        return memoryManager;
+    }
+
+    public ModelAllocator getModelAllocator() {
+        return modelAllocator;
+    }
+
+    public Object getTeamBackend() {
+        return teamBackend;
+    }
+
+    public Object getDeepAgent() {
+        return deepAgent;
+    }
+
     // -- Setup methods --
-    
+
     private String loadRolePolicy() {
-        // Placeholder: should load from policy templates
-        return AgentPolicy.rolePolicy(AgentPolicy.TeamRole.LEADER, "cn");
+        AgentPolicy.TeamRole policyRole = resolveRole() == TeamRole.LEADER
+                ? AgentPolicy.TeamRole.LEADER : AgentPolicy.TeamRole.MEMBER;
+        return AgentPolicy.rolePolicy(policyRole, resolveLanguage());
     }
-    
+
     private void setupWorkspace() {
-        // Placeholder: create workspace directory structure
-        // Mirrors Python: workspace_manager = TeamWorkspaceManager(...)
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec == null) {
+            return;
+        }
+        TeamWorkspaceConfig wsConfig = teamSpec.getWorkspace();
+        if (wsConfig == null || !wsConfig.isEnabled()) {
+            workspaceManager = null;
+            workspaceInitialized = false;
+            return;
+        }
+
+        String teamName = resolveTeamName();
+        String wsPath = wsConfig.getRootPath();
+        if (wsPath == null || wsPath.isBlank()) {
+            wsPath = Paths.teamHome(teamName).resolve("team-workspace").toString();
+        }
+        try {
+            Files.createDirectories(Path.of(wsPath));
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to initialize team workspace: " + wsPath, e);
+        }
+        workspaceManager = new TeamWorkspaceManager(wsConfig, wsPath, teamName);
+        workspaceInitialized = true;
     }
-    
+
     private void setupWorktree() {
-        // Placeholder: setup worktree for file operations
-        // Mirrors Python: worktree_manager = WorktreeManager(...)
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec == null) {
+            return;
+        }
+        WorktreeConfig worktreeConfig = teamSpec.getWorktree();
+        if (worktreeConfig == null || !worktreeConfig.isEnabled()) {
+            worktreeManager = null;
+            return;
+        }
+        String workspaceRoot = workspaceManager instanceof TeamWorkspaceManager manager
+                ? manager.getWorkspacePath() : null;
+        worktreeManager = new WorktreeManager(worktreeConfig, null, workspaceRoot);
     }
-    
+
     private void setupMemoryManager() {
-        // Placeholder: setup team memory
-        // Mirrors Python: memory_manager = TeamMemoryManager(...)
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec == null) {
+            return;
+        }
+        TeamMemoryConfig memoryConfig = teamSpec.getMemory();
+        if (memoryConfig == null || !memoryConfig.isEnabled()) {
+            memoryManager = null;
+            return;
+        }
+        String teamName = resolveTeamName();
+        String memberName = resolveMemberName();
+        String lifecycle = teamSpec.getLifecycle() != null ? teamSpec.getLifecycle().name().toLowerCase() : "temporary";
+        String teamMemoryDir = memoryConfig.getTeamMemoryDir();
+        if ((teamMemoryDir == null || teamMemoryDir.isBlank()) && memoryConfig.isSharedMemory()
+                && "persistent".equals(lifecycle)) {
+            teamMemoryDir = Paths.teamMemoryDir(teamName).toString();
+        }
+        memoryManager = new TeamMemoryManager(
+                memberName,
+                teamName,
+                resolveRole().name().toLowerCase(),
+                lifecycle,
+                memoryConfig.getScenario(),
+                null,
+                resolveLanguage(),
+                memoryConfig.getMemberMemoryPromptMode(),
+                memoryConfig.isAutoExtract(),
+                null,
+                null,
+                teamMemoryDir
+        );
     }
-    
+
     private void registerDefaultTools() {
-        // Placeholder: register team tools
-        // Mirrors Python: _register_tools_from_spec(spec)
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec == null) {
+            registeredTools = new ArrayList<>();
+            return;
+        }
+
+        TeamRole role = resolveRole();
+        TeamBackend backend = new TeamBackend(
+                resolveTeamName(),
+                resolveMemberName(),
+                role == TeamRole.LEADER,
+                "plan_mode".equalsIgnoreCase(teamSpec.getTeammateMode()) ? MemberMode.PLAN_MODE : MemberMode.BUILD_MODE,
+                teamSpec.getPredefinedMembers()
+        );
+        if (workspaceManager instanceof TeamWorkspaceManager manager) {
+            backend.registerCleanupPath(manager.getWorkspacePath());
+        }
+        backend.registerCleanupPath(Paths.teamHome(resolveTeamName()).toString());
+        teamBackend = backend;
+
+        List<Tool> tools = AgentTeamsToolRegistry.createTeamTools(backend, role, teamSpec.getTeammateMode());
+        registeredTools = new ArrayList<>();
+        for (Tool tool : tools) {
+            if (tool != null && tool.getCard() != null) {
+                registeredTools.add(tool.getCard());
+            }
+        }
+        try {
+            Runner.resourceMgr().addTools(tools, null);
+        } catch (Exception ignored) {
+            // Runner may not be configured in small unit tests; DeepAgent still receives the cards below.
+        }
     }
-    
+
     private void allocateModels() {
-        // Placeholder: allocate models based on spec
-        // Mirrors Python: model_allocator.allocate(spec)
+        TeamAgentSpec teamSpec = asSpec();
+        TeamSpec allocatorTeamSpec = resolveAllocatorTeamSpec(teamSpec);
+        if (teamSpec == null || resolveRole() != TeamRole.LEADER
+                || allocatorTeamSpec == null || allocatorTeamSpec.getModelPool().isEmpty()) {
+            modelAllocator = null;
+            return;
+        }
+        modelAllocator = ModelAllocators.buildModelAllocator(teamSpec, allocatorTeamSpec);
     }
-    
+
     private Object constructDeepAgent() {
-        // Placeholder: construct DeepAgent
-        // Mirrors Python: DeepAgent(...)
-        return null;
+        TeamAgentSpec teamSpec = asSpec();
+        DeepAgentConfig config = new DeepAgentConfig();
+        if (teamSpec != null) {
+            DeepAgentSpec agentSpec = resolveAgentSpec(teamSpec, resolveRole(), resolveMemberName());
+            if (agentSpec != null && agentSpec.getConfig() != null) {
+                config = agentSpec.getConfig();
+            }
+            TeamModelConfig modelConfig = resolveModelConfig(agentSpec);
+            if (modelConfig != null) {
+                config.setModelClientConfig(modelConfig.getModelClientConfig());
+                config.setModelRequestConfig(modelConfig.getModelRequestConfig());
+            }
+        }
+        if (card instanceof AgentCard agentCard) {
+            config.setCard(agentCard);
+        }
+        String basePrompt = config.getSystemPrompt() != null ? config.getSystemPrompt() : "";
+        String policy = rolePolicy != null ? rolePolicy : loadRolePolicy();
+        config.setSystemPrompt(basePrompt.isBlank() ? policy : basePrompt + "\n\n" + policy);
+        config.setTools(registeredTools.stream()
+                .filter(ToolCard.class::isInstance)
+                .map(ToolCard.class::cast)
+                .toList());
+
+        DeepAgent agent = HarnessFactory.createDeepAgent(config);
+        deepAgent = agent;
+        if (memoryManager instanceof TeamMemoryManager manager) {
+            manager.initToolkit().join();
+            manager.registerTools(agent);
+        }
+        return agent;
     }
-    
+
     /**
      * Resolve team mode from spec.
      * <p>
@@ -139,10 +308,106 @@ public class AgentConfigurator {
      * @return Team mode string ("predefined" or "default")
      */
     public static String resolveTeamMode(Object spec) {
-        // Placeholder: extract team_mode from spec
-        // If team_mode is set, use it
-        // If predefined_members exists, return "predefined"
-        // Otherwise return "default"
+        if (spec instanceof TeamAgentSpec teamSpec) {
+            if (teamSpec.getTeamMode() != null && !teamSpec.getTeamMode().isBlank()) {
+                return teamSpec.getTeamMode();
+            }
+            return teamSpec.getPredefinedMembers() != null && !teamSpec.getPredefinedMembers().isEmpty()
+                    ? "predefined" : "default";
+        }
         return "default";
+    }
+
+    private TeamAgentSpec asSpec() {
+        return spec instanceof TeamAgentSpec teamSpec ? teamSpec : null;
+    }
+
+    private TeamRuntimeContext asContext() {
+        return ctx instanceof TeamRuntimeContext context ? context : null;
+    }
+
+    private TeamRole resolveRole() {
+        TeamRuntimeContext context = asContext();
+        return context != null && context.getRole() != null ? context.getRole() : TeamRole.LEADER;
+    }
+
+    private String resolveLanguage() {
+        TeamRuntimeContext context = asContext();
+        if (context != null && context.getTeamSpec() != null
+                && context.getTeamSpec().getLanguage() != null
+                && !context.getTeamSpec().getLanguage().isBlank()) {
+            return context.getTeamSpec().getLanguage();
+        }
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec != null && teamSpec.getLanguage() != null && !teamSpec.getLanguage().isBlank()) {
+            return teamSpec.getLanguage();
+        }
+        return "cn";
+    }
+
+    private String resolveTeamName() {
+        TeamRuntimeContext context = asContext();
+        TeamSpec contextTeamSpec = context != null ? context.getTeamSpec() : null;
+        if (contextTeamSpec != null && contextTeamSpec.getTeamName() != null
+                && !contextTeamSpec.getTeamName().isBlank()) {
+            return contextTeamSpec.getTeamName();
+        }
+        TeamAgentSpec teamSpec = asSpec();
+        return teamSpec != null && teamSpec.getTeamName() != null && !teamSpec.getTeamName().isBlank()
+                ? teamSpec.getTeamName() : "agent_team";
+    }
+
+    private String resolveMemberName() {
+        TeamRuntimeContext context = asContext();
+        if (context != null && context.getMemberName() != null && !context.getMemberName().isBlank()) {
+            return context.getMemberName();
+        }
+        TeamAgentSpec teamSpec = asSpec();
+        if (teamSpec != null && teamSpec.getLeader() != null
+                && teamSpec.getLeader().getMemberName() != null
+                && !teamSpec.getLeader().getMemberName().isBlank()) {
+            return teamSpec.getLeader().getMemberName();
+        }
+        return resolveRole() == TeamRole.LEADER ? "team_leader" : "teammate";
+    }
+
+    private static DeepAgentSpec resolveAgentSpec(TeamAgentSpec spec, TeamRole role, String memberName) {
+        Map<String, DeepAgentSpec> agents = spec.getAgents();
+        if (memberName != null && agents.containsKey(memberName)) {
+            return agents.get(memberName);
+        }
+        String roleKey = role != null ? role.name().toLowerCase() : "leader";
+        DeepAgentSpec byRole = agents.get(roleKey);
+        if (byRole != null) {
+            return byRole;
+        }
+        DeepAgentSpec teammate = agents.get("teammate");
+        return teammate != null ? teammate : agents.get("leader");
+    }
+
+    private TeamSpec resolveAllocatorTeamSpec(TeamAgentSpec teamSpec) {
+        TeamRuntimeContext context = asContext();
+        TeamSpec team = context != null ? context.getTeamSpec() : null;
+        if (team != null && !team.getModelPool().isEmpty()) {
+            return team;
+        }
+        if (teamSpec == null || teamSpec.getModelPool().isEmpty()) {
+            return team;
+        }
+        TeamSpec fallback = team != null ? team : new TeamSpec();
+        fallback.setModelPool(teamSpec.getModelPool());
+        fallback.setModelPoolStrategy(teamSpec.getModelPoolStrategy());
+        if (team != null) {
+            context.setTeamSpec(fallback);
+        }
+        return fallback;
+    }
+
+    private TeamModelConfig resolveModelConfig(DeepAgentSpec agentSpec) {
+        TeamRuntimeContext context = asContext();
+        if (context != null && context.getMemberModel() != null) {
+            return context.getMemberModel();
+        }
+        return agentSpec != null ? agentSpec.getModel() : null;
     }
 }

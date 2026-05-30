@@ -6,6 +6,9 @@ package com.openjiuwen.core.foundation.llm.output_parsers;
 
 /**
  * Markdown element type constants.
+ *
+ * <p>Mirrors Python's {@code MarkdownElementType} in
+ * {@code openjiuwen.core.foundation.llm.output_parsers.markdown_output_parser}.</p>
  */
 public final class MarkdownElementType {
 

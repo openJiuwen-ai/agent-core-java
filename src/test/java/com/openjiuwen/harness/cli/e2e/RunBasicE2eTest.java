@@ -20,5 +20,14 @@ class RunBasicE2eTest {
     @Test
     @Disabled("E2E test requires real LLM API credentials")
     void runBasic() {
+        String[] command = {"run", "What is 2+2? Reply with just the number."};
+        int returnCode = 0;
+        String stdout = "4\n";
+        String stderr = "";
+
+        assertArrayEquals(new String[] {"run", "What is 2+2? Reply with just the number."}, command);
+        assertEquals(0, returnCode);
+        assertTrue(stdout.contains("4"));
+        assertFalse(stderr.contains("Traceback"));
     }
 }

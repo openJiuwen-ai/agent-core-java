@@ -36,6 +36,8 @@ public class AgentTeamSession extends BaseSession {
     private final Tracer tracerField;
     private final Checkpointer checkpointerField;
     private final TraceAgentSpan teamSpan;
+    private boolean preRunDone;
+    private boolean postRunDone;
 
     /**
      * Create a new AgentTeamSession.
@@ -88,6 +90,8 @@ public class AgentTeamSession extends BaseSession {
         this.teamSpan = tracerField != null
                 ? tracerField.getTracerAgentSpanManager().createAgentSpan(null)
                 : null;
+        this.preRunDone = false;
+        this.postRunDone = false;
     }
 
     @Override
@@ -134,6 +138,33 @@ public class AgentTeamSession extends BaseSession {
      */
     public TraceAgentSpan span() {
         return teamSpan;
+    }
+
+    /**
+     * Execute team-session pre-run checkpointer logic once.
+     *
+     * @param inputs invocation inputs
+     */
+    public void preRun(Object inputs) {
+        if (preRunDone) {
+            return;
+        }
+        CheckpointerFactory.getCheckpointer().preAgentExecute(this, inputs);
+        preRunDone = true;
+    }
+
+    /**
+     * Close the team stream and execute post-run checkpointer logic once.
+     */
+    public void postRun() {
+        if (postRunDone) {
+            return;
+        }
+        streamWriterManagerField.getStreamEmitter().close();
+        if (checkpointerField != null) {
+            checkpointerField.postAgentExecute(this);
+        }
+        postRunDone = true;
     }
 
     /**

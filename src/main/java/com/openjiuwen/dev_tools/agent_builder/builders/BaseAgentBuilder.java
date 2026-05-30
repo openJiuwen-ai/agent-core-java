@@ -35,6 +35,27 @@ public abstract class BaseAgentBuilder {
         return state;
     }
 
+    public void setState(AgentBuilderEnums.BuildState state) {
+        this.state = state;
+    }
+
+    public ProgressReporter getProgressReporter() {
+        return progressReporter;
+    }
+
+    public Map<String, Object> getResource() {
+        return Collections.unmodifiableMap(resource);
+    }
+
+    public void reset() {
+        state = AgentBuilderEnums.BuildState.INITIAL;
+        resource.clear();
+    }
+
+    public Map<String, Object> getBuildStatus() {
+        return Map.of("state", state.getValue());
+    }
+
     /**
      * Main build entry point — template method.
      */

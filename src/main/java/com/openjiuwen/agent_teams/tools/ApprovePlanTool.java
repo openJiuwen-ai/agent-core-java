@@ -5,6 +5,7 @@
 package com.openjiuwen.agent_teams.tools;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,12 +17,16 @@ import java.util.Map;
 public class ApprovePlanTool extends TeamTool {
 
     public ApprovePlanTool(TeamBackend team) {
-        super(toolCard("team.approve_plan", "approve_plan", "Approve or reject a teammate plan."), team);
+        super(toolCard("team.approve_plan", "approve_plan", "Approve or reject a teammate plan.", Map.of(
+                "member_name", stringParam("Member name"),
+                "approved", booleanParam("Whether approved"),
+                "feedback", stringParam("Review feedback")
+        ), List.of("member_name", "approved")), team);
     }
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String memberName = inputs.get("member_name") != null ? String.valueOf(inputs.get("member_name")) : "";
+        String memberName = stringValue(inputs.get("member_name"));
         boolean approved = Boolean.TRUE.equals(inputs.get("approved"));
         if (memberName.isBlank()) {
             return new TeamToolOutput(false, null, "member_name is required");

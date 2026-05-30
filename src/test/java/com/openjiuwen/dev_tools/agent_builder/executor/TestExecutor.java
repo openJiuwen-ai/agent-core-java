@@ -4,8 +4,14 @@
 
 package com.openjiuwen.dev_tools.agent_builder.executor;
 
+import com.openjiuwen.core.common.exception.ValidationError;
+import com.openjiuwen.core.foundation.llm.Model;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test executor functionality.
@@ -13,10 +19,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_executor.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/executor/test_executor.py}.
  *
- * <p>Note: Executor source class requires translation before tests can be implemented.
- * Tests are disabled pending Executor.java implementation.
  */
-@Disabled("Executor.java source class requires translation before tests can be implemented")
 class TestExecutor {
 
     /**
@@ -24,36 +27,51 @@ class TestExecutor {
      * <p>
      * Mirrors Python's {@code TestCreateCoreModel} class.
      */
-    static class TestCreateCoreModel {
+    @Nested
+    class TestCreateCoreModel {
 
         @Test
         void testCreateModelWithValidInfo() {
-            // Placeholder - requires Executor.java
+            Model model = AgentBuildExecutor.createCoreModel(Map.of(
+                    "model_provider", "openai",
+                    "model_name", "gpt-4",
+                    "api_key", "test_key",
+                    "api_base", "https://api.openai.com",
+                    "temperature", 0.7,
+                    "top_p", 0.9));
+
+            assertNotNull(model);
         }
 
         @Test
         void testCreateModelMissingProvider() {
-            // Placeholder - requires Executor.java
+            assertThrows(ValidationError.class, () -> AgentBuildExecutor.createCoreModel(Map.of(
+                    "model_name", "gpt-4",
+                    "api_key", "test_key")));
         }
 
         @Test
         void testCreateModelMissingModelName() {
-            // Placeholder - requires Executor.java
+            assertThrows(ValidationError.class, () -> AgentBuildExecutor.createCoreModel(Map.of(
+                    "model_provider", "openai",
+                    "api_key", "test_key")));
         }
 
         @Test
         void testCreateModelMissingApiKey() {
-            // Placeholder - requires Executor.java
+            assertThrows(ValidationError.class, () -> AgentBuildExecutor.createCoreModel(Map.of(
+                    "model_provider", "openai",
+                    "model_name", "gpt-4")));
         }
 
         @Test
         void testCreateModelEmptyInfo() {
-            // Placeholder - requires Executor.java
+            assertThrows(ValidationError.class, () -> AgentBuildExecutor.createCoreModel(Map.of()));
         }
 
         @Test
         void testCreateModelNullInfo() {
-            // Placeholder - requires Executor.java
+            assertThrows(ValidationError.class, () -> AgentBuildExecutor.createCoreModel(null));
         }
     }
 }

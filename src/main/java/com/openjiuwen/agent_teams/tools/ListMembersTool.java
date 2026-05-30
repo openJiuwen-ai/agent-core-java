@@ -34,6 +34,30 @@ public class ListMembersTool extends TeamTool {
             row.put("execution_status", member.getExecutionStatus().name().toLowerCase());
             members.add(row);
         }
-        return new TeamToolOutput(true, members, null);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("members", members);
+        data.put("count", members.size());
+        return new TeamToolOutput(true, data, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public String mapResult(TeamToolOutput output) {
+        if (!output.isSuccess()) {
+            return super.mapResult(output);
+        }
+        Object data = output.getData();
+        if (!(data instanceof Map<?, ?> map) || !(map.get("members") instanceof List<?> members)) {
+            return super.mapResult(output);
+        }
+        List<String> lines = new ArrayList<>();
+        for (Object item : members) {
+            if (item instanceof Map<?, ?> member) {
+                lines.add("member_name=" + member.get("member_name")
+                        + " display_name=" + member.get("display_name")
+                        + " status=" + member.get("status"));
+            }
+        }
+        return String.join("\n", lines);
     }
 }

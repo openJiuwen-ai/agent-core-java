@@ -6,9 +6,13 @@ package com.openjiuwen.harness.rails.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.single_agent.interrupt.InterruptConstants;
 import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
+import com.openjiuwen.core.single_agent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import com.openjiuwen.harness.security.*;
@@ -581,7 +585,67 @@ public class PermissionInterruptRail extends ConfirmInterruptRail {
      * Apply decision to context.
      */
     private void applyDecision(AgentCallbackContext ctx, ToolCall toolCall, String toolName, InterruptDecision decision) {
-        // Decision is stored in context, caller will handle it
+        if (decision instanceof InterruptDecision.ApproveResult approve) {
+            approve.getNewArgs().ifPresent(newArgs -> {
+                if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                    inputs.setToolArgs(newArgs);
+                }
+            });
+            return;
+        }
+
+        if (decision instanceof InterruptDecision.RejectResult reject) {
+            Object toolResult = reject.getToolResult().orElse(null);
+            ToolMessage toolMessage = reject.getToolMessage()
+                    .filter(ToolMessage.class::isInstance)
+                    .map(ToolMessage.class::cast)
+                    .orElseGet(() -> buildToolMessage(toolCall, toolResult));
+            ctx.getExtra().put("_skip_tool", true);
+            if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                inputs.setToolResult(toolResult);
+                inputs.setToolMsg(toolMessage);
+            }
+            return;
+        }
+
+        if (decision instanceof InterruptDecision.InterruptResult interrupt) {
+            InterruptRequest request = toInterruptRequest(interrupt.getRequest());
+            throw new AbortError(
+                    "Tool execution interrupted: " + toolName,
+                    new ToolInterruptException(request, toolCall)
+            );
+        }
+    }
+
+    private ToolMessage buildToolMessage(ToolCall toolCall, Object toolResult) {
+        String toolCallId = toolCall != null ? toolCall.getId() : "";
+        return ToolMessage.builder()
+                .content(String.valueOf(toolResult))
+                .toolCallId(toolCallId)
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private InterruptRequest toInterruptRequest(Object rawRequest) {
+        if (rawRequest instanceof InterruptRequest request) {
+            return request;
+        }
+        if (rawRequest instanceof Map<?, ?> map) {
+            Object schema = map.get("payload_schema");
+            Map<String, Object> payloadSchema = schema instanceof Map<?, ?>
+                    ? new LinkedHashMap<>((Map<String, Object>) schema)
+                    : new LinkedHashMap<>();
+            Object message = map.get("message");
+            Object autoConfirmKey = map.get("auto_confirm_key");
+            return InterruptRequest.builder()
+                    .message(message != null ? String.valueOf(message) : "")
+                    .payloadSchema(payloadSchema)
+                    .autoConfirmKey(autoConfirmKey != null ? String.valueOf(autoConfirmKey) : "")
+                    .build();
+        }
+        return InterruptRequest.builder()
+                .message(rawRequest != null ? String.valueOf(rawRequest) : "")
+                .build();
     }
 
     /**

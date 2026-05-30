@@ -3,9 +3,8 @@
  */
 package com.openjiuwen.core.memory;
 
-import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
-import com.openjiuwen.core.memory.config.MemoryEngineConfig;
+import com.openjiuwen.core.memory.support.LongTermMemoryTestSupport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,11 +38,7 @@ class TestSetScopeConfig {
         @DisplayName("test set scope config without set config")
         void testSetScopeConfigWithoutSetConfig() {
             // Test that setScopeConfig works after registerStore.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-
-            // Register store first - this automatically calls setConfig
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             // Create a simple MemoryScopeConfig
             MemoryScopeConfig scopeConfig = new MemoryScopeConfig();
@@ -65,10 +60,7 @@ class TestSetScopeConfig {
         @DisplayName("test set scope config returns false for invalid scope id")
         void testSetScopeConfigReturnsFalseForInvalidScopeId() {
             // Test that setScopeConfig returns false for invalid scope_id.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             MemoryScopeConfig scopeConfig = new MemoryScopeConfig();
 
@@ -82,10 +74,7 @@ class TestSetScopeConfig {
         @DisplayName("test get scope config returns null when not set")
         void testGetScopeConfigReturnsNullWhenNotSet() {
             // Test that getScopeConfig returns null for non-existent scope.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             // Get config for scope that was never set
             MemoryScopeConfig retrieved = mem.getScopeConfig("nonexistent_scope");
@@ -97,10 +86,7 @@ class TestSetScopeConfig {
         @DisplayName("test set multiple scope configs")
         void testSetMultipleScopeConfigs() {
             // Test that multiple scope configs can be set.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             String scope1 = "scope_1";
             String scope2 = "scope_2";

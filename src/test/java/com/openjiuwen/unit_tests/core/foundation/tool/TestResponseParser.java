@@ -4,116 +4,211 @@
 
 package com.openjiuwen.unit_tests.core.foundation.tool;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.foundation.tool.service_api.parser.JsonResponseParser;
+import com.openjiuwen.core.foundation.tool.service_api.parser.TextResponseParser;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ResponseParser.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/foundation/tool/test_response_parser.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/foundation/tool/test_response_parser.py
- * 
- * Tests parsing of HTTP responses and extracting structured data.
+ * Unit tests for JSON and text response parsers.
+ *
+ * <p>Mirrors Python's
+ * {@code tests.unit_tests.core.foundation.tool.test_response_parser}.</p>
  */
-@Disabled("Requires ResponseParser implementation")
 class TestResponseParser {
 
-    // ==================== JSON Response Tests ====================
-
     @Test
-    @DisplayName("Test parse JSON response")
-    void testParseJsonResponse() {
-        assertTrue(true, "Parse JSON response test placeholder");
+    void testStandardJsonContentTypes() {
+        JsonResponseParser parser = new JsonResponseParser();
+
+        assertTrue(parser.canParse("application/json", 200, null));
+        assertTrue(parser.canParse("text/json", 200, null));
+        assertTrue(parser.canParse("text/x-json", 200, null));
+        assertTrue(parser.canParse("application/javascript", 200, null));
     }
 
     @Test
-    @DisplayName("Test parse JSON array response")
-    void testParseJsonArrayResponse() {
-        assertTrue(true, "Parse JSON array response test placeholder");
+    void testRfc6839PlusJsonSuffixTypes() {
+        JsonResponseParser parser = new JsonResponseParser();
+
+        assertTrue(parser.canParse("application/video+json", 200, null));
+        assertTrue(parser.canParse("application/hal+json", 200, null));
+        assertTrue(parser.canParse("application/ld+json", 200, null));
+        assertTrue(parser.canParse("application/schema+json", 200, null));
+        assertTrue(parser.canParse("application/problem+json", 200, null));
     }
 
     @Test
-    @DisplayName("Test parse nested JSON response")
-    void testParseNestedJsonResponse() {
-        assertTrue(true, "Parse nested JSON response test placeholder");
-    }
+    void testContentTypeCaseInsensitive() {
+        JsonResponseParser parser = new JsonResponseParser();
 
-    // ==================== XML Response Tests ====================
-
-    @Test
-    @DisplayName("Test parse XML response")
-    void testParseXmlResponse() {
-        assertTrue(true, "Parse XML response test placeholder");
+        assertTrue(parser.canParse("APPLICATION/JSON", 200, null));
+        assertTrue(parser.canParse("Application/Json", 200, null));
+        assertTrue(parser.canParse("APPLICATION/VIDEO+JSON", 200, null));
     }
 
     @Test
-    @DisplayName("Test parse XML with namespaces")
-    void testParseXmlWithNamespaces() {
-        assertTrue(true, "Parse XML with namespaces test placeholder");
-    }
+    void testMissingContentTypeWithAcceptHeader() {
+        JsonResponseParser parser = new JsonResponseParser();
 
-    // ==================== Text Response Tests ====================
-
-    @Test
-    @DisplayName("Test parse plain text response")
-    void testParsePlainTextResponse() {
-        assertTrue(true, "Parse plain text response test placeholder");
+        assertTrue(parser.canParse("", 200, Map.of("Accept", "application/json")));
+        assertTrue(parser.canParse("", 200, Map.of("Accept", "application/ld+json")));
+        assertTrue(parser.canParse(null, 200, Map.of("Accept", "application/json")));
+        assertFalse(parser.canParse("", 200, Map.of("Accept", "text/html")));
+        assertFalse(parser.canParse("", 200, null));
     }
 
     @Test
-    @DisplayName("Test parse HTML response")
-    void testParseHtmlResponse() {
-        assertTrue(true, "Parse HTML response test placeholder");
-    }
+    void testNonJsonContentTypes() {
+        JsonResponseParser parser = new JsonResponseParser();
 
-    // ==================== Error Response Tests ====================
-
-    @Test
-    @DisplayName("Test parse error response")
-    void testParseErrorResponse() {
-        assertTrue(true, "Parse error response test placeholder");
+        assertFalse(parser.canParse("text/html", 200, null));
+        assertFalse(parser.canParse("text/plain", 200, null));
+        assertFalse(parser.canParse("application/xml", 200, null));
+        assertFalse(parser.canParse("application/xhtml+xml", 200, null));
+        assertFalse(parser.canParse("image/png", 200, null));
     }
 
     @Test
-    @DisplayName("Test parse 404 response")
-    void testParse404Response() {
-        assertTrue(true, "Parse 404 response test placeholder");
+    void testParseStandardJsonBytes() {
+        JsonResponseParser parser = new JsonResponseParser();
+        Object result = parser.parse("{\"name\": \"test\", \"value\": 123}".getBytes(StandardCharsets.UTF_8),
+                "application/json");
+
+        assertEquals(Map.of("name", "test", "value", 123), result);
     }
 
     @Test
-    @DisplayName("Test parse 500 response")
-    void testParse500Response() {
-        assertTrue(true, "Parse 500 response test placeholder");
-    }
+    void testParseRfc6839JsonBytes() {
+        JsonResponseParser parser = new JsonResponseParser();
+        Object result = parser.parse("{\"@context\": \"https://json-ld.org\", \"name\": \"test\"}"
+                .getBytes(StandardCharsets.UTF_8), "application/ld+json");
 
-    // ==================== Content Type Detection Tests ====================
-
-    @Test
-    @DisplayName("Test detect content type from header")
-    void testDetectContentTypeFromHeader() {
-        assertTrue(true, "Detect content type from header test placeholder");
+        assertEquals(Map.of("@context", "https://json-ld.org", "name", "test"), result);
     }
 
     @Test
-    @DisplayName("Test detect content type from body")
-    void testDetectContentTypeFromBody() {
-        assertTrue(true, "Detect content type from body test placeholder");
+    void testParseHalJsonBytes() {
+        JsonResponseParser parser = new JsonResponseParser();
+        Object result = parser.parse(
+                "{\"_links\": {\"self\": {\"href\": \"/api/users/123\"}}, \"id\": 123, \"name\": \"test_user\"}"
+                        .getBytes(StandardCharsets.UTF_8),
+                "application/hal+json");
+        Map<?, ?> map = (Map<?, ?>) result;
+
+        assertEquals(123, map.get("id"));
+        assertEquals("test_user", map.get("name"));
+        assertTrue(map.containsKey("_links"));
     }
 
-    // ==================== Schema Validation Tests ====================
-
     @Test
-    @DisplayName("Test validate response against schema")
-    void testValidateResponseAgainstSchema() {
-        assertTrue(true, "Validate response against schema test placeholder");
+    void testParseEmptyBytesJson() {
+        JsonResponseParser parser = new JsonResponseParser();
+
+        assertEquals(Map.of(), parser.parse(new byte[0], "application/json"));
     }
 
     @Test
-    @DisplayName("Test validation error for invalid response")
-    void testValidationErrorForInvalidResponse() {
-        assertTrue(true, "Validation error for invalid response test placeholder");
+    void testParseNoneBytesJson() {
+        JsonResponseParser parser = new JsonResponseParser();
+
+        assertEquals(Map.of(), parser.parse(null, "application/json"));
+    }
+
+    @Test
+    void testParseVideoPlusJson() {
+        JsonResponseParser parser = new JsonResponseParser();
+        Object result = parser.parse("{\"videoId\": \"abc123\", \"duration\": 300, \"status\": \"ready\"}"
+                .getBytes(StandardCharsets.UTF_8), "application/video+json");
+
+        assertEquals(Map.of("videoId", "abc123", "duration", 300, "status", "ready"), result);
+    }
+
+    @Test
+    void testStandardTextContentTypes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertTrue(parser.canParse("text/plain", 200, null));
+        assertTrue(parser.canParse("text/html", 200, null));
+        assertTrue(parser.canParse("text/xml", 200, null));
+        assertTrue(parser.canParse("text/css", 200, null));
+        assertTrue(parser.canParse("text/csv", 200, null));
+    }
+
+    @Test
+    void testGenericTextTypes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertTrue(parser.canParse("text/markdown", 200, null));
+        assertTrue(parser.canParse("text/rtf", 200, null));
+    }
+
+    @Test
+    void testXmlContentTypes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertTrue(parser.canParse("application/xml", 200, null));
+        assertTrue(parser.canParse("application/xhtml+xml", 200, null));
+        assertFalse(parser.canParse("application/json", 200, null));
+    }
+
+    @Test
+    void testJavascriptContentTypes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertTrue(parser.canParse("text/javascript", 200, null));
+        assertTrue(parser.canParse("application/javascript", 200, null));
+    }
+
+    @Test
+    void testNonTextContentTypes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertFalse(parser.canParse("image/png", 200, null));
+        assertFalse(parser.canParse("application/pdf", 200, null));
+        assertFalse(parser.canParse("application/octet-stream", 200, null));
+    }
+
+    @Test
+    void testParsePlainTextBytes() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertEquals("Hello, World!", parser.parse("Hello, World!".getBytes(StandardCharsets.UTF_8), "text/plain"));
+    }
+
+    @Test
+    void testParseHtmlBytes() {
+        TextResponseParser parser = new TextResponseParser();
+        String html = "<!DOCTYPE html><html><body><h1>Hello</h1></body></html>";
+
+        assertEquals(html, parser.parse(html.getBytes(StandardCharsets.UTF_8), "text/html"));
+    }
+
+    @Test
+    void testParseXmlBytes() {
+        TextResponseParser parser = new TextResponseParser();
+        String xml = "<?xml version=\"1.0\"?><response><status>ok</status></response>";
+
+        assertEquals(xml, parser.parse(xml.getBytes(StandardCharsets.UTF_8), "application/xml"));
+    }
+
+    @Test
+    void testParseEmptyBytesText() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertEquals("", parser.parse(new byte[0], "text/plain"));
+    }
+
+    @Test
+    void testParseNoneBytesText() {
+        TextResponseParser parser = new TextResponseParser();
+
+        assertEquals("", parser.parse(null, "text/plain"));
     }
 }

@@ -62,12 +62,16 @@ class BaseAgentTest {
     }
 
     @Test
-    void testRegisterRailAllEightHooks() {
+    void testRegisterRailAllHooks() {
         AgentRail rail = new AgentRail() {
             @Override
             public void beforeInvoke(AgentCallbackContext ctx) {}
             @Override
             public void afterInvoke(AgentCallbackContext ctx) {}
+            @Override
+            public void beforeTaskIteration(AgentCallbackContext ctx) {}
+            @Override
+            public void afterTaskIteration(AgentCallbackContext ctx) {}
             @Override
             public void beforeModelCall(AgentCallbackContext ctx) {}
             @Override

@@ -49,65 +49,71 @@ public class LiteMemoryToolContextBase {
 
     /**
      * Search memory content.
-     * <p>
-     * Placeholder implementation - full vector + FTS search deferred.
      */
     public Map<String, Object> search(String query, int maxResults, double minScore) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("query", query);
-        result.put("max_results", maxResults);
-        result.put("min_score", minScore);
-        result.put("results", java.util.Collections.emptyList());
-        result.put("disabled", !hasActiveManager());
-        return result;
+        if (this instanceof MemoryToolContext ctx) {
+            return MemoryToolOps.memorySearchWithContext(ctx, query, maxResults, minScore, null).join();
+        }
+        return disabledMemoryResult(query, maxResults, minScore);
     }
 
     /**
      * Get memory content by path.
-     * <p>
-     * Placeholder implementation.
      */
     public Map<String, Object> get(String path, Integer fromLine, Integer lines) {
+        if (this instanceof MemoryToolContext ctx) {
+            return MemoryToolOps.memoryGetWithContext(ctx, path, fromLine, lines).join();
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", path);
         result.put("text", "");
         result.put("from_line", fromLine);
         result.put("lines", lines);
-        result.put("disabled", !hasActiveManager());
+        result.put("disabled", true);
+        result.put("error", "Memory context not available");
         return result;
     }
 
     /**
      * Write memory content.
-     * <p>
-     * Placeholder implementation.
+     *
      * @return result map with success status
      */
     public Map<String, Object> write(String path, String content, boolean append) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("path", path);
-        result.put("append", append);
-        result.put("success", false);
-        result.put("disabled", !hasActiveManager());
-        // Placeholder - actual implementation would use sysOperation.fs().write_file()
-        Loggers.MEMORY.info("[LiteMemoryToolContextBase] write: path={}, append={}", path, append);
-        return result;
+        if (this instanceof MemoryToolContext ctx) {
+            return MemoryToolOps.writeMemoryWithContext(ctx, path, content, append).join();
+        }
+        return failedFileResult(path, "Memory context not available");
     }
 
     /**
      * Edit memory content via string replacement.
-     * <p>
-     * Placeholder implementation.
+     *
      * @return result map with success status
      */
     public Map<String, Object> edit(String path, String oldText, String newText) {
+        if (this instanceof MemoryToolContext ctx) {
+            return MemoryToolOps.editMemoryWithContext(ctx, path, oldText, newText).join();
+        }
+        return failedFileResult(path, "Memory context not available");
+    }
+
+    private Map<String, Object> disabledMemoryResult(String query, int maxResults, double minScore) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("query", query);
+        result.put("max_results", maxResults);
+        result.put("min_score", minScore);
+        result.put("results", java.util.Collections.emptyList());
+        result.put("disabled", true);
+        result.put("error", "Memory context not available");
+        return result;
+    }
+
+    private Map<String, Object> failedFileResult(String path, String error) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", path);
         result.put("success", false);
-        result.put("disabled", !hasActiveManager());
-        // Placeholder - actual implementation would read, validate, and write
-        Loggers.MEMORY.info("[LiteMemoryToolContextBase] edit: path={}, replacing {} chars with {} chars",
-            path, oldText.length(), newText.length());
+        result.put("error", error);
         return result;
     }
 }

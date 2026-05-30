@@ -36,6 +36,10 @@ public final class DistributedRunner {
         REPLY_SUBSCRIPTION.set(replyTopicSubscription);
     }
 
+    public static boolean isStarted() {
+        return MQ.get() != null && REPLY_SUBSCRIPTION.get() != null;
+    }
+
     public static MessageQueueBase messageQueue() {
         ensureStarted();
         return MQ.get();

@@ -4,6 +4,15 @@
 
 package com.openjiuwen.auto_harness.infra;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.auto_harness.schema.PipelineSelectionArtifact;
+import com.openjiuwen.auto_harness.schema.PullRequestDraft;
+import com.openjiuwen.core.session.stream.OutputSchema;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,6 +34,7 @@ import java.util.logging.Logger;
 public class InfraParsers {
 
     private static final Logger logger = Logger.getLogger(InfraParsers.class.getName());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final Set<String> ALLOWED_PR_KINDS = Set.of(
         "bug", "task", "feature", "refactor", "clean_code"
@@ -157,9 +167,23 @@ public class InfraParsers {
 
         try {
             Map<String, Object> item = parseJsonObject(jsonStr);
-            String pipeline = (String) item.getOrDefault("pipeline", "");
-            String reason = (String) item.getOrDefault("reason", "");
-            return new PipelineSelectionArtifact(pipeline, reason);
+            String pipeline = normalizePipelineName(stringValue(
+                    item.getOrDefault("pipeline_name", item.getOrDefault("pipeline", ""))));
+            if (pipeline.isBlank()) {
+                return null;
+            }
+            PipelineSelectionArtifact artifact = new PipelineSelectionArtifact();
+            artifact.setPipelineName(pipeline);
+            artifact.setReason(stringValue(item.getOrDefault("reason", "")));
+            artifact.setAlternatives(stringList(item.get("alternatives")).stream()
+                    .map(InfraParsers::normalizePipelineName)
+                    .toList());
+            artifact.setConfidence(doubleValue(item.get("confidence"), 0.0));
+            artifact.setRiskLevel(stringValue(item.getOrDefault("risk_level", "")));
+            artifact.setRequiredInputs(stringList(item.get("required_inputs")));
+            artifact.setFallbackPipeline(normalizePipelineName(
+                    stringValue(item.getOrDefault("fallback_pipeline", ""))));
+            return artifact;
         } catch (Exception e) {
             logger.warning("Failed to parse pipeline selection JSON: " + e.getMessage());
             return null;
@@ -167,6 +191,26 @@ public class InfraParsers {
     }
 
     // ── Helper methods ───────────────────────────────────────
+
+    /**
+     * Extract text content from an OutputSchema-like stream chunk.
+     *
+     * @param chunk stream chunk
+     * @return payload content or an empty string
+     */
+    public static String extractText(Object chunk) {
+        Object payload = null;
+        if (chunk instanceof OutputSchema schema) {
+            payload = schema.getPayload();
+        } else if (chunk != null) {
+            payload = readPayload(chunk);
+        }
+        if (payload instanceof Map<?, ?> map) {
+            Object content = map.get("content");
+            return content != null ? String.valueOf(content) : "";
+        }
+        return "";
+    }
 
     private static String extractJsonString(String raw, boolean isArray) {
         Matcher blockMatch = JSON_BLOCK_PATTERN.matcher(raw);
@@ -182,19 +226,56 @@ public class InfraParsers {
         return null;
     }
 
-    private static List<Map<String, Object>> parseJsonArray(String jsonStr) {
-        // Simplified JSON parsing - actual implementation would use Jackson/Gson
-        return new ArrayList<>();
+    private static List<Map<String, Object>> parseJsonArray(String jsonStr) throws JsonProcessingException {
+        return OBJECT_MAPPER.readValue(jsonStr, new TypeReference<>() {});
     }
 
-    private static Map<String, Object> parseJsonObject(String jsonStr) {
-        // Simplified JSON parsing - actual implementation would use Jackson/Gson
-        return new HashMap<>();
+    private static Map<String, Object> parseJsonObject(String jsonStr) throws JsonProcessingException {
+        return OBJECT_MAPPER.readValue(jsonStr, new TypeReference<>() {});
+    }
+
+    private static Object readPayload(Object chunk) {
+        try {
+            Method getter = chunk.getClass().getMethod("getPayload");
+            return getter.invoke(chunk);
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                Field field = chunk.getClass().getDeclaredField("payload");
+                field.setAccessible(true);
+                return field.get(chunk);
+            } catch (ReflectiveOperationException ignoredAgain) {
+                return null;
+            }
+        }
     }
 
     private static String normalizePipelineName(String name) {
         if (name == null || name.isEmpty()) return "";
         return name.toLowerCase().replace("-", "_");
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? String.valueOf(value).trim() : "";
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().map(String::valueOf).toList();
+    }
+
+    private static double doubleValue(Object value, double fallback) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value != null) {
+            try {
+                return Double.parseDouble(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
     }
 
     // ── Inner classes ───────────────────────────────────────
@@ -219,35 +300,6 @@ public class InfraParsers {
         public List<String> getFiles() { return files; }
         public String getExpectedEffect() { return expectedEffect; }
         public String getPipelineName() { return pipelineName; }
-    }
-
-    public static class PullRequestDraft {
-        private final String title;
-        private final String body;
-        private final String kind;
-
-        public PullRequestDraft(String title, String body, String kind) {
-            this.title = title;
-            this.body = body;
-            this.kind = kind;
-        }
-
-        public String getTitle() { return title; }
-        public String getBody() { return body; }
-        public String getKind() { return kind; }
-    }
-
-    public static class PipelineSelectionArtifact {
-        private final String pipeline;
-        private final String reason;
-
-        public PipelineSelectionArtifact(String pipeline, String reason) {
-            this.pipeline = pipeline;
-            this.reason = reason;
-        }
-
-        public String getPipeline() { return pipeline; }
-        public String getReason() { return reason; }
     }
 
     public static class Pair<T, U> {

@@ -16,6 +16,7 @@ import com.openjiuwen.harness.DeepAgentConfig;
 public class DeepAgentSpec {
 
     private DeepAgentConfig config;
+    private TeamModelConfig model;
     private String language;
 
     public DeepAgentConfig getConfig() {
@@ -24,6 +25,14 @@ public class DeepAgentSpec {
 
     public void setConfig(DeepAgentConfig config) {
         this.config = config;
+    }
+
+    public TeamModelConfig getModel() {
+        return model;
+    }
+
+    public void setModel(TeamModelConfig model) {
+        this.model = model;
     }
 
     public String getLanguage() {

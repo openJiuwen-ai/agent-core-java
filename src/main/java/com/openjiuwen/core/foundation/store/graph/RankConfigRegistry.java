@@ -30,9 +30,24 @@ public final class RankConfigRegistry {
      * @param rrf      callable that builds an RRF ranker
      */
     public static void registerResultRankerCls(String name, Object weighted, Object rrf) {
+        registerResultRankerCls(name, weighted, rrf, Map.of());
+    }
+
+    /**
+     * Register result ranker classes plus backend-specific extra entries.
+     *
+     * @param name     database backend identifier (e.g. "milvus")
+     * @param weighted callable that builds a weighted ranker
+     * @param rrf      callable that builds an RRF ranker
+     * @param extra    additional name-to-callable entries for this backend
+     */
+    public static void registerResultRankerCls(String name, Object weighted, Object rrf, Map<String, Object> extra) {
         Map<String, Object> entry = new HashMap<>();
         entry.put("weighted", weighted);
         entry.put("rrf", rrf);
+        if (extra != null) {
+            entry.putAll(extra);
+        }
         RANKER_CLS.put(name, entry);
     }
 

@@ -4,7 +4,12 @@
 
 package com.openjiuwen.harness.cli.integration;
 
+import com.openjiuwen.harness.cli.agent.CliAgentFactory;
+
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,8 +44,29 @@ class LocalBackendIntegrationTest {
 
     @Test
     void abortWithoutAgentDoesNotCrash() {
-        assertDoesNotThrow(() -> {
-        });
+        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
+
+        assertDoesNotThrow(backend::abort);
+    }
+
+    @Test
+    void abortInvokesAgentAbortWhenAvailable() throws Exception {
+        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
+        FakeAbortableAgent agent = new FakeAbortableAgent();
+        Field agentField = CliAgentFactory.LocalBackend.class.getDeclaredField("agent");
+        agentField.setAccessible(true);
+        agentField.set(backend, agent);
+
+        backend.abort();
+
+        assertEquals(1, agent.abortCalls);
+    }
+
+    @Test
+    void stopWithoutStartedRunnerDoesNotCrash() {
+        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
+
+        assertDoesNotThrow(backend::stop);
     }
 
     static class FakeChunk {
@@ -51,6 +77,14 @@ class LocalBackendIntegrationTest {
         FakeChunk(String type, int index) {
             this.type = type;
             this.index = index;
+        }
+    }
+
+    public static class FakeAbortableAgent {
+        int abortCalls;
+
+        public void abort() {
+            abortCalls += 1;
         }
     }
 }

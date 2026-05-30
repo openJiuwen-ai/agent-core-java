@@ -6,8 +6,8 @@ package com.openjiuwen.core.memory;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
+import com.openjiuwen.core.memory.support.LongTermMemoryTestSupport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,11 +48,7 @@ class TestSessionIdInMemory {
         @DisplayName("test add messages with session id")
         void testAddMessagesWithSessionId() {
             // Test that addMessages accepts session_id parameter.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-            
-            // Register stores first (required for memory operations)
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             // Create test messages
             List<BaseMessage> messages = new ArrayList<>();
@@ -78,10 +74,7 @@ class TestSessionIdInMemory {
         @DisplayName("test session id parameter is accepted")
         void testSessionIdParameterAccepted() {
             // Test that session_id parameter exists in addMessages signature.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-            
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             List<BaseMessage> messages = new ArrayList<>();
             messages.add(new UserMessage("What's the weather today?"));
@@ -103,10 +96,7 @@ class TestSessionIdInMemory {
         @DisplayName("test empty session id")
         void testEmptySessionId() {
             // Test that empty session_id is handled.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-            
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             List<BaseMessage> messages = new ArrayList<>();
             messages.add(new UserMessage("Test message"));
@@ -125,10 +115,7 @@ class TestSessionIdInMemory {
         @DisplayName("test null session id")
         void testNullSessionId() {
             // Test that null session_id is handled.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-            
-            mem.registerStore(kvStore, null, null, null);
+            LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
             List<BaseMessage> messages = new ArrayList<>();
             messages.add(new UserMessage("Test message"));

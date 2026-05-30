@@ -15,6 +15,7 @@ public enum MemberStatus {
     READY,
     BUSY,
     RESTARTING,
+    SHUTDOWN_REQUESTED,
     SHUTDOWN,
     ERROR
 }

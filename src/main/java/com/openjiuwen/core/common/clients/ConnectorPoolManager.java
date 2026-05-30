@@ -29,6 +29,10 @@ public class ConnectorPoolManager {
     private static final Map<String, Function<ConnectorPoolConfig, CompletableFuture<ConnectorPool>>> 
         providers = new ConcurrentHashMap<>();
 
+    static {
+        registerProvider("default", config -> CompletableFuture.completedFuture(new TcpConnectorPool(config)));
+    }
+
     private final Map<String, ConnectorPool> connectorPools = new ConcurrentHashMap<>();
     private final ConnectorPoolConfig defaultConfig = new ConnectorPoolConfig();
     private final String defaultConfigKey = defaultConfig.generateKey();

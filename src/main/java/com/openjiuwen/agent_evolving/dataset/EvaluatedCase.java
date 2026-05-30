@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.dataset.case.EvaluatedCase.
+ * Mirrors Python's {@code EvaluatedCase} in {@code openjiuwen.agent_evolving.dataset.case}.
  */
 public class EvaluatedCase {
 

@@ -9,12 +9,20 @@ import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.application.workflow.WorkflowAgent;
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.common.constants.ControllerType;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -36,6 +44,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python's {@code tests.unit_tests.agent.llm_agent.test_llm_agent_with_interrupt}.
  */
 class LlmAgentInterruptTest {
+
+    private static final String MOCK_PROVIDER = "MockOpenAI";
 
     private static String uniqueId() {
         return "questioner_workflow_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
@@ -65,7 +75,7 @@ class LlmAgentInterruptTest {
 
     private static ModelClientConfig createModelClientConfig() {
         return ModelClientConfig.builder()
-                .clientProvider("OpenAI")
+                .clientProvider(MOCK_PROVIDER)
                 .apiKey("sk-fake")
                 .apiBase("https://api.openai.com/v1")
                 .timeout(30)
@@ -92,8 +102,75 @@ class LlmAgentInterruptTest {
         }
     }
 
+    static class MockModelClient extends BaseModelClient {
+        MockModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+            super(modelConfig, modelClientConfig);
+        }
+
+        @Override
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                                       Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                                       Map<String, Object> kwargs) {
+            return AssistantMessage.builder()
+                    .content("{\"location\": \"hangzhou\", \"time\": \"today\"}")
+                    .usageMetadata(UsageMetadata.builder()
+                            .modelName("gpt-3.5-turbo")
+                            .inputTokens(10)
+                            .outputTokens(20)
+                            .totalTokens(30)
+                            .build())
+                    .build();
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                                                      String model, Integer maxTokens, String stop,
+                                                      BaseOutputParser outputParser, Float timeout,
+                                                      Map<String, Object> kwargs) {
+            return List.of(AssistantMessageChunk.builder()
+                    .content("{\"location\": \"hangzhou\", \"time\": \"today\"}")
+                    .build()).iterator();
+        }
+
+        @Override
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                                                     String negativePrompt, int n, boolean promptExtend,
+                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("image generation is not used in this test");
+        }
+
+        @Override
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                                                      String languageType, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("speech generation is not used in this test");
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                                                     String model, String size, String resolution, int duration,
+                                                     boolean promptExtend, boolean watermark, String negativePrompt,
+                                                     Integer seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("video generation is not used in this test");
+        }
+    }
+
+    private static void registerMockModelFactory() {
+        Model.registerFactory(new Model.ModelClientFactory() {
+            @Override
+            public String providerName() {
+                return MOCK_PROVIDER;
+            }
+
+            @Override
+            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+                return new MockModelClient(modelConfig, clientConfig);
+            }
+        });
+    }
+
     @BeforeEach
     void setUp() {
+        registerMockModelFactory();
         Runner.start();
     }
 

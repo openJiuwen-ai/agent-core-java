@@ -5,16 +5,22 @@
 package com.openjiuwen.harness;
 
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.internal.AgentTeamSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.lang.reflect.Field;
 
 /**
@@ -156,26 +162,119 @@ public class DeepAgent extends BaseAgent {
 
     /**
      * Fire a callback event on the agent.
-     * Placeholder implementation - full callback system deferred.
      */
     public void fireCallback(String eventName, Map<String, Object> data) {
-        // Placeholder - actual implementation would notify registered rails
+        AgentCallbackEvent event = resolveCallbackEvent(eventName);
+        Map<String, Object> extra = new LinkedHashMap<>(data != null ? data : Map.of());
+        AgentCallbackContext ctx = AgentCallbackContext.builder()
+                .agent(this)
+                .event(event)
+                .config(config)
+                .extra(extra)
+                .build();
+        if (event == AgentCallbackEvent.BEFORE_TASK_ITERATION
+                || event == AgentCallbackEvent.AFTER_TASK_ITERATION) {
+            ctx.setInputs(TaskIterationInputs.from(extra));
+        }
+        fireCallbackEvent(event, ctx);
     }
 
     /**
      * Cancel a running task.
-     * Placeholder implementation - full task management deferred.
      */
     public void cancelTask(String taskId) {
-        // Placeholder - actual implementation would cancel task via task manager
+        if (taskId == null || taskId.isBlank()) {
+            return;
+        }
+        if (config != null && config.getSessionToolkit() != null) {
+            config.getSessionToolkit().cancelTask(taskId);
+        }
     }
 
     /**
      * Spawn a subagent task.
-     * Placeholder implementation - full subagent spawning deferred.
      */
     public void spawnSubagentTask(String taskId, String subagentType, String description, String subSessionId) {
-        // Placeholder - actual implementation would spawn subagent via task loop
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId is required");
+        }
+        String effectiveSubSessionId = subSessionId != null && !subSessionId.isBlank() ? subSessionId : taskId;
+        String effectiveDescription = description != null ? description : "";
+        if (config != null && config.getSessionToolkit() != null) {
+            config.getSessionToolkit().upsertTask(
+                    taskId,
+                    effectiveSubSessionId,
+                    effectiveDescription,
+                    "running"
+            );
+        }
+
+        DeepAgent subagent = findConfiguredSubagent(subagentType);
+        if (subagent == null) {
+            return;
+        }
+        DeepAgentConfig.SessionToolkit toolkit = config != null ? config.getSessionToolkit() : null;
+        CompletableFuture.runAsync(() -> {
+            try {
+                Object result = subagent.invoke(
+                        Map.of("query", effectiveDescription, "conversation_id", effectiveSubSessionId),
+                        new AgentTeamSession(effectiveSubSessionId, safeCardValue(subagent.getCard(), "name"))
+                );
+                if (toolkit != null) {
+                    toolkit.completeTask(taskId, extractOutput(result));
+                }
+            } catch (Exception e) {
+                if (toolkit != null) {
+                    toolkit.failTask(taskId, e.getMessage());
+                }
+            }
+        });
+    }
+
+    private static AgentCallbackEvent resolveCallbackEvent(String eventName) {
+        if (eventName == null || eventName.isBlank()) {
+            throw new IllegalArgumentException("eventName is required");
+        }
+        for (AgentCallbackEvent event : AgentCallbackEvent.values()) {
+            if (event.getValue().equals(eventName) || event.name().equalsIgnoreCase(eventName)) {
+                return event;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported callback event: " + eventName);
+    }
+
+    private DeepAgent findConfiguredSubagent(String subagentType) {
+        if (config == null || config.getSubagents() == null || config.getSubagents().isEmpty()) {
+            return null;
+        }
+        String requested = subagentType != null ? subagentType : "";
+        if (requested.isBlank() && config.getSubagents().size() == 1) {
+            return config.getSubagents().get(0);
+        }
+        for (DeepAgent subagent : config.getSubagents()) {
+            AgentCard card = subagent.getCard();
+            String name = safeCardValue(card, "name");
+            String id = safeCardValue(card, "id");
+            if (requested.equals(name) || requested.equals(id)) {
+                return subagent;
+            }
+        }
+        return null;
+    }
+
+    private static String safeCardValue(Object card, String fieldName) {
+        String value = readStringField(card, fieldName);
+        return value != null ? value : "";
+    }
+
+    private static String extractOutput(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            Object output = map.get("output");
+            if (output != null) {
+                return String.valueOf(output);
+            }
+        }
+        return result != null ? String.valueOf(result) : "";
     }
     
     private String currentMode = "normal";

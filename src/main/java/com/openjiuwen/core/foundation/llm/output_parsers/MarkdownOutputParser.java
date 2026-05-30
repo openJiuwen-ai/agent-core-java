@@ -20,6 +20,9 @@ import java.util.regex.Pattern;
 
 /**
  * Markdown output parser that extracts structured elements from LLM output.
+ *
+ * <p>Mirrors Python's {@code MarkdownOutputParser} in
+ * {@code openjiuwen.core.foundation.llm.output_parsers.markdown_output_parser}.</p>
  */
 public class MarkdownOutputParser extends BaseOutputParser {
 
@@ -273,6 +276,7 @@ public class MarkdownOutputParser extends BaseOutputParser {
         private final StringBuilder buffer = new StringBuilder();
         private final List<Object> pending = new ArrayList<>();
         private int lastParsedLength;
+        private boolean finalParsed;
         private boolean finished;
 
         private MarkdownStreamIterator(Iterator<?> source) {
@@ -300,6 +304,12 @@ public class MarkdownOutputParser extends BaseOutputParser {
                     lastParsedLength = buffer.length();
                     return true;
                 }
+            }
+
+            if (!finalParsed && !buffer.toString().strip().isEmpty()) {
+                pending.add(parseMarkdown(buffer.toString()));
+                finalParsed = true;
+                return true;
             }
 
             finished = true;

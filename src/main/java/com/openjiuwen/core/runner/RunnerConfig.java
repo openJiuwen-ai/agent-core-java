@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner;
 
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +17,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Runner global configuration.
+ *
+ * <p>Mirrors Python's {@code RunnerConfig} in {@code openjiuwen.core.runner.runner_config}.</p>
  */
 @Data
 @Builder
@@ -54,6 +58,16 @@ public class RunnerConfig {
      */
     public String replyTopicTemplate() {
         return distributedConfig.getReplyTopicTemplate(envPrefix);
+    }
+
+    @Override
+    public String toString() {
+        Object redactedCheckpointerConfig = CheckpointerConfig.redactUrlsInValue(checkpointerConfig);
+        return "RunnerConfig(distributedMode=" + distributedMode
+                + ", distributedConfig=" + distributedConfig
+                + ", envPrefix=" + envPrefix
+                + ", instanceId=" + instanceId
+                + ", checkpointerConfig=" + redactedCheckpointerConfig + ")";
     }
 
     // ========== Global Config ==========

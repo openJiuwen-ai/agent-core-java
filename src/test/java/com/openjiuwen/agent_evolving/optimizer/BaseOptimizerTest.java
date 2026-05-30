@@ -46,6 +46,26 @@ class BaseOptimizerTest {
     }
 
     @Test
+    void bindUsesDefaultTargetsWhenTargetsEmpty() {
+        TestOptimizer optimizer = new TestOptimizer();
+        int count = optimizer.bind(
+                Map.of("op1", new FakeOperator("op1", Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system")))),
+                List.of(),
+                Map.of()
+        );
+
+        assertEquals(1, count);
+        assertTrue(optimizer.parameters().containsKey("op1"));
+    }
+
+    @Test
+    void requiresForwardDataDefaultsTrue() {
+        TestOptimizer optimizer = new TestOptimizer();
+
+        assertTrue(optimizer.requiresForwardData());
+    }
+
+    @Test
     void addTrajectoryCachesCopyAccessibleList() {
         TestOptimizer optimizer = new TestOptimizer();
         optimizer.bind(
@@ -103,16 +123,23 @@ class BaseOptimizerTest {
         protected void doBackward(List<EvaluatedCase> evaluatedCases) {
             backwardCallCount++;
         }
+
+        @Override
+        public List<String> defaultTargets() {
+            return List.of("system_prompt");
+        }
     }
 
     private static final class FakeOperator extends Operator {
 
         private final String operatorId;
         private final Map<String, TunableSpec> tunables;
+        private final Map<String, Object> state = new LinkedHashMap<>();
 
         private FakeOperator(String operatorId, Map<String, TunableSpec> tunables) {
             this.operatorId = operatorId;
             this.tunables = new LinkedHashMap<>(tunables);
+            this.state.put("state", "value");
         }
 
         @Override
@@ -127,15 +154,20 @@ class BaseOptimizerTest {
 
         @Override
         public void setParameter(String target, Object value) {
+            state.put(target, value);
         }
 
         @Override
         public Map<String, Object> getState() {
-            return Map.of("state", "value");
+            return new LinkedHashMap<>(state);
         }
 
         @Override
         public void loadState(Map<String, Object> state) {
+            this.state.clear();
+            if (state != null) {
+                this.state.putAll(state);
+            }
         }
 
         @Override

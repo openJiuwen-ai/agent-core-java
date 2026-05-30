@@ -89,70 +89,7 @@ public class BaseImpl {
      * @return formatted message
      */
     public static String autoFormatMessage(String msg, Object... args) {
-        if (args == null || args.length == 0) {
-            return msg;
-        }
-
-        // Check for brace-style placeholders
-        if (msg.contains("{}") || msg.matches(".\\{\\d+\\}.")) {
-            return formatBraceStyle(msg, args);
-        }
-
-        // Check for percent-style placeholders
-        if (msg.contains("%s") || msg.contains("%d") || msg.contains("%f")) {
-            return formatPercentStyle(msg, args);
-        }
-
-        return msg;
-    }
-
-    private static String formatBraceStyle(String msg, Object[] args) {
-        int argIndex = 0;
-        StringBuilder result = new StringBuilder();
-        int i = 0;
-        while (i < msg.length()) {
-            if (msg.charAt(i) == '{') {
-                int end = msg.indexOf('}', i);
-                if (end >= 0) {
-                    String placeholder = msg.substring(i + 1, end);
-                    if (placeholder.isEmpty() || placeholder.matches("\\d+")) {
-                        int idx = placeholder.isEmpty() ? argIndex : Integer.parseInt(placeholder);
-                        if (idx < args.length) {
-                            result.append(args[idx]);
-                            if (placeholder.isEmpty()) {
-                                argIndex++;
-                            }
-                        }
-                        i = end + 1;
-                        continue;
-                    }
-                }
-            }
-            result.append(msg.charAt(i));
-            i++;
-        }
-        return result.toString();
-    }
-
-    private static String formatPercentStyle(String msg, Object[] args) {
-        // Simple percent-style formatting
-        int argIndex = 0;
-        StringBuilder result = new StringBuilder();
-        int i = 0;
-        while (i < msg.length()) {
-            if (msg.charAt(i) == '%' && i + 1 < msg.length() && argIndex < args.length) {
-                char format = msg.charAt(i + 1);
-                if (format == 's' || format == 'd' || format == 'f') {
-                    result.append(args[argIndex]);
-                    argIndex++;
-                    i += 2;
-                    continue;
-                }
-            }
-            result.append(msg.charAt(i));
-            i++;
-        }
-        return result.toString();
+        return StructuredLoggerMixin.autoFormatMessage(msg, args);
     }
 
     /**

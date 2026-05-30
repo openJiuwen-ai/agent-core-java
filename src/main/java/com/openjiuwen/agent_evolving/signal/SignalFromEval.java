@@ -7,7 +7,11 @@ package com.openjiuwen.agent_evolving.signal;
 import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Offline signal adapter for EvaluatedCase to EvolutionSignal conversion.
@@ -44,16 +48,16 @@ public final class SignalFromEval {
         signal.setSignalType(signalType);
         signal.setEvolutionType(EvolutionCategory.SKILL_EXPERIENCE);
         signal.setSection("Troubleshooting");
-        signal.setExcerpt("score=" + String.format("%.2f", evaluatedCase.getScore()));
+        signal.setExcerpt(String.format(Locale.ROOT, "score=%.2f", evaluatedCase.getScore()));
         if (operatorId != null && !operatorId.isEmpty()) {
             signal.setSkillName(operatorId);
         }
 
         // Set context
-        signal.setContext(new java.util.LinkedHashMap<>());
-        signal.getContext().put("question", String.valueOf(evaluatedCase.getCase().getInputs()));
-        signal.getContext().put("label", String.valueOf(evaluatedCase.getCase().getLabel()));
-        signal.getContext().put("answer", String.valueOf(evaluatedCase.getAnswer()));
+        signal.setContext(new LinkedHashMap<>());
+        signal.getContext().put("question", pythonString(evaluatedCase.getCase().getInputs()));
+        signal.getContext().put("label", pythonString(evaluatedCase.getCase().getLabel()));
+        signal.getContext().put("answer", pythonString(evaluatedCase.getAnswer()));
         signal.getContext().put("reason", evaluatedCase.getReason() != null ? evaluatedCase.getReason() : "");
         signal.getContext().put("score", evaluatedCase.getScore());
 
@@ -82,5 +86,60 @@ public final class SignalFromEval {
             }
         }
         return signals;
+    }
+
+    private static String pythonString(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return pythonMapRepr(map);
+        }
+        if (value instanceof List<?> list) {
+            return pythonListRepr(list);
+        }
+        if (value == null) {
+            return "None";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return pythonMapRepr(map);
+        }
+        if (value instanceof List<?> list) {
+            return pythonListRepr(list);
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return pythonString(value);
+    }
+
+    private static String pythonMapRepr(Map<?, ?> map) {
+        StringBuilder result = new StringBuilder("{");
+        Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<?, ?> entry = iterator.next();
+            result.append(pythonRepr(entry.getKey())).append(": ").append(pythonRepr(entry.getValue()));
+            if (iterator.hasNext()) {
+                result.append(", ");
+            }
+        }
+        result.append("}");
+        return result.toString();
+    }
+
+    private static String pythonListRepr(List<?> list) {
+        StringBuilder result = new StringBuilder("[");
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                result.append(", ");
+            }
+            result.append(pythonRepr(list.get(i)));
+        }
+        result.append("]");
+        return result.toString();
     }
 }

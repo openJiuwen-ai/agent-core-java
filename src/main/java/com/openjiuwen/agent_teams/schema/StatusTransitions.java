@@ -11,7 +11,8 @@ import java.util.Map;
 /**
  * Status transitions module - defines state transitions for team members and tasks.
  * 
- * Mirrors Python's agent_teams.schema.status (transition tables and validation)
+ * Mirrors Python's {@code is_valid_transition} and transition tables in
+ * {@code openjiuwen.agent_teams.schema.status}.
  * 
  * @since 0.1.12
  */

@@ -31,6 +31,7 @@ public class SandboxShellOperation extends BaseShellOperation {
 
     private final BaseSandboxMixin sandboxMixin;
     private final String sessionId;
+    private final boolean sandboxContextInitialized;
 
     /**
      * Create a SandboxShellOperation with default configuration.
@@ -53,12 +54,16 @@ public class SandboxShellOperation extends BaseShellOperation {
         this.sandboxMixin = new BaseSandboxMixin();
         if (runConfig instanceof SandboxRunConfig) {
             this.sandboxMixin.initSandboxContext((SandboxRunConfig) runConfig, "shell");
+            this.sandboxContextInitialized = true;
+        } else {
+            this.sandboxContextInitialized = false;
         }
     }
 
     @Override
     public ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
                                         Map<String, String> environment, Map<String, Object> options) {
+        requireSandboxContext();
         Map<String, Object> params = buildExecuteParams(command, cwd, timeout, environment, options, ShellType.AUTO);
         Object raw = sandboxMixin.invoke(sessionId, "execute_cmd", params);
         return convertToExecuteCmdResult(raw);
@@ -67,6 +72,7 @@ public class SandboxShellOperation extends BaseShellOperation {
     @Override
     public Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
                                                               Map<String, String> environment, Map<String, Object> options) {
+        requireSandboxContext();
         Map<String, Object> params = buildExecuteParams(command, cwd, timeout, environment, options, ShellType.AUTO);
         try {
             Iterator<?> rawIterator = sandboxMixin.invokeStream(sessionId, "execute_cmd_stream", params);
@@ -96,6 +102,7 @@ public class SandboxShellOperation extends BaseShellOperation {
     public ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
                                         Map<String, String> environment, Map<String, Object> options,
                                         ShellType shellType) {
+        requireSandboxContext();
         Map<String, Object> params = buildExecuteParams(command, cwd, timeout, environment, options, shellType);
         Object raw = sandboxMixin.invoke(sessionId, "execute_cmd", params);
         return convertToExecuteCmdResult(raw);
@@ -112,6 +119,7 @@ public class SandboxShellOperation extends BaseShellOperation {
      */
     public Object executeCmdBackground(String command, String cwd,
                                         Map<String, String> environment, Map<String, Object> options) {
+        requireSandboxContext();
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("command", command);
         if (cwd != null) params.put("cwd", cwd);
@@ -119,6 +127,12 @@ public class SandboxShellOperation extends BaseShellOperation {
         if (options != null) params.put("options", options);
         
         return sandboxMixin.invoke(sessionId, "execute_cmd_background", params);
+    }
+
+    private void requireSandboxContext() {
+        if (!sandboxContextInitialized) {
+            throw new UnsupportedOperationException("Sandbox shell operation requires SandboxRunConfig.");
+        }
     }
 
     /**

@@ -97,7 +97,7 @@ class TestIndexer {
     @Tag("level2")
     @DisplayName("Test index metadata storage")
     void testIndexMetadataStorage() {
-        TextChunk chunk = new TextChunk("chunk-001", "Chunk content", null);
+        TextChunk chunk = new TextChunk("chunk-001", "Chunk content", "doc-001");
         chunk.getMetadata().put("chunk_index", 0);
         chunk.getMetadata().put("total_chunks", 5);
         chunk.getMetadata().put("source_doc", "doc-001");

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Mirrors Python's {@code tests.unit_tests.agent_teams.worktree.test_manager}.
+ * Mirrors Python's {@code openjiuwen.auto_harness.infra.worktree_manager}.
  * Tests for WorktreeManager base repo and worktree name generation.
  */
 class WorktreeManagerTest {

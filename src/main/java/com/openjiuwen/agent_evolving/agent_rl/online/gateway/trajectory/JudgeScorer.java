@@ -9,7 +9,8 @@ import java.util.Map;
 /**
  * Minimal delayed-judge scorer seam for gateway trajectory flow.
  * <p>
- * Mirrors the scorer contract consumed by Python's judge dispatcher.
+ * Mirrors Python's {@code JudgeScorer.score} contract in
+ * {@code openjiuwen.agent_evolving.agent_rl.online.judge.judge_scorer}.
  */
 public interface JudgeScorer {
 

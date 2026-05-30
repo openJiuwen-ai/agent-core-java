@@ -229,11 +229,14 @@ class BrowserMoveRegistrationTest {
                 .serverPath("stdio://playwright")
                 .clientType("stdio")
                 .build();
+        List<Result<String>> results = new java.util.ArrayList<>();
+        results.add(new Error<>(new IllegalStateException("network timeout")));
+        results.add(null);
 
         boolean registered = BrowserRuntimeMcpSupport.finalizeRegistration(
                 agent,
                 config,
-                List.<Result<String>>of(new Error<>(new IllegalStateException("network timeout")), null)
+                results
         );
 
         assertFalse(registered);

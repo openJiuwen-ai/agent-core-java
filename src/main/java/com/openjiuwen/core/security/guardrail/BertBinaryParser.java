@@ -59,9 +59,9 @@ public class BertBinaryParser implements ModelOutputParser {
     
     @Override
     public RiskAssessment parse(Object modelOutput) {
-        int[] predicted = extractPrediction(modelOutput);
-        int predictedClass = predicted[0];
-        double confidence = predicted[1];
+        Prediction predicted = extractPrediction(modelOutput);
+        int predictedClass = predicted.predictedClass();
+        double confidence = predicted.confidence();
         
         RiskLevel riskLevel = determineRiskLevel(predictedClass, confidence);
         boolean hasRisk = riskLevel != RiskLevel.SAFE;
@@ -83,9 +83,9 @@ public class BertBinaryParser implements ModelOutputParser {
      * Extract prediction from various model output formats.
      * 
      * @param modelOutput Raw model output
-     * @return array of [predictedClass, confidence]
+     * @return prediction with predicted class and confidence
      */
-    private int[] extractPrediction(Object modelOutput) {
+    private Prediction extractPrediction(Object modelOutput) {
         if (modelOutput instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) modelOutput;
             
@@ -93,14 +93,14 @@ public class BertBinaryParser implements ModelOutputParser {
             if (map.containsKey("predicted_class")) {
                 int predictedClass = toInt(map.get("predicted_class"));
                 double confidence = toDouble(map.containsKey("confidence") ? map.get("confidence") : 0.0);
-                return new int[]{predictedClass, (int) confidence};
+                return new Prediction(predictedClass, confidence);
             }
             
             // Format 2: {label: int, score/confidence: float}
             if (map.containsKey("label")) {
                 int predictedClass = toInt(map.get("label"));
                 double confidence = toDouble(map.containsKey("score") ? map.get("score") : (map.containsKey("confidence") ? map.get("confidence") : 0.0));
-                return new int[]{predictedClass, (int) confidence};
+                return new Prediction(predictedClass, confidence);
             }
             
             // Format 3: {probabilities: [float, float]}
@@ -112,7 +112,7 @@ public class BertBinaryParser implements ModelOutputParser {
                     double p1 = toDouble(probList.get(1));
                     int predictedClass = p1 > p0 ? 1 : 0;
                     double confidence = Math.max(p0, p1);
-                    return new int[]{predictedClass, (int) confidence};
+                    return new Prediction(predictedClass, confidence);
                 }
             }
             
@@ -128,7 +128,7 @@ public class BertBinaryParser implements ModelOutputParser {
                     double p1 = sumExp > 0 ? Math.exp(l1) / sumExp : 0.5;
                     int predictedClass = p1 > p0 ? 1 : 0;
                     double confidence = Math.max(p0, p1);
-                    return new int[]{predictedClass, (int) confidence};
+                    return new Prediction(predictedClass, confidence);
                 }
             }
         }
@@ -140,18 +140,21 @@ public class BertBinaryParser implements ModelOutputParser {
             double v1 = toDouble(list.get(1));
             int predictedClass = v1 > v0 ? 1 : 0;
             double confidence = Math.max(v0, v1);
-            return new int[]{predictedClass, (int) confidence};
+            return new Prediction(predictedClass, confidence);
         }
         
         // Format 6: single float/int
         if (modelOutput instanceof Number) {
             double confidence = ((Number) modelOutput).doubleValue();
             int predictedClass = confidence > 0.5 ? attackClassId : 0;
-            return new int[]{predictedClass, (int) confidence};
+            return new Prediction(predictedClass, confidence);
         }
         
         // Default: no prediction
-        return new int[]{0, 0};
+        return new Prediction(0, 0.0);
+    }
+
+    private record Prediction(int predictedClass, double confidence) {
     }
     
     private RiskLevel determineRiskLevel(int predictedClass, double confidence) {

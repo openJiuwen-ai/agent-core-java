@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for Extraction Models.
  * <p>
- * Mirrors Python's test file from tests/unit_tests/core/memory/graph/extraction/.
+ * Mirrors Python's {@code test_extraction_models.py} in
+ * {@code tests.unit_tests.core.memory.graph.extraction}.
  */
 @DisplayName("Extraction Models Tests")
 class TestExtractionModels {

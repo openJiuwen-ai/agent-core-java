@@ -37,6 +37,7 @@ public class Task {
     private String cancelReason;
 
     private final CompletableFuture<Object> doneFuture = new CompletableFuture<>();
+    private volatile CompletableFuture<?> executionFuture;
 
     public Task(String taskId) {
         this.taskId = taskId;
@@ -104,15 +105,35 @@ public class Task {
      * Alias for getDoneFuture() for compatibility.
      */
     public CompletableFuture<?> getFuture() {
-        return doneFuture;
+        CompletableFuture<?> future = executionFuture;
+        return future != null ? future : doneFuture;
     }
     
     /**
      * Set future - for compatibility with older code.
      */
     public void setFuture(CompletableFuture<?> future) {
-        // Note: This is a no-op since doneFuture is final and pre-initialized
-        // The method exists for API compatibility only
+        this.executionFuture = future;
+        if (future == null) {
+            return;
+        }
+        future.whenComplete((value, throwable) -> {
+            if (throwable == null) {
+                doneFuture.complete(value);
+            } else if (future.isCancelled()) {
+                doneFuture.cancel(false);
+            } else {
+                doneFuture.completeExceptionally(unwrapCompletionException(throwable));
+            }
+        });
+    }
+
+    private static Throwable unwrapCompletionException(Throwable throwable) {
+        if (throwable instanceof java.util.concurrent.CompletionException completionException
+                && completionException.getCause() != null) {
+            return completionException.getCause();
+        }
+        return throwable;
     }
     
     /**

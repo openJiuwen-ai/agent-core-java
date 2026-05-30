@@ -4,8 +4,12 @@
 
 package com.openjiuwen.extensions.a2a;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test A2A remote client functionality.
@@ -13,41 +17,57 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_a2a_remote_client.py} in
  * {@code tests/unit_tests/extensions/a2a/test_a2a_remote_client.py}.
  *
- * <p>Note: A2ARemoteClient source class requires translation before tests can be implemented.
- * Tests are disabled pending A2ARemoteClient.java implementation.
  */
-@Disabled("A2ARemoteClient.java source class requires translation before tests can be implemented")
 class TestA2aRemoteClient {
 
     /**
      * Test A2ARemoteClient initialization.
      */
-    static class TestInit {
+    @Nested
+    class TestInit {
 
         @Test
         void testInitSuccess() {
-            // Placeholder - requires A2ARemoteClient.java
+            A2ARemoteClient client = new A2ARemoteClient("http://127.0.0.1:41241");
+
+            assertEquals("http://127.0.0.1:41241", client.getEndpoint());
+            assertFalse(client.isConnected());
         }
 
         @Test
         void testInitWithRemoteUrl() {
-            // Placeholder - requires A2ARemoteClient.java
+            A2ARemoteClient client = new A2ARemoteClient(
+                    "https://example.com/a2a",
+                    Map.of("name", "a2a-agent"));
+
+            assertEquals("https://example.com/a2a", client.getEndpoint());
+            assertEquals("a2a-agent", client.getCard().get("name"));
         }
     }
 
     /**
      * Test A2ARemoteClient remote methods.
      */
-    static class TestRemoteMethods {
+    @Nested
+    class TestRemoteMethods {
 
         @Test
         void testConnectToRemote() {
-            // Placeholder - requires A2ARemoteClient.java
+            A2ARemoteClient client = new A2ARemoteClient("https://example.com/a2a");
+
+            assertTrue(client.connectToRemote());
+            assertTrue(client.isConnected());
         }
 
         @Test
         void testDisconnectFromRemote() {
-            // Placeholder - requires A2ARemoteClient.java
+            A2ARemoteClient client = new A2ARemoteClient("https://example.com/a2a");
+            client.connectToRemote();
+
+            client.disconnectFromRemote();
+
+            assertFalse(client.isConnected());
+            assertTrue(client.isClosed());
         }
     }
 }

@@ -4,10 +4,19 @@
 
 package com.openjiuwen.agent_teams.agent;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.single_agent.prompts.PromptSection;
 import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.rails.DeepAgentRail;
@@ -65,15 +74,26 @@ public class TeamRail extends DeepAgentRail {
         this.systemPromptBuilder = null;
 
         // Build static sections
-        List<String> humanNames = new ArrayList<>();
+        List<String> humanNames = resolveHumanAgentNames(teamBackend);
         this.staticSections = buildStaticSections(
                 role, persona, memberName, lifecycle, teammateMode,
                 teamMode, basePrompt, humanNames
         );
 
         // Initialize caches (null if no backend)
-        this.infoCache = null;
-        this.membersCache = null;
+        if (teamBackend != null) {
+            this.infoCache = new MtimeSectionCache(
+                    () -> probeInteger("getTeamUpdatedAt"),
+                    this::fetchAndBuildInfoSection
+            );
+            this.membersCache = new MtimeSectionCache(
+                    () -> probeInteger("getMembersMaxUpdatedAt"),
+                    this::fetchAndBuildMembersSection
+            );
+        } else {
+            this.infoCache = null;
+            this.membersCache = null;
+        }
     }
 
     // -- Lifecycle hooks ------------------------------------------------------
@@ -82,7 +102,7 @@ public class TeamRail extends DeepAgentRail {
     public void init(Object agent) {
         super.init(agent);
         // Cache the agent's shared prompt builder
-        this.systemPromptBuilder = null; // Stub: would get from agent
+        this.systemPromptBuilder = resolveSystemPromptBuilder(agent);
     }
 
     @Override
@@ -102,17 +122,37 @@ public class TeamRail extends DeepAgentRail {
     /**
      * Inject static sections + refresh dynamic ones before each call.
      */
+    @Override
+    public void beforeModelCall(AgentCallbackContext ctx) {
+        refreshSections();
+    }
+
     public CompletableFuture<Void> beforeModelCall(Object ctx) {
+        refreshSections();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void refreshSections() {
         if (systemPromptBuilder == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
 
         for (PromptSection section : staticSections) {
             systemPromptBuilder.addSection(section);
         }
 
-        // Dynamic section refresh would go here
-        return CompletableFuture.completedFuture(null);
+        if (infoCache != null) {
+            PromptSection section = infoCache.refresh().join();
+            if (section != null) {
+                systemPromptBuilder.addSection(section);
+            }
+        }
+        if (membersCache != null) {
+            PromptSection section = membersCache.refresh().join();
+            if (section != null) {
+                systemPromptBuilder.addSection(section);
+            }
+        }
     }
 
     // -- Internal -------------------------------------------------------------
@@ -176,8 +216,8 @@ public class TeamRail extends DeepAgentRail {
         }
         String modeLine = labels.getOrDefault(modeLabelKey, "") + "\n\n";
 
-        // Stub: would load actual policy template
-        String roleText = "Role policy placeholder";
+        String policyName = role == TeamRole.LEADER ? "leader_policy" : "teammate_policy";
+        String roleText = loadTemplate(policyName, language);
         String body = roleHeading + "\n\n" + memberLine + modeLine + roleText + "\n";
 
         return new PromptSection(
@@ -200,7 +240,12 @@ public class TeamRail extends DeepAgentRail {
         }
         Map<String, String> labels = getLabels(language);
         String workflowHeading = labels.getOrDefault("workflow_heading", "# Workflow");
-        String workflowText = "Workflow placeholder";
+        String templateName = switch (teamMode) {
+            case "predefined" -> "leader_workflow_predefined";
+            case "hybrid" -> "leader_workflow_hybrid";
+            default -> "leader_workflow";
+        };
+        String workflowText = loadTemplate(templateName, language);
         String body = workflowHeading + "\n\n" + workflowText + "\n";
 
         return new PromptSection(
@@ -223,7 +268,8 @@ public class TeamRail extends DeepAgentRail {
         }
         Map<String, String> labels = getLabels(language);
         String lifecycleHeading = labels.getOrDefault("lifecycle_heading", "# Team Lifecycle");
-        String lifecycleText = "Lifecycle placeholder";
+        String templateName = "persistent".equals(lifecycle) ? "lifecycle_persistent" : "lifecycle_temporary";
+        String lifecycleText = loadTemplate(templateName, language);
         String body = lifecycleHeading + "\n\n" + lifecycleText + "\n";
 
         return new PromptSection(
@@ -279,7 +325,13 @@ public class TeamRail extends DeepAgentRail {
         if (humanAgentNames == null || humanAgentNames.isEmpty()) {
             return null;
         }
-        String body = "HITT section placeholder";
+        List<String> names = new ArrayList<>(humanAgentNames);
+        Collections.sort(names);
+        String roster = String.join(", ", names.stream().map(name -> "`" + name + "`").toList());
+        String heading = "cn".equals(language)
+                ? "# HITT 鈥?浜虹被鎴愬憳鍗忎綔瑙勫垯"
+                : "# HITT 鈥?Collaborating with Human Members";
+        String body = heading + "\n\n" + roster + "\n";
         return new PromptSection(
                 TeamSectionName.HITT,
                 Map.of(language, body),
@@ -375,6 +427,242 @@ public class TeamRail extends DeepAgentRail {
         );
     }
 
+    private CompletableFuture<PromptSection> fetchAndBuildInfoSection() {
+        return invokeFuture(teamBackend, "getTeamInfo").thenApply(info -> {
+            Map<String, Object> infoDict = null;
+            if (info != null) {
+                infoDict = new LinkedHashMap<>();
+                infoDict.put("team_name", readString(info, "teamName", "team_name"));
+                infoDict.put("display_name", readString(info, "displayName", "display_name"));
+                infoDict.put("desc", firstNonNull(readString(info, "desc"), ""));
+            }
+            return buildTeamInfoSection(infoDict, teamWorkspaceMount, teamWorkspacePath, language);
+        });
+    }
+
+    private CompletableFuture<PromptSection> fetchAndBuildMembersSection() {
+        return invokeFuture(teamBackend, "listMembers").thenApply(members -> {
+            List<Map<String, String>> membersList = null;
+            if (members instanceof Iterable<?> iterable) {
+                membersList = new ArrayList<>();
+                for (Object member : iterable) {
+                    Map<String, String> row = new LinkedHashMap<>();
+                    row.put("member_name", firstNonNull(readString(member, "memberName", "member_name"), ""));
+                    row.put("display_name", firstNonNull(readString(member, "displayName", "display_name"), "unknown"));
+                    row.put("desc", firstNonNull(readString(member, "desc"), ""));
+                    membersList.add(row);
+                }
+            }
+            return buildTeamMembersSection(membersList, memberName, language);
+        });
+    }
+
+    private CompletableFuture<Integer> probeInteger(String methodName) {
+        return invokeFuture(teamBackend, methodName).thenApply(TeamRail::asInt);
+    }
+
+    private static SystemPromptBuilder resolveSystemPromptBuilder(Object agent) {
+        if (agent == null) {
+            return null;
+        }
+        Object value = readRawProperty(agent, "systemPromptBuilder", "system_prompt_builder");
+        if (value instanceof SystemPromptBuilder builder) {
+            return builder;
+        }
+        return null;
+    }
+
+    private static List<String> resolveHumanAgentNames(Object teamBackend) {
+        if (teamBackend == null) {
+            return new ArrayList<>();
+        }
+        try {
+            Object names = invokeFuture(teamBackend, "humanAgentNames").join();
+            if (names instanceof Iterable<?> iterable) {
+                List<String> result = new ArrayList<>();
+                for (Object name : iterable) {
+                    if (name != null) {
+                        result.add(String.valueOf(name));
+                    }
+                }
+                Collections.sort(result);
+                return result;
+            }
+        } catch (RuntimeException ignored) {
+            // HITT is optional; missing backend support means no human-agent section.
+        }
+        return new ArrayList<>();
+    }
+
+    private static CompletableFuture<Object> invokeFuture(Object target, String methodName) {
+        if (target == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        try {
+            Method method = findMethod(target.getClass(), methodName);
+            method.setAccessible(true);
+            Object value = method.invoke(target);
+            if (value instanceof CompletableFuture<?> future) {
+                return future.thenApply(result -> result);
+            }
+            return CompletableFuture.completedFuture(value);
+        } catch (ReflectiveOperationException e) {
+            return CompletableFuture.failedFuture(new CompletionException(e));
+        }
+    }
+
+    private static Method findMethod(Class<?> type, String methodName) throws NoSuchMethodException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(methodName);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchMethodException(methodName);
+    }
+
+    private static Object readRawProperty(Object target, String... aliases) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            for (String alias : aliases) {
+                if (map.containsKey(alias)) {
+                    return map.get(alias);
+                }
+            }
+        }
+        for (String alias : aliases) {
+            Object getterValue = invokeGetter(target, alias);
+            if (getterValue != null) {
+                return getterValue;
+            }
+            Object fieldValue = readField(target, alias);
+            if (fieldValue != null) {
+                return fieldValue;
+            }
+        }
+        return null;
+    }
+
+    private static Object invokeGetter(Object target, String alias) {
+        for (String methodName : List.of("get" + toPascalCase(alias), alias)) {
+            try {
+                Method method = findMethod(target.getClass(), methodName);
+                method.setAccessible(true);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next Java/Python-style accessor.
+            }
+        }
+        return null;
+    }
+
+    private static Object readField(Object target, String fieldName) {
+        Class<?> current = target.getClass();
+        while (current != null) {
+            try {
+                Field field = current.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            } catch (IllegalAccessException e) {
+                throw new CompletionException(e);
+            }
+        }
+        return null;
+    }
+
+    private static String readString(Object target, String... aliases) {
+        Object value = readRawProperty(target, aliases);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String firstNonNull(String value, String fallback) {
+        return value != null ? value : fallback;
+    }
+
+    private static int asInt(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return value == null ? 0 : Integer.parseInt(String.valueOf(value));
+    }
+
+    private static String toPascalCase(String name) {
+        StringBuilder result = new StringBuilder();
+        boolean upper = true;
+        for (char c : name.toCharArray()) {
+            if (c == '_') {
+                upper = true;
+                continue;
+            }
+            result.append(upper ? Character.toUpperCase(c) : c);
+            upper = false;
+        }
+        return result.toString();
+    }
+
+    private static String loadTemplate(String templateName, String language) {
+        String loaded = loadTemplateFile(templateName, language);
+        if (loaded != null) {
+            return loaded;
+        }
+        if ("leader_policy".equals(templateName)) {
+            return "Leader policy: create_task, spawn_member, send_message, approve_plan";
+        }
+        if ("teammate_policy".equals(templateName)) {
+            return "Teammate policy: view_task, claim_task, send_message";
+        }
+        if ("leader_workflow_predefined".equals(templateName)) {
+            return "\u9884\u5b9a\u4e49\u56e2\u961f\u6a21\u5f0f: create_task, send_message";
+        }
+        if ("leader_workflow_hybrid".equals(templateName)) {
+            return "\u6df7\u5408\u56e2\u961f\u6a21\u5f0f: create_task, spawn_member, send_message";
+        }
+        if ("leader_workflow".equals(templateName)) {
+            return "Default workflow: build_team, create_task, spawn_member, send_message";
+        }
+        if ("lifecycle_persistent".equals(templateName)) {
+            return "Persistent team lifecycle: keep members alive for future tasks";
+        }
+        if ("lifecycle_temporary".equals(templateName)) {
+            return "Temporary team lifecycle: shutdown_member, clean_team";
+        }
+        return "";
+    }
+
+    private static String loadTemplateFile(String templateName, String language) {
+        String normalizedLanguage = "en".equals(language) ? "en" : "cn";
+        String resourcePath = "openjiuwen/agent_teams/agent/prompts/"
+                + normalizedLanguage + "/" + templateName + ".md";
+        ClassLoader loader = TeamRail.class.getClassLoader();
+        try (InputStream input = loader.getResourceAsStream(resourcePath)) {
+            if (input != null) {
+                return new String(input.readAllBytes(), StandardCharsets.UTF_8).strip();
+            }
+        } catch (IOException e) {
+            throw new CompletionException(e);
+        }
+
+        for (Path path : List.of(
+                Path.of("..", "agent-core-0.1.12", resourcePath),
+                Path.of("agent-core-0.1.12", resourcePath)
+        )) {
+            if (Files.isRegularFile(path)) {
+                try {
+                    return Files.readString(path, StandardCharsets.UTF_8).strip();
+                } catch (IOException e) {
+                    throw new CompletionException(e);
+                }
+            }
+        }
+        return null;
+    }
+
     // -- Labels ---------------------------------------------------------------
 
     private static final Map<String, Map<String, String>> LABELS = new HashMap<>();
@@ -413,17 +701,6 @@ public class TeamRail extends DeepAgentRail {
 
     private static Map<String, String> getLabels(String language) {
         return LABELS.getOrDefault(language, LABELS.get("cn"));
-    }
-
-    // -- Inner class for cache ------------------------------------------------
-
-    /**
-     * Stub for MtimeSectionCache.
-     */
-    private static class MtimeSectionCache {
-        public CompletableFuture<PromptSection> refresh() {
-            return CompletableFuture.completedFuture(null);
-        }
     }
 
     // -- Getters --------------------------------------------------------------

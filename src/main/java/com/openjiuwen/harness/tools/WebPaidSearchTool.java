@@ -44,9 +44,6 @@ public class WebPaidSearchTool extends AbstractHarnessTool {
         if (!List.of("auto", "bocha", "jina", "serper", "perplexity").contains(provider)) {
             return new ToolOutput(false, null, "[ERROR]: provider must be one of auto|bocha|jina|serper|perplexity.");
         }
-        if (!WebTools.isPaidSearchEnabled()) {
-            return new ToolOutput(false, null, "[ERROR]: paid search failed: no paid search provider configured");
-        }
 
         List<String> order = new ArrayList<>();
         if (!"auto".equals(provider)) {

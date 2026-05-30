@@ -19,8 +19,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,10 +39,10 @@ class TestSparseRetriever {
     void setUp() {
         mockVectorStore = mock(VectorStore.class);
         when(mockVectorStore.getIndexType()).thenReturn("sparse");
-        when(mockVectorStore.sparseSearch(anyString(), anyInt(), anyMap(), anyMap()))
+        when(mockVectorStore.sparseSearch(anyString(), anyInt(), nullable(java.util.Map.class), nullable(java.util.Map.class)))
                 .thenReturn(List.of(
-                        new SearchResult("1", "Result 1", 0.95, null),
-                        new SearchResult("2", "Result 2", 0.85, null)
+                        new SearchResult("1", "Result 1", 0.95, java.util.Map.of("doc_id", "doc_1")),
+                        new SearchResult("2", "Result 2", 0.85, java.util.Map.of("doc_id", "doc_2"))
                 ));
     }
 

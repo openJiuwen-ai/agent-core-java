@@ -24,6 +24,11 @@ class ExactMatchMetricTest {
         assertEquals(1.0, normalized.compute("1.5", 1.5));
         assertEquals(1.0, normalized.compute("", ""));
         assertEquals(0.0, normalized.compute("hello!", "hello."));
+        assertEquals(1.0, normalized.compute(null, "None"));
+        assertEquals(1.0, normalized.compute(false, "FALSE"));
+        assertEquals(1.0, raw.compute(null, "None"));
+        assertEquals(1.0, raw.compute(true, "True"));
+        assertEquals(0.0, raw.compute(true, "true"));
     }
 
     @Test

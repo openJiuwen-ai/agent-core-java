@@ -4,9 +4,11 @@
 
 package com.openjiuwen.agent_evolving.optimizer.tool_call;
 
+import com.openjiuwen.agent_evolving.optimizer.tool_call.utils.ToolDescriptionReviewer;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,6 +18,69 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.optimizer.tool_call.test_customized_reviewer}.
  */
 class CustomizedReviewerTest {
+
+    @Test
+    void testFormatCleanCrossCheckTranslate() {
+        RecordingReviewer reviewer = new RecordingReviewer(
+                "gpt-eval",
+                "k",
+                "{\"name\":\"f\",\"description\":\"d\",\"parameters\":{}}",
+                "{\"name\":\"f\",\"description\":\"d2\",\"parameters\":{}}",
+                "{\"name\":\"f\",\"description\":\"d3\",\"parameters\":{}}",
+                "{\"name\":\"f\",\"description\":\"translated\",\"parameters\":{}}"
+        );
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("name", "");
+        schema.put("description", "");
+        schema.put("parameters", new LinkedHashMap<>());
+
+        Map<String, Object> formatted = reviewer.format(schema, "raw desc", null);
+        assertEquals("f", formatted.get("name"));
+        assertEquals("gpt-5.2", reviewer.calls.get(0).modelId);
+        assertTrue(reviewer.calls.get(0).prompt.contains("raw desc"));
+
+        Map<String, Object> cleaned = reviewer.cleanAndDeduplicate(formatted);
+        assertEquals("d2", cleaned.get("description"));
+
+        Map<String, Object> checked = reviewer.crossCheck(cleaned, "ori");
+        assertEquals("d3", checked.get("description"));
+
+        reviewer.forcedMostlyEnglish = true;
+        Map<String, Object> translated = reviewer.translateToChinese(Map.of("description", "hello world text only"));
+        assertEquals("translated", translated.get("description"));
+
+        reviewer.forcedMostlyEnglish = false;
+        Map<String, Object> noTranslate = reviewer.translateToChinese(Map.of("description", "already-localized"));
+        assertEquals(Map.of("description", "already-localized"), noTranslate);
+        assertEquals(4, reviewer.calls.size());
+    }
+
+    @Test
+    void testProcessWithStepsAndUnknownStep() {
+        ProcessReviewer reviewer = new ProcessReviewer();
+        Map<String, Object> input = Map.of("a", 1);
+
+        Map<String, Object> out = reviewer.process(input, "ori", List.of("clean", "translate"));
+        assertEquals(Map.of("t", Map.of("c", input)), out);
+
+        Map<String, Object> out2 = reviewer.process(input, "ori", List.of("cross_check"));
+        assertEquals("ori", out2.get("ori"));
+
+        Map<String, Object> out3 = reviewer.process(input, "ori", List.of("clean", "cross_check"));
+        assertEquals(input, out3.get("x"));
+
+        assertThrows(IllegalArgumentException.class, () -> reviewer.process(input, "ori", List.of("bad")));
+    }
+
+    @Test
+    void testMostlyEnglishMatchesPythonRatioRule() {
+        RecordingReviewer reviewer = new RecordingReviewer("gpt-eval", "k");
+
+        assertFalse(reviewer.mostlyEnglish(""));
+        assertFalse(reviewer.mostlyEnglish("12345 !!!"));
+        assertTrue(reviewer.mostlyEnglish("plain English text"));
+    }
 
     @Test
     void testCustomReviewerSliceExtractsReviewCriteria() {
@@ -105,5 +170,55 @@ class CustomizedReviewerTest {
         }
         
         return slice;
+    }
+
+    private static final class RecordingReviewer extends ToolDescriptionReviewer {
+        private final Deque<String> responses = new ArrayDeque<>();
+        private final List<RitsCall> calls = new ArrayList<>();
+        private Boolean forcedMostlyEnglish;
+
+        private RecordingReviewer(String evalModelId, String llmApiKey, String... responses) {
+            super(evalModelId, llmApiKey);
+            this.responses.addAll(Arrays.asList(responses));
+        }
+
+        @Override
+        protected Object invokeRitsResponse(String modelId, String prompt, Function<String, Object> verifyFn) {
+            calls.add(new RitsCall(modelId, prompt));
+            return verifyFn.apply(responses.removeFirst());
+        }
+
+        @Override
+        protected boolean isMostlyEnglish(String text) {
+            return forcedMostlyEnglish != null ? forcedMostlyEnglish : super.isMostlyEnglish(text);
+        }
+
+        private boolean mostlyEnglish(String text) {
+            return super.isMostlyEnglish(text);
+        }
+    }
+
+    private static final class ProcessReviewer extends ToolDescriptionReviewer {
+        private ProcessReviewer() {
+            super("gpt-eval", "k");
+        }
+
+        @Override
+        public Map<String, Object> cleanAndDeduplicate(Map<String, Object> data) {
+            return Map.of("c", data);
+        }
+
+        @Override
+        public Map<String, Object> crossCheck(Map<String, Object> data, String oriTool) {
+            return Map.of("x", data, "ori", oriTool);
+        }
+
+        @Override
+        public Map<String, Object> translateToChinese(Map<String, Object> data) {
+            return Map.of("t", data);
+        }
+    }
+
+    private record RitsCall(String modelId, String prompt) {
     }
 }

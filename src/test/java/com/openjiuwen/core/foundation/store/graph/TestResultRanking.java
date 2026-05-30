@@ -35,15 +35,13 @@ class TestResultRanking {
 
             // Register with extra value using map
             Map<String, Object> extra = Map.of("extra", extraValue);
-            RankConfigRegistry.registerResultRankerCls("test_db", weightedFn, rrfFn);
+            RankConfigRegistry.registerResultRankerCls("test_db", weightedFn, rrfFn, extra);
 
             // Verify registration
             assertNotNull(RankConfigRegistry.getRankerCls("test_db", "weighted"));
             assertEquals(weightedFn, RankConfigRegistry.getRankerCls("test_db", "weighted"));
             assertEquals(rrfFn, RankConfigRegistry.getRankerCls("test_db", "rrf"));
-
-            // Note: Java registry only stores weighted and rrf, not extra values
-            // Clean up would require a clear method, but we skip that for now
+            assertEquals(extraValue, RankConfigRegistry.getRankerCls("test_db", "extra"));
         }
 
         @Test
@@ -139,15 +137,12 @@ class TestResultRanking {
             WeightedRankConfig cfg = new WeightedRankConfig(0.2, 0.2, 0.2);
             BaseRankConfig.RankerArgs args = cfg.getArgs();
 
-            // Java implementation returns weights in keyword map
-            Map<String, Object> keyword = args.getKeyword();
-            double total = keyword.containsKey("name_dense") ? 
-                (Double) keyword.get("name_dense") + 
-                (Double) keyword.get("content_dense") + 
-                (Double) keyword.get("content_sparse") : 0.0;
+            double total = args.getPositional().stream()
+                    .mapToDouble(value -> (Double) value)
+                    .sum();
             
             assertEquals(1.0, total, 0.001);
-            assertTrue(args.getPositional().isEmpty());
+            assertTrue(args.getKeyword().isEmpty());
         }
 
         @Test
@@ -156,9 +151,8 @@ class TestResultRanking {
             WeightedRankConfig cfg = new WeightedRankConfig(0, 0, 0);
             BaseRankConfig.RankerArgs args = cfg.getArgs();
 
-            // When all weights are 0, total is 0, so keyword should be empty
-            assertTrue(args.getKeyword().isEmpty() || 
-                args.getKeyword().values().stream().allMatch(v -> (Double) v == 0.0));
+            assertTrue(args.getPositional().isEmpty());
+            assertTrue(args.getKeyword().isEmpty());
         }
 
         @Test
@@ -191,26 +185,30 @@ class TestResultRanking {
             RRFRankConfig cfg = new RRFRankConfig();
             assertEquals("rrf", cfg.getName());
             assertTrue(cfg.isHigherIsBetter());
-            // Note: Python default is 40, Java default is 60
-            assertEquals(60, cfg.getK());
+            assertEquals(40, cfg.getK());
+            assertTrue(cfg.isNameDense());
+            assertTrue(cfg.isContentDense());
+            assertTrue(cfg.isContentSparse());
         }
 
         @Test
-        @DisplayName("args returns k in keyword map")
+        @DisplayName("args returns k in positional list and empty dict")
         void testArgsReturnsKAndEmptyDict() {
             RRFRankConfig cfg = new RRFRankConfig(60);
             BaseRankConfig.RankerArgs args = cfg.getArgs();
 
-            // Java implementation returns k in keyword map
-            assertEquals(60, args.getKeyword().get("k"));
-            assertTrue(args.getPositional().isEmpty());
+            assertEquals(List.of(60), args.getPositional());
+            assertTrue(args.getKeyword().isEmpty());
         }
 
         @Test
-        @DisplayName("RRFRankConfig extends BaseRankConfig")
-        void testInheritance() {
-            RRFRankConfig cfg = new RRFRankConfig();
-            assertTrue(cfg instanceof BaseRankConfig);
+        @DisplayName("is_active returns list of 0/1 from bools")
+        void testIsActiveFromBools() {
+            RRFRankConfig cfg = new RRFRankConfig(true, false, true);
+            assertEquals(List.of(1, 0, 1), cfg.getIsActive());
+
+            RRFRankConfig cfg2 = new RRFRankConfig(false, false, false);
+            assertEquals(List.of(0, 0, 0), cfg2.getIsActive());
         }
     }
 }

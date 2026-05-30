@@ -8,6 +8,7 @@ import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
 import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
@@ -286,51 +287,31 @@ class TestKnowledgeBase {
     }
 
     private void setMockAttribute(Object mock, String attr, Object value) {
+        IndexBackendConfig backend = (IndexBackendConfig) mock;
         switch (attr) {
             case "database_name":
-                when(((VectorStore) mock).getDatabaseName()).thenReturn((String) value);
+                when(backend.getDatabaseName()).thenReturn((String) value);
                 break;
             case "distance_metric":
-                when(((VectorStore) mock).getDistanceMetric()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getDistanceMetric()).thenReturn((String) value);
-                }
+                when(backend.getDistanceMetric()).thenReturn((String) value);
                 break;
             case "index_type":
-                when(((VectorStore) mock).getIndexType()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getIndexType()).thenReturn((String) value);
-                }
+                when(backend.getIndexType()).thenReturn((String) value);
                 break;
             case "text_field":
-                when(((VectorStore) mock).getTextField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getTextField()).thenReturn((String) value);
-                }
+                when(backend.getTextField()).thenReturn((String) value);
                 break;
             case "vector_field":
-                when(((VectorStore) mock).getVectorField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getVectorField()).thenReturn((String) value);
-                }
+                when(backend.getVectorField()).thenReturn((String) value);
                 break;
             case "sparse_vector_field":
-                when(((VectorStore) mock).getSparseVectorField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getSparseVectorField()).thenReturn((String) value);
-                }
+                when(backend.getSparseVectorField()).thenReturn((String) value);
                 break;
             case "metadata_field":
-                when(((VectorStore) mock).getMetadataField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getMetadataField()).thenReturn((String) value);
-                }
+                when(backend.getMetadataField()).thenReturn((String) value);
                 break;
             case "doc_id_field":
-                when(((VectorStore) mock).getDocIdField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getDocIdField()).thenReturn((String) value);
-                }
+                when(backend.getDocIdField()).thenReturn((String) value);
                 break;
         }
     }

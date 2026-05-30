@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.LLMCallDetail.
+ * Mirrors Python's {@code LLMCallDetail} in {@code openjiuwen.agent_evolving.trajectory.types}.
  * Complete LLM call execution data.
  */
 public class LLMCallDetail {

@@ -21,6 +21,7 @@ import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
@@ -347,6 +348,27 @@ public class AbilityManager implements ToolRegistry {
                 AgentCallbackEvent.AFTER_TOOL_CALL,
                 AgentCallbackEvent.ON_TOOL_EXCEPTION,
                 () -> {
+                    if (Boolean.TRUE.equals(ctx.getExtra().remove("_skip_tool"))
+                            && ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        ToolCall effectiveToolCall = inputs.getToolCall() != null ? inputs.getToolCall() : toolCall;
+                        Object toolResult = inputs.getToolResult();
+                        ToolMessage toolMessage = inputs.getToolMsg();
+                        if (toolMessage == null) {
+                            toolMessage = ToolMessage.builder()
+                                    .content(String.valueOf(toolResult))
+                                    .toolCallId(effectiveToolCall.getId())
+                                    .build();
+                            inputs.setToolMsg(toolMessage);
+                        }
+                        return new ToolExecutionEntry(
+                                effectiveToolCall,
+                                toolResult,
+                                toolMessage,
+                                ToolExecutionClassification.SUCCESS,
+                                null
+                        );
+                    }
+
                     if (ctx.getInputs() instanceof ToolCallInputs inputs) {
                         if (inputs.getToolName() != null && !inputs.getToolName().isEmpty()) {
                             toolCall.setName(inputs.getToolName());
@@ -457,7 +479,7 @@ public class AbilityManager implements ToolRegistry {
     }
 
     private static ToolExecutionClassification classifyException(Throwable throwable) {
-        return findInterruptedException(throwable).isPresent()
+        return findInterruptSignal(throwable).isPresent()
                 ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
                 : ToolExecutionClassification.ERROR;
     }
@@ -482,10 +504,16 @@ public class AbilityManager implements ToolRegistry {
     }
 
     private static Optional<InterruptedException> findInterruptedException(Throwable throwable) {
+        return findInterruptSignal(throwable)
+                .filter(InterruptedException.class::isInstance)
+                .map(InterruptedException.class::cast);
+    }
+
+    private static Optional<Throwable> findInterruptSignal(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
-            if (current instanceof InterruptedException interruptedException) {
-                return Optional.of(interruptedException);
+            if (current instanceof InterruptedException || current instanceof AgentInterrupt) {
+                return Optional.of(current);
             }
             current = current.getCause();
         }

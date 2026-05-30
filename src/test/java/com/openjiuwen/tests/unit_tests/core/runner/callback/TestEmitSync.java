@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -45,7 +46,7 @@ class TestEmitSync {
             Map<String, Object> context = new HashMap<>();
             Object result = framework.trigger("event", context);
 
-            assertThat(result).isEqualTo("sync_result");
+            assertThat(result).isEqualTo(List.of("sync_result"));
         }
 
         @Test
