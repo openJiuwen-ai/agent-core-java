@@ -884,9 +884,8 @@ public class ResourceMgr {
                                            String resourceType) {
         try {
             if (tagMgr.hasResource(resourceId)) {
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR,
-                        "card", resourceCard != null ? resourceCard.toString() : resourceId,
-                        "reason", "resource already exist");
+                innerRemoveResources(resourceId, null, TagMatchStrategy.ALL, true, resourceType);
+                logger.info("replaced existing resource, id={}, type={}", resourceId, resourceType);
             }
             switch (resourceType) {
                 case "workflow" -> resourceRegistry.workflow().addWorkflow(resourceId,

@@ -236,11 +236,10 @@ public class RestfulApi extends Tool {
         }
         if (raiseForStatus && (response.statusCode() < 200 || response.statusCode() >= 400)) {
             String reason = reasonPhrase(response.statusCode());
-            String responseBody = content != null ? new String(content, java.nio.charset.StandardCharsets.UTF_8) : "";
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR,
                     "method", "invoke",
                     "code", String.valueOf(response.statusCode()),
-                    "reason", reason + " | body: " + responseBody,
+                    "reason", reason,
                     "card", card.toString());
         }
     }

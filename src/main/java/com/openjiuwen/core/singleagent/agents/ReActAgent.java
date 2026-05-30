@@ -625,8 +625,8 @@ public class ReActAgent extends BaseAgent {
             if (interruptionState == null) {
                 String activeQuery = invokeInputs.getQuery();
                 if (activeQuery == null || activeQuery.isEmpty()) {
-                    Loggers.AGENT.error("ReActAgent invoke error: Input dict must contain 'query'");
-                    throw new IllegalArgumentException("Input dict must contain 'query'");
+                    Loggers.AGENT.error("ReActAgent invoke error: Input must contain 'query'");
+                    throw new IllegalArgumentException("Input must contain 'query'");
                 }
                 context.addMessages(new UserMessage(activeQuery));
             } else {
@@ -975,13 +975,26 @@ public class ReActAgent extends BaseAgent {
             return Optional.<Object>of(queryPayload);
         }
         if (queryPayload instanceof String && state != null && state.getInterruptedTools() != null
-                && state.getInterruptedTools().size() == 1) {
-            ToolInterruptEntry entry = state.getInterruptedTools().get(0);
-            String toolCallId = entry.getToolCall() != null ? entry.getToolCall().getId() : null;
-            if (toolCallId != null && !toolCallId.isEmpty()) {
+                && !state.getInterruptedTools().isEmpty()) {
+            if (state.getInterruptedTools().size() == 1) {
+                ToolInterruptEntry entry = state.getInterruptedTools().get(0);
+                String toolCallId = entry.getToolCall() != null ? entry.getToolCall().getId() : null;
+                if (toolCallId != null && !toolCallId.isEmpty()) {
+                    InteractiveInput interactiveInput = new InteractiveInput();
+                    interactiveInput.update(toolCallId, queryPayload);
+                    return Optional.<Object>of(interactiveInput);
+                }
+            } else {
                 InteractiveInput interactiveInput = new InteractiveInput();
-                interactiveInput.update(toolCallId, queryPayload);
-                return Optional.<Object>of(interactiveInput);
+                for (ToolInterruptEntry entry : state.getInterruptedTools()) {
+                    String toolCallId = entry.getToolCall() != null ? entry.getToolCall().getId() : null;
+                    if (toolCallId != null && !toolCallId.isEmpty()) {
+                        interactiveInput.update(toolCallId, queryPayload);
+                    }
+                }
+                if (!interactiveInput.getUserInputs().isEmpty()) {
+                    return Optional.<Object>of(interactiveInput);
+                }
             }
         }
         return Optional.empty();
@@ -1071,8 +1084,8 @@ public class ReActAgent extends BaseAgent {
             if (interruptionState == null) {
                 String activeQuery = invokeInputs.getQuery();
                 if (activeQuery == null || activeQuery.isEmpty()) {
-                    Loggers.AGENT.error("ReActAgent stream error: Input dict must contain 'query'");
-                    throw new IllegalArgumentException("Input dict must contain 'query'");
+                    Loggers.AGENT.error("ReActAgent stream error: Input must contain 'query'");
+                    throw new IllegalArgumentException("Input must contain 'query'");
                 }
                 context.addMessages(new UserMessage(activeQuery));
             } else {

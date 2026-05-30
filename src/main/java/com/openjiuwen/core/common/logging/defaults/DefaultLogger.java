@@ -335,15 +335,18 @@ public class DefaultLogger implements LoggerProtocol {
             char c = msg.charAt(i);
             int code = c;
             if (code < 32 || code == 127) {
-                sb.append(switch (c) {
-                    case '\r' -> "\\r";
-                    case '\n' -> "\\n";
-                    case '\t' -> "\\t";
-                    case '\b' -> "\\b";
-                    case '\f' -> "\\f";
-                    case '\0' -> "\\0";
-                    default -> String.format("\\x%02x", code);
-                });
+                if (c == '\n') {
+                    sb.append(c);
+                } else {
+                    sb.append(switch (c) {
+                        case '\r' -> "\\r";
+                        case '\t' -> "\\t";
+                        case '\b' -> "\\b";
+                        case '\f' -> "\\f";
+                        case '\0' -> "\\0";
+                        default -> String.format("\\x%02x", code);
+                    });
+                }
             } else {
                 sb.append(c);
             }

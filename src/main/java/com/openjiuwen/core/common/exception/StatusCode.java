@@ -25,58 +25,58 @@ public enum StatusCode {
 
     // 0. Workflow Validation Error Codes (100000 - 100099)
     WORKFLOW_COMPONENT_ID_INVALID(100010,
-            "the component id is invalid for component ''{comp_id}'', reason=''{reason}'', workflow=''{workflow}''"),
+            "the component id is invalid for component '{comp_id}', reason='{reason}', workflow='{workflow}'"),
 
     WORKFLOW_COMPONENT_ABILITY_INVALID(100011,
-            "the ability is invalid for component ''{comp_id}'', ability={ability},"
-                    + " reason=''{reason}'', workflow=''{workflow}''"),
+            "the ability is invalid for component '{comp_id}', ability={ability},"
+                    + " reason='{reason}', workflow='{workflow}'"),
 
     WORKFLOW_EDGE_INVALID(100012,
-            "edge is invalid, reason=''{reason}'', source=''{src_cmp_id}'',"
-                    + " target=''{target_cmp_id}'', workflow=''{workflow}''"),
+            "edge is invalid, reason='{reason}', source='{src_cmp_id}',"
+                    + " target='{target_cmp_id}', workflow='{workflow}'"),
 
     WORKFLOW_CONDITION_EDGE_INVALID(100013,
-            "condition edge is invalid, reason=''{reason}''. source=''{src_cmp_id}'', workflow=''{workflow}''"),
+            "condition edge is invalid, reason='{reason}'. source='{src_cmp_id}', workflow='{workflow}'"),
 
     WORKFLOW_COMPONENT_SCHEMA_INVALID(100014,
-            "component input/output schema is invalid for component ''{comp_id}'',"
-                    + " reason=''{reason}'', workflow=''{workflow}''"),
+            "component input/output schema is invalid for component '{comp_id}',"
+                    + " reason='{reason}', workflow='{workflow}'"),
 
     WORKFLOW_STREAM_EDGE_INVALID(100015,
-            "stream edge is invalid, reason=''{reason}'', source=''{src_cmp_id}'',"
-                    + " target=''{target_cmp_id}'', workflow=''{workflow}''"),
+            "stream edge is invalid, reason='{reason}', source='{src_cmp_id}',"
+                    + " target='{target_cmp_id}', workflow='{workflow}'"),
 
     WORKFLOW_EXECUTE_INPUT_INVALID(100016,
-            "workflow execute input is invalid, inputs=''{inputs}'', reason=''{reason}'', workflow=''{workflow}''"),
+            "workflow execute input is invalid, inputs='{inputs}', reason='{reason}', workflow='{workflow}'"),
 
     WORKFLOW_EXECUTE_SESSION_INVALID(100017,
-            "execute session is invalid, reason=''{reason}'', workflow=''{workflow}''"),
+            "execute session is invalid, reason='{reason}', workflow='{workflow}'"),
 
     // 1. Workflow Execution Error Codes (100100 - 100199)
-    WORKFLOW_COMPILE_ERROR(100100, "workflow compilation has error, error=''{reason}'', workflow={workflow}"),
+    WORKFLOW_COMPILE_ERROR(100100, "workflow compilation has error, error='{reason}', workflow={workflow}"),
 
     WORKFLOW_EXECUTION_TIMEOUT(100101,
-            "workflow execution exceeded time limit of {timeout} seconds, workflow=''{workflow}''"),
+            "workflow execution exceeded time limit of {timeout} seconds, workflow='{workflow}'"),
 
-    WORKFLOW_EXECUTION_ERROR(100102, "workflow execution has error, error=''{reason}'', workflow=''{workflow}''"),
+    WORKFLOW_EXECUTION_ERROR(100102, "workflow execution has error, error='{reason}', workflow='{workflow}'"),
 
     // 2. Workflow Component orchestration Error Codes (100200 - 100299)
-    WORKFLOW_INNER_ORCHESTRATION_ERROR(100053, "workflow inner orchestration error, error=''{reason}''"),
+    WORKFLOW_INNER_ORCHESTRATION_ERROR(100053, "workflow inner orchestration error, error='{reason}'"),
 
     WORKFLOW_COMPONENT_EXECUTION_ERROR(100054,
-            "component ''{comp}'' execute ''{ability}'' error, reason=''{reason}'', workflow=''{workflow}''"),
+            "component '{comp}' execute '{ability}' error, reason='{reason}', workflow='{workflow}'"),
 
     // =============================================================================================================
     // 101. Built-in Workflow Component 101000–101999
     // =============================================================================================================
 
     // 01. End Component 101010 - 101019
-    COMPONENT_END_PARAM_INVALID(100010, "component end params is invalid, error=''{reason}''"),
+    COMPONENT_END_PARAM_INVALID(100010, "component end params is invalid, error='{reason}'"),
 
     // 02. BranchComponent 101020 - 101029
-    COMPONENT_BRANCH_PARAM_INVALID(101020, "component branch params is invalid, error=''{reason}''"),
+    COMPONENT_BRANCH_PARAM_INVALID(101020, "component branch params is invalid, error='{reason}'"),
 
-    COMPONENT_BRANCH_EXECUTION_ERROR(101021, "component branch execution error, error=''{reason}''"),
+    COMPONENT_BRANCH_EXECUTION_ERROR(101021, "component branch execution error, error='{reason}'"),
 
     EXPRESSION_SYNTAX_ERROR(101024, "expression syntax error"),
 
@@ -87,21 +87,21 @@ public enum StatusCode {
     NUMBER_CONDITION_ERROR(101027, "number condition error, reason: {error_msg}"),
 
     // 03. LoopComponent 101030 - 101049
-    COMPONENT_LOOP_GROUP_PARAM_INVALID(101030, "loop group params is invalid, error=''{reason}''"),
+    COMPONENT_LOOP_GROUP_PARAM_INVALID(101030, "loop group params is invalid, error='{reason}'"),
 
-    COMPONENT_LOOP_SET_VAR_PARAM_INVALID(101031, "loop set_var params invalid, error=''{reason}''"),
+    COMPONENT_LOOP_SET_VAR_PARAM_INVALID(101031, "loop set_var params invalid, error='{reason}'"),
 
-    COMPONENT_LOOP_EXECUTION_ERROR(101040, "loop execution error, error=''{reason}'', comp=''{comp}''"),
+    COMPONENT_LOOP_EXECUTION_ERROR(101040, "loop execution error, error='{reason}', comp='{comp}'"),
 
     COMPONENT_LOOP_CONDITION_EXECUTION_ERROR(101041,
-            "loop condition execution error, error=''{reason}'', comp=''{comp}''"),
+            "loop condition execution error, error='{reason}', comp='{comp}'"),
 
-    COMPONENT_LOOP_BREAK_EXECUTION_ERROR(101042, "loop break execution error, error=''{reason}'', comp=''{comp}''"),
+    COMPONENT_LOOP_BREAK_EXECUTION_ERROR(101042, "loop break execution error, error='{reason}', comp='{comp}'"),
 
-    COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR(101043, "loop set_var execution error, error=''{reason}'', comp=''{comp}''"),
+    COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR(101043, "loop set_var execution error, error='{reason}', comp='{comp}'"),
 
     // 05. SubWorkflowComponent 101150 - 101159
-    COMPONENT_SUB_WORKFLOW_PARAM_INVALID(101150, "component sub_workflow param is invalid, error=''{reason}''"),
+    COMPONENT_SUB_WORKFLOW_PARAM_INVALID(101150, "component sub_workflow param is invalid, error='{reason}'"),
 
     // LLMComponent 101000 - 101049
     COMPONENT_LLM_TEMPLATE_CONFIG_ERROR(101000, "component llm_template config error, reason: {error_msg}"),
@@ -211,117 +211,117 @@ public enum StatusCode {
 
     RUNNER_TERMINATION_ERROR(110002, "runner is already terminate"),
 
-    RUNNER_RUN_AGENT_ERROR(110022, "runner run agent ''{agent}'' failed, error=''{reason}''"),
+    RUNNER_RUN_AGENT_ERROR(110022, "runner run agent '{agent}' failed, error='{reason}'"),
 
-    REMOTE_AGENT_EXECUTION_TIMEOUT(110100, "remote agent ''{agent_id}'' execute exceed {timeout} seconds"),
+    REMOTE_AGENT_EXECUTION_TIMEOUT(110100, "remote agent '{agent_id}' execute exceed {timeout} seconds"),
 
-    REMOTE_AGENT_EXECUTION_ERROR(110101, "remote agent ''{agent_id}'' execute error, error=''{reason}''"),
+    REMOTE_AGENT_EXECUTION_ERROR(110101, "remote agent '{agent_id}' execute error, error='{reason}'"),
 
     REMOTE_AGENT_RESPONSE_PROCESS_ERROR(110102,
-            "remote agent request process error, message_id=''{message_id}'',"
-                    + " process_id=''{process_id}'', response=''{code={error_code}'', msg=''{error_msg}''"),
+            "remote agent request process error, message_id='{message_id}',"
+                    + " process_id='{process_id}', response='{code={error_code}', msg='{error_msg}'"),
 
-    MESSAGE_QUEUE_INITIATION_ERROR(110200, "init type ''{type}'' message queue error, error=''{reason}''"),
+    MESSAGE_QUEUE_INITIATION_ERROR(110200, "init type '{type}' message queue error, error='{reason}'"),
 
-    MESSAGE_QUEUE_TOPIC_SUBSCRIPTION_ERROR(110210, "subscribe topic error, topic=''{topic}'', error=''{reason}''"),
+    MESSAGE_QUEUE_TOPIC_SUBSCRIPTION_ERROR(110210, "subscribe topic error, topic='{topic}', error='{reason}'"),
 
     MESSAGE_QUEUE_TOPIC_MESSAGE_PRODUCTION_ERROR(110211,
-            "produce message error, topic=''{topic}'', message=''{message}'', error=''{reason}''"),
+            "produce message error, topic='{topic}', message='{message}', error='{reason}'"),
 
-    MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR(110212, "consume message error, error=''{reason}''"),
+    MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR(110212, "consume message error, error='{reason}'"),
 
-    MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR(110213, "process message error, error=''{reason}''"),
+    MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR(110213, "process message error, error='{reason}'"),
 
-    DIST_MESSAGE_QUEUE_CLIENT_START_ERROR(110300, "distribute message queue client start error, error=''{reason}''"),
+    DIST_MESSAGE_QUEUE_CLIENT_START_ERROR(110300, "distribute message queue client start error, error='{reason}'"),
 
-    RESOURCE_ID_VALUE_INVALID(110400, "{resource_type} id is invalid, reason=''{reason}''"),
+    RESOURCE_ID_VALUE_INVALID(110400, "{resource_type} id is invalid, reason='{reason}'"),
 
-    RESOURCE_TAG_VALUE_INVALID(110401, "tag is invalid, tag={tag}, reason=''{reason}''"),
+    RESOURCE_TAG_VALUE_INVALID(110401, "tag is invalid, tag={tag}, reason='{reason}'"),
 
-    RESOURCE_CARD_VALUE_INVALID(110402, "{resource_type} card is invalid, reason=''{reason}''"),
+    RESOURCE_CARD_VALUE_INVALID(110402, "{resource_type} card is invalid, reason='{reason}'"),
 
-    RESOURCE_PROVIDER_INVALID(110403, "{resource_type} provider is invalid, reason=''{reason}''"),
+    RESOURCE_PROVIDER_INVALID(110403, "{resource_type} provider is invalid, reason='{reason}'"),
 
-    RESOURCE_VALUE_INVALID(110404, "{resource_type} value is invalid, reason=''{reason}''"),
+    RESOURCE_VALUE_INVALID(110404, "{resource_type} value is invalid, reason='{reason}'"),
 
-    RESOURCE_ADD_ERROR(110430, "resource add failed, card=''{card}'', error=''{reason}''"),
+    RESOURCE_ADD_ERROR(110430, "resource add failed, card='{card}', error='{reason}'"),
 
-    RESOURCE_TAG_REMOVE_TAG_ERROR(110480, "tag is invalid, tag=''{tag}'', error=''{reason}''"),
+    RESOURCE_TAG_REMOVE_TAG_ERROR(110480, "tag is invalid, tag='{tag}', error='{reason}'"),
 
     RESOURCE_TAG_ADD_RESOURCE_TAG_ERROR(110481,
-            "add tag failed, resource_id=''{resource_id}'', tag=''{tag}'', error=''{reason}''"),
+            "add tag failed, resource_id='{resource_id}', tag='{tag}', error='{reason}'"),
 
     RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR(110482,
-            "remove resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
+            "remove resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
 
     RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR(110483,
-            "isReplace resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
+            "isReplace resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
 
     RESOURCE_TAG_FIND_RESOURCE_ERROR(110484,
-            "isReplace resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
+            "isReplace resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
 
     RESOURCE_MCP_SERVER_PARAM_INVALID(110510,
-            "server param is invalid, server_config=''{server_config}'', error=''{reason}''"),
+            "server param is invalid, server_config='{server_config}', error='{reason}'"),
 
     RESOURCE_MCP_SERVER_CONNECTION_ERROR(110511,
-            "mcp server connect failed, server_config={server_config}, error=''{reason}''"),
+            "mcp server connect failed, server_config={server_config}, error='{reason}'"),
 
-    RESOURCE_MCP_SERVER_ADD_ERROR(110512, "mcp server add failed, server_config={server_config}, error=''{reason}''"),
+    RESOURCE_MCP_SERVER_ADD_ERROR(110512, "mcp server add failed, server_config={server_config}, error='{reason}'"),
 
-    RESOURCE_MCP_SERVER_REFRESH_ERROR(110513, "mcp server refresh failed, server_id={server_id}, error=''{reason}''"),
+    RESOURCE_MCP_SERVER_REFRESH_ERROR(110513, "mcp server refresh failed, server_id={server_id}, error='{reason}'"),
 
-    RESOURCE_MCP_SERVER_REMOVE_ERROR(110514, "mcp server remove failed, server_id={server_id}, error=''{reason}''"),
+    RESOURCE_MCP_SERVER_REMOVE_ERROR(110514, "mcp server remove failed, server_id={server_id}, error='{reason}'"),
 
-    RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error=''{reason}''"),
+    RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error='{reason}'"),
 
     // =============================================================================================================
     // 111. Session 111000 – 111999
     // =============================================================================================================
 
     COMP_SESSION_INTERACT_ERROR(111005,
-            "interact is not support, error=''{reason}'', comp_id={comp_id}, workflow={workflow}"),
+            "interact is not support, error='{reason}', comp_id={comp_id}, workflow={workflow}"),
 
     INTERACTION_INPUT_INVALID(111110, "interaction input is invalid, reason={reason}"),
 
     CHECKPOINTER_POST_WORKFLOW_EXECUTION_ERROR(111120,
-            "post workflow execute error, session_id={session_id}, workflow={workflow}, error=''{reason}''"),
+            "post workflow execute error, session_id={session_id}, workflow={workflow}, error='{reason}'"),
 
     CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR(111121,
-            "pre workflow execute error, session_id={session_id}, workflow={workflow}, error=''{reason}''"),
+            "pre workflow execute error, session_id={session_id}, workflow={workflow}, error='{reason}'"),
 
     CHECKPOINTER_INTERRUPT_AGENT_ERROR(111122,
-            "interrupt agent execute error, session_id={session_id}, agent={agent}, error=''{reason}''"),
+            "interrupt agent execute error, session_id={session_id}, agent={agent}, error='{reason}'"),
 
     CHECKPOINTER_POST_AGENT_EXECUTION_ERROR(111123,
-            "post agent execute error, session_id={session_id}, agent={agent}, error=''{reason}''"),
+            "post agent execute error, session_id={session_id}, agent={agent}, error='{reason}'"),
 
-    CHECKPOINTER_CONFIG_ERROR(111124, "checkpointer config error, session_id={session_id}, error=''{reason}''"),
+    CHECKPOINTER_CONFIG_ERROR(111124, "checkpointer config error, session_id={session_id}, error='{reason}'"),
 
-    STREAM_WRITER_MANAGER_ADD_WRITER_ERROR(111130, "add new stream writer error, mode={mode}, error=''{reason}''"),
+    STREAM_WRITER_MANAGER_ADD_WRITER_ERROR(111130, "add new stream writer error, mode={mode}, error='{reason}'"),
 
-    STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR(111131, "remove stream writer error, mode={mode}, error=''{reason}''"),
+    STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR(111131, "remove stream writer error, mode={mode}, error='{reason}'"),
 
     STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR(111132,
             "writer stream data validate error, stream_type={schema_type}, stream_data={stream_data},"
-                    + " error=''{reason}''"),
+                    + " error='{reason}'"),
 
-    STREAM_WRITER_WRITE_STREAM_ERROR(111133, "writer stream data error, stream_data={stream_data}, error=''{reason}''"),
+    STREAM_WRITER_WRITE_STREAM_ERROR(111133, "writer stream data error, stream_data={stream_data}, error='{reason}'"),
 
     STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT(111134,
-            "stream output first stream chunk timeout, timeout={timeout}s, error=''{reason}''"),
+            "stream output first stream chunk timeout, timeout={timeout}s, error='{reason}'"),
 
     STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT(111135,
-            "stream output next stream chunk timeout, interval_timeout={timeout}s, error=''{reason}''"),
+            "stream output next stream chunk timeout, interval_timeout={timeout}s, error='{reason}'"),
 
-    TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error=''{reason}''"),
+    TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error='{reason}'"),
 
-    TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error=''{reason}''"),
+    TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error='{reason}'"),
 
     // =============================================================================================================
     // 112. Graph Engine 112000–112999
     // =============================================================================================================
 
-    GRAPH_STATE_COMMIT_ERROR(112030, "graph commit state error, error=''{reason}''"),
+    GRAPH_STATE_COMMIT_ERROR(112030, "graph commit state error, error='{reason}'"),
 
     DRAWABLE_GRAPH_START_NODE_INVALID(112020, "drawable_graph start node is invalid, node={node_id}, reason={reason}"),
 
@@ -331,22 +331,22 @@ public enum StatusCode {
 
     DRAWABLE_GRAPH_TO_MERMAID_INVALID(112043, "drawable_graph to_mermaid error, reason={reason}"),
 
-    GRAPH_STREAM_ACTOR_EXECUTION_ERROR(112030, "actor manager execute error, error=''{reason}''"),
+    GRAPH_STREAM_ACTOR_EXECUTION_ERROR(112030, "actor manager execute error, error='{reason}'"),
 
-    GRAPH_VERTEX_EXECUTION_ERROR(112050, "vertex execute error, error=''{reason}'', node_id={node_id}"),
+    GRAPH_VERTEX_EXECUTION_ERROR(112050, "vertex execute error, error='{reason}', node_id={node_id}"),
 
     GRAPH_VERTEX_STREAM_CALL_TIMEOUT(112051, "vertex stream timeout, timeout={timeout}, node_id={node_id}"),
 
-    GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error=''{reason}'', node_id={node_id}"),
+    GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error='{reason}', node_id={node_id}"),
 
-    PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error=''{reason}''"),
+    PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error='{reason}'"),
 
-    PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error=''{reason}''"),
+    PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error='{reason}'"),
 
     PREGEL_GRAPH_EDGE_INVALID(112102,
-            "edge is invalid, source_id={source_id}, target_id={target_id}, error=''{reason}''"),
+            "edge is invalid, source_id={source_id}, target_id={target_id}, error='{reason}'"),
 
-    PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error=''{reason}''"),
+    PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error='{reason}'"),
 
     // =============================================================================================================
     // Multi-Agent 130000 - 130999
@@ -579,7 +579,7 @@ public enum StatusCode {
     MODEL_CLIENT_CONFIG_INVALID(181005, "model client_config is invalid, reason: {error_msg}"),
 
     // Tool Definition and Execution 182000 - 182999
-    TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error=''{reason}''"),
+    TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error='{reason}'"),
 
     TOOL_STREAM_NOT_SUPPORTED(182010, "stream is not support, card={card}"),
 
@@ -596,22 +596,22 @@ public enum StatusCode {
             "execute {method} failed, response is too big, max_size={max_length}b,"
                     + " actual={actual_length}b, card=[{card}]"),
 
-    TOOL_RESTFUL_API_RESPONSE_ERROR(182103, "execute {method} failed, response error, code={code}, error=''{reason}''"),
+    TOOL_RESTFUL_API_RESPONSE_ERROR(182103, "execute {method} failed, response error, code={code}, error='{reason}'"),
 
-    TOOL_RESTFUL_API_EXECUTION_ERROR(182104, "RestfulApi execute {method} failed, error=''{reason}'', card=[{card}]"),
+    TOOL_RESTFUL_API_EXECUTION_ERROR(182104, "RestfulApi execute {method} failed, error='{reason}', card=[{card}]"),
 
     TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR(182105,
-            "RestfulApi parse response failed, error=''{reason}'', card=[{card}]"),
+            "RestfulApi parse response failed, error='{reason}', card=[{card}]"),
 
     TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED(182200, "func is not supported, card={card}"),
 
-    TOOL_LOCAL_FUNCTION_EXECUTION_ERROR(182205, "execute {method} failed, error=''{reason}'', card={card}"),
+    TOOL_LOCAL_FUNCTION_EXECUTION_ERROR(182205, "execute {method} failed, error='{reason}', card={card}"),
 
     TOOL_MCP_CLIENT_NOT_SUPPORTED(182300, "mcp client is not supported, card={card}"),
 
-    TOOL_MCP_EXECUTION_ERROR(182301, "execute {method} failed, error=''{reason}'', card={card}"),
+    TOOL_MCP_EXECUTION_ERROR(182301, "execute {method} failed, error='{reason}', card={card}"),
 
-    TOOL_OPENAPI_CLIENT_EXECUTION_ERROR(182400, "openapi client execute error, error=''{reason}''"),
+    TOOL_OPENAPI_CLIENT_EXECUTION_ERROR(182400, "openapi client execute error, error='{reason}'"),
 
     // Logger 183000 - 183999
     COMMON_LOG_PATH_INVALID(183000, "common log_path is invalid, reason: {error_msg}"),
@@ -645,16 +645,16 @@ public enum StatusCode {
     COMMON_SSL_CERT_INVALID(188005, "common ssl_cert is invalid, reason: {error_msg}"),
 
     // Schema 189000 - 189999
-    SCHEMA_VALIDATE_INVALID(189001, "validate data with schema failed, error=''{reason}'', data={data}"),
+    SCHEMA_VALIDATE_INVALID(189001, "validate data with schema failed, error='{reason}', data={data}"),
 
-    SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error=''{reason}'', data={data}"),
+    SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error='{reason}', data={data}"),
 
     // =============================================================================================================
     // Security / Guardrail 190000 - 190999
     // =============================================================================================================
 
     GUARDRAIL_BLOCKED(190000,
-            "guardrail blocked: risk_type=''{risk_type}'', risk_level=''{risk_level}'', event=''{event}''"),
+            "guardrail blocked: risk_type='{risk_type}', risk_level='{risk_level}', event='{event}'"),
 
     // =============================================================================================================
     // SysOperation 199000–199999

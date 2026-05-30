@@ -199,29 +199,10 @@ public class LlmEventHandler extends EventHandler {
             );
         }
 
-        ResumeResult plainQueryResume = null;
-        boolean hasPlainQuery = displayContent != null && !displayContent.isBlank();
-        if (hasPlainQuery) {
-            plainQueryResume = findInterruptedTaskForPlainQuery(session);
-        }
-
         // Normal path: Call LLM to generate plans
         LlmPlanResult planResult = generatePlanFromLlm(event, session, context);
 
         if (planResult.tasks.isEmpty()) {
-            if (plainQueryResume != null) {
-                Loggers.CONTROLLER.info(
-                        "Resuming interrupted workflow from plain query fallback, remaining tasks: {}, saved_iteration: {}",
-                        plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
-                );
-                Task interruptedTask = plainQueryResume.remainingTasks.get(0);
-                setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
-                interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
-                int plainResumeIteration = plainQueryResume.savedIteration != null
-                        ? plainQueryResume.savedIteration + 1 : 1;
-                return executeReactLoop(plainQueryResume.remainingTasks, session, plainResumeIteration,
-                        plainQueryResume.aiMessage, context);
-            }
             Loggers.CONTROLLER.info("ReAct Iteration: 1 end, No task is generated");
             Map<String, Object> finalResult = sendFinalStream(planResult.llmOutput.getContentAsString(), session);
             return unwrapResult(finalResult);
@@ -260,20 +241,6 @@ public class LlmEventHandler extends EventHandler {
                 return executeReactLoop(resume.remainingTasks, session, resumeIteration,
                         resume.aiMessage, context);
             }
-        }
-
-        if (plainQueryResume != null) {
-            Loggers.CONTROLLER.info(
-                    "Resuming interrupted workflow from plain query fallback, remaining tasks: {}, saved_iteration: {}",
-                    plainQueryResume.remainingTasks.size(), plainQueryResume.savedIteration
-            );
-            Task interruptedTask = plainQueryResume.remainingTasks.get(0);
-            setTaskArguments(interruptedTask, buildResumeInteractiveInput(displayContent, plainQueryResume.componentIds));
-            interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
-            int plainResumeIteration = plainQueryResume.savedIteration != null
-                    ? plainQueryResume.savedIteration + 1 : 1;
-            return executeReactLoop(plainQueryResume.remainingTasks, session, plainResumeIteration,
-                    plainQueryResume.aiMessage, context);
         }
 
         return executeReactLoop(planResult.tasks, session, initialIteration,
@@ -493,20 +460,11 @@ public class LlmEventHandler extends EventHandler {
         return unwrapResult(firstInterrupt);
     }
 
+    @SuppressWarnings("unchecked")
     private void interruptTask(TaskInterruptionState interruptionState) {
         Task task = interruptionState.getTask();
         String workflowId = ensureWorkflowId(task);
         task.setStatus(TaskStatus.INPUT_REQUIRED);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> state = (Map<String, Object>) interruptionState.getSession().getState(STATE_KEY);
-        if (state == null) {
-            state = new HashMap<>();
-        }
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> interruptedTasks = (Map<String, Object>) state.computeIfAbsent(
-                "interrupted_tasks", k -> new HashMap<>());
 
         List<String> componentIds = extractComponentIdsFromInteractionData(
                 interruptionState.getInteractionData());
@@ -517,10 +475,10 @@ public class LlmEventHandler extends EventHandler {
         taskInfo.put("remaining_tasks", serializeTaskList(interruptionState.getRemainingTasks()));
         taskInfo.put("component_ids", componentIds);
         taskInfo.put("iteration", interruptionState.getCurrentIteration());
-        interruptedTasks.put(stateKey, taskInfo);
 
-        // Save state
-        interruptionState.getSession().updateState(Map.of(STATE_KEY, (Object) state));
+        Map<String, Object> update = new HashMap<>();
+        update.put(STATE_KEY + ".interrupted_tasks." + stateKey, taskInfo);
+        interruptionState.getSession().updateState(update);
 
         Loggers.CONTROLLER.info("Task interrupted: workflow={}, state_key={}, remaining_tasks={}",
                 workflowId, stateKey, interruptionState.getRemainingTasks().size());
@@ -803,30 +761,6 @@ public class LlmEventHandler extends EventHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private ResumeResult findInterruptedTaskForPlainQuery(AgentSessionApi session) {
-        Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
-        if (state == null) {
-            return null;
-        }
-        Map<String, Object> interruptedTasks = (Map<String, Object>) state.get("interrupted_tasks");
-        if (interruptedTasks == null || interruptedTasks.isEmpty()) {
-            return null;
-        }
-        Map.Entry<String, Object> firstEntry = interruptedTasks.entrySet().iterator().next();
-        Map<String, Object> taskInfo = (Map<String, Object>) firstEntry.getValue();
-        Map<String, Object> aiMessageData = (Map<String, Object>) taskInfo.get("ai_message");
-        AssistantMessage aiMessage = reconstructAssistantMessage(aiMessageData);
-        List<Task> remainingTasks = deserializeTaskList(
-                (List<Map<String, Object>>) taskInfo.get("remaining_tasks"));
-        Integer savedIteration = (Integer) taskInfo.get("iteration");
-        List<String> componentIds = (List<String>) taskInfo.getOrDefault("component_ids", List.of());
-        if (remainingTasks.isEmpty()) {
-            return null;
-        }
-        return new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds);
-    }
-
-    @SuppressWarnings("unchecked")
     private ResumeResult findInterruptedTask(Task workflowTask, AgentSessionApi session) {
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
         if (state == null) {
@@ -863,6 +797,8 @@ public class LlmEventHandler extends EventHandler {
     // ==================== Stream Helpers ====================
 
     private Map<String, Object> sendFinalStream(String content, AgentSessionApi session) {
+        Loggers.CONTROLLER.info("sendFinalStream called with content length={}, content='{}'",
+                content != null ? content.length() : -1, content);
         writeLlmOutputChunks(content, session);
         Map<String, Object> payload = new HashMap<>();
         payload.put("output", content);
@@ -874,6 +810,7 @@ public class LlmEventHandler extends EventHandler {
 
     private void writeLlmOutputChunks(String content, AgentSessionApi session) {
         if (content == null || content.isEmpty()) {
+            Loggers.CONTROLLER.warning("writeLlmOutputChunks called with null/empty content");
             return;
         }
         int index = 0;
@@ -884,9 +821,12 @@ public class LlmEventHandler extends EventHandler {
             Map<String, Object> payload = new HashMap<>();
             payload.put("output", chunk);
             payload.put("result_type", "answer");
-            session.writeStream(new OutputSchema(LLM_OUTPUT, index++, payload));
+            session.writeStream(new OutputSchema(LLM_OUTPUT, index, payload));
+            Loggers.CONTROLLER.info("Wrote llm_output chunk index={}, char='{}'", index, chunk);
+            index++;
             offset += Character.charCount(codePoint);
         }
+        Loggers.CONTROLLER.info("writeLlmOutputChunks completed, total chunks={}", index);
     }
 
     private void sendErrorStream(String errorMsg, AgentSessionApi session) {
@@ -1058,22 +998,27 @@ public class LlmEventHandler extends EventHandler {
         return List.of(new OutputSchema("workflow_final", 0, payload));
     }
 
+    @SuppressWarnings("unchecked")
     private void clearInterruptedState(Task task, AgentSessionApi session, String workflowId) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
-        if (state == null) {
-            return;
-        }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> interruptedTasks = (Map<String, Object>) state.get("interrupted_tasks");
-        if (interruptedTasks == null) {
-            return;
-        }
         String stateKey = workflowId.replace('.', '_');
-        if (interruptedTasks.remove(stateKey) != null) {
-            session.updateState(Map.of(STATE_KEY, state));
-            Loggers.CONTROLLER.info("Cleared interrupted state for workflow: {}", workflowId);
-        }
+
+        Map<String, Object> beforeState = (Map<String, Object>) session.getState(STATE_KEY);
+        Map<String, Object> beforeTasks = beforeState != null
+                ? (Map<String, Object>) beforeState.get("interrupted_tasks") : null;
+        Loggers.CONTROLLER.info("Before clear: interrupted_tasks keys={}",
+                beforeTasks != null ? beforeTasks.keySet() : "null");
+
+        Map<String, Object> update = new HashMap<>();
+        update.put(STATE_KEY + ".interrupted_tasks." + stateKey, null);
+        session.updateState(update);
+
+        Map<String, Object> afterState = (Map<String, Object>) session.getState(STATE_KEY);
+        Map<String, Object> afterTasks = afterState != null
+                ? (Map<String, Object>) afterState.get("interrupted_tasks") : null;
+        Loggers.CONTROLLER.info("After clear: interrupted_tasks keys={}",
+                afterTasks != null ? afterTasks.keySet() : "null");
+
+        Loggers.CONTROLLER.info("Cleared interrupted state for workflow: {}", workflowId);
     }
 
     private List<String> extractComponentIdsFromInteractionData(List<Object> interactionData) {

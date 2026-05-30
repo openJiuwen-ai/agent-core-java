@@ -208,7 +208,9 @@ public class RestfulApiCard extends ToolCard {
     public RestfulApiCard build() {
       RestfulApiCard card =
           new RestfulApiCard(url, method, headers, queries, paths, timeout, maxResponseByteSize);
-      card.setId(id);
+      if (id != null) {
+        card.setId(id);
+      }
       card.setName(name);
       card.setDescription(description);
       card.setInputParams(inputParams);

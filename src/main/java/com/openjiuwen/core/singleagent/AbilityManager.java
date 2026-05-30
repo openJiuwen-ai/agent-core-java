@@ -422,8 +422,9 @@ public class AbilityManager implements ToolRegistry {
                 result = invokeTool(tool, toolArgs, session);
                 logToolResult(result);
             } catch (Exception e) {
-                String errorMsg = "Tool execution error: " + e.getMessage();
+                String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
             }
         } else if (workflows.containsKey(toolName)) {
@@ -432,8 +433,9 @@ public class AbilityManager implements ToolRegistry {
             try {
                 result = Runner.runWorkflow(workflowId, toolArgs, adaptSubtaskSession(session), null);
             } catch (Exception e) {
-                String errorMsg = "Workflow execution error: " + e.getMessage();
+                String errorMsg = "Workflow execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
             }
         } else if (agents.containsKey(toolName)) {
@@ -451,8 +453,9 @@ public class AbilityManager implements ToolRegistry {
                 AgentSessionApi childSession = AgentSessionApi.create(childSessionId, null, agentCard);
                 result = Runner.runAgent(agentInstance, toolArgs, childSession, null);
             } catch (Exception e) {
-                String errorMsg = "Agent execution error: " + e.getMessage();
+                String errorMsg = "Agent execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
             }
         } else if (!mcpServers.isEmpty()) {
@@ -462,15 +465,15 @@ public class AbilityManager implements ToolRegistry {
                     result = invokeTool(tool, toolArgs, session);
                     logToolResult(result);
                 } catch (Exception e) {
-                    String errorMsg = "Tool execution error: " + e.getMessage();
+                    String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                     Loggers.AGENT.error(errorMsg);
+                    Loggers.TOOL.info("Tool result: None");
                     throw buildExecutionError(toolCall, errorMsg);
                 }
             } else if (mcpServers.containsKey(toolName)) {
                 throw buildExecutionError(toolCall,
                         "MCP server name is not directly executable: " + toolName + ". Call one of its tools instead.");
             } else {
-                // Fallback: try resource_mgr by name
                 Tool fallbackTool = getToolFromResourceMgr(toolName, tag);
                 if (fallbackTool == null) {
                     throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
@@ -479,15 +482,15 @@ public class AbilityManager implements ToolRegistry {
                     result = invokeTool(fallbackTool, toolArgs, session);
                     logToolResult(result);
                 } catch (Exception e) {
-                    String errorMsg = "Tool execution error: " + e.getMessage();
+                    String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                     Loggers.AGENT.error(errorMsg);
+                    Loggers.TOOL.info("Tool result: None");
                     throw buildExecutionError(toolCall, errorMsg);
                 }
             }
         } else if (mcpServers.containsKey(toolName)) {
             throw buildExecutionError(toolCall, "MCP tool execution not yet implemented: " + toolName);
         } else {
-            // Fallback: try resource_mgr by name
             Tool tool = getToolFromResourceMgr(toolName, tag);
             if (tool == null) {
                 throw buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName);
@@ -496,8 +499,9 @@ public class AbilityManager implements ToolRegistry {
                 result = invokeTool(tool, toolArgs, session);
                 logToolResult(result);
             } catch (Exception e) {
-                String errorMsg = "Tool execution error: " + e.getMessage();
+                String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
             }
         }
