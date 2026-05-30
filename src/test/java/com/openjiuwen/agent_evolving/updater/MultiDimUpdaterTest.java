@@ -31,6 +31,37 @@ class MultiDimUpdaterTest {
         assertFalse(updater.requiresForwardData());
     }
 
+    @Test
+    void requiresForwardDataUsesPythonStyleMethodName() {
+        TestMultiDimUpdater updater = new TestMultiDimUpdater(Map.of(
+                "llm", new PythonStyleForwardAwareOptimizer(true)
+        ));
+
+        assertTrue(updater.requiresForwardData());
+    }
+
+    @Test
+    void requiresForwardDataUsesPythonTruthinessForReturnValue() {
+        TestMultiDimUpdater truthyUpdater = new TestMultiDimUpdater(Map.of(
+                "llm", new TruthyForwardAwareOptimizer("yes")
+        ));
+        TestMultiDimUpdater falseyUpdater = new TestMultiDimUpdater(Map.of(
+                "llm", new TruthyForwardAwareOptimizer("")
+        ));
+
+        assertTrue(truthyUpdater.requiresForwardData());
+        assertFalse(falseyUpdater.requiresForwardData());
+    }
+
+    @Test
+    void requiresForwardDataIgnoresOptimizersWithoutHook() {
+        TestMultiDimUpdater updater = new TestMultiDimUpdater(Map.of(
+                "memory", new Object()
+        ));
+
+        assertFalse(updater.requiresForwardData());
+    }
+
     private static final class ForwardAwareOptimizer {
         private final boolean requiresForwardData;
 
@@ -40,6 +71,30 @@ class MultiDimUpdaterTest {
 
         public boolean requiresForwardData() {
             return requiresForwardData;
+        }
+    }
+
+    private static final class PythonStyleForwardAwareOptimizer {
+        private final boolean requiresForwardData;
+
+        private PythonStyleForwardAwareOptimizer(boolean requiresForwardData) {
+            this.requiresForwardData = requiresForwardData;
+        }
+
+        public boolean requires_forward_data() {
+            return requiresForwardData;
+        }
+    }
+
+    private static final class TruthyForwardAwareOptimizer {
+        private final Object result;
+
+        private TruthyForwardAwareOptimizer(Object result) {
+            this.result = result;
+        }
+
+        public Object requires_forward_data() {
+            return result;
         }
     }
 

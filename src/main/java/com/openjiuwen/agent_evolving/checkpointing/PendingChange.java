@@ -21,7 +21,7 @@ public class PendingChange {
     private final String changeType;
     private final List<EvolutionRecord> payload;
     private final String createdAt;
-    private final String changeId;
+    private String changeId;
 
     public PendingChange(
             String operatorId,
@@ -50,6 +50,17 @@ public class PendingChange {
         );
     }
 
+    public static PendingChange make(String skillName, List<EvolutionRecord> records, String changeId) {
+        return new PendingChange(
+                "skill_call_" + skillName,
+                skillName,
+                "experience_entry",
+                records,
+                Instant.now().toString(),
+                changeId
+        );
+    }
+
     public String getOperatorId() {
         return operatorId;
     }
@@ -66,11 +77,22 @@ public class PendingChange {
         return new ArrayList<>(payload);
     }
 
+    public void replacePayload(List<EvolutionRecord> records) {
+        payload.clear();
+        if (records != null) {
+            payload.addAll(records);
+        }
+    }
+
     public String getCreatedAt() {
         return createdAt;
     }
 
     public String getChangeId() {
         return changeId;
+    }
+
+    public void setChangeId(String changeId) {
+        this.changeId = changeId;
     }
 }

@@ -11,6 +11,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ProgressTest {
 
     @Test
+    void defaultConstructorUsesPythonDefaults() {
+        Progress progress = new Progress();
+
+        assertEquals(0, progress.getStartEpoch());
+        assertEquals(0, progress.getCurrentEpoch());
+        assertEquals(3, progress.getMaxEpoch());
+        assertEquals(0.0, progress.getBestScore());
+        assertEquals(0.0, progress.getCurrentEpochScore());
+    }
+
+    @Test
+    void seedRoundTripsForCompatibility() {
+        Progress progress = new Progress();
+
+        progress.setSeed(123);
+
+        assertEquals(123, progress.getSeed());
+    }
+
+    @Test
     void runEpochYieldsAndUpdatesCurrentEpoch() {
         Progress progress = new Progress(3);
 

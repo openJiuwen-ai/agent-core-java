@@ -5,17 +5,26 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.agent_teams.RuntimeManager;
+import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.function.Supplier;
 
 /**
  * Runner singleton class that proxies all calls to the global runner instance.
@@ -34,6 +43,7 @@ public final class Runner {
 
     /** The global runner instance. */
     private static final RunnerImpl GLOBAL_RUNNER = new RunnerImpl("global", RunnerConfig.DEFAULT);
+    private static final RuntimeManager TEAM_RUNTIME_MANAGER = new RuntimeManager();
 
     private Runner() {
         // Utility class
@@ -202,6 +212,64 @@ public final class Runner {
         return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs);
     }
 
+    /**
+     * Execute a Runner-owned {@code TeamAgentSpec} runtime with streaming output.
+     *
+     * <p>Mirrors Python's {@code Runner.run_agent_team_streaming} enough for the
+     * Java agent-team E2E examples: activate or resume the team runtime, emit a
+     * {@code team.runtime_ready} acknowledgement, then stream the active
+     * {@link TeamAgent}.</p>
+     */
+    public static Iterator<Object> runAgentTeamStreaming(Object agentTeam, Object inputs, Object session) {
+        RuntimeManager.TeamRuntimeActivation activation =
+                TEAM_RUNTIME_MANAGER.activate(agentTeam, session, inputs).join();
+        Map<String, Object> readyPayload = new LinkedHashMap<>();
+        readyPayload.put("event_type", "team.runtime_ready");
+        readyPayload.put("team_name", TEAM_RUNTIME_MANAGER.getActiveTeamName().orElse(null));
+        readyPayload.put("session_id", TEAM_RUNTIME_MANAGER.getActiveSessionId().orElse(null));
+        readyPayload.put("activation_kind", activation.getActivationKind());
+        List<Object> prefix = new ArrayList<>();
+        prefix.add(new OutputSchema("message", 0, readyPayload));
+
+        Supplier<Iterator<?>> body = Collections::emptyIterator;
+        Object active = activation.getAgent();
+        Object activeSession = activation.getSession();
+        if (active instanceof TeamAgent teamAgent && activeSession instanceof Session typedSession) {
+            body = () -> teamAgent.stream(inputs, typedSession, List.of(StreamMode.OUTPUT));
+        }
+        return concat(prefix.iterator(), body);
+    }
+
+    /**
+     * Deliver same-session user input to the active Runner-owned team runtime.
+     *
+     * <p>Mirrors Python's {@code Runner.interact_agent_team}.</p>
+     */
+    public static boolean interactAgentTeam(String userInput, String teamName, String sessionId) {
+        if (!matchesActiveTeam(teamName, sessionId)) {
+            return false;
+        }
+        Object active = TEAM_RUNTIME_MANAGER.getActiveAgent().orElse(null);
+        if (active instanceof TeamAgent teamAgent) {
+            teamAgent.receiveUserInput(userInput);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Pause the active Runner-owned team runtime.
+     *
+     * <p>Mirrors Python's {@code Runner.pause_agent_team}.</p>
+     */
+    public static boolean pauseAgentTeam(String teamName, String sessionId) {
+        if (!matchesActiveTeam(teamName, sessionId)) {
+            return false;
+        }
+        TEAM_RUNTIME_MANAGER.pause();
+        return true;
+    }
+
     // ========== Agent Group ==========
 
     /**
@@ -258,5 +326,38 @@ public final class Runner {
      */
     public static void release(String sessionId) {
         GLOBAL_RUNNER.release(sessionId);
+    }
+
+    private static boolean matchesActiveTeam(String teamName, String sessionId) {
+        return TEAM_RUNTIME_MANAGER.getActiveTeamName().map(teamName::equals).orElse(false)
+                && TEAM_RUNTIME_MANAGER.getActiveSessionId().map(sessionId::equals).orElse(false);
+    }
+
+    private static Iterator<Object> concat(Iterator<?> first, Supplier<Iterator<?>> secondSupplier) {
+        return new Iterator<>() {
+            private Iterator<?> current = first;
+            private boolean usingFirst = true;
+
+            @Override
+            public boolean hasNext() {
+                if (current.hasNext()) {
+                    return true;
+                }
+                if (usingFirst) {
+                    usingFirst = false;
+                    current = secondSupplier.get();
+                    return current.hasNext();
+                }
+                return false;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return current.next();
+            }
+        };
     }
 }

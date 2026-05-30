@@ -16,6 +16,46 @@ import java.util.Map;
 public class LauncherCli {
 
     private static final String DEFAULT_CONFIG_FILENAME = "online_rl_config.yaml";
+    private static final Map<String, String> OPTION_TO_FIELD = Map.ofEntries(
+            Map.entry("--config", "config"),
+            Map.entry("--model-path", "modelPath"),
+            Map.entry("--model-name", "modelName"),
+            Map.entry("--vllm-gpu", "vllmGpu"),
+            Map.entry("--vllm-tp", "vllmTp"),
+            Map.entry("--vllm-port", "vllmPort"),
+            Map.entry("--inference-url", "inferenceUrl"),
+            Map.entry("--judge-model-path", "judgeModelPath"),
+            Map.entry("--judge-model-name", "judgeModelName"),
+            Map.entry("--judge-gpu", "judgeGpu"),
+            Map.entry("--judge-tp", "judgeTp"),
+            Map.entry("--judge-port", "judgePort"),
+            Map.entry("--judge-url", "judgeUrl"),
+            Map.entry("--gateway-port", "gatewayPort"),
+            Map.entry("--redis-url", "redisUrl"),
+            Map.entry("--threshold", "threshold"),
+            Map.entry("--scan-interval", "scanInterval"),
+            Map.entry("--train-gpu", "trainGpu"),
+            Map.entry("--ppo-config", "ppoConfig"),
+            Map.entry("--trajectory-batch-size", "trajectoryBatchSize"),
+            Map.entry("--lora-repo", "loraRepo"),
+            Map.entry("--jiuwen-agent-server-port", "jiuwenAgentServerPort"),
+            Map.entry("--jiuwen-ws-port", "jiuwenWsPort"),
+            Map.entry("--jiuwen-web-host", "jiuwenWebHost"),
+            Map.entry("--jiuwen-web-port", "jiuwenWebPort")
+    );
+    private static final Map<String, Boolean> INTEGER_FIELDS = Map.ofEntries(
+            Map.entry("vllmTp", true),
+            Map.entry("vllmPort", true),
+            Map.entry("judgeTp", true),
+            Map.entry("judgePort", true),
+            Map.entry("gatewayPort", true),
+            Map.entry("threshold", true),
+            Map.entry("scanInterval", true),
+            Map.entry("trajectoryBatchSize", true),
+            Map.entry("jiuwenAgentServerPort", true),
+            Map.entry("jiuwenWsPort", true),
+            Map.entry("jiuwenWebPort", true)
+    );
 
     /**
      * Set nested value in data map.
@@ -88,6 +128,108 @@ public class LauncherCli {
         }
         
         return overrides;
+    }
+
+    /**
+     * Parse command line options accepted by Python's build_arg_parser.
+     *
+     * @param args raw command line arguments
+     * @return parsed launcher arguments
+     */
+    public static LauncherArgs parseArgs(String[] args) {
+        LauncherArgs parsed = new LauncherArgs();
+        String[] safeArgs = args == null ? new String[0] : args;
+        for (int i = 0; i < safeArgs.length; i++) {
+            String token = safeArgs[i];
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            ParsedOption option = splitOption(token);
+            if ("--demo".equals(option.name())) {
+                ensureNoInlineValue(option);
+                parsed.setDemo(true);
+                continue;
+            }
+            if ("--skip-jiuwen".equals(option.name()) || "--skip_jiuwen".equals(option.name())) {
+                ensureNoInlineValue(option);
+                parsed.setSkipJiuwen(true);
+                continue;
+            }
+            String field = OPTION_TO_FIELD.get(option.name());
+            if (field == null) {
+                throw new IllegalArgumentException("Unknown argument: " + option.name());
+            }
+            String value = option.value();
+            if (value == null) {
+                i += 1;
+                if (i >= safeArgs.length || safeArgs[i].startsWith("--")) {
+                    throw new IllegalArgumentException("Missing value for argument: " + option.name());
+                }
+                value = safeArgs[i];
+            }
+            setField(parsed, field, value, option.name());
+        }
+        return parsed;
+    }
+
+    private static ParsedOption splitOption(String token) {
+        if (!token.startsWith("--")) {
+            throw new IllegalArgumentException("Unexpected positional argument: " + token);
+        }
+        int equalsIndex = token.indexOf('=');
+        if (equalsIndex < 0) {
+            return new ParsedOption(token, null);
+        }
+        return new ParsedOption(token.substring(0, equalsIndex), token.substring(equalsIndex + 1));
+    }
+
+    private static void ensureNoInlineValue(ParsedOption option) {
+        if (option.value() != null) {
+            throw new IllegalArgumentException("Flag does not take a value: " + option.name());
+        }
+    }
+
+    private static void setField(LauncherArgs parsed, String field, String value, String optionName) {
+        Object normalized = INTEGER_FIELDS.containsKey(field) ? parseInt(value, optionName) : value;
+        switch (field) {
+            case "config" -> parsed.setConfig((String) normalized);
+            case "modelPath" -> parsed.setModelPath((String) normalized);
+            case "modelName" -> parsed.setModelName((String) normalized);
+            case "vllmGpu" -> parsed.setVllmGpu((String) normalized);
+            case "vllmTp" -> parsed.setVllmTp((Integer) normalized);
+            case "vllmPort" -> parsed.setVllmPort((Integer) normalized);
+            case "inferenceUrl" -> parsed.setInferenceUrl((String) normalized);
+            case "judgeModelPath" -> parsed.setJudgeModelPath((String) normalized);
+            case "judgeModelName" -> parsed.setJudgeModelName((String) normalized);
+            case "judgeGpu" -> parsed.setJudgeGpu((String) normalized);
+            case "judgeTp" -> parsed.setJudgeTp((Integer) normalized);
+            case "judgePort" -> parsed.setJudgePort((Integer) normalized);
+            case "judgeUrl" -> parsed.setJudgeUrl((String) normalized);
+            case "gatewayPort" -> parsed.setGatewayPort((Integer) normalized);
+            case "redisUrl" -> parsed.setRedisUrl((String) normalized);
+            case "threshold" -> parsed.setThreshold((Integer) normalized);
+            case "scanInterval" -> parsed.setScanInterval((Integer) normalized);
+            case "trainGpu" -> parsed.setTrainGpu((String) normalized);
+            case "ppoConfig" -> parsed.setPpoConfig((String) normalized);
+            case "trajectoryBatchSize" -> parsed.setTrajectoryBatchSize((Integer) normalized);
+            case "loraRepo" -> parsed.setLoraRepo((String) normalized);
+            case "jiuwenAgentServerPort" -> parsed.setJiuwenAgentServerPort((Integer) normalized);
+            case "jiuwenWsPort" -> parsed.setJiuwenWsPort((Integer) normalized);
+            case "jiuwenWebHost" -> parsed.setJiuwenWebHost((String) normalized);
+            case "jiuwenWebPort" -> parsed.setJiuwenWebPort((Integer) normalized);
+            default -> throw new IllegalArgumentException("Unsupported field for argument " + optionName + ": " + field);
+        }
+    }
+
+    private static Integer parseInt(String value, String optionName) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Invalid integer for argument " + optionName + ": " + value, exception);
+        }
+    }
+
+    private record ParsedOption(String name, String value) {
     }
 
     /**

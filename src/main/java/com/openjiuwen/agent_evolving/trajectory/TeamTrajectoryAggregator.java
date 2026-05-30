@@ -152,7 +152,7 @@ public class TeamTrajectoryAggregator {
                     ? (String) traj.getMeta().getOrDefault("member_id", executionPrefix(traj.getExecutionId()))
                     : executionPrefix(traj.getExecutionId());
             Trajectory processed = traj;
-            if (filterCollaborative && !mid.equals("leader")) {
+            if (filterCollaborative && !"leader".equals(mid)) {
                 processed = filterMemberTrajectory(traj);
             }
             if (processed.getSteps() != null && !processed.getSteps().isEmpty()) {

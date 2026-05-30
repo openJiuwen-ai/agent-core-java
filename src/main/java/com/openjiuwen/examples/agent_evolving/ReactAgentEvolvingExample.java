@@ -47,7 +47,7 @@ import java.util.concurrent.ExecutionException;
  *   <li>Configure LLM API credentials via environment variables</li>
  * </ul>
  *
- * <p>Mirrors Python's {@code react_agent_evolving.py} in {@code examples/agent_evolving}.</p>
+ * <p>Mirrors Python's {@code examples.agent_evolving.react_agent_evolving}.</p>
  */
 public class ReactAgentEvolvingExample {
 

@@ -16,16 +16,21 @@ import java.util.List;
 public class Episode extends BaseGraphObject {
 
     private String episodeType;
+    private long validSince;
     private List<String> entities;
 
     public Episode() {
         super();
         this.episodeType = "";
+        this.validSince = getCreatedAt();
         this.entities = new ArrayList<>();
     }
 
     public String getEpisodeType() { return episodeType; }
     public void setEpisodeType(String episodeType) { this.episodeType = episodeType; }
+
+    public long getValidSince() { return validSince; }
+    public void setValidSince(long validSince) { this.validSince = validSince == -1 ? getCreatedAt() : validSince; }
 
     /**
      * Get entities mentioned in this episode.

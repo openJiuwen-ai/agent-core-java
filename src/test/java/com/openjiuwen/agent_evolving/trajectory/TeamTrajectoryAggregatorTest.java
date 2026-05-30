@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -338,6 +339,24 @@ class TeamTrajectoryAggregatorTest {
             assertEquals(3, result.getCombined().getSteps().size());
             assertEquals(List.of("llm", "tool", "tool"),
                     result.getCombined().getSteps().stream().map(TrajectoryStep::getKind).toList());
+        }
+
+        @Test
+        void testAggregateAllowsNullMemberIdLikePythonDictKey() {
+            InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("member_id", null);
+            store.save(trajectory(
+                    "member-exec",
+                    "s1",
+                    List.of(toolStep("claim_task", null, 100L, Map.of())),
+                    meta), null);
+
+            TeamTrajectoryAggregator agg = new TeamTrajectoryAggregator(store, "t1");
+            TeamTrajectoryAggregator.TeamTrajectory result = agg.aggregate("s1");
+
+            assertTrue(result.getMembers().containsKey(null));
+            assertEquals(1, result.getCombined().getMeta().get("member_count"));
         }
 
         @Test
