@@ -166,6 +166,11 @@ public class TaskManager {
     return count;
   }
 
+  /** Schedule a one-shot runnable after the given delay; used by TaskGroupScope.failAfter(). */
+  java.util.concurrent.ScheduledFuture<?> schedule(Runnable task, long delayMillis, TimeUnit unit) {
+    return scheduler.schedule(task, delayMillis, unit);
+  }
+
   /** Auto-generated for codecheck compliance. */
   public int cancelAll() {
     int count = 0;
