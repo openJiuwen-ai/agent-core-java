@@ -61,6 +61,7 @@ public class DeepAgent extends BaseAgent {
             for (var rail : deepAgentConfig.getRails()) {
                 if (rail instanceof com.openjiuwen.harness.rails.DeepAgentRail deepRail) {
                     deepRail.setWorkspace(deepAgentConfig.getWorkspace());
+                    deepRail.setSysOperation(deepAgentConfig.getSysOperation());
                 }
                 this.delegate.registerRail(rail);
                 if (rail instanceof com.openjiuwen.harness.rails.DeepAgentRail deepRail) {

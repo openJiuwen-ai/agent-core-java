@@ -213,10 +213,27 @@ public class TeamAgent extends BaseAgent {
         }
     }
 
+    public void pauseCoordination() {
+        if (coordinatorLoop != null) {
+            coordinatorLoop.pausePolls();
+        }
+        persistAllocatorState();
+    }
+
     public void stopCoordination() {
         if (coordinatorLoop != null) {
             coordinatorLoop.stop();
         }
+    }
+
+    public void interact(String message) {
+        if (coordinatorLoop == null) {
+            return;
+        }
+        coordinatorLoop.wake(new CoordinationEvent(
+                "user_input",
+                Map.of("content", message != null ? message : "")
+        ));
     }
 
     public void notifyEvent(String eventType, Map<String, Object> payload) {

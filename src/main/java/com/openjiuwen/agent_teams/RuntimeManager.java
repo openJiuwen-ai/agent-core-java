@@ -162,8 +162,60 @@ public class RuntimeManager {
     /**
      * Pause the active session.
      */
-    public void pause() {
+    public CompletableFuture<Boolean> pause() {
+        return pause(null, null);
+    }
+
+    /**
+     * Pause the current active team runtime when the optional team/session
+     * filters match.
+     *
+     * @param teamName  optional active team name filter
+     * @param sessionId optional active session id filter
+     * @return true when pause was delivered to the active agent
+     */
+    public CompletableFuture<Boolean> pause(String teamName, String sessionId) {
+        if (!matchesActive(teamName, sessionId)) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (activeAgent instanceof TeamAgent agent) {
+            agent.pauseCoordination();
+        } else {
+            invokeNoArg(activeAgent, "pauseCoordination");
+        }
         activePaused = true;
+        return CompletableFuture.completedFuture(true);
+    }
+
+    /**
+     * Deliver user input to the current active team runtime.
+     *
+     * @param userInput user input to enqueue
+     * @return true when input was delivered to the active agent
+     */
+    public CompletableFuture<Boolean> interact(String userInput) {
+        return interact(userInput, null, null);
+    }
+
+    /**
+     * Deliver user input to the current active team runtime when the optional
+     * team/session filters match.
+     *
+     * @param userInput user input to enqueue
+     * @param teamName  optional active team name filter
+     * @param sessionId optional active session id filter
+     * @return true when input was delivered to the active agent
+     */
+    public CompletableFuture<Boolean> interact(String userInput, String teamName, String sessionId) {
+        if (!matchesActive(teamName, sessionId)) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (activeAgent instanceof TeamAgent agent) {
+            agent.interact(userInput);
+        } else {
+            invoke(activeAgent, "interact", userInput);
+        }
+        return CompletableFuture.completedFuture(true);
     }
 
     /**
@@ -189,6 +241,16 @@ public class RuntimeManager {
         this.activeSessionId = sessionId;
         this.activeAgent = agent;
         this.activePaused = false;
+    }
+
+    private boolean matchesActive(String teamName, String sessionId) {
+        if (activeAgent == null) {
+            return false;
+        }
+        if (teamName != null && !teamName.equals(activeTeamName)) {
+            return false;
+        }
+        return sessionId == null || sessionId.equals(activeSessionId);
     }
 
     private CompletableFuture<Void> deactivateActiveRuntime() {

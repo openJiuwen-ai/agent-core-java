@@ -8,11 +8,15 @@ import com.openjiuwen.agent_teams.schema.TeamLifecycle;
 import com.openjiuwen.harness.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code openjiuwen.agent_teams.runtime_manager}.
@@ -39,6 +43,33 @@ class RuntimeManagerTest {
         assertEquals("runtime-session-2", manager.getActiveSessionId().orElseThrow());
     }
 
+    @Test
+    void pauseAndInteractRouteOnlyMatchingActiveRuntime() {
+        RuntimeManager manager = new RuntimeManager();
+        RecordingSpec spec = new RecordingSpec("runtime-control-team");
+
+        manager.activate(spec, "runtime-control-session", Map.of("query", "start")).join();
+
+        assertFalse(manager.interact("wrong team", "other-team", "runtime-control-session").join());
+        assertFalse(manager.interact("wrong session", "runtime-control-team", "other-session").join());
+        assertTrue(manager.interact("follow-up", "runtime-control-team", "runtime-control-session").join());
+        assertEquals(List.of("follow-up"), spec.agent.interactions);
+
+        assertFalse(manager.pause("runtime-control-team", "other-session").join());
+        assertEquals(0, spec.agent.pauseCalls);
+
+        assertTrue(manager.pause("runtime-control-team", "runtime-control-session").join());
+        assertTrue(manager.isPaused());
+        assertEquals(1, spec.agent.pauseCalls);
+
+        RuntimeManager.TeamRuntimeActivation resumed =
+                manager.activate(spec, "runtime-control-session", Map.of("query", "resume")).join();
+
+        assertSame(spec.agent, resumed.getAgent());
+        assertEquals("resume_paused", resumed.getActivationKind());
+        assertFalse(manager.isPaused());
+    }
+
     private static TeamAgentSpec createSpec() {
         TeamAgentSpec spec = new TeamAgentSpec();
         spec.setTeamName("runtime-team");
@@ -54,5 +85,35 @@ class RuntimeManagerTest {
         leaderAgent.setConfig(config);
         spec.getAgents().put("leader", leaderAgent);
         return spec;
+    }
+
+    public static class RecordingSpec {
+        private final String teamName;
+        private final RecordingAgent agent = new RecordingAgent();
+
+        RecordingSpec(String teamName) {
+            this.teamName = teamName;
+        }
+
+        public String getTeamName() {
+            return teamName;
+        }
+
+        public RecordingAgent build() {
+            return agent;
+        }
+    }
+
+    public static class RecordingAgent {
+        private final List<String> interactions = new ArrayList<>();
+        private int pauseCalls;
+
+        public void interact(String message) {
+            interactions.add(message);
+        }
+
+        public void pauseCoordination() {
+            pauseCalls++;
+        }
     }
 }

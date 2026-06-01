@@ -5,6 +5,7 @@
 package com.openjiuwen.agent_teams.workspace;
 
 import java.io.IOException;
+import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -67,7 +68,9 @@ public class TeamWorkspaceManager {
     public boolean acquireLock(WorkspaceFileLock lock) {
         WorkspaceFileLock existing = locks.get(lock.getFilePath());
         if (existing != null && !existing.isExpired()) {
-            return false;
+            if (!existing.getHolderId().equals(lock.getHolderId())) {
+                return false;
+            }
         }
         locks.put(lock.getFilePath(), lock);
         return true;
@@ -75,7 +78,7 @@ public class TeamWorkspaceManager {
 
     public boolean releaseLock(String filePath, String holderId) {
         WorkspaceFileLock existing = locks.get(filePath);
-        if (existing == null || (holderId != null && !holderId.equals(existing.getHolderId()))) {
+        if (existing == null || holderId == null || !holderId.equals(existing.getHolderId())) {
             return false;
         }
         locks.remove(filePath);
@@ -83,6 +86,16 @@ public class TeamWorkspaceManager {
     }
 
     public WorkspaceFileLock getLock(String filePath) {
-        return locks.get(filePath);
+        WorkspaceFileLock existing = locks.get(filePath);
+        if (existing != null && existing.isExpired()) {
+            locks.remove(filePath);
+            return null;
+        }
+        return existing;
+    }
+
+    public List<WorkspaceFileLock> listLocks() {
+        locks.entrySet().removeIf(entry -> entry.getValue().isExpired());
+        return List.copyOf(locks.values());
     }
 }

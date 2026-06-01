@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ public class DeepAgentConfig {
     private String systemPrompt = "";
     private int maxIterations = 15;
     private String sysOperationId;
+    private SysOperation sysOperation;
     private Workspace workspace;
     private List<ToolCard> tools = new ArrayList<>();
     private List<AgentRail> rails = new ArrayList<>();
@@ -87,6 +89,14 @@ public class DeepAgentConfig {
 
     public void setSysOperationId(String sysOperationId) {
         this.sysOperationId = sysOperationId;
+    }
+
+    public SysOperation getSysOperation() {
+        return sysOperation;
+    }
+
+    public void setSysOperation(SysOperation sysOperation) {
+        this.sysOperation = sysOperation;
     }
 
     public Workspace getWorkspace() {

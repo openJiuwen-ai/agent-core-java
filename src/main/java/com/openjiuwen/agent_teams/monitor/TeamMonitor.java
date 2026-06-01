@@ -7,11 +7,14 @@ package com.openjiuwen.agent_teams.monitor;
 import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 import com.openjiuwen.agent_teams.schema.task.TaskStatus;
+import com.openjiuwen.agent_teams.schema.message.MessageRecord;
+import com.openjiuwen.agent_teams.spawn.SpawnContext;
 import com.openjiuwen.agent_teams.tools.Team;
 import com.openjiuwen.agent_teams.tools.TeamBackend;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -320,6 +323,7 @@ public class TeamMonitor {
             messages.addAll(backend.getMessages(toMember, false, fromMember));
             if (toMember == null) {
                 messages.addAll(backend.getBroadcastMessages(false, fromMember));
+                messages.sort(Comparator.comparingLong(TeamMonitor::messageTimestamp));
             }
             return CompletableFuture.completedFuture(messages);
         }
@@ -340,7 +344,7 @@ public class TeamMonitor {
         if (backend == null) {
             throw new IllegalArgumentException("TeamAgent has no team backend configured");
         }
-        return new TeamMonitor(backend.getTeamName(), "", backend, teamAgent);
+        return new TeamMonitor(backend.getTeamName(), SpawnContext.getSessionId(), backend, teamAgent);
     }
 
     private void invokeListenerMethod(String methodName, Consumer<Object> listener) {
@@ -410,5 +414,20 @@ public class TeamMonitor {
             }
         }
         return null;
+    }
+
+    private static long messageTimestamp(Object message) {
+        if (message instanceof MessageRecord record) {
+            return record.getCreatedAt();
+        }
+        Object value = invokeObjectMethod(message, "getTimestamp");
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        value = invokeObjectMethod(message, "getCreatedAt");
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return 0L;
     }
 }

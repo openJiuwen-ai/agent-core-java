@@ -22,6 +22,7 @@ public class TeamMember {
     private final AgentCard agentCard;
     private final String prompt;
     private final String desc;
+    private final long updatedAt;
     private MemberStatus status;
     private ExecutionStatus executionStatus;
 
@@ -43,6 +44,7 @@ public class TeamMember {
         this.desc = desc;
         this.status = status != null ? status : MemberStatus.UNSTARTED;
         this.executionStatus = executionStatus != null ? executionStatus : ExecutionStatus.IDLE;
+        this.updatedAt = System.currentTimeMillis();
     }
 
     public String getMemberName() {
@@ -67,6 +69,10 @@ public class TeamMember {
 
     public String getDesc() {
         return desc;
+    }
+
+    public long getUpdatedAt() {
+        return updatedAt;
     }
 
     public MemberStatus getStatus() {

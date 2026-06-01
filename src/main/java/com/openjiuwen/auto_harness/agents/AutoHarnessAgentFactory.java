@@ -5,6 +5,10 @@
 package com.openjiuwen.auto_harness.agents;
 
 import com.openjiuwen.auto_harness.schema.AutoHarnessConfig;
+import com.openjiuwen.auto_harness.rails.ContextRail;
+import com.openjiuwen.auto_harness.rails.EditSafetyRail;
+import com.openjiuwen.auto_harness.rails.ExperienceRail;
+import com.openjiuwen.auto_harness.rails.SecurityRail;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
@@ -17,9 +21,16 @@ import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
 import com.openjiuwen.harness.HarnessFactory;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
+import com.openjiuwen.harness.rails.LspRail;
+import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
+import com.openjiuwen.harness.tools.WebFetchWebpageTool;
+import com.openjiuwen.harness.tools.WebFreeSearchTool;
+import com.openjiuwen.harness.workspace.Workspace;
 
 import java.io.IOException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -41,18 +52,36 @@ public final class AutoHarnessAgentFactory {
 
     private static final Logger logger = Logger.getLogger(AutoHarnessAgentFactory.class.getName());
 
-    private static final Path PACKAGE_DIR = Path.of(System.getProperty("user.dir", "."))
-            .resolve("agent-core-java-0.1.12")
-            .resolve("src")
-            .resolve("main")
-            .resolve("resources")
-            .resolve("auto_harness");
+    private static final Path PACKAGE_DIR = resolvePackageDir();
 
     private static final String SKILLS_DIR = PACKAGE_DIR.resolve("skills").toString();
     private static final Path PROMPTS_DIR = PACKAGE_DIR.resolve("prompts");
 
     private AutoHarnessAgentFactory() {
         // Utility class - prevent instantiation
+    }
+
+    private static Path resolvePackageDir() {
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        List<Path> candidates = List.of(
+                cwd.resolve("src").resolve("main").resolve("resources").resolve("auto_harness"),
+                cwd.resolve("agent-core-java-0.1.12")
+                        .resolve("src").resolve("main").resolve("resources").resolve("auto_harness")
+        );
+        for (Path candidate : candidates) {
+            if (Files.isDirectory(candidate)) {
+                return candidate;
+            }
+        }
+        URL resource = AutoHarnessAgentFactory.class.getClassLoader().getResource("auto_harness");
+        if (resource != null && "file".equals(resource.getProtocol())) {
+            try {
+                return Path.of(resource.toURI());
+            } catch (Exception ignored) {
+                // Fall through to the module-layout default below.
+            }
+        }
+        return candidates.get(0);
     }
 
     // ── SysOperation Builder ───────────────────────────────────────
@@ -126,17 +155,10 @@ public final class AutoHarnessAgentFactory {
         agentConfig.setCard(createAgentCard("auto-harness", "自主优化 harness 框架的编码 agent"));
         agentConfig.setSystemPrompt(systemPrompt);
         
-        // Convert tools to ToolCards
-        List<ToolCard> toolCards = new ArrayList<>();
-        for (Tool t : tools) {
-            toolCards.add(t.getCard());
-        }
-        agentConfig.setTools(toolCards);
+        agentConfig.setTools(toToolCards(tools));
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "implement", 30));
-
-        // Note: subagents, workspace, language, sysOperation would be set via reflection
-        // or additional config methods in a full implementation
+        configureRuntime(agentConfig, config, workspace, "auto-harness");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -188,8 +210,10 @@ public final class AutoHarnessAgentFactory {
         DeepAgentConfig agentConfig = new DeepAgentConfig();
         agentConfig.setCard(createAgentCard("auto-harness-assess", "评估代码库当前状态"));
         agentConfig.setSystemPrompt(prompt);
+        agentConfig.setTools(toToolCards(buildResearchTools(config)));
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "assess", 30));
+        configureRuntime(agentConfig, config, config.getWorkspace(), "auto-harness-assess");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -208,8 +232,10 @@ public final class AutoHarnessAgentFactory {
         DeepAgentConfig agentConfig = new DeepAgentConfig();
         agentConfig.setCard(createAgentCard("auto-harness-plan", "制定优化任务列表"));
         agentConfig.setSystemPrompt(prompt);
+        agentConfig.setTools(toToolCards(buildResearchTools(config)));
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "plan", 15));
+        configureRuntime(agentConfig, config, config.getWorkspace(), "auto-harness-plan");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -230,6 +256,7 @@ public final class AutoHarnessAgentFactory {
         agentConfig.setSystemPrompt(prompt);
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "eval", 10));
+        configureRuntime(agentConfig, config, config.getWorkspace(), "auto-harness-eval");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -248,8 +275,10 @@ public final class AutoHarnessAgentFactory {
         DeepAgentConfig agentConfig = new DeepAgentConfig();
         agentConfig.setCard(createAgentCard("auto-harness-select-pipeline", "选择最合适的优化流水线"));
         agentConfig.setSystemPrompt(prompt);
+        agentConfig.setTools(toToolCards(buildResearchTools(config)));
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "select_pipeline", 10));
+        configureRuntime(agentConfig, config, config.getWorkspace(), "auto-harness-select-pipeline");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -272,6 +301,7 @@ public final class AutoHarnessAgentFactory {
         agentConfig.setSystemPrompt(prompt);
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "pr_draft", 5));
+        configureRuntime(agentConfig, config, workspace, "auto-harness-pr-draft");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -302,6 +332,7 @@ public final class AutoHarnessAgentFactory {
         agentConfig.setSystemPrompt(prompt);
         agentConfig.setRails(rails);
         agentConfig.setMaxIterations(resolveAgentIterations(config, "learnings", 5));
+        configureRuntime(agentConfig, config, config.getWorkspace(), "auto-harness-learnings");
 
         return HarnessFactory.createDeepAgent(agentConfig);
     }
@@ -318,19 +349,13 @@ public final class AutoHarnessAgentFactory {
     private static List<AgentRail> buildRails(AutoHarnessConfig config, AgentRail editSafetyRail) {
         List<AgentRail> rails = new ArrayList<>();
 
-        // Standard rails would be added here:
-        // - ToolTrackingRail
-        // - SysOperationRail
-        // - AutoHarnessContextRail
-        // - LspRail
-        // - AutoHarnessExperienceRail
-        // - SecurityRail
-        // - EditSafetyRail (or override)
-
-        // For now, we add a placeholder for the edit safety rail
-        if (editSafetyRail != null) {
-            rails.add(editSafetyRail);
-        }
+        rails.add(new ToolTrackingRail());
+        rails.add(new SysOperationRail());
+        rails.add(new ContextRail(true));
+        rails.add(new LspRail());
+        rails.add(new ExperienceRail(config.getResolvedExperienceDir(), config.getLanguage()));
+        rails.add(new SecurityRail(config.resolveImmutableFiles(), config.getHighImpactPrefixes()));
+        rails.add(editSafetyRail != null ? editSafetyRail : new EditSafetyRail());
 
         return rails;
     }
@@ -344,12 +369,11 @@ public final class AutoHarnessAgentFactory {
     private static List<AgentRail> buildReadonlyRails(AutoHarnessConfig config) {
         List<AgentRail> rails = new ArrayList<>();
 
-        // Readonly rails would be added here:
-        // - ToolTrackingRail
-        // - SysOperationRail
-        // - AutoHarnessContextRail
-        // - LspRail
-        // - AutoHarnessExperienceRail
+        rails.add(new ToolTrackingRail());
+        rails.add(new SysOperationRail());
+        rails.add(new ContextRail(true));
+        rails.add(new LspRail());
+        rails.add(new ExperienceRail(config.getResolvedExperienceDir(), config.getLanguage()));
 
         return rails;
     }
@@ -363,18 +387,75 @@ public final class AutoHarnessAgentFactory {
      */
     private static AgentRail buildSkillRail(AutoHarnessConfig config, List<String> skillNames) {
         List<String> skillsDir = new ArrayList<>();
-        skillsDir.add(SKILLS_DIR);
+        List<String> requestedSkills = skillNames != null ? skillNames : List.of();
+        List<String> roots = new ArrayList<>();
+        roots.add(SKILLS_DIR);
+        roots.addAll(config.getSkillsDirs());
+        for (String root : roots) {
+            if (root == null || root.isBlank()) {
+                continue;
+            }
+            Path rootPath = Path.of(root);
+            if (!Files.isDirectory(rootPath)) {
+                continue;
+            }
+            boolean hasRequestedSkill = requestedSkills.stream()
+                    .anyMatch(skillName -> Files.isDirectory(rootPath.resolve(skillName)));
+            if (hasRequestedSkill) {
+                skillsDir.add(rootPath.toString());
+            }
+        }
+
+        LinkedHashSet<String> enabledSkills = new LinkedHashSet<>();
+        for (String skillName : requestedSkills) {
+            for (String root : skillsDir) {
+                if (Files.isDirectory(Path.of(root).resolve(skillName))) {
+                    enabledSkills.add(skillName);
+                    break;
+                }
+            }
+        }
+
         return new SkillUseRail(
                 skillsDir,
                 SkillUseRail.SKILL_MODE_ALL,
                 true,
                 true,
-                new LinkedHashSet<>(skillNames != null ? skillNames : List.of()),
+                enabledSkills,
                 null
         );
     }
 
     // ── Helper Methods ───────────────────────────────────────
+
+    private static List<Tool> buildResearchTools(AutoHarnessConfig config) {
+        return List.of(new WebFreeSearchTool("en"), new WebFetchWebpageTool());
+    }
+
+    private static List<ToolCard> toToolCards(List<Tool> tools) {
+        List<ToolCard> cards = new ArrayList<>();
+        if (tools == null) {
+            return cards;
+        }
+        for (Tool tool : tools) {
+            if (tool != null && tool.getCard() != null) {
+                cards.add(tool.getCard());
+            }
+        }
+        return cards;
+    }
+
+    private static void configureRuntime(
+            DeepAgentConfig agentConfig,
+            AutoHarnessConfig config,
+            String workspace,
+            String agentName) {
+        String resolvedWorkspace = workspace != null ? workspace : "";
+        agentConfig.setWorkspace(new Workspace(resolvedWorkspace, config.getLanguage()));
+        SysOperation sysOperation = buildTrustedLocalSysOperation(agentName);
+        agentConfig.setSysOperation(sysOperation);
+        agentConfig.setSysOperationId(agentName + "_trusted_local");
+    }
 
     /**
      * Build the auto-harness system prompt.
@@ -438,7 +519,7 @@ public final class AutoHarnessAgentFactory {
     }
 
     /**
-     * Render simple placeholders without touching JSON braces.
+     * Render simple template variables without touching JSON braces.
      *
      * @param template The template string
      * @param values   Key-value pairs for replacement
@@ -483,19 +564,9 @@ public final class AutoHarnessAgentFactory {
      * @return Configured AgentCard
      */
     private static AgentCard createAgentCard(String name, String description) {
-        AgentCard card = new AgentCard();
-        try {
-            // Use reflection to set fields since AgentCard may not have setters
-            java.lang.reflect.Field nameField = AgentCard.class.getDeclaredField("name");
-            nameField.setAccessible(true);
-            nameField.set(card, name);
-
-            java.lang.reflect.Field descField = AgentCard.class.getDeclaredField("description");
-            descField.setAccessible(true);
-            descField.set(card, description);
-        } catch (Exception e) {
-            logger.warning("Failed to set AgentCard fields: " + e.getMessage());
-        }
-        return card;
+        return AgentCard.builder()
+                .name(name)
+                .description(description)
+                .build();
     }
 }

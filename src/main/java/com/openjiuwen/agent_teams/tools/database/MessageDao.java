@@ -4,10 +4,10 @@
 
 package com.openjiuwen.agent_teams.tools.database;
 
-import com.openjiuwen.agent_teams.tools.TeamMessage;
 import com.openjiuwen.agent_teams.tools.MessageReadStatus;
-import com.openjiuwen.agent_teams.tools.TeamMember;
+import com.openjiuwen.agent_teams.tools.TeamMessage;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -15,41 +15,33 @@ import java.util.logging.Logger;
 
 /**
  * Data access object for message and message-read-status tables.
- * <p>
- * Mirrors Python's {@code MessageDao} in {@code openjiuwen.agent_teams.tools.database.message_dao}.
- * </p>
+ *
+ * <p>Mirrors Python's {@code MessageDao} in
+ * {@code openjiuwen.agent_teams.tools.database.message_dao}.</p>
  */
 public class MessageDao {
 
-    private static final int DB_RETRY_ATTEMPTS = 3;
-    private static final double DB_RETRY_BASE_DELAY = 0.5;
     private static final Logger teamLogger = Logger.getLogger(MessageDao.class.getName());
 
-    /**
-     * Get message information by ID.
-     *
-     * @param messageId the message ID
-     * @return CompletableFuture with Optional TeamMessage
-     */
-    public CompletableFuture<Optional<TeamMessage>> getMessage(String messageId) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database query
-            return Optional.empty();
-        });
+    private final TeamDatabaseState state;
+
+    public MessageDao() {
+        this(new TeamDatabaseState(DatabaseConfig.inMemory()));
+        this.state.createCurrentSessionTables();
     }
 
-    /**
-     * Create a new team message.
-     *
-     * @param messageId       the message ID
-     * @param teamName        the team name
-     * @param fromMemberName  the sender member name
-     * @param content         the message content
-     * @param toMemberName    the recipient member name (optional)
-     * @param broadcast       whether this is a broadcast message
-     * @param isRead          initial read flag for direct messages
-     * @return CompletableFuture with true if created successfully
-     */
+    public MessageDao(TeamDatabaseState state) {
+        this.state = state;
+    }
+
+    public CompletableFuture<Optional<TeamMessage>> getMessage(String messageId) {
+        try {
+            return CompletableFuture.completedFuture(Optional.ofNullable(session().messages().get(messageId)));
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
     public CompletableFuture<Boolean> createMessage(
             String messageId,
             String teamName,
@@ -58,99 +50,133 @@ public class MessageDao {
             String toMemberName,
             boolean broadcast,
             boolean isRead) {
-        return CompletableFuture.supplyAsync(() -> {
-            for (int attempt = 0; attempt < DB_RETRY_ATTEMPTS; attempt++) {
-                try {
-                    long timestamp = getCurrentTime();
-                    TeamMessage message = new TeamMessage(
-                            messageId, teamName, fromMemberName,
-                            toMemberName, content, timestamp,
-                            broadcast, broadcast ? null : isRead);
-                    // TODO: Implement database session add/commit
-                    teamLogger.info(String.format("Message %s created", messageId));
-                    return true;
-                } catch (Exception e) {
-                    if (attempt < DB_RETRY_ATTEMPTS - 1) {
-                        double delay = DB_RETRY_BASE_DELAY * (Math.pow(2, attempt));
-                        teamLogger.warning(String.format("Database locked on create_message (attempt %d), retrying in %.1fs",
-                                attempt + 1, delay));
-                        try {
-                            Thread.sleep((long) (delay * 1000));
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
-                    } else {
-                        teamLogger.severe(String.format("Failed to create message %s after %d attempts: %s",
-                                messageId, DB_RETRY_ATTEMPTS, e.getMessage()));
-                        return false;
-                    }
-                }
+        try {
+            TeamDatabaseState.SessionData session = session();
+            if (session.messages().containsKey(messageId)) {
+                teamLogger.severe(String.format("Failed to create %s, duplicate message id", messageId));
+                return CompletableFuture.completedFuture(false);
             }
-            return false;
-        });
+            TeamMessage message = new TeamMessage(
+                    messageId,
+                    teamName,
+                    fromMemberName,
+                    toMemberName,
+                    content,
+                    DatabaseEngine.getCurrentTime(),
+                    broadcast,
+                    broadcast ? null : isRead);
+            boolean created = session.messages().putIfAbsent(messageId, message) == null;
+            if (created) {
+                teamLogger.info(String.format("Message %s created", messageId));
+            }
+            return CompletableFuture.completedFuture(created);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
-    /**
-     * Get direct (point-to-point) messages for a specific member.
-     *
-     * @param teamName        the team name
-     * @param toMemberName    the recipient member name
-     * @param unreadOnly      whether to filter unread messages only
-     * @param fromMemberName  the sender member name (optional)
-     * @return CompletableFuture with list of TeamMessage
-     */
     public CompletableFuture<List<TeamMessage>> getMessages(
             String teamName,
             String toMemberName,
             boolean unreadOnly,
             String fromMemberName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database query
-            return List.of();
-        });
+        try {
+            List<TeamMessage> rows = session().messages().values().stream()
+                    .filter(message -> teamName.equals(message.getTeamName()))
+                    .filter(message -> toMemberName.equals(message.getToMemberName()))
+                    .filter(message -> !Boolean.TRUE.equals(message.getBroadcast()))
+                    .filter(message -> fromMemberName == null || fromMemberName.equals(message.getFromMemberName()))
+                    .filter(message -> !unreadOnly || Boolean.FALSE.equals(message.getIsRead()))
+                    .sorted(Comparator.comparing(TeamMessage::getTimestamp))
+                    .toList();
+            return CompletableFuture.completedFuture(rows);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
-    /**
-     * Get broadcast messages for a specific member.
-     *
-     * @param teamName        the team name
-     * @param memberName      the member name
-     * @param unreadOnly      whether to filter unread messages only
-     * @param fromMemberName  the sender member name (optional)
-     * @return CompletableFuture with list of TeamMessage
-     */
     public CompletableFuture<List<TeamMessage>> getBroadcastMessages(
             String teamName,
             String memberName,
             boolean unreadOnly,
             String fromMemberName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database query
-            return List.of();
-        });
+        try {
+            TeamDatabaseState.SessionData session = session();
+            TeamDatabaseState.ReadStatusKey key = new TeamDatabaseState.ReadStatusKey(memberName, teamName);
+            MessageReadStatus readStatus = session.readStatuses().get(key);
+            Long readAt = readStatus != null ? readStatus.getReadAt() : null;
+            List<TeamMessage> rows = session.messages().values().stream()
+                    .filter(message -> teamName.equals(message.getTeamName()))
+                    .filter(message -> Boolean.TRUE.equals(message.getBroadcast()))
+                    .filter(message -> !memberName.equals(message.getFromMemberName()))
+                    .filter(message -> fromMemberName == null || fromMemberName.equals(message.getFromMemberName()))
+                    .filter(message -> !unreadOnly || readAt == null || message.getTimestamp() > readAt)
+                    .sorted(Comparator.comparing(TeamMessage::getTimestamp))
+                    .toList();
+            return CompletableFuture.completedFuture(rows);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
-    /**
-     * Mark a message as read by a member.
-     *
-     * @param messageId   the message ID
-     * @param memberName  the member name
-     * @return CompletableFuture with true if marked successfully
-     */
+    public CompletableFuture<List<TeamMessage>> getTeamMessages(String teamName, Boolean broadcast) {
+        try {
+            List<TeamMessage> rows = session().messages().values().stream()
+                    .filter(message -> teamName.equals(message.getTeamName()))
+                    .filter(message -> broadcast == null || broadcast.equals(message.getBroadcast()))
+                    .sorted(Comparator.comparing(TeamMessage::getTimestamp))
+                    .toList();
+            return CompletableFuture.completedFuture(rows);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
     public CompletableFuture<Boolean> markMessageRead(String messageId, String memberName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database update
+        try {
+            TeamDatabaseState.SessionData session = session();
+            TeamMessage message = session.messages().get(messageId);
+            if (message == null) {
+                teamLogger.severe(String.format("Message %s not found", messageId));
+                return CompletableFuture.completedFuture(false);
+            }
+            if ("user".equals(memberName)) {
+                if (Boolean.TRUE.equals(message.getBroadcast())) {
+                    teamLogger.severe(String.format("'user' pseudo-member cannot read broadcast message %s", messageId));
+                    return CompletableFuture.completedFuture(false);
+                }
+            } else {
+                TeamDatabaseState.MemberKey memberKey =
+                        new TeamDatabaseState.MemberKey(memberName, message.getTeamName());
+                if (!state.members().containsKey(memberKey)) {
+                    teamLogger.severe(String.format("Member %s not found", memberName));
+                    return CompletableFuture.completedFuture(false);
+                }
+            }
+
+            if (Boolean.TRUE.equals(message.getBroadcast())) {
+                TeamDatabaseState.ReadStatusKey key =
+                        new TeamDatabaseState.ReadStatusKey(memberName, message.getTeamName());
+                session.readStatuses().compute(key, (ignored, existing) -> {
+                    if (existing == null) {
+                        return new MessageReadStatus(memberName, message.getTeamName(), message.getTimestamp());
+                    }
+                    if (existing.getReadAt() == null || message.getTimestamp() > existing.getReadAt()) {
+                        existing.setReadAt(message.getTimestamp());
+                    }
+                    return existing;
+                });
+            } else {
+                message.setIsRead(true);
+            }
             teamLogger.info(String.format("Message %s marked as read by %s", messageId, memberName));
-            return true;
-        });
+            return CompletableFuture.completedFuture(true);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
-    /**
-     * Get current time in milliseconds.
-     *
-     * @return current timestamp in milliseconds
-     */
-    private long getCurrentTime() {
-        return System.currentTimeMillis();
+    private TeamDatabaseState.SessionData session() {
+        return state.currentSession();
     }
 }

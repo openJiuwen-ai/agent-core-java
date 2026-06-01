@@ -7,6 +7,9 @@ package com.openjiuwen.auto_harness.rails;
 import com.openjiuwen.auto_harness.tools.ExperienceSearchTool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.rails.DeepAgentRail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +30,7 @@ import java.util.Set;
  *   <li>Unregister tools and remove prompt sections on uninit</li>
  * </ul>
  */
-public class ExperienceRail {
+public class ExperienceRail extends DeepAgentRail {
 
     private static final Logger LOG = LoggerFactory.getLogger(ExperienceRail.class);
 
@@ -44,6 +47,7 @@ public class ExperienceRail {
     public ExperienceRail(String experienceDir, String language) {
         this.experienceDir = experienceDir;
         this.language = language;
+        setPriority(80);
     }
 
     /**
@@ -51,7 +55,9 @@ public class ExperienceRail {
      * <p>
      * Mirrors Python's {@code init} method.
      */
+    @Override
     public void init(Object agent) {
+        super.init(agent);
         this.systemPromptBuilder = getAttribute(agent, "system_prompt_builder");
         registerExperienceTool(agent);
         LOG.info("[ExperienceRail] Initialized with experience_dir={}", experienceDir);
@@ -67,9 +73,15 @@ public class ExperienceRail {
      *   <li>Removes prompt sections</li>
      * </ul>
      */
+    @Override
     public void uninit(Object agent) {
         // Remove tools from agent.ability_manager
-        if (agent != null) {
+        if (agent instanceof DeepAgent deepAgent) {
+            for (String toolName : new HashSet<>(ownedToolNames)) {
+                deepAgent.getDelegate().getAbilityManager().remove(toolName);
+                LOG.debug("[ExperienceRail] Removed tool '{}' from ability_manager", toolName);
+            }
+        } else if (agent != null) {
             Object abilityManager = getAttribute(agent, "ability_manager");
             if (abilityManager != null) {
                 for (String toolName : new HashSet<>(ownedToolNames)) {
@@ -113,6 +125,21 @@ public class ExperienceRail {
         LOG.info("[ExperienceRail] Uninitialized");
     }
 
+    @Override
+    public void beforeModelCall(AgentCallbackContext ctx) {
+        if (systemPromptBuilder == null) {
+            return;
+        }
+        try {
+            systemPromptBuilder.getClass().getMethod("removeSection", String.class)
+                    .invoke(systemPromptBuilder, "MEMORY");
+            systemPromptBuilder.getClass().getMethod("addSection", Object.class)
+                    .invoke(systemPromptBuilder, buildExperienceSection(language, experienceDir));
+        } catch (ReflectiveOperationException ignored) {
+            LOG.debug("[ExperienceRail] Failed to refresh experience prompt section");
+        }
+    }
+
     /**
      * Register experience_search tool to agent.
      * <p>
@@ -124,7 +151,8 @@ public class ExperienceRail {
         }
 
         Object abilityManager = getAttribute(agent, "ability_manager");
-        if (abilityManager == null) {
+        boolean deepAgentPath = agent instanceof DeepAgent;
+        if (abilityManager == null && !deepAgentPath) {
             LOG.warn("[ExperienceRail] Agent has no ability_manager, cannot register tool");
             return;
         }
@@ -141,10 +169,16 @@ public class ExperienceRail {
                 LOG.debug("[ExperienceRail] Added tool '{}' to resource_mgr", toolId);
             }
 
+            if (agent instanceof DeepAgent deepAgent) {
+                deepAgent.getDelegate().getAbilityManager().add(tool.getCard());
+                ownedToolNames.add(tool.getCard().getName());
+                LOG.info("[ExperienceRail] Registered tool '{}'", tool.getCard().getName());
+                return;
+            }
+
             // Add to agent.ability_manager
             Object card = tool.getCard();
             Object result = abilityManager.getClass().getMethod("add", Object.class).invoke(abilityManager, card);
-
             // Check if tool was added successfully
             try {
                 Boolean added = (Boolean) result.getClass().getMethod("getAdded").invoke(result);
@@ -187,6 +221,15 @@ public class ExperienceRail {
     private String capitalize(String str) {
         if (str == null || str.isEmpty()) return str;
         return str.substring(0, 1).toUpperCase() + str.substring(1);
+    }
+
+    private static String buildExperienceSection(String language, String experienceDir) {
+        if ("en".equals(language)) {
+            return "## Experience Library\n\nThe experience library lives at `" + experienceDir
+                    + "`.\nUse `experience_search` when reviewing prior optimizations, failures, and insights.";
+        }
+        return "## Experience Library\n\n经验库位于 `" + experienceDir
+                + "`。\n需要回顾历史优化、失败案例和洞察时，使用 `experience_search`。";
     }
 
     /**

@@ -90,6 +90,19 @@ class PersistentTeamSessionRecoveryTest {
         assertNotNull(agent.getTeamBackend().getMemberSession("worker_a"));
     }
 
+    @Test
+    void registerCurrentSessionPersistsLeaderStateForTemporaryTeam() {
+        TeamAgent agent = TeamAgent.fromSpec(createTemporarySpec());
+        AgentSessionApi session = AgentSessionApi.create("session-temporary", Map.of(), null);
+
+        agent.registerCurrentSession(session);
+
+        Object leaderStateRaw = session.getState(RecoveryManager.LEADER_STATE_KEY);
+        Map<?, ?> leaderState = assertInstanceOf(Map.class, leaderStateRaw);
+        assertEquals("temporary-team", leaderState.get("team_name"));
+        assertEquals("TEMPORARY", leaderState.get("lifecycle"));
+    }
+
     private TeamAgentSpec createPersistentSpec() {
         TeamAgentSpec spec = new TeamAgentSpec();
         spec.setTeamName("persistent-team");
@@ -108,6 +121,13 @@ class PersistentTeamSessionRecoveryTest {
         leaderAgentSpec.setLanguage("en");
         spec.getAgents().put("leader", leaderAgentSpec);
         spec.setMetadata(new LinkedHashMap<>(Map.of("created_by", "test")));
+        return spec;
+    }
+
+    private TeamAgentSpec createTemporarySpec() {
+        TeamAgentSpec spec = createPersistentSpec();
+        spec.setTeamName("temporary-team");
+        spec.setLifecycle(TeamLifecycle.TEMPORARY);
         return spec;
     }
 

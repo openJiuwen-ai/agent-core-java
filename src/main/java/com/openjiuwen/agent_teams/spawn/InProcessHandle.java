@@ -116,29 +116,29 @@ public class InProcessHandle {
     // ------------------------------------------------------------------
 
     /**
-     * Wait for graceful task completion, then force cancel on timeout.
+     * Cancel the task and wait for cancellation or completion.
      *
      * @param timeout Timeout in seconds (default 10.0)
-     * @return true if the task finished before timeout, false if force killed
+     * @return true if the task is done after cancellation wait
      */
     public boolean shutdown(double timeout) {
         shutdownRequested.set(true);
         if (task == null || task.isDone()) {
             return true;
         }
-        long timeoutMillis = Math.max(0L, Math.round(timeout * 1000));
+        task.cancel(true);
+        double effectiveTimeout = timeout > 0 ? timeout : 10.0;
+        long timeoutMillis = Math.max(0L, Math.round(effectiveTimeout * 1000));
         try {
             task.get(timeoutMillis, TimeUnit.MILLISECONDS);
-            return true;
+            return task.isDone();
         } catch (TimeoutException e) {
-            forceKill();
-            return false;
+            return task.isDone();
         } catch (CancellationException | ExecutionException e) {
-            return true;
+            return task.isDone();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            forceKill();
-            return false;
+            return task.isDone();
         }
     }
 

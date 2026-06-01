@@ -327,14 +327,16 @@ public class TeamRail extends DeepAgentRail {
         }
         List<String> names = new ArrayList<>(humanAgentNames);
         Collections.sort(names);
-        String roster = String.join(", ", names.stream().map(name -> "`" + name + "`").toList());
-        String heading = "cn".equals(language)
-                ? "# HITT 鈥?浜虹被鎴愬憳鍗忎綔瑙勫垯"
-                : "# HITT 鈥?Collaborating with Human Members";
-        String body = heading + "\n\n" + roster + "\n";
+        String normalizedLanguage = language != null ? language : "cn";
+        String body = "cn".equals(normalizedLanguage)
+                ? buildCnHittBody(role, names, selfMemberName)
+                : buildEnHittBody(role, names, selfMemberName);
+        if (body == null) {
+            return null;
+        }
         return new PromptSection(
                 TeamSectionName.HITT,
-                Map.of(language, body),
+                Map.of(normalizedLanguage, body),
                 12
         );
     }
@@ -374,6 +376,7 @@ public class TeamRail extends DeepAgentRail {
         }
         if (!mount.isEmpty()) {
             lines.add("- " + labels.getOrDefault("team_workspace", "Team Shared Workspace") + ": `" + mount + "`");
+            lines.add("  - " + labels.getOrDefault("team_workspace_purpose", "Shared team files"));
             if (teamWorkspacePath != null) {
                 lines.add("  - " + labels.getOrDefault("team_workspace_abs", "Absolute path") + ": `" + teamWorkspacePath + "`");
             }
@@ -663,6 +666,112 @@ public class TeamRail extends DeepAgentRail {
         return null;
     }
 
+    private static String buildCnHittBody(TeamRole role, List<String> names, String selfMemberName) {
+        String roster = formatHumanAgentRoster(names, "cn");
+        if (role == TeamRole.LEADER) {
+            return "# HITT — 人类成员协作规则\n\n"
+                    + roster + "。他们是真实人类操作者的代理，与你和其它 teammate 平等。"
+                    + "所有 role=human_agent 的成员都适用下列规则：\n\n"
+                    + "1. **禁止** 用 plain text 向任何人类成员发问或对话——所有定向"
+                    + "沟通必须调用 `send_message(to=\"<human_member_name>\", ...)`，你的"
+                    + "纯文本输出对方是看不到的。\n"
+                    + "2. 可以通过 `update_task(task_id=..., assignee=\"<human_member_name>\")` "
+                    + "把需要特定人类判断或操作的任务指派给对应成员。\n"
+                    + "3. 一旦某个人类成员认领了任务（status=claimed），你 **不能** 取消"
+                    + "（update_task status=cancelled）也 **不能** 改派（update_task "
+                    + "assignee=<他人>），即使团队因人类没及时响应而停滞也必须保持停滞，"
+                    + "只能用 `send_message` 催促对应人类成员。\n"
+                    + "4. 每个人类成员始终是 ready 状态，不会进入 busy 或 shutdown，"
+                    + "所以不要对它们调用 `shutdown_member` / `spawn_member`。\n"
+                    + "5. 如果 user 表达了“我也要加入团队”之类的加入意图，且团队尚未"
+                    + "创建，请在 `build_team` 时把 `enable_hitt=true`；若需要多个不同"
+                    + "人类成员，通过 `predefined_members` 传入 role=human_agent 的 spec。\n";
+        }
+        if (role == TeamRole.TEAMMATE) {
+            return "# HITT — 与人类成员协作\n\n"
+                    + "团队里存在下列人类成员（真实人类）：" + roster + "。把他们视作普通 "
+                    + "teammate：与他们交流一律通过 `send_message(to=<对应名字>, ...)`，"
+                    + "不要假设他们会自动看到你的 plain text。他们可能拥有你无法完成的"
+                    + "决策权或操作能力。\n";
+        }
+        if (role == TeamRole.HUMAN_AGENT) {
+            String peers = selfMemberName != null && !selfMemberName.isEmpty()
+                    ? "你的 member_name 是 `" + selfMemberName + "`。\n" : "";
+            return "# HITT — 你是团队里的人类成员\n\n"
+                    + roster + "。\n"
+                    + peers
+                    + "你是团队里真实人类操作者的代理，与 leader、teammate 平等。\n"
+                    + "- 你只能通过 `send_message` 与团队交互；没有 `claim_task`、"
+                    + "`update_task`、`spawn_member` 等工具。\n"
+                    + "- Leader 通过 `update_task` 把任务指派给你后，你需要以对话方式"
+                    + "与团队沟通进展；完成后通过 `send_message` 告知 leader。\n"
+                    + "- 发送给你的消息一律自动标记已读，不会堆积未读。\n";
+        }
+        return null;
+    }
+
+    private static String buildEnHittBody(TeamRole role, List<String> names, String selfMemberName) {
+        String roster = formatHumanAgentRoster(names, "en");
+        if (role == TeamRole.LEADER) {
+            return "# HITT — Collaborating with Human Members\n\n"
+                    + roster + ". They represent real human operators and stand on "
+                    + "equal footing with you and the other teammates. The following "
+                    + "rules apply to every member whose role is `human_agent`:\n\n"
+                    + "1. You **must not** address a human member via plain text — "
+                    + "every direct exchange must go through "
+                    + "`send_message(to=\"<human_member_name>\", ...)`. Your plain text "
+                    + "output is not visible to human members.\n"
+                    + "2. Use `update_task(task_id=..., "
+                    + "assignee=\"<human_member_name>\")` to assign tasks that require a "
+                    + "specific human's judgement or action.\n"
+                    + "3. Once a human member claims a task (status=claimed) you "
+                    + "**cannot** cancel it (`update_task status=cancelled`) and "
+                    + "**cannot** reassign it (`update_task assignee=<someone>`). Even "
+                    + "if the team stalls waiting for that human, it must stall — only "
+                    + "`send_message` nudges to the specific human are allowed.\n"
+                    + "4. Every human member stays READY forever; never call "
+                    + "`shutdown_member` or `spawn_member` on them.\n"
+                    + "5. If the user signals intent to join the team (e.g. \"I want "
+                    + "to join\") and the team has not been created yet, call "
+                    + "`build_team` with `enable_hitt=true`. If multiple distinct "
+                    + "human members are needed, pass them via `predefined_members` "
+                    + "as TeamMemberSpec entries with role=human_agent.\n";
+        }
+        if (role == TeamRole.TEAMMATE) {
+            return "# HITT — Working with Human Members\n\n"
+                    + "The team includes the following human members (real humans): "
+                    + roster + ". Treat each of them as an ordinary teammate: every "
+                    + "direct exchange must use `send_message(to=<their_name>, ...)`. "
+                    + "Do not assume your plain text is visible to a human member; "
+                    + "they may hold decisions or privileges you cannot execute.\n";
+        }
+        if (role == TeamRole.HUMAN_AGENT) {
+            String peers = selfMemberName != null && !selfMemberName.isEmpty()
+                    ? "Your member_name is `" + selfMemberName + "`.\n" : "";
+            return "# HITT — You are a human member\n\n"
+                    + roster + ".\n"
+                    + peers
+                    + "You represent the human operator on this team, equal in "
+                    + "standing with the leader and teammates.\n"
+                    + "- Your only tool is `send_message`; you do not have "
+                    + "`claim_task`, `update_task`, `spawn_member`, etc.\n"
+                    + "- When the leader assigns you a task via `update_task`, reply "
+                    + "and coordinate through `send_message`. Announce completion "
+                    + "through `send_message` too.\n"
+                    + "- Every message addressed to you is auto-marked-read; there is "
+                    + "no unread backlog on your side.\n";
+        }
+        return null;
+    }
+
+    private static String formatHumanAgentRoster(List<String> names, String language) {
+        String quoted = String.join(", ", names.stream().map(name -> "`" + name + "`").toList());
+        if ("cn".equals(language)) {
+            return "注册的人类成员：" + quoted;
+        }
+        return "Registered human members: " + quoted;
+    }
+
     // -- Labels ---------------------------------------------------------------
 
     private static final Map<String, Map<String, String>> LABELS = new HashMap<>();
@@ -679,8 +788,13 @@ public class TeamRail extends DeepAgentRail {
         cnLabels.put("display_name_label", "display_name（团队展示名）");
         cnLabels.put("team_desc", "团队目标与指令");
         cnLabels.put("team_workspace", "团队共享工作空间");
+        cnLabels.put("team_workspace_purpose", "用于存放团队共享文件（方案、设计、交付成果），所有成员通过该路径前缀读写同一份文件，系统自动管理版本和文件锁");
         cnLabels.put("team_workspace_abs", "绝对路径");
         cnLabels.put("members_heading", "# 成员关系");
+        cnLabels.put("leader_mode_plan", "团队成员执行模式: plan_mode（成员领取任务后需先提交计划，由你通过 approve_plan 审批后才能执行）");
+        cnLabels.put("leader_mode_build", "团队成员执行模式: build_mode（成员领取任务后自主执行并直接完成，无需你审批计划）");
+        cnLabels.put("teammate_mode_plan", "你的执行模式: plan_mode（领取任务后必须先通过 write_plan 提交计划，等待 leader 通过 approve_plan 审批后才能开始执行）");
+        cnLabels.put("teammate_mode_build", "你的执行模式: build_mode（领取任务后可自主执行并直接标记完成，无需 leader 审批计划）");
         LABELS.put("cn", cnLabels);
 
         Map<String, String> enLabels = new HashMap<>();
@@ -694,8 +808,13 @@ public class TeamRail extends DeepAgentRail {
         enLabels.put("display_name_label", "display_name (human-readable label)");
         enLabels.put("team_desc", "Team Goal & Directives");
         enLabels.put("team_workspace", "Team Shared Workspace");
+        enLabels.put("team_workspace_purpose", "Holds team-shared files (plans, designs, deliverables); all members read/write the same files through this path prefix. Versioning and file locks are managed automatically");
         enLabels.put("team_workspace_abs", "Absolute path");
         enLabels.put("members_heading", "# Relationships");
+        enLabels.put("leader_mode_plan", "Teammate execution mode: plan_mode (teammates must submit a plan after claiming a task and wait for your approval via approve_plan before executing)");
+        enLabels.put("leader_mode_build", "Teammate execution mode: build_mode (teammates execute and complete tasks autonomously without plan approval)");
+        enLabels.put("teammate_mode_plan", "Your execution mode: plan_mode (after claiming a task you must submit a plan via write_plan and wait for the leader to approve it via approve_plan before executing)");
+        enLabels.put("teammate_mode_build", "Your execution mode: build_mode (after claiming a task you execute autonomously and mark it completed without leader plan approval)");
         LABELS.put("en", enLabels);
     }
 

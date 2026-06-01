@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -211,6 +212,31 @@ class TestManager {
             );
 
             assertTrue(error.getMessage().contains("Invalid worktree name"));
+        }
+    }
+
+    @Nested
+    class TestRemove {
+        @Test
+        @Tag("level1")
+        void testRemoveDelegatesToBackendWithForce(@TempDir Path tempDir) {
+            FakeBackend backend = new FakeBackend();
+            WorktreeManager manager = makeManager(backend, new FakeGitProbe(tempDir.resolve("repo").toString(), "main"),
+                    tempDir.resolve("cwd"), tempDir.resolve("workspace"));
+            String worktreePath = tempDir.resolve("workspace").resolve(".worktrees").resolve("agent-slug").toString();
+
+            assertTrue(manager.remove(worktreePath, false));
+
+            assertEquals(1, backend.removeCalls.get());
+            assertEquals(worktreePath, backend.removedPath);
+        }
+
+        @Test
+        @Tag("level1")
+        void testGitBackendRemoveReturnsFalseOutsideGitRepo(@TempDir Path tempDir) {
+            WorktreeManager.GitBackend backend = new WorktreeManager.GitBackend();
+
+            assertFalse(backend.remove(tempDir.resolve("not-a-worktree").toString(), true));
         }
     }
 

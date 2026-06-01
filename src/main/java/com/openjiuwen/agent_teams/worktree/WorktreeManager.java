@@ -261,7 +261,11 @@ public class WorktreeManager {
     }
 
     public boolean remove(String worktreePath, boolean force) {
-        return backend.remove(worktreePath, force);
+        boolean removed = backend.remove(worktreePath, force);
+        if (removed) {
+            unlinkWorktreeFromWorkspace(Path.of(worktreePath).getFileName().toString());
+        }
+        return removed;
     }
 
     public boolean removeWorktree(String worktreePath, String repoRoot) {
@@ -611,7 +615,14 @@ public class WorktreeManager {
 
         @Override
         public boolean remove(String worktreePath, boolean force) {
-            return true;
+            if (worktreePath == null || worktreePath.isBlank()) {
+                return false;
+            }
+            String repoRoot = Git.findCanonicalGitRoot(worktreePath).join();
+            if (repoRoot == null || repoRoot.isBlank()) {
+                return false;
+            }
+            return Git.worktreeRemove(worktreePath, repoRoot, force).join();
         }
 
         @Override

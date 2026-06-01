@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -148,18 +149,36 @@ public class WorkspaceManager {
      * @return true if lock acquired successfully
      */
     public CompletableFuture<Boolean> acquireLock(String path, String memberId, String memberName) {
+        return acquireLock(path, memberId, memberName, 300);
+    }
+
+    /**
+     * Acquire a lock on a file path with a custom timeout.
+     *
+     * @param path           File path to lock
+     * @param memberId       Member identifier requesting the lock
+     * @param memberName     Display name of member
+     * @param timeoutSeconds Lock timeout in seconds
+     * @return true if lock acquired successfully
+     */
+    public CompletableFuture<Boolean> acquireLock(
+            String path,
+            String memberId,
+            String memberName,
+            int timeoutSeconds) {
         return CompletableFuture.supplyAsync(() -> {
             lockMutex.lock();
             try {
                 WorkspaceFileLock existing = locks.get(path);
                 if (existing != null && !existing.isExpired()) {
-                    if (existing.getHolderId().equals(memberId)) {
-                        return true;  // Already held by same member
+                    if (!existing.getHolderId().equals(memberId)) {
+                        return false;  // Locked by another member
                     }
-                    return false;  // Locked by another member
+                } else if (existing != null) {
+                    locks.remove(path);
                 }
                 WorkspaceFileLock newLock = new WorkspaceFileLock(
-                    path, memberId, memberName, System.currentTimeMillis()
+                    path, memberId, memberName, System.currentTimeMillis(), timeoutSeconds
                 );
                 locks.put(path, newLock);
                 logger.info("Lock acquired on " + path + " by " + memberName);
@@ -199,14 +218,30 @@ public class WorkspaceManager {
      * @return Current lock or null
      */
     public WorkspaceFileLock getLock(String path) {
-        return locks.get(path);
+        lockMutex.lock();
+        try {
+            WorkspaceFileLock lock = locks.get(path);
+            if (lock != null && lock.isExpired()) {
+                locks.remove(path);
+                return null;
+            }
+            return lock;
+        } finally {
+            lockMutex.unlock();
+        }
     }
 
     /**
      * List all active locks.
      */
     public List<WorkspaceFileLock> listLocks() {
-        return List.copyOf(locks.values());
+        lockMutex.lock();
+        try {
+            locks.entrySet().removeIf(entry -> entry.getValue().isExpired());
+            return List.copyOf(locks.values());
+        } finally {
+            lockMutex.unlock();
+        }
     }
 
     // ── Version Control ───────────────────────────────────────
@@ -390,13 +425,34 @@ public class WorkspaceManager {
      * Workspace configuration.
      */
     public static class TeamWorkspaceConfig {
-        private List<String> artifactDirs;
-        private boolean versionControl;
-        private ConflictStrategy conflictStrategy;
+        private boolean enabled;
+        private String rootPath;
+        private List<String> artifactDirs = new ArrayList<>(List.of(
+            "artifacts/code",
+            "artifacts/docs",
+            "artifacts/reports",
+            "trajectories"
+        ));
+        private boolean versionControl = true;
+        private ConflictStrategy conflictStrategy = ConflictStrategy.LOCK;
+        private String remoteUrl;
 
-        public List<String> getArtifactDirs() { return artifactDirs; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public String getRootPath() { return rootPath; }
+        public void setRootPath(String rootPath) { this.rootPath = rootPath; }
+        public List<String> getArtifactDirs() { return new ArrayList<>(artifactDirs); }
+        public void setArtifactDirs(List<String> artifactDirs) {
+            this.artifactDirs = artifactDirs != null ? new ArrayList<>(artifactDirs) : new ArrayList<>();
+        }
         public boolean isVersionControl() { return versionControl; }
+        public void setVersionControl(boolean versionControl) { this.versionControl = versionControl; }
         public ConflictStrategy getConflictStrategy() { return conflictStrategy; }
+        public void setConflictStrategy(ConflictStrategy conflictStrategy) {
+            this.conflictStrategy = conflictStrategy != null ? conflictStrategy : ConflictStrategy.LOCK;
+        }
+        public String getRemoteUrl() { return remoteUrl; }
+        public void setRemoteUrl(String remoteUrl) { this.remoteUrl = remoteUrl; }
     }
 
     /**
@@ -405,7 +461,8 @@ public class WorkspaceManager {
     public enum ConflictStrategy {
         LOCK,
         OVERWRITE,
-        MERGE
+        MERGE,
+        LAST_WRITE_WINS
     }
 
     /**
@@ -416,22 +473,29 @@ public class WorkspaceManager {
         private final String holderId;
         private final String holderName;
         private final long acquiredAt;
+        private final int timeoutSeconds;
 
         public WorkspaceFileLock(String path, String holderId, String holderName, long acquiredAt) {
+            this(path, holderId, holderName, acquiredAt, 300);
+        }
+
+        public WorkspaceFileLock(String path, String holderId, String holderName, long acquiredAt, int timeoutSeconds) {
             this.path = path;
             this.holderId = holderId;
             this.holderName = holderName;
             this.acquiredAt = acquiredAt;
+            this.timeoutSeconds = timeoutSeconds;
         }
 
         public String getPath() { return path; }
         public String getHolderId() { return holderId; }
         public String getHolderName() { return holderName; }
         public long getAcquiredAt() { return acquiredAt; }
+        public int getTimeoutSeconds() { return timeoutSeconds; }
 
         public boolean isExpired() {
-            long TTL = 30_000;  // 30 seconds
-            return System.currentTimeMillis() - acquiredAt > TTL;
+            long ttlMillis = Math.max(0L, timeoutSeconds) * 1000L;
+            return System.currentTimeMillis() > acquiredAt + ttlMillis;
         }
     }
 }

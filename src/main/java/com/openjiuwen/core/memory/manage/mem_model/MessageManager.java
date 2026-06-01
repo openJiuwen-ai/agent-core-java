@@ -17,7 +17,7 @@ import java.util.*;
  * DB-based message management.
  *
  * <p>Mirrors Python's {@code MessageManager} in
- * {@code openjiuwen.agent_teams.tools.message_manager}.
+ * {@code openjiuwen.core.memory.manage.mem_model.message_manager}.
  */
 public class MessageManager {
 

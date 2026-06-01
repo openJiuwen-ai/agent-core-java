@@ -4,11 +4,15 @@
 
 package com.openjiuwen.agent_teams.tools;
 
+import com.openjiuwen.agent_teams.I18n;
 import com.openjiuwen.agent_teams.agent.TeamMember;
 import com.openjiuwen.agent_teams.agent.TeamMemberRuntime;
+import com.openjiuwen.agent_teams.constants.TeamConstants;
 import com.openjiuwen.agent_teams.messager.Messager;
 import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
 import com.openjiuwen.agent_teams.messager.Messagers;
+import com.openjiuwen.agent_teams.schema.events.EventMessage;
+import com.openjiuwen.agent_teams.schema.events.TeamTopic;
 import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 import com.openjiuwen.agent_teams.schema.message.MessageRecord;
@@ -50,6 +54,7 @@ public class TeamBackend {
     private final boolean leader;
     private final MemberMode teammateMode;
     private final List<TeamMemberSpec> predefinedMembers;
+    private final Set<String> humanAgentNames = new LinkedHashSet<>();
     private final Map<String, TeamMember> members;
     private final Set<String> cleanupPaths = new LinkedHashSet<>();
     private final TeamTaskManager taskManager;
@@ -71,6 +76,11 @@ public class TeamBackend {
         this.leader = leader;
         this.teammateMode = teammateMode != null ? teammateMode : MemberMode.BUILD_MODE;
         this.predefinedMembers = predefinedMembers != null ? new ArrayList<>(predefinedMembers) : new ArrayList<>();
+        for (TeamMemberSpec spec : this.predefinedMembers) {
+            if (spec.getRoleType() == TeamRole.HUMAN_AGENT && spec.getMemberName() != null && !spec.getMemberName().isBlank()) {
+                this.humanAgentNames.add(spec.getMemberName());
+            }
+        }
         this.store = TeamBackendRegistry.getOrCreate(teamName);
         this.members = store.getMembers();
         Messager sharedMessager = store.getMessager();
@@ -160,16 +170,25 @@ public class TeamBackend {
     }
 
     public List<String> humanAgentNames() {
-        List<String> names = new ArrayList<>();
-        for (TeamMemberSpec spec : predefinedMembers) {
-            if (spec.getRoleType() == TeamRole.HUMAN_AGENT && spec.getMemberName() != null) {
-                names.add(spec.getMemberName());
-            }
+        Set<String> names = new LinkedHashSet<>(humanAgentNames);
+        if (members.containsKey(TeamConstants.HUMAN_AGENT_MEMBER_NAME)) {
+            names.add(TeamConstants.HUMAN_AGENT_MEMBER_NAME);
         }
-        if (members.containsKey("human_agent") && !names.contains("human_agent")) {
-            names.add("human_agent");
-        }
-        return names;
+        return new ArrayList<>(names);
+    }
+
+    /**
+     * Mirrors Python's {@code is_human_agent}.
+     */
+    public boolean isHumanAgent(String memberName) {
+        return memberName != null && humanAgentNames().contains(memberName);
+    }
+
+    /**
+     * Mirrors Python's {@code hitt_enabled}.
+     */
+    public boolean hittEnabled() {
+        return !humanAgentNames().isEmpty();
     }
 
     public void registerMemberSession(String memberName, Session session) {
@@ -289,7 +308,9 @@ public class TeamBackend {
     }
 
     public List<TeamMember> listMembers() {
-        return new ArrayList<>(members.values());
+        return members.values().stream()
+                .filter(member -> !member.getMemberName().equals(memberName))
+                .toList();
     }
 
     public boolean shutdownMember(String memberName, boolean force) {
@@ -299,6 +320,32 @@ public class TeamBackend {
         }
         member.setExecutionStatus(ExecutionStatus.IDLE);
         member.setStatus(force ? MemberStatus.SHUTDOWN : MemberStatus.SHUTDOWN_REQUESTED);
+        return true;
+    }
+
+    /**
+     * Mirrors Python's {@code cancel_member}.
+     */
+    public boolean cancelMember(String memberName) {
+        TeamMember member = members.get(memberName);
+        if (member == null) {
+            return false;
+        }
+        if (member.getStatus() != MemberStatus.BUSY) {
+            return true;
+        }
+
+        for (TaskRecord task : taskManager.getTasksByAssignee(memberName, TaskStatus.CLAIMED)) {
+            taskManager.reset(task.getTaskId());
+        }
+        String messageId = messageManager.sendMessage(I18n.t("team.cancel_request_content"), memberName, this.memberName);
+        if (messageId == null || messageId.isBlank()) {
+            return false;
+        }
+        publishTeamEvent("member_canceled", Map.of(
+                "team_name", teamName,
+                "member_name", memberName
+        ));
         return true;
     }
 
@@ -421,17 +468,95 @@ public class TeamBackend {
     }
 
     public int cancelAllTasks() {
-        int count = 0;
-        for (TaskSummary task : listTasks()) {
-            if (cancelTask(task.getTaskId())) {
-                count++;
-            }
+        List<TaskRecord> cancelled = taskManager.cancelAllTasks(new LinkedHashSet<>(humanAgentNames()));
+        if (!cancelled.isEmpty()) {
+            messageManager.broadcastMessage(
+                    "All tasks (" + cancelled.size() + ") have been cancelled by team leader.",
+                    memberName
+            );
         }
-        return count;
+        return cancelled.size();
     }
 
     public String sendMessage(String content, String toMemberName, String fromMemberName) {
         return messageManager.sendMessage(content, toMemberName, fromMemberName);
+    }
+
+    /**
+     * Mirrors Python's {@code build_team}.
+     */
+    public void buildTeam(
+            String displayName,
+            String desc,
+            String leaderDisplayName,
+            String leaderDesc
+    ) {
+        buildTeam(displayName, desc, leaderDisplayName, leaderDesc, false);
+    }
+
+    public void buildTeam(
+            String displayName,
+            String desc,
+            String leaderDisplayName,
+            String leaderDesc,
+            boolean enableHitt
+    ) {
+        if (store.isTeamCreated()) {
+            throw new IllegalStateException("Failed to create team " + teamName);
+        }
+        store.createTeam(displayName, desc, memberName, leaderDisplayName, leaderDesc);
+
+        AgentCard leaderCard = createAgentCard(
+                teamName + "_" + memberName,
+                leaderDisplayName != null && !leaderDisplayName.isBlank() ? leaderDisplayName : memberName,
+                leaderDesc
+        );
+        spawnMember(
+                memberName,
+                leaderDisplayName != null && !leaderDisplayName.isBlank() ? leaderDisplayName : memberName,
+                leaderCard,
+                leaderDesc,
+                null,
+                MemberStatus.BUSY,
+                ExecutionStatus.RUNNING
+        );
+
+        for (TeamMemberSpec spec : predefinedMembers) {
+            if (spec.getRoleType() == TeamRole.HUMAN_AGENT) {
+                continue;
+            }
+            AgentCard memberCard = createAgentCard(
+                    teamName + "_" + spec.getMemberName(),
+                    spec.getDisplayName(),
+                    spec.getPersona()
+            );
+            spawnMember(
+                    spec.getMemberName(),
+                    spec.getDisplayName(),
+                    memberCard,
+                    spec.getPersona(),
+                    spec.getPromptHint(),
+                    MemberStatus.UNSTARTED,
+                    ExecutionStatus.IDLE
+            );
+        }
+
+        List<TeamMemberSpec> humanSpecs = predefinedMembers.stream()
+                .filter(spec -> spec.getRoleType() == TeamRole.HUMAN_AGENT)
+                .toList();
+        if (humanSpecs.isEmpty() && enableHitt) {
+            spawnHumanAgent(null);
+        } else {
+            for (TeamMemberSpec humanSpec : humanSpecs) {
+                spawnHumanAgent(humanSpec);
+            }
+        }
+        publishTeamEvent("team_created", Map.of(
+                "team_name", teamName,
+                "display_name", displayName,
+                "leader_member_name", memberName,
+                "created", store.getCreated()
+        ));
     }
 
     public void createTeam(
@@ -455,6 +580,31 @@ public class TeamBackend {
         );
     }
 
+    /**
+     * Mirrors Python's {@code get_team_info}.
+     */
+    public Team getTeamInfo() {
+        return store.toTeam();
+    }
+
+    /**
+     * Mirrors Python's {@code get_team_updated_at}.
+     */
+    public long getTeamUpdatedAt() {
+        return store.getUpdatedAt();
+    }
+
+    /**
+     * Mirrors Python's {@code get_members_max_updated_at}.
+     */
+    public long getMembersMaxUpdatedAt() {
+        long max = 0L;
+        for (TeamMember member : members.values()) {
+            max = Math.max(max, member.getUpdatedAt());
+        }
+        return max;
+    }
+
     public boolean canCleanTeam() {
         for (TeamMember member : members.values()) {
             if (member.getMemberName().equals(memberName)) {
@@ -465,6 +615,34 @@ public class TeamBackend {
             }
         }
         return true;
+    }
+
+    /**
+     * Mirrors Python's {@code force_clean_team}.
+     */
+    public boolean forceCleanTeam() {
+        return forceCleanTeam(true);
+    }
+
+    public boolean forceCleanTeam(boolean shutdownMembers) {
+        if (shutdownMembers) {
+            for (TeamMember member : new ArrayList<>(members.values())) {
+                if (!member.getMemberName().equals(memberName)) {
+                    shutdownMember(member.getMemberName(), true);
+                }
+            }
+        }
+        boolean success = store.forceDeleteTeamSession();
+        memberSessions.clear();
+        memberRuntimes.clear();
+        humanAgentNames.clear();
+        try {
+            removeCleanupPaths();
+        } catch (Exception ignored) {
+            success = false;
+        }
+        cleanupPaths.clear();
+        return success;
     }
 
     /**
@@ -480,7 +658,9 @@ public class TeamBackend {
             return null;
         }
         String messageId = sendMessage(content, toMemberName, fromMemberName);
-        Object runtimeResult = hasMember(toMemberName) ? runMember(toMemberName, content) : null;
+        Object runtimeResult = hasMember(toMemberName) && !isHumanAgent(toMemberName)
+                ? runMember(toMemberName, content)
+                : null;
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message_id", messageId);
         result.put("runtime_result", runtimeResult);
@@ -496,6 +676,9 @@ public class TeamBackend {
         List<String> triggered = new ArrayList<>();
         for (TeamMember member : members.values()) {
             if (member.getMemberName().equals(fromMemberName)) {
+                continue;
+            }
+            if (isHumanAgent(member.getMemberName())) {
                 continue;
             }
             if (runMember(member.getMemberName(), content) != null) {
@@ -530,6 +713,9 @@ public class TeamBackend {
             AgentCard card = new AgentCard();
             assignField(card, "name", spec.getMemberName());
             assignField(card, "description", spec.getDisplayName());
+            if (spec.getRoleType() == TeamRole.HUMAN_AGENT && spec.getMemberName() != null && !spec.getMemberName().isBlank()) {
+                humanAgentNames.add(spec.getMemberName());
+            }
             spawnMember(
                     spec.getMemberName(),
                     spec.getDisplayName(),
@@ -543,8 +729,21 @@ public class TeamBackend {
     }
 
     public List<String> cleanTeam() {
+        List<String> removed = removeCleanupPaths();
+        store.forceDeleteTeamSession();
+        memberSessions.clear();
+        memberRuntimes.clear();
+        humanAgentNames.clear();
+        cleanupPaths.clear();
+        return removed;
+    }
+
+    private List<String> removeCleanupPaths() {
         List<String> removed = new ArrayList<>();
-        for (String rawPath : cleanupPaths) {
+        List<String> ordered = cleanupPaths.stream()
+                .sorted((left, right) -> Path.of(right).getNameCount() - Path.of(left).getNameCount())
+                .toList();
+        for (String rawPath : ordered) {
             try {
                 Path path = Path.of(rawPath);
                 if (Files.isDirectory(path)) {
@@ -555,8 +754,6 @@ public class TeamBackend {
                 // Keep cleanup best-effort for the minimal Java port.
             }
         }
-        members.clear();
-        cleanupPaths.clear();
         return removed;
     }
 
@@ -570,6 +767,56 @@ public class TeamBackend {
                             // best effort
                         }
                     });
+        }
+    }
+
+    private void spawnHumanAgent(TeamMemberSpec spec) {
+        String humanMemberName = spec != null && spec.getMemberName() != null && !spec.getMemberName().isBlank()
+                ? spec.getMemberName()
+                : TeamConstants.HUMAN_AGENT_MEMBER_NAME;
+        String displayName = spec != null && spec.getDisplayName() != null && !spec.getDisplayName().isBlank()
+                ? spec.getDisplayName()
+                : I18n.t("hitt.human_agent_display_name");
+        String persona = spec != null && spec.getPersona() != null && !spec.getPersona().isBlank()
+                ? spec.getPersona()
+                : I18n.t("hitt.human_agent_default_persona");
+        String prompt = spec != null ? spec.getPromptHint() : null;
+        AgentCard card = createAgentCard(teamName + "_" + humanMemberName, displayName, persona);
+        TeamMember member = spawnMember(
+                humanMemberName,
+                displayName,
+                card,
+                persona,
+                prompt,
+                MemberStatus.READY,
+                ExecutionStatus.IDLE
+        );
+        if (member != null) {
+            memberRuntimes.remove(humanMemberName);
+            humanAgentNames.add(humanMemberName);
+            publishTeamEvent("member_spawned", Map.of(
+                    "team_name", teamName,
+                    "member_name", humanMemberName
+            ));
+        }
+    }
+
+    private static AgentCard createAgentCard(String id, String name, String description) {
+        AgentCard card = new AgentCard();
+        card.setId(id);
+        card.setName(name != null ? name : "");
+        card.setDescription(description != null ? description : "");
+        return card;
+    }
+
+    private void publishTeamEvent(String eventType, Map<String, Object> payload) {
+        if (messager == null) {
+            return;
+        }
+        try {
+            messager.publish(TeamTopic.TEAM.build("shared", teamName), new EventMessage(eventType, payload));
+        } catch (Exception ignored) {
+            // Python logs and keeps backend operations successful when event publishing fails.
         }
     }
 

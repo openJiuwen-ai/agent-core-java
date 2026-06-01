@@ -221,10 +221,31 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
+     * Get configured skill root directories.
+     */
+    public List<String> getSkillsDir() {
+        return Collections.unmodifiableList(skillsDir);
+    }
+
+    /**
      * Get skill mode.
      */
     public String getSkillMode() {
         return skillMode;
+    }
+
+    /**
+     * Get enabled skill names.
+     */
+    public Set<String> getEnabledSkills() {
+        return Collections.unmodifiableSet(enabledSkills);
+    }
+
+    /**
+     * Get disabled skill names.
+     */
+    public Set<String> getDisabledSkills() {
+        return Collections.unmodifiableSet(disabledSkills);
     }
 
     /**

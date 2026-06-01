@@ -6,6 +6,7 @@ import com.openjiuwen.agent_teams.schema.LeaderSpec;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
 import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agent_teams.spawn.SpawnContext;
 import com.openjiuwen.harness.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +56,43 @@ class TeamMonitorTest {
         assertFalse(monitor.hasNextEvent());
         assertEquals(0, agent.getEventListeners().size());
         assertNull(monitor.nextEvent());
+    }
+
+    @Test
+    void createMonitorUsesCurrentSessionContext() {
+        TeamAgent agent = TeamAgent.fromSpec(createSpec());
+
+        try {
+            SpawnContext.setSessionId("session-42");
+
+            TeamMonitor monitor = TeamMonitor.createMonitor(agent);
+
+            assertEquals("session-42", monitor.getSessionId());
+        } finally {
+            SpawnContext.resetSessionId();
+        }
+    }
+
+    @Test
+    void getMessagesWithoutRecipientKeepsTeamMessageTimestampOrder() throws InterruptedException {
+        TeamAgentSpec spec = createSpec();
+        spec.setTeamName("monitor-team-order");
+        TeamAgent agent = TeamAgent.fromSpec(spec);
+        TeamMemberSpec worker = new TeamMemberSpec();
+        worker.setMemberName("worker");
+        worker.setDisplayName("Worker");
+        worker.setRoleType(TeamRole.TEAMMATE);
+        agent.spawnMember(worker, null);
+        agent.getTeamBackend().broadcastMessage("first broadcast", "leader");
+        Thread.sleep(2L);
+        agent.getTeamBackend().sendMessage("second direct", "worker", "leader");
+
+        TeamMonitor monitor = TeamMonitor.createMonitor(agent);
+        List<MessageInfo> messages = monitor.getMessages(null, null).join();
+
+        assertEquals(2, messages.size());
+        assertEquals("first broadcast", messages.get(0).getContent());
+        assertEquals("second direct", messages.get(1).getContent());
     }
 
     private static TeamAgentSpec createSpec() {

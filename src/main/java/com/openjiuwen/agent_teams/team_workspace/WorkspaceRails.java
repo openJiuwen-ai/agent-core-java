@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_teams.team_workspace;
 
+import com.openjiuwen.agent_teams.schema.TeamEvent;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -119,12 +121,16 @@ public class WorkspaceRails {
                 .thenRun(() -> publishArtifactEvent(realPath));
         }
 
+        publishArtifactEvent(realPath);
         return CompletableFuture.completedFuture(null);
     }
 
     // ── Internal helpers ───────────────────────────────────────
 
     private CompletableFuture<Void> maybePull() {
+        if (!workspaceManager.getConfig().isVersionControl()) {
+            return CompletableFuture.completedFuture(null);
+        }
         if (workspaceManager.getMode() != WorkspaceManager.WorkspaceMode.DISTRIBUTED) {
             return CompletableFuture.completedFuture(null);
         }
@@ -138,7 +144,12 @@ public class WorkspaceRails {
 
     private String resolveWorkspaceRelative(String path) {
         if (path.startsWith(TEAM_PREFIX)) {
-            return path.substring(TEAM_PREFIX.length());
+            String afterPrefix = path.substring(TEAM_PREFIX.length());
+            String teamNamePrefix = workspaceManager.getTeamName() + "/";
+            if (afterPrefix.startsWith(teamNamePrefix)) {
+                return afterPrefix.substring(teamNamePrefix.length());
+            }
+            return afterPrefix;
         }
         return path;
     }
@@ -149,7 +160,7 @@ public class WorkspaceRails {
             event.put("team_name", workspaceManager.getTeamName());
             event.put("member_name", memberName);
             event.put("artifact_path", artifactPath);
-            workspaceManager.getEventPublisher().publishEvent("WORKSPACE_ARTIFACT_UPDATED", event);
+            workspaceManager.getEventPublisher().publishEvent(TeamEvent.WORKSPACE_ARTIFACT_UPDATED, event);
         }
     }
 

@@ -32,15 +32,16 @@ public class BuildTeamTool extends TeamTool {
         String teamDesc = stringValue(inputs.get("team_desc"));
         String leaderDisplayName = stringValue(inputs.get("leader_display_name"));
         String leaderDesc = stringValue(inputs.get("leader_desc"));
-        team.createTeam(displayName, teamDesc, leaderDisplayName, leaderDesc);
-        team.registerPredefinedMembers();
+        boolean enableHitt = Boolean.TRUE.equals(inputs.get("enable_hitt"))
+                || "true".equalsIgnoreCase(stringValue(inputs.get("enable_hitt")));
+        team.buildTeam(displayName, teamDesc, leaderDisplayName, leaderDesc, enableHitt);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("team_name", team.getTeamName());
         data.put("display_name", displayName);
         data.put("team_desc", teamDesc);
         data.put("leader_member_name", team.getMemberName());
         data.put("leader_display_name", leaderDisplayName);
-        data.put("started_members", team.startup());
+        data.put("enable_hitt", enableHitt);
         return new TeamToolOutput(true, data, null);
     }
 }

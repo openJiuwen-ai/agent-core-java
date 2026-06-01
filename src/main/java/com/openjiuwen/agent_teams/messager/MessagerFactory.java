@@ -22,17 +22,7 @@ public final class MessagerFactory {
         if (config == null) {
             throw new IllegalArgumentException("Config cannot be null");
         }
-        
-        String backend = config.getBackend();
-        if ("inprocess".equals(backend)) {
-            return new InProcessMessager(config);
-        }
-        if ("pyzmq".equals(backend)) {
-            // Placeholder for PyZmqMessager - not yet implemented
-            throw new IllegalArgumentException("pyzmq backend not yet implemented in Java");
-        }
-        
-        throw new IllegalArgumentException("Unsupported messager backend: " + backend);
+        return Messagers.createMessager(config);
     }
     
     // Private constructor to prevent instantiation

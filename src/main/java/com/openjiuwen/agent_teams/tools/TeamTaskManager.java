@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -106,7 +107,8 @@ public class TeamTaskManager {
      * 2. Have existing tasks depend on it (dependentTaskIds parameter)
      * 3. Both of the above (inserting the task between other tasks)
      * <p>
-     * Mirrors Python's {@code add_with_priority} method.
+     * Mirrors Python's {@code TeamTaskManager.add_with_priority} in
+     * {@code openjiuwen.agent_teams.tools.task_manager}.
      *
      * @param title           Task title
      * @param content         Task content
@@ -174,7 +176,8 @@ public class TeamTaskManager {
      * (pending or claimed status) depend on it. This ensures the new task
      * is executed before those tasks.
      * <p>
-     * Mirrors Python's {@code add_as_top_priority} method.
+     * Mirrors Python's {@code TeamTaskManager.add_as_top_priority} in
+     * {@code openjiuwen.agent_teams.tools.task_manager}.
      *
      * @param title   Task title
      * @param content Task content
@@ -264,6 +267,17 @@ public class TeamTaskManager {
     }
 
     /**
+     * Java-named counterpart of Python's {@code list_tasks_with_deps}.
+     */
+    public List<TaskSummary> listTasksWithDeps(TaskStatus status) {
+        return listByStatus(status);
+    }
+
+    public List<TaskSummary> listTasksWithDeps() {
+        return listTasksWithDeps(null);
+    }
+
+    /**
      * List tasks with dependency info (async version).
      *
      * @param status Status filter (null for all)
@@ -276,6 +290,13 @@ public class TeamTaskManager {
     public TaskDetail get(String taskId) {
         TaskRecord record = tasks.get(taskId);
         return record != null ? record.toDetail() : null;
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code get_task_detail}.
+     */
+    public TaskDetail getTaskDetail(String taskId) {
+        return get(taskId);
     }
 
     /**
@@ -303,6 +324,10 @@ public class TeamTaskManager {
         record.setStatus(TaskStatus.CLAIMED);
         publishEvent(TaskEvent.claimed(teamName, taskId, record.getAssignee()));
         return true;
+    }
+
+    public boolean claim(String taskId) {
+        return claim(taskId, memberName);
     }
 
     public boolean assign(String taskId, String assignee) {
@@ -344,6 +369,16 @@ public class TeamTaskManager {
         }
         publishEvent(TaskEvent.updated(teamName, taskId));
         return true;
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code add_dependencies}.
+     */
+    public boolean addDependencies(String taskId, List<String> dependsOnIds) {
+        if (dependsOnIds == null || dependsOnIds.isEmpty()) {
+            return true;
+        }
+        return addBlockedBy(taskId, dependsOnIds);
     }
 
     /**
@@ -414,6 +449,30 @@ public class TeamTaskManager {
         return true;
     }
 
+    public List<TaskRecord> cancelAllTasks() {
+        return cancelAllTasks(Set.of());
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code cancel_all_tasks}.
+     */
+    public List<TaskRecord> cancelAllTasks(Set<String> skipAssignees) {
+        Set<String> skipped = skipAssignees != null ? skipAssignees : Set.of();
+        List<TaskRecord> cancelled = new ArrayList<>();
+        for (TaskRecord task : new ArrayList<>(tasks.values())) {
+            if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.CANCELLED) {
+                continue;
+            }
+            if (task.getAssignee() != null && skipped.contains(task.getAssignee())) {
+                continue;
+            }
+            if (cancel(task.getTaskId())) {
+                cancelled.add(task);
+            }
+        }
+        return cancelled;
+    }
+
     /**
      * Cancel a task asynchronously.
      *
@@ -436,6 +495,66 @@ public class TeamTaskManager {
             record.setContent(content);
         }
         publishEvent(TaskEvent.updated(teamName, taskId));
+        return true;
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code list_tasks}.
+     */
+    public List<TaskRecord> listTasks(TaskStatus status) {
+        return tasks.values().stream()
+                .filter(t -> status == null || t.getStatus() == status)
+                .toList();
+    }
+
+    public List<TaskRecord> listTasks() {
+        return listTasks(null);
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code get_claimable_tasks}.
+     */
+    public List<TaskRecord> getClaimableTasks() {
+        return listTasks(TaskStatus.PENDING);
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code get_tasks_by_assignee}.
+     */
+    public List<TaskRecord> getTasksByAssignee(String memberName, TaskStatus status) {
+        return tasks.values().stream()
+                .filter(task -> memberName != null && memberName.equals(task.getAssignee()))
+                .filter(task -> status == null || task.getStatus() == status)
+                .toList();
+    }
+
+    public List<TaskRecord> getTasksByAssignee(String memberName) {
+        return getTasksByAssignee(memberName, null);
+    }
+
+    /**
+     * Java-named counterpart of Python's {@code update_task}.
+     */
+    public boolean updateTask(String taskId, String title, String content) {
+        return update(taskId, title, content);
+    }
+
+    public boolean reset(String taskId) {
+        TaskRecord record = tasks.get(taskId);
+        if (record == null || record.getStatus() != TaskStatus.CLAIMED) {
+            return false;
+        }
+        record.setAssignee(null);
+        record.setStatus(TaskStatus.PENDING);
+        return true;
+    }
+
+    public boolean approvePlan(String taskId) {
+        TaskRecord record = tasks.get(taskId);
+        if (record == null || record.getStatus() != TaskStatus.CLAIMED) {
+            return false;
+        }
+        record.setStatus(TaskStatus.PLAN_APPROVED);
         return true;
     }
 

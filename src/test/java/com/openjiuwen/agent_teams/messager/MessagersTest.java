@@ -4,10 +4,22 @@
 
 package com.openjiuwen.agent_teams.messager;
 
+import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code tests.unit_tests.agent_teams.test_messager}.
@@ -25,14 +37,160 @@ class MessagersTest {
         MessagerTransportConfig config = new MessagerTransportConfig();
         config.setBackend("pyzmq");
         assertInstanceOf(PyZmqMessager.class, Messagers.createMessager(config));
+        assertInstanceOf(PyZmqMessager.class, MessagerFactory.createMessager(config));
     }
 
     @Test
-    void pyzmqTransportFailsClosedOnRealIo() {
+    void pyzmqStartRequiresPubsubAddressesLikePython() {
         PyZmqMessager messager = new PyZmqMessager(new MessagerTransportConfig());
-        assertThrows(UnsupportedOperationException.class, messager::start);
-        assertThrows(UnsupportedOperationException.class, messager::stop);
-        assertThrows(UnsupportedOperationException.class,
-                () -> messager.unsubscribe("topic:team"));
+
+        assertThrows(IllegalStateException.class, messager::start);
+        assertDoesNotThrow(messager::stop);
+        assertDoesNotThrow(() -> messager.unsubscribe("topic:team"));
+    }
+
+    @Test
+    void pyzmqP2pDeliversToRegisteredHandler() throws Exception {
+        String directAddr = freeTcpAddress();
+        String publishAddr = freeTcpAddress();
+        String subscribeAddr = freeTcpAddress();
+        PyZmqMessager receiver = new PyZmqMessager(config(
+                "receiver", directAddr, publishAddr, subscribeAddr, true, List.of()));
+        PyZmqMessager sender = new PyZmqMessager(config(
+                "sender", null, publishAddr, subscribeAddr, false, List.of(peer("receiver", directAddr))));
+        CountDownLatch received = new CountDownLatch(1);
+        EventMessage[] holder = new EventMessage[1];
+
+        try {
+            receiver.registerDirectMessageHandler(message -> {
+                holder[0] = message;
+                received.countDown();
+            });
+
+            sender.send("receiver", new EventMessage("direct", Map.of("value", 7)));
+
+            assertTrue(received.await(2, TimeUnit.SECONDS));
+            assertEquals("direct", holder[0].getEventType());
+            assertEquals(7, holder[0].getPayload().get("value"));
+            assertEquals("sender", holder[0].getSenderId());
+        } finally {
+            sender.stop();
+            receiver.stop();
+        }
+    }
+
+    @Test
+    void pyzmqPubsubDeliversToSubscriberAndUnsubscribeStopsDelivery() throws Exception {
+        String publishAddr = freeTcpAddress();
+        String subscribeAddr = freeTcpAddress();
+        PyZmqMessager subscriber = new PyZmqMessager(config(
+                "subscriber", null, publishAddr, subscribeAddr, true, List.of()));
+        PyZmqMessager publisher = new PyZmqMessager(config(
+                "publisher", null, publishAddr, subscribeAddr, false, List.of()));
+        CountDownLatch received = new CountDownLatch(1);
+        EventMessage[] holder = new EventMessage[1];
+
+        try {
+            subscriber.subscribe("topic:team", message -> {
+                holder[0] = message;
+                received.countDown();
+            });
+            eventuallyPublish(publisher, "topic:team", new EventMessage("broadcast", Map.of("team", "a")), received);
+
+            assertTrue(received.await(2, TimeUnit.SECONDS));
+            assertEquals("broadcast", holder[0].getEventType());
+            assertEquals("publisher", holder[0].getSenderId());
+            assertEquals("a", holder[0].getPayload().get("team"));
+
+            subscriber.unsubscribe("topic:team");
+            CountDownLatch afterUnsubscribe = new CountDownLatch(1);
+            EventMessage[] dropped = new EventMessage[1];
+            subscriber.subscribe("topic:other", message -> {
+                dropped[0] = message;
+                afterUnsubscribe.countDown();
+            });
+            publisher.publish("topic:team", new EventMessage("dropped", Map.of()));
+            assertTrue(!afterUnsubscribe.await(300, TimeUnit.MILLISECONDS));
+            assertNull(dropped[0]);
+        } finally {
+            publisher.stop();
+            subscriber.stop();
+        }
+    }
+
+    @Test
+    void pyzmqLocalPeerMirrorsPythonProperty() {
+        MessagerTransportConfig config = new MessagerTransportConfig();
+        config.setNodeId("node-a");
+        config.setDirectAddr("tcp://127.0.0.1:19001");
+
+        MessagerPeerConfig peer = new PyZmqMessager(config).localPeer();
+
+        assertEquals("node-a", peer.getAgentId());
+        assertEquals(List.of("tcp://127.0.0.1:19001"), peer.getAddrs());
+    }
+
+    @Test
+    void pyzmqSendRejectsUnknownPeer() {
+        String publishAddr = freeTcpAddress();
+        String subscribeAddr = freeTcpAddress();
+        PyZmqMessager sender = new PyZmqMessager(config(
+                "sender", null, publishAddr, subscribeAddr, true, List.of()));
+
+        try {
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    () -> sender.send("missing", new EventMessage("direct", Map.of())));
+            assertTrue(error.getMessage().contains("Unknown zmq route"));
+        } finally {
+            sender.stop();
+        }
+    }
+
+    private static MessagerTransportConfig config(
+            String nodeId,
+            String directAddr,
+            String publishAddr,
+            String subscribeAddr,
+            boolean bindPubsub,
+            List<MessagerPeerConfig> knownPeers) {
+        MessagerTransportConfig config = new MessagerTransportConfig();
+        config.setBackend("pyzmq");
+        config.setTeamName("team-1");
+        config.setNodeId(nodeId);
+        config.setDirectAddr(directAddr);
+        config.setPubsubPublishAddr(publishAddr);
+        config.setPubsubSubscribeAddr(subscribeAddr);
+        config.setRequestTimeout(1.0);
+        config.setMetadata(Map.of("pubsub_bind", bindPubsub));
+        config.setKnownPeers(knownPeers);
+        return config;
+    }
+
+    private static MessagerPeerConfig peer(String agentId, String addr) {
+        MessagerPeerConfig peer = new MessagerPeerConfig();
+        peer.setAgentId(agentId);
+        peer.setAddrs(List.of(addr));
+        return peer;
+    }
+
+    private static String freeTcpAddress() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            socket.setReuseAddress(true);
+            return "tcp://127.0.0.1:" + socket.getLocalPort();
+        } catch (IOException error) {
+            throw new IllegalStateException("failed to allocate test port", error);
+        }
+    }
+
+    private static void eventuallyPublish(
+            PyZmqMessager publisher,
+            String topic,
+            EventMessage message,
+            CountDownLatch received) throws InterruptedException {
+        for (int attempt = 0; attempt < 10 && received.getCount() > 0; attempt++) {
+            publisher.publish(topic, message);
+            received.await(100, TimeUnit.MILLISECONDS);
+        }
     }
 }

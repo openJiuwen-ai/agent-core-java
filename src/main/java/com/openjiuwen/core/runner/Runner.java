@@ -246,15 +246,7 @@ public final class Runner {
      * <p>Mirrors Python's {@code Runner.interact_agent_team}.</p>
      */
     public static boolean interactAgentTeam(String userInput, String teamName, String sessionId) {
-        if (!matchesActiveTeam(teamName, sessionId)) {
-            return false;
-        }
-        Object active = TEAM_RUNTIME_MANAGER.getActiveAgent().orElse(null);
-        if (active instanceof TeamAgent teamAgent) {
-            teamAgent.receiveUserInput(userInput);
-            return true;
-        }
-        return false;
+        return TEAM_RUNTIME_MANAGER.interact(userInput, teamName, sessionId).join();
     }
 
     /**
@@ -263,11 +255,7 @@ public final class Runner {
      * <p>Mirrors Python's {@code Runner.pause_agent_team}.</p>
      */
     public static boolean pauseAgentTeam(String teamName, String sessionId) {
-        if (!matchesActiveTeam(teamName, sessionId)) {
-            return false;
-        }
-        TEAM_RUNTIME_MANAGER.pause();
-        return true;
+        return TEAM_RUNTIME_MANAGER.pause(teamName, sessionId).join();
     }
 
     // ========== Agent Group ==========
@@ -326,11 +314,6 @@ public final class Runner {
      */
     public static void release(String sessionId) {
         GLOBAL_RUNNER.release(sessionId);
-    }
-
-    private static boolean matchesActiveTeam(String teamName, String sessionId) {
-        return TEAM_RUNTIME_MANAGER.getActiveTeamName().map(teamName::equals).orElse(false)
-                && TEAM_RUNTIME_MANAGER.getActiveSessionId().map(sessionId::equals).orElse(false);
     }
 
     private static Iterator<Object> concat(Iterator<?> first, Supplier<Iterator<?>> secondSupplier) {

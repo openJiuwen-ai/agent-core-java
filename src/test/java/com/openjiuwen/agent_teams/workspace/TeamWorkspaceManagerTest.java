@@ -121,6 +121,36 @@ class TeamWorkspaceManagerTest {
     }
 
     @Test
+    @DisplayName("Test acquireLock refreshes lock for same holder")
+    void testAcquireLockSameHolderRefreshes() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock lock = createLock("/tmp/workspace/file.txt", "holder1", 3600);
+        manager.acquireLock(lock);
+
+        WorkspaceFileLock refreshed = new WorkspaceFileLock(
+            "/tmp/workspace/file.txt",
+            "holder1",
+            "holder1-name",
+            Instant.now().plusMillis(1).toString(),
+            3600
+        );
+
+        assertTrue(manager.acquireLock(refreshed));
+        assertEquals(refreshed.getAcquiredAt(), manager.getLock("/tmp/workspace/file.txt").getAcquiredAt());
+    }
+
+    @Test
+    @DisplayName("Test getLock drops expired locks")
+    void testGetLockDropsExpired() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock expiredLock = createExpiredLock("/tmp/workspace/file.txt", "holder1", 1);
+        manager.acquireLock(expiredLock);
+
+        assertNull(manager.getLock("/tmp/workspace/file.txt"));
+        assertTrue(manager.listLocks().isEmpty());
+    }
+
+    @Test
     @DisplayName("Test releaseLock succeeds with correct holderId")
     void testReleaseLockCorrectHolder() {
         TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
@@ -147,6 +177,17 @@ class TeamWorkspaceManagerTest {
     void testReleaseLockNonExistent() {
         TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
         assertFalse(manager.releaseLock("/tmp/workspace/nonexistent.txt", "holder1"));
+    }
+
+    @Test
+    @DisplayName("Test releaseLock rejects null holder")
+    void testReleaseLockRejectsNullHolder() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock lock = createLock("/tmp/workspace/file.txt", "holder1", 3600);
+        manager.acquireLock(lock);
+
+        assertFalse(manager.releaseLock("/tmp/workspace/file.txt", null));
+        assertNotNull(manager.getLock("/tmp/workspace/file.txt"));
     }
 
     @Test

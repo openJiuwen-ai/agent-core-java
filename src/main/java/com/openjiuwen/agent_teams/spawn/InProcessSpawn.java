@@ -26,6 +26,7 @@ import java.util.logging.Logger;
 public class InProcessSpawn {
 
     private static final Logger logger = Logger.getLogger(InProcessSpawn.class.getName());
+    private static final String DEFAULT_INITIAL_QUERY = "Join the team and wait for your first assignment.";
 
     /**
      * Spawn a teammate TeamAgent as a coroutine in the current process.
@@ -53,9 +54,9 @@ public class InProcessSpawn {
         AgentCard card = getOrCreateCard(agentSpec, cardId, memberName, runtimeContext);
         ensureMemberRuntime(leader, card, runtimeContext);
 
-        String query = initialMessage != null ?
-            initialMessage :
-            "Join the team and wait for your first assignment.";
+        String query = initialMessage != null && !initialMessage.isEmpty()
+                ? initialMessage
+                : DEFAULT_INITIAL_QUERY;
 
         CompletableFuture<Object> task = CompletableFuture.supplyAsync(() -> {
             return runWithSessionId(sessionId, () -> {
@@ -193,7 +194,7 @@ public class InProcessSpawn {
     }
 
     private static Object runWithSessionId(String sessionId, ThrowingSupplier supplier) {
-        if (sessionId == null || sessionId.isBlank()) {
+        if (sessionId == null || sessionId.isEmpty()) {
             return supplier.get();
         }
         String previous = SpawnContext.getSessionId();
@@ -201,7 +202,7 @@ public class InProcessSpawn {
             SpawnContext.setSessionId(sessionId);
             return supplier.get();
         } finally {
-            if (previous == null || previous.isBlank()) {
+            if (previous == null || previous.isEmpty()) {
                 SpawnContext.resetSessionId();
             } else {
                 SpawnContext.setSessionId(previous);

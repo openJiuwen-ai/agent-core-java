@@ -31,6 +31,8 @@ public class TeamBackendStore {
     private String leaderMemberName;
     private String leaderDisplayName;
     private String leaderDesc;
+    private long created;
+    private long updatedAt;
 
     public TeamBackendStore(String teamName) {
         this.teamName = teamName;
@@ -71,12 +73,17 @@ public class TeamBackendStore {
             String leaderDisplayName,
             String leaderDesc
     ) {
+        long now = System.currentTimeMillis();
         this.teamCreated = true;
         this.displayName = displayName;
         this.desc = desc;
         this.leaderMemberName = leaderMemberName;
         this.leaderDisplayName = leaderDisplayName;
         this.leaderDesc = leaderDesc;
+        if (this.created == 0L) {
+            this.created = now;
+        }
+        this.updatedAt = now;
     }
 
     public String getDisplayName() {
@@ -97,5 +104,39 @@ public class TeamBackendStore {
 
     public String getLeaderDesc() {
         return leaderDesc;
+    }
+
+    public long getCreated() {
+        return created;
+    }
+
+    public long getUpdatedAt() {
+        return teamCreated ? updatedAt : 0L;
+    }
+
+    public Team toTeam() {
+        if (!teamCreated) {
+            return null;
+        }
+        return new Team(teamName, displayName, leaderMemberName, desc, null, created, updatedAt);
+    }
+
+    public void deleteTeam() {
+        this.teamCreated = false;
+        this.displayName = null;
+        this.desc = null;
+        this.leaderMemberName = null;
+        this.leaderDisplayName = null;
+        this.leaderDesc = null;
+        this.created = 0L;
+        this.updatedAt = 0L;
+    }
+
+    public boolean forceDeleteTeamSession() {
+        deleteTeam();
+        members.clear();
+        tasks.clear();
+        messages.clear();
+        return true;
     }
 }

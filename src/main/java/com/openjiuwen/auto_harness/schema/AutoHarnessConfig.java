@@ -372,6 +372,8 @@ public class AutoHarnessConfig {
     public void setLocalRepo(String localRepo) { this.localRepo = localRepo; }
     public String getRepoUrl() { return repoUrl; }
     public void setRepoUrl(String repoUrl) { this.repoUrl = repoUrl; }
+    public List<String> getSkillsDirs() { return new ArrayList<>(skillsDirs); }
+    public void setSkillsDirs(List<String> skillsDirs) { this.skillsDirs = skillsDirs != null ? new ArrayList<>(skillsDirs) : new ArrayList<>(); }
     public double getSessionBudgetSecs() { return sessionBudgetSecs; }
     public void setSessionBudgetSecs(double sessionBudgetSecs) { this.sessionBudgetSecs = sessionBudgetSecs; }
     public double getModelTimeoutSecs() { return modelTimeoutSecs; }
@@ -396,6 +398,8 @@ public class AutoHarnessConfig {
     public void setCiGateInstallCommand(String ciGateInstallCommand) { this.ciGateInstallCommand = ciGateInstallCommand; }
     public List<String> getImmutableFiles() { return immutableFiles; }
     public void setImmutableFiles(List<String> immutableFiles) { this.immutableFiles = immutableFiles != null ? new ArrayList<>(immutableFiles) : new ArrayList<>(); }
+    public List<String> getHighImpactPrefixes() { return new ArrayList<>(highImpactPrefixes); }
+    public void setHighImpactPrefixes(List<String> highImpactPrefixes) { this.highImpactPrefixes = highImpactPrefixes != null ? new ArrayList<>(highImpactPrefixes) : new ArrayList<>(); }
     public List<String> getStageRegistrars() { return stageRegistrars; }
     public void setStageRegistrars(List<String> stageRegistrars) { this.stageRegistrars = stageRegistrars != null ? new ArrayList<>(stageRegistrars) : new ArrayList<>(); }
     public List<String> getPipelineRegistrars() { return pipelineRegistrars; }
