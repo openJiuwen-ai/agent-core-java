@@ -204,6 +204,10 @@ public class SkillCreator {
         return agent;
     }
 
+    void setAgent(ReActAgent agent) {
+        this.agent = agent;
+    }
+
     /**
      * Helper method to get environment variable with default value.
      *

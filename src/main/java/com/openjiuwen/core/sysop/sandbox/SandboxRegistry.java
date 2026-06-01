@@ -24,8 +24,13 @@ public final class SandboxRegistry {
     /** Storage: launcher name -> Supplier<SandboxLauncher>. */
     private static final Map<String, Supplier<SandboxLauncher>> LAUNCHERS = new ConcurrentHashMap<>();
 
-    /** Storage: sandbox_type -> operation_type -> Supplier<Object>. */
-    private static final Map<String, Map<String, Supplier<Object>>> OPERATIONS = new ConcurrentHashMap<>();
+    /** Storage: sandbox_type -> operation_type -> ProviderFactory. */
+    private static final Map<String, Map<String, ProviderFactory>> OPERATIONS = new ConcurrentHashMap<>();
+
+    @FunctionalInterface
+    public interface ProviderFactory {
+        Object create(SandboxEndpoint endpoint, Object config);
+    }
 
     private SandboxRegistry() {
         // Singleton utility class
@@ -83,8 +88,19 @@ public final class SandboxRegistry {
      * @param providerSupplier supplier that creates provider instances
      */
     public static void registerProvider(String sandboxType, String operationType, Supplier<Object> providerSupplier) {
+        registerProvider(sandboxType, operationType, (endpoint, config) -> providerSupplier.get());
+    }
+
+    /**
+     * Register an operation provider factory for a sandbox type and operation type.
+     *
+     * @param sandboxType      the sandbox type (e.g., "aio", "e2b", "mock")
+     * @param operationType    the operation type (e.g., "fs", "shell", "code")
+     * @param providerFactory  factory that receives endpoint/config and creates provider instances
+     */
+    public static void registerProvider(String sandboxType, String operationType, ProviderFactory providerFactory) {
         OPERATIONS.computeIfAbsent(sandboxType, k -> new ConcurrentHashMap<>())
-                .put(operationType, providerSupplier);
+                .put(operationType, providerFactory);
     }
 
     /**
@@ -95,11 +111,12 @@ public final class SandboxRegistry {
      * @return the provider supplier, or null if not found
      */
     public static Supplier<Object> getProviderSupplier(String sandboxType, String operationType) {
-        Map<String, Supplier<Object>> typeOps = OPERATIONS.get(sandboxType);
+        Map<String, ProviderFactory> typeOps = OPERATIONS.get(sandboxType);
         if (typeOps == null) {
             return null;
         }
-        return typeOps.get(operationType);
+        ProviderFactory factory = typeOps.get(operationType);
+        return factory == null ? null : () -> factory.create(null, null);
     }
 
     /**
@@ -109,7 +126,7 @@ public final class SandboxRegistry {
      * @param operationType the operation type
      */
     public static void unregisterProvider(String sandboxType, String operationType) {
-        Map<String, Supplier<Object>> typeOps = OPERATIONS.get(sandboxType);
+        Map<String, ProviderFactory> typeOps = OPERATIONS.get(sandboxType);
         if (typeOps != null) {
             typeOps.remove(operationType);
             if (typeOps.isEmpty()) {
@@ -131,14 +148,14 @@ public final class SandboxRegistry {
     public static Object createProvider(String sandboxType, String operationType, 
                                          SandboxEndpoint endpoint, Object config) {
         Supplier<Object> supplier = getProviderSupplier(sandboxType, operationType);
-        if (supplier == null) {
+        Map<String, ProviderFactory> typeOps = OPERATIONS.get(sandboxType);
+        ProviderFactory factory = typeOps != null ? typeOps.get(operationType) : null;
+        if (factory == null) {
             throw new UnsupportedOperationException(
                     "No provider registered for sandbox_type=" + sandboxType + 
                     ", operation_type=" + operationType);
         }
-        // Note: The supplier should handle endpoint/config injection internally
-        // In Python, this passes endpoint and config to the provider constructor
-        return supplier.get();
+        return factory.create(endpoint, config);
     }
 
     /**

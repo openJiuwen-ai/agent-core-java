@@ -21,6 +21,8 @@ public class ToolComponentOutput {
     public static final String ERR_CODE = "errCode";
     public static final String ERR_MESSAGE = "errMessage";
     public static final String RESTFUL_DATA = "data";
+    public static final String PY_ERR_CODE = "error_code";
+    public static final String PY_ERR_MESSAGE = "error_message";
 
     private int errorCode = 0;
     private String errorMessage = "";
@@ -30,6 +32,8 @@ public class ToolComponentOutput {
         java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
         map.put(ERR_CODE, errorCode);
         map.put(ERR_MESSAGE, errorMessage);
+        map.put(PY_ERR_CODE, errorCode);
+        map.put(PY_ERR_MESSAGE, errorMessage);
         map.put(RESTFUL_DATA, data);
         return map;
     }
@@ -44,9 +48,17 @@ public class ToolComponentOutput {
             if (code instanceof Number n) {
                 out.errorCode = n.intValue();
             }
+        } else if (map.containsKey(PY_ERR_CODE)) {
+            Object code = map.get(PY_ERR_CODE);
+            if (code instanceof Number n) {
+                out.errorCode = n.intValue();
+            }
         }
         if (map.containsKey(ERR_MESSAGE)) {
             Object msg = map.get(ERR_MESSAGE);
+            out.errorMessage = msg != null ? msg.toString() : "";
+        } else if (map.containsKey(PY_ERR_MESSAGE)) {
+            Object msg = map.get(PY_ERR_MESSAGE);
             out.errorMessage = msg != null ? msg.toString() : "";
         }
         if (map.containsKey(RESTFUL_DATA)) {

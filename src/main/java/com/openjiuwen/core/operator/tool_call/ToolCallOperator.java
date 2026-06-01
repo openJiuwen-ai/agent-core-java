@@ -146,7 +146,6 @@ public class ToolCallOperator extends Operator {
         }
     }
 
-    @Override
     public Object invoke(Map<String, Object> inputs,
                          Session session,
                          Map<String, Object> kwargs) throws Exception {
@@ -192,7 +191,10 @@ public class ToolCallOperator extends Operator {
         }
     }
 
-    @Override
+    public Object invoke(Map<String, Object> inputs, Session session) throws Exception {
+        return invoke(inputs, session, Collections.emptyMap());
+    }
+
     public OperatorStream<Object> stream(Map<String, Object> inputs,
                                          Session session,
                                          Map<String, Object> kwargs) throws Exception {
@@ -207,6 +209,10 @@ public class ToolCallOperator extends Operator {
             setOperatorContext(session, null);
             throw ex;
         }
+    }
+
+    public OperatorStream<Object> stream(Map<String, Object> inputs, Session session) throws Exception {
+        return stream(inputs, session, Collections.emptyMap());
     }
 
     private static int clampRetries(Object value) {

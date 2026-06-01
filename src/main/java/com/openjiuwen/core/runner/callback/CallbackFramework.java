@@ -56,6 +56,8 @@ import java.util.function.Predicate;
 public class CallbackFramework {
 
     private static final Logger log = LoggerFactory.getLogger(CallbackFramework.class);
+    public static final String CALLBACK_TYPE_TRANSFORM = "transform";
+    public static final Object TRANSFORM_NOOP = new Object();
 
     // Core storage
     private final Map<String, List<CallbackInfo>> callbacks = new ConcurrentHashMap<>();
@@ -144,6 +146,27 @@ public class CallbackFramework {
                                   double retryDelay,
                                   Double timeout,
                                   String callbackName) {
+        return register(event, callback, priority, once, namespace, tags, eventFilters,
+                rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName, "");
+    }
+
+    /**
+     * Register a callback for an event with an explicit semantic callback type.
+     */
+    public CallbackInfo register(String event,
+                                  Function<Map<String, Object>, Object> callback,
+                                  int priority,
+                                  boolean once,
+                                  String namespace,
+                                  Set<String> tags,
+                                  List<EventFilter> eventFilters,
+                                  Consumer<ChainContext> rollbackHandler,
+                                  Function<CallbackChain.ExceptionContext, Object> errorHandler,
+                                  int maxRetries,
+                                  double retryDelay,
+                                  Double timeout,
+                                  String callbackName,
+                                  String callbackType) {
 
         CallbackInfo callbackInfo = CallbackInfo.builder()
                 .callback(callback)
@@ -155,6 +178,7 @@ public class CallbackFramework {
                 .retryDelay(retryDelay)
                 .timeout(timeout)
                 .callbackName(callbackName)
+                .callbackType(callbackType != null ? callbackType : "")
                 .build();
 
         callbacks.computeIfAbsent(event, k -> Collections.synchronizedList(new ArrayList<>())).add(callbackInfo);
@@ -216,6 +240,27 @@ public class CallbackFramework {
                                       String callbackName) {
         return register(event, callback, priority, once, namespace, tags, eventFilters,
                 rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName);
+    }
+
+    /**
+     * Synchronous registration with an explicit semantic callback type.
+     */
+    public CallbackInfo registerSync(String event,
+                                      Function<Map<String, Object>, Object> callback,
+                                      int priority,
+                                      boolean once,
+                                      String namespace,
+                                      Set<String> tags,
+                                      List<EventFilter> eventFilters,
+                                      Consumer<ChainContext> rollbackHandler,
+                                      Function<CallbackChain.ExceptionContext, Object> errorHandler,
+                                      int maxRetries,
+                                      double retryDelay,
+                                      Double timeout,
+                                      String callbackName,
+                                      String callbackType) {
+        return register(event, callback, priority, once, namespace, tags, eventFilters,
+                rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName, callbackType);
     }
 
     /**
@@ -327,6 +372,9 @@ if (enableLogging) {
             if (!callbackInfo.isEnabled()) {
                 continue;
             }
+            if (isTransformCallback(callbackInfo)) {
+                continue;
+            }
 
             try {
                 // Apply filters
@@ -402,6 +450,9 @@ if (enableLogging) {
                 Map<String, Object> errorKwargs = new HashMap<>(kwargs);
                 errorKwargs.put("_error", e);
                 executeHooks(event, HookType.ERROR, args, errorKwargs);
+                if (e instanceof AbortError abortError) {
+                    throw abortError;
+                }
                 RuntimeException requested = extractRequestedException(errorKwargs);
                 if (requested != null) {
                     throw requested;
@@ -437,6 +488,76 @@ if (enableLogging) {
     }
 
     /**
+     * Register a transform-type callback.
+     * <p>
+     * Mirrors Python's {@code framework.on_transform(event)} convenience API.
+     */
+    public CallbackInfo onTransform(String event,
+                                     Function<Map<String, Object>, Object> callback,
+                                     int priority,
+                                     String callbackName) {
+        return register(event, callback, priority, false, "default", null, null,
+                null, null, 0, 0.0, null, callbackName, CALLBACK_TYPE_TRANSFORM);
+    }
+
+    /**
+     * Register a transform-type callback with default priority.
+     */
+    public CallbackInfo onTransform(String event,
+                                     Function<Map<String, Object>, Object> callback,
+                                     String callbackName) {
+        return onTransform(event, callback, 0, callbackName);
+    }
+
+    /**
+     * Register a transform-type callback with a generated display name.
+     */
+    public CallbackInfo onTransform(String event,
+                                     Function<Map<String, Object>, Object> callback) {
+        return onTransform(event, callback, 0, null);
+    }
+
+    /**
+     * Trigger only callbacks registered with callbackType="transform".
+     * <p>
+     * Returns {@link #TRANSFORM_NOOP} when no enabled transform callbacks exist.
+     */
+    public Object triggerTransform(String event, Object[] args, Map<String, Object> kwargs) {
+        Object[] finalArgs = args != null ? args : new Object[0];
+        Map<String, Object> finalKwargs = kwargs != null ? kwargs : new HashMap<>();
+        Object result = TRANSFORM_NOOP;
+        boolean hasTransform = false;
+
+        for (CallbackInfo callbackInfo : new ArrayList<>(callbacks.getOrDefault(event, Collections.emptyList()))) {
+            if (!callbackInfo.isEnabled() || !isTransformCallback(callbackInfo)) {
+                continue;
+            }
+            hasTransform = true;
+            CallbackKwargs callbackKwargs = prepareCallbackKwargs(finalKwargs, finalArgs);
+            try {
+                result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
+            } finally {
+                callbackKwargs.restoreInternalArgs();
+            }
+        }
+        return hasTransform ? result : TRANSFORM_NOOP;
+    }
+
+    /**
+     * Trigger transform callbacks with keyword arguments only.
+     */
+    public Object triggerTransform(String event, Map<String, Object> kwargs) {
+        return triggerTransform(event, new Object[0], kwargs);
+    }
+
+    /**
+     * Trigger transform callbacks with positional arguments only.
+     */
+    public Object triggerTransform(String event, Object... args) {
+        return triggerTransform(event, args, new HashMap<>());
+    }
+
+    /**
      * Trigger callbacks as a chain with data flow.
      *
      * @param event  Event name
@@ -449,6 +570,9 @@ if (enableLogging) {
         if (!chains.containsKey(event)) {
             chain = new CallbackChain(event);
             for (CallbackInfo ci : callbacks.getOrDefault(event, Collections.emptyList())) {
+                if (isTransformCallback(ci)) {
+                    continue;
+                }
                 chain.add(ci, null, null);
             }
         } else {
@@ -484,6 +608,9 @@ if (enableLogging) {
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
             if (!callbackInfo.isEnabled()) {
+                continue;
+            }
+            if (isTransformCallback(callbackInfo)) {
                 continue;
             }
 
@@ -574,6 +701,9 @@ if (enableLogging) {
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
             if (!callbackInfo.isEnabled()) {
+                continue;
+            }
+            if (isTransformCallback(callbackInfo)) {
                 continue;
             }
 
@@ -725,6 +855,9 @@ if (enableLogging) {
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
             if (!callbackInfo.isEnabled()) {
+                continue;
+            }
+            if (isTransformCallback(callbackInfo)) {
                 continue;
             }
 
@@ -1110,6 +1243,7 @@ if (enableLogging) {
             info.put("once", ci.isOnce());
             info.put("max_retries", ci.getMaxRetries());
             info.put("timeout", ci.getTimeout());
+            info.put("callback_type", ci.getCallbackType());
             result.add(info);
         }
         return result;
@@ -1413,12 +1547,12 @@ if (enableLogging) {
             // Input transform via event
             if (inputEvent != null) {
                 Object[] args = kwargs.get("_args") instanceof Object[] ? (Object[]) kwargs.get("_args") : new Object[0];
-                List<Object> results = trigger(inputEvent, args, kwargs);
-                if (!results.isEmpty()) {
-                    Object last = results.get(results.size() - 1);
-                    if (last instanceof Map<?, ?>) {
-                        finalKwargs = (Map<String, Object>) last;
-                    }
+                Object transformed = triggerTransform(inputEvent, args, kwargs);
+                if (transformed instanceof Map<?, ?> map) {
+                    finalKwargs = (Map<String, Object>) map;
+                } else if (transformed instanceof BoundArgs boundArgs) {
+                    finalKwargs = new HashMap<>(boundArgs.getKwargs());
+                    finalKwargs.put("_args", boundArgs.getArgs());
                 }
             }
 
@@ -1428,13 +1562,52 @@ if (enableLogging) {
             if (outputEvent != null) {
                 Map<String, Object> outKwargs = new HashMap<>();
                 outKwargs.put(resultKey, result);
-                List<Object> results = trigger(outputEvent, new Object[0], outKwargs);
-                if (!results.isEmpty()) {
-                    result = results.get(results.size() - 1);
+                Object transformed = triggerTransform(outputEvent, new Object[0], outKwargs);
+                if (transformed != TRANSFORM_NOOP) {
+                    result = transformed;
                 }
             }
 
             return result;
+        };
+    }
+
+    /**
+     * Transform every item produced by an iterator-returning function via transform callbacks.
+     */
+    @SuppressWarnings("unchecked")
+    public Function<Map<String, Object>, Iterator<Object>> transformIoStreamByEvents(
+            Function<Map<String, Object>, Iterator<Object>> wrapped,
+            String inputEvent,
+            String outputEvent,
+            String resultKey) {
+        return kwargs -> {
+            Map<String, Object> finalKwargs = kwargs;
+            if (inputEvent != null) {
+                Object[] args = kwargs.get("_args") instanceof Object[] ? (Object[]) kwargs.get("_args") : new Object[0];
+                Object transformed = triggerTransform(inputEvent, args, kwargs);
+                if (transformed instanceof Map<?, ?> map) {
+                    finalKwargs = (Map<String, Object>) map;
+                } else if (transformed instanceof BoundArgs boundArgs) {
+                    finalKwargs = new HashMap<>(boundArgs.getKwargs());
+                    finalKwargs.put("_args", boundArgs.getArgs());
+                }
+            }
+
+            Iterator<Object> source = wrapped.apply(finalKwargs);
+            List<Object> items = new ArrayList<>();
+            while (source.hasNext()) {
+                Object item = source.next();
+                if (outputEvent == null) {
+                    items.add(item);
+                    continue;
+                }
+                Map<String, Object> outKwargs = new HashMap<>();
+                outKwargs.put(resultKey, item);
+                Object transformed = triggerTransform(outputEvent, new Object[0], outKwargs);
+                items.add(transformed == TRANSFORM_NOOP ? item : transformed);
+            }
+            return items.iterator();
         };
     }
 
@@ -1445,6 +1618,10 @@ if (enableLogging) {
         if (list != null) {
             list.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
         }
+    }
+
+    private static boolean isTransformCallback(CallbackInfo callbackInfo) {
+        return callbackInfo != null && CALLBACK_TYPE_TRANSFORM.equals(callbackInfo.getCallbackType());
     }
 
     private static RuntimeException extractRequestedException(Map<String, Object> hookKwargs) {
@@ -1545,11 +1722,11 @@ if (enableLogging) {
      * @param event Logical event name
      * @return A function wrapper that applies the wrap handler chain
      */
-public Function<Map<String, Object>, Object> wrap(String event) {
+    public Function<Map<String, Object>, Object> wrap(String event) {
         return kwargs -> {
             List<WrapHandler> handlers = getWrapHandlers(event);
             if (handlers.isEmpty()) {
-                return Collections.emptyMap();
+                return kwargs;
             }
             Function<Map<String, Object>, Object> chain = k -> k;
             for (int i = handlers.size() - 1; i >= 0; i--) {
@@ -1559,6 +1736,16 @@ public Function<Map<String, Object>, Object> wrap(String event) {
             }
             return chain.apply(kwargs);
         };
+    }
+
+    /**
+     * Wrap a concrete function with handlers registered for {@code event}.
+     * <p>
+     * Mirrors Python's {@code @framework.wrap(event)} by preserving the wrapped
+     * function as the innermost callable.
+     */
+    public Function<Map<String, Object>, Object> wrap(String event, Function<Map<String, Object>, Object> wrapped) {
+        return kwargs -> createWrapDecorator(getWrapHandlers(event)).apply(wrapped).apply(kwargs);
     }
 
     /**

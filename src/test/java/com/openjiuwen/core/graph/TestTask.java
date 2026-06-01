@@ -3,40 +3,38 @@
  */
 package com.openjiuwen.core.graph;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.graph.pregel.Interrupt;
+import com.openjiuwen.core.graph.pregel.PregelConfig;
+import com.openjiuwen.core.graph.pregel.PregelConstants;
+import com.openjiuwen.core.graph.pregel.PregelNode;
+import com.openjiuwen.core.graph.pregel.StaticRouter;
+import com.openjiuwen.core.graph.pregel.TaskExecutorPool;
+import com.openjiuwen.core.graph.store.PendingNode;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.Callable;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for Task.
+ * Unit tests for TaskExecutorPool.
  * <p>
  * Mirrors Python's {@code test_task.py} from
  * {@code tests/unit_tests/core/graph/test_task.py}.
- * 
- * <p>Python source file tests TaskExecutorPool:
- * - test_pool_runtime_exception
- * - test_pool_interrupt
- * - test_pool_success
  */
 @DisplayName("Task Tests")
 class TestTask {
-
-    /*
-     * Python tests verify TaskExecutorPool behavior:
-     * - Runtime exception handling (ValueError)
-     * - GraphInterrupt handling
-     * - Task cancellation semantics
-     */
 
     @Nested
     @DisplayName("TaskExecutorPool Tests")
@@ -45,115 +43,76 @@ class TestTask {
         @Test
         @Tag("level0")
         @DisplayName("pool runtime exception")
-        void testPoolRuntimeException() {
-            // Python: test_pool_runtime_exception
-            // Tests that runtime exception triggers FIRST_EXCEPTION semantics
-            
-            // Simulate task execution with exception
-            ExecutorService pool = Executors.newFixedThreadPool(3);
-            
-            List<Future<?>> futures = new ArrayList<>();
-            futures.add(pool.submit(() -> {
-                try {
-                    Thread.sleep(1000); // Slow task A
-                } catch (InterruptedException e) {
-                    // Cancelled
-                }
-            }));
-            futures.add(pool.submit(() -> {
-                try {
-                    Thread.sleep(200);
-                    throw new RuntimeException("Simulated Runtime Error in B");
-                } catch (InterruptedException e) {
-                    // Cancelled
-                }
-            }));
-            futures.add(pool.submit(() -> {
-                // Fast task C - should succeed
-            }));
-            
-            // Wait and verify exception
-            Exception caughtException = null;
-            for (Future<?> future : futures) {
-                try {
-                    future.get(2, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                    caughtException = e;
-                }
-            }
-            
-            assertNotNull(caughtException);
-            
-            pool.shutdownNow();
+        void testPoolRuntimeException() throws Exception {
+            PregelConfig config = new PregelConfig("test_conv_1", "root", 10000);
+            config.setParentNs("root");
+
+            Callable<Object> taskASlow = () -> {
+                Thread.sleep(1000);
+                return null;
+            };
+            Callable<Object> taskBError = () -> {
+                Thread.sleep(200);
+                throw new IllegalArgumentException("Simulated Runtime Error in B");
+            };
+            Runnable taskCFast = () -> {
+            };
+
+            TaskExecutorPool pool = new TaskExecutorPool(config);
+            pool.submit(new PregelNode("A", taskASlow, List.of(new StaticRouter(List.of("Target_A")))), 1);
+            pool.submit(new PregelNode("B", taskBError, List.of(new StaticRouter(List.of("Target_B")))), 1);
+            pool.submit(new PregelNode("C", taskCFast, List.of(new StaticRouter(List.of("Target_C")))), 1);
+
+            Exception thrown = assertThrows(Exception.class, pool::waitAll);
+
+            assertTrue(thrown.getMessage().contains("Simulated Runtime Error in B"));
+            assertFailed(pool.getFailed().get("B"), "B", PregelConstants.TASK_STATUS_ERROR,
+                    IllegalArgumentException.class);
+            assertFailed(pool.getFailed().get("A"), "A", PregelConstants.TASK_STATUS_ERROR,
+                    java.util.concurrent.CancellationException.class);
+            assertFalse(pool.getFailed().containsKey("C"));
+            assertEquals(Set.of("C"), Set.copyOf(pool.getSucceedMessages().stream()
+                    .map(message -> message.getSender()).toList()));
+            assertEquals("Target_C", pool.getSucceedMessages().get(0).getTarget());
         }
 
         @Test
         @Tag("level0")
-        @DisplayName("pool interrupt handling")
-        void testPoolInterruptHandling() {
-            // Python: test_pool_interrupt
-            // Tests GraphInterrupt handling
-            
-            // Simulate interrupt signal
-            String interruptSignal = "B_Interrupt";
-            assertNotNull(interruptSignal);
-            
-            // Interrupt should be captured and propagated
-            RuntimeException interrupt = new RuntimeException("GraphInterrupt: " + interruptSignal);
-            assertNotNull(interrupt);
+        @DisplayName("pool interrupt exception")
+        void testPoolInterruptException() throws Exception {
+            PregelConfig config = new PregelConfig("test_conv_2", "root", 10000);
+            config.setParentNs("root");
+
+            Callable<Object> taskASlow = () -> {
+                Thread.sleep(1000);
+                return null;
+            };
+            Callable<Object> taskBInterrupt = () -> {
+                throw new GraphInterrupt(new Interrupt("B_Interrupt"));
+            };
+            Runnable taskCFast = () -> {
+            };
+
+            TaskExecutorPool pool = new TaskExecutorPool(config);
+            pool.submit(new PregelNode("A", taskASlow, List.of(new StaticRouter(List.of("Target_A")))), 1);
+            pool.submit(new PregelNode("B", taskBInterrupt, List.of(new StaticRouter(List.of("Target_B")))), 1);
+            pool.submit(new PregelNode("C", taskCFast, List.of(new StaticRouter(List.of("Target_C")))), 1);
+
+            assertThrows(GraphInterrupt.class, pool::waitAll);
+
+            assertFailed(pool.getFailed().get("B"), "B", PregelConstants.TASK_STATUS_INTERRUPT,
+                    GraphInterrupt.class);
+            assertFalse(pool.getFailed().containsKey("A"));
+            assertFalse(pool.getFailed().containsKey("C"));
+            assertEquals(Set.of("A", "C"), Set.copyOf(pool.getSucceedMessages().stream()
+                    .map(message -> message.getSender()).toList()));
         }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("pool success")
-        void testPoolSuccess() {
-            // Python: test_pool_success (if exists)
-            // Tests successful task completion
-            
-            ExecutorService pool = Executors.newFixedThreadPool(2);
-            
-            Future<?> future = pool.submit(() -> {
-                // Successful task
-            });
-            
-            try {
-                future.get(1, TimeUnit.SECONDS);
-                assertTrue(future.isDone());
-            } catch (Exception e) {
-                fail("Task should complete successfully");
-            }
-            
-            pool.shutdown();
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("task node configuration")
-        void testTaskNodeConfiguration() {
-            // Tests task node configuration
-            
-            Map<String, Object> config = new HashMap<>();
-            config.put("ns", "root:A:1");
-            config.put("session_id", "test_conv_1");
-            
-            assertEquals("root:A:1", config.get("ns"));
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("task submission order")
-        void testTaskSubmissionOrder() {
-            // Tests task submission order
-            
-            List<String> submittedTasks = new ArrayList<>();
-            submittedTasks.add("A");
-            submittedTasks.add("B");
-            submittedTasks.add("C");
-            
-            assertEquals(3, submittedTasks.size());
-            assertEquals("A", submittedTasks.get(0));
-            assertEquals("B", submittedTasks.get(1));
-            assertEquals("C", submittedTasks.get(2));
+        private void assertFailed(PendingNode pendingNode, String nodeName, String status,
+                                  Class<? extends Exception> exceptionClass) {
+            assertEquals(nodeName, pendingNode.getNodeName());
+            assertEquals(status, pendingNode.getStatus());
+            assertInstanceOf(exceptionClass, pendingNode.getExceptions().get(0));
         }
     }
 }

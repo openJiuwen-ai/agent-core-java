@@ -27,7 +27,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for ChatReranker.
- * Mirrors Python's tests/unit_tests/core/retrieval/reranker/test_chat_reranker.py
+ *
+ * <p>Mirrors Python's {@code test_chat_reranker.py} in
+ * {@code tests/unit_tests/core/retrieval/reranker}.</p>
  */
 class TestChatReranker {
 
@@ -77,13 +79,24 @@ class TestChatReranker {
 
         @Test
         @DisplayName("test init with invalid yes_no_ids (wrong size)")
-        void testInitWithWrongSizeYesNoIds() {
+        void testInitWithInvalidYesNoIds() {
             RerankerConfig config = new RerankerConfig();
             config.setApiBase("https://api.example.com/v1");
             config.setApiKey("test-api-key");
             config.setModelName("test-model");
-            config.setYesNoIds(Arrays.asList(123));
-            assertThrows(BaseError.class, () -> new ChatReranker(config));
+            assertThrows(BaseError.class, () -> config.setYesNoIds(Arrays.asList(123)));
+        }
+
+        @Test
+        @DisplayName("test init with non-integer yes_no_ids")
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        void testInitWithNonIntegerYesNoIds() {
+            RerankerConfig config = new RerankerConfig();
+            config.setApiBase("https://api.example.com/v1");
+            config.setApiKey("test-api-key");
+            config.setModelName("test-model");
+            List rawIds = Arrays.asList("yes", "no");
+            assertThrows(BaseError.class, () -> config.setYesNoIds(rawIds));
         }
 
         @Test
@@ -93,18 +106,17 @@ class TestChatReranker {
             config.setApiBase("https://api.example.com/v1");
             config.setApiKey("test-api-key");
             config.setModelName("test-model");
-            config.setYesNoIds(Arrays.asList(123, 456, 789));
-            assertThrows(BaseError.class, () -> new ChatReranker(config));
+            assertThrows(BaseError.class, () -> config.setYesNoIds(Arrays.asList(123, 456, 789)));
         }
     }
 
     @Nested
-    @DisplayName("ChatReranker buildChatPayload tests")
+    @DisplayName("ChatReranker request params tests")
     class BuildChatPayloadTests {
 
         @Test
-        @DisplayName("test buildChatPayload with instruct true")
-        void testBuildChatPayloadWithInstructTrue() throws Exception {
+        @DisplayName("test_request_params_with_instruct_true")
+        void testRequestParamsWithInstructTrue() throws Exception {
             RerankerConfig config = createConfigWithYesNoIds();
             ChatReranker model = new ChatReranker(config);
 
@@ -134,8 +146,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test buildChatPayload with instruct false")
-        void testBuildChatPayloadWithInstructFalse() throws Exception {
+        @DisplayName("test_request_params_with_instruct_false")
+        void testRequestParamsWithInstructFalse() throws Exception {
             RerankerConfig config = createConfigWithYesNoIds();
             ChatReranker model = new ChatReranker(config);
 
@@ -152,8 +164,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test buildChatPayload with custom instruct")
-        void testBuildChatPayloadWithCustomInstruct() throws Exception {
+        @DisplayName("test_request_params_with_custom_instruct")
+        void testRequestParamsWithCustomInstruct() throws Exception {
             RerankerConfig config = createConfigWithYesNoIds();
             ChatReranker model = new ChatReranker(config);
 
@@ -169,8 +181,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test buildChatPayload with extra body")
-        void testBuildChatPayloadWithExtraBody() throws Exception {
+        @DisplayName("test_request_params_with_extra_body")
+        void testRequestParamsWithExtraBody() throws Exception {
             RerankerConfig config = new RerankerConfig();
             config.setApiBase("https://api.example.com/v1");
             config.setApiKey("test-api-key");
@@ -191,6 +203,61 @@ class TestChatReranker {
 
             assertEquals("custom_value", payload.get("custom_param"));
         }
+
+        @Test
+        @DisplayName("test_assemble_params_with_string_doc")
+        void testAssembleParamsWithStringDoc() {
+            RerankerConfig config = createConfigWithYesNoIds();
+            ChatReranker model = new ChatReranker(config);
+
+            ChatReranker.AssembleResult assembled = model.assembleParams("test query", List.of("doc1"), true, Map.of());
+
+            assertTrue(assembled.headers().containsKey("Content-Type"));
+            assertEquals("test-model", assembled.params().get("model"));
+            List<Map<String, Object>> messages = (List<Map<String, Object>>) assembled.params().get("messages");
+            assertEquals(2, messages.size());
+            assertTrue(messages.get(1).get("content").toString().contains("doc1"));
+        }
+
+        @Test
+        @DisplayName("test_assemble_params_with_document_object")
+        void testAssembleParamsWithDocumentObject() {
+            RerankerConfig config = createConfigWithYesNoIds();
+            ChatReranker model = new ChatReranker(config);
+            Document doc = new Document("doc1", "Test document");
+
+            ChatReranker.AssembleResult assembled = model.assembleParams("test query", List.of(doc), true, Map.of());
+
+            List<Map<String, Object>> messages = (List<Map<String, Object>>) assembled.params().get("messages");
+            assertTrue(messages.get(1).get("content").toString().contains("Test document"));
+        }
+
+        @Test
+        @DisplayName("test_assemble_params_invalid_input_not_list")
+        void testAssembleParamsInvalidInputNotList() {
+            RerankerConfig config = createConfigWithYesNoIds();
+            ChatReranker model = new ChatReranker(config);
+
+            assertThrows(BaseError.class, () -> model.assembleParams("test query", "not a list", true, Map.of()));
+        }
+
+        @Test
+        @DisplayName("test_assemble_params_invalid_input_wrong_size")
+        void testAssembleParamsInvalidInputWrongSize() {
+            RerankerConfig config = createConfigWithYesNoIds();
+            ChatReranker model = new ChatReranker(config);
+
+            assertThrows(BaseError.class, () -> model.assembleParams("test query", List.of("doc1", "doc2"), true, Map.of()));
+        }
+
+        @Test
+        @DisplayName("test_assemble_params_invalid_input_empty_list")
+        void testAssembleParamsInvalidInputEmptyList() {
+            RerankerConfig config = createConfigWithYesNoIds();
+            ChatReranker model = new ChatReranker(config);
+
+            assertThrows(BaseError.class, () -> model.assembleParams("test query", List.of(), true, Map.of()));
+        }
     }
 
     @Nested
@@ -204,8 +271,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with yes token")
-        void testParseChatScoreWithYesToken() throws Exception {
+        @DisplayName("test_parse_response_with_yes_token")
+        void testParseResponseWithYesToken() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -234,8 +301,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with no token")
-        void testParseChatScoreWithNoToken() throws Exception {
+        @DisplayName("test_parse_response_with_no_token")
+        void testParseResponseWithNoToken() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -264,8 +331,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with case-insensitive tokens")
-        void testParseChatScoreWithCaseInsensitiveTokens() throws Exception {
+        @DisplayName("test_parse_response_with_case_insensitive_tokens")
+        void testParseResponseWithCaseInsensitiveTokens() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -294,8 +361,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with token prefix")
-        void testParseChatScoreWithTokenPrefix() throws Exception {
+        @DisplayName("test_parse_response_with_token_prefix")
+        void testParseResponseWithTokenPrefix() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -324,8 +391,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore without logprobs should raise error")
-        void testParseChatScoreWithoutLogprobs() throws Exception {
+        @DisplayName("test_parse_response_without_logprobs")
+        void testParseResponseWithoutLogprobs() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -348,8 +415,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with empty logprobs should raise error")
-        void testParseChatScoreWithEmptyLogprobs() throws Exception {
+        @DisplayName("test_parse_response_with_empty_logprobs")
+        void testParseResponseWithEmptyLogprobs() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -372,8 +439,8 @@ class TestChatReranker {
         }
 
         @Test
-        @DisplayName("test parseChatScore with zero total probability")
-        void testParseChatScoreWithZeroTotalProb() throws Exception {
+        @DisplayName("test_parse_response_with_zero_total_prob")
+        void testParseResponseWithZeroTotalProb() throws Exception {
             ChatReranker model = createModelWithMockedClient();
 
             Method method = ChatReranker.class.getDeclaredMethod("parseChatScore", com.fasterxml.jackson.databind.JsonNode.class);
@@ -399,6 +466,34 @@ class TestChatReranker {
             double score = (double) method.invoke(model, response);
             assertEquals(0.0, score, 1e-6);
         }
+
+        @Test
+        @DisplayName("test_parse_response_with_document_object")
+        void testParseResponseWithDocumentObject() throws Exception {
+            HttpClient httpClient = mock(HttpClient.class);
+            HttpResponse<String> response = mock(HttpResponse.class);
+            when(response.statusCode()).thenReturn(200);
+            when(response.body()).thenReturn("""
+                    {
+                      "choices": [{
+                        "logprobs": {
+                          "content": [{
+                            "top_logprobs": [
+                              {"token": "yes", "logprob": -0.2231435513}
+                            ]
+                          }]
+                        }
+                      }]
+                    }
+                    """);
+            when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+            ChatReranker model = new ChatReranker(createConfigWithYesNoIds(), 3, null, httpClient);
+
+            Map<String, Double> scores = model.rerankScores("test query", List.of(new Document("doc1", "Test document")));
+
+            assertTrue(scores.containsKey("doc1"));
+            assertTrue(scores.get("doc1") > 0.5);
+        }
     }
 
     @Nested
@@ -406,8 +501,8 @@ class TestChatReranker {
     class RerankTests {
 
         @Test
-        @DisplayName("test rerank success with string documents")
-        void testRerankSuccessWithStringDocuments() throws Exception {
+        @DisplayName("test_rerank_success")
+        void testRerankSuccess() throws Exception {
             HttpClient httpClient = mock(HttpClient.class);
             HttpResponse<String> response = mock(HttpResponse.class);
             when(response.statusCode()).thenReturn(200);
@@ -432,6 +527,35 @@ class TestChatReranker {
 
             Map<String, Double> scores = model.rerankScores("test query", Arrays.asList("doc1"));
             assertTrue(scores.containsKey("doc1"));
+            assertTrue(scores.get("doc1") > 0.5);
+        }
+
+        @Test
+        @DisplayName("test_rerank_sync_success")
+        void testRerankSyncSuccess() throws Exception {
+            HttpClient httpClient = mock(HttpClient.class);
+            HttpResponse<String> response = mock(HttpResponse.class);
+            when(response.statusCode()).thenReturn(200);
+            when(response.body()).thenReturn("""
+                    {
+                      "choices": [{
+                        "logprobs": {
+                          "content": [{
+                            "top_logprobs": [
+                              {"token": "yes", "logprob": -0.2231435513},
+                              {"token": "no", "logprob": -1.609437912}
+                            ]
+                          }]
+                        }
+                      }]
+                    }
+                    """);
+            when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+
+            ChatReranker model = new ChatReranker(createConfigWithYesNoIds(), 3, null, httpClient);
+
+            Map<String, Double> scores = model.rerankScores("test query", List.of("doc1"));
+            assertEquals(1, scores.size());
             assertTrue(scores.get("doc1") > 0.5);
         }
 
@@ -534,6 +658,44 @@ class TestChatReranker {
 
             assertThrows(Exception.class, () -> model.rerankScores("test query", Arrays.asList("doc1")));
         }
+
+        @Test
+        @DisplayName("test_test_compatibility_success")
+        void testTestCompatibilitySuccess() throws Exception {
+            HttpClient httpClient = mock(HttpClient.class);
+            HttpResponse<String> response = mock(HttpResponse.class);
+            when(response.statusCode()).thenReturn(200);
+            when(response.body()).thenReturn("""
+                    {
+                      "choices": [{
+                        "logprobs": {
+                          "content": [{
+                            "top_logprobs": [
+                              {"token": "yes", "logprob": -0.2231435513}
+                            ]
+                          }]
+                        }
+                      }]
+                    }
+                    """);
+            when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+
+            ChatReranker model = new ChatReranker(createConfigWithYesNoIds(), 3, null, httpClient);
+
+            assertTrue(model.testCompatibility());
+        }
+
+        @Test
+        @DisplayName("test_test_compatibility_failure")
+        void testTestCompatibilityFailure() throws Exception {
+            HttpClient httpClient = mock(HttpClient.class);
+            when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                    .thenThrow(new RuntimeException("Service error"));
+
+            ChatReranker model = new ChatReranker(createConfigWithYesNoIds(), 1, null, httpClient);
+
+            assertFalse(model.testCompatibility());
+        }
     }
 
-    }
+}

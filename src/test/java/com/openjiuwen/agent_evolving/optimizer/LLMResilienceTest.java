@@ -25,6 +25,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Tests for evolution LLM resilience helpers.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.optimizer.test_llm_resilience}.</p>
+ */
 class LLMResilienceTest {
 
     @Test

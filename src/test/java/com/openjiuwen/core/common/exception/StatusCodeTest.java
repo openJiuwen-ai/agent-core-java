@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for StatusCode, StatusCodeTemplate, StatusCodeSpec, and ErrorMessageTemplate.
- * Ported from Python: tests/unit_tests/core/common/test_status_code.py
+ * <p>
+ * Mirrors Python's {@code test_status_code.py} in
+ * {@code tests.unit_tests.core.common.test_status_code}.
  */
 class StatusCodeTest {
 
@@ -195,7 +197,7 @@ class StatusCodeTest {
         }
 
         @Test
-        @DisplayName("Generate with withReason=true (default) includes reason placeholder")
+        @DisplayName("Generate with withReason=true (default) includes reason parameter")
         void testWithReasonDefault() {
             ErrorMessageTemplate tpl = ErrorMessageTemplate.generate("TOOL", "INPUT", "INVALID");
 

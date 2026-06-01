@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.model_clients.InferenceAffinityModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -149,6 +150,29 @@ public class Model {
                                                   Map<String, Object> kwargs) throws Exception {
         return client.stream(messages, tools, temperature, topP, model, maxTokens,
                 stop, outputParser, timeout, kwargs);
+    }
+
+    /**
+     * Whether the underlying client supports inference-affinity KV cache release.
+     */
+    public boolean supportsKvCacheRelease() {
+        return client instanceof InferenceAffinityModelClient;
+    }
+
+    /**
+     * Release stale KV cache for clients that support cache sharing.
+     */
+    public boolean release(String sessionId,
+                           List<?> messages,
+                           int messagesReleasedIndex,
+                           List<?> tools,
+                           Integer toolsReleasedIndex,
+                           String model) throws Exception {
+        if (client instanceof InferenceAffinityModelClient inferenceAffinityClient) {
+            return inferenceAffinityClient.release(sessionId, messages, messagesReleasedIndex,
+                    tools, toolsReleasedIndex, model);
+        }
+        throw new UnsupportedOperationException("Model client does not support KV cache release");
     }
 
     public ImageGenerationResponse generateImage(List<UserMessage> messages,

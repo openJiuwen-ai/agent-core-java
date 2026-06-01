@@ -50,7 +50,9 @@ public class ToolExecutable extends ComponentExecutable {
 
         Map<String, Object> response;
         try {
-            Object rawResponse = tool.invoke(toolInputs);
+            Object rawResponse = tool.invoke(toolInputs, Map.of(
+                    "skip_inputs_validate", false,
+                    "skip_none_value", true));
             response = postProcessToolResult(rawResponse);
         } catch (Exception e) {
             if (e instanceof BaseError be) {

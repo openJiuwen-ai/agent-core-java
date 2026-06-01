@@ -4,9 +4,12 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
 
-import org.junit.jupiter.api.BeforeEach;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,44 +21,118 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class TestIntentionDetectorIntegration {
 
-    private IntentionDetector detector;
+    private static final class RecordingLlm {
+        private Object lastMessages;
+        private int callCount;
+        private String responseContent = "";
 
-    @BeforeEach
-    void setUp() {
-        detector = new IntentionDetector();
+        public AssistantMessage invoke(Object messages) {
+            this.lastMessages = messages;
+            this.callCount += 1;
+            return new AssistantMessage(responseContent);
+        }
     }
 
     @Nested
-    class TestIntentionDetectorIntegrationInner {
+    class TestWorkflowIntentionDetectorIntegration {
 
         @Test
-        void detectCreateIntention() {
-            IntentionDetector.Intention result = detector.detect("创建一个工作流");
-            assertThat(result).isEqualTo(IntentionDetector.Intention.CREATE_WORKFLOW);
+        void testIntentionDetectorInitialization() {
+            RecordingLlm llm = new RecordingLlm();
+            IntentionDetector detector = new IntentionDetector(llm);
+
+            assertThat(detector.getLlm()).isSameAs(llm);
         }
 
         @Test
-        void detectModifyIntention() {
-            IntentionDetector.Intention result = detector.detect("修改工作流");
-            assertThat(result).isEqualTo(IntentionDetector.Intention.MODIFY_WORKFLOW);
+        void testDetectInitialInstructionEmptyHistory() {
+            IntentionDetector detector = new IntentionDetector(new RecordingLlm());
+
+            assertThat(detector.detectInitialInstruction(List.of())).isFalse();
         }
 
         @Test
-        void detectUnknownIntention() {
-            IntentionDetector.Intention result = detector.detect("随便说说");
-            assertThat(result).isEqualTo(IntentionDetector.Intention.UNKNOWN);
+        void testDetectInitialInstructionWithHistory() {
+            RecordingLlm llm = new RecordingLlm();
+            llm.responseContent = "{\"provide_process\": true}";
+            IntentionDetector detector = new IntentionDetector(llm);
+
+            boolean result = detector.detectInitialInstruction(List.of(Map.of("role", "user", "content", "create workflow")));
+
+            assertThat(result).isTrue();
+            assertThat(llm.callCount).isEqualTo(1);
+            assertThat(llm.lastMessages).isInstanceOf(List.class);
         }
 
         @Test
-        void detectEmptyInput() {
-            IntentionDetector.Intention result = detector.detect("");
-            assertThat(result).isEqualTo(IntentionDetector.Intention.UNKNOWN);
+        void testDetectRefineIntentEmptyHistory() {
+            IntentionDetector detector = new IntentionDetector(new RecordingLlm());
+
+            assertThat(detector.detectRefineIntent(List.of(), "mermaid code")).isFalse();
         }
 
         @Test
-        void detectNullInput() {
-            IntentionDetector.Intention result = detector.detect(null);
-            assertThat(result).isEqualTo(IntentionDetector.Intention.UNKNOWN);
+        void testDetectRefineIntentWithHistory() {
+            RecordingLlm llm = new RecordingLlm();
+            llm.responseContent = "{\"need_refined\": true}";
+            IntentionDetector detector = new IntentionDetector(llm);
+
+            boolean result = detector.detectRefineIntent(
+                    List.of(Map.of("role", "user", "content", "modify workflow")),
+                    "graph TD"
+            );
+
+            assertThat(result).isTrue();
+            assertThat(llm.callCount).isEqualTo(1);
+        }
+    }
+
+    @Nested
+    class TestWorkflowIntentionDetectorExtractIntent {
+
+        @Test
+        void testExtractIntentWithJsonBlock() {
+            Map<String, Object> result = IntentionDetector.extractIntent("```json\n{\"provide_process\": true}\n```");
+
+            assertThat(result).isInstanceOf(Map.class);
+            assertThat(result.get("provide_process")).isEqualTo(true);
+        }
+
+        @Test
+        void testExtractIntentWithoutJsonBlock() {
+            Map<String, Object> result = IntentionDetector.extractIntent("{\"provide_process\": false}");
+
+            assertThat(result).isInstanceOf(Map.class);
+            assertThat(result.get("provide_process")).isEqualTo(false);
+        }
+    }
+
+    @Nested
+    class TestWorkflowIntentionDetectorFormatDialogHistory {
+
+        @Test
+        void testFormatDialogHistoryUser() {
+            String result = IntentionDetector.formatDialogHistory(List.of(Map.of("role", "user", "content", "test message")));
+
+            assertThat(result).contains("User: test message");
+        }
+
+        @Test
+        void testFormatDialogHistoryAssistant() {
+            String result = IntentionDetector.formatDialogHistory(List.of(Map.of("role", "assistant", "content", "response")));
+
+            assertThat(result).contains("Assistant: response");
+        }
+
+        @Test
+        void testFormatDialogHistoryMixed() {
+            String result = IntentionDetector.formatDialogHistory(List.of(
+                    Map.of("role", "user", "content", "question"),
+                    Map.of("role", "assistant", "content", "answer")
+            ));
+
+            assertThat(result).contains("User: question");
+            assertThat(result).contains("Assistant: answer");
         }
     }
 }

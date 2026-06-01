@@ -50,15 +50,48 @@ public class InMemoryTrajectoryStore implements TrajectoryStore {
 
     @Override
     public synchronized List<Trajectory> query(String sessionId, String executionId, String version) {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        if (sessionId != null) {
+            filters.put("session_id", sessionId);
+        }
+        if (executionId != null) {
+            filters.put("execution_id", executionId);
+        }
+        return query(version, filters);
+    }
+
+    @Override
+    public synchronized List<Trajectory> query(String version, Map<String, Object> filters) {
         return data.getOrDefault(resolveVersion(version), Map.of())
                 .values()
                 .stream()
-                .filter(trajectory -> sessionId == null || sessionId.equals(trajectory.getSessionId()))
-                .filter(trajectory -> executionId == null || executionId.equals(trajectory.getExecutionId()))
+                .filter(trajectory -> matchesFilters(trajectory, filters))
                 .collect(Collectors.toList());
     }
 
     private static String resolveVersion(String version) {
         return version == null || version.isBlank() ? DEFAULT_VERSION : version;
+    }
+
+    private static boolean matchesFilters(Trajectory trajectory, Map<String, Object> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return true;
+        }
+        for (Map.Entry<String, Object> entry : filters.entrySet()) {
+            if (!java.util.Objects.equals(fieldValue(trajectory, entry.getKey()), entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Object fieldValue(Trajectory trajectory, String key) {
+        return switch (key) {
+            case "execution_id", "executionId" -> trajectory.getExecutionId();
+            case "session_id", "sessionId" -> trajectory.getSessionId();
+            case "case_id", "caseId" -> trajectory.getCaseId();
+            case "source" -> trajectory.getSource();
+            default -> trajectory.getMeta() != null ? trajectory.getMeta().get(key) : null;
+        };
     }
 }

@@ -14,6 +14,7 @@ import com.openjiuwen.agent_teams.messager.Messagers;
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import com.openjiuwen.agent_teams.schema.events.TeamTopic;
 import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
+import com.openjiuwen.agent_teams.schema.TeamEvent;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 import com.openjiuwen.agent_teams.schema.message.MessageRecord;
 import com.openjiuwen.agent_teams.schema.task.TaskDetail;
@@ -95,7 +96,14 @@ public class TeamBackend {
         }
         this.messager = sharedMessager;
         this.taskManager = new TeamTaskManager(teamName, memberName, store.getTasks());
-        this.messageManager = new TeamMessageManager(teamName, memberName, store.getMessages(), this.messager);
+        this.taskManager.setMemberExistsPredicate(this::hasMember);
+        this.messageManager = new TeamMessageManager(
+                teamName,
+                memberName,
+                store.getMessages(),
+                this.messager,
+                this.humanAgentNames
+        );
     }
 
     public String getTeamName() {
@@ -358,7 +366,6 @@ public class TeamBackend {
         if (member == null) {
             return false;
         }
-        member.setExecutionStatus(approved ? ExecutionStatus.RUNNING : ExecutionStatus.INTERRUPTED);
         Session session = memberSessions.get(memberName);
         if (session != null) {
             Object pendingObj = session.getState(SecurityRail.PENDING_APPROVAL_STATE_KEY);
@@ -383,6 +390,14 @@ public class TeamBackend {
                 }
             }
         }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("team_name", teamName);
+        payload.put("member_name", memberName);
+        payload.put("tool_call_id", toolCallId);
+        payload.put("approved", approved);
+        payload.put("feedback", feedback != null ? feedback : "");
+        payload.put("auto_confirm", autoConfirm);
+        publishTeamEvent(TeamEvent.TOOL_APPROVAL_RESULT, payload);
         return true;
     }
 
@@ -699,12 +714,41 @@ public class TeamBackend {
         return messageManager.getBroadcastMessages(unreadOnly, fromMemberName);
     }
 
+    public List<MessageRecord> getBroadcastMessages(String targetMemberName, boolean unreadOnly, String fromMemberName) {
+        return messageManager.getBroadcastMessages(targetMemberName, unreadOnly, fromMemberName);
+    }
+
     public boolean approvePlan(String memberName, boolean approved, String feedback) {
         TeamMember member = members.get(memberName);
         if (member == null) {
             return false;
         }
-        member.setExecutionStatus(approved ? ExecutionStatus.RUNNING : ExecutionStatus.INTERRUPTED);
+        String content;
+        if (approved) {
+            int approvedCount = 0;
+            for (TaskRecord task : taskManager.getTasksByAssignee(memberName, TaskStatus.CLAIMED)) {
+                if (taskManager.approvePlan(task.getTaskId())) {
+                    approvedCount++;
+                }
+            }
+            content = "Your plan has been APPROVED. " + approvedCount
+                    + " task(s) are now approved for completion.";
+            if (feedback != null && !feedback.isBlank()) {
+                content += "Feedback: " + feedback;
+            }
+        } else {
+            content = "Your plan has been REJECTED. Please revise and resubmit. Feedback: "
+                    + (feedback != null && !feedback.isBlank() ? feedback : "No specific feedback provided.");
+        }
+        String messageId = messageManager.sendMessage(content, memberName, null);
+        if (messageId == null || messageId.isBlank()) {
+            return false;
+        }
+        publishTeamEvent(TeamEvent.PLAN_APPROVAL, Map.of(
+                "team_name", teamName,
+                "member_name", memberName,
+                "approved", approved
+        ));
         return true;
     }
 

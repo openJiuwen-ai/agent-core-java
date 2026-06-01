@@ -2,6 +2,8 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.multiagent.schema.GroupCard;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
@@ -181,6 +183,24 @@ class RunnerTest {
                 workflow.getCard().getId(), Map.of("query", "by-id"), null, null, null);
 
         assertEquals("by-id", getWorkflowResultField(result, "query"));
+    }
+
+    @Test
+    @DisplayName("Local function tool invoke mirrors Python test_run_tool")
+    void testRunTool() throws Exception {
+        LocalFunction add = new LocalFunction(ToolCard.builder()
+                .id("add")
+                .name("add")
+                .description("addition")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "a", Map.of("type", "number", "description", "addend"),
+                                "b", Map.of("type", "number", "description", "augend")),
+                        "required", List.of("a", "b")))
+                .build(), inputs -> ((Number) inputs.get("a")).intValue() + ((Number) inputs.get("b")).intValue());
+
+        assertEquals(3, add.invoke(Map.of("a", 1, "b", 2)));
     }
 
     @Test

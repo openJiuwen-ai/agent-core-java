@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.reranker;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.utils.ApiRequestUtils;
@@ -19,6 +20,9 @@ import java.util.Map;
 
 /**
  * Chat-completion-based reranker aligned with Python's ChatReranker behavior.
+ *
+ * <p>Mirrors Python's {@code ChatReranker} in
+ * {@code openjiuwen.core.retrieval.reranker.chat_reranker}.</p>
  */
 public class ChatReranker extends StandardReranker {
 
@@ -49,6 +53,15 @@ public class ChatReranker extends StandardReranker {
         this.yesNoIds = ids;
     }
 
+    public boolean testCompatibility() {
+        try {
+            rerankScores("test", List.of("test"), Boolean.FALSE, Map.of());
+            return true;
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
+
     @Override
     protected List<Double> rerankOrderedScores(String query,
                                                List<String> documents,
@@ -56,11 +69,12 @@ public class ChatReranker extends StandardReranker {
                                                Map<String, Object> options) {
         List<Double> scores = new ArrayList<>();
         for (String document : documents) {
+            AssembleResult assembled = assembleParams(query, List.of(document), instruct, options);
             JsonNode response = ApiRequestUtils.postJsonWithRetry(
                     httpClient,
                     apiUrl + CHAT_ENDPOINT,
-                    buildChatPayload(query, document, instruct, options),
-                    headers,
+                    assembled.params(),
+                    assembled.headers(),
                     Duration.ofMillis(Math.round(config.getTimeout() * 1000)),
                     maxRetries,
                     StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
@@ -68,6 +82,26 @@ public class ChatReranker extends StandardReranker {
             scores.add(parseChatScore(response));
         }
         return scores;
+    }
+
+    AssembleResult assembleParams(String query, Object documents, Object instruct, Map<String, Object> options) {
+        if (!(documents instanceof List<?> list) || list.size() != 1) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+                    "input to chat reranker must be a list[str | Document] of size 1");
+        }
+        Object item = list.get(0);
+        String document;
+        if (item instanceof String text) {
+            document = text;
+        } else if (item instanceof Document doc) {
+            document = doc.getText();
+        } else {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+                    "input to chat reranker must be a list[str | Document] of size 1");
+        }
+        return new AssembleResult(new LinkedHashMap<>(headers), buildChatPayload(query, document, instruct, options));
     }
 
     private Map<String, Object> buildChatPayload(String query,
@@ -132,5 +166,8 @@ public class ChatReranker extends StandardReranker {
         }
         double total = yesScore + noScore;
         return (Math.abs(total - 0.0)) < EPSILON ? 0.0 : yesScore / total;
+    }
+
+    record AssembleResult(Map<String, String> headers, Map<String, Object> params) {
     }
 }

@@ -15,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * Shared fixtures for agent_rl unit tests.
  */
-@Disabled("Requires RL configuration")
 class AgentRlTestFixture {
 
     /**
@@ -39,12 +38,15 @@ class AgentRlTestFixture {
                     String content = "";
                     if (contentObj instanceof String) {
                         content = (String) contentObj;
-                    } else if (contentObj instanceof List) {
+                    } else if (contentObj instanceof List<?>) {
                         @SuppressWarnings("unchecked")
-                        List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentObj;
+                        List<Object> contentList = (List<Object>) contentObj;
                         List<String> textParts = new ArrayList<>();
-                        for (Map<String, Object> c : contentList) {
-                            textParts.add((String) c.getOrDefault("text", String.valueOf(c)));
+                        for (Object item : contentList) {
+                            if (item instanceof Map<?, ?> c) {
+                                Object text = c.get("text");
+                                textParts.add(text != null ? String.valueOf(text) : String.valueOf(c));
+                            }
                         }
                         content = String.join(" ", textParts);
                     }
@@ -107,8 +109,16 @@ class AgentRlTestFixture {
     }
 
     @Test
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+    @DisplayName("Test mock tokenizer handles list content like Python fixture")
+    void testMockTokenizerListContent() {
+        MockTokenizer tokenizer = new MockTokenizer();
+
+        List<Map<String, Object>> messages = List.of(Map.of(
+                "role", "user",
+                "content", List.of(Map.of("text", "hello"), Map.of("text", "world"), "ignored")
+        ));
+
+        String result = tokenizer.applyChatTemplate(messages, false, false, null);
+        assertEquals("<user>hello world", result);
     }
 }

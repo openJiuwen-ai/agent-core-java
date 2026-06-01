@@ -16,12 +16,14 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for GuardrailBase.
- * Mirrors Python's tests/unit_tests/core/security/guardrail/test_guardrail_base.py
+ * Mirrors Python's {@code tests/unit_tests/core/security/guardrail/test_guardrail_base.py}.
  */
 class TestGuardrailBase {
 
@@ -332,6 +334,29 @@ class TestGuardrailBase {
     @Nested
     @DisplayName("TestGuardrailBackend")
     class TestGuardrailBackendTests {
+
+        @Test
+        @DisplayName("test backend is abstract")
+        void testBackendIsAbstract() throws Exception {
+            assertTrue(GuardrailBackend.class.isInterface());
+            assertTrue(Modifier.isAbstract(GuardrailBackend.class.getModifiers()));
+            assertEquals(0, GuardrailBackend.class.getConstructors().length);
+
+            Method analyze = GuardrailBackend.class.getMethod("analyze", Map.class);
+            assertTrue(Modifier.isAbstract(analyze.getModifiers()));
+        }
+
+        @Test
+        @DisplayName("test backend subclass must implement analyze")
+        void testBackendSubclassMustImplementAnalyze() {
+            Method[] abstractMethods = Arrays.stream(GuardrailBackend.class.getMethods())
+                    .filter(method -> Modifier.isAbstract(method.getModifiers()))
+                    .toArray(Method[]::new);
+
+            assertEquals(1, abstractMethods.length);
+            assertEquals("analyze", abstractMethods[0].getName());
+            assertThrows(NoSuchMethodException.class, () -> GuardrailBackend.class.getDeclaredConstructor());
+        }
 
         @Test
         @DisplayName("test backend is functional interface")

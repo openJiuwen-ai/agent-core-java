@@ -135,15 +135,17 @@ public final class SysOperationToolAdapter {
         Object[] args = new Object[parameters.length];
         for (int i = 0; i < parameters.length; i++) {
             Parameter parameter = parameters[i];
-            args[i] = convertValue(inputs.get(parameter.getName()), parameter.getType(), parameter.getParameterizedType());
+            args[i] = convertValue(method, parameter, inputs.get(parameter.getName()));
         }
         return args;
     }
 
     @SuppressWarnings("unchecked")
-    private static Object convertValue(Object rawValue, Class<?> targetType, Type genericType) {
+    private static Object convertValue(Method method, Parameter parameter, Object rawValue) {
+        Class<?> targetType = parameter.getType();
+        Type genericType = parameter.getParameterizedType();
         if (rawValue == null) {
-            return defaultValue(targetType);
+            return defaultValue(method, parameter);
         }
         if (targetType.isInstance(rawValue)) {
             return rawValue;
@@ -194,14 +196,47 @@ public final class SysOperationToolAdapter {
         return rawValue;
     }
 
-    private static Object defaultValue(Class<?> targetType) {
+    private static Object defaultValue(Method method, Parameter parameter) {
+        Class<?> targetType = parameter.getType();
+        String name = parameter.getName();
+        String methodName = method.getName();
+        if (targetType == String.class) {
+            if ("language".equals(name)) {
+                return "python";
+            }
+            if ("mode".equals(name)) {
+                return "text";
+            }
+            if ("encoding".equals(name)) {
+                return "utf-8";
+            }
+            if ("sortBy".equals(name)) {
+                return "name";
+            }
+            if ("permissions".equals(name)) {
+                return "644";
+            }
+            return null;
+        }
+        if (targetType == Integer.class) {
+            return null;
+        }
         if (!targetType.isPrimitive()) {
             return null;
         }
         if (targetType == boolean.class) {
+            if ("createIfNotExist".equals(name) || "createParentDirs".equals(name) || "preservePermissions".equals(name)) {
+                return true;
+            }
+            if ("prependNewline".equals(name) && "writeFile".equals(methodName)) {
+                return true;
+            }
             return false;
         }
         if (targetType == int.class) {
+            if ("timeout".equals(name)) {
+                return 300;
+            }
             return 0;
         }
         if (targetType == long.class) {

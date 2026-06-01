@@ -68,8 +68,11 @@ public final class ParseResponse {
                 if (codeBlockType.isEmpty() || "json".equals(codeBlockType)) {
                     String content = codeBlockMatcher.group(2);
                     Object result = JSON_MAPPER.readValue(content, Object.class);
-                    if (mustContainKey != null && result instanceof Map) {
-                        return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                    if (mustContainKey != null) {
+                        if (result instanceof Map) {
+                            return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                        }
+                        continue;
                     }
                     return result;
                 }
@@ -85,7 +88,7 @@ public final class ParseResponse {
     /**
      * Attempt to parse JSON without code block markers.
      */
-    private static Object rawDecodeJson(String resp, List<String> mustContainKey) {
+    public static Object rawDecodeJson(String resp, List<String> mustContainKey) {
         List<String> possibleResp = new ArrayList<>();
         possibleResp.add(resp);
 
@@ -100,8 +103,11 @@ public final class ParseResponse {
             for (String candidate : possibleResp) {
                 try {
                     Object result = JSON_MAPPER.readValue(candidate.substring(startIdx), Object.class);
-                    if (mustContainKey != null && result instanceof Map) {
-                        return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                    if (mustContainKey != null) {
+                        if (result instanceof Map) {
+                            return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                        }
+                        continue;
                     }
                     return result;
                 } catch (Exception e) {
@@ -112,6 +118,10 @@ public final class ParseResponse {
         return null;
     }
 
+    public static Object rawDecodeJson(String resp) {
+        return rawDecodeJson(resp, null);
+    }
+
     /**
      * Extract required keys from a parsed result using fuzzy matching.
      */
@@ -120,7 +130,7 @@ public final class ParseResponse {
         for (String key : mustContainKey) {
             Object fuzzyMatch = tryGetKey(key, src);
             if (fuzzyMatch != null) {
-                result.put(key, fuzzyMatch);
+                result.put(key, src.get(fuzzyMatch));
             }
         }
         return result;
@@ -134,7 +144,7 @@ public final class ParseResponse {
      *
      * @param key  the target key to find
      * @param src  the source dictionary
-     * @return the value associated with the closest matching key, or null if no match
+     * @return the source key that most closely matches {@code key}, or null if no match
      */
     public static Object tryGetKey(String key, Map<String, Object> src) {
         if (key == null || src == null || src.isEmpty()) {
@@ -153,7 +163,7 @@ public final class ParseResponse {
         // Find closest match
         String closestMatch = findClosestMatch(normalizedKey, norm2Key.keySet());
         if (closestMatch != null) {
-            return src.get(norm2Key.get(closestMatch));
+            return norm2Key.get(closestMatch);
         }
         return null;
     }

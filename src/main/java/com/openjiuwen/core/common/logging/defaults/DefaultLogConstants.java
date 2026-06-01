@@ -5,9 +5,13 @@
 package com.openjiuwen.core.common.logging.defaults;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * Default log configuration constants.
+ *
+ * <p>Mirrors Python's {@code DEFAULT_INNER_LOG_CONFIG} in
+ * {@code openjiuwen.core.common.logging.default.constant}.</p>
  */
 public final class DefaultLogConstants {
 
@@ -15,6 +19,8 @@ public final class DefaultLogConstants {
     }
 
     public static final String DEFAULT_LEVEL = "INFO";
+    public static final String DEFAULT_BACKEND = "default";
+    public static final String DEFAULT_STRUCTURED_OUTPUT_FORMAT = "json";
     public static final String DEFAULT_LOG_PATH = "./logs/";
     public static final String DEFAULT_LOG_FILE = "run/jiuwen.log";
     public static final String DEFAULT_INTERFACE_LOG_FILE = "interface/jiuwen_interface.log";
@@ -30,18 +36,22 @@ public final class DefaultLogConstants {
      */
     public static Map<String, Object> defaultInnerLogConfig() {
         return Map.ofEntries(
+            Map.entry("backend", DEFAULT_BACKEND),
             Map.entry("level", DEFAULT_LEVEL),
-            Map.entry("output", "console,file"),
+            Map.entry("structured_output_format", DEFAULT_STRUCTURED_OUTPUT_FORMAT),
+            Map.entry("output", List.of("console", "file")),
             Map.entry("log_path", DEFAULT_LOG_PATH),
             Map.entry("log_file", DEFAULT_LOG_FILE),
             Map.entry("interface_log_file", DEFAULT_INTERFACE_LOG_FILE),
             Map.entry("prompt_builder_interface_log_file", DEFAULT_PROMPT_BUILDER_LOG_FILE),
             Map.entry("performance_log_file", DEFAULT_PERFORMANCE_LOG_FILE),
-            Map.entry("performance_output", "console,file"),
-            Map.entry("interface_output", "console,file"),
+            Map.entry("performance_output", List.of("console", "file")),
+            Map.entry("interface_output", List.of("console", "file")),
             Map.entry("backup_count", DEFAULT_BACKUP_COUNT),
             Map.entry("max_bytes", DEFAULT_MAX_BYTES),
-            Map.entry("format", DEFAULT_FORMAT)
+            Map.entry("format", DEFAULT_FORMAT),
+            Map.entry("propagate", true),
+            Map.entry("loggers", Map.of())
         );
     }
 

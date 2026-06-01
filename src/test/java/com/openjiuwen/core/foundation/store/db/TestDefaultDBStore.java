@@ -5,6 +5,9 @@
 package com.openjiuwen.core.foundation.store.db;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -142,7 +145,7 @@ class TestDefaultDBStore {
         @Test
         @Tag("level0")
         @DisplayName("queries can be executed")
-        void testQueriesCanBeExecuted() {
+        void testQueriesCanBeExecuted() throws Exception {
             // Python adaptation: Test that queries can be executed
             
             // Using H2 in-memory database for testing
@@ -152,10 +155,12 @@ class TestDefaultDBStore {
             DataSource dataSource = store.getEngine();
             assertNotNull(dataSource, "DataSource should be available for queries");
             
-            // Verify DataSource is usable (conceptually)
-            // In full implementation, would execute actual queries
-            boolean canExecuteQueries = dataSource != null;
-            assertTrue(canExecuteQueries, "DataSource should allow query execution");
+            try (Connection connection = dataSource.getConnection();
+                 Statement statement = connection.createStatement();
+                 ResultSet resultSet = statement.executeQuery("SELECT 1")) {
+                assertTrue(resultSet.next(), "SELECT 1 should return one row");
+                assertEquals(1, resultSet.getInt(1));
+            }
         }
 
         @Test
@@ -188,7 +193,7 @@ class TestDefaultDBStore {
         @Test
         @Tag("level0")
         @DisplayName("DataSource supports connection retrieval")
-        void testDataSourceSupportsConnectionRetrieval() {
+        void testDataSourceSupportsConnectionRetrieval() throws Exception {
             // Concept: DataSource should allow getting connections
             
             String jdbcUrl = "jdbc:h2:mem:connection_test;DB_CLOSE_DELAY=-1";
@@ -196,9 +201,10 @@ class TestDefaultDBStore {
             
             DataSource dataSource = store.getEngine();
             
-            // DataSource interface supports getConnection()
-            // This test verifies the concept exists
-            assertNotNull(dataSource, "DataSource should support connection retrieval");
+            try (Connection connection = dataSource.getConnection()) {
+                assertNotNull(connection, "DataSource should return a real JDBC connection");
+                assertFalse(connection.isClosed(), "Returned connection should be open");
+            }
         }
         
         @Test
@@ -216,19 +222,22 @@ class TestDefaultDBStore {
         }
     }
     
-    // ========== Placeholder Tests ==========
-    
-    /**
-     * Placeholder for full connection test.
-     * 
-     * Requires:
-     * 1. H2 database driver available
-     * 2. Actual SQL execution
-     */
     @Test
-    @Tag("placeholder")
-    @DisplayName("Placeholder - Actual connection execution (needs database setup)")
-    void testPlaceholderActualConnectionExecution() {
-        assertTrue(true, "Placeholder - waiting for database test infrastructure");
+    @Tag("level0")
+    @DisplayName("actual connection execution returns expected data")
+    void testActualConnectionExecution() throws Exception {
+        String jdbcUrl = "jdbc:h2:mem:actual_connection_test;DB_CLOSE_DELAY=-1";
+        DefaultDbStore store = new DefaultDbStore(jdbcUrl);
+
+        try (Connection connection = store.getEngine().getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE sample_store (id INT PRIMARY KEY, stored_value VARCHAR(32))");
+            statement.execute("INSERT INTO sample_store (id, stored_value) VALUES (1, 'stored')");
+
+            try (ResultSet resultSet = statement.executeQuery("SELECT stored_value FROM sample_store WHERE id = 1")) {
+                assertTrue(resultSet.next(), "Inserted row should be readable through the stored DataSource");
+                assertEquals("stored", resultSet.getString(1));
+            }
+        }
     }
 }

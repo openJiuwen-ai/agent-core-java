@@ -17,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Tests for the LLM-call optimizer base.
+ *
+ * <p>Mirrors Python's {@code test_llm_base.py} in
+ * {@code tests/unit_tests/agent_evolving/optimizer/llm_call}.
+ */
 class LLMCallOptimizerBaseTest {
 
     @Test

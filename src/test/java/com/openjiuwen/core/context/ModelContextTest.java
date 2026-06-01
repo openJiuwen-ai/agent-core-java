@@ -28,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Comprehensive tests for {@link ModelContext} (via {@link SessionModelContext}).
  * <p>
- * Ported from Python's {@code test_context_model.py}.
+ * Mirrors Python's {@code test_context_model.py} in
+ * {@code tests.unit_tests.core.context_engine.test_context_model}.
  */
 class ModelContextTest {
 
@@ -984,6 +985,22 @@ class ModelContextTest {
         }
 
         @Test
+        @DisplayName("offload messages are included in saved state")
+        void testOffloadMessagesSaveStateIncludesOffload() {
+            ModelContext context = createContext();
+            List<BaseMessage> offloaded = List.of(new UserMessage("secret"), new AssistantMessage("reply"));
+            ((SessionModelContext) context).offloadMessages("handle-1", offloaded);
+
+            var state = ((SessionModelContext) context).saveState();
+
+            @SuppressWarnings("unchecked")
+            Map<String, List<BaseMessage>> offloadMessages =
+                    (Map<String, List<BaseMessage>>) state.get("offload_messages");
+            assertTrue(offloadMessages.containsKey("handle-1"));
+            assertEquals(offloaded, offloadMessages.get("handle-1"));
+        }
+
+        @Test
         @DisplayName("load state restores messages")
         void testLoadStateRestoresMessages() {
             ModelContext context = createContext();
@@ -995,6 +1012,25 @@ class ModelContextTest {
             state.put(context.contextId(), innerState);
             ((SessionModelContext) context).loadState(state);
             assertEquals(msgs, context.getMessages());
+        }
+
+        @Test
+        @DisplayName("load state restores offload messages")
+        void testLoadStateRestoresOffloadMessages() throws Exception {
+            ModelContext context = createContext();
+            List<BaseMessage> offloaded = List.of(new UserMessage("secret"), new AssistantMessage("reply"));
+            Map<String, Object> innerState = new java.util.HashMap<>();
+            innerState.put("messages", List.of(new UserMessage("visible")));
+            innerState.put("offload_messages", Map.of("handle-1", offloaded));
+            Map<String, Object> state = new java.util.HashMap<>();
+            state.put(context.contextId(), innerState);
+
+            ((SessionModelContext) context).loadState(state);
+            Object result = context.reloaderTool().invoke(
+                    Map.of("offload_handle", "handle-1", "offload_type", "in_memory"), null);
+
+            assertTrue(result.toString().contains("handle-1"));
+            assertTrue(result.toString().contains("secret"));
         }
 
         @Test

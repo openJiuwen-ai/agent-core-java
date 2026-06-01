@@ -4,7 +4,9 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import java.util.ArrayList;
+import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.TextChunk;
+
 import java.util.List;
 
 /**
@@ -15,6 +17,10 @@ import java.util.List;
  */
 public class CharChunker extends Chunker {
 
+    public CharChunker() {
+        this(512, 50);
+    }
+
     public CharChunker(int chunkSize, int chunkOverlap) {
         super(chunkSize, chunkOverlap);
     }
@@ -24,15 +30,9 @@ public class CharChunker extends Chunker {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
-        List<String> parts = new ArrayList<>();
-        int step = chunkSize - chunkOverlap;
-        for (int start = 0; start < text.length(); start += step) {
-            int end = Math.min(start + chunkSize, text.length());
-            parts.add(text.substring(start, end));
-            if (end >= text.length()) {
-                break;
-            }
-        }
-        return parts;
+        CharSplitterText splitter = new CharSplitterText(chunkSize, chunkOverlap);
+        return splitter.split(new Document(text)).stream()
+                .map(TextChunk::getText)
+                .toList();
     }
 }

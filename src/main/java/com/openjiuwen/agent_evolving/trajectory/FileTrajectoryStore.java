@@ -7,6 +7,7 @@ package com.openjiuwen.agent_evolving.trajectory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -32,6 +33,9 @@ public class FileTrajectoryStore implements TrajectoryStore {
 
     private static final String DEFAULT_VERSION = "default";
     private static final ObjectMapper MAPPER = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+    private static final ObjectMapper LEGACY_MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final Path baseDir;
@@ -85,12 +89,21 @@ public class FileTrajectoryStore implements TrajectoryStore {
 
     @Override
     public List<Trajectory> query(String sessionId, String executionId, String version) {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        if (sessionId != null) {
+            filters.put("session_id", sessionId);
+        }
+        if (executionId != null) {
+            filters.put("execution_id", executionId);
+        }
+        return query(version, filters);
+    }
+
+    @Override
+    public List<Trajectory> query(String version, Map<String, Object> filters) {
         List<Trajectory> results = new ArrayList<>();
         for (Trajectory trajectory : readTrajectories(version)) {
-            if (sessionId != null && !Objects.equals(sessionId, trajectory.getSessionId())) {
-                continue;
-            }
-            if (executionId != null && !Objects.equals(executionId, trajectory.getExecutionId())) {
+            if (!matchesFilters(trajectory, filters)) {
                 continue;
             }
             results.add(trajectory);
@@ -130,11 +143,39 @@ public class FileTrajectoryStore implements TrajectoryStore {
     private static Trajectory parseTrajectory(String line) {
         try {
             Trajectory trajectory = MAPPER.readValue(line, Trajectory.class);
+            if (trajectory.getExecutionId() == null && line.contains("\"executionId\"")) {
+                trajectory = LEGACY_MAPPER.readValue(line, Trajectory.class);
+            }
+            if (trajectory.getExecutionId() == null) {
+                return null;
+            }
             normalizeStepDetails(trajectory);
             return trajectory;
         } catch (JsonProcessingException e) {
             return null;
         }
+    }
+
+    private static boolean matchesFilters(Trajectory trajectory, Map<String, Object> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return true;
+        }
+        for (Map.Entry<String, Object> entry : filters.entrySet()) {
+            if (!Objects.equals(fieldValue(trajectory, entry.getKey()), entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Object fieldValue(Trajectory trajectory, String key) {
+        return switch (key) {
+            case "execution_id", "executionId" -> trajectory.getExecutionId();
+            case "session_id", "sessionId" -> trajectory.getSessionId();
+            case "case_id", "caseId" -> trajectory.getCaseId();
+            case "source" -> trajectory.getSource();
+            default -> trajectory.getMeta() != null ? trajectory.getMeta().get(key) : null;
+        };
     }
 
     private static void normalizeStepDetails(Trajectory trajectory) {

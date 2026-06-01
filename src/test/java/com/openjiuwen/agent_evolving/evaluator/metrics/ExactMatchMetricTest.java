@@ -9,34 +9,138 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Tests for ExactMatchMetric.
+ *
+ * <p>Mirrors Python's {@code test_exact_match.py} in
+ * {@code tests/unit_tests/agent_evolving/evaluator/test_metrics}.
+ */
 class ExactMatchMetricTest {
 
     @Test
-    void computeSupportsRawAndNormalizedComparisons() {
-        ExactMatchMetric raw = new ExactMatchMetric(false);
-        ExactMatchMetric normalized = new ExactMatchMetric(true);
+    void identicalStringsMatch() {
+        ExactMatchMetric metric = makeExactMatchMetric(false);
 
-        assertEquals(1.0, raw.compute("hello", "hello"));
-        assertEquals(0.0, raw.compute("Hello", "hello"));
-        assertEquals(1.0, normalized.compute(" Hello\tWorld ", "hello world"));
-        assertEquals(0.0, normalized.compute(null, ""));
-        assertEquals(1.0, normalized.compute("True", true));
-        assertEquals(1.0, normalized.compute("1.5", 1.5));
-        assertEquals(1.0, normalized.compute("", ""));
-        assertEquals(0.0, normalized.compute("hello!", "hello."));
-        assertEquals(1.0, normalized.compute(null, "None"));
-        assertEquals(1.0, normalized.compute(false, "FALSE"));
-        assertEquals(1.0, raw.compute(null, "None"));
-        assertEquals(1.0, raw.compute(true, "True"));
-        assertEquals(0.0, raw.compute(true, "true"));
+        assertEquals(1.0, metric.compute("hello", "hello"));
     }
 
     @Test
-    void exactMatchMetricExposesNameAndHigherIsBetter() {
+    void differentStringsNoMatch() {
+        ExactMatchMetric metric = makeExactMatchMetric(false);
+
+        assertEquals(0.0, metric.compute("hello", "world"));
+    }
+
+    @Test
+    void caseSensitiveByDefaultWhenNormalizeFalse() {
+        ExactMatchMetric metric = makeExactMatchMetric(false);
+
+        assertEquals(0.0, metric.compute("Hello", "hello"));
+    }
+
+    @Test
+    void normalizeIgnoresCase() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("Hello", "hello"));
+    }
+
+    @Test
+    void normalizeIgnoresWhitespace() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("hello world", "hello   world"));
+    }
+
+    @Test
+    void normalizeIgnoresLeadingTrailing() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute(" hello ", "hello"));
+    }
+
+    @Test
+    void normalizeConvertsTabsNewlines() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("hello\nworld", "hello world"));
+        assertEquals(1.0, metric.compute("hello\tworld", "hello world"));
+    }
+
+    @Test
+    void normalizeCollapsesSpaces() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("hello     world", "hello world"));
+    }
+
+    @Test
+    void normalizeHandlesNone() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(0.0, metric.compute(null, ""));
+        assertEquals(0.0, metric.compute("x", null));
+    }
+
+    @Test
+    void normalizeWithNumericValues() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute(123, 123));
+        assertEquals(1.0, metric.compute("123", 123));
+    }
+
+    @Test
+    void normalizeWithMixedTypes() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("True", true));
+        assertEquals(1.0, metric.compute("False", false));
+    }
+
+    @Test
+    void normalizeWithFloatStrings() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("1.5", 1.5));
+    }
+
+    @Test
+    void nameProperty() {
+        assertEquals("exact_match", new ExactMatchMetric().getName());
+    }
+
+    @Test
+    void higherIsBetterProperty() {
+        assertTrue(new ExactMatchMetric().isHigherIsBetter());
+    }
+
+    @Test
+    void computeAcceptsKwargs() {
         ExactMatchMetric metric = new ExactMatchMetric();
 
-        assertEquals("exact_match", metric.getName());
-        assertTrue(metric.isHigherIsBetter());
+        assertEquals(1.0, metric.compute("a", "a", Map.of("extra_param", "ignored")));
+    }
+
+    @Test
+    void normalizeEmptyStrings() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("", ""));
+    }
+
+    @Test
+    void normalizeHandlesSpecialChars() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(0.0, metric.compute("hello!", "hello."));
+    }
+
+    @Test
+    void normalizeHandlesUnicode() {
+        ExactMatchMetric metric = makeExactMatchMetric(true);
+
+        assertEquals(1.0, metric.compute("caf\u00e9", "Caf\u00e9"));
     }
 
     @Test
@@ -54,6 +158,10 @@ class ExactMatchMetricTest {
                 List.of("seen"),
                 metric.computeBatch(List.of("a"), List.of("a"), Map.of("tag", "seen"))
         );
+    }
+
+    private static ExactMatchMetric makeExactMatchMetric(boolean normalize) {
+        return new ExactMatchMetric(normalize);
     }
 
     private static final class ContractMetric extends Metric {

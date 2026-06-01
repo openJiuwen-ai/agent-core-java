@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.tools.agent_control;
 
+import com.openjiuwen.core.session.Session;
 import lombok.Builder;
 import lombok.Data;
 import org.slf4j.Logger;
@@ -150,6 +151,10 @@ public final class AgentModeTools {
         }
 
         public ToolOutput invoke(Map<String, Object> inputs) {
+            return invoke(inputs, null);
+        }
+
+        public ToolOutput invoke(Map<String, Object> inputs, Session session) {
             String mode = inputs.getOrDefault("mode", "").toString().trim().toLowerCase();
             String lang = language.equals("en") ? "en" : "cn";
 
@@ -158,8 +163,8 @@ public final class AgentModeTools {
             }
 
             // Get current mode from agent
-            String previousMode = getAgentMode(agentRef);
-            setAgentMode(agentRef, mode);
+            String previousMode = getAgentMode(agentRef, session);
+            setAgentMode(agentRef, mode, session);
 
             String message = mode.equals(MODE_PLAN) ?
                 "Switched mode to plan. Next step: call enter_plan_mode." :
@@ -188,10 +193,18 @@ public final class AgentModeTools {
         }
 
         public ToolOutput invoke(Map<String, Object> inputs) {
+            return invoke(inputs, null);
+        }
+
+        public ToolOutput invoke(Map<String, Object> inputs, Session session) {
             String lang = language.equals("en") ? "en" : "cn";
             String workspaceRoot = getWorkspaceRoot(agentRef);
-            String planSlug = inputs.containsKey("plan_slug") ?
-                inputs.get("plan_slug").toString() : getOrCreatePlanSlug(workspaceRoot);
+            String existingSlug = getAgentPlanSlug(agentRef, session);
+            String planSlug = existingSlug != null && !existingSlug.isBlank()
+                    ? existingSlug
+                    : inputs.containsKey("plan_slug")
+                    ? inputs.get("plan_slug").toString()
+                    : getOrCreatePlanSlug(workspaceRoot);
 
             Path planPath = resolvePlanFilePath(workspaceRoot, planSlug);
             boolean exists = planPath.toFile().exists();
@@ -210,7 +223,7 @@ public final class AgentModeTools {
                 message = ENTER_PLAN_CREATED_MSG.get(lang).replace("{plan_path}", planPath.toString());
             }
 
-            setAgentPlanSlug(agentRef, planSlug);
+            setAgentPlanSlug(agentRef, planSlug, session);
 
             return ToolOutput.success(Map.of(
                 "plan_path", planPath.toString(),
@@ -236,9 +249,13 @@ public final class AgentModeTools {
         }
 
         public ToolOutput invoke(Map<String, Object> inputs) {
+            return invoke(inputs, null);
+        }
+
+        public ToolOutput invoke(Map<String, Object> inputs, Session session) {
             String lang = language.equals("en") ? "en" : "cn";
             String workspaceRoot = getWorkspaceRoot(agentRef);
-            String planSlug = getAgentPlanSlug(agentRef);
+            String planSlug = getAgentPlanSlug(agentRef, session);
 
             if (planSlug == null || planSlug.isEmpty()) {
                 return ToolOutput.error("No plan slug set. Call enter_plan_mode first.");
@@ -257,10 +274,6 @@ public final class AgentModeTools {
                 }
             }
 
-            // Reset plan slug
-            setAgentPlanSlug(agentRef, null);
-            setAgentMode(agentRef, MODE_NORMAL);
-
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("plan_path", planPath.toString());
             result.put("message", message);
@@ -273,10 +286,10 @@ public final class AgentModeTools {
     }
 
     // Helper methods for agent state access
-    private static String getAgentMode(Object agent) {
+    private static String getAgentMode(Object agent, Session session) {
         try {
             if (agent instanceof com.openjiuwen.harness.DeepAgent da) {
-                return da.getCurrentMode();
+                return session != null ? da.loadState(session).getPlanMode().getMode() : da.getCurrentMode();
             }
         } catch (Exception e) {
             LOG.debug("getAgentMode failed", e);
@@ -284,10 +297,14 @@ public final class AgentModeTools {
         return MODE_NORMAL;
     }
 
-    private static void setAgentMode(Object agent, String mode) {
+    private static void setAgentMode(Object agent, String mode, Session session) {
         try {
             if (agent instanceof com.openjiuwen.harness.DeepAgent da) {
-                da.setCurrentMode(mode);
+                if (session != null) {
+                    da.switchMode(session, mode);
+                } else {
+                    da.setCurrentMode(mode);
+                }
             }
         } catch (Exception e) {
             LOG.debug("setAgentMode failed", e);
@@ -308,10 +325,10 @@ public final class AgentModeTools {
         return System.getProperty("user.dir");
     }
 
-    private static String getAgentPlanSlug(Object agent) {
+    private static String getAgentPlanSlug(Object agent, Session session) {
         try {
             if (agent instanceof com.openjiuwen.harness.DeepAgent da) {
-                return da.getPlanSlug();
+                return session != null ? da.loadState(session).getPlanMode().getPlanSlug() : da.getPlanSlug();
             }
         } catch (Exception e) {
             LOG.debug("getAgentPlanSlug failed", e);
@@ -319,10 +336,16 @@ public final class AgentModeTools {
         return null;
     }
 
-    private static void setAgentPlanSlug(Object agent, String slug) {
+    private static void setAgentPlanSlug(Object agent, String slug, Session session) {
         try {
             if (agent instanceof com.openjiuwen.harness.DeepAgent da) {
-                da.setPlanSlug(slug);
+                if (session != null) {
+                    com.openjiuwen.harness.schema.DeepAgentState state = da.loadState(session);
+                    state.getPlanMode().setPlanSlug(slug);
+                    da.saveState(session, state);
+                } else {
+                    da.setPlanSlug(slug);
+                }
             }
         } catch (Exception e) {
             LOG.debug("setAgentPlanSlug failed", e);

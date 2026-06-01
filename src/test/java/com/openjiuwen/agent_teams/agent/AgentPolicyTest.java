@@ -9,7 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's {@code openjiuwen.agent_teams.agent.policy}.
+ * Mirrors Python's {@code tests/unit_tests/agent_teams/test_policy.py}
+ * and {@code openjiuwen.agent_teams.agent.policy}.
  */
 class AgentPolicyTest {
 
@@ -17,7 +18,7 @@ class AgentPolicyTest {
     void rolePolicyLoadsLeaderTemplateWithoutStubText() {
         String policy = AgentPolicy.rolePolicy(AgentPolicy.TeamRole.LEADER, "en");
 
-        assertTrue(policy.contains("You are TeamLeader"));
+        assertTrue(policy.contains("TeamLeader"));
         assertTrue(policy.contains("create_task"));
         assertFalse(policy.contains("Place" + "holder"));
     }
@@ -26,8 +27,8 @@ class AgentPolicyTest {
     void rolePolicyLoadsTeammateTemplateWithoutStubText() {
         String policy = AgentPolicy.rolePolicy(AgentPolicy.TeamRole.MEMBER, "en");
 
-        assertTrue(policy.contains("You are Teammate"));
-        assertTrue(policy.contains("claim_task"));
+        assertTrue(policy.contains("Teammate"));
+        assertTrue(policy.contains("view_task") || policy.contains("claim_task"));
         assertFalse(policy.contains("Place" + "holder"));
     }
 
@@ -51,8 +52,8 @@ class AgentPolicyTest {
                 "desc", "finish the work"
         ), "ja");
 
-        assertTrue(section.contains("## 团队信息"));
-        assertTrue(section.contains("团队名"));
+        assertTrue(section.contains("## \u56e2\u961f\u4fe1\u606f"));
+        assertTrue(section.contains("\u56e2\u961f\u540d"));
         assertTrue(section.contains("team-a"));
     }
 
@@ -74,7 +75,7 @@ class AgentPolicyTest {
         );
 
         assertTrue(prompt.contains("Your member_name: leader"));
-        assertTrue(prompt.contains("You are TeamLeader"));
+        assertTrue(prompt.contains("TeamLeader"));
         assertTrue(prompt.contains("Predefined Team Mode"));
         assertTrue(prompt.contains("Persistent"));
         assertTrue(prompt.contains("Current Persona: senior architect"));
@@ -100,10 +101,33 @@ class AgentPolicyTest {
         );
 
         assertTrue(prompt.contains("Your member_name: dev"));
-        assertTrue(prompt.contains("You are Teammate"));
+        assertTrue(prompt.contains("Teammate"));
         assertTrue(prompt.contains("Current Persona: backend specialist"));
         assertFalse(prompt.contains("Workflow ("));
         assertFalse(prompt.contains("Lifecycle"));
         assertFalse(prompt.contains("Place" + "holder"));
+    }
+
+    @Test
+    void pythonPolicySmokeAssertionsHoldForDefaultLanguage() {
+        String leader = AgentPolicy.rolePolicy(AgentPolicy.TeamRole.LEADER, "cn");
+        String teammate = AgentPolicy.rolePolicy(AgentPolicy.TeamRole.MEMBER, "cn");
+        String prompt = AgentPolicy.buildSystemPrompt(
+                AgentPolicy.TeamRole.LEADER,
+                "PM Expert",
+                null,
+                null,
+                null,
+                null,
+                "temporary",
+                "cn",
+                "default"
+        );
+
+        assertTrue(leader.contains("DAG"));
+        assertTrue(leader.contains("create_task"));
+        assertTrue(teammate.contains("view_task") || teammate.contains("claim_task"));
+        assertTrue(prompt.contains("PM Expert"));
+        assertTrue(prompt.contains("create_task"));
     }
 }

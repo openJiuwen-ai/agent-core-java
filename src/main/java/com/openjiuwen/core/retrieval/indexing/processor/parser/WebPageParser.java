@@ -28,7 +28,10 @@ import java.util.regex.Pattern;
  */
 public class WebPageParser extends Parser {
 
-    private static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://.+", Pattern.CASE_INSENSITIVE);
+    public static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://\\S+", Pattern.CASE_INSENSITIVE);
+    public static final Pattern WECHAT_MP_URL_PATTERN = Pattern.compile(
+            "^https?://(?:mp\\.weixin\\.qq\\.com|.*?\\.weixin\\.qq\\.com)/s\\b.*",
+            Pattern.CASE_INSENSITIVE);
     protected static final Pattern TITLE_META_PATTERN = Pattern.compile(
             "<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);

@@ -4,18 +4,20 @@
 
 package com.openjiuwen.core.memory.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for Mem0MemoryProvider.
+ * Unit tests for canonical Mem0MemoryProvider behavior.
  * <p>
  * Mirrors Python's test_mem0_provider.py from
  * <code>tests/unit_tests/core/memory/external/test_mem0_provider.py</code>.
@@ -23,136 +25,104 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("Mem0 Memory Provider Tests")
 class TestMem0Provider {
 
-    @Nested
-    @DisplayName("Mem0MemoryProvider Construction Tests")
-    class TestMem0MemoryProviderConstruction {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-        @Test
-        @DisplayName("provider can be created with api key")
-        void testProviderCanBeCreatedWithApiKey() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            assertNotNull(provider);
-        }
+    @Test
+    void testInitializeRequiresApiKey() {
+        Mem0MemoryProvider provider = new Mem0MemoryProvider("", "http://localhost");
 
-        @Test
-        @DisplayName("provider name is mem0")
-        void testProviderNameIsMem0() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            assertEquals("mem0", provider.name());
-        }
+        assertThrows(IllegalArgumentException.class, () -> provider.initialize(Map.of()).join());
     }
 
-    @Nested
-    @DisplayName("Availability Tests")
-    class TestAvailability {
+    @Test
+    void testPrefetchDirectSearchForRailUsage() {
+        FakeMem0Client fake = new FakeMem0Client();
+        Mem0MemoryProvider provider = new Mem0MemoryProvider("k", "u1", "", false, fake);
+        provider.initialize(Map.of()).join();
 
-        @Test
-        @DisplayName("is available with valid api key")
-        void testIsAvailableWithValidApiKey() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            assertTrue(provider.isAvailable());
-        }
+        String result = provider.prefetch("who am I", Map.of()).join();
 
-        @Test
-        @DisplayName("is not available with empty api key")
-        void testIsNotAvailableWithEmptyApiKey() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("", "http://localhost");
-            assertFalse(provider.isAvailable());
-        }
-
-        @Test
-        @DisplayName("is not available with null api key")
-        void testIsNotAvailableWithNullApiKey() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider(null, "http://localhost");
-            assertFalse(provider.isAvailable());
-        }
+        assertTrue(result.contains("## Mem0 Memory"));
+        assertTrue(result.contains("- remember this"));
+        assertEquals("who am I", fake.lastSearchKwargs.get("query"));
+        assertEquals(Map.of("user_id", "u1"), fake.lastSearchKwargs.get("filters"));
     }
 
-    @Nested
-    @DisplayName("Initialize Tests")
-    class TestInitialize {
+    @Test
+    void testSyncTurnPushesUserAndAssistantMessages() {
+        FakeMem0Client fake = new FakeMem0Client();
+        Mem0MemoryProvider provider = provider(fake);
+        provider.initialize(Map.of()).join();
 
-        @Test
-        @DisplayName("initialize returns completed future")
-        void testInitializeReturnsCompletedFuture() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            Map<String, Object> kwargs = new HashMap<>();
+        provider.syncTurn("u-msg", "a-msg", Map.of()).join();
 
-            CompletableFuture<Void> result = provider.initialize(kwargs);
-
-            assertNotNull(result);
-            assertTrue(result.isDone());
-        }
+        assertNotNull(fake.lastAddMessages);
+        assertEquals("user", fake.lastAddMessages.get(0).get("role"));
+        assertEquals("assistant", fake.lastAddMessages.get(1).get("role"));
+        assertEquals("u1", fake.lastAddKwargs.get("user_id"));
+        assertEquals("a1", fake.lastAddKwargs.get("agent_id"));
     }
 
-    @Nested
-    @DisplayName("Prefetch Tests")
-    class TestPrefetch {
+    @Test
+    void testHandleToolCallSearchAndConclude() throws Exception {
+        FakeMem0Client fake = new FakeMem0Client();
+        Mem0MemoryProvider provider = provider(fake);
+        provider.initialize(Map.of()).join();
 
-        @Test
-        @DisplayName("prefetch returns string")
-        void testPrefetchReturnsString() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            Map<String, Object> kwargs = new HashMap<>();
+        Map<String, Object> searchData = json(provider.handleToolCall(
+                "mem0_search", Map.of("query", "x", "top_k", 2)).join());
+        assertTrue(searchData.containsKey("results"));
+        assertEquals(1, searchData.get("count"));
 
-            CompletableFuture<String> result = provider.prefetch("test query", kwargs);
-
-            assertNotNull(result);
-        }
+        Map<String, Object> concludeData = json(provider.handleToolCall(
+                "mem0_conclude", Map.of("conclusion", "new fact")).join());
+        assertEquals("Fact stored.", concludeData.get("result"));
+        assertEquals(Boolean.FALSE, fake.lastAddKwargs.get("infer"));
     }
 
-    @Nested
-    @DisplayName("SyncTurn Tests")
-    class TestSyncTurn {
+    @Test
+    void testShutdownCancelsPrefetchTask() {
+        FakeMem0Client fake = new FakeMem0Client();
+        Mem0MemoryProvider provider = provider(fake);
+        provider.initialize(Map.of()).join();
+        CompletableFuture<Void> task = new CompletableFuture<>();
+        provider.setPrefetchTaskForTest(task);
 
-        @Test
-        @DisplayName("sync turn returns completed future")
-        void testSyncTurnReturnsCompletedFuture() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            Map<String, Object> kwargs = new HashMap<>();
+        provider.shutdown().join();
 
-            CompletableFuture<Void> result = provider.syncTurn("user message", "assistant message", kwargs);
-
-            assertNotNull(result);
-            assertTrue(result.isDone());
-        }
+        assertTrue(task.isCancelled());
+        assertFalse(provider.isInitialized());
     }
 
-    @Nested
-    @DisplayName("ToolCall Tests")
-    class TestToolCall {
-
-        @Test
-        @DisplayName("handle tool call returns string")
-        void testHandleToolCallReturnsString() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            Map<String, Object> args = new HashMap<>();
-
-            CompletableFuture<String> result = provider.handleToolCall("mem0_search", args);
-
-            assertNotNull(result);
-        }
-
-        @Test
-        @DisplayName("get tool schemas returns list")
-        void testGetToolSchemasReturnsList() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-
-            var schemas = provider.getToolSchemas();
-
-            assertNotNull(schemas);
-        }
+    private static Mem0MemoryProvider provider(FakeMem0Client fake) {
+        return new Mem0MemoryProvider("k", "u1", "a1", false, fake);
     }
 
-    @Nested
-    @DisplayName("MemoryProvider Interface Tests")
-    class TestMemoryProviderInterface {
+    private static Map<String, Object> json(String payload) throws Exception {
+        return MAPPER.readValue(payload, new TypeReference<>() {});
+    }
 
-        @Test
-        @DisplayName("Mem0MemoryProvider extends MemoryProvider")
-        void testMem0MemoryProviderExtendsMemoryProvider() {
-            Mem0MemoryProvider provider = new Mem0MemoryProvider("test-key", "http://localhost");
-            assertTrue(provider instanceof MemoryProvider);
+    static class FakeMem0Client implements Mem0MemoryProvider.Mem0Client {
+        Map<String, Object> lastSearchKwargs;
+        List<Map<String, Object>> lastAddMessages;
+        Map<String, Object> lastAddKwargs;
+
+        @Override
+        public Object search(Map<String, Object> kwargs) {
+            lastSearchKwargs = new LinkedHashMap<>(kwargs);
+            return Map.of("results", List.of(Map.of("memory", "remember this", "score", 0.9)));
+        }
+
+        @Override
+        public Object add(List<Map<String, Object>> messages, Map<String, Object> kwargs) {
+            lastAddMessages = List.copyOf(messages);
+            lastAddKwargs = new LinkedHashMap<>(kwargs);
+            return Map.of("ok", true);
+        }
+
+        @Override
+        public Object getAll(Map<String, Object> kwargs) {
+            return Map.of("results", List.of(Map.of("memory", "hello"), Map.of("memory", "world")));
         }
     }
 }

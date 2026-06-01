@@ -94,5 +94,19 @@ class TestBranchDesignPrompt {
             assertFalse(prompt.contains("{{user_query}}"));
             assertFalse(prompt.contains("{{basic_design}}"));
         }
+
+        @Test
+        void testTemplateContainsUserQuery() {
+            String prompt = BranchDesignPrompt.formatUserPrompt("test query", "");
+
+            assertTrue(prompt.contains("test query"));
+        }
+
+        @Test
+        void testTemplateContainsBasicDesign() {
+            String prompt = BranchDesignPrompt.formatUserPrompt("", "test design");
+
+            assertTrue(prompt.contains("test design"));
+        }
     }
 }

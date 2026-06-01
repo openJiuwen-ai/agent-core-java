@@ -80,7 +80,7 @@ public class EvaluatedCase {
     }
 
     public void setScore(double score) {
-        this.score = clampScore(score);
+        this.score = score;
     }
 
     public String getReason() {

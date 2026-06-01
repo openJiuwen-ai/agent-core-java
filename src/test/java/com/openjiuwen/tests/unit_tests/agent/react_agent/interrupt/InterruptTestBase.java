@@ -4,11 +4,17 @@
 
 package com.openjiuwen.tests.unit_tests.agent.react_agent.interrupt;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -16,6 +22,7 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import org.junit.jupiter.api.*;
 
 import java.util.*;
@@ -29,6 +36,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @Tag("unit-test")
 class InterruptTestBase {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     // -----------------------------------------------------------------------
     // NestedAgentConfig
@@ -318,15 +327,15 @@ class InterruptTestBase {
     /**
      * Assert interrupt result.
      */
-    protected void assertInterruptResult(Map<String, Object> result) {
-        assertInterruptResult(result, 1);
+    protected List<String> assertInterruptResult(Map<String, Object> result) {
+        return assertInterruptResult(result, 1);
     }
 
     /**
      * Assert interrupt result with expected count.
      */
     @SuppressWarnings("unchecked")
-    protected void assertInterruptResult(Map<String, Object> result, int expectedCount) {
+    protected List<String> assertInterruptResult(Map<String, Object> result, int expectedCount) {
         assertNotNull(result);
         assertEquals("interrupt", result.get("result_type"));
         List<String> interruptIds = (List<String>) result.get("interrupt_ids");
@@ -336,6 +345,7 @@ class InterruptTestBase {
         assertEquals(expectedCount, interruptIds.size(), 
             "Expected " + expectedCount + " interrupts, actual " + interruptIds.size());
         assertEquals(expectedCount, stateList.size());
+        return interruptIds;
     }
 
     /**
@@ -385,6 +395,262 @@ class InterruptTestBase {
         return interactiveInput;
     }
 
+    @SuppressWarnings("unchecked")
+    protected List<String> interruptIds(Map<String, Object> result) {
+        Object ids = result.get("interrupt_ids");
+        return ids instanceof List<?> list
+            ? list.stream().map(String::valueOf).toList()
+            : List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    protected List<Object> stateList(Map<String, Object> result) {
+        Object state = result.get("state");
+        return state instanceof List<?> list ? (List<Object>) list : List.of();
+    }
+
+    protected String getToolNameFromState(Object stateItem) {
+        Object payload = statePayloadValue(stateItem);
+        if (payload instanceof Map<?, ?> payloadMap) {
+            Object toolName = payloadMap.get("tool_name");
+            return toolName != null ? String.valueOf(toolName) : "";
+        }
+        return "";
+    }
+
+    protected String getFilepathFromState(Object stateItem) {
+        Object payload = statePayloadValue(stateItem);
+        if (!(payload instanceof Map<?, ?> payloadMap)) {
+            return "";
+        }
+        Object toolArgs = payloadMap.get("tool_args");
+        Map<String, Object> args = normalizeArgs(toolArgs);
+        Object filepath = args.get("filepath");
+        return filepath != null ? String.valueOf(filepath) : "";
+    }
+
+    protected ToolCall toolCall(String id, String name, String arguments) {
+        return ToolCall.builder()
+            .id(id)
+            .type("function")
+            .name(name)
+            .arguments(arguments)
+            .build();
+    }
+
+    protected AssistantFlow newConfirmFlow(ConfirmInterruptRail rail, Tool... tools) {
+        return new AssistantFlow(rail, Arrays.asList(tools));
+    }
+
+    protected static Map<String, Object> parseArgs(String json) {
+        return normalizeArgs(json);
+    }
+
+    protected static Map<String, Object> answerResult(String output) {
+        return Map.of("result_type", "answer", "output", output);
+    }
+
+    protected OutputSchema interactionChunk(String id, Object value, int index) {
+        return new OutputSchema(Constant.INTERACTION, index, new InteractionOutput(id, value));
+    }
+
+    private static Object statePayloadValue(Object stateItem) {
+        if (stateItem instanceof OutputSchema outputSchema) {
+            Object payload = outputSchema.getPayload();
+            if (payload instanceof InteractionOutput interactionOutput) {
+                return interactionOutput.getValue();
+            }
+            return payload;
+        }
+        if (stateItem instanceof Map<?, ?> stateMap) {
+            Object payload = stateMap.get("payload");
+            if (payload instanceof Map<?, ?> payloadMap && payloadMap.containsKey("value")) {
+                return payloadMap.get("value");
+            }
+            return payload;
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeArgs(Object rawArgs) {
+        if (rawArgs instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((k, v) -> copy.put(String.valueOf(k), v));
+            return copy;
+        }
+        if (rawArgs instanceof String text && !text.isBlank()) {
+            try {
+                return JSON.readValue(text, new TypeReference<>() {
+                });
+            } catch (JsonProcessingException e) {
+                return Map.of();
+            }
+        }
+        return Map.of();
+    }
+
+    private static Object interruptRequest(InterruptDecision.InterruptResult decision) {
+        return decision.getRequest();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String autoConfirmKey(InterruptDecision.InterruptResult decision) {
+        Object request = interruptRequest(decision);
+        if (request instanceof Map<?, ?> map) {
+            Object key = map.get("auto_confirm_key");
+            return key != null ? String.valueOf(key) : "";
+        }
+        return "";
+    }
+
+    /**
+     * Small deterministic HITL flow used by these unit tests instead of a live LLM.
+     *
+     * <p>It exercises the same rail decisions, confirmation payloads, auto-confirm
+     * merging, tool invocation counts, and interrupt result shape that the Python
+     * tests assert around {@code Runner.run_agent(...)}.</p>
+     */
+    protected static class AssistantFlow {
+        private final ConfirmInterruptRail rail;
+        private final Map<String, Tool> toolsByName = new LinkedHashMap<>();
+        private final Map<String, ToolCall> pending = new LinkedHashMap<>();
+        private final Map<String, String> autoConfirmByInterruptId = new LinkedHashMap<>();
+        private final Map<String, Object> autoConfirm = new LinkedHashMap<>();
+
+        AssistantFlow(ConfirmInterruptRail rail, List<Tool> tools) {
+            this.rail = rail;
+            for (Tool tool : tools) {
+                toolsByName.put(tool.getCard().getName(), tool);
+            }
+        }
+
+        Map<String, Object> start(ToolCall... calls) {
+            pending.clear();
+            autoConfirmByInterruptId.clear();
+            List<ToolCall> interrupted = new ArrayList<>();
+            for (ToolCall call : calls) {
+                handleFirstPass(call).ifPresent(interrupted::add);
+            }
+            return interrupted.isEmpty()
+                ? answerResult("Operation completed")
+                : interruptResult(interrupted);
+        }
+
+        Map<String, Object> resume(InteractiveInput input) {
+            if (pending.isEmpty()) {
+                return answerResult("Operation completed");
+            }
+            if (input == null || input.getUserInputs() == null || input.getUserInputs().isEmpty()) {
+                return interruptResult(new ArrayList<>(pending.values()));
+            }
+
+            List<String> ids = new ArrayList<>(pending.keySet());
+            for (String id : ids) {
+                if (!input.getUserInputs().containsKey(id)) {
+                    continue;
+                }
+                ToolCall call = pending.get(id);
+                Object userInput = input.getUserInputs().get(id);
+                InterruptDecision decision = rail.resolveInterrupt(null, call, userInput, autoConfirm);
+                if (decision.isApproved()) {
+                    maybeStoreAutoConfirm(id, userInput);
+                    invokeTool(call);
+                    pending.remove(id);
+                } else if (decision.isRejected()) {
+                    pending.remove(id);
+                }
+            }
+            drainAutoConfirmedPending();
+            return pending.isEmpty()
+                ? answerResult("Operation completed")
+                : interruptResult(new ArrayList<>(pending.values()));
+        }
+
+        Map<String, Object> autoConfirmConfig() {
+            return autoConfirm;
+        }
+
+        private Optional<ToolCall> handleFirstPass(ToolCall call) {
+            if (!rail.hasTool(call.getName())) {
+                invokeTool(call);
+                return Optional.empty();
+            }
+            InterruptDecision decision = rail.resolveInterrupt(null, call, null, autoConfirm);
+            if (decision.isApproved()) {
+                invokeTool(call);
+                return Optional.empty();
+            }
+            if (decision instanceof InterruptDecision.InterruptResult interrupt) {
+                pending.put(call.getId(), call);
+                String key = autoConfirmKey(interrupt);
+                if (!key.isBlank()) {
+                    autoConfirmByInterruptId.put(call.getId(), key);
+                }
+                return Optional.of(call);
+            }
+            return Optional.empty();
+        }
+
+        private void maybeStoreAutoConfirm(String id, Object userInput) {
+            if (!(userInput instanceof Map<?, ?> map)) {
+                return;
+            }
+            if (!Boolean.TRUE.equals(map.get("auto_confirm"))) {
+                return;
+            }
+            String key = autoConfirmByInterruptId.get(id);
+            if (key != null && !key.isBlank()) {
+                autoConfirm.put(key, true);
+            }
+        }
+
+        private void invokeTool(ToolCall call) {
+            Tool tool = toolsByName.get(call.getName());
+            if (tool == null) {
+                return;
+            }
+            try {
+                tool.invoke(normalizeArgs(call.getArguments()), Map.of());
+            } catch (Exception e) {
+                throw new AssertionError("Tool invocation failed in test flow", e);
+            }
+        }
+
+        private void drainAutoConfirmedPending() {
+            List<String> ids = new ArrayList<>(pending.keySet());
+            for (String id : ids) {
+                ToolCall call = pending.get(id);
+                InterruptDecision decision = rail.resolveInterrupt(null, call, null, autoConfirm);
+                if (decision.isApproved()) {
+                    invokeTool(call);
+                    pending.remove(id);
+                }
+            }
+        }
+
+        private static Map<String, Object> interruptResult(List<ToolCall> calls) {
+            List<String> ids = calls.stream().map(ToolCall::getId).toList();
+            List<Object> state = calls.stream()
+                .map(AssistantFlow::stateItem)
+                .map(Object.class::cast)
+                .toList();
+            return Map.of(
+                "result_type", "interrupt",
+                "interrupt_ids", ids,
+                "state", state
+            );
+        }
+
+        private static Map<String, Object> stateItem(ToolCall call) {
+            Map<String, Object> payloadValue = new LinkedHashMap<>();
+            payloadValue.put("tool_name", call.getName());
+            payloadValue.put("tool_args", call.getArguments());
+            payloadValue.put("tool_call_id", call.getId());
+            return Map.of("payload", Map.of("value", payloadValue));
+        }
+    }
+
     @BeforeEach
     void setUp() throws Exception {
         Runner.start();
@@ -393,11 +659,5 @@ class InterruptTestBase {
     @AfterEach
     void tearDown() throws Exception {
         Runner.stop();
-    }
-
-    @Test
-    @DisplayName("Test base setup")
-    void testBaseSetup() {
-        assertTrue(true);
     }
 }

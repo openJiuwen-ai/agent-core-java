@@ -4,9 +4,13 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
 
+import com.openjiuwen.core.common.security.JsonUtils;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,6 +69,10 @@ public class IntentionDetector {
      */
     public IntentionDetector() {
         this.llm = null;
+    }
+
+    public Object getLlm() {
+        return llm;
     }
 
     /**
@@ -148,27 +156,9 @@ public class IntentionDetector {
             jsonStr = inputs;
         }
 
-        // Parse JSON (simplified implementation)
-        Map<String, Object> result = new LinkedHashMap<>();
-        try {
-            // Check for common intent fields
-            if (jsonStr.contains("provide_process")) {
-                boolean value = jsonStr.contains("true") || jsonStr.contains("True");
-                result.put("provide_process", value);
-            }
-            if (jsonStr.contains("need_refined")) {
-                boolean value = jsonStr.contains("true") || jsonStr.contains("True");
-                result.put("need_refined", value);
-            }
-            if (jsonStr.contains("has_instruction")) {
-                boolean value = jsonStr.contains("true") || jsonStr.contains("True");
-                result.put("has_instruction", value);
-            }
-        } catch (Exception e) {
-            LOG.warn("Failed to extract intent from: {}", inputs, e);
-        }
-
-        return result;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parsed = JsonUtils.safeJsonLoads(jsonStr.trim(), Map.class, new LinkedHashMap<>());
+        return parsed == null ? new LinkedHashMap<>() : parsed;
     }
 
     /**
@@ -208,19 +198,12 @@ public class IntentionDetector {
             return false;
         }
 
-        // Simplified detection: check if any message has substantial content
         String formattedHistory = formatDialogHistory(messages);
-        if (formattedHistory.length() > 50) {
-            return true;
-        }
-
-        // Use LLM for detection if available (placeholder)
-        if (llm != null) {
-            // TODO: Implement full LLM-based detection
-            LOG.debug("LLM-based intent detection not yet implemented");
-        }
-
-        return false;
+        String modelResponse = invokeForContent(
+                Prompts.INITIAL_INTENTION_SYSTEM_PROMPT,
+                Prompts.formatInitialIntentionUserTemplate(formattedHistory)
+        );
+        return Boolean.TRUE.equals(extractIntent(modelResponse).getOrDefault("provide_process", false));
     }
 
     /**
@@ -237,16 +220,72 @@ public class IntentionDetector {
             return false;
         }
 
-        // Simplified detection: check for refinement keywords in last message
-        Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-        Object content = lastMessage.get(CONTENT);
-        if (content != null) {
-            String input = content.toString().toLowerCase();
-            return input.contains("修改") || input.contains("modify") ||
-                   input.contains("调整") || input.contains("优化") ||
-                   input.contains("refine");
+        String formattedHistory = formatDialogHistory(messages);
+        String modelResponse = invokeForContent(
+                Prompts.REFINE_INTENTION_SYSTEM_PROMPT,
+                Prompts.formatRefineIntentionUserTemplate(flowchartCode, formattedHistory)
+        );
+        return Boolean.TRUE.equals(extractIntent(modelResponse).getOrDefault("need_refined", false));
+    }
+
+    private String invokeForContent(String systemPrompt, String userPrompt) {
+        if (llm == null) {
+            throw new IllegalStateException("LLM service is required for workflow intention detection");
         }
 
-        return false;
+        List<Map<String, Object>> messages = List.of(
+                Map.of(ROLE, "system", CONTENT, systemPrompt),
+                Map.of(ROLE, "user", CONTENT, userPrompt)
+        );
+
+        try {
+            return invokeLlmContent(llm, messages);
+        } catch (Exception e) {
+            throw new IllegalStateException("Workflow intention detection failed: " + e.getMessage(), e);
+        }
+    }
+
+    public static String invokeLlmContent(Object llm, Object messages) throws Exception {
+        Object response = llm instanceof Model model
+                ? model.invoke(messages, null, null, null, null, null, null, null, null, null)
+                : invokeViaReflection(llm, messages);
+        return extractContent(response);
+    }
+
+    private static Object invokeViaReflection(Object llm, Object messages) throws ReflectiveOperationException {
+        for (Method method : llm.getClass().getMethods()) {
+            if ("invoke".equals(method.getName()) && method.getParameterCount() == 1) {
+                return method.invoke(llm, messages);
+            }
+        }
+        throw new NoSuchMethodException("invoke(Object)");
+    }
+
+    private static String extractContent(Object response) throws ReflectiveOperationException {
+        if (response == null) {
+            return "";
+        }
+        if (response instanceof AssistantMessage assistantMessage) {
+            return assistantMessage.getContentAsString();
+        }
+        if (response instanceof CharSequence text) {
+            return text.toString();
+        }
+        if (response instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (CONTENT.equals(entry.getKey())) {
+                    return Objects.toString(entry.getValue(), "");
+                }
+            }
+            return "";
+        }
+
+        try {
+            Method method = response.getClass().getMethod("getContentAsString");
+            return Objects.toString(method.invoke(response), "");
+        } catch (NoSuchMethodException ignored) {
+            Method method = response.getClass().getMethod("getContent");
+            return Objects.toString(method.invoke(response), "");
+        }
     }
 }

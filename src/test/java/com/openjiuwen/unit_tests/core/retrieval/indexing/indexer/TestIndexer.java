@@ -3,8 +3,11 @@
  */
 package com.openjiuwen.unit_tests.core.retrieval.indexing.indexer;
 
+import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
@@ -24,6 +27,141 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests document indexing functionality.
  */
 class TestIndexer {
+
+    /**
+     * Concrete index manager implementation for testing the {@link Indexer} abstraction.
+     */
+    static class ConcreteIndexer implements Indexer {
+        @Override
+        public boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel,
+                                  Map<String, Object> options) {
+            return true;
+        }
+
+        @Override
+        public boolean updateIndex(List<TextChunk> chunks, String docId, IndexConfig config, Embedding embedModel,
+                                   Map<String, Object> options) {
+            return true;
+        }
+
+        @Override
+        public boolean deleteIndex(String docId, String indexName, Map<String, Object> options) {
+            return true;
+        }
+
+        @Override
+        public boolean indexExists(String indexName) {
+            return true;
+        }
+
+        @Override
+        public Map<String, Object> getIndexInfo(String indexName) {
+            return Map.of("count", 10);
+        }
+
+        @Override
+        public String getDatabaseName() {
+            return "test_db";
+        }
+
+        @Override
+        public String getDistanceMetric() {
+            return "cosine";
+        }
+
+        @Override
+        public String getIndexType() {
+            return "vector";
+        }
+
+        @Override
+        public String getTextField() {
+            return "text";
+        }
+
+        @Override
+        public String getVectorField() {
+            return "vector";
+        }
+
+        @Override
+        public String getSparseVectorField() {
+            return "sparse_vector";
+        }
+
+        @Override
+        public String getMetadataField() {
+            return "metadata";
+        }
+
+        @Override
+        public String getDocIdField() {
+            return "doc_id";
+        }
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test building index")
+    void testBuildIndex() {
+        Indexer indexer = new ConcreteIndexer();
+        List<TextChunk> chunks = List.of(
+                new TextChunk("1", "chunk 1", "doc_1"),
+                new TextChunk("2", "chunk 2", "doc_1")
+        );
+        IndexConfig config = new IndexConfig("test_index", "vector");
+
+        boolean result = indexer.buildIndex(chunks, config, null, Map.of());
+
+        assertTrue(result);
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test updating index")
+    void testUpdateIndex() {
+        Indexer indexer = new ConcreteIndexer();
+        List<TextChunk> chunks = List.of(new TextChunk("1", "updated chunk", "doc_1"));
+        IndexConfig config = new IndexConfig("test_index", "vector");
+
+        boolean result = indexer.updateIndex(chunks, "doc_1", config, null, Map.of());
+
+        assertTrue(result);
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test deleting index")
+    void testDeleteIndex() {
+        Indexer indexer = new ConcreteIndexer();
+
+        boolean result = indexer.deleteIndex("doc_1", "test_index", Map.of());
+
+        assertTrue(result);
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test checking if index exists")
+    void testIndexExists() {
+        Indexer indexer = new ConcreteIndexer();
+
+        boolean result = indexer.indexExists("test_index");
+
+        assertTrue(result);
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test getting index information")
+    void testGetIndexInfo() {
+        Indexer indexer = new ConcreteIndexer();
+
+        Map<String, Object> info = indexer.getIndexInfo("test_index");
+
+        assertTrue(info.containsKey("count"));
+        assertEquals(10, info.get("count"));
+    }
 
     // ---------------------------------------------------------------------------
     // Tests - Level 0 (Indexing basics)

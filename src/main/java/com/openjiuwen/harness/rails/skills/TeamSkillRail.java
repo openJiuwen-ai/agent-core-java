@@ -1487,8 +1487,36 @@ public class TeamSkillRail extends EvolutionRail {
 
         @Override
         public String appendRecord(String skillName, EvolutionRecord record) {
-            saveRecord(skillName, record);
-            return record != null ? record.getId() : null;
+            if (record == null) {
+                return null;
+            }
+            try {
+                if (record.getChange() != null && record.getChange().getTarget() == com.openjiuwen.agent_evolving.signal.EvolutionTarget.SCRIPT) {
+                    persistScript(skillName, record);
+                }
+
+                EvolutionLog log = loadEvolutionLog(skillName);
+                String mergeTarget = record.getChange() != null ? record.getChange().getMergeTarget() : null;
+                boolean replaced = false;
+                if (mergeTarget != null && !mergeTarget.isBlank()) {
+                    for (int i = 0; i < log.getEntries().size(); i++) {
+                        EvolutionRecord existing = log.getEntries().get(i);
+                        if (mergeTarget.equals(existing.getId())) {
+                            log.getEntries().set(i, record);
+                            replaced = true;
+                            break;
+                        }
+                    }
+                }
+                if (!replaced) {
+                    log.getEntries().add(record);
+                }
+                saveEvolutionLog(skillName, log);
+                renderEvolutionMarkdown(skillName);
+                return record.getId();
+            } catch (RuntimeException exc) {
+                throw exc;
+            }
         }
 
         @Override
@@ -1525,6 +1553,233 @@ public class TeamSkillRail extends EvolutionRail {
                 return frontmatter.get("description");
             }
             return "";
+        }
+
+        private void persistScript(String skillName, EvolutionRecord record) {
+            Path skillDir = resolveSkillDir(skillName);
+            if (skillDir == null || record.getChange() == null) {
+                return;
+            }
+            Path scriptsDir = skillDir.resolve("evolution").resolve("scripts");
+            try {
+                Files.createDirectories(scriptsDir);
+                String lang = record.getChange().getScriptLanguage() != null
+                        ? record.getChange().getScriptLanguage() : "py";
+                String ext = switch (lang.toLowerCase(Locale.ROOT)) {
+                    case "python" -> "py";
+                    case "javascript" -> "js";
+                    case "typescript" -> "ts";
+                    case "shell", "bash" -> "sh";
+                    default -> lang;
+                };
+                String filename = record.getChange().getScriptFilename() != null
+                        ? record.getChange().getScriptFilename()
+                        : record.getId() + "_script." + ext;
+                Path scriptPath = scriptsDir.resolve(filename);
+                Files.writeString(scriptPath, record.getChange().getContent() != null ? record.getChange().getContent() : "",
+                        StandardCharsets.UTF_8);
+                record.getChange().setScriptFilename(filename);
+                record.getChange().setContent("Script: " + filename + "\n"
+                        + "Language: " + (record.getChange().getScriptLanguage() != null ? record.getChange().getScriptLanguage() : "unknown") + "\n"
+                        + "Purpose: " + (record.getChange().getScriptPurpose() != null ? record.getChange().getScriptPurpose() : ""));
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+        }
+
+        private void renderEvolutionMarkdown(String skillName) {
+            Path skillDir = resolveSkillDir(skillName);
+            if (skillDir == null) {
+                return;
+            }
+            EvolutionLog log = loadEvolutionLog(skillName);
+            List<EvolutionRecord> activeEntries = log.getEntries().stream()
+                    .filter(record -> record.getChange() == null || record.getChange().getSkipReason() == null
+                            || record.getChange().getSkipReason().isBlank())
+                    .toList();
+            if (activeEntries.isEmpty()) {
+                return;
+            }
+
+            Path evolutionDir = skillDir.resolve("evolution");
+            try {
+                Files.createDirectories(evolutionDir);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+
+            Map<String, List<EvolutionRecord>> sectionGroups = new LinkedHashMap<>();
+            List<EvolutionRecord> scriptEntries = new ArrayList<>();
+            for (EvolutionRecord record : activeEntries) {
+                if (record.getChange() == null) {
+                    continue;
+                }
+                if (record.getChange().getTarget() == com.openjiuwen.agent_evolving.signal.EvolutionTarget.SCRIPT) {
+                    scriptEntries.add(record);
+                } else {
+                    sectionGroups.computeIfAbsent(record.getChange().getSection(), ignored -> new ArrayList<>()).add(record);
+                }
+            }
+
+            for (Map.Entry<String, List<EvolutionRecord>> entry : sectionGroups.entrySet()) {
+                renderSectionFile(evolutionDir, entry.getKey(), entry.getValue());
+            }
+            if (!scriptEntries.isEmpty()) {
+                renderScriptIndex(evolutionDir.resolve("scripts"), scriptEntries);
+            }
+            updateSkillMdIndex(skillDir, activeEntries);
+        }
+
+        private void renderSectionFile(Path evolutionDir, String section, List<EvolutionRecord> records) {
+            String filename = section == null ? "troubleshooting" : section.toLowerCase(Locale.ROOT).replace(" ", "_");
+            List<String> lines = new ArrayList<>();
+            lines.add("# " + (section != null ? section : ""));
+            lines.add("");
+            lines.add("> Auto-generated from evolutions.json. Do not edit directly.");
+            lines.add("");
+            for (EvolutionRecord record : records) {
+                String content = record.getChange() != null && record.getChange().getContent() != null
+                        ? record.getChange().getContent() : "";
+                String[] parts = content.split("\\R", 2);
+                lines.add("### [" + record.getId() + "] " + parts[0]);
+                if (parts.length > 1 && !parts[1].isBlank()) {
+                    lines.add(parts[1].stripTrailing());
+                }
+                String appliedTag = record.isApplied() ? " | applied" : "";
+                lines.add("");
+                lines.add("*Source: " + record.getSource() + " | " + record.getTimestamp() + appliedTag + "*");
+                lines.add("");
+                lines.add("---");
+                lines.add("");
+            }
+            try {
+                Files.writeString(evolutionDir.resolve(filename + ".md"), String.join("\n", lines), StandardCharsets.UTF_8);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+        }
+
+        private void renderScriptIndex(Path scriptsDir, List<EvolutionRecord> entries) {
+            try {
+                Files.createDirectories(scriptsDir);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+            List<String> lines = new ArrayList<>();
+            lines.add("# Script Index");
+            lines.add("");
+            lines.add("> Auto-generated from evolutions.json. Do not edit directly.");
+            lines.add("");
+            lines.add("| File | Language | Purpose | Source |");
+            lines.add("|------|----------|---------|--------|");
+            for (EvolutionRecord record : entries) {
+                String filename = record.getChange() != null && record.getChange().getScriptFilename() != null
+                        ? record.getChange().getScriptFilename() : record.getId();
+                String lang = record.getChange() != null && record.getChange().getScriptLanguage() != null
+                        ? record.getChange().getScriptLanguage() : "unknown";
+                String purpose = record.getChange() != null && record.getChange().getScriptPurpose() != null
+                        ? record.getChange().getScriptPurpose() : "";
+                String date = record.getTimestamp() != null && record.getTimestamp().length() >= 10
+                        ? record.getTimestamp().substring(0, 10) : String.valueOf(record.getTimestamp());
+                lines.add("| [" + filename + "](" + filename + ") | " + lang + " | " + purpose + " | " + date + " |");
+            }
+            lines.add("");
+            try {
+                Files.writeString(scriptsDir.resolve("_index.md"), String.join("\n", lines), StandardCharsets.UTF_8);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+        }
+
+        private void updateSkillMdIndex(Path skillDir, List<EvolutionRecord> entries) {
+            Path skillMdPath = skillDir.resolve("SKILL.md");
+            if (!Files.exists(skillMdPath)) {
+                List<Path> mdFiles = new ArrayList<>();
+                try (var stream = Files.list(skillDir)) {
+                    stream.filter(path -> path.getFileName().toString().endsWith(".md")).forEach(mdFiles::add);
+                } catch (IOException exc) {
+                    throw new UncheckedIOException(exc);
+                }
+                if (!mdFiles.isEmpty()) {
+                    skillMdPath = mdFiles.get(0);
+                } else {
+                    return;
+                }
+            }
+
+            int bodyCount = 0;
+            int descCount = 0;
+            int scriptCount = 0;
+            Map<String, Integer> sectionCounts = new LinkedHashMap<>();
+            for (EvolutionRecord record : entries) {
+                if (record.getChange() == null) {
+                    continue;
+                }
+                switch (record.getChange().getTarget()) {
+                    case BODY -> bodyCount++;
+                    case DESCRIPTION -> descCount++;
+                    case SCRIPT -> scriptCount++;
+                    default -> {
+                    }
+                }
+                if (record.getChange().getTarget() != com.openjiuwen.agent_evolving.signal.EvolutionTarget.SCRIPT) {
+                    String section = record.getChange().getSection();
+                    sectionCounts.put(section, sectionCounts.getOrDefault(section, 0) + 1);
+                }
+            }
+
+            String content;
+            try {
+                content = Files.readString(skillMdPath, StandardCharsets.UTF_8);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+
+            StringBuilder indexBlock = new StringBuilder();
+            indexBlock.append("<!-- evolution-index-start -->\n");
+            indexBlock.append("## Evolution Experiences\n\n");
+            indexBlock.append("This skill has accumulated **").append(entries.size()).append("** evolution experiences (");
+            List<String> parts = new ArrayList<>();
+            if (bodyCount > 0) {
+                parts.add(bodyCount + " body");
+            }
+            if (descCount > 0) {
+                parts.add(descCount + " description");
+            }
+            if (scriptCount > 0) {
+                parts.add(scriptCount + " script");
+            }
+            indexBlock.append(String.join(", ", parts));
+            indexBlock.append(").\n\n");
+            indexBlock.append("| Type | Count | Details |\n");
+            indexBlock.append("|------|-------|---------|\n");
+            for (Map.Entry<String, Integer> entry : sectionCounts.entrySet()) {
+                String filename = entry.getKey().toLowerCase(Locale.ROOT).replace(" ", "_") + ".md";
+                indexBlock.append("| ").append(entry.getKey()).append(" | ").append(entry.getValue())
+                        .append(" | [-> evolution/").append(filename).append("](evolution/").append(filename).append(") |\n");
+            }
+            if (scriptCount > 0) {
+                indexBlock.append("| Scripts | ").append(scriptCount)
+                        .append(" | [-> evolution/scripts/_index.md](evolution/scripts/_index.md) |\n");
+            }
+            indexBlock.append("*Last updated: ").append(Instant.now().toString()).append("*\n");
+            indexBlock.append("<!-- evolution-index-end -->\n");
+
+            String updated;
+            int start = content.indexOf("<!-- evolution-index-start -->");
+            int end = content.indexOf("<!-- evolution-index-end -->");
+            if (start >= 0 && end >= 0 && end > start) {
+                int close = end + "<!-- evolution-index-end -->".length();
+                updated = content.substring(0, start) + indexBlock + content.substring(close);
+            } else {
+                updated = content.stripTrailing() + "\n\n" + indexBlock;
+            }
+
+            try {
+                Files.writeString(skillMdPath, updated, StandardCharsets.UTF_8);
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
         }
 
         private Path evolutionsPath(String skillName) {

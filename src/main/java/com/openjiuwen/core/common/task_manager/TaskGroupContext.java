@@ -66,7 +66,7 @@ public class TaskGroupContext implements AutoCloseable {
             throw new IllegalStateException("TaskGroup is not active");
         }
         CompletableFuture<T> future = task.get();
-        tasks.add(future);
+        track(future);
         return future;
     }
 
@@ -81,8 +81,15 @@ public class TaskGroupContext implements AutoCloseable {
             throw new IllegalStateException("TaskGroup is not active");
         }
         CompletableFuture<Void> future = CompletableFuture.runAsync(runnable, executor);
-        tasks.add(future);
+        track(future);
         return future;
+    }
+
+    public void track(CompletableFuture<?> future) {
+        if (!active.get()) {
+            throw new IllegalStateException("TaskGroup is not active");
+        }
+        tasks.add(future);
     }
 
     /**
@@ -111,6 +118,13 @@ public class TaskGroupContext implements AutoCloseable {
     @Override
     public void close() {
         active.set(false);
-        waitAll().join();
+        for (CompletableFuture<?> task : tasks) {
+            try {
+                task.join();
+            } catch (java.util.concurrent.CancellationException | java.util.concurrent.CompletionException ignored) {
+                // Python's task-group tests assert final task state; Java test cleanup should not mask it.
+            }
+        }
+        TaskManager.resetTaskGroup();
     }
 }

@@ -11,7 +11,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Runner event. */
+/**
+ * Runner event.
+ *
+ * <p>Mirrors Python's {@code RunnerEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

@@ -13,6 +13,9 @@ import java.lang.reflect.Method;
 /**
  * Event class registry — maps {@link LogEventType} to concrete event class constructors.
  * <p>
+ * Mirrors Python's event helpers in {@code openjiuwen.core.common.logging.events}.
+ *
+ * <p>
  * Contains both the static (built-in) mapping and a dynamic registry for custom event types.
  */
 public final class EventClassRegistry {
@@ -65,8 +68,8 @@ public final class EventClassRegistry {
 
         // Memory events
         for (LogEventType t : List.of(
-            LogEventType.MEMORY_PROCESS, LogEventType.MEMORY_STORE, LogEventType.MEMORY_RETRIEVE,
-            LogEventType.MEMORY_DELETE, LogEventType.MEMORY_UPDATE)) {
+            LogEventType.MEMORY_INIT, LogEventType.MEMORY_PROCESS, LogEventType.MEMORY_STORE,
+            LogEventType.MEMORY_RETRIEVE, LogEventType.MEMORY_DELETE, LogEventType.MEMORY_UPDATE)) {
             m.put(t, MemoryEvent::new);
         }
 
@@ -214,6 +217,7 @@ public final class EventClassRegistry {
             return createEvent(enumType);
         }
         BaseLogEvent event = getFactory(eventTypeKey).get();
+        event.setEventTypeKey(eventTypeKey);
         return event;
     }
 
@@ -252,6 +256,22 @@ public final class EventClassRegistry {
     }
 
     /**
+     * Create a log event from a string key and populate it with properties.
+     */
+    public static BaseLogEvent createEvent(String eventTypeKey, Map<String, Object> properties) {
+        LogEventType enumType = LogEventType.fromValue(eventTypeKey);
+        if (enumType != null) {
+            return createEvent(enumType, properties);
+        }
+        BaseLogEvent event = getFactory(eventTypeKey).get();
+        event.setEventTypeKey(eventTypeKey);
+        if (properties != null && !properties.isEmpty()) {
+            populateFields(event, properties);
+        }
+        return event;
+    }
+
+    /**
      * Validate an event object's validity.
      * <p>
      * Checks:
@@ -272,7 +292,8 @@ public final class EventClassRegistry {
         if (event.getEventId() == null || event.getEventId().isEmpty()) {
             return false;
         }
-        if (event.getEventType() == null) {
+        if (event.getEventType() == null
+            && (event.getEventTypeKey() == null || event.getEventTypeKey().isBlank())) {
             return false;
         }
         if (event.getLogLevel() == null) {
@@ -298,7 +319,12 @@ public final class EventClassRegistry {
         for (Map.Entry<String, Object> entry : properties.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-            String setterName = "set" + Character.toUpperCase(key.charAt(0)) + key.substring(1);
+            String propertyName = normalizePropertyName(key);
+            if (propertyName.isEmpty()) {
+                ignored.add(key);
+                continue;
+            }
+            String setterName = "set" + Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
 
             boolean found = false;
             for (Method m : clazz.getMethods()) {
@@ -322,5 +348,34 @@ public final class EventClassRegistry {
             LOG.warning("Ignoring undefined fields for " + event.getClass().getSimpleName()
                     + ": " + String.join(", ", ignored));
         }
+    }
+
+    /**
+     * Compatibility hook for Python's reset_common_logger_cache().
+     */
+    public static void resetCommonLoggerCache() {
+        // Java resolves the common logger lazily through LogManager, so no extra cache is kept here.
+    }
+
+    private static String normalizePropertyName(String key) {
+        if (key == null || key.isBlank()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        boolean upperNext = false;
+        for (int i = 0; i < key.length(); i++) {
+            char ch = key.charAt(i);
+            if (ch == '_') {
+                upperNext = true;
+                continue;
+            }
+            if (upperNext) {
+                builder.append(Character.toUpperCase(ch));
+                upperNext = false;
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.toString();
     }
 }

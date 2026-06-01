@@ -93,7 +93,7 @@ public class MetricEvaluator extends BaseEvaluator {
         }
     }
 
-    private double aggScore(List<Double> results, String aggregate) {
+    static double aggScore(List<Double> results, String aggregate) {
         if (results == null || results.isEmpty()) {
             return 0.0;
         }

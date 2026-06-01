@@ -24,6 +24,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpRequest;
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -288,7 +291,7 @@ public class OfficialSdkMcpClient implements McpClient {
             requestBuilder.header(entry.getKey(), entry.getValue());
         }
         return HttpClientSseClientTransport.builder(target.baseUri())
-                .sseEndpoint(target.endpoint())
+                .sseEndpoint(withAuthQuery(target.endpoint()))
                 .requestBuilder(requestBuilder)
                 .build();
     }
@@ -300,9 +303,21 @@ public class OfficialSdkMcpClient implements McpClient {
             requestBuilder.header(entry.getKey(), entry.getValue());
         }
         return HttpClientStreamableHttpTransport.builder(target.baseUri())
-                .endpoint(target.endpoint())
+                .endpoint(withAuthQuery(target.endpoint()))
                 .requestBuilder(requestBuilder)
                 .build();
+    }
+
+    private String withAuthQuery(String endpoint) {
+        if (transportConfig.authQueryParams() == null || transportConfig.authQueryParams().isEmpty()) {
+            return endpoint;
+        }
+        StringJoiner joiner = new StringJoiner("&");
+        for (Map.Entry<String, String> entry : transportConfig.authQueryParams().entrySet()) {
+            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                    + "=" + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+        }
+        return endpoint + (endpoint.contains("?") ? "&" : "?") + joiner;
     }
 
     private StdioClientTransport createStdioTransport() {

@@ -47,6 +47,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
     private String nodeId;
     private final Executable<Object, Object> body;
+    private final HasDrawable drawableBody;
     private final PostLoopBody postBody;
     private final Condition condition;
     private final List<LoopCallback> callbacks;
@@ -65,6 +66,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         // Wrap body: if it's already an Executable, use directly; if LoopGroup, wrap in delegate
         if (body instanceof Executable) {
             this.body = (Executable<Object, Object>) body;
+            this.drawableBody = body instanceof HasDrawable ? (HasDrawable) body : null;
         } else if (body instanceof LoopGroup) {
             LoopGroup loopGroup = (LoopGroup) body;
             this.body = new Executable<Object, Object>() {
@@ -83,6 +85,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
                     return true;
                 }
             };
+            this.drawableBody = loopGroup;
         } else {
             throw new IllegalArgumentException("body must be Executable or LoopGroup");
         }
@@ -289,10 +292,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
     @Override
     public HasDrawable getBody() {
-        if (body instanceof HasDrawable) {
-            return (HasDrawable) body;
-        }
-        return null;
+        return drawableBody;
     }
 
     public Executable<Object, Object> getBodyExecutable() {

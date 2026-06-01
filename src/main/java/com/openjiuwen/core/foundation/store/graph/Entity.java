@@ -18,6 +18,7 @@ import java.util.Map;
 public class Entity extends NamedGraphObject {
 
     private String entityType;
+    private float[] nameEmbedding;
     private List<String> factIds;
     private List<String> relations;
     private List<String> episodes;
@@ -67,6 +68,9 @@ public class Entity extends NamedGraphObject {
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
 
+    public float[] getNameEmbedding() { return nameEmbedding; }
+    public void setNameEmbedding(float[] nameEmbedding) { this.nameEmbedding = nameEmbedding; }
+
     public List<String> getFactIds() { return factIds; }
     public void setFactIds(List<String> factIds) { this.factIds = factIds; }
 
@@ -86,5 +90,19 @@ public class Entity extends NamedGraphObject {
     }
 
     @Override
-    public String getObjType() { return "entity"; }
+    public String getObjType() {
+        return entityType == null || entityType.isBlank() ? "entity" : entityType;
+    }
+
+    @Override
+    public List<EmbedTask> fetchEmbedTask() {
+        List<EmbedTask> tasks = new ArrayList<>();
+        if (getContentEmbedding() == null && getContent() != null) {
+            tasks.add(new EmbedTask(this, "content_embedding", getContent()));
+        }
+        if (nameEmbedding == null && getName() != null) {
+            tasks.add(new EmbedTask(this, "name_embedding", getName()));
+        }
+        return tasks;
+    }
 }

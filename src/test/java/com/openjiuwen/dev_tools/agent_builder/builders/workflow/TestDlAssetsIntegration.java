@@ -13,20 +13,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * System tests for DL Assets module.
  * <p>
  * Mirrors Python's {@code test_dl_assets_integration.py} in
- * {@code tests.system_tests.dev_tools.agent_builder.builders.workflow}.
+ * {@code tests.system_tests.dev_tools.agent_builder.builders.workflow.test_dl_assets_integration}.
  */
 class TestDlAssetsIntegration {
 
     @Nested
-    class TestDLAssetsConstants {
+    class TestDLAssetsIntegrationInner {
 
         @Test
-        void componentsInfoIsString() {
+        void testComponentsInfoIsString() {
             assertThat(DlAssets.COMPONENTS_INFO).isNotEmpty();
         }
 
         @Test
-        void componentsInfoContainsAllNodes() {
+        void testComponentsInfoContainsAllNodes() {
             String[] nodeTypes = {"Start", "End", "LLM", "IntentDetection",
                     "Questioner", "Code", "Plugin", "Output", "Branch"};
             for (String nodeType : nodeTypes) {
@@ -35,20 +35,20 @@ class TestDlAssetsIntegration {
         }
 
         @Test
-        void schemaInfoIsString() {
+        void testSchemaInfoIsString() {
             assertThat(DlAssets.SCHEMA_INFO).isNotEmpty();
         }
 
         @Test
-        void schemaInfoContainsNodeFields() {
-            String[] fields = {"id", "type", "parameters"};
-            for (String field : fields) {
+        void testSchemaInfoContainsNodeFields() {
+            String[] requiredFields = {"id", "type", "parameters"};
+            for (String field : requiredFields) {
                 assertThat(DlAssets.SCHEMA_INFO).contains(field);
             }
         }
 
         @Test
-        void examplesIsString() {
+        void testExamplesIsString() {
             assertThat(DlAssets.EXAMPLES).isNotNull();
         }
     }
@@ -57,33 +57,91 @@ class TestDlAssetsIntegration {
     class TestComponentsInfoContent {
 
         @Test
-        void containsStartDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("Start");
+        void testContainsStartDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("开始节点"),
+                    text -> assertThat(text).contains("Start"));
         }
 
         @Test
-        void containsEndDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("End");
+        void testContainsEndDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("结束节点"),
+                    text -> assertThat(text).contains("End"));
         }
 
         @Test
-        void containsLlmDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("LLM");
+        void testContainsLlmDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("大模型"),
+                    text -> assertThat(text).contains("LLM"));
         }
 
         @Test
-        void containsPluginDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("Plugin");
+        void testContainsPluginDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("插件"),
+                    text -> assertThat(text).contains("Plugin"));
         }
 
         @Test
-        void containsCodeDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("Code");
+        void testContainsCodeDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("代码"),
+                    text -> assertThat(text).contains("Code"));
         }
 
         @Test
-        void containsBranchDescription() {
-            assertThat(DlAssets.COMPONENTS_INFO).containsIgnoringCase("Branch");
+        void testContainsQuestionerDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("提问"),
+                    text -> assertThat(text).contains("Questioner"));
+        }
+
+        @Test
+        void testContainsIntentDetectionDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("意图"),
+                    text -> assertThat(text).contains("IntentDetection"));
+        }
+
+        @Test
+        void testContainsBranchDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("分支"),
+                    text -> assertThat(text).contains("Branch"));
+        }
+
+        @Test
+        void testContainsOutputDescription() {
+            assertThat(DlAssets.COMPONENTS_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("输出"),
+                    text -> assertThat(text).contains("Output"));
+        }
+    }
+
+    @Nested
+    class TestSchemaInfoContent {
+
+        @Test
+        void testContainsStartSchema() {
+            assertThat(DlAssets.SCHEMA_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("Start"),
+                    text -> assertThat(text).contains("开始"));
+        }
+
+        @Test
+        void testContainsEndSchema() {
+            assertThat(DlAssets.SCHEMA_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("End"),
+                    text -> assertThat(text).contains("结束"));
+        }
+
+        @Test
+        void testContainsLlmSchema() {
+            assertThat(DlAssets.SCHEMA_INFO).satisfiesAnyOf(
+                    text -> assertThat(text).contains("LLM"),
+                    text -> assertThat(text).contains("大模型"));
         }
     }
 }

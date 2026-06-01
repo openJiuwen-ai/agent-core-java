@@ -5,6 +5,7 @@
 package com.openjiuwen.agent_evolving.trajectory;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Trajectory persistence interface.
@@ -40,6 +41,15 @@ public interface TrajectoryStore {
      * @return List of matching trajectories
      */
     List<Trajectory> queryBySessionId(String sessionId);
+
+    /**
+     * Query trajectories using Python-style field filters.
+     *
+     * @param version Optional version filter
+     * @param filters Optional field filters such as session_id, case_id, source
+     * @return List of matching trajectories
+     */
+    List<Trajectory> query(String version, Map<String, Object> filters);
 
     /**
      * Query trajectories with optional filters.

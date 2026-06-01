@@ -9,35 +9,33 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionException;
 
 /**
  * Role-aware prompt and policy helpers.
- * <p>
- * The system prompt is the primary driver of team behavior —
- * the CoordinatorLoop only wakes the DeepAgent and injects
- * unread messages; all decision logic comes from these prompts.
- * <p>
- * Mirrors Python's {@code policy.py} in
+ *
+ * <p>Mirrors Python's {@code policy.py} in
  * {@code openjiuwen.agent_teams.agent.policy}.
  */
 public class AgentPolicy {
 
-    /** I18N labels for formatting */
     private static final Map<String, Map<String, String>> I18N_LABELS = new HashMap<>();
-    
+
     static {
         Map<String, String> cnLabels = new HashMap<>();
-        cnLabels.put("persona", "当前人设");
-        cnLabels.put("member_name_label", "你的成员名（member_name）");
-        cnLabels.put("team_info_heading", "团队信息");
-        cnLabels.put("team_name_label", "团队名（team_name）");
-        cnLabels.put("display_name_label", "显示名（display_name）");
-        cnLabels.put("team_desc", "团队目标与指令");
-        cnLabels.put("relationships_heading", "成员关系");
+        cnLabels.put("persona", "\u5f53\u524d\u4eba\u8bbe");
+        cnLabels.put("member_name_label", "\u4f60\u7684\u6210\u5458\u540d\uff08member_name\uff09");
+        cnLabels.put("team_info_heading", "\u56e2\u961f\u4fe1\u606f");
+        cnLabels.put("team_name_label", "\u56e2\u961f\u540d\uff08team_name\uff09");
+        cnLabels.put("display_name_label", "\u663e\u793a\u540d\uff08display_name\uff09");
+        cnLabels.put("team_desc", "\u56e2\u961f\u76ee\u6807\u4e0e\u6307\u4ee4");
+        cnLabels.put("relationships_heading", "\u6210\u5458\u5173\u7cfb");
         I18N_LABELS.put("cn", cnLabels);
-        
+
         Map<String, String> enLabels = new HashMap<>();
         enLabels.put("persona", "Current Persona");
         enLabels.put("member_name_label", "Your member_name");
@@ -48,88 +46,60 @@ public class AgentPolicy {
         enLabels.put("relationships_heading", "Relationships");
         I18N_LABELS.put("en", enLabels);
     }
-    
-    /** Workflow templates */
+
     private static final Map<String, String> WORKFLOW_TEMPLATES = new HashMap<>();
-    
+
     static {
         WORKFLOW_TEMPLATES.put("default", "leader_workflow");
         WORKFLOW_TEMPLATES.put("predefined", "leader_workflow_predefined");
         WORKFLOW_TEMPLATES.put("hybrid", "leader_workflow_hybrid");
     }
-    
-    /**
-     * Return the base policy string for a role.
-     * <p>
-     * Mirrors Python: role_policy(role, language)
-     *
-     * @param role TeamRole enum (LEADER or MEMBER)
-     * @param language Language code ("cn" or "en")
-     * @return Policy template content
-     */
+
     public static String rolePolicy(TeamRole role, String language) {
         String templateName = role == TeamRole.LEADER ? "leader_policy" : "teammate_policy";
         return loadTemplate(templateName, language);
     }
-    
-    /**
-     * Format team information from database TeamInfo into a prompt section.
-     * <p>
-     * Mirrors Python: _format_team_info(team_info, labels)
-     *
-     * @param teamInfo Team info map
-     * @param language Language code
-     * @return Formatted team info string
-     */
+
     public static String formatTeamInfo(Map<String, Object> teamInfo, String language) {
         Map<String, String> labels = labels(language);
-        
+
         StringBuilder sb = new StringBuilder();
         sb.append("\n## ").append(labels.get("team_info_heading"));
-        
-        String teamName = (String) teamInfo.get("team_name");
-        if (teamName != null && !teamName.isEmpty()) {
-            sb.append("\n- ").append(labels.get("team_name_label")).append(": ").append(teamName);
+
+        Object teamName = teamInfo.get("team_name");
+        if (teamName instanceof String value && !value.isEmpty()) {
+            sb.append("\n- ").append(labels.get("team_name_label")).append(": ").append(value);
         }
-        
-        String displayName = (String) teamInfo.get("display_name");
-        if (displayName != null && !displayName.isEmpty()) {
-            sb.append("\n- ").append(labels.get("display_name_label")).append(": ").append(displayName);
+
+        Object displayName = teamInfo.get("display_name");
+        if (displayName instanceof String value && !value.isEmpty()) {
+            sb.append("\n- ").append(labels.get("display_name_label")).append(": ").append(value);
         }
-        
-        String desc = (String) teamInfo.get("desc");
-        if (desc != null && !desc.isEmpty()) {
-            sb.append("\n- ").append(labels.get("team_desc")).append(": ").append(desc);
+
+        Object desc = teamInfo.get("desc");
+        if (desc instanceof String value && !value.isEmpty()) {
+            sb.append("\n- ").append(labels.get("team_desc")).append(": ").append(value);
         }
-        
+
         return sb.toString();
     }
-    
-    /**
-     * Format team member list into a Relationships prompt section.
-     * <p>
-     * Mirrors Python: _format_team_members(team_members, labels, self_member_name)
-     *
-     * @param teamMembers List of member maps
-     * @param language Language code
-     * @param selfMemberName Current member's name (optional)
-     * @return Formatted relationships string
-     */
-    public static String formatTeamMembers(List<Map<String, String>> teamMembers, 
-                                            String language, 
-                                            String selfMemberName) {
+
+    public static String formatTeamMembers(
+            List<Map<String, String>> teamMembers,
+            String language,
+            String selfMemberName
+    ) {
         Map<String, String> labels = labels(language);
-        
+
         StringBuilder sb = new StringBuilder();
         sb.append("\n## ").append(labels.get("relationships_heading"));
-        
+
         for (Map<String, String> member : teamMembers) {
             String memberName = member.getOrDefault("member_name", "");
             if (selfMemberName != null && selfMemberName.equals(memberName)) {
                 continue;
             }
             String displayName = member.getOrDefault("display_name", "unknown");
-
             sb.append("\n- member_name=").append(memberName).append(" display_name=").append(displayName);
 
             String desc = member.getOrDefault("desc", "");
@@ -137,29 +107,25 @@ public class AgentPolicy {
                 sb.append(" :: ").append(desc);
             }
         }
-        
+
         return sb.toString();
     }
-    
-    /**
-     * Get workflow template name by team mode.
-     *
-     * @param teamMode Team mode ("default", "predefined", or "hybrid")
-     * @return Workflow template name
-     */
+
     public static String getWorkflowTemplate(String teamMode) {
         return WORKFLOW_TEMPLATES.getOrDefault(teamMode, WORKFLOW_TEMPLATES.get("default"));
     }
 
-    public static String buildSystemPrompt(TeamRole role,
-                                           String persona,
-                                           String basePrompt,
-                                           Map<String, Object> teamInfo,
-                                           List<Map<String, String>> teamMembers,
-                                           String memberName,
-                                           String lifecycle,
-                                           String language,
-                                           String teamMode) {
+    public static String buildSystemPrompt(
+            TeamRole role,
+            String persona,
+            String basePrompt,
+            Map<String, Object> teamInfo,
+            List<Map<String, String>> teamMembers,
+            String memberName,
+            String lifecycle,
+            String language,
+            String teamMode
+    ) {
         return buildTeamPolicy(
                 role,
                 persona,
@@ -173,15 +139,17 @@ public class AgentPolicy {
         );
     }
 
-    private static String buildTeamPolicy(TeamRole role,
-                                          String persona,
-                                          String basePrompt,
-                                          Map<String, Object> teamInfo,
-                                          List<Map<String, String>> teamMembers,
-                                          String memberName,
-                                          String lifecycle,
-                                          String language,
-                                          String teamMode) {
+    private static String buildTeamPolicy(
+            TeamRole role,
+            String persona,
+            String basePrompt,
+            Map<String, Object> teamInfo,
+            List<Map<String, String>> teamMembers,
+            String memberName,
+            String lifecycle,
+            String language,
+            String teamMode
+    ) {
         String normalizedLanguage = normalizeLanguage(language);
         Map<String, String> labels = labels(normalizedLanguage);
 
@@ -189,7 +157,8 @@ public class AgentPolicy {
         String rolePolicyText = loadTemplate(policyName, normalizedLanguage);
 
         String memberNameSection = memberName != null && !memberName.isBlank()
-                ? labels.get("member_name_label") + ": " + memberName + "\n" : "";
+                ? labels.get("member_name_label") + ": " + memberName + "\n"
+                : "";
 
         String workflowSection = "";
         if (role == TeamRole.LEADER) {
@@ -204,7 +173,8 @@ public class AgentPolicy {
 
         String teamInfoSection = teamInfo != null ? formatTeamInfo(teamInfo, normalizedLanguage) : "";
         String teamMembersSection = teamMembers != null
-                ? formatTeamMembers(teamMembers, normalizedLanguage, memberName) : "";
+                ? formatTeamMembers(teamMembers, normalizedLanguage, memberName)
+                : "";
         String basePromptSection = basePrompt != null && !basePrompt.isEmpty() ? "\n" + basePrompt : "";
 
         Map<String, String> values = new LinkedHashMap<>();
@@ -220,13 +190,6 @@ public class AgentPolicy {
         return renderTemplate(loadSharedTemplate("system_prompt"), values);
     }
 
-    /**
-     * Load template content by name.
-     *
-     * @param name Template name
-     * @param language Language code
-     * @return Template content
-     */
     private static String loadTemplate(String name, String language) {
         String normalizedLanguage = normalizeLanguage(language);
         String resourcePath = "openjiuwen/agent_teams/agent/prompts/" + normalizedLanguage + "/" + name + ".md";
@@ -286,38 +249,28 @@ public class AgentPolicy {
     private static String fallbackTemplate(String name, String language) {
         if ("leader_policy".equals(name)) {
             return "en".equals(language)
-                    ? "You are TeamLeader. Use create_task, spawn_member, send_message, and approve_plan to coordinate experts."
-                    : "你是 TeamLeader。使用 create_task、spawn_member、send_message 和 approve_plan 协调专家团队。";
+                    ? "You are TeamLeader. Use DAG planning, create_task, spawn_member, send_message, and approve_plan."
+                    : "TeamLeader: use DAG planning, create_task, spawn_member, send_message, and approve_plan.";
         }
         if ("teammate_policy".equals(name)) {
             return "en".equals(language)
-                    ? "You are Teammate. Claim suitable tasks, plan independently, collaborate, and report completion."
-                    : "你是 Teammate。主动领取匹配任务，独立规划，协作执行，并汇报完成结果。";
+                    ? "You are Teammate. Use view_task, claim_task, collaborate, and report completion."
+                    : "Teammate: use view_task, claim_task, collaborate, and report completion.";
         }
         if ("leader_workflow_predefined".equals(name)) {
-            return "en".equals(language)
-                    ? "Predefined team mode: use build_team, create_task, view_task, and send_message. Do not spawn members."
-                    : "预定义团队模式：使用 build_team、create_task、view_task 和 send_message，不要创建新成员。";
+            return "Predefined Team Mode: use build_team, create_task, view_task, and send_message. Do not spawn members.";
         }
         if ("leader_workflow_hybrid".equals(name)) {
-            return "en".equals(language)
-                    ? "Hybrid team mode: combine predefined members with spawned specialists as needed."
-                    : "混合团队模式：结合预定义成员，并按需创建专业成员。";
+            return "Hybrid Team Mode: combine predefined members with spawned specialists as needed.";
         }
         if ("leader_workflow".equals(name)) {
-            return "en".equals(language)
-                    ? "Default workflow: build the team, create tasks, spawn members, and wait for notifications."
-                    : "默认流程：组建团队、创建任务、创建成员，并等待通知。";
+            return "Workflow (default): build the team, create_task, spawn members, and wait for notifications.";
         }
         if ("lifecycle_persistent".equals(name)) {
-            return "en".equals(language)
-                    ? "Persistent lifecycle: preserve team members and shared memory for future tasks."
-                    : "持久生命周期：保留团队成员和共享记忆以支持后续任务。";
+            return "Persistent lifecycle: preserve team members and shared memory for future tasks.";
         }
         if ("lifecycle_temporary".equals(name)) {
-            return "en".equals(language)
-                    ? "Temporary lifecycle: clean up members and workspace after the task completes."
-                    : "临时生命周期：任务完成后清理成员和工作空间。";
+            return "Temporary lifecycle: clean up members and workspace after the task completes.";
         }
         return "";
     }
@@ -329,10 +282,7 @@ public class AgentPolicy {
     private static String normalizeLanguage(String language) {
         return "en".equals(language) ? "en" : "cn";
     }
-    
-    /**
-     * TeamRole enum.
-     */
+
     public enum TeamRole {
         LEADER,
         MEMBER

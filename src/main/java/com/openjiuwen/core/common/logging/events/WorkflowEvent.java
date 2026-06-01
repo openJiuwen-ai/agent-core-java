@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Workflow related event. */
+/**
+ * Workflow related event.
+ *
+ * <p>Mirrors Python's {@code WorkflowEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -32,6 +37,13 @@ public class WorkflowEvent extends BaseLogEvent {
     public WorkflowEvent() {
         super();
         setModuleType(ModuleType.WORKFLOW);
+    }
+
+    public void setComponentId(String componentId) {
+        this.componentId = componentId;
+        setModuleType(componentId != null && !componentId.isBlank()
+            ? ModuleType.WORKFLOW_COMPONENT
+            : ModuleType.WORKFLOW);
     }
 
     @Override

@@ -105,7 +105,11 @@ public class InProcessMessager implements Messager {
                 return;
             }
             for (MessagerHandler handler : handlers.values()) {
-                handler.handle(message);
+                try {
+                    handler.handle(message);
+                } catch (RuntimeException ignored) {
+                    // Python logs a failing subscriber and continues fan-out.
+                }
             }
         }
 

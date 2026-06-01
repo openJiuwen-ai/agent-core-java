@@ -17,6 +17,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Supplemental ChatReranker regression tests.
+ *
+ * <p>Mirrors Python's {@code test_chat_reranker.py} in
+ * {@code tests/unit_tests/core/retrieval/reranker}; the full method-by-method
+ * port lives in {@link TestChatReranker}.</p>
+ */
 class ChatRerankerTest {
 
     @Test

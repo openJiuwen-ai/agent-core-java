@@ -29,7 +29,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for KnowledgeBase.
- * Mirrors Python's tests/unit_tests/core/retrieval/test_knowledge_base.py
+ *
+ * <p>Mirrors Python's {@code test_knowledge_base.py} in
+ * {@code tests/unit_tests/core/retrieval}.</p>
  */
 class TestKnowledgeBase {
 
@@ -58,6 +60,11 @@ class TestKnowledgeBase {
                               Indexer indexManager,
                               BaseModelClient llmClient) {
             super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, null);
+        }
+
+        @Override
+        public List<Document> parseFiles(List<String> filePaths, Map<String, Object> options) {
+            return new ArrayList<>();
         }
 
         @Override
@@ -226,8 +233,37 @@ class TestKnowledgeBase {
         }
 
         @Test
-        @DisplayName("test close with closeable components")
-        void testCloseWithCloseableComponents() throws Exception {
+        @DisplayName("test close with async-style closeable components")
+        void testCloseWithAsyncClose() throws Exception {
+            KnowledgeBaseConfig config = new KnowledgeBaseConfig("test_kb");
+            VectorStore mockVectorStore = mock(VectorStore.class);
+            Indexer mockIndexManager = mock(Indexer.class);
+
+            for (String attr : KNOWLEDGE_BASE_ATTRIBUTES) {
+                setMockAttribute(mockVectorStore, attr, "test_value");
+                setMockAttribute(mockIndexManager, attr, "test_value");
+            }
+
+            KnowledgeBase kb = new ConcreteKnowledgeBase(
+                    config,
+                    mockVectorStore,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mockIndexManager,
+                    null
+            );
+
+            kb.close();
+
+            verify(mockVectorStore, times(1)).close();
+            verify(mockIndexManager, times(1)).close();
+        }
+
+        @Test
+        @DisplayName("test close with sync close method")
+        void testCloseWithSyncClose() throws Exception {
             KnowledgeBaseConfig config = new KnowledgeBaseConfig("test_kb");
             VectorStore mockVectorStore = mock(VectorStore.class);
             Indexer mockIndexManager = mock(Indexer.class);

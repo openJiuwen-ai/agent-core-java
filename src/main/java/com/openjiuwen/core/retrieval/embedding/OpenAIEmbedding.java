@@ -11,12 +11,15 @@ import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
 import java.net.http.HttpClient;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * OpenAI-compatible embedding client with base64 embedding support.
+ *
+ * <p>Mirrors Python's {@code OpenAIEmbedding} in {@code openjiuwen.core.retrieval.embedding}.</p>
  */
 public class OpenAIEmbedding extends APIEmbedding {
 
@@ -34,8 +37,21 @@ public class OpenAIEmbedding extends APIEmbedding {
                            int maxConcurrent,
                            Integer dimension,
                            HttpClient httpClient) {
+        this(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent,
+                dimension, httpClient, System.getenv());
+    }
+
+    OpenAIEmbedding(EmbeddingConfig config,
+                    int timeout,
+                    int maxRetries,
+                    Map<String, String> extraHeaders,
+                    int maxBatchSize,
+                    int maxConcurrent,
+                    Integer dimension,
+                    HttpClient httpClient,
+                    Map<String, String> environment) {
         super(
-                normalizeConfig(config),
+                normalizeConfig(config, environment),
                 timeout,
                 maxRetries,
                 extraHeaders,
@@ -65,8 +81,12 @@ public class OpenAIEmbedding extends APIEmbedding {
         if (root == null || !root.has("data") || !root.get("data").isArray()) {
             return super.parseEmbeddings(root);
         }
+        List<JsonNode> items = new ArrayList<>();
+        root.get("data").forEach(items::add);
+        items.sort(Comparator.comparingInt(item -> item.path("index").asInt(-1)));
+
         List<List<Float>> embeddings = new ArrayList<>();
-        for (JsonNode item : root.get("data")) {
+        for (JsonNode item : items) {
             JsonNode embeddingNode = item.get("embedding");
             if (embeddingNode == null || embeddingNode.isNull()) {
                 continue;
@@ -103,13 +123,20 @@ public class OpenAIEmbedding extends APIEmbedding {
         return merged;
     }
 
-    private static EmbeddingConfig normalizeConfig(EmbeddingConfig config) {
+    private static EmbeddingConfig normalizeConfig(EmbeddingConfig config, Map<String, String> environment) {
         String baseUrl = config.getBaseUrl() == null ? "" : config.getBaseUrl();
         String normalized = baseUrl.replaceAll("/+$", "");
         if (normalized.endsWith("/embeddings")) {
             normalized = normalized.substring(0, normalized.length() - "/embeddings".length());
         }
-        EmbeddingConfig normalizedConfig = new EmbeddingConfig(config.getModelName(), normalized, config.getApiKey());
+        String apiKey = config.getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = environment == null ? null : environment.get("OPENAI_API_KEY");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("OpenAI API key is required");
+        }
+        EmbeddingConfig normalizedConfig = new EmbeddingConfig(config.getModelName(), normalized, apiKey);
         normalizedConfig.setVerifySsl(config.isVerifySsl());
         normalizedConfig.setSslCert(config.getSslCert());
         return normalizedConfig;

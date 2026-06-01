@@ -6,12 +6,12 @@ package com.openjiuwen.core.operator;
 
 import com.openjiuwen.core.session.Session;
 
-import java.util.Collections;
-import java.util.Iterator;
 import java.util.Map;
 
 /**
- * Base class for atomic execution and optimization units.
+ * Base class for self-evolution operator parameter handles.
+ *
+ * <p>Mirrors Python's {@code Operator} in {@code openjiuwen.core.operator.base}.</p>
  */
 public abstract class Operator {
 
@@ -39,36 +39,6 @@ public abstract class Operator {
      * Restore state from snapshot.
      */
     public abstract void loadState(Map<String, Object> state);
-
-    /**
-     * Execute one operator step.
-     */
-    public abstract Object invoke(Map<String, Object> inputs,
-                                  Session session,
-                                  Map<String, Object> kwargs) throws Exception;
-
-    /**
-     * Convenience overload without kwargs.
-     */
-    public Object invoke(Map<String, Object> inputs, Session session) throws Exception {
-        return invoke(inputs, session, Collections.emptyMap());
-    }
-
-    /**
-     * Optional streaming execution.
-     */
-    public OperatorStream<?> stream(Map<String, Object> inputs,
-                                    Session session,
-                                    Map<String, Object> kwargs) throws Exception {
-        throw new UnsupportedOperationException("stream not implemented");
-    }
-
-    /**
-     * Convenience overload without kwargs.
-     */
-    public OperatorStream<?> stream(Map<String, Object> inputs, Session session) throws Exception {
-        return stream(inputs, session, Collections.emptyMap());
-    }
 
     protected void setOperatorContext(Session session, String operatorId) {
         if (session != null) {

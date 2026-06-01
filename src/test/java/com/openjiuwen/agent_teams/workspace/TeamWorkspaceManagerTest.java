@@ -84,6 +84,24 @@ class TeamWorkspaceManagerTest {
         assertEquals(WorkspaceMode.LOCAL, manager.getMode());
     }
 
+    @Test
+    @DisplayName("Test initialize without version control creates artifacts and skips git")
+    void testInitializeWithoutVersionControlSkipsGit() throws IOException {
+        Path workspace = Files.createTempDirectory("team-workspace-init");
+        TeamWorkspaceConfig config = new TeamWorkspaceConfig();
+        config.setVersionControl(false);
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(config, workspace.toString(), "test-team");
+
+        manager.initialize();
+
+        assertFalse(Files.exists(workspace.resolve(".git")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("code")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("docs")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("reports")));
+        assertTrue(Files.isDirectory(workspace.resolve("trajectories")));
+        assertTrue(Files.isDirectory(workspace.resolve("skills")));
+    }
+
     // ========== Lock tests ==========
 
     @Test
@@ -137,6 +155,21 @@ class TeamWorkspaceManagerTest {
 
         assertTrue(manager.acquireLock(refreshed));
         assertEquals(refreshed.getAcquiredAt(), manager.getLock("/tmp/workspace/file.txt").getAcquiredAt());
+    }
+
+    @Test
+    @DisplayName("Test acquireLock overload creates Python shaped lock")
+    void testAcquireLockOverloadCreatesPythonShapedLock() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+
+        assertTrue(manager.acquireLock("src/main.py", "m1", "Alice", 600));
+
+        WorkspaceFileLock lock = manager.getLock("src/main.py");
+        assertNotNull(lock);
+        assertEquals("src/main.py", lock.getFilePath());
+        assertEquals("m1", lock.getHolderId());
+        assertEquals("Alice", lock.getHolderName());
+        assertEquals(600, lock.getTimeoutSeconds());
     }
 
     @Test
@@ -214,5 +247,36 @@ class TeamWorkspaceManagerTest {
             Files.deleteIfExists(tempDir.resolve(".team"));
             Files.deleteIfExists(tempDir);
         }
+    }
+
+    @Test
+    @DisplayName("Test mountIntoWorktree creates .team mount and gitignore entries")
+    void testMountIntoWorktreeCreatesMountAndGitignore() throws IOException {
+        Path shared = Files.createTempDirectory("shared-workspace");
+        Path worktree = Files.createTempDirectory("agent-worktree");
+        TeamWorkspaceManager manager = createManager(shared.toString(), "test-team");
+
+        manager.mountIntoWorktree(worktree.toString());
+
+        assertTrue(Files.exists(worktree.resolve(".team")));
+        String gitignore = Files.readString(worktree.resolve(".gitignore"));
+        assertTrue(gitignore.contains(".agent/"));
+        assertTrue(gitignore.contains(".team/"));
+    }
+
+    @Test
+    @DisplayName("Test version-control methods no-op when disabled")
+    void testVersionControlDisabledNoOps() throws IOException {
+        Path workspace = Files.createTempDirectory("workspace-vc-disabled");
+        TeamWorkspaceConfig config = new TeamWorkspaceConfig();
+        config.setVersionControl(false);
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(
+            config, workspace.toString(), "test-team", WorkspaceMode.DISTRIBUTED
+        );
+
+        assertFalse(manager.pull());
+        assertTrue(manager.push());
+        assertNull(manager.autoCommit("artifacts/code/a.py", "alice"));
+        assertTrue(manager.getHistory("artifacts/code/a.py").isEmpty());
     }
 }

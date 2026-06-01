@@ -50,16 +50,19 @@ public class MemUpdateChecker {
                                          Map<String, String> oldMemories,
                                          Map.Entry<String, Model> baseChatModel,
                                          int retries) {
-        // Skip checking if no old memories or no model
-        if (oldMemories == null || oldMemories.isEmpty() || baseChatModel == null) {
-            return newMemories.entrySet().stream()
+        Map<String, String> safeNewMemories = newMemories == null ? Map.of() : newMemories;
+        Map<String, String> safeOldMemories = oldMemories == null ? Map.of() : oldMemories;
+
+        // Python only short-circuits when no model is available.
+        if (baseChatModel == null) {
+            return safeNewMemories.entrySet().stream()
                     .map(e -> MemoryActionItem.builder()
                             .id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD).build())
                     .collect(Collectors.toList());
         }
 
         // Format input for prompt
-        String[] formattedInput = formatInput(newMemories, oldMemories);
+        String[] formattedInput = formatInput(safeNewMemories, safeOldMemories);
         String newInfoStr = formattedInput[0];
         String oldInfoStr = formattedInput[1];
 
@@ -72,6 +75,7 @@ public class MemUpdateChecker {
         List<Map<String, Object>> messages = List.of(Map.of("role", "user", "content", userPrompt));
         JsonOutputParser parser = new JsonOutputParser();
         List<MemCheckItem> checkResults = new ArrayList<>();
+        boolean parsedSuccessfully = false;
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
@@ -87,13 +91,14 @@ public class MemUpdateChecker {
                     List<Object> rawList = (List<Object>) parsed;
                     parsedList = rawList.stream().map(this::asMap).collect(Collectors.toList());
                 } else {
-                    continue;
+                    throw new IllegalArgumentException("parsed result must be a JSON object or array");
                 }
 
                 for (Map<String, Object> item : parsedList) {
                     MemCheckItem checkItem = parseCheckItem(item);
                     checkResults.add(checkItem);
                 }
+                parsedSuccessfully = true;
                 break;
             } catch (Exception e) {
                 if (attempt < retries - 1) {
@@ -102,64 +107,65 @@ public class MemUpdateChecker {
                 } else {
                     MEMORY_LOGGER.error("[{}] Memory check failed after retries: {}",
                             LogEventType.MEMORY_PROCESS, e.getMessage());
-                    return newMemories.entrySet().stream()
-                            .map(en -> MemoryActionItem.builder()
-                                    .id(en.getKey()).content(en.getValue()).status(MemoryStatus.ADD).build())
-                            .collect(Collectors.toList());
+                    return buildAddActions(safeNewMemories);
                 }
             }
         }
 
+        if (!parsedSuccessfully && !safeNewMemories.isEmpty()) {
+            return buildAddActions(safeNewMemories);
+        }
+
         // Map check results to action items
         List<MemoryActionItem> actionItems = new ArrayList<>();
-        Set<String> processedNewIds = new HashSet<>();
-
         for (MemCheckItem checkItem : checkResults) {
             String newId = checkItem.getInfoId();
-            processedNewIds.add(newId);
 
             if (checkItem.getResult() == CheckResult.REDUNDANT) {
                 continue;
             } else if (checkItem.getResult() == CheckResult.CONFLICTING) {
-                String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
+                String newContent = safeNewMemories.getOrDefault(newId, checkItem.getInfoText());
                 actionItems.add(MemoryActionItem.builder()
                         .id(newId).content(newContent).status(MemoryStatus.ADD).build());
                 for (Map.Entry<String, String> relEntry : checkItem.getRelatedInfos().entrySet()) {
-                    if (oldMemories.containsKey(relEntry.getKey())) {
+                    if (safeOldMemories.containsKey(relEntry.getKey())) {
                         actionItems.add(MemoryActionItem.builder()
                                 .id(relEntry.getKey()).content(relEntry.getValue())
                                 .status(MemoryStatus.DELETE).build());
                     }
                 }
             } else {
-                String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
+                String newContent = safeNewMemories.getOrDefault(newId, checkItem.getInfoText());
                 actionItems.add(MemoryActionItem.builder()
                         .id(newId).content(newContent).status(MemoryStatus.ADD).build());
-            }
-        }
-
-        // Add unprocessed new memories
-        for (Map.Entry<String, String> e : newMemories.entrySet()) {
-            if (!processedNewIds.contains(e.getKey())) {
-                actionItems.add(MemoryActionItem.builder()
-                        .id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD).build());
             }
         }
 
         return actionItems;
     }
 
-    static String[] formatInput(Map<String, String> newMemories, Map<String, String> oldMemories) {
-        return new String[]{formatMemories(newMemories), formatMemories(oldMemories)};
+    public static String[] formatInput(Map<String, String> newMemories, Map<String, String> oldMemories) {
+        return new String[]{formatMemories(newMemories, true), formatMemories(oldMemories, false)};
     }
 
-    private static String formatMemories(Map<String, String> memories) {
+    private static String formatMemories(Map<String, String> memories, boolean reverse) {
+        List<Map.Entry<String, String>> entries = new ArrayList<>(memories.entrySet());
+        if (reverse) {
+            Collections.reverse(entries);
+        }
         StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, String> e : memories.entrySet()) {
+        for (Map.Entry<String, String> e : entries) {
             if (sb.length() > 0) sb.append("\n");
             sb.append(e.getKey()).append(": ").append(e.getValue());
         }
         return sb.toString();
+    }
+
+    private static List<MemoryActionItem> buildAddActions(Map<String, String> memories) {
+        return memories.entrySet().stream()
+                .map(en -> MemoryActionItem.builder()
+                        .id(en.getKey()).content(en.getValue()).status(MemoryStatus.ADD).build())
+                .collect(Collectors.toList());
     }
 
     @SuppressWarnings("unchecked")

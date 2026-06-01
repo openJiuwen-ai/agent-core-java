@@ -49,6 +49,13 @@ public class MessageOffloaderConfig {
     private List<String> offloadMessageType = List.of("tool");
 
     /**
+     * Tool names that should never be offloaded. Entries may be exact tool
+     * names or {@code tool_name:glob_pattern} rules matched against tool args.
+     */
+    @Builder.Default
+    private List<String> protectedToolNames = List.of("reload_original_context_messages");
+
+    /**
      * Number of tokens to retain when a message is offloaded.
      */
     @Builder.Default

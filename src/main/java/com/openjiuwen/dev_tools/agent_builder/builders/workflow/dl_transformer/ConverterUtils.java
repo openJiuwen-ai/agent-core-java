@@ -7,6 +7,7 @@ package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -131,6 +132,9 @@ public final class ConverterUtils {
         if (value.getClass().isRecord()) {
             return convertRecord(value);
         }
+        if (isModelBean(value)) {
+            return convertBean(value);
+        }
         return value;
     }
 
@@ -160,5 +164,46 @@ public final class ConverterUtils {
             }
         }
         return converted;
+    }
+
+    private static boolean isModelBean(Object value) {
+        Package pkg = value.getClass().getPackage();
+        return pkg != null
+                && ConverterUtils.class.getPackageName().equals(pkg.getName())
+                && !value.getClass().isEnum();
+    }
+
+    private static Map<String, Object> convertBean(Object bean) {
+        Map<String, Object> converted = new LinkedHashMap<>();
+        for (Method method : bean.getClass().getMethods()) {
+            if (method.getParameterCount() != 0 || method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            String name = beanPropertyName(method.getName());
+            if (name == null) {
+                continue;
+            }
+            try {
+                Object value = method.invoke(bean);
+                if (value == null) {
+                    continue;
+                }
+                Object child = convertValue(value);
+                if (child != null) {
+                    converted.put(name, child);
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Keep conversion best-effort, matching Python's permissive object handling.
+            }
+        }
+        return converted;
+    }
+
+    private static String beanPropertyName(String methodName) {
+        if (!methodName.startsWith("get") || methodName.length() <= 3 || "getClass".equals(methodName)) {
+            return null;
+        }
+        String suffix = methodName.substring(3);
+        return Character.toLowerCase(suffix.charAt(0)) + suffix.substring(1);
     }
 }

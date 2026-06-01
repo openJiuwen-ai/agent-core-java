@@ -11,6 +11,9 @@ import java.util.function.Function;
 
 /**
  * Resolves which exception class to instantiate for a given {@link StatusCode}.
+ *
+ * <p>Mirrors Python's {@code build_status_exception_map} integration used by
+ * {@code openjiuwen.core.common.exception.errors}.</p>
  * <p>
  * Resolution order:
  * <ol>

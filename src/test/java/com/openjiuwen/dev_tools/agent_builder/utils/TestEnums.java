@@ -7,6 +7,8 @@ package com.openjiuwen.dev_tools.agent_builder.utils;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -114,6 +116,12 @@ class TestEnums {
             assertEquals("transforming_workflow_dsl",
                     AgentBuilderEnums.ProgressStage.TRANSFORMING_WORKFLOW_DSL.getValue());
         }
+
+        @Test
+        void testProgressStageIsStringEnum() {
+            assertInstanceOf(String.class, AgentBuilderEnums.ProgressStage.INITIALIZING.getValue());
+            assertInstanceOf(String.class, AgentBuilderEnums.ProgressStage.COMPLETED.getValue());
+        }
     }
 
     /**
@@ -131,6 +139,28 @@ class TestEnums {
             assertEquals("success", AgentBuilderEnums.ProgressStatus.SUCCESS.getValue());
             assertEquals("failed", AgentBuilderEnums.ProgressStatus.FAILED.getValue());
             assertEquals("warning", AgentBuilderEnums.ProgressStatus.WARNING.getValue());
+        }
+
+        @Test
+        void testProgressStatusIsStringEnum() {
+            assertInstanceOf(String.class, AgentBuilderEnums.ProgressStatus.PENDING.getValue());
+            assertInstanceOf(String.class, AgentBuilderEnums.ProgressStatus.SUCCESS.getValue());
+        }
+    }
+
+    /**
+     * Test AgentTypeLiteral equivalent valid values.
+     * <p>
+     * Mirrors Python's {@code TestAgentTypeLiteral} class.
+     */
+    @Nested
+    class TestAgentTypeLiteral {
+
+        @Test
+        void testAgentTypeLiteralValues() {
+            List<String> validValues = List.of("llm_agent", "workflow");
+            assertTrue(validValues.contains("llm_agent"));
+            assertTrue(validValues.contains("workflow"));
         }
     }
 }

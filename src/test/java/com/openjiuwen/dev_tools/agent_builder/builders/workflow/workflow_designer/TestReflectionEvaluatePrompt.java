@@ -97,5 +97,26 @@ class TestReflectionEvaluatePrompt {
             assertFalse(prompt.contains("{{basic_design}}"));
             assertFalse(prompt.contains("{{branch_design}}"));
         }
+
+        @Test
+        void testTemplateContainsUserQuery() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("test query", "", "");
+
+            assertTrue(prompt.contains("test query"));
+        }
+
+        @Test
+        void testTemplateContainsBasicDesign() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("", "test basic", "");
+
+            assertTrue(prompt.contains("test basic"));
+        }
+
+        @Test
+        void testTemplateContainsBranchDesign() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("", "", "test branch");
+
+            assertTrue(prompt.contains("test branch"));
+        }
     }
 }

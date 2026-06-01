@@ -9,8 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
+import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
 import java.net.URI;
@@ -28,18 +28,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
 /**
- * DashScope Multimodal Embedding Model Implementation.
+ * DashScope multimodal embedding client.
  *
- * <p>Multimodal embedding client using Alibaba DashScope API.
- * Supports text, image, and video embedding.</p>
- *
- * <p>Reference resources:</p>
- * <ul>
- *   <li>https://help.aliyun.com/zh/model-studio/multimodal-embedding-api-reference</li>
- *   <li>https://www.alibabacloud.com/help/en/model-studio/multimodal-embedding-api-reference</li>
- * </ul>
- *
- * <p>Mirrors Python's DashscopeEmbedding in openjiuwen.core.retrieval.embedding.</p>
+ * <p>Mirrors Python's {@code DashscopeEmbedding} in
+ * {@code openjiuwen.core.retrieval.embedding.dashscope_embedding}.</p>
  */
 public class DashscopeEmbedding extends APIEmbedding {
 
@@ -50,28 +42,12 @@ public class DashscopeEmbedding extends APIEmbedding {
     private final boolean matryoshkaDimension;
     private final Semaphore limiter;
     private final ExecutorService asyncExecutor;
+    private final Map<String, Object> requestParams;
 
-    /**
-     * Create DashscopeEmbedding with default settings.
-     *
-     * @param config embedding configuration
-     */
     public DashscopeEmbedding(EmbeddingConfig config) {
         this(config, 60, 3, null, 8, 50, null, null);
     }
 
-    /**
-     * Create DashscopeEmbedding with custom settings.
-     *
-     * @param config embedding configuration
-     * @param timeout request timeout in seconds
-     * @param maxRetries maximum retry count
-     * @param extraHeaders additional request headers
-     * @param maxBatchSize maximum batch size for each query
-     * @param maxConcurrent maximum number of concurrent requests
-     * @param dimension embedding dimension for Matryoshka models
-     * @param httpClient HTTP client (optional)
-     */
     public DashscopeEmbedding(EmbeddingConfig config,
                               int timeout,
                               int maxRetries,
@@ -83,8 +59,16 @@ public class DashscopeEmbedding extends APIEmbedding {
         super(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, httpClient);
         this.configuredDimension = dimension;
         this.matryoshkaDimension = dimension != null;
-        this.limiter = new Semaphore(maxConcurrent);
+        this.limiter = new Semaphore(Math.max(1, maxConcurrent));
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.requestParams = new LinkedHashMap<>();
+        this.requestParams.put("model", modelName);
+        this.requestParams.put("api_key", apiKey);
+        this.requestParams.put("base_address", apiUrl);
+        this.requestParams.put("timeout", this.timeout);
+        if (dimension != null) {
+            this.requestParams.put("dimension", dimension);
+        }
     }
 
     @Override
@@ -92,212 +76,245 @@ public class DashscopeEmbedding extends APIEmbedding {
         return configuredDimension != null ? configuredDimension : super.getDimension();
     }
 
-    /**
-     * Embed a single query text.
-     *
-     * @param text query text
-     * @param options additional options
-     * @return embedding vector
-     */
+    public Map<String, Object> getRequestParams() {
+        return new LinkedHashMap<>(requestParams);
+    }
+
     @Override
     public List<Float> embedQuery(String text, Map<String, Object> options) {
         List<List<Float>> embeddings = embedDocuments(List.of(text), 1, withDimensions(options));
-        return embeddings.isEmpty() ? new ArrayList<>() : embeddings.get(0);
+        return embeddings.getFirst();
     }
 
-    /**
-     * Embed multiple documents.
-     *
-     * @param texts document texts
-     * @param batchSize batch size (optional)
-     * @param options additional options
-     * @return list of embedding vectors
-     */
     @Override
     public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize, Map<String, Object> options) {
-        List<String> nonEmpty = validateEmbedDocs(texts, options);
-
-        int bsz = batchSize != null ? batchSize : (maxBatchSize > 0 ? maxBatchSize : 1);
+        List<Object> nonEmpty = validateEmbedDocs(texts);
+        int effectiveBatchSize = batchSize != null ? batchSize : (maxBatchSize > 0 ? maxBatchSize : 1);
         if (maxBatchSize > 0) {
-            bsz = Math.min(bsz, maxBatchSize);
+            effectiveBatchSize = Math.min(effectiveBatchSize, maxBatchSize);
         }
 
         List<List<Float>> results = new ArrayList<>();
-        for (int i = 0; i < nonEmpty.size(); i += bsz) {
-            int j = Math.min(i + bsz, nonEmpty.size());
-            List<String> batch = nonEmpty.subList(i, j);
-            List<List<Float>> batchEmbeddings = getEmbeddingsSync(batch, options);
-            results.addAll(batchEmbeddings);
+        for (int i = 0; i < nonEmpty.size(); i += effectiveBatchSize) {
+            int end = Math.min(i + effectiveBatchSize, nonEmpty.size());
+            List<Object> batch = new ArrayList<>(nonEmpty.subList(i, end));
+            results.addAll(getEmbeddingsSync(batch, options));
         }
-
         return results;
     }
 
-    /**
-     * Async embed a single query.
-     *
-     * @param text query text
-     * @param options additional options
-     * @return CompletableFuture with embedding vector
-     */
+    public List<List<Float>> embedDocumentsSync(List<String> texts, Integer batchSize, Map<String, Object> options) {
+        return embedDocuments(texts, batchSize, options);
+    }
+
+    public List<Float> embedMultimodal(Object input, Map<String, Object> options) {
+        if (!(input instanceof MultimodalDocument document)) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "input provided for multimodal embedding is not a MultimodalDocument");
+        }
+        List<List<Float>> embeddings = getEmbeddingsSync(List.of(document.getDashscopeInput()), options);
+        return embeddings.getFirst();
+    }
+
+    public List<Float> embedMultimodal(MultimodalDocument document, Map<String, Object> options) {
+        return embedMultimodal((Object) document, options);
+    }
+
+    public List<Float> embedMultimodalSync(Object input, Map<String, Object> options) {
+        return embedMultimodal(input, options);
+    }
+
+    public List<Float> embedMultimodalSync(MultimodalDocument document, Map<String, Object> options) {
+        return embedMultimodal((Object) document, options);
+    }
+
     public CompletableFuture<List<Float>> embedQueryAsync(String text, Map<String, Object> options) {
         return CompletableFuture.supplyAsync(() -> embedQuery(text, options), asyncExecutor);
     }
 
-    /**
-     * Async embed multiple documents.
-     *
-     * @param texts document texts
-     * @param batchSize batch size
-     * @param options additional options
-     * @return CompletableFuture with list of embedding vectors
-     */
-    public CompletableFuture<List<List<Float>>> embedDocumentsAsync(List<String> texts, Integer batchSize, Map<String, Object> options) {
+    public CompletableFuture<List<List<Float>>> embedDocumentsAsync(List<String> texts,
+                                                                    Integer batchSize,
+                                                                    Map<String, Object> options) {
         return CompletableFuture.supplyAsync(() -> embedDocuments(texts, batchSize, options), asyncExecutor);
     }
 
-    /**
-     * Get embeddings synchronously for a batch.
-     *
-     * @param texts batch of texts
-     * @param options additional options
-     * @return list of embedding vectors
-     */
-    private List<List<Float>> getEmbeddingsSync(List<String> texts, Map<String, Object> options) {
-        Map<String, Object> requestParams = buildRequestParams(texts, options);
+    public CompletableFuture<List<Float>> embedMultimodalAsync(MultimodalDocument document,
+                                                               Map<String, Object> options) {
+        return CompletableFuture.supplyAsync(() -> embedMultimodalSync(document, options), asyncExecutor);
+    }
+
+    protected List<List<Float>> getEmbeddingsSync(List<?> texts, Map<String, Object> options) {
+        Map<String, Object> params = buildRequestParams(texts, options);
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                String requestBody = MAPPER.writeValueAsString(requestParams);
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(apiUrl + "/services/embeddings/text-embedding/text-embedding"))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + apiKey)
-                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                        .timeout(Duration.ofSeconds(timeout))
-                        .build();
-
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-                if (response.statusCode() == 200) {
-                    return parseDashscopeEmbeddings(MAPPER.readTree(response.body()));
+                limiter.acquire();
+                try {
+                    String body = MAPPER.writeValueAsString(params);
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(apiUrl + "/services/embeddings/text-embedding/text-embedding"))
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", "Bearer " + apiKey)
+                            .POST(HttpRequest.BodyPublishers.ofString(body))
+                            .timeout(Duration.ofSeconds(timeout))
+                            .build();
+                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                    if (response.statusCode() == 200) {
+                        return parseDashscopeEmbeddings(MAPPER.readTree(response.body()));
+                    }
+                    LOGGER.warning("DashscopeEmbedding request failed (attempt " + (attempt + 1)
+                            + "/" + maxRetries + "): HTTP " + response.statusCode());
+                    if (attempt >= maxRetries - 1) {
+                        throw RetrievalExceptions.error(
+                                StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                                "Failed to get embedding after " + maxRetries + " attempts: HTTP "
+                                        + response.statusCode());
+                    }
+                } finally {
+                    limiter.release();
                 }
-
-                LOGGER.warning("DashscopeEmbedding request failed (attempt " + (attempt + 1) + "/" + maxRetries + "): HTTP " + response.statusCode());
-
             } catch (Exception e) {
-                LOGGER.warning("DashscopeEmbedding request error (attempt " + (attempt + 1) + "/" + maxRetries + "): " + e.getMessage());
+                LOGGER.warning("DashscopeEmbedding request error (attempt " + (attempt + 1)
+                        + "/" + maxRetries + "): " + e.getMessage());
                 if (attempt >= maxRetries - 1) {
-                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED, "Failed after " + maxRetries + " attempts: " + e.getMessage());
+                    throw RetrievalExceptions.error(
+                            StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                            "Failed after " + maxRetries + " attempts: " + e.getMessage());
                 }
             }
         }
-
-        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED, "Failed to get embeddings after retries");
+        throw RetrievalExceptions.error(
+                StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
+                "Unreachable code in DashscopeEmbedding.getEmbeddingsSync");
     }
 
-    /**
-     * Build request parameters for DashScope API.
-     *
-     * @param texts input texts
-     * @param options additional options
-     * @return request parameters map
-     */
-    private Map<String, Object> buildRequestParams(List<String> texts, Map<String, Object> options) {
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("model", modelName);
-
-        List<Map<String, Object>> inputList = new ArrayList<>();
-        for (int i = 0; i < texts.size(); i++) {
-            Map<String, Object> inputItem = new LinkedHashMap<>();
-            inputItem.put("text", texts.get(i));
-            inputList.add(inputItem);
-        }
-        params.put("input", inputList);
-
-        if (configuredDimension != null) {
-            params.put("dimension", configuredDimension);
-        }
-
-        // Merge additional options
+    protected Map<String, Object> buildRequestParams(List<?> texts, Map<String, Object> options) {
+        Map<String, Object> params = new LinkedHashMap<>(requestParams);
+        params.put("input", normalizeInputs(texts));
         if (options != null) {
-            params.putAll(options);
+            Map<String, Object> extra = new LinkedHashMap<>(options);
+            extra.remove("callback");
+            extra.remove("callback_cls");
+            params.putAll(extra);
         }
-
         return params;
     }
 
-    /**
-     * Parse DashScope API embeddings response.
-     *
-     * @param root JSON response root
-     * @return list of embedding vectors
-     */
-    private List<List<Float>> parseDashscopeEmbeddings(JsonNode root) {
+    protected List<List<Float>> parseDashscopeEmbeddings(JsonNode root) {
         if (root == null || !root.has("output")) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "No output in DashScope response");
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "No output in DashScope response");
+        }
+        JsonNode embeddingItems = root.path("output").path("embeddings");
+        if (!embeddingItems.isArray()) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "No embeddings in DashScope output");
         }
 
-        JsonNode output = root.get("output");
-        if (!output.has("embeddings")) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "No embeddings in DashScope output");
-        }
+        List<JsonNode> sortedItems = new ArrayList<>();
+        embeddingItems.forEach(sortedItems::add);
+        sortedItems.sort((left, right) -> Integer.compare(left.path("index").asInt(0), right.path("index").asInt(0)));
 
         List<List<Float>> embeddings = new ArrayList<>();
-        for (JsonNode item : output.get("embeddings")) {
-            JsonNode embeddingNode = item.get("embedding");
-            if (embeddingNode != null && embeddingNode.isArray()) {
-                List<Float> embedding = new ArrayList<>();
-                for (JsonNode value : embeddingNode) {
-                    embedding.add(value.floatValue());
-                }
-                embeddings.add(embedding);
+        for (JsonNode item : sortedItems) {
+            JsonNode embeddingNode = item.path("embedding");
+            if (!embeddingNode.isArray()) {
+                continue;
             }
+            List<Float> embedding = new ArrayList<>();
+            for (JsonNode value : embeddingNode) {
+                embedding.add(value.floatValue());
+            }
+            embeddings.add(embedding);
         }
-
+        if (embeddings.isEmpty()) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "The embeddings field in response is empty: " + root);
+        }
+        cacheDimensionFrom(embeddings);
         return embeddings;
     }
 
-    /**
-     * Validate and filter non-empty documents.
-     *
-     * @param texts input texts
-     * @param options additional options
-     * @return filtered list of non-empty texts
-     */
-    private List<String> validateEmbedDocs(List<String> texts, Map<String, Object> options) {
-        List<String> nonEmpty = new ArrayList<>();
-        for (String text : texts) {
-            if (text != null && !text.trim().isEmpty()) {
-                nonEmpty.add(text);
+    private List<Object> validateEmbedDocs(List<?> texts) {
+        if (texts == null || texts.isEmpty()) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "Empty texts list provided");
+        }
+        List<Object> nonEmpty = new ArrayList<>();
+        int emptyCount = 0;
+        for (Object value : texts) {
+            if (value == null) {
+                emptyCount++;
+            } else if (value instanceof String text) {
+                if (text.isBlank()) {
+                    emptyCount++;
+                } else {
+                    nonEmpty.add(text);
+                }
+            } else if (value instanceof MultimodalDocument document) {
+                if (document.getContent().isEmpty()) {
+                    emptyCount++;
+                } else {
+                    nonEmpty.add(document);
+                }
+            } else {
+                nonEmpty.add(value);
             }
         }
+        if (emptyCount > 0) {
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    emptyCount + " chunks are empty while embedding");
+        }
         if (nonEmpty.isEmpty()) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, "All texts are empty");
+            throw RetrievalExceptions.error(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "All texts are empty after filtering");
         }
         return nonEmpty;
     }
 
-    /**
-     * Add dimension to options if configured.
-     *
-     * @param options original options
-     * @return options with dimension
-     */
     private Map<String, Object> withDimensions(Map<String, Object> options) {
         if (configuredDimension == null) {
             return options;
         }
-        Map<String, Object> newOptions = options != null ? new LinkedHashMap<>(options) : new LinkedHashMap<>();
-        newOptions.put("dimension", configuredDimension);
-        return newOptions;
+        Map<String, Object> result = options == null ? new LinkedHashMap<>() : new LinkedHashMap<>(options);
+        result.put("dimension", configuredDimension);
+        return result;
     }
 
-    /**
-     * Check if Matryoshka dimension is configured.
-     *
-     * @return true if Matryoshka dimension is configured
-     */
+    private static List<Object> normalizeInputs(List<?> texts) {
+        List<Object> inputList = new ArrayList<>();
+        for (Object value : texts) {
+            if (value instanceof MultimodalDocument document) {
+                inputList.add(document.getDashscopeInput());
+            } else {
+                inputList.add(value);
+            }
+        }
+        return inputList;
+    }
+
+    private void cacheDimensionFrom(List<List<Float>> embeddings) {
+        if (configuredDimension != null || embeddings.isEmpty() || embeddings.getFirst().isEmpty()) {
+            return;
+        }
+        try {
+            java.lang.reflect.Field field = APIEmbedding.class.getDeclaredField("dimension");
+            field.setAccessible(true);
+            if (field.get(this) == null) {
+                field.set(this, embeddings.getFirst().size());
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // The dimension cache is an optimization; parsing remains correct without it.
+        }
+    }
+
     public boolean isMatryoshkaDimension() {
         return matryoshkaDimension;
     }

@@ -14,8 +14,10 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.workspace.Workspace;
 
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,6 +36,8 @@ import java.lang.reflect.Field;
  * single-agent runtime.
  */
 public class DeepAgent extends BaseAgent {
+
+    private static final String SESSION_STATE_KEY = "deepagent";
 
     private DeepAgentConfig config;
     private ReActAgent delegate;
@@ -54,6 +58,9 @@ public class DeepAgent extends BaseAgent {
         this.config = deepAgentConfig;
         this.delegate = new ReActAgent(deepAgentConfig.getCard() != null ? deepAgentConfig.getCard() : getCard());
         this.delegate.configure(toReActConfig(deepAgentConfig));
+        if (deepAgentConfig.getModel() != null) {
+            this.delegate.setLlm(deepAgentConfig.getModel());
+        }
         if (deepAgentConfig.getTools() != null && !deepAgentConfig.getTools().isEmpty()) {
             this.delegate.getAbilityManager().add(deepAgentConfig.getTools());
         }
@@ -307,5 +314,104 @@ public class DeepAgent extends BaseAgent {
      */
     public void setPlanSlug(String slug) {
         this.planSlug = slug;
+    }
+
+    /**
+     * Load session-scoped DeepAgent state.
+     */
+    @SuppressWarnings("unchecked")
+    public DeepAgentState loadState(Session session) {
+        if (session == null) {
+            DeepAgentState state = new DeepAgentState();
+            state.getPlanMode().setMode(currentMode);
+            state.getPlanMode().setPlanSlug(planSlug);
+            return state;
+        }
+        Object raw = session.getState(SESSION_STATE_KEY);
+        if (raw instanceof DeepAgentState state) {
+            return state;
+        }
+        if (raw instanceof Map<?, ?> rawMap) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                if (entry.getKey() != null) {
+                    data.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            return DeepAgentState.fromSessionMap(data);
+        }
+        return new DeepAgentState();
+    }
+
+    /**
+     * Persist session-scoped DeepAgent state.
+     */
+    public void saveState(Session session, DeepAgentState state) {
+        if (session == null || state == null) {
+            return;
+        }
+        session.updateState(Map.of(SESSION_STATE_KEY, state.toSessionMap()));
+        currentMode = state.getPlanMode().getMode();
+        planSlug = state.getPlanMode().getPlanSlug();
+    }
+
+    public void clearState(Session session) {
+        clearState(session, false);
+    }
+
+    public void clearState(Session session, boolean clearPersisted) {
+        if (session == null || !clearPersisted) {
+            return;
+        }
+        Map<String, Object> update = new LinkedHashMap<>();
+        update.put(SESSION_STATE_KEY, null);
+        session.updateState(update);
+    }
+
+    /**
+     * Switch agent mode for the current session.
+     */
+    public void switchMode(Session session, String mode) {
+        DeepAgentState state = loadState(session);
+        String target = mode != null && !mode.isBlank() ? mode : "normal";
+        String previous = state.getPlanMode().getMode();
+        state.getPlanMode().setPrePlanMode(previous);
+        state.getPlanMode().setMode(target);
+        saveState(session, state);
+    }
+
+    /**
+     * Restore the mode active before plan mode.
+     */
+    public void restoreModeAfterPlanExit(Session session) {
+        DeepAgentState state = loadState(session);
+        String previous = state.getPlanMode().getPrePlanMode();
+        state.getPlanMode().setMode(previous != null && !previous.isBlank() ? previous : "normal");
+        state.getPlanMode().setPrePlanMode(null);
+        saveState(session, state);
+    }
+
+    /**
+     * Resolve the current plan file path from session state.
+     */
+    public Path getPlanFilePath(Session session) {
+        DeepAgentState state = loadState(session);
+        String slug = state.getPlanMode().getPlanSlug();
+        if (slug == null || slug.isBlank() || config == null || config.getWorkspace() == null) {
+            return null;
+        }
+        return com.openjiuwen.harness.tools.agent_control.AgentModeTools.resolvePlanFilePath(
+                config.getWorkspace().getRootPath(),
+                slug
+        );
+    }
+
+    /**
+     * Publish steering text to a running task loop. The current Java task-loop
+     * port does not expose an event queue yet, so this method preserves the
+     * public API as a no-op until that runtime is available.
+     */
+    public void steer(String msg, Session session) {
+        // No-op compatibility surface for Python's async DeepAgent.steer().
     }
 }

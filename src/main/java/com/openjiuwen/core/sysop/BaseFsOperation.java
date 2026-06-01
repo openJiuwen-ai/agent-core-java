@@ -24,12 +24,40 @@ public abstract class BaseFsOperation extends BaseOperation {
 
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of(
+        List<ToolCard> toolCards = generateToolCards(List.of(
                 "readFile", "readFileStream", "writeFile",
                 "uploadFile", "uploadFileStream",
                 "downloadFile", "downloadFileStream",
                 "listFiles", "listDirectories", "searchFiles"
         ));
+        for (ToolCard toolCard : toolCards) {
+            Map<String, Object> inputParams = toolCard.getInputParams();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) inputParams.get("properties");
+            switch (toolCard.getName()) {
+                case "writeFile" -> {
+                    inputParams.put("required", List.of("path", "content"));
+                    if (properties != null && properties.get("content") instanceof Map<?, ?> rawContentSchema) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> contentSchema = (Map<String, Object>) rawContentSchema;
+                        contentSchema.remove("type");
+                        contentSchema.put("anyOf", List.of(
+                                Map.of("type", "string"),
+                                Map.of("type", "string", "format", "binary")));
+                    }
+                }
+                case "uploadFile", "uploadFileStream" -> inputParams.put("required", List.of("localPath", "targetPath"));
+                case "downloadFile", "downloadFileStream" -> inputParams.put("required", List.of("sourcePath", "localPath"));
+                case "searchFiles" -> inputParams.put("required", List.of("path", "pattern"));
+                default -> inputParams.put("required", List.of("path"));
+            }
+            if (properties != null && properties.get("mode") instanceof Map<?, ?> rawModeSchema) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> modeSchema = (Map<String, Object>) rawModeSchema;
+                modeSchema.put("enum", List.of("text", "bytes"));
+            }
+        }
+        return toolCards;
     }
 
     /**

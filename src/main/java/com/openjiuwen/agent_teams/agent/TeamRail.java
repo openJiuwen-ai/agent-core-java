@@ -827,4 +827,8 @@ public class TeamRail extends DeepAgentRail {
     public SystemPromptBuilder getSystemPromptBuilder() {
         return systemPromptBuilder;
     }
+
+    public List<PromptSection> getStaticSections() {
+        return new ArrayList<>(staticSections);
+    }
 }

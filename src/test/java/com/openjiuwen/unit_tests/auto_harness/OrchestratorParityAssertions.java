@@ -21,6 +21,7 @@ import com.openjiuwen.auto_harness.schema.TaskPlanArtifact;
 import com.openjiuwen.auto_harness.schema.TaskStatus;
 import com.openjiuwen.core.session.stream.OutputSchema;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -321,6 +323,19 @@ public final class OrchestratorParityAssertions {
         AutoHarnessOrchestrator orch = orchestrator(dir);
 
         assertTrue(orch.getTaskContexts().isEmpty());
+    }
+
+    public static void testWriteDebugArtifactPersistsContentAndRaisesOnFailure() throws Exception {
+        Path dir = Files.createTempDirectory("ah-orchestrator-debug");
+
+        String written = AutoHarnessOrchestrator.writeDebugArtifact(
+                dir.toString(), "nested/output.txt", "debug payload");
+
+        assertEquals("debug payload", Files.readString(Path.of(written)));
+
+        Path fileInsteadOfDirectory = Files.createTempFile("ah-orchestrator-debug", ".txt");
+        assertThrows(UncheckedIOException.class, () -> AutoHarnessOrchestrator.writeDebugArtifact(
+                fileInsteadOfDirectory.toString(), "child.txt", "should fail"));
     }
 
     private static AutoHarnessOrchestrator orchestrator(Path dir) {

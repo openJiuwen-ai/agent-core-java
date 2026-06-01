@@ -76,5 +76,24 @@ public class Relation extends NamedGraphObject {
     public void setFactIds(List<String> factIds) { this.factIds = factIds; }
 
     @Override
-    public String getObjType() { return "relation"; }
+    public String getObjType() {
+        return relationType == null || relationType.isBlank() ? "relation" : relationType;
+    }
+
+    public Relation updateConnectedEntities(Entity lhs, Entity rhs) {
+        setLhs(lhs);
+        setRhs(rhs);
+        addRelationReference(lhs);
+        addRelationReference(rhs);
+        return this;
+    }
+
+    private void addRelationReference(Entity entity) {
+        if (entity == null || getUuid() == null) {
+            return;
+        }
+        if (!entity.getRelations().contains(getUuid())) {
+            entity.getRelations().add(getUuid());
+        }
+    }
 }

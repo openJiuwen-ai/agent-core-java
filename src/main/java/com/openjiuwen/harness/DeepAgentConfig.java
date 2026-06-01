@@ -7,6 +7,7 @@ package com.openjiuwen.harness;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -30,6 +31,7 @@ import java.util.Map;
 public class DeepAgentConfig {
 
     private AgentCard card;
+    private Model model;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelRequestConfig;
     private String systemPrompt = "";
@@ -49,6 +51,14 @@ public class DeepAgentConfig {
 
     public void setCard(AgentCard card) {
         this.card = card;
+    }
+
+    public Model getModel() {
+        return model;
+    }
+
+    public void setModel(Model model) {
+        this.model = model;
     }
 
     public ModelClientConfig getModelClientConfig() {

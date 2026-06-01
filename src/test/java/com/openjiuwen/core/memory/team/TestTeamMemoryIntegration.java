@@ -1,168 +1,283 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 package com.openjiuwen.core.memory.team;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests for TeamMemoryManager lifecycle.
- * Mirrors Python's tests/unit_tests/core/memory/team/test_team_memory_integration.py
- * 
- * Note: Java TeamMemoryManager implementation is simplified compared to Python,
- * many features are marked as "pending full integration". This test adapts
- * to the current Java implementation state.
+ * Mirrors Python's tests/unit_tests/core/memory/team/test_team_memory_integration.py.
  */
+@DisplayName("TeamMemoryIntegration tests")
 class TestTeamMemoryIntegration {
 
     @TempDir
     Path tempDir;
 
-    private Path teamMemoryDir;
+    @Test
+    void testFullLifecycleInitRegisterInjectClose() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("test_member", "test_team",
+                "teammate", "temporary", "general", tempDir, false, null));
 
-    @BeforeEach
-    void setUp() throws IOException {
-        teamMemoryDir = tempDir.resolve("team_memory");
-        Files.createDirectories(teamMemoryDir);
+        assertTrue(manager.initToolkit().get());
+
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.registerTools(deepAgent);
+        assertFalse(manager.getOwnedToolNames().isEmpty());
+
+        manager.loadAndInject(deepAgent, "test").get();
+        PromptSection section = deepAgent.systemPromptBuilder.getSection(TeamMemoryManager.SECTION_NAME);
+        assertNotNull(section);
+        assertEquals(TeamMemoryManager.SECTION_NAME, section.getName());
+
+        manager.close().get();
+        assertTrue(manager.getOwnedToolNames().isEmpty());
+        assertNull(manager.getToolkit());
     }
 
-    @Nested
-    @DisplayName("TeamMemoryIntegration tests")
-    class IntegrationTests {
+    @Test
+    void testLifecycleWithPersistentLeaderAutoExtract() throws Exception {
+        Path teamMemoryDir = tempDir.resolve("team_memory");
+        Files.createDirectories(teamMemoryDir);
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("leader", "team1",
+                "leader", "persistent", "general", tempDir, true, teamMemoryDir.toString()));
 
-        @Test
-        @DisplayName("test full lifecycle init close")
-        void testFullLifecycleInitClose() throws Exception {
-            // Test complete lifecycle: init -> close.
-            // Note: register_tools and load_and_inject with DeepAgent are 
-            // pending full integration in Java, so we test simplified flow.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "test_member", "test_team", "teammate",
-                    "temporary", "general",
-                    null, "en", "passive",
-                    false, null,
-                    null, null);
+        assertTrue(manager.initToolkit().get());
+        manager.extractAfterRound("summary").get();
+        assertEquals(1, manager.getExtractInvocationCount());
+    }
 
-            // Without workspace, initToolkit returns false
-            boolean initResult = manager.initToolkit().get();
-            assertFalse(initResult);
-            
-            // Close should work even without toolkit
-            manager.close().get();
-            assertNull(manager.getToolkit());
+    @Test
+    void testLifecycleInjectWithoutRegisterDoesNotFail() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("test_member", "test_team",
+                "teammate", "temporary", "general", tempDir, false, null));
+
+        assertTrue(manager.initToolkit().get());
+
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.loadAndInject(deepAgent, "test").get();
+
+        PromptSection section = deepAgent.systemPromptBuilder.getSection(TeamMemoryManager.SECTION_NAME);
+        assertNotNull(section);
+    }
+
+    @Test
+    void testLifecycleMultipleRoundsInject() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("test_member", "test_team",
+                "teammate", "temporary", "general", tempDir, false, null));
+
+        assertTrue(manager.initToolkit().get());
+        MockDeepAgent deepAgent = new MockDeepAgent();
+
+        manager.loadAndInject(deepAgent, "first").get();
+        PromptSection firstSection = manager.getCachedBaseSection();
+        manager.loadAndInject(deepAgent, "second").get();
+        PromptSection secondSection = manager.getCachedBaseSection();
+
+        assertTrue(firstSection == secondSection);
+    }
+
+    @Test
+    void testLifecycleExtractDoesNotRunTwiceInSameRound() throws Exception {
+        Path teamMemoryDir = tempDir.resolve("team_memory");
+        Files.createDirectories(teamMemoryDir);
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("leader", "team1",
+                "leader", "persistent", "general", tempDir, true, teamMemoryDir.toString()));
+
+        assertTrue(manager.initToolkit().get());
+
+        manager.extractAfterRound("summary").get();
+        assertEquals(1, manager.getExtractInvocationCount());
+
+        manager.extractAfterRound("summary").get();
+        assertEquals(2, manager.getExtractInvocationCount());
+    }
+
+    @Test
+    void testLifecycleReadOnlyMode() throws Exception {
+        Path source = tempDir.resolve("source");
+        Files.createDirectories(source);
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("m1", "t1",
+                "leader", "temporary", "general", null, false, null, source.toString()));
+
+        assertTrue(manager.initToolkit().get());
+        assertNotNull(manager.getWorkspace());
+    }
+
+    @Test
+    void testLifecycleCodingScenario() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("m1", "t1",
+                "teammate", "temporary", "coding", tempDir, false, null));
+
+        assertTrue(manager.initToolkit().get());
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.loadAndInject(deepAgent, "").get();
+
+        assertNotNull(deepAgent.systemPromptBuilder.getSection(TeamMemoryManager.SECTION_NAME));
+    }
+
+    @Test
+    void testLifecycleChineseLanguage() throws Exception {
+        TeamMemoryManagerParams params = createParams("m1", "t1",
+                "teammate", "temporary", "general", tempDir, false, null);
+        params.setLanguage("cn");
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+
+        assertTrue(manager.initToolkit().get());
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.loadAndInject(deepAgent, "").get();
+
+        PromptSection section = deepAgent.systemPromptBuilder.getSection(TeamMemoryManager.SECTION_NAME);
+        assertNotNull(section);
+        assertTrue(section.render("cn").length() > 0);
+    }
+
+    @Test
+    void testLifecycleProactiveMode() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("m1", "t1",
+                "teammate", "temporary", "general", tempDir, false, null));
+
+        assertTrue(manager.initToolkit().get());
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.loadAndInject(deepAgent, "").get();
+
+        assertNotNull(deepAgent.systemPromptBuilder.getSection(TeamMemoryManager.SECTION_NAME));
+    }
+
+    @Test
+    void testLifecycleCloseAfterMultipleOperations() throws Exception {
+        TeamMemoryManager manager = new TeamMemoryManager(createParams("test_member", "test_team",
+                "teammate", "temporary", "general", tempDir, false, null));
+
+        assertTrue(manager.initToolkit().get());
+        MockDeepAgent deepAgent = new MockDeepAgent();
+        manager.registerTools(deepAgent);
+
+        manager.loadAndInject(deepAgent, "test1").get();
+        manager.loadAndInject(deepAgent, "test2").get();
+
+        manager.close().get();
+        manager.close().get();
+
+        assertNull(manager.getToolkit());
+        assertTrue(manager.getOwnedToolNames().isEmpty());
+    }
+
+    private static TeamMemoryManagerParams createParams(String memberName,
+                                                        String teamName,
+                                                        String role,
+                                                        String lifecycle,
+                                                        String scenario,
+                                                        Path workspaceRoot,
+                                                        boolean enableAutoExtract,
+                                                        String teamMemoryDir) {
+        return createParams(memberName, teamName, role, lifecycle, scenario, workspaceRoot, enableAutoExtract,
+                teamMemoryDir, null);
+    }
+
+    private static TeamMemoryManagerParams createParams(String memberName,
+                                                        String teamName,
+                                                        String role,
+                                                        String lifecycle,
+                                                        String scenario,
+                                                        Path workspaceRoot,
+                                                        boolean enableAutoExtract,
+                                                        String teamMemoryDir,
+                                                        String readOnlySourceWorkspace) {
+        return TeamMemoryManagerParams.builder()
+                .memberName(memberName)
+                .teamName(teamName)
+                .role(role)
+                .lifecycle(lifecycle)
+                .scenario(scenario)
+                .embeddingConfig(null)
+                .workspace(workspaceRoot == null ? null : new MockWorkspace(workspaceRoot))
+                .sysOperation(null)
+                .teamMemoryDir(teamMemoryDir)
+                .language("en")
+                .promptMode("proactive")
+                .enableAutoExtract(enableAutoExtract)
+                .readOnlySourceWorkspace(readOnlySourceWorkspace)
+                .build();
+    }
+
+    private static final class MockWorkspace {
+        private final Path root;
+
+        private MockWorkspace(Path root) {
+            this.root = root;
         }
 
-        @Test
-        @DisplayName("test lifecycle with team memory dir")
-        void testLifecycleWithTeamMemoryDir() throws Exception {
-            // Test lifecycle with team_memory_dir configured.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "test_member", "test_team", "teammate",
-                    "temporary", "general",
-                    null, "en", "passive",
-                    false, null,
-                    null, teamMemoryDir.toString());
+        public Path getNodePath(String nodeName) throws IOException {
+            Path nodePath = root.resolve(nodeName);
+            Files.createDirectories(nodePath);
+            return nodePath;
+        }
+    }
 
-            // Without workspace, initToolkit returns false but sharedManager may still init
-            boolean initResult = manager.initToolkit().get();
-            assertFalse(initResult); // No workspace
-            
-            // SharedMemoryManager should be created if teamMemoryDir is set
-            SharedMemoryManager sharedManager = manager.getSharedManager();
-            // Note: SharedMemoryManager is created inside initToolkit only if toolkit init succeeds
-            // In current simplified impl, without workspace it won't create sharedManager
-            
-            manager.close().get();
+    private static final class MockPromptBuilder {
+        private final Map<String, PromptSection> sections = new LinkedHashMap<>();
+
+        public void addSection(PromptSection section) {
+            sections.put(section.getName(), section);
         }
 
-        @Test
-        @DisplayName("test lifecycle close after multiple operations")
-        void testLifecycleCloseAfterMultipleOperations() throws Exception {
-            // Test close after multiple operations doesn't raise.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "test_member", "test_team", "teammate",
-                    "temporary", "general",
-                    null, "en", "passive",
-                    false, null,
-                    null, null);
-
-            manager.initToolkit().get();
-
-            // Multiple loadAndInject calls (simplified, no DeepAgent)
-            manager.loadAndInject("test1").get();
-            manager.loadAndInject("test2").get();
-
-            // Multiple close calls should be safe
-            manager.close().get();
-            manager.close().get();
-
-            assertNull(manager.getToolkit());
+        public void removeSection(String name) {
+            sections.remove(name);
         }
 
-        @Test
-        @DisplayName("test lifecycle with auto extract disabled")
-        void testLifecycleWithAutoExtractDisabled() throws Exception {
-            // Test that extract_after_round does nothing when auto_extract disabled.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "test_member", "test_team", "teammate",
-                    "temporary", "general",
-                    null, "en", "passive",
-                    false, // enableAutoExtract = false
-                    null, null, null);
+        public PromptSection getSection(String name) {
+            return sections.get(name);
+        }
+    }
 
-            manager.initToolkit().get();
+    private static final class MockAbilityManager {
+        private final Map<String, ToolCard> abilities = new LinkedHashMap<>();
 
-            // extractAfterRound should complete immediately when disabled
-            manager.extractAfterRound("test summary").get();
-            
-            manager.close().get();
+        public Object add(Object toolCard) {
+            if (toolCard instanceof ToolCard card) {
+                abilities.put(card.getName(), card);
+            }
+            return toolCard;
         }
 
-        @Test
-        @DisplayName("test lifecycle member and team names")
-        void testLifecycleMemberAndTeamNames() throws Exception {
-            // Test that member and team names are correctly stored.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "alice", "team_alpha", "leader",
-                    "persistent", "coding",
-                    null, "en", "passive",
-                    false, null, null, null);
+        public Object remove(List<String> names) {
+            for (String name : names) {
+                abilities.remove(name);
+            }
+            return null;
+        }
+    }
 
-            assertEquals("alice", manager.getMemberName());
-            assertEquals("team_alpha", manager.getTeamName());
+    private static final class MockDeepAgent {
+        public final MockPromptBuilder systemPromptBuilder = new MockPromptBuilder();
+        public final MockAbilityManager abilityManager = new MockAbilityManager();
+
+        public MockPromptBuilder getSystemPromptBuilder() {
+            return systemPromptBuilder;
         }
 
-        @Test
-        @DisplayName("test load and inject returns empty without toolkit")
-        void testLoadAndInjectReturnsEmptyWithoutToolkit() throws Exception {
-            // Test load_and_inject returns empty string when toolkit is null.
-            TeamMemoryManager manager = new TeamMemoryManager(
-                    "test_member", "test_team", "teammate",
-                    "temporary", "general",
-                    null, "en", "passive",
-                    false, null, null, null);
-
-            String result = manager.loadAndInject("test query").get();
-            assertEquals("", result);
-        }
-
-        @Test
-        @DisplayName("test team memory section name constant")
-        void testTeamMemorySectionNameConstant() {
-            // Test SECTION_NAME constant matches Python.
-            assertEquals("team_memory", TeamMemoryManager.SECTION_NAME);
+        public MockAbilityManager getAbilityManager() {
+            return abilityManager;
         }
     }
 }

@@ -10,6 +10,7 @@ import com.openjiuwen.dev_tools.agent_builder.builders.BaseAgentBuilder;
 import com.openjiuwen.dev_tools.agent_builder.executor.AgentBuildExecutor;
 import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
 import com.openjiuwen.dev_tools.agent_builder.utils.AgentBuilderEnums;
+import com.openjiuwen.dev_tools.agent_builder.utils.ProgressReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,11 +112,17 @@ public class AgentBuilder {
                     response.put("dsl", dsl);
                     response.put("status", "completed");
                 } catch (Exception e) {
-                    response.put("response", resultData);
-                    response.put("status", "clarifying");
+                    if ("workflow".equals(agentType)
+                            && (resultStr.contains("graph") || resultStr.contains("flowchart"))) {
+                        response.put("mermaid_code", resultData);
+                        response.put("status", "processing");
+                    } else {
+                        response.put("response", resultData);
+                        response.put("status", "llm_agent".equals(agentType) ? "clarifying" : "requesting");
+                    }
                 }
-            } else if (resultData instanceof Map) {
-                response.put("dsl", resultData);
+            } else if (resultData instanceof Map<?, ?> resultMap) {
+                resultMap.forEach((key, value) -> response.put(String.valueOf(key), value));
                 response.put("status", "completed");
             }
             response.putAll(result);
@@ -199,7 +206,7 @@ public class AgentBuilder {
     }
 
     public static Map<String, Object> getProgress(String sessionId) {
-        return null;
+        return ProgressReporter.getProgress(sessionId);
     }
 
     /**

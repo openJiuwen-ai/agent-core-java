@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for Workflow.
  * <p>
- * Mirrors Python's {@code test_workflow} in
- * {@code tests.unit_tests.core.workflow}.
+ * Mirrors Python's package marker in
+ * {@code tests/unit_tests/core/workflow/__init__.py}.
  * </p>
  */
 @DisplayName("TestWorkflow")

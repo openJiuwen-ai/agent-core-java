@@ -5,6 +5,7 @@
 package com.openjiuwen.dev_tools.agent_builder.builders.llm_agent;
 
 import com.openjiuwen.dev_tools.agent_builder.builders.LlmAgentBuilder;
+import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
 import com.openjiuwen.dev_tools.agent_builder.utils.AgentBuilderEnums;
 import org.junit.jupiter.api.*;
 
@@ -27,18 +28,24 @@ class TestLlmAgentBuilder {
 
         @Test
         void testInitSuccess() {
-            LlmAgentBuilder builder = new LlmAgentBuilder(null);
+            Object mockModel = new Object();
+            HistoryManager historyManager = new HistoryManager();
+            LlmAgentBuilder builder = new LlmAgentBuilder(mockModel, historyManager);
 
+            assertSame(mockModel, builder.getLlm());
+            assertSame(historyManager, builder.getHistoryManager());
             assertEquals(AgentBuilderEnums.BuildState.INITIAL, builder.getState());
-            assertNotNull(builder.getProgressReporter());
             assertTrue(builder.getResource().isEmpty());
+            assertNull(builder.getAgentConfigInfo());
+            assertNull(builder.getFactorOutputInfo());
+            assertNull(builder.getDisplayResourceInfo());
         }
 
         @Test
         void testInitProgressReporterDefaultNone() {
-            LlmAgentBuilder builder = new LlmAgentBuilder(null);
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
 
-            assertNotNull(builder.getProgressReporter());
+            assertNull(builder.getProgressReporter());
         }
     }
 
@@ -50,6 +57,9 @@ class TestLlmAgentBuilder {
 
         @Test
         void testResourceUniqueKey() {
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
+
+            assertNotNull(builder);
             assertEquals("tool_id", LlmAgentBuilder.RESOURCE_UNIQUE_KEY.get("plugins"));
         }
     }
@@ -62,7 +72,7 @@ class TestLlmAgentBuilder {
 
         @Test
         void testResourceProperty() {
-            LlmAgentBuilder builder = new LlmAgentBuilder(null);
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
 
             assertTrue(builder.getResource().isEmpty());
         }
@@ -76,7 +86,7 @@ class TestLlmAgentBuilder {
 
         @Test
         void testStateProperty() {
-            LlmAgentBuilder builder = new LlmAgentBuilder(null);
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
 
             assertEquals(AgentBuilderEnums.BuildState.INITIAL, builder.getState());
             builder.setState(AgentBuilderEnums.BuildState.PROCESSING);

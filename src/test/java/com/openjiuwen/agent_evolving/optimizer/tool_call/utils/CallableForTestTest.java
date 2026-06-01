@@ -6,17 +6,24 @@ package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for the MCP callable test utility.
- * <p>
- * Mirrors Python's {@code callable_fortest} in
+ *
+ * <p>Mirrors Python's {@code callable_fortest} in
  * {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.callable_fortest}.
  */
 class CallableForTestTest {
@@ -25,8 +32,7 @@ class CallableForTestTest {
 
     @Test
     void schemaContainsSearchFundsFunction() throws Exception {
-        String description = buildSearchFundsDescription();
-        JsonNode root = MAPPER.readTree(description);
+        JsonNode root = MAPPER.readTree(CallableForTest.getDescription());
 
         assertTrue(root.has("type"));
         assertEquals("function", root.get("type").asText());
@@ -38,8 +44,7 @@ class CallableForTestTest {
 
     @Test
     void schemaFunctionHasParameters() throws Exception {
-        String description = buildSearchFundsDescription();
-        JsonNode root = MAPPER.readTree(description);
+        JsonNode root = MAPPER.readTree(CallableForTest.getDescription());
         JsonNode params = root.get("function").get("parameters");
 
         assertTrue(params.has("type"));
@@ -55,8 +60,7 @@ class CallableForTestTest {
 
     @Test
     void schemaCategoryPropertyHasDescription() throws Exception {
-        String description = buildSearchFundsDescription();
-        JsonNode root = MAPPER.readTree(description);
+        JsonNode root = MAPPER.readTree(CallableForTest.getDescription());
         JsonNode category = root.get("function").get("parameters").get("properties").get("category");
 
         assertEquals("string", category.get("type").asText());
@@ -66,7 +70,8 @@ class CallableForTestTest {
 
     @Test
     void toolMapContainsNameAndDescription() {
-        Map<String, Object> tool = buildSearchFundsTool();
+        Map<String, Object> tool = CallableForTest.getTool();
+
         assertEquals("SearchFunds", tool.get("name"));
         assertNotNull(tool.get("description"));
         assertTrue(((String) tool.get("description")).contains("SearchFunds"));
@@ -74,77 +79,106 @@ class CallableForTestTest {
 
     @Test
     void mcpUrlDefaultsToEmptyString() {
-        String mcpUrl = System.getenv().getOrDefault("MCP_URL", "");
-        assertNotNull(mcpUrl);
+        assertNotNull(CallableForTest.MCP_URL);
     }
 
     @Test
     void mcpNameDefaultsToExpectedValue() {
-        String mcpName = System.getenv().getOrDefault("MCP_NAME", "Streamable HTTP Python Server");
-        assertEquals("Streamable HTTP Python Server", mcpName);
+        assertEquals(
+                System.getenv().getOrDefault("MCP_NAME", "Streamable HTTP Python Server"),
+                CallableForTest.MCP_NAME);
     }
 
-    private String buildSearchFundsDescription() throws Exception {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "function");
+    @Test
+    void makeSyncMcpCallerForwardsToolNameAndArguments() throws Exception {
+        FakeMcpClient client = new FakeMcpClient("https://example.com/sse");
+        CallableForTest.McpToolCaller caller = CallableForTest.makeSyncMcpCaller(
+                "https://example.com/sse",
+                "S",
+                config -> client
+        );
 
-        Map<String, Object> function = new LinkedHashMap<>();
-        function.put("name", "SearchFunds");
-        function.put("description",
-                "搜索基金、根据基金名称匹配基金代码。"
-                        + "通过名称（可用于确定基金代码）、代码、拼音、交易状态等信息进行搜索。"
-                        + "同时可以按照收益、限额、费率等进行排序，在大部分情况都需要此工具。");
+        Object result = caller.call(Map.of("name", "SearchFunds", "arguments", Map.of("keyword", "abc")));
 
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        parameters.put("type", "object");
-
-        Map<String, Object> properties = new LinkedHashMap<>();
-
-        Map<String, Object> category = new LinkedHashMap<>();
-        category.put("type", "string");
-        category.put("description", "分类");
-        properties.put("category", category);
-
-        Map<String, Object> keyword = new LinkedHashMap<>();
-        keyword.put("type", "string");
-        keyword.put("description", "基金名称关键字，支持分词搜索");
-        properties.put("keyword", keyword);
-
-        Map<String, Object> size = new LinkedHashMap<>();
-        size.put("type", "number");
-        size.put("description", "每页数量");
-        properties.put("size", size);
-
-        Map<String, Object> sortOrder = new LinkedHashMap<>();
-        sortOrder.put("type", "string");
-        sortOrder.put("description", "选择排序的顺序");
-        properties.put("sortOrder", sortOrder);
-
-        Map<String, Object> sortColumn = new LinkedHashMap<>();
-        sortColumn.put("type", "string");
-        sortColumn.put("description", "选择要排序的列");
-        properties.put("sortColumn", sortColumn);
-
-        Map<String, Object> page = new LinkedHashMap<>();
-        page.put("type", "number");
-        page.put("description", "页码，从0开始");
-        properties.put("page", page);
-
-        parameters.put("properties", properties);
-        function.put("parameters", parameters);
-        schema.put("function", function);
-
-        return MAPPER.writeValueAsString(schema);
+        assertEquals("ok-result", result);
+        assertEquals("SearchFunds", client.lastToolName);
+        assertEquals(Map.of("keyword", "abc"), client.lastArguments);
+        assertEquals("https://example.com/sse", client.getServerPath());
+        assertTrue(client.connected.get());
+        assertTrue(client.disconnected.get());
     }
 
-    private Map<String, Object> buildSearchFundsTool() {
-        try {
-            Map<String, Object> tool = new LinkedHashMap<>();
-            tool.put("name", "SearchFunds");
-            tool.put("description", buildSearchFundsDescription());
-            return tool;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+    @Test
+    void makeSyncMcpCallerParsesJsonArguments() throws Exception {
+        FakeMcpClient client = new FakeMcpClient("https://example.com/sse");
+        CallableForTest.McpToolCaller caller = CallableForTest.makeSyncMcpCaller(
+                "https://example.com/sse",
+                "S",
+                config -> client
+        );
+
+        Object result = caller.call(Map.of("name", "SearchFunds", "arguments", "{\"keyword\":\"abc\"}"));
+
+        assertEquals("ok-result", result);
+        assertEquals(Map.of("keyword", "abc"), client.lastArguments);
+    }
+
+    @Test
+    void makeSyncMcpCallerRejectsInvalidJsonArguments() {
+        FakeMcpClient client = new FakeMcpClient("https://example.com/sse");
+        CallableForTest.McpToolCaller caller = CallableForTest.makeSyncMcpCaller(
+                "https://example.com/sse",
+                "S",
+                config -> client
+        );
+
+        assertThrows(IllegalArgumentException.class,
+                () -> caller.call(Map.of("name", "SearchFunds", "arguments", "{bad-json")));
+    }
+
+    private static final class FakeMcpClient implements McpClient {
+        private final AtomicBoolean connected = new AtomicBoolean(false);
+        private final AtomicBoolean disconnected = new AtomicBoolean(false);
+        private final String serverPath;
+        private String lastToolName;
+        private Map<String, Object> lastArguments = Map.of();
+
+        private FakeMcpClient(String serverPath) {
+            this.serverPath = serverPath;
+        }
+
+        @Override
+        public boolean connect(int retryTimes, float timeout) {
+            connected.set(true);
+            return true;
+        }
+
+        @Override
+        public boolean disconnect(float timeout) {
+            disconnected.set(true);
+            return true;
+        }
+
+        @Override
+        public List<Object> listTools(float timeout) {
+            return List.of();
+        }
+
+        @Override
+        public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            lastToolName = toolName;
+            lastArguments = arguments != null ? Map.copyOf(arguments) : Map.of();
+            return Map.of("content", List.of(Map.of("text", "ok-result")));
+        }
+
+        @Override
+        public Optional<Object> getToolInfo(String toolName, float timeout) {
+            return Optional.empty();
+        }
+
+        @Override
+        public String getServerPath() {
+            return serverPath;
         }
     }
 }

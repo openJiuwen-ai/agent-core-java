@@ -40,7 +40,8 @@ import java.util.NoSuchElementException;
  * workflow-specific execution logic including intent detection and
  * interruption handling.</p>
  *
- * <p>Mirrors Python's {@code WorkflowAgent} in {@code openjiuwen.core.application.workflow_agent}.</p>
+ * <p>Mirrors Python's {@code WorkflowAgent} in
+ * {@code openjiuwen.core.application.workflow_agent.workflow_agent}.</p>
  */
 public class WorkflowAgent extends ControllerAgent {
 
@@ -276,6 +277,14 @@ public class WorkflowAgent extends ControllerAgent {
             return result;
         }
 
+        for (Object output : outputs) {
+            if (output instanceof Map<?, ?> map && "default_response".equals(map.get("status"))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> defaultResponse = (Map<String, Object>) map;
+                return new ControllerOutput(result.getType(), defaultResponse);
+            }
+        }
+
         List<Object> interactionOutputs = outputs.stream()
                 .filter(OutputSchema.class::isInstance)
                 .map(OutputSchema.class::cast)
@@ -303,6 +312,17 @@ public class WorkflowAgent extends ControllerAgent {
         }
 
         Object payload = finalAnswer.getPayload();
+        if ("workflow_final".equals(finalAnswer.getType())
+                && payload instanceof Map<?, ?> payloadMap
+                && "default_response".equals(payloadMap.get("status"))) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            Object response = payloadMap.get("response");
+            normalized.put("status", "default_response");
+            normalized.put("output", Map.of("answer", response != null ? response.toString() : ""));
+            normalized.put("result_type", "answer");
+            return new ControllerOutput(result.getType(), normalized);
+        }
+
         if ("answer".equals(finalAnswer.getType()) && payload instanceof Map<?, ?> payloadMap) {
             @SuppressWarnings("unchecked")
             Map<String, Object> typedPayload = (Map<String, Object>) payloadMap;

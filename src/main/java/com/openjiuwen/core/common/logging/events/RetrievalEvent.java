@@ -11,7 +11,12 @@ import lombok.experimental.SuperBuilder;
 import java.util.List;
 import java.util.Map;
 
-/** Retrieval related event. */
+/**
+ * Retrieval related event.
+ *
+ * <p>Mirrors Python's {@code RetrievalEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

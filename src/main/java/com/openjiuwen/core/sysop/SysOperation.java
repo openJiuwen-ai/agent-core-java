@@ -144,6 +144,16 @@ public class SysOperation {
         return mode;
     }
 
+    /**
+     * Return the sandbox isolation key template, or {@code null} for local operations.
+     */
+    public String getIsolationKeyTemplate() {
+        if (runConfig instanceof SandboxRunConfig sandboxRunConfig) {
+            return sandboxRunConfig.getIsolationKeyTemplate();
+        }
+        return null;
+    }
+
     public String getWorkDir() {
         if (runConfig instanceof LocalWorkConfig localWorkConfig) {
             return localWorkConfig.getWorkDir();

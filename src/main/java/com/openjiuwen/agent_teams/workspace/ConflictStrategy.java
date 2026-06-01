@@ -11,7 +11,22 @@ package com.openjiuwen.agent_teams.workspace;
  * {@code openjiuwen.agent_teams.team_workspace.models}.</p>
  */
 public enum ConflictStrategy {
-    LOCK,
-    MERGE,
-    LAST_WRITE_WINS
+    LOCK("lock"),
+    MERGE("merge"),
+    LAST_WRITE_WINS("last_write_wins");
+
+    private final String value;
+
+    ConflictStrategy(String value) {
+        this.value = value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+
+    @Override
+    public String toString() {
+        return value;
+    }
 }

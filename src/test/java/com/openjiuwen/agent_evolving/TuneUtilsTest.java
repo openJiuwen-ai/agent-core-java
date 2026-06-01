@@ -15,6 +15,12 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests for TuneUtils and TuneConstant helpers.
+ *
+ * <p>Mirrors Python's {@code test_utils.py} in
+ * {@code tests/unit_tests/agent_evolving}.
+ */
 class TuneUtilsTest {
 
     @Test

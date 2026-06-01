@@ -52,6 +52,11 @@ public final class AgentBuilderUtils {
     }
 
     /** Safely parse JSON, returning the default on blank input or parse failure. */
+    public static Object safeJsonLoads(String text) {
+        return safeJsonLoads(text, null);
+    }
+
+    /** Safely parse JSON, returning the default on blank input or parse failure. */
     public static Object safeJsonLoads(String text, Object defaultValue) {
         if (text == null || text.isEmpty()) {
             return defaultValue;

@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 public final class RetrievalValidation {
 
     public static final Set<String> INDEX_TYPES = Set.of("hybrid", "bm25", "vector");
-    public static final Set<String> DISTANCE_METRICS = Set.of("cosine", "euclidean", "dot");
+    public static final Set<String> DISTANCE_METRICS = Set.of("cosine", "euclidean", "dot", "l2", "ip");
     public static final Set<String> STORE_TYPES = Set.of("milvus", "chroma", "pgvector");
     private static final Pattern DATABASE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]*$");
 
@@ -60,6 +60,12 @@ public final class RetrievalValidation {
         String normalized = value.toLowerCase();
         if (!DISTANCE_METRICS.contains(normalized)) {
             throw RetrievalExceptions.validation(field + " must be one of " + DISTANCE_METRICS);
+        }
+        if ("l2".equals(normalized)) {
+            return "euclidean";
+        }
+        if ("ip".equals(normalized)) {
+            return "dot";
         }
         return normalized;
     }

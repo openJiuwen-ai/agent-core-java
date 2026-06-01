@@ -5,11 +5,16 @@
 package com.openjiuwen.agent_teams;
 
 import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.spawn.SharedResources;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
+import com.openjiuwen.agent_teams.tools.TeamDatabase;
+import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
+import com.openjiuwen.agent_teams.tools.database.DatabaseType;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 
+import java.util.List;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -232,6 +237,54 @@ public class RuntimeManager {
         return deactivateActiveRuntime();
     }
 
+    /**
+     * Release a team session and drop dynamic database tables for that session.
+     *
+     * <p>Mirrors Python's {@code TeamRuntimeManager.release_session}.</p>
+     */
+    public CompletableFuture<Void> releaseSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (sessionId.equals(activeSessionId)) {
+            deactivateActiveRuntime();
+        }
+        DatabaseConfig dbConfig = resolveDbConfigFromSession(sessionId);
+        TeamDatabase db = SharedResources.getSharedDb(dbConfig);
+        db.initialize();
+        db.dropSessionTablesById(sessionId);
+        CheckpointerFactory.getCheckpointer().release(sessionId);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Delete team metadata, stop a matching active runtime, and release sessions.
+     *
+     * <p>Mirrors Python's {@code TeamRuntimeManager.delete_team}.</p>
+     */
+    public CompletableFuture<Boolean> deleteTeam(String teamName, List<String> sessionIds) {
+        if (teamName == null || teamName.isBlank()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (teamName.equals(activeTeamName)) {
+            deactivateActiveRuntime();
+        }
+        DatabaseConfig dbConfig = resolveDbConfigFromSessions(sessionIds);
+        TeamDatabase db = SharedResources.getSharedDb(dbConfig);
+        db.initialize();
+        if (sessionIds != null) {
+            for (String sessionId : sessionIds) {
+                if (sessionId == null || sessionId.isBlank()) {
+                    continue;
+                }
+                db.dropSessionTablesById(sessionId);
+                CheckpointerFactory.getCheckpointer().release(sessionId);
+            }
+        }
+        boolean deleted = db.getTeamDao() == null || db.getTeamDao().deleteTeam(teamName).join();
+        return CompletableFuture.completedFuture(deleted);
+    }
+
     // ------------------------------------------------------------------
     // Internal helpers
     // ------------------------------------------------------------------
@@ -357,6 +410,80 @@ public class RuntimeManager {
             return teamSpec.build();
         }
         return invokeNoArg(spec, "build");
+    }
+
+    private DatabaseConfig resolveDbConfigFromSessions(List<String> sessionIds) {
+        if (sessionIds == null) {
+            return DatabaseConfig.inMemory();
+        }
+        for (String sessionId : sessionIds) {
+            DatabaseConfig config = resolveDbConfigFromSession(sessionId);
+            if (config != null) {
+                return config;
+            }
+        }
+        return DatabaseConfig.inMemory();
+    }
+
+    private DatabaseConfig resolveDbConfigFromSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()
+                || !CheckpointerFactory.getCheckpointer().sessionExists(sessionId)) {
+            return DatabaseConfig.inMemory();
+        }
+        AgentSessionApi session = AgentSessionApi.create(sessionId, Map.of(), null);
+        session.preRun(null);
+        Object context = session.getState("context");
+        if (context instanceof Map<?, ?> map) {
+            return parseDatabaseConfig(map.get("db_config"));
+        }
+        return DatabaseConfig.inMemory();
+    }
+
+    private DatabaseConfig parseDatabaseConfig(Object rawConfig) {
+        if (rawConfig instanceof DatabaseConfig config) {
+            return config;
+        }
+        if (!(rawConfig instanceof Map<?, ?> map)) {
+            return DatabaseConfig.inMemory();
+        }
+        DatabaseType dbType = DatabaseType.SQLITE;
+        Object rawType = firstPresent(map, "db_type", "dbType");
+        if (rawType != null) {
+            dbType = DatabaseType.fromValue(String.valueOf(rawType));
+        }
+        String connectionString = stringValue(firstPresent(map, "connection_string", "connectionString"));
+        int timeout = intValue(firstPresent(map, "db_timeout", "dbTimeout"), 30);
+        boolean enableWal = booleanValue(firstPresent(map, "db_enable_wal", "dbEnableWal"), true);
+        return new DatabaseConfig(dbType, connectionString, timeout, enableWal);
+    }
+
+    private static Object firstPresent(Map<?, ?> map, String first, String second) {
+        return map.containsKey(first) ? map.get(first) : map.get(second);
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : "";
+    }
+
+    private static int intValue(Object value, int defaultValue) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    private static boolean booleanValue(Object value, boolean defaultValue) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null ? Boolean.parseBoolean(String.valueOf(value)) : defaultValue;
     }
 
     private static Object invokeNoArg(Object target, String methodName) {

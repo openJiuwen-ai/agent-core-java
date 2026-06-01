@@ -16,11 +16,22 @@ import java.util.logging.Logger;
  */
 public class LazyLogger implements LoggerProtocol {
 
+    private static final java.util.Set<LazyLogger> INSTANCES =
+        java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
     private final java.util.function.Supplier<LoggerProtocol> getter;
     private volatile LoggerProtocol delegate;
 
     public LazyLogger(java.util.function.Supplier<LoggerProtocol> getter) {
         this.getter = getter;
+        INSTANCES.add(this);
+    }
+
+    /**
+     * Reset every lazy logger delegate after {@link LogManager#reset()}.
+     */
+    public static void resetAll() {
+        INSTANCES.forEach(logger -> logger.delegate = null);
     }
 
     private LoggerProtocol getDelegate() {

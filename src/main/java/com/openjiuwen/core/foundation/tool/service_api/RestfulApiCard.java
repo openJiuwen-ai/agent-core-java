@@ -25,7 +25,8 @@ import java.util.Set;
 public class RestfulApiCard extends ToolCard {
 
     /** Supported HTTP methods. */
-    public static final Set<String> SUPPORTED_METHODS = Set.of("POST", "GET");
+    public static final Set<String> SUPPORTED_METHODS = Set.of(
+            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
 
     /** Restful API URL, e.g. /api/v1/users. */
     private final String url;

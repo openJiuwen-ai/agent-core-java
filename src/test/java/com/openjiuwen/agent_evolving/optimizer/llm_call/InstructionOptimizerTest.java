@@ -25,6 +25,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Tests for InstructionOptimizer prompt optimization.
+ *
+ * <p>Mirrors Python's
+ * {@code tests.unit_tests.agent_evolving.optimizer.llm_call.test_instruction_optimizer}.</p>
+ */
 class InstructionOptimizerTest {
 
     @Test

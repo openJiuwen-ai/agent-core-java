@@ -32,8 +32,7 @@ public class InMemoryKVStore extends BaseKVStore {
 
     @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
-        cleanupIfExpired(key);
-        if (values.containsKey(key)) {
+        if (values.containsKey(key) && !isExpired(key)) {
             return false;
         }
         values.put(key, value);
@@ -45,14 +44,12 @@ public class InMemoryKVStore extends BaseKVStore {
 
     @Override
     public Object get(String key) {
-        cleanupIfExpired(key);
-        return values.get(key);
+        return isExpired(key) ? null : values.get(key);
     }
 
     @Override
     public boolean exists(String key) {
-        cleanupIfExpired(key);
-        return values.containsKey(key);
+        return get(key) != null;
     }
 
     @Override
@@ -65,9 +62,8 @@ public class InMemoryKVStore extends BaseKVStore {
     public Map<String, Object> getByPrefix(String prefix) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String key : new ArrayList<>(values.keySet())) {
-            cleanupIfExpired(key);
-            if (key.startsWith(prefix) && values.containsKey(key)) {
-                result.put(key, values.get(key));
+            if (key.startsWith(prefix)) {
+                result.put(key, get(key));
             }
         }
         return result;
@@ -113,7 +109,7 @@ public class InMemoryKVStore extends BaseKVStore {
                 switch (action) {
                     case "set" -> {
                         set(key, operation.length > 2 ? operation[2] : null);
-                        results.add(true);
+                        results.add(null);
                     }
                     case "get" -> results.add(get(key));
                     case "exists" -> results.add(exists(key));
@@ -124,11 +120,8 @@ public class InMemoryKVStore extends BaseKVStore {
         });
     }
 
-    private void cleanupIfExpired(String key) {
+    private boolean isExpired(String key) {
         Long expireTime = expiryAt.get(key);
-        if (expireTime != null && expireTime <= System.currentTimeMillis()) {
-            values.remove(key);
-            expiryAt.remove(key);
-        }
+        return expireTime != null && expireTime <= System.currentTimeMillis();
     }
 }

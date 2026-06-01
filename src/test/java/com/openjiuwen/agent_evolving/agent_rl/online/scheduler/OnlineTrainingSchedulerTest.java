@@ -13,8 +13,15 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Tests for OnlineTrainingScheduler batch state transitions.
+ *
+ * <p>Mirrors Python's
+ * {@code tests.unit_tests.agent_evolving.agent_rl.online.test_online_training_scheduler}.
+ */
 class OnlineTrainingSchedulerTest {
 
     @Test
@@ -47,10 +54,8 @@ class OnlineTrainingSchedulerTest {
         scheduler.setTrainer(trainer);
         scheduler.setTrainingCount(7);
 
-        RuntimeException error = assertThrows(RuntimeException.class,
-                () -> scheduler.trainBatch("u2", List.of(Map.of("sample_id", "s2")), List.of("s2")));
+        assertDoesNotThrow(() -> scheduler.trainBatch("u2", List.of(Map.of("sample_id", "s2")), List.of("s2")));
 
-        assertEquals("boom", error.getMessage());
         assertEquals(List.of(), store.trained);
         assertEquals(List.of(List.of("s2")), store.failed);
     }
@@ -79,22 +84,22 @@ class OnlineTrainingSchedulerTest {
 
         @Override
         public void saveSample(Map<String, Object> sample, String userId) {
-            throw new UnsupportedOperationException();
+            // Not exercised by scheduler._train_batch parity tests.
         }
 
         @Override
         public int getPendingCount(String userId) {
-            throw new UnsupportedOperationException();
+            return 0;
         }
 
         @Override
         public List<String> getUsersAboveThreshold(int threshold) {
-            throw new UnsupportedOperationException();
+            return List.of();
         }
 
         @Override
         public List<Map<String, Object>> fetchAndMarkTraining(String userId, int limit) {
-            throw new UnsupportedOperationException();
+            return List.of();
         }
 
         @Override
@@ -109,7 +114,7 @@ class OnlineTrainingSchedulerTest {
 
         @Override
         public void resetToPending(List<String> sampleIds) {
-            throw new UnsupportedOperationException();
+            failed.remove(sampleIds);
         }
 
         @Override

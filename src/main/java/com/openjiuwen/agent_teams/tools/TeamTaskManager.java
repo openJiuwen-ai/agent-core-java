@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 /**
@@ -36,6 +37,7 @@ public class TeamTaskManager {
     private final String memberName;
     private final Map<String, TaskRecord> tasks;
     private Consumer<TaskEvent> eventPublisher;
+    private Predicate<String> memberExists;
 
     public TeamTaskManager(String teamName, String memberName) {
         this(teamName, memberName, new LinkedHashMap<>());
@@ -45,6 +47,8 @@ public class TeamTaskManager {
         this.teamName = teamName;
         this.memberName = memberName;
         this.tasks = tasks != null ? tasks : new LinkedHashMap<>();
+        String defaultMemberName = this.memberName;
+        this.memberExists = member -> member != null && member.equals(defaultMemberName);
     }
 
     /**
@@ -55,6 +59,14 @@ public class TeamTaskManager {
      */
     public void setEventPublisher(Consumer<TaskEvent> publisher) {
         this.eventPublisher = publisher;
+    }
+
+    /**
+     * Set a member lookup callback for manager-level assignment/claim checks.
+     */
+    public void setMemberExistsPredicate(Predicate<String> memberExists) {
+        this.memberExists = memberExists != null ? memberExists
+                : member -> member != null && member.equals(memberName);
     }
 
     // ── Add Methods ───────────────────────────────────────
@@ -70,6 +82,9 @@ public class TeamTaskManager {
      */
     public TaskRecord add(String title, String content, String taskId, List<String> dependencies) {
         String id = taskId != null && !taskId.isBlank() ? taskId : UUID.randomUUID().toString();
+        if (tasks.containsKey(id)) {
+            return null;
+        }
         TaskStatus status = dependencies != null && !dependencies.isEmpty() ? TaskStatus.BLOCKED : TaskStatus.PENDING;
         TaskRecord record = new TaskRecord(id, title, content, status);
         if (dependencies != null) {
@@ -84,6 +99,15 @@ public class TeamTaskManager {
         tasks.put(id, record);
         publishEvent(TaskEvent.created(teamName, id, status.name().toLowerCase()));
         return record;
+    }
+
+    public TaskCreateResult addResult(String title, String content, String taskId, List<String> dependencies) {
+        String id = taskId != null && !taskId.isBlank() ? taskId : UUID.randomUUID().toString();
+        TaskRecord record = add(title, content, id, dependencies);
+        if (record == null) {
+            return TaskCreateResult.fail("Failed to create task " + id + " (likely a task_id collision)");
+        }
+        return TaskCreateResult.success(record);
     }
 
     /**
@@ -120,6 +144,9 @@ public class TeamTaskManager {
     public TaskRecord addWithPriority(String title, String content, String taskId,
                                        List<String> dependencies, List<String> dependentTaskIds) {
         String id = taskId != null && !taskId.isBlank() ? taskId : UUID.randomUUID().toString();
+        if (tasks.containsKey(id)) {
+            return null;
+        }
 
         // Check for circular dependencies
         if (wouldCreateCircularDependency(id, dependencies, dependentTaskIds)) {
@@ -167,6 +194,19 @@ public class TeamTaskManager {
         tasks.put(id, record);
         publishEvent(TaskEvent.created(teamName, id, status.name().toLowerCase()));
         return record;
+    }
+
+    public TaskCreateResult addWithPriorityResult(String title, String content, String taskId,
+                                                   List<String> dependencies, List<String> dependentTaskIds) {
+        String id = taskId != null && !taskId.isBlank() ? taskId : UUID.randomUUID().toString();
+        TaskRecord record = addWithPriority(title, content, id, dependencies, dependentTaskIds);
+        if (record == null) {
+            String reason = tasks.containsKey(id)
+                    ? "Failed to create task " + id + " (likely a task_id collision)"
+                    : "Circular dependency detected for task " + id;
+            return TaskCreateResult.fail(reason);
+        }
+        return TaskCreateResult.success(record);
     }
 
     /**
@@ -232,7 +272,10 @@ public class TeamTaskManager {
             @SuppressWarnings("unchecked")
             List<String> deps = spec.get("dependencies") instanceof List<?> list
                     ? (List<String>) list : List.of();
-            created.add(add(title, content, stringValue(spec.get("task_id")), deps));
+            TaskRecord record = add(title, content, stringValue(spec.get("task_id")), deps);
+            if (record != null) {
+                created.add(record);
+            }
         }
         return created;
     }
@@ -313,17 +356,33 @@ public class TeamTaskManager {
     // ── State Transition Methods ───────────────────────────────────────
 
     public boolean claim(String taskId, String assignee) {
+        return claimResult(taskId, assignee).ok();
+    }
+
+    public TaskOpResult claimResult(String taskId, String assignee) {
         TaskRecord record = tasks.get(taskId);
         if (record == null) {
-            return false;
+            return TaskOpResult.fail("Task " + taskId + " not found");
+        }
+        String targetAssignee = assignee != null && !assignee.isBlank() ? assignee : memberName;
+        if (!memberExists.test(targetAssignee)) {
+            return TaskOpResult.fail("Member " + targetAssignee + " not found in team " + teamName);
+        }
+        if (record.getStatus() == TaskStatus.CLAIMED) {
+            String current = record.getAssignee();
+            if (targetAssignee.equals(current)) {
+                return TaskOpResult.success();
+            }
+            return TaskOpResult.fail("Task " + taskId + " already claimed by " + current);
         }
         if (record.getStatus() != TaskStatus.PENDING) {
-            return false;  // Only PENDING tasks can be claimed
+            return TaskOpResult.fail("Task " + taskId + " is " + statusValue(record)
+                    + " and cannot transition to claimed");
         }
-        record.setAssignee(assignee != null && !assignee.isBlank() ? assignee : memberName);
+        record.setAssignee(targetAssignee);
         record.setStatus(TaskStatus.CLAIMED);
         publishEvent(TaskEvent.claimed(teamName, taskId, record.getAssignee()));
-        return true;
+        return TaskOpResult.success();
     }
 
     public boolean claim(String taskId) {
@@ -331,24 +390,45 @@ public class TeamTaskManager {
     }
 
     public boolean assign(String taskId, String assignee) {
+        return assignResult(taskId, assignee).ok();
+    }
+
+    public TaskOpResult assignResult(String taskId, String assignee) {
         TaskRecord record = tasks.get(taskId);
         if (record == null || assignee == null || assignee.isBlank()) {
-            return false;
+            return TaskOpResult.fail(record == null ? "Task " + taskId + " not found" : "Assignee is required");
+        }
+        if (!memberExists.test(assignee)) {
+            return TaskOpResult.fail("Member " + assignee + " not found in team " + teamName);
+        }
+        if (record.getAssignee() != null && !assignee.equals(record.getAssignee())) {
+            return TaskOpResult.fail("Task " + taskId + " already claimed by " + record.getAssignee());
+        }
+        if (record.getStatus() != TaskStatus.PENDING && record.getStatus() != TaskStatus.CLAIMED) {
+            return TaskOpResult.fail("Task " + taskId + " is " + statusValue(record)
+                    + " and cannot be assigned");
         }
         record.setAssignee(assignee);
         record.setStatus(TaskStatus.CLAIMED);
         publishEvent(TaskEvent.claimed(teamName, taskId, assignee));
-        return true;
+        return TaskOpResult.success();
     }
 
     public boolean addBlockedBy(String taskId, List<String> dependencies) {
+        return addDependenciesResult(taskId, dependencies).ok();
+    }
+
+    public TaskOpResult addDependenciesResult(String taskId, List<String> dependencies) {
         TaskRecord record = tasks.get(taskId);
-        if (record == null || dependencies == null || dependencies.isEmpty()) {
-            return false;
+        if (record == null) {
+            return TaskOpResult.fail("Task " + taskId + " not found");
+        }
+        if (dependencies == null || dependencies.isEmpty()) {
+            return TaskOpResult.success();
         }
         for (String dep : dependencies) {
             if (taskId.equals(dep) || transitivelyDependsOn(dep, List.of(taskId))) {
-                return false;
+                return TaskOpResult.fail("Circular dependency detected");
             }
         }
         for (String dep : dependencies) {
@@ -368,17 +448,14 @@ public class TeamTaskManager {
             record.setStatus(TaskStatus.BLOCKED);
         }
         publishEvent(TaskEvent.updated(teamName, taskId));
-        return true;
+        return TaskOpResult.success();
     }
 
     /**
      * Java-named counterpart of Python's {@code add_dependencies}.
      */
     public boolean addDependencies(String taskId, List<String> dependsOnIds) {
-        if (dependsOnIds == null || dependsOnIds.isEmpty()) {
-            return true;
-        }
-        return addBlockedBy(taskId, dependsOnIds);
+        return addDependenciesResult(taskId, dependsOnIds).ok();
     }
 
     /**
@@ -393,12 +470,17 @@ public class TeamTaskManager {
     }
 
     public boolean complete(String taskId) {
+        return completeResult(taskId).ok();
+    }
+
+    public TaskOpResult completeResult(String taskId) {
         TaskRecord record = tasks.get(taskId);
         if (record == null) {
-            return false;
+            return TaskOpResult.fail("Task " + taskId + " not found");
         }
         if (record.getStatus() != TaskStatus.CLAIMED && record.getStatus() != TaskStatus.PENDING) {
-            return false;  // Only CLAIMED or PENDING tasks can be completed
+            return TaskOpResult.fail("Task " + taskId + " is " + statusValue(record)
+                    + " and cannot transition to completed");
         }
         record.setStatus(TaskStatus.COMPLETED);
 
@@ -415,7 +497,7 @@ public class TeamTaskManager {
             }
         }
         publishEvent(TaskEvent.completed(teamName, taskId));
-        return true;
+        return TaskOpResult.success();
     }
 
     /**
@@ -429,9 +511,19 @@ public class TeamTaskManager {
     }
 
     public boolean cancel(String taskId) {
+        return cancelResult(taskId) != null;
+    }
+
+    public TaskRecord cancelResult(String taskId) {
         TaskRecord record = tasks.get(taskId);
         if (record == null) {
-            return false;
+            return null;
+        }
+        if (record.getStatus() == TaskStatus.COMPLETED) {
+            return null;
+        }
+        if (record.getStatus() == TaskStatus.CANCELLED) {
+            return record;
         }
         record.setStatus(TaskStatus.CANCELLED);
         for (String blockedTaskId : new ArrayList<>(record.getBlocks())) {
@@ -446,7 +538,7 @@ public class TeamTaskManager {
             }
         }
         publishEvent(TaskEvent.cancelled(teamName, taskId));
-        return true;
+        return record;
     }
 
     public List<TaskRecord> cancelAllTasks() {
@@ -484,9 +576,13 @@ public class TeamTaskManager {
     }
 
     public boolean update(String taskId, String title, String content) {
+        return updateTaskResult(taskId, title, content).ok();
+    }
+
+    public TaskOpResult updateTaskResult(String taskId, String title, String content) {
         TaskRecord record = tasks.get(taskId);
         if (record == null) {
-            return false;
+            return TaskOpResult.fail("Task " + taskId + " not found");
         }
         if (title != null && !title.isBlank()) {
             record.setTitle(title);
@@ -495,7 +591,7 @@ public class TeamTaskManager {
             record.setContent(content);
         }
         publishEvent(TaskEvent.updated(teamName, taskId));
-        return true;
+        return TaskOpResult.success();
     }
 
     /**
@@ -539,23 +635,43 @@ public class TeamTaskManager {
         return update(taskId, title, content);
     }
 
+    public TaskOpResult updateTaskResult(String taskId, String title) {
+        return updateTaskResult(taskId, title, null);
+    }
+
     public boolean reset(String taskId) {
+        return resetResult(taskId).ok();
+    }
+
+    public TaskOpResult resetResult(String taskId) {
         TaskRecord record = tasks.get(taskId);
-        if (record == null || record.getStatus() != TaskStatus.CLAIMED) {
-            return false;
+        if (record == null) {
+            return TaskOpResult.fail("Task " + taskId + " not found");
+        }
+        if (record.getStatus() != TaskStatus.CLAIMED) {
+            return TaskOpResult.fail("Task " + taskId + " is " + statusValue(record)
+                    + " and cannot transition to pending");
         }
         record.setAssignee(null);
         record.setStatus(TaskStatus.PENDING);
-        return true;
+        return TaskOpResult.success();
     }
 
     public boolean approvePlan(String taskId) {
+        return approvePlanResult(taskId).ok();
+    }
+
+    public TaskOpResult approvePlanResult(String taskId) {
         TaskRecord record = tasks.get(taskId);
-        if (record == null || record.getStatus() != TaskStatus.CLAIMED) {
-            return false;
+        if (record == null) {
+            return TaskOpResult.fail("Task " + taskId + " not found");
+        }
+        if (record.getStatus() != TaskStatus.CLAIMED) {
+            return TaskOpResult.fail("Task " + taskId + " is " + statusValue(record)
+                    + " and cannot transition to plan_approved");
         }
         record.setStatus(TaskStatus.PLAN_APPROVED);
-        return true;
+        return TaskOpResult.success();
     }
 
     // ── Helper Methods ───────────────────────────────────────
@@ -633,6 +749,46 @@ public class TeamTaskManager {
 
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String statusValue(TaskRecord record) {
+        return record.getStatus() != null ? record.getStatus().name().toLowerCase() : "unknown";
+    }
+
+    public record TaskOpResult(boolean ok, String reason) {
+        public static TaskOpResult success() {
+            return new TaskOpResult(true, "");
+        }
+
+        public static TaskOpResult fail(String reason) {
+            return new TaskOpResult(false, reason != null ? reason : "");
+        }
+    }
+
+    public record TaskCreateResult(boolean ok, String reason, TaskRecord task) {
+        public static TaskCreateResult success(TaskRecord task) {
+            return new TaskCreateResult(true, "", task);
+        }
+
+        public static TaskCreateResult fail(String reason) {
+            return new TaskCreateResult(false, reason != null ? reason : "", null);
+        }
+
+        public String taskId() {
+            return task != null ? task.getTaskId() : null;
+        }
+
+        public String title() {
+            return task != null ? task.getTitle() : null;
+        }
+
+        public String content() {
+            return task != null ? task.getContent() : null;
+        }
+
+        public TaskStatus status() {
+            return task != null ? task.getStatus() : null;
+        }
     }
 
     // ── Task Event Class ───────────────────────────────────────

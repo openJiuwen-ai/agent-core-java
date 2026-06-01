@@ -11,11 +11,33 @@ package com.openjiuwen.agent_teams.schema.status;
  * {@code openjiuwen.agent_teams.schema.status}.
  */
 public enum MemberStatus {
-    UNSTARTED,
-    READY,
-    BUSY,
-    RESTARTING,
-    SHUTDOWN_REQUESTED,
-    SHUTDOWN,
-    ERROR
+    UNSTARTED("unstarted"),
+    READY("ready"),
+    BUSY("busy"),
+    RESTARTING("restarting"),
+    SHUTDOWN_REQUESTED("shutdown_requested"),
+    SHUTDOWN("shut_down"),
+    ERROR("error");
+
+    private final String value;
+
+    MemberStatus(String value) {
+        this.value = value;
+    }
+
+    public String value() {
+        return value;
+    }
+
+    public static MemberStatus fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (MemberStatus status : values()) {
+            if (status.value.equals(value)) {
+                return status;
+            }
+        }
+        throw new IllegalArgumentException("Unknown member status: " + value);
+    }
 }

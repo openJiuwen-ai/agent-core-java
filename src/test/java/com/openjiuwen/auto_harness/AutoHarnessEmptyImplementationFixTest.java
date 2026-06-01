@@ -1,6 +1,8 @@
 package com.openjiuwen.auto_harness;
 
 import com.openjiuwen.auto_harness.agents.AutoHarnessAgentFactory;
+import com.openjiuwen.auto_harness.contexts.BaseExecutionContext;
+import com.openjiuwen.auto_harness.contexts.SessionContext;
 import com.openjiuwen.auto_harness.infra.SessionBudgetController;
 import com.openjiuwen.auto_harness.rails.BudgetRail;
 import com.openjiuwen.auto_harness.rails.ContextRail;
@@ -10,11 +12,15 @@ import com.openjiuwen.auto_harness.rails.SecurityRail;
 import com.openjiuwen.auto_harness.schema.AutoHarnessConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
+import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
 import com.openjiuwen.harness.rails.LspRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
@@ -25,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -136,6 +143,17 @@ class AutoHarnessEmptyImplementationFixTest {
     }
 
     @Test
+    void budgetRailRegistersDeepAgentLifecycleCallbacks() {
+        BudgetRail rail = new BudgetRail(new SessionBudgetController(3600.0, 1.0, 1200.0));
+
+        assertTrue(DeepAgentRail.class.isAssignableFrom(rail.getClass()));
+        assertTrue(rail.getCallbacks().containsKey(AgentCallbackEvent.BEFORE_TOOL_CALL));
+        assertTrue(rail.getCallbacks().containsKey(AgentCallbackEvent.AFTER_MODEL_CALL));
+        assertTrue(rail.getCallbacks().containsKey(AgentCallbackEvent.BEFORE_TASK_ITERATION));
+        assertTrue(rail.getCallbacks().containsKey(AgentCallbackEvent.AFTER_TASK_ITERATION));
+    }
+
+    @Test
     void editSafetyRailRejectsOutOfScopeWritesAndTracksAllowedEdits() {
         EditSafetyRail rail = new EditSafetyRail(1);
         ToolCallInputs blocked = ToolCallInputs.builder()
@@ -157,5 +175,79 @@ class AutoHarnessEmptyImplementationFixTest {
         rail.afterToolCall(AgentCallbackContext.builder().inputs(allowed).build());
 
         assertTrue(rail.getEditedFiles().contains("openjiuwen/core/Foo.java"));
+    }
+
+    @Test
+    void toolTrackingRailNormalizesJsonArgsAndReadFilePayload() {
+        ToolTrackingRail rail = new ToolTrackingRail();
+        RecordingSession session = new RecordingSession();
+        ToolCallInputs inputs = ToolCallInputs.builder()
+            .toolName("read_file")
+            .toolArgs("{\"file_path\":\"README.md\"}")
+            .toolResult(new ReadFileResult(Map.of(
+                "content", "hello\nworld",
+                "line_count", "2"
+            )))
+            .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder()
+            .session(session)
+            .inputs(inputs)
+            .build();
+
+        rail.beforeToolCall(ctx);
+        rail.afterToolCall(ctx);
+
+        assertEquals(2, session.stream().size());
+        OutputSchema call = (OutputSchema) session.stream().get(0);
+        Map<?, ?> callPayload = (Map<?, ?>) call.getPayload();
+        assertEquals("tool_call", call.getType());
+        assertEquals(Map.of("file_path", "README.md"), callPayload.get("tool_args"));
+
+        OutputSchema result = (OutputSchema) session.stream().get(1);
+        Map<?, ?> resultPayload = (Map<?, ?>) result.getPayload();
+        assertEquals("tool_result", result.getType());
+        assertEquals(Map.of("file_path", "README.md"), resultPayload.get("tool_args"));
+        assertEquals("hello\nworld", resultPayload.get("tool_result"));
+        assertEquals(2, resultPayload.get("line_count"));
+    }
+
+    @Test
+    void baseExecutionContextDefaultsToUnscopedTaskId() {
+        SessionContext context = new SessionContext(null);
+
+        assertEquals("", context.getTaskId());
+        OutputSchema message = BaseExecutionContext.message("ok");
+        assertEquals("message", message.getType());
+        assertEquals(Map.of("content", "ok"), message.getPayload());
+    }
+
+    private static final class RecordingSession implements Session {
+        private final List<Object> stream = new ArrayList<>();
+
+        @Override
+        public String getSessionId() {
+            return "recording";
+        }
+
+        @Override
+        public Object getState(String key) {
+            return null;
+        }
+
+        @Override
+        public void updateState(Map<String, Object> state) {
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            stream.add(data);
+        }
+
+        private List<Object> stream() {
+            return stream;
+        }
+    }
+
+    private record ReadFileResult(Map<String, Object> data) {
     }
 }

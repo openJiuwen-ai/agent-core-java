@@ -2,6 +2,7 @@
 package com.openjiuwen.core.controller;
 
 import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.EventHandlerWithIntentRecognition;
 import com.openjiuwen.core.controller.modules.IntentRecognizer;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -50,6 +52,7 @@ class EventHandlerWithIntentRecognitionTest {
     private Intent sampleCreateIntent;
     private Intent samplePauseIntent;
     private Intent sampleResumeIntent;
+    private Intent sampleContinueIntent;
     private Intent sampleCancelIntent;
     private Intent sampleUnknownIntent;
 
@@ -83,7 +86,7 @@ class EventHandlerWithIntentRecognitionTest {
 
         // Create sample input event
         sampleInputEvent = new InputEvent(
-                List.of(new DataFrame.TextDataFrame("Create a new task"))
+                new ArrayList<>(List.of(new DataFrame.TextDataFrame("Create a new task")))
         );
 
         // Create sample intents
@@ -95,6 +98,11 @@ class EventHandlerWithIntentRecognitionTest {
         samplePauseIntent = new Intent(IntentType.PAUSE_TASK, sampleInputEvent, "task1");
 
         sampleResumeIntent = new Intent(IntentType.RESUME_TASK, sampleInputEvent, "task1");
+
+        sampleContinueIntent = new Intent(
+                IntentType.CONTINUE_TASK, sampleInputEvent, "task2",
+                "Continue task description", List.of("task1"), null, null, 0.9, null
+        );
 
         sampleCancelIntent = new Intent(IntentType.CANCEL_TASK, sampleInputEvent, "task1");
 
@@ -165,6 +173,32 @@ class EventHandlerWithIntentRecognitionTest {
             handler.handleInput(inputs);
 
             verify(mockTaskManager, never()).updateTask(any(Task.class));
+        }
+
+        @Test
+        @DisplayName("test handling input with CONTINUE_TASK intent")
+        void testHandleInputContinueTask() {
+            Task dependentTask = new Task("test_session_id", "task1", "test_task");
+            dependentTask.setDescription("Dependent task");
+            dependentTask.setStatus(TaskStatus.COMPLETED);
+            dependentTask.setContextId("test_session_id_task1");
+            dependentTask.setInputs(List.of(sampleInputEvent));
+            when(mockTaskManager.getTask(any(TaskFilter.class))).thenReturn(List.of(dependentTask));
+            ModelContext mockContext = mock(ModelContext.class);
+            when(mockContext.getMessages()).thenReturn(List.of());
+            when(mockContextEngine.getContext("test_session_id_task1", "test_session_id"))
+                    .thenReturn(mockContext);
+            when(mockRecognizer.recognize(any(), any())).thenReturn(List.of(sampleContinueIntent));
+
+            EventHandlerInput inputs = new EventHandlerInput(sampleInputEvent, mockSession);
+            handler.handleInput(inputs);
+
+            verify(mockTaskManager).addTask(argThat((Task task) ->
+                    "task2".equals(task.getTaskId())
+                            && "Continue task description".equals(task.getDescription())
+                            && task.getInputs().contains(sampleInputEvent)
+                            && task.getStatus() == TaskStatus.SUBMITTED
+            ));
         }
 
         @Test

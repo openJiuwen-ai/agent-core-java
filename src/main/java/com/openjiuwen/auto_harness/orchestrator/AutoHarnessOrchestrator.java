@@ -27,6 +27,12 @@ import com.openjiuwen.auto_harness.schema.PipelineSpec;
 import com.openjiuwen.auto_harness.schema.ProjectProfile;
 import com.openjiuwen.core.session.stream.OutputSchema;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -512,13 +518,15 @@ public class AutoHarnessOrchestrator {
      */
     public static String writeDebugArtifact(String runsDir, String filename, String content) {
         try {
-            java.nio.file.Path path = java.nio.file.Paths.get(runsDir, filename);
-            java.nio.file.Files.createDirectories(path.getParent());
-            java.nio.file.Files.writeString(path, content, java.nio.charset.StandardCharsets.UTF_8);
+            Path path = Paths.get(runsDir, filename);
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(path, content, StandardCharsets.UTF_8);
             return path.toString();
-        } catch (Exception e) {
-            logger.warning("Failed to write debug artifact: " + e.getMessage());
-            return "";
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write debug artifact", e);
         }
     }
 }

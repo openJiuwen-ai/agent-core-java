@@ -3,328 +3,348 @@
  */
 package com.openjiuwen.core.foundation.tool;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.foundation.tool.service_api.ApiParamLocation;
+import com.openjiuwen.core.foundation.tool.service_api.ApiParamMapper;
 
-import java.util.HashMap;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for APIParamMapper.
  * <p>
  * Mirrors Python's {@code test_api_param_mapper.py} from
  * {@code tests/unit_tests/core/foundation/tool/test_api_param_mapper.py}.
- * 
- * <p>Python source file contains 17 test methods:
- * - test_init_base
- * - test_map_with_dict_schema
- * - test_map_with_pydantic_model_schema
- * - test_map_with_default_values
- * - test_map_input_overrides_defaults
- * - test_map_none_and_empty_string_preserve_defaults
- * - test_path_param_replacement
- * - test_missing_required_path_param
- * - test_map_body_only
- * - test_map_with_no_inputs
- * - test_map_with_location_missing
- * - test_map_with_array_body
- * - test_map_with_nested_body
- * - test_map_with_mixed_locations
- * - test_schema_validation
- * - test_invalid_schema_type
- * - test_location_enum_values
  */
 @DisplayName("API Param Mapper Tests")
 class TestApiParamMapper {
 
-    /*
-     * Python tests verify APIParamMapper functionality:
-     * - Schema initialization
-     * - Parameter mapping to PATH, QUERY, BODY, HEADER
-     * - Default value handling
-     * - Input override behavior
-     */
+    private static final Map<String, Object> DEFAULT_SCHEMAS = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "id", Map.of("type", "integer", "location", "path"),
+                    "name", Map.of("type", "string", "location", "query"),
+                    "age", Map.of("type", "integer", "location", "query"),
+                    "data", Map.of("type", "object", "location", "body"),
+                    "auth_token", Map.of("type", "string", "location", "header")
+            )
+    );
+
+    private static final Map<String, Object> FORM_TYPE_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "file", Map.of(
+                            "type", "string",
+                            "location", "form",
+                            "form_handler_type", "file",
+                            "description", "PDF file"),
+                    "image", Map.of(
+                            "type", "string",
+                            "location", "form",
+                            "form_handler_type", "file",
+                            "description", "Image file"),
+                    "name", Map.of(
+                            "type", "string",
+                            "location", "body",
+                            "description", "File name")
+            )
+    );
 
     @Nested
-    @DisplayName("APIParamMapper Tests")
-    class TestApiParamMapperClass {
+    @DisplayName("Dictionary schema mapping")
+    class DictionarySchemaMapping {
 
         @Test
-        @Tag("level0")
-        @DisplayName("init base")
         void testInitBase() {
-            // Python: test_init_base
-            // Tests basic APIParamMapper initialization
-            
-            Map<String, Object> schema = new HashMap<>();
-            schema.put("type", "object");
-            
-            Map<String, Object> properties = new HashMap<>();
-            Map<String, Object> idProp = new HashMap<>();
-            idProp.put("type", "integer");
-            idProp.put("location", "path");
-            properties.put("id", idProp);
-            
-            Map<String, Object> nameProp = new HashMap<>();
-            nameProp.put("type", "string");
-            nameProp.put("location", "query");
-            properties.put("name", nameProp);
-            
-            schema.put("properties", properties);
-            
-            assertNotNull(schema);
-            assertEquals("object", schema.get("type"));
+            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(), ApiParamLocation.BODY);
+
+            assertTrue(result.get(ApiParamLocation.QUERY).isEmpty());
+            assertTrue(result.get(ApiParamLocation.HEADER).isEmpty());
+            assertTrue(result.get(ApiParamLocation.PATH).isEmpty());
+            assertTrue(result.get(ApiParamLocation.BODY).isEmpty());
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with dict schema")
         void testMapWithDictSchema() {
-            // Python: test_map_with_dict_schema
-            // Tests mapping parameters with dict schema
-            
-            Map<String, Object> inputs = new HashMap<>();
+            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, null, null, null);
+            Map<String, Object> inputs = new LinkedHashMap<>();
             inputs.put("id", 123);
             inputs.put("name", "John");
             inputs.put("age", 30);
             inputs.put("data", Map.of("key", "value"));
             inputs.put("auth_token", "abc123");
-            
-            // Simulate mapped results
-            Map<String, Object> pathParams = Map.of("id", 123);
-            Map<String, Object> queryParams = new HashMap<>();
-            queryParams.put("name", "John");
-            queryParams.put("age", 30);
-            Map<String, Object> bodyParams = Map.of("data", Map.of("key", "value"));
-            Map<String, Object> headerParams = Map.of("auth_token", "abc123");
-            
-            assertEquals(123, pathParams.get("id"));
-            assertEquals("John", queryParams.get("name"));
-            assertNotNull(bodyParams.get("data"));
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
+
+            assertEquals(Map.of("id", 123), result.get(ApiParamLocation.PATH));
+            assertEquals(Map.of("name", "John", "age", 30), result.get(ApiParamLocation.QUERY));
+            assertEquals(Map.of("data", Map.of("key", "value")), result.get(ApiParamLocation.BODY));
+            assertEquals(Map.of("auth_token", "abc123"), result.get(ApiParamLocation.HEADER));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with pydantic model schema")
-        void testMapWithPydanticModelSchema() {
-            // Python: test_map_with_pydantic_model_schema
-            // Tests mapping with Pydantic model schema
-            
-            // In Java, similar pattern with class schema
-            Map<String, Object> inputs = new HashMap<>();
-            inputs.put("id", 123);
-            inputs.put("name", "John");
-            inputs.put("data", Map.of("key", "value"));
-            inputs.put("token", "xyz789");
-            
-            assertNotNull(inputs);
+        void testMapWithPydanticModelSchemaEquivalent() {
+            Map<String, Object> modelSchema = Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                            "id", Map.of("type", "integer", "location", "path"),
+                            "name", Map.of("type", "string", "location", "query"),
+                            "data", Map.of("type", "object", "location", "body"),
+                            "token", Map.of("type", "string", "location", "header")
+                    )
+            );
+            ApiParamMapper mapper = new ApiParamMapper(modelSchema, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(
+                    "id", 123,
+                    "name", "John",
+                    "data", Map.of("key", "value"),
+                    "token", "xyz789"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("id", 123), result.get(ApiParamLocation.PATH));
+            assertEquals(Map.of("name", "John"), result.get(ApiParamLocation.QUERY));
+            assertEquals(Map.of("data", Map.of("key", "value")), result.get(ApiParamLocation.BODY));
+            assertEquals(Map.of("token", "xyz789"), result.get(ApiParamLocation.HEADER));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with default values")
         void testMapWithDefaultValues() {
-            // Python: test_map_with_default_values
-            // Tests mapping with default values
-            
-            Map<String, Object> defaultQueries = new HashMap<>();
-            defaultQueries.put("lang", "en");
-            defaultQueries.put("format", "json");
-            
-            Map<String, Object> defaultHeaders = new HashMap<>();
-            defaultHeaders.put("X-API-Key", "test-key");
-            
-            Map<String, Object> defaultPaths = new HashMap<>();
-            defaultPaths.put("version", "v1");
-            
-            // Inputs should merge with defaults
-            Map<String, Object> inputs = Map.of("id", 123, "name", "John");
-            
-            // Verify defaults exist
-            assertEquals("en", defaultQueries.get("lang"));
-            assertEquals("test-key", defaultHeaders.get("X-API-Key"));
+            ApiParamMapper mapper = new ApiParamMapper(
+                    DEFAULT_SCHEMAS,
+                    Map.of("lang", "en", "format", "json"),
+                    Map.of("X-API-Key", "test-key"),
+                    Map.of("version", "v1"));
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("id", 123, "name", "John"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("version", "v1", "id", 123), result.get(ApiParamLocation.PATH));
+            assertEquals(Map.of("lang", "en", "format", "json", "name", "John"),
+                    result.get(ApiParamLocation.QUERY));
+            assertEquals(Map.of("X-API-Key", "test-key"), result.get(ApiParamLocation.HEADER));
+            assertTrue(result.get(ApiParamLocation.BODY).isEmpty());
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map input overrides defaults")
         void testMapInputOverridesDefaults() {
-            // Python: test_map_input_overrides_defaults
-            // Tests that input values override defaults
-            
-            Map<String, Object> defaultQueries = new HashMap<>();
-            defaultQueries.put("lang", "en");
-            defaultQueries.put("name", "Default Name");
-            
-            Map<String, Object> inputs = Map.of("id", 123, "name", "Actual Name");
-            
-            // Input name should override default name
-            assertEquals("Actual Name", inputs.get("name"));
+            ApiParamMapper mapper = new ApiParamMapper(
+                    DEFAULT_SCHEMAS,
+                    Map.of("lang", "en", "name", "Default Name"),
+                    null,
+                    Map.of("id", 999, "version", "v1"));
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("id", 123, "name", "Actual Name"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("version", "v1", "id", 123), result.get(ApiParamLocation.PATH));
+            assertEquals(Map.of("lang", "en", "name", "Actual Name"), result.get(ApiParamLocation.QUERY));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map none and empty string preserve defaults")
         void testMapNoneAndEmptyStringPreserveDefaults() {
-            // Python: test_map_none_and_empty_string_preserve_defaults
-            // Tests None and empty string preserve defaults
-            
-            Map<String, Object> defaultQueries = new HashMap<>();
-            defaultQueries.put("lang", "en");
-            
-            // Empty string should not override default
-            String emptyValue = "";
-            assertTrue(emptyValue.isEmpty());
-            
-            // Null should not override default
-            Object nullValue = null;
-            assertNull(nullValue);
+            ApiParamMapper mapper = new ApiParamMapper(
+                    DEFAULT_SCHEMAS,
+                    Map.of("lang", "en", "format", "json"),
+                    Map.of("X-API-Key", "test-key", "X-User-ID", "default-user"),
+                    Map.of("version", "v1"));
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("id", null);
+            inputs.put("name", "");
+            inputs.put("age", 25);
+            inputs.put("auth_token", null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
+
+            assertEquals(Map.of("version", "v1"), result.get(ApiParamLocation.PATH));
+            assertEquals(Map.of("lang", "en", "format", "json", "age", 25), result.get(ApiParamLocation.QUERY));
+            assertEquals(Map.of("X-API-Key", "test-key", "X-User-ID", "default-user"),
+                    result.get(ApiParamLocation.HEADER));
+            assertTrue(result.get(ApiParamLocation.BODY).isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("Form parameter mapping")
+    class FormParameterMapping {
+
+        @Test
+        void testSingleFormParamMapping() {
+            ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                            "file", Map.of(
+                                    "type", "string",
+                                    "location", "form",
+                                    "form_handler_type", "file",
+                                    "description", "PDF file"))), null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("file", "http://example.com/document.pdf"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("form_handler_type", "file", "value", "http://example.com/document.pdf"),
+                    result.get(ApiParamLocation.FORM).get("file"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("path param replacement")
-        void testPathParamReplacement() {
-            // Python: test_path_param_replacement
-            // Tests path parameter replacement
-            
-            String urlTemplate = "/users/{id}/posts/{postId}";
-            Map<String, Object> pathParams = Map.of("id", 123, "postId", 456);
-            
-            String result = urlTemplate.replace("{id}", "123").replace("{postId}", "456");
-            assertEquals("/users/123/posts/456", result);
+        void testMultipleFormParamsMapping() {
+            ApiParamMapper mapper = new ApiParamMapper(FORM_TYPE_SCHEMA, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(
+                    "file", "http://example.com/document.pdf",
+                    "image", "http://example.com/image.png",
+                    "name", "test_document"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of(
+                            "file", Map.of("form_handler_type", "file", "value", "http://example.com/document.pdf"),
+                            "image", Map.of("form_handler_type", "file", "value", "http://example.com/image.png")),
+                    result.get(ApiParamLocation.FORM));
+            assertEquals(Map.of("name", "test_document"), result.get(ApiParamLocation.BODY));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("missing required path param")
-        void testMissingRequiredPathParam() {
-            // Python: test_missing_required_path_param
-            // Tests missing required path parameter
-            
-            // Should throw error when required path param missing
-            Exception error = new IllegalArgumentException("Missing required path parameter: id");
-            assertNotNull(error);
+        void testMixedFormAndRegularParams() {
+            Map<String, Object> schema = Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                            "document", Map.of("type", "string", "location", "form",
+                                    "form_handler_type", "file"),
+                            "title", Map.of("type", "string", "location", "body"),
+                            "user_id", Map.of("type", "integer", "location", "query"),
+                            "auth_token", Map.of("type", "string", "location", "header"),
+                            "version", Map.of("type", "string", "location", "path")
+                    )
+            );
+            ApiParamMapper mapper = new ApiParamMapper(schema, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(
+                    "document", "http://example.com/doc.pdf",
+                    "title", "My Document",
+                    "user_id", 123,
+                    "auth_token", "token123",
+                    "version", "v1"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("document", Map.of("form_handler_type", "file",
+                    "value", "http://example.com/doc.pdf")), result.get(ApiParamLocation.FORM));
+            assertEquals(Map.of("title", "My Document"), result.get(ApiParamLocation.BODY));
+            assertEquals(Map.of("user_id", 123), result.get(ApiParamLocation.QUERY));
+            assertEquals(Map.of("auth_token", "token123"), result.get(ApiParamLocation.HEADER));
+            assertEquals(Map.of("version", "v1"), result.get(ApiParamLocation.PATH));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map body only")
-        void testMapBodyOnly() {
-            // Python: test_map_body_only
-            // Tests mapping with only body parameters
-            
-            Map<String, Object> bodyParams = new HashMap<>();
-            bodyParams.put("key1", "value1");
-            bodyParams.put("key2", "value2");
-            
-            assertNotNull(bodyParams);
-            assertEquals("value1", bodyParams.get("key1"));
+        void testDefaultFormHandlerType() {
+            ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                    "type", "object",
+                    "properties", Map.of("file", Map.of(
+                            "type", "string", "location", "form", "description", "File"))),
+                    null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("file", "http://example.com/file.pdf"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("form_handler_type", "default", "value", "http://example.com/file.pdf"),
+                    result.get(ApiParamLocation.FORM).get("file"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with no inputs")
-        void testMapWithNoInputs() {
-            // Python: test_map_with_no_inputs
-            // Tests mapping with empty inputs
-            
-            Map<String, Object> emptyInputs = new HashMap<>();
-            assertTrue(emptyInputs.isEmpty());
+        void testCustomFormHandlerType() {
+            ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                    "type", "object",
+                    "properties", Map.of("data", Map.of(
+                            "type", "string", "location", "form", "form_handler_type", "custom"))),
+                    null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("data", "custom_value"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("form_handler_type", "custom", "value", "custom_value"),
+                    result.get(ApiParamLocation.FORM).get("data"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with location missing")
-        void testMapWithLocationMissing() {
-            // Python: test_map_with_location_missing
-            // Tests handling of missing location in schema
-            
-            // Parameters without location should default to body
-            assertTrue(true);
+        void testEmptyFormHandlerType() {
+            ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                    "type", "object",
+                    "properties", Map.of("file", Map.of(
+                            "type", "string", "location", "form", "form_handler_type", ""))),
+                    null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("file", "http://example.com/file.pdf"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("form_handler_type", "", "value", "http://example.com/file.pdf"),
+                    result.get(ApiParamLocation.FORM).get("file"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with array body")
-        void testMapWithArrayBody() {
-            // Python: test_map_with_array_body
-            // Tests body as array
-            
-            Object[] arrayBody = new Object[]{"item1", "item2", "item3"};
-            assertEquals(3, arrayBody.length);
+        void testFormParamValueIsNone() {
+            ApiParamMapper mapper = formFieldMapper();
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("form_field", null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
+
+            assertTrue(result.get(ApiParamLocation.FORM).isEmpty());
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with nested body")
-        void testMapWithNestedBody() {
-            // Python: test_map_with_nested_body
-            // Tests nested object in body
-            
-            Map<String, Object> nestedBody = new HashMap<>();
-            Map<String, Object> nested = new HashMap<>();
-            nested.put("innerKey", "innerValue");
-            nestedBody.put("outerKey", nested);
-            
-            assertNotNull(nestedBody.get("outerKey"));
+        void testFormParamValueIsEmptyString() {
+            ApiParamMapper mapper = formFieldMapper();
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("form_field", ""), ApiParamLocation.BODY);
+
+            assertTrue(result.get(ApiParamLocation.FORM).isEmpty());
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("map with mixed locations")
-        void testMapWithMixedLocations() {
-            // Python: test_map_with_mixed_locations
-            // Tests parameters with mixed locations
-            
-            Map<String, Object> pathParams = Map.of("id", 123);
-            Map<String, Object> queryParams = Map.of("filter", "active");
-            Map<String, Object> headerParams = Map.of("Authorization", "Bearer token");
-            Map<String, Object> bodyParams = Map.of("data", "value");
-            
-            assertNotNull(pathParams);
-            assertNotNull(queryParams);
-            assertNotNull(headerParams);
-            assertNotNull(bodyParams);
+        void testFormParamValueIsValid() {
+            ApiParamMapper mapper = formFieldMapper();
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("form_field", "test_value"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("form_handler_type", "default", "value", "test_value"),
+                    result.get(ApiParamLocation.FORM).get("form_field"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("schema validation")
-        void testSchemaValidation() {
-            // Python: test_schema_validation
-            // Tests schema validation
-            
-            Map<String, Object> validSchema = new HashMap<>();
-            validSchema.put("type", "object");
-            validSchema.put("properties", new HashMap<>());
-            
-            assertEquals("object", validSchema.get("type"));
+        void testInputsNotContainFormParam() {
+            ApiParamMapper mapper = new ApiParamMapper(FORM_TYPE_SCHEMA, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("name", "test"), ApiParamLocation.BODY);
+
+            assertTrue(result.get(ApiParamLocation.FORM).isEmpty());
+            assertEquals(Map.of("name", "test"), result.get(ApiParamLocation.BODY));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("invalid schema type")
-        void testInvalidSchemaType() {
-            // Python: test_invalid_schema_type
-            // Tests handling invalid schema type
-            
-            Exception error = new IllegalArgumentException("Invalid schema type");
-            assertNotNull(error);
+        void testEmptySchemaUsesDefaultLocation() {
+            ApiParamMapper mapper = new ApiParamMapper(null, null, null, null);
+
+            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(
+                    Map.of("field", "value"), ApiParamLocation.BODY);
+
+            assertEquals(Map.of("field", "value"), result.get(ApiParamLocation.BODY));
         }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("location enum values")
-        void testLocationEnumValues() {
-            // Python: test_location_enum_values
-            // Tests APIParamLocation enum values
-            
-            // Verify location enum values: PATH, QUERY, BODY, HEADER
-            String[] locations = {"PATH", "QUERY", "BODY", "HEADER"};
-            assertEquals(4, locations.length);
+        private ApiParamMapper formFieldMapper() {
+            return new ApiParamMapper(Map.of(
+                    "type", "object",
+                    "properties", Map.of("form_field", Map.of(
+                            "type", "string",
+                            "location", "form",
+                            "form_handler_type", "default"))),
+                    null, null, null);
         }
     }
 }

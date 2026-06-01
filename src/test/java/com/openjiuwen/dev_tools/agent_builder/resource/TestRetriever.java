@@ -6,7 +6,11 @@ package com.openjiuwen.dev_tools.agent_builder.resource;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -60,6 +64,9 @@ class TestRetriever {
     @Nested
     class TestLoadResources {
 
+        @TempDir
+        Path tempDir;
+
         @Test
         void testLoadResourcesDefaultPath() {
             assertNotNull(ResourceRetriever.loadResources());
@@ -68,6 +75,25 @@ class TestRetriever {
         @Test
         void testLoadResourcesFileNotFound() {
             assertEquals(List.of(), ResourceRetriever.loadResources("missing/plugins.json"));
+        }
+
+        @Test
+        void testLoadResourcesCustomPath() throws IOException {
+            Path pluginJson = tempDir.resolve("plugins.json");
+            Files.writeString(pluginJson, "{\"plugins\":[{\"plugin_id\":\"plugin_1\"}]}");
+
+            List<Map<String, Object>> result = ResourceRetriever.loadResources(pluginJson.toString());
+
+            assertEquals(1, result.size());
+            assertEquals("plugin_1", result.get(0).get("plugin_id"));
+        }
+
+        @Test
+        void testLoadResourcesEmptyPlugins() throws IOException {
+            Path pluginJson = tempDir.resolve("plugins.json");
+            Files.writeString(pluginJson, "{}");
+
+            assertEquals(List.of(), ResourceRetriever.loadResources(pluginJson.toString()));
         }
     }
 }

@@ -46,7 +46,7 @@ public class MemoryWriteExecutable extends ComponentExecutable {
         List<BaseMessage> messages = writeInput.getMessages();
 
         if (messages == null || messages.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR,
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR,
                     "error_msg", "Messages list cannot be empty");
         }
 
@@ -87,7 +87,7 @@ public class MemoryWriteExecutable extends ComponentExecutable {
                     "LongTermMemoryWriteComponent",
                     session.getSessionId()
             );
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED,
                     "error_msg", "Memory write call failed: " + e.getMessage());
         }
 
@@ -130,7 +130,7 @@ public class MemoryWriteExecutable extends ComponentExecutable {
                     .additionalFields(map)
                     .build();
         }
-        throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR,
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR,
                 "error_msg", "Invalid input type for MemoryWrite");
     }
 }

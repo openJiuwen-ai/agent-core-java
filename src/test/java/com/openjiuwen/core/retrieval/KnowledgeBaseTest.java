@@ -32,6 +32,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -43,8 +44,27 @@ import static org.mockito.Mockito.when;
 
 /**
  * Knowledge base regression tests ported from Python retrieval unit tests.
+ *
+ * <p>Mirrors Python's {@code test_knowledge_base.py} in
+ * {@code tests/unit_tests/core/retrieval}.</p>
  */
 class KnowledgeBaseTest {
+
+    @Test
+    @DisplayName("test initialization")
+    void testInit() {
+        KnowledgeBaseConfig config = new KnowledgeBaseConfig("test_kb");
+        KnowledgeBase kb = new ConcreteKnowledgeBase(config);
+
+        assertEquals(config, kb.getConfig());
+        assertNull(kb.getVectorStore());
+        assertNull(kb.getEmbedModel());
+        assertNull(kb.getParser());
+        assertNull(kb.getChunker());
+        assertNull(kb.getExtractor());
+        assertNull(kb.getIndexManager());
+        assertNull(kb.getLlmClient());
+    }
 
     @Test
     @DisplayName("knowledge base config validation and close")
@@ -328,7 +348,7 @@ class KnowledgeBaseTest {
 
         @Override
         protected String parseContent(String doc, com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient, Map<String, Object> options) {
-            return null;
+            return "parsed " + doc;
         }
     }
 }

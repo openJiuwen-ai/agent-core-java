@@ -161,6 +161,29 @@ public final class Prompts {
   "loop_desc": "",
 }
 不要输出任何其它字段
+
+例如无环时：
+{
+  "need_refined": false,
+  "loop_desc": "",
+}
+
+例如有环时：
+{
+  "need_refined": true,
+  "loop_desc": "节点回跳形成循环",
+}
+""";
+
+    /**
+     * User template for cycle checking.
+     * <p>
+     * Mirrors Python's {@code CHECK_CYCLE_USER_PROMPT_TEMPLATE}.
+     * Template expects {{mermaid_code}} placeholder.
+     */
+    public static final String CHECK_CYCLE_USER_PROMPT_TEMPLATE = """
+## 流程图
+{{mermaid_code}}
 """;
 
     /**
@@ -191,5 +214,15 @@ public final class Prompts {
         return REFINE_INTENTION_USER_TEMPLATE
                 .replace("{{mermaid_code}}", mermaidCode != null ? mermaidCode : "")
                 .replace("{{dialog_history}}", dialogHistory != null ? dialogHistory : "");
+    }
+
+    /**
+     * Format cycle-check user template with mermaid code.
+     *
+     * @param mermaidCode Mermaid graph source
+     * @return Formatted template
+     */
+    public static String formatCheckCycleUserTemplate(String mermaidCode) {
+        return CHECK_CYCLE_USER_PROMPT_TEMPLATE.replace("{{mermaid_code}}", mermaidCode != null ? mermaidCode : "");
     }
 }

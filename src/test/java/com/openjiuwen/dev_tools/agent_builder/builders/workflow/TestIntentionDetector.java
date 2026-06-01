@@ -4,164 +4,123 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Assertions;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test IntentionDetector functionality.
  * <p>
  * Mirrors Python's {@code test_intention_detector.py} in
- * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/test_intention_detector.py}.
+ * {@code tests.unit_tests.dev_tools.agent_builder.builders.workflow.test_intention_detector}.
  */
 class TestIntentionDetector {
 
-    /**
-     * Test IntentionDetector.formatDialogHistory method.
-     */
-    static class TestFormatDialogHistory {
+    @Nested
+    class TestWorkflowIntentionDetector {
 
-        @Test
-        void testFormatSingleMessage() {
-            List<Map<String, Object>> history = new ArrayList<>();
-            Map<String, Object> msg = new LinkedHashMap<>();
-            msg.put("role", "user");
-            msg.put("content", "Hello");
-            history.add(msg);
-
-            String result = IntentionDetector.formatDialogHistory(history);
-
-            Assertions.assertTrue(result.contains("User: Hello"));
+        private IntentionDetector detector(String content) {
+            return new IntentionDetector(new MockLlm(content));
         }
 
         @Test
-        void testFormatMultipleMessages() {
-            List<Map<String, Object>> history = new ArrayList<>();
-            Map<String, Object> msg1 = new LinkedHashMap<>();
-            msg1.put("role", "user");
-            msg1.put("content", "Hello");
-            history.add(msg1);
+        void testFormatDialogHistory() {
+            IntentionDetector detector = detector("{\"has_instruction\": true}");
+            List<Map<String, Object>> dialogHistory = List.of(
+                    Map.of("role", "user", "content", "Hello"),
+                    Map.of("role", "assistant", "content", "Hi there!"),
+                    Map.of("role", "system", "content", "System message")
+            );
 
-            Map<String, Object> msg2 = new LinkedHashMap<>();
-            msg2.put("role", "assistant");
-            msg2.put("content", "Hi there!");
-            history.add(msg2);
+            String result = IntentionDetector.formatDialogHistory(dialogHistory);
 
-            String result = IntentionDetector.formatDialogHistory(history);
-
-            Assertions.assertTrue(result.contains("User: Hello"));
-            Assertions.assertTrue(result.contains("Assistant: Hi there!"));
+            assertTrue(result.contains("User: Hello"));
+            assertTrue(result.contains("Assistant: Hi there!"));
+            assertTrue(result.contains("System: System message"));
         }
 
         @Test
         void testFormatDialogHistoryEmpty() {
-            String result = IntentionDetector.formatDialogHistory(new ArrayList<>());
-            Assertions.assertEquals("", result);
-        }
-
-        @Test
-        void testFormatDialogHistoryNull() {
-            String result = IntentionDetector.formatDialogHistory(null);
-            Assertions.assertEquals("", result);
+            IntentionDetector detector = detector("{\"has_instruction\": true}");
+            assertEquals("", IntentionDetector.formatDialogHistory(new ArrayList<>()));
         }
 
         @Test
         void testFormatDialogHistoryUnknownRole() {
-            List<Map<String, Object>> history = new ArrayList<>();
-            Map<String, Object> msg = new LinkedHashMap<>();
-            msg.put("role", "unknown");
-            msg.put("content", "Test");
-            history.add(msg);
+            IntentionDetector detector = detector("{\"has_instruction\": true}");
+            List<Map<String, Object>> dialogHistory = List.of(Map.of("role", "unknown", "content", "Test"));
 
-            String result = IntentionDetector.formatDialogHistory(history);
-
-            Assertions.assertTrue(result.contains("User: Test")); // Unknown roles map to User
+            String result = IntentionDetector.formatDialogHistory(dialogHistory);
+            assertTrue(result.contains("User: Test"));
         }
-    }
-
-    /**
-     * Test IntentionDetector.extractIntent method.
-     */
-    static class TestExtractIntent {
 
         @Test
         void testExtractIntentWithJsonBlock() {
-            String input = "```json\n{\"has_instruction\": true}\n```";
-            Map<String, Object> result = IntentionDetector.extractIntent(input);
-
-            Assertions.assertEquals(true, result.get("has_instruction"));
+            String inputText = "```json\n{\"has_instruction\": true}\n```";
+            Map<String, Object> result = IntentionDetector.extractIntent(inputText);
+            assertEquals(Map.of("has_instruction", true), result);
         }
 
         @Test
         void testExtractIntentWithoutJsonBlock() {
-            String input = "{\"has_instruction\": false}";
-            Map<String, Object> result = IntentionDetector.extractIntent(input);
-
-            Assertions.assertEquals(false, result.get("has_instruction"));
+            String inputText = "{\"has_instruction\": false}";
+            Map<String, Object> result = IntentionDetector.extractIntent(inputText);
+            assertEquals(Map.of("has_instruction", false), result);
         }
 
         @Test
-        void testExtractIntentWithProvideProcess() {
-            String input = "{\"provide_process\": true}";
-            Map<String, Object> result = IntentionDetector.extractIntent(input);
-
-            Assertions.assertEquals(true, result.get("provide_process"));
+        void testDetectInitialInstruction() {
+            IntentionDetector detector = detector("```json\n{\"provide_process\": true}\n```");
+            boolean result = detector.detectInitialInstruction(List.of(
+                    Map.of("role", "user", "content", "创建一个数据处理工作流")
+            ));
+            assertTrue(result);
         }
 
         @Test
-        void testExtractIntentWithNeedRefined() {
-            String input = "{\"need_refined\": true}";
-            Map<String, Object> result = IntentionDetector.extractIntent(input);
+        void testDetectRefineIntentTrue() {
+            IntentionDetector detector = detector("```json\n{\"need_refined\": true}\n```");
+            boolean result = detector.detectRefineIntent(
+                    List.of(Map.of("role", "user", "content", "修改节点")),
+                    "graph TD; A-->B"
+            );
+            assertTrue(result);
+        }
 
-            Assertions.assertEquals(true, result.get("need_refined"));
+        @Test
+        void testDetectRefineIntentFalse() {
+            IntentionDetector detector = detector("```json\n{\"need_refined\": false}\n```");
+            boolean result = detector.detectRefineIntent(
+                    List.of(Map.of("role", "user", "content", "确认")),
+                    "graph TD; A-->B"
+            );
+            assertFalse(result);
         }
     }
 
-    /**
-     * Test IntentionDetector.detect method.
-     */
-    static class TestDetect {
+    static final class MockLlm {
+        private final String content;
 
-        @Test
-        void testDetectCreateWorkflow() {
-            IntentionDetector detector = new IntentionDetector();
-
-            Assertions.assertEquals(IntentionDetector.Intention.CREATE_WORKFLOW,
-                    detector.detect("创建一个数据处理工作流"));
-
-            Assertions.assertEquals(IntentionDetector.Intention.CREATE_WORKFLOW,
-                    detector.detect("Create a workflow"));
+        MockLlm(String content) {
+            this.content = content;
         }
 
-        @Test
-        void testDetectModifyWorkflow() {
-            IntentionDetector detector = new IntentionDetector();
-
-            Assertions.assertEquals(IntentionDetector.Intention.MODIFY_WORKFLOW,
-                    detector.detect("修改工作流"));
-
-            Assertions.assertEquals(IntentionDetector.Intention.MODIFY_WORKFLOW,
-                    detector.detect("Modify the workflow"));
+        public MockResponse invoke(Object ignored) {
+            return new MockResponse(content);
         }
+    }
 
-        @Test
-        void testDetectUnknown() {
-            IntentionDetector detector = new IntentionDetector();
-
-            Assertions.assertEquals(IntentionDetector.Intention.UNKNOWN,
-                    detector.detect("这是一个问题"));
-
-            Assertions.assertEquals(IntentionDetector.Intention.UNKNOWN,
-                    detector.detect(""));
-        }
-
-        @Test
-        void testDetectNull() {
-            IntentionDetector detector = new IntentionDetector();
-
-            Assertions.assertEquals(IntentionDetector.Intention.UNKNOWN,
-                    detector.detect(null));
+    record MockResponse(String content) {
+        public String getContent() {
+            return content;
         }
     }
 }

@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 
 /**
  * URL validation and proxy utilities — protects against SSRF attacks.
+ *
+ * <p>Mirrors Python's {@code UrlUtils} in {@code openjiuwen.core.common.security.url_utils}.</p>
  */
 public final class UrlUtils {
 
@@ -37,8 +39,8 @@ public final class UrlUtils {
         try {
             URI uri = new URI(sanitizeUrl(url));
             String hostname = uri.getHost();
-            InetAddress addr = InetAddress.getByName(hostname);
-            if (isInnerIpAddress(addr)) {
+            String ipAddress = InetAddress.getByName(hostname).getHostAddress();
+            if (isInnerIpAddress(ipAddress)) {
                 ErrorHelper.raiseError(StatusCode.COMMON_URL_INPUT_INVALID,
                     "illegal ip address", null, null, null);
             }
@@ -92,7 +94,7 @@ public final class UrlUtils {
 
     // ==================== Internal ====================
 
-    private static boolean isInnerIpAddress(InetAddress addr) {
+    public static boolean isInnerIpAddress(String ip) {
         String ssrfEnabled = System.getenv("SSRF_PROTECT_ENABLED");
         if (ssrfEnabled == null || ssrfEnabled.isBlank()) {
             ssrfEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
@@ -100,10 +102,24 @@ public final class UrlUtils {
         if ("false".equalsIgnoreCase(ssrfEnabled)) {
             return false;
         }
-        return addr.isLoopbackAddress()
-            || addr.isSiteLocalAddress()
-            || addr.isLinkLocalAddress()
-            || addr.isAnyLocalAddress();
+        long ipLong = ipToLong(ip);
+        return (ipToLong("10.0.0.0") <= ipLong && ipLong <= ipToLong("10.255.255.255"))
+            || (ipToLong("172.16.0.0") <= ipLong && ipLong <= ipToLong("172.31.255.255"))
+            || (ipToLong("192.168.0.0") <= ipLong && ipLong <= ipToLong("192.168.255.255"))
+            || (ipToLong("127.0.0.0") <= ipLong && ipLong <= ipToLong("127.255.255.255"))
+            || ipLong == ipToLong("0.0.0.0");
+    }
+
+    public static long ipToLong(String ipAddr) {
+        try {
+            byte[] bytes = InetAddress.getByName(ipAddr).getAddress();
+            if (bytes.length != 4) {
+                return -1;
+            }
+            return ByteBuffer.wrap(bytes).getInt() & 0xFFFF_FFFFL;
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     private static String sanitizeUrl(String url) {
@@ -142,6 +158,9 @@ public final class UrlUtils {
 
     private static boolean isIpMatch(String hostname, String entry) {
         try {
+            if (!isLiteralIp(hostname)) {
+                return false;
+            }
             InetAddress hostIp = InetAddress.getByName(hostname);
             if (entry.contains("/")) {
                 // CIDR match
@@ -153,6 +172,10 @@ public final class UrlUtils {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static boolean isLiteralIp(String value) {
+        return value != null && value.matches("^[0-9a-fA-F:.]+$");
     }
 
     private static boolean isInCidr(InetAddress addr, String cidr) {

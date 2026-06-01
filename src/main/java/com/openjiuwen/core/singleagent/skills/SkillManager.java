@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.skills;
 
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,6 +19,9 @@ import java.util.Map;
  * <p>Maintains a registry of skills and provides methods to register,
  * unregister, and query skills. Skills are loaded from YAML files containing
  * metadata such as name and description.</p>
+ *
+ * <p>Mirrors Python's {@code SkillManager} in
+ * {@code openjiuwen.core.single_agent.skills.skill_manager}.</p>
  */
 public class SkillManager {
 
@@ -134,28 +138,48 @@ public class SkillManager {
             return;
         }
 
+        File dir = root.toFile();
+        if (!dir.isDirectory()) {
+            return;
+        }
+
+        // Python first treats the provided directory as a skill directory.
+        Path skillMd = findSkillMarkdown(dir);
+        if (skillMd != null) {
+            Skill s = createSkillFromPath(skillMd);
+            if (s != null) {
+                if (!overwrite && registry.containsKey(s.getName())) {
+                    throw new IllegalStateException("Skill already exists: " + s.getName());
+                }
+                registry.put(s.getName(), s);
+                return;
+            }
+        }
+
         // Scan subdirectories for Skill.md
-        java.io.File dir = root.toFile();
-        if (dir.isDirectory()) {
-            java.io.File[] subdirs = dir.listFiles(java.io.File::isDirectory);
-            if (subdirs != null) {
-                for (java.io.File subdir : subdirs) {
-                    java.io.File skillMd = new java.io.File(subdir, "Skill.md");
-                    if (!skillMd.exists()) {
-                        skillMd = new java.io.File(subdir, "SKILL.md");
-                    }
-                    if (skillMd.exists()) {
-                        Skill s = createSkillFromPath(skillMd.toPath());
-                        if (s != null) {
-                            if (!overwrite && registry.containsKey(s.getName())) {
-                                throw new IllegalStateException("Skill already exists: " + s.getName());
-                            }
-                            registry.put(s.getName(), s);
+        File[] subdirs = dir.listFiles(File::isDirectory);
+        if (subdirs != null) {
+            for (File subdir : subdirs) {
+                Path childSkillMd = findSkillMarkdown(subdir);
+                if (childSkillMd != null) {
+                    Skill s = createSkillFromPath(childSkillMd);
+                    if (s != null) {
+                        if (!overwrite && registry.containsKey(s.getName())) {
+                            throw new IllegalStateException("Skill already exists: " + s.getName());
                         }
+                        registry.put(s.getName(), s);
                     }
                 }
             }
         }
+    }
+
+    private Path findSkillMarkdown(File dir) {
+        File[] files = dir.listFiles(file -> file.isFile() && "skill.md".equalsIgnoreCase(file.getName()));
+        if (files == null || files.length == 0) {
+            return null;
+        }
+        return files[0].toPath();
     }
 
     /**

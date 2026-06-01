@@ -266,7 +266,6 @@ public class SkillCallOperator extends Operator {
      * @param kwargs additional arguments
      * @return null (not applicable)
      */
-    @Override
     public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) {
         // SkillCallOperator manages parameters only, not execution
         return null;

@@ -1,13 +1,19 @@
 package com.openjiuwen.agent_teams.agent;
 
+import com.openjiuwen.agent_teams.schema.StatusTransitions;
+import com.openjiuwen.agent_teams.schema.TeamEvent;
+import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
+import com.openjiuwen.agent_teams.schema.TeamStandbyEvent;
 import com.openjiuwen.agent_teams.schema.DeepAgentSpec;
 import com.openjiuwen.agent_teams.schema.LeaderSpec;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamLifecycle;
-import com.openjiuwen.agent_teams.schema.TeamMemberSpec;
 import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import com.openjiuwen.agent_teams.schema.status.ExecutionStatus;
+import com.openjiuwen.agent_teams.schema.status.MemberMode;
 import com.openjiuwen.agent_teams.schema.status.MemberStatus;
+import com.openjiuwen.agent_teams.tools.TeamBackend;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
@@ -19,6 +25,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code tests.unit_tests.agent_teams.test_persistent_team}.
@@ -101,6 +109,57 @@ class PersistentTeamSessionRecoveryTest {
         Map<?, ?> leaderState = assertInstanceOf(Map.class, leaderStateRaw);
         assertEquals("temporary-team", leaderState.get("team_name"));
         assertEquals("TEMPORARY", leaderState.get("lifecycle"));
+    }
+
+    @Test
+    void standbyEventSerializationMatchesPythonEnvelope() {
+        TeamStandbyEvent event = new TeamStandbyEvent("test_team");
+
+        EventMessage message = EventMessage.fromEvent(event);
+
+        assertEquals(TeamEvent.STANDBY, message.getEventType());
+        assertEquals("test_team", message.getPayload().get("team_name"));
+        assertSame(event, message.getPayloadObject());
+    }
+
+    @Test
+    void standbyEventPayloadObjectSupportsTypedDeserialization() {
+        TeamStandbyEvent event = new TeamStandbyEvent("test_team");
+
+        EventMessage message = EventMessage.fromEvent(event);
+
+        TeamStandbyEvent payload = assertInstanceOf(TeamStandbyEvent.class, message.getPayloadObject());
+        assertEquals("test_team", payload.getTeamName());
+    }
+
+    @Test
+    void readyToReadyTransitionRemainsValidForPersistentResume() {
+        assertTrue(StatusTransitions.isValidTransition(
+                com.openjiuwen.agent_teams.schema.MemberStatus.READY,
+                com.openjiuwen.agent_teams.schema.MemberStatus.READY,
+                StatusTransitions.MEMBER_TRANSITIONS
+        ));
+        assertTrue(StatusTransitions.isValidTransition(
+                com.openjiuwen.agent_teams.schema.MemberStatus.READY,
+                com.openjiuwen.agent_teams.schema.MemberStatus.BUSY,
+                StatusTransitions.MEMBER_TRANSITIONS
+        ));
+    }
+
+    @Test
+    void buildTeamLeavesPredefinedPersistentMembersUnstarted() {
+        TeamMemberSpec predefinedMember = createMemberSpec("dev-1");
+        TeamBackend backend = new TeamBackend(
+                "persistent_team",
+                "leader1",
+                true,
+                MemberMode.BUILD_MODE,
+                List.of(predefinedMember)
+        );
+
+        backend.buildTeam("Persistent Team", "A persistent team", "Leader", "PM");
+
+        assertEquals(MemberStatus.UNSTARTED, backend.getMember("dev-1").getStatus());
     }
 
     private TeamAgentSpec createPersistentSpec() {

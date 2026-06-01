@@ -205,6 +205,9 @@ public class ExpressionCondition extends Condition {
             if (parser.matchOp("==")) {
                 Object right = parseAddSub(parser);
                 left = objectEquals(left, right);
+            } else if (parser.matchOp("=")) {
+                Object right = parseAddSub(parser);
+                left = objectEquals(left, right);
             } else if (parser.matchOp("!=")) {
                 Object right = parseAddSub(parser);
                 left = !objectEquals(left, right);

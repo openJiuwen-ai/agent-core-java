@@ -6,6 +6,8 @@ package com.openjiuwen.agent_teams.team_workspace;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ import java.util.logging.Logger;
 public class WorkspaceManager {
 
     private static final Logger logger = Logger.getLogger(WorkspaceManager.class.getName());
+    public static final int ERROR_PRIVILEGE_NOT_HELD = 1314;
 
     private final TeamWorkspaceConfig config;
     private final String workspacePath;
@@ -92,6 +95,10 @@ public class WorkspaceManager {
      *
      * @param remoteUrl Git remote URL for distributed workspace repo
      */
+    public CompletableFuture<Void> initialize() {
+        return initialize(null);
+    }
+
     public CompletableFuture<Void> initialize(String remoteUrl) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -135,6 +142,91 @@ public class WorkspaceManager {
             } catch (Exception e) {
                 logger.warning("Failed to initialize workspace: " + e.getMessage());
             }
+        });
+    }
+
+    /**
+     * Mount the shared team workspace into an agent workspace at
+     * {@code .team/{teamName}}.
+     */
+    public void mountIntoWorkspace(String workspaceRoot) {
+        try {
+            Path teamDir = Path.of(workspaceRoot, ".team");
+            Files.createDirectories(teamDir);
+            Path linkPath = teamDir.resolve(teamName);
+            if (!Files.exists(linkPath)) {
+                mountDirectory(Path.of(workspacePath), linkPath);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to mount team workspace", e);
+        }
+    }
+
+    private void mountDirectory(Path targetPath, Path linkPath) throws IOException {
+        try {
+            Files.createSymbolicLink(linkPath, targetPath);
+        } catch (UnsupportedOperationException symlinkError) {
+            Files.createDirectories(linkPath);
+        } catch (FileSystemException symlinkError) {
+            if (!isWindowsPrivilegeFailure(symlinkError)) {
+                throw symlinkError;
+            }
+            Files.createDirectories(linkPath);
+        }
+    }
+
+    private boolean isWindowsPrivilegeFailure(FileSystemException error) {
+        if (error instanceof AccessDeniedException) {
+            return true;
+        }
+        String reason = error.getReason();
+        String message = error.getMessage();
+        return containsPrivilegeMarker(reason) || containsPrivilegeMarker(message);
+    }
+
+    private boolean containsPrivilegeMarker(String text) {
+        if (text == null) {
+            return false;
+        }
+        String normalized = text.toLowerCase();
+        return normalized.contains("privilege") || text.contains("\u7279\u6743");
+    }
+
+    /**
+     * Pull latest changes in distributed mode.
+     */
+    public CompletableFuture<Boolean> pull() {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!config.isVersionControl() || mode != WorkspaceMode.DISTRIBUTED) {
+                return false;
+            }
+            GitResult result = runGit(
+                Path.of(workspacePath),
+                false,
+                "git",
+                "pull",
+                "--rebase",
+                "--autostash",
+                "origin",
+                "main"
+            );
+            return result.exitCode() == 0 && !result.stdout().contains("Already up to date");
+        });
+    }
+
+    /**
+     * Push local commits in distributed mode.
+     */
+    public CompletableFuture<Boolean> push() {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!config.isVersionControl() || mode != WorkspaceMode.DISTRIBUTED) {
+                return true;
+            }
+            GitResult result = runGit(Path.of(workspacePath), false, "git", "push", "origin", "main");
+            if (result.exitCode() != 0) {
+                logger.warning("Workspace push failed: " + result.stderr());
+            }
+            return result.exitCode() == 0;
         });
     }
 

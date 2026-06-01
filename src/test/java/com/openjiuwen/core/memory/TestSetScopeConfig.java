@@ -3,8 +3,11 @@
  */
 package com.openjiuwen.core.memory;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.memory.support.LongTermMemoryTestSupport;
+import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,8 +43,18 @@ class TestSetScopeConfig {
             // Test that setScopeConfig works after registerStore.
             LongTermMemory mem = LongTermMemoryTestSupport.registeredMemory();
 
-            // Create a simple MemoryScopeConfig
-            MemoryScopeConfig scopeConfig = new MemoryScopeConfig();
+            MemoryScopeConfig scopeConfig = MemoryScopeConfig.builder()
+                    .modelCfg(ModelRequestConfig.builder().modelName("test_model").build())
+                    .modelClientCfg(ModelClientConfig.builder()
+                            .clientProvider("DashScope")
+                            .apiKey("test_api_key")
+                            .apiBase("https://dashscope.aliyuncs.com/api/v1")
+                            .build())
+                    .embeddingCfg(new EmbeddingConfig(
+                            "test_embedding_model",
+                            "https://dashscope.aliyuncs.com/api/v1",
+                            "test_api_key"))
+                    .build();
 
             String scopeId = "test_scope_123";
 
@@ -54,6 +67,9 @@ class TestSetScopeConfig {
             // Verify config can be retrieved
             MemoryScopeConfig retrieved = mem.getScopeConfig(scopeId);
             assertNotNull(retrieved);
+            assertEquals("test_model", retrieved.getModelCfg().getModelName());
+            assertEquals("DashScope", retrieved.getModelClientCfg().getClientProvider());
+            assertEquals("test_embedding_model", retrieved.getEmbeddingCfg().getModelName());
         }
 
         @Test

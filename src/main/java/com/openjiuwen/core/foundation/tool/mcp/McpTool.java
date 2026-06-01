@@ -43,7 +43,15 @@ public class McpTool extends Tool {
             // Schema validation: format inputs against inputParams if defined
             Map<String, Object> inputParams = card.getInputParams();
             if (inputParams != null && !inputParams.isEmpty()) {
-                arguments = SchemaUtils.formatWithSchema(arguments, inputParams);
+                Map<String, Object> options = kwargs != null ? kwargs : Map.of();
+                boolean skipValidate = Boolean.TRUE.equals(options.get("skip_inputs_validate"));
+                boolean skipNoneValue = !options.containsKey("skip_none_value")
+                        || Boolean.TRUE.equals(options.get("skip_none_value"));
+                arguments = SchemaUtils.formatWithSchema(arguments, inputParams, false, skipValidate);
+                if (skipNoneValue) {
+                    Map<String, Object> cleaned = SchemaUtils.removeNoneValues(arguments);
+                    arguments = cleaned != null ? cleaned : Map.of();
+                }
             }
             Object result = mcpClient.callTool(card.getName(), arguments);
             return Map.of("result", result);

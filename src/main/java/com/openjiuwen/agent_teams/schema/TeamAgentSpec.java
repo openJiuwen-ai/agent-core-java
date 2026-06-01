@@ -204,6 +204,9 @@ public class TeamAgentSpec {
             if (memberName == null || memberName.isBlank()) {
                 continue;
             }
+            if (memberSpec.getRoleType() == TeamRole.HUMAN_AGENT) {
+                continue;
+            }
             if (TeamConstants.RESERVED_MEMBER_NAMES.contains(memberName)) {
                 throw new IllegalArgumentException(
                         "Predefined member name '" + memberName + "' is reserved by the runtime"
@@ -231,7 +234,7 @@ public class TeamAgentSpec {
             return;
         }
         for (TeamMemberSpec memberSpec : predefinedMembers) {
-            if (memberSpec != null && TeamConstants.HUMAN_AGENT_MEMBER_NAME.equals(memberSpec.getMemberName())) {
+            if (memberSpec != null && memberSpec.getRoleType() == TeamRole.HUMAN_AGENT) {
                 return;
             }
         }

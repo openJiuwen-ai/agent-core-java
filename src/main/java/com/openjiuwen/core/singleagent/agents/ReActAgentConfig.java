@@ -13,6 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +53,7 @@ public class ReActAgentConfig {
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfigObj;
     private String sysOperationId;
+    private Map<String, Object> customHeaders;
 
     @Builder.Default
     private ContextEngineConfig contextEngineConfig = ContextEngineConfig.builder()
@@ -108,6 +110,11 @@ public class ReActAgentConfig {
         return this;
     }
 
+    public ReActAgentConfig configureCustomHeaders(Map<String, ?> customHeaders) {
+        this.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
+        return this;
+    }
+
     public ReActAgentConfig configureModelClient(
             String provider,
             String apiKey,
@@ -139,6 +146,7 @@ public class ReActAgentConfig {
                 .verifySsl(verifySsl)
                 .sslCert(sslCert)
                 .headers(headers)
+                .customHeaders(customHeaders)
                 .build();
 
         if (this.modelConfigObj == null) {

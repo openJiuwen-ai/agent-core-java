@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_teams.schema.message;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Minimal in-memory message record.
  *
@@ -11,6 +13,8 @@ package com.openjiuwen.agent_teams.schema.message;
  * {@code TeamMessageManager} and message database models.
  */
 public class MessageRecord {
+
+    private static final AtomicLong LAST_CREATED_AT = new AtomicLong();
 
     private final String messageId;
     private final String teamName;
@@ -37,7 +41,7 @@ public class MessageRecord {
         this.content = content;
         this.broadcast = broadcast;
         this.read = read;
-        this.createdAt = System.currentTimeMillis();
+        this.createdAt = nextCreatedAt();
     }
 
     public String getMessageId() {
@@ -74,5 +78,15 @@ public class MessageRecord {
 
     public long getCreatedAt() {
         return createdAt;
+    }
+
+    private static long nextCreatedAt() {
+        while (true) {
+            long previous = LAST_CREATED_AT.get();
+            long candidate = Math.max(System.currentTimeMillis(), previous + 1L);
+            if (LAST_CREATED_AT.compareAndSet(previous, candidate)) {
+                return candidate;
+            }
+        }
     }
 }

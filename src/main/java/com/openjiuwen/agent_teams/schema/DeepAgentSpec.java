@@ -6,6 +6,9 @@ package com.openjiuwen.agent_teams.schema;
 
 import com.openjiuwen.harness.DeepAgentConfig;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Minimal serializable wrapper around a Java DeepAgentConfig.
  *
@@ -18,6 +21,7 @@ public class DeepAgentSpec {
     private DeepAgentConfig config;
     private TeamModelConfig model;
     private String language;
+    private List<String> approvalRequiredTools = new ArrayList<>();
 
     public DeepAgentConfig getConfig() {
         return config;
@@ -41,5 +45,14 @@ public class DeepAgentSpec {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public List<String> getApprovalRequiredTools() {
+        return new ArrayList<>(approvalRequiredTools);
+    }
+
+    public void setApprovalRequiredTools(List<String> approvalRequiredTools) {
+        this.approvalRequiredTools = approvalRequiredTools != null
+                ? new ArrayList<>(approvalRequiredTools) : new ArrayList<>();
     }
 }

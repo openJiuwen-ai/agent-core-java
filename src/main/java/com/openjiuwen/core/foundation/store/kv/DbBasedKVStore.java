@@ -40,7 +40,7 @@ public class DbBasedKVStore extends BaseKVStore {
     public void set(String key, Object value) {
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "MERGE INTO " + tableName + " (k, v) KEY(k) VALUES (?, ?)")) {
+                     "MERGE INTO " + tableName + " (k, v, expires_at) KEY(k) VALUES (?, ?, NULL)")) {
             statement.setString(1, key);
             statement.setString(2, value == null ? null : String.valueOf(value));
             statement.executeUpdate();
@@ -51,11 +51,41 @@ public class DbBasedKVStore extends BaseKVStore {
 
     @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
-        if (exists(key)) {
-            return false;
+        long now = System.currentTimeMillis();
+        Long expiresAt = expiry == null || expiry <= 0 ? null : now + expiry * 1000L;
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT expires_at FROM " + tableName + " WHERE k = ? FOR UPDATE")) {
+                select.setString(1, key);
+                try (ResultSet resultSet = select.executeQuery()) {
+                    if (resultSet.next()) {
+                        long existingExpiry = resultSet.getLong(1);
+                        boolean hasExpiry = !resultSet.wasNull();
+                        if (!hasExpiry || existingExpiry > now) {
+                            connection.rollback();
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            try (PreparedStatement upsert = connection.prepareStatement(
+                    "MERGE INTO " + tableName + " (k, v, expires_at) KEY(k) VALUES (?, ?, ?)")) {
+                upsert.setString(1, key);
+                upsert.setString(2, value == null ? null : String.valueOf(value));
+                if (expiresAt == null) {
+                    upsert.setNull(3, java.sql.Types.BIGINT);
+                } else {
+                    upsert.setLong(3, expiresAt);
+                }
+                upsert.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to exclusively set KV value", e);
         }
-        set(key, value);
-        return true;
     }
 
     @Override
@@ -94,7 +124,7 @@ public class DbBasedKVStore extends BaseKVStore {
         Map<String, Object> result = new LinkedHashMap<>();
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT k, v FROM " + tableName + " WHERE k LIKE ?")) {
+                     "SELECT k, v FROM " + tableName + " WHERE k LIKE ? ORDER BY k")) {
             statement.setString(1, prefix + "%");
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -175,7 +205,8 @@ public class DbBasedKVStore extends BaseKVStore {
     private void initializeTable() {
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "CREATE TABLE IF NOT EXISTS " + tableName + " (k VARCHAR(512) PRIMARY KEY, v CLOB)")) {
+                     "CREATE TABLE IF NOT EXISTS " + tableName
+                             + " (k VARCHAR(512) PRIMARY KEY, v CLOB, expires_at BIGINT)")) {
             statement.execute();
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to initialize KV store table", e);

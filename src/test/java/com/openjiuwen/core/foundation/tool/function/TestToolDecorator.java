@@ -1,252 +1,227 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool.function;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for Tool Decorator.
+ * Unit tests for Java's LocalFunction/ToolCard equivalent of Python's @tool decorator.
  * <p>
- * Mirrors Python's {@code test_tool_decorator.py} from
- * {@code tests/unit_tests/core/foundation/tool/test_tool_decorator.py}.
- * 
- * <p>Python source file contains 9 test methods in TestToolDecorator class:
- * - test_tool_with_var_positional
- * - test_tool_with_var_keywords
- * - test_tool_with_mix_var
- * - test_tool
- * - test_tool_with_model
- * - test_tool_schema
- * - test_tool_with_complex_input_params
- * - test_tool_invoke_with_default
- * - test_tool_invoke_with_optional
+ * Mirrors Python's {@code test_tool_decorator.py}.
  */
 @DisplayName("Tool Decorator Tests")
 class TestToolDecorator {
 
-    /*
-     * Python tests use @tool decorator to register functions as tools.
-     * In Java, similar functionality is achieved via Tool annotation
-     * or ToolCard/ToolInfo classes.
-     */
+    @Test
+    void testToolWithVarPositional() throws Exception {
+        LocalFunction onlyArgs = tool("only_args", inputs ->
+                ((List<?>) inputs.get("args")).stream().mapToInt(value -> ((Number) value).intValue()).sum());
+        assertEquals(6, onlyArgs.invoke(Map.of("args", List.of(1, 2, 3))));
 
-    @Nested
-    @DisplayName("Tool Decorator Tests")
-    class TestToolDecoratorClass {
+        LocalFunction withArgs = tool("with_args", inputs -> intValue(inputs, "a") + intValue(inputs, "b")
+                + ((List<?>) inputs.get("args")).stream().mapToInt(value -> ((Number) value).intValue()).sum());
+        assertEquals(9, withArgs.invoke(Map.of("a", 1, "b", 2, "args", List.of(1, 2, 3))));
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool with var positional")
-        void testToolWithVarPositional() {
-            // Python: test_tool_with_var_positional
-            // Tests tools with *args (variable positional arguments)
-            
-            // In Java, variable arguments are handled via List or array
-            List<Integer> args = new ArrayList<>();
-            args.add(1);
-            args.add(2);
-            args.add(3);
-            
-            int result = 0;
-            for (Integer item : args) {
-                result += item;
-            }
-            
-            assertEquals(6, result);
-            
-            // Test with additional named parameters
-            int a = 1;
-            int b = 2;
-            List<Integer> extraArgs = new ArrayList<>();
-            extraArgs.add(1);
-            extraArgs.add(2);
-            extraArgs.add(3);
-            
-            int result2 = a + b;
-            for (Integer item : extraArgs) {
-                result2 += item;
-            }
-            
-            assertEquals(9, result2);
-        }
+        LocalFunction middleArgs = tool("middle_args", inputs -> intValue(inputs, "a") + intValue(inputs, "b")
+                + intValue(inputs, "d")
+                + ((List<?>) inputs.get("args")).stream().mapToInt(value -> ((Number) value).intValue()).sum());
+        assertEquals(13, middleArgs.invoke(Map.of("a", 1, "b", 2, "args", List.of(1, 2, 3), "d", 4)));
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool with var keywords")
-        void testToolWithVarKeywords() {
-            // Python: test_tool_with_var_keywords
-            // Tests tools with **kwargs (variable keyword arguments)
-            
-            // In Java, variable keyword arguments are handled via Map
-            Map<String, Object> kwargs = new HashMap<>();
-            kwargs.put("a", 1);
-            kwargs.put("b", 2);
-            kwargs.put("c", 3);
-            
-            assertEquals(1, kwargs.get("a"));
-            assertEquals(2, kwargs.get("b"));
-            assertEquals(3, kwargs.get("c"));
-        }
+    @Test
+    void testToolWithVarKeywords() throws Exception {
+        LocalFunction kwargsTool = tool("kwargs", inputs -> new LinkedHashMap<>(inputs));
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool with mix var")
-        void testToolWithMixVar() {
-            // Python: test_tool_with_mix_var
-            // Tests tools with mixed variable arguments
-            
-            int a = 1;
-            int b = 2;
-            List<Integer> args = new ArrayList<>();
-            args.add(1);
-            args.add(2);
-            args.add(3);
-            Map<String, Integer> kwargs = new HashMap<>();
-            kwargs.put("c", 3);
-            kwargs.put("d", 4);
-            
-            int result = a + b;
-            for (Integer item : args) {
-                result += item;
-            }
-            for (Integer val : kwargs.values()) {
-                result += val;
-            }
-            
-            assertEquals(16, result);
-        }
+        assertEquals(Map.of("a", 1, "b", 2, "c", 3),
+                kwargsTool.invoke(Map.of("a", 1, "b", 2, "c", 3)));
+        assertEquals(Map.of("a", 1, "b", 2, "c", 3),
+                kwargsTool.invoke(Map.of("a", 1, "b", 2, "c", 3)));
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool basic")
-        void testToolBasic() {
-            // Python: test_tool
-            // Tests basic tool registration
-            
-            // Simulate ToolCard properties
-            String name = "local_sub";
-            String description = "local function for sub";
-            
-            assertEquals("local_sub", name);
-            assertEquals("local function for sub", description);
-            
-            // Test tool invocation
-            int a = 5;
-            int b = 1;
-            int result = a - b;
-            
-            assertEquals(4, result);
-        }
+    @Test
+    void testToolWithMixVar() throws Exception {
+        LocalFunction mixed = tool("mixed", inputs -> {
+            int result = intValue(inputs, "a") + intValue(inputs, "b");
+            result += ((List<?>) inputs.get("args")).stream().mapToInt(value -> ((Number) value).intValue()).sum();
+            result += intValue(inputs, "c") + intValue(inputs, "d");
+            return result;
+        });
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool with model")
-        void testToolWithModel() {
-            // Python: test_tool_with_model
-            // Tests tools with Pydantic model parameters
-            
-            // Simulate ProductInfo model
-            Map<String, Object> product = new HashMap<>();
-            product.put("name", "商品A");
-            product.put("sales", 10);
-            product.put("price", 100.0);
-            product.put("is_season", true);
-            
-            assertEquals("商品A", product.get("name"));
-            assertEquals(10, product.get("sales"));
-            assertEquals(100.0, product.get("price"));
-        }
+        assertEquals(16, mixed.invoke(Map.of("a", 1, "args", List.of(1, 2, 3), "b", 2, "c", 3, "d", 4)));
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool schema")
-        void testToolSchema() {
-            // Python: test_tool_schema
-            // Tests tool schema generation
-            
-            Map<String, Object> inputParams = new HashMap<>();
-            inputParams.put("type", "object");
-            
-            Map<String, Object> properties = new HashMap<>();
-            Map<String, Object> aProperty = new HashMap<>();
-            aProperty.put("description", "first arg");
-            aProperty.put("type", "integer");
-            properties.put("a", aProperty);
-            
-            Map<String, Object> bProperty = new HashMap<>();
-            bProperty.put("description", "second arg");
-            bProperty.put("type", "integer");
-            properties.put("b", bProperty);
-            
-            inputParams.put("properties", properties);
-            
-            List<String> required = new ArrayList<>();
-            required.add("a");
-            required.add("b");
-            inputParams.put("required", required);
-            
-            assertEquals("object", inputParams.get("type"));
-            assertTrue(properties.containsKey("a"));
-            assertTrue(properties.containsKey("b"));
-        }
+    @Test
+    void testTool() throws Exception {
+        LocalFunction sub = new LocalFunction(subCard(), inputs -> intValue(inputs, "a") - intValue(inputs, "b"));
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool with complex input params")
-        void testToolWithComplexInputParams() {
-            // Python: test_tool_with_complex_input_params
-            // Tests tools with complex parameter types
-            
-            // Test read_write_tool parameters
-            String path = "/tmp/file";
-            String mode = "text";
-            Integer head = 10;
-            Integer tail = null;
-            
-            assertNotNull(path);
-            assertEquals("text", mode);
-            assertEquals(10, head);
-            assertNull(tail);
-        }
+        assertEquals(4, sub.invoke(Map.of("a", 5, "b", 1)));
+        assertEquals("local_sub", sub.getCard().getName());
+        assertEquals("local function for sub", sub.getCard().getDescription());
+        assertEquals(new ToolInfo("function", "local_sub", "local function for sub", subCard().getInputParams()),
+                sub.getCard().toolInfo());
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool invoke with default")
-        void testToolInvokeWithDefault() {
-            // Python: test_tool_invoke_with_default
-            // Tests tool invocation with default parameters
-            
-            // Test default parameter handling
-            double price = 1.0; // default
-            int sales = 0; // default
-            
-            assertEquals(1.0, price);
-            assertEquals(0, sales);
-        }
+    @Test
+    void testAnnotated() throws Exception {
+        LocalFunction summarize = new LocalFunction(summarizeCard(), inputs -> {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> products = (List<Map<String, Object>>) inputs.get("products");
+            return products.stream()
+                    .mapToDouble(product -> ((Number) product.get("price")).doubleValue()
+                            * ((Number) product.get("sales")).intValue())
+                    .sum();
+        });
 
-        @Test
-        @Tag("level0")
-        @DisplayName("tool invoke with optional")
-        void testToolInvokeWithOptional() {
-            // Python: test_tool_invoke_with_optional
-            // Tests tool invocation with optional parameters
-            
-            // Test optional parameter handling (null in Java)
-            String optionalParam = null;
-            assertNull(optionalParam);
-            
-            // Optional can also have default value
-            String optionalWithDefault = "default";
-            assertEquals("default", optionalWithDefault);
-        }
+        double total = (double) summarize.invoke(Map.of("title", "fruit",
+                "products", List.of(
+                        product("apple", 2, 1.5),
+                        product("banana", 4, 1.0))));
+
+        assertEquals("summarize", summarize.getCard().getName());
+        assertEquals(7.0, total);
+        assertEquals("object", summarize.getCard().toolInfo().getParameters().get("type"));
+    }
+
+    @Test
+    void testLiteralModeParam() {
+        Map<String, Object> properties = properties(readWriteTool());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mode = (Map<String, Object>) properties.get("mode");
+
+        assertEquals("string", mode.get("type"));
+        assertEquals(List.of("text", "bytes"), mode.get("enum"));
+    }
+
+    @Test
+    void testOptionalParamsWithoutDefaults() throws Exception {
+        LocalFunction tool = readWriteTool();
+        String result = (String) tool.invoke(Map.of("path", "test.txt", "content", "test content"));
+        @SuppressWarnings("unchecked")
+        List<String> required = (List<String>) tool.getCard().toolInfo().getParameters().get("required");
+
+        assertTrue(result.contains("Verified: path=test.txt"));
+        assertTrue(required.contains("path"));
+        assertTrue(required.contains("content"));
+        assertFalse(required.contains("mode"));
+        assertFalse(required.contains("head"));
+        assertFalse(required.contains("tail"));
+        assertFalse(required.contains("line_range"));
+    }
+
+    @Test
+    void testUnionStrBytesParam() throws Exception {
+        LocalFunction tool = readWriteTool();
+        String textResult = (String) tool.invoke(Map.of("path", "test.txt", "content", "test content"));
+        String bytesResult = (String) tool.invoke(Map.of("path", "test.bin", "mode", "bytes", "content", new byte[]{0, 1, 2, 3}));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> content = (Map<String, Object>) properties(tool).get("content");
+
+        assertTrue(textResult.contains("Verified: path=test.txt"));
+        assertTrue(bytesResult.contains("mode=bytes"));
+        assertEquals(List.of(Map.of("type", "string"), Map.of("type", "string", "format", "binary")),
+                content.get("anyOf"));
+    }
+
+    @Test
+    void testTupleLineRangeParam() throws Exception {
+        LocalFunction tool = readWriteTool();
+        String result = (String) tool.invoke(Map.of("path", "test.txt", "line_range", List.of(1, 10), "content", "test content"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> lineRange = (Map<String, Object>) properties(tool).get("line_range");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> items = (Map<String, Object>) lineRange.get("items");
+
+        assertTrue(result.contains("line_range=[1, 10]"));
+        assertEquals("array", lineRange.get("type"));
+        assertEquals(List.of(Map.of("type", "integer"), Map.of("type", "integer")), items.get("anyOf"));
+    }
+
+    private static LocalFunction tool(String name, java.util.function.Function<Map<String, Object>, Object> function) {
+        return new LocalFunction(ToolCard.builder().id(name).name(name).description(name).build(), function);
+    }
+
+    private static ToolCard subCard() {
+        return ToolCard.builder()
+                .id("local_sub")
+                .name("local_sub")
+                .description("local function for sub")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "a", Map.of("description", "first arg", "type", "integer"),
+                                "b", Map.of("description", "second arg", "type", "integer")),
+                        "required", List.of("a", "b")))
+                .build();
+    }
+
+    private static ToolCard summarizeCard() {
+        return ToolCard.builder()
+                .id("summarize")
+                .name("summarize")
+                .description("summarize product information")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "title", Map.of("type", "string", "description", "title"),
+                                "products", Map.of("type", "array", "description", "products")),
+                        "required", List.of("title", "products")))
+                .build();
+    }
+
+    private static LocalFunction readWriteTool() {
+        ToolCard card = ToolCard.builder()
+                .id("read_write_tool")
+                .name("read_write_tool")
+                .description("Test function to verify tool parameter fixes")
+                .inputParams(readWriteSchema())
+                .build();
+        return new LocalFunction(card, inputs -> "Verified: path=" + inputs.get("path")
+                + ", mode=" + inputs.getOrDefault("mode", "text")
+                + ", head=" + inputs.get("head")
+                + ", tail=" + inputs.get("tail")
+                + ", line_range=" + inputs.get("line_range"));
+    }
+
+    private static Map<String, Object> readWriteSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("path", Map.of("type", "string"));
+        properties.put("mode", Map.of("type", "string", "enum", List.of("text", "bytes")));
+        properties.put("head", Map.of("type", "integer", "nullable", true));
+        properties.put("tail", Map.of("type", "integer", "nullable", true));
+        properties.put("line_range", Map.of("type", "array",
+                "items", Map.of("anyOf", List.of(Map.of("type", "integer"), Map.of("type", "integer")))));
+        properties.put("content", Map.of("anyOf", List.of(
+                Map.of("type", "string"),
+                Map.of("type", "string", "format", "binary"))));
+        return Map.of(
+                "type", "object",
+                "properties", properties,
+                "required", List.of("path", "content"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> properties(LocalFunction tool) {
+        return (Map<String, Object>) tool.getCard().toolInfo().getParameters().get("properties");
+    }
+
+    private static Map<String, Object> product(String name, int sales, double price) {
+        return Map.of("name", name, "sales", sales, "price", price, "is_season", true,
+                "color", List.of("red"), "note", Map.of("key", "note", "value", 1));
+    }
+
+    private static int intValue(Map<String, Object> inputs, String key) {
+        return ((Number) inputs.get(key)).intValue();
     }
 }

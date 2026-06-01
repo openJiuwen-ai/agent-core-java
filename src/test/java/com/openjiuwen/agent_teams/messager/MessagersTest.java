@@ -5,10 +5,12 @@
 package com.openjiuwen.agent_teams.messager;
 
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -18,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,6 +29,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Tests for Messagers factory and transport backend selection.
  */
 class MessagersTest {
+
+    @AfterEach
+    void cleanup() {
+        InProcessMessager.cleanupBus();
+    }
 
     @Test
     void createMessagerReturnsInProcessByDefault() {
@@ -38,6 +46,142 @@ class MessagersTest {
         config.setBackend("pyzmq");
         assertInstanceOf(PyZmqMessager.class, Messagers.createMessager(config));
         assertInstanceOf(PyZmqMessager.class, MessagerFactory.createMessager(config));
+    }
+
+    @Test
+    void inprocessMessagerIsMessager() {
+        MessagerTransportConfig config = new MessagerTransportConfig();
+        config.setBackend("inprocess");
+        config.setTeamName("team-1");
+        config.setNodeId("worker");
+
+        Messager transport = new InProcessMessager(config);
+
+        assertInstanceOf(Messager.class, transport);
+    }
+
+    @Test
+    void inprocessPubsubDeliversToSubscriber() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager leader = new InProcessMessager(inprocessConfig("leader"));
+        InProcessMessager worker = new InProcessMessager(inprocessConfig("worker"));
+
+        worker.subscribe("topic:team", received::add);
+        EventMessage event = sampleEvent();
+        leader.publish("topic:team", event);
+
+        assertEquals(1, received.size());
+        assertSame(event, received.get(0));
+    }
+
+    @Test
+    void inprocessPublishStampsSenderId() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager leader = new InProcessMessager(inprocessConfig("leader"));
+        InProcessMessager worker = new InProcessMessager(inprocessConfig("worker"));
+
+        worker.subscribe("topic:team", received::add);
+        EventMessage message = new EventMessage("team_cleaned", Map.of("team_name", "t"));
+        assertEquals("", message.getSenderId());
+        leader.publish("topic:team", message);
+
+        assertEquals(1, received.size());
+        assertEquals("leader", received.get(0).getSenderId());
+    }
+
+    @Test
+    void inprocessPubsubFansOutToEverySubscriber() {
+        List<EventMessage> receivedA = new ArrayList<>();
+        List<EventMessage> receivedB = new ArrayList<>();
+        InProcessMessager publisher = new InProcessMessager(inprocessConfig("publisher"));
+        InProcessMessager subA = new InProcessMessager(inprocessConfig("sub-a"));
+        InProcessMessager subB = new InProcessMessager(inprocessConfig("sub-b"));
+
+        subA.subscribe("topic", receivedA::add);
+        subB.subscribe("topic", receivedB::add);
+        publisher.publish("topic", sampleEvent());
+
+        assertEquals(1, receivedA.size());
+        assertEquals(1, receivedB.size());
+    }
+
+    @Test
+    void inprocessUnsubscribeStopsDelivery() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager messager = new InProcessMessager(inprocessConfig("a"));
+
+        messager.subscribe("topic", received::add);
+        messager.unsubscribe("topic");
+        messager.publish("topic", sampleEvent());
+
+        assertTrue(received.isEmpty());
+    }
+
+    @Test
+    void inprocessP2pDeliversToRegisteredHandler() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager receiver = new InProcessMessager(inprocessConfig("receiver"));
+        InProcessMessager sender = new InProcessMessager(inprocessConfig("sender"));
+
+        receiver.registerDirectMessageHandler(received::add);
+        EventMessage event = sampleEvent();
+        sender.send("receiver", event);
+
+        assertEquals(1, received.size());
+        assertSame(event, received.get(0));
+    }
+
+    @Test
+    void inprocessUnregisterP2pStopsDelivery() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager messager = new InProcessMessager(inprocessConfig("x"));
+
+        messager.registerDirectMessageHandler(received::add);
+        messager.unregisterDirectMessageHandler();
+        messager.send("x", sampleEvent());
+
+        assertTrue(received.isEmpty());
+    }
+
+    @Test
+    void inprocessPubsubHandlerErrorDoesNotBlockOthers() {
+        List<EventMessage> received = new ArrayList<>();
+        InProcessMessager bad = new InProcessMessager(inprocessConfig("bad"));
+        InProcessMessager good = new InProcessMessager(inprocessConfig("good"));
+        InProcessMessager publisher = new InProcessMessager(inprocessConfig("publisher"));
+
+        bad.subscribe("topic", message -> {
+            throw new IllegalStateException("boom");
+        });
+        good.subscribe("topic", received::add);
+        publisher.publish("topic", sampleEvent());
+
+        assertEquals(1, received.size());
+    }
+
+    @Test
+    void createMessagerBuildsExplicitInprocess() {
+        MessagerTransportConfig config = new MessagerTransportConfig();
+        config.setBackend("inprocess");
+
+        assertInstanceOf(InProcessMessager.class, Messagers.createMessager(config));
+        assertInstanceOf(InProcessMessager.class, MessagerFactory.createMessager(config));
+    }
+
+    @Test
+    void subscriptionHandleRoundtripKeepsAgentId() {
+        SubscriptionHandle subscription = new SubscriptionHandle("sub-1", "topic");
+        subscription.setAgentId("worker");
+        subscription.setBackendMetadata(Map.of("partition", "local"));
+
+        SubscriptionHandle roundtrip = new SubscriptionHandle(subscription.getSubscriptionId(), subscription.getTopic());
+        roundtrip.setAgentId(subscription.getAgentId());
+        roundtrip.setBackendMetadata(subscription.getBackendMetadata());
+
+        assertEquals("worker", roundtrip.getAgentId());
+        assertEquals("sub-1", roundtrip.getSubscriptionId());
+        assertEquals("topic", roundtrip.getTopic());
+        assertEquals("local", roundtrip.getBackendMetadata().get("partition"));
     }
 
     @Test
@@ -172,6 +316,18 @@ class MessagersTest {
         peer.setAgentId(agentId);
         peer.setAddrs(List.of(addr));
         return peer;
+    }
+
+    private static MessagerTransportConfig inprocessConfig(String nodeId) {
+        MessagerTransportConfig config = new MessagerTransportConfig();
+        config.setBackend("inprocess");
+        config.setTeamName("team-1");
+        config.setNodeId(nodeId);
+        return config;
+    }
+
+    private static EventMessage sampleEvent() {
+        return new EventMessage("sample", Map.of("team_name", "team-1", "detail", "test"));
     }
 
     private static String freeTcpAddress() {

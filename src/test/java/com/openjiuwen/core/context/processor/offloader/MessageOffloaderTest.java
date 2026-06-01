@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -35,6 +36,15 @@ class MessageOffloaderTest {
         return ids.stream()
                 .map(id -> ToolCall.builder().id(id).name("test-tool").type("function").arguments("").build())
                 .toList();
+    }
+
+    private static ToolCall toolCall(String id, String name, String arguments) {
+        return ToolCall.builder().id(id).name(name).type("function").arguments(arguments).build();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static List<ToolCall> rawToolCalls(Map<String, Object> rawToolCall) {
+        return (List) List.of(rawToolCall);
     }
 
     private static TokenCounter mockTokenCounter(int returnValue) {
@@ -128,6 +138,7 @@ class MessageOffloaderTest {
             ModelContext ctx = createContextWithOffloader(config);
             assertNotNull(ctx);
             assertEquals(0, ctx.size());
+            assertEquals(List.of("reload_original_context_messages"), config.getProtectedToolNames());
         }
     }
 
@@ -402,13 +413,230 @@ class MessageOffloaderTest {
             ctx.addMessages(msgs);
             List<BaseMessage> result = ctx.getMessages();
             BaseMessage offloadMsg = result.get(1);
-            // The offloaded message should still have the tool_call_id
-            if (offloadMsg instanceof ToolMessage tm) {
-                assertEquals("critical-tc-123", tm.getToolCallId());
-            } else if (offloadMsg instanceof OffloadMixin) {
-                // OffloadToolMessage should preserve tool_call_id
-                assertTrue(true, "Offloaded message preserves tool_call_id");
-            }
+            assertTrue(offloadMsg instanceof OffloadMixin);
+            assertInstanceOf(ToolMessage.class, offloadMsg);
+            assertEquals("critical-tc-123", ((ToolMessage) offloadMsg).getToolCallId());
+        }
+    }
+
+    // ---------- Candidate and protected tool filtering ----------
+
+    @Nested
+    @DisplayName("Candidate and protected tool filtering")
+    class CandidateAndProtectedTools {
+
+        @Test
+        @DisplayName("threshold exceeded without candidate does not trigger")
+        void testThresholdWithoutCandidateDoesNotTrigger() {
+            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
+                    .messagesThreshold(2)
+                    .largeMessageThreshold(10)
+                    .trimSize(5)
+                    .offloadMessageType(List.of("tool"))
+                    .messagesToKeep(null)
+                    .keepLastRound(false)
+                    .build();
+            ModelContext ctx = createContextWithOffloader(config);
+            MessageOffloader offloader = new MessageOffloader(config);
+
+            assertFalse(offloader.triggerAddMessages(ctx, List.of(
+                    new UserMessage("U".repeat(50)),
+                    new AssistantMessage("A".repeat(50)),
+                    new UserMessage("U2".repeat(25))
+            )));
+        }
+
+        @Test
+        @DisplayName("protected tool by exact name is not offloaded")
+        void testProtectedToolByNameNotOffloaded() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("reload_original_context_messages"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-reload", "reload_original_context_messages", "{}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-reload").build()
+            ));
+
+            BaseMessage toolMsg = ctx.getMessages().get(2);
+            assertFalse(toolMsg instanceof OffloadMixin);
+            assertEquals(longContent, toolMsg.getContentAsString());
+        }
+
+        @Test
+        @DisplayName("unprotected tool is offloaded")
+        void testUnprotectedToolIsOffloaded() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("reload_original_context_messages"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-other", "other-tool", "{}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-other").build()
+            ));
+
+            BaseMessage toolMsg = ctx.getMessages().get(2);
+            assertTrue(toolMsg instanceof OffloadMixin);
+            assertTrue(toolMsg.getContentAsString().startsWith("X".repeat(5)));
+        }
+
+        @Test
+        @DisplayName("protected tool pattern matches arguments")
+        void testProtectedToolWithPatternMatches() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("view_file:*.md"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-1", "view_file", "{\"path\":\"README.md\"}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-1").build()
+            ));
+
+            BaseMessage toolMsg = ctx.getMessages().get(2);
+            assertFalse(toolMsg instanceof OffloadMixin);
+            assertEquals(longContent, toolMsg.getContentAsString());
+        }
+
+        @Test
+        @DisplayName("tool name match without pattern match is offloaded")
+        void testProtectedToolWithPatternNotMatches() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("read_file:*USER.md"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-data", "read_file", "{\"path\":\"data.txt\"}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-data").build()
+            ));
+
+            assertTrue(ctx.getMessages().get(2) instanceof OffloadMixin);
+        }
+
+        @Test
+        @DisplayName("wildcard star pattern protects matching argument")
+        void testProtectedToolWithWildcardPattern() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("read:path/to/*.py"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-1", "read", "{\"path\":\"path/to/main.py\"}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-1").build()
+            ));
+
+            assertFalse(ctx.getMessages().get(2) instanceof OffloadMixin);
+        }
+
+        @Test
+        @DisplayName("question mark pattern matches one character only")
+        void testProtectedToolWithQuestionMarkPattern() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("read:file?.txt"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-1", "read", "{\"path\":\"file1.txt\"}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-1").build()
+            ));
+            assertFalse(ctx.getMessages().get(2) instanceof OffloadMixin);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u2"),
+                    AssistantMessage.builder()
+                            .content("a2")
+                            .toolCalls(List.of(toolCall("tc-2", "read", "{\"path\":\"file12.txt\"}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-2").build()
+            ));
+            assertTrue(ctx.getMessages().get(5) instanceof OffloadMixin);
+        }
+
+        @Test
+        @DisplayName("multiple protected patterns can be configured")
+        void testMultipleProtectedPatterns() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of(
+                    "reload_original_context_messages",
+                    "view_file:*.md",
+                    "read:*.py"
+            ));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(List.of(toolCall("tc-reload", "reload_original_context_messages", "{}")))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-reload").build()
+            ));
+
+            assertFalse(ctx.getMessages().get(2) instanceof OffloadMixin);
+        }
+
+        @Test
+        @DisplayName("dict-style tool call format is handled")
+        void testDictToolCallFormat() {
+            MessageOffloaderConfig config = protectedToolConfig(List.of("read_file:*.json"));
+            ModelContext ctx = createContextWithOffloader(config);
+            String longContent = "X".repeat(200);
+            Map<String, Object> rawToolCall = Map.of(
+                    "id", "tc-1",
+                    "name", "read_file",
+                    "type", "function",
+                    "function", Map.of(
+                            "name", "read_file",
+                            "arguments", "{\"path\":\"config.json\"}")
+            );
+
+            ctx.addMessages(List.of(
+                    new UserMessage("u"),
+                    AssistantMessage.builder()
+                            .content("a")
+                            .toolCalls(rawToolCalls(rawToolCall))
+                            .build(),
+                    ToolMessage.builder().content(longContent).toolCallId("tc-1").build()
+            ));
+
+            BaseMessage toolMsg = ctx.getMessages().get(2);
+            assertFalse(toolMsg instanceof OffloadMixin);
+            assertEquals(longContent, toolMsg.getContentAsString());
+        }
+
+        private MessageOffloaderConfig protectedToolConfig(List<String> protectedToolNames) {
+            return MessageOffloaderConfig.builder()
+                    .messagesThreshold(2)
+                    .largeMessageThreshold(10)
+                    .trimSize(5)
+                    .offloadMessageType(List.of("tool"))
+                    .messagesToKeep(null)
+                    .keepLastRound(false)
+                    .protectedToolNames(protectedToolNames)
+                    .build();
         }
     }
 

@@ -4,297 +4,199 @@
 
 package com.openjiuwen.core.application.workflow;
 
-import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.Start;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for WorkflowAgent multi-interrupt functionality.
- * 
- * <p>Mirrors Python's test_workflow_agent_with_interrupt and test_workflow_agent_interrupt_resume
- * from {@code tests/unit_tests/agent/workflow_agent/test_workflow_agent_mock.py}
- * 
- * <p>Python test logic (lines 234-360):
- * <pre>
- * async def test_workflow_agent_with_interrupt(self):
- *     """测试 Workflow Agent 中断
- *     测试场景：
- *     1. 创建带 Questioner 的 workflow
- *     2. Questioner 提取字段时发现缺少必要信息
- *     3. 触发中断，返回交互请求
- *     """
- *     workflow = self._build_questioner_workflow(...)
- *     agent = WorkflowAgent(workflow_config)
- *     agent.add_workflows([workflow])
- *     
- *     result = await agent.invoke({"conversation_id": "test_interrupt", "query": "查询天气"})
- *     
- *     # 验证中断
- *     self.assertIsInstance(result, list, "应该返回交互请求列表")
- *     self.assertEqual(result[0].type, '__interaction__', "应该返回交互类型")
- * 
- * async def test_workflow_agent_interrupt_resume(self):
- *     """测试 Workflow Agent 中断恢复
- *     测试场景：
- *     1. 第一次调用触发中断
- *     2. 使用 InteractiveInput 提供缺失信息
- *     3. workflow 恢复并完成
- *     """
- *     # 第一次调用 - 触发中断
- *     result1 = await agent.invoke({"conversation_id": "test_resume", "query": "查询天气"})
- *     self.assertEqual(result1[0].type, '__interaction__')
- *     
- *     # 第二次调用 - 使用 InteractiveInput 恢复
- *     interactive_input = InteractiveInput()
- *     interactive_input.update("questioner", "上海")
- *     result2 = await agent.invoke({"conversation_id": "test_resume", "query": interactive_input})
- *     
- *     # 验证完成
- *     self.assertEqual(result2['result_type'], 'answer')
- * </pre>
- * 
- * <p>NOTE: Full implementation requires QuestionerComponent and Mock LLM setup.
- * Current tests focus on structural validation and InteractiveInput behavior.
+ * WorkflowAgent multi-node parallel interrupt tests.
+ *
+ * <p>Mirrors Python's {@code test_mock_workflow_agent_multi_interrupt.py} in
+ * {@code tests/unit_tests/agent/workflow_agent/}.</p>
  */
-@Disabled("Requires QuestionerComponent and full WorkflowAgent invoke implementation")
 @DisplayName("WorkflowAgent Multi-Interrupt Tests")
 class MockWorkflowAgentMultiInterruptTest {
 
-    // ========== Test Constants ==========
-    
-    private static final String TEST_WORKFLOW_ID = "location_workflow";
-    private static final String TEST_AGENT_ID = "location_workflow_agent";
-    
-    // ========== Interrupt Scenario Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test interrupt workflow configuration structure")
-    void testInterruptWorkflowConfigurationStructure() {
-        // Python: workflow_config = WorkflowAgentConfig(
-        //     id="location_workflow_agent",
-        //     version="1.0",
-        //     description="地点查询工作流",
-        //     workflows=[],
-        // )
-        
-        Map<String, Object> config = new LinkedHashMap<>();
-        config.put("id", TEST_AGENT_ID);
-        config.put("version", "1.0");
-        config.put("description", "地点查询工作流");
-        
-        assertEquals(TEST_AGENT_ID, config.get("id"));
-        assertEquals("1.0", config.get("version"));
-        assertEquals("地点查询工作流", config.get("description"));
+    @BeforeEach
+    void setUp() {
+        Runner.start();
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test workflow card for interrupt scenario")
-    void testWorkflowCardForInterruptScenario() {
-        // Python: workflow = self._build_questioner_workflow(
-        //     workflow_id="location_workflow",
-        //     workflow_name="地点查询",
-        //     field_name="location",
-        //     field_desc="地点名称"
-        // )
-        
-        WorkflowCard card = new WorkflowCard(TEST_WORKFLOW_ID, "地点查询");
-        
-        assertEquals(TEST_WORKFLOW_ID, card.getId());
-        assertEquals("地点查询", card.getName());
+
+    @AfterEach
+    void tearDown() {
+        Runner.stop();
     }
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test interrupt result type")
-    void testInterruptResultType() {
-        // Python: result[0].type == '__interaction__'
-        Map<String, Object> interruptResult = new LinkedHashMap<>();
-        interruptResult.put("type", "__interaction__");
-        interruptResult.put("id", "questioner");
-        interruptResult.put("value", "请输入地点名称");
-        
-        assertEquals("__interaction__", interruptResult.get("type"));
-        assertEquals("questioner", interruptResult.get("id"));
+    @DisplayName("stream returns two parallel interrupts one at a time and completes after sequential resume")
+    void testMultiInterruptSequentialResume() {
+        Workflow workflow = buildMultiInterruptWorkflow();
+        WorkflowAgent agent = MockWorkflowAgent.createAgent("multi_interrupt_agent", workflow);
+        String conversationId = "test_multi_interrupt_seq";
+
+        List<Object> firstChunks = stream(agent, "check weather", conversationId);
+        List<OutputSchema> firstInteractions = MockWorkflowAgent.chunksOfType(firstChunks, "__interaction__");
+        assertThat(firstInteractions).hasSize(1);
+        String firstId = interactionId(firstInteractions.get(0));
+        assertThat(firstId).isIn("questioner", "interactive");
+
+        String expectedSecond = "interactive".equals(firstId) ? "questioner" : "interactive";
+        List<Object> secondChunks = stream(agent, resumeInput(firstId), conversationId);
+        List<OutputSchema> secondInteractions = MockWorkflowAgent.chunksOfType(secondChunks, "__interaction__");
+        assertThat(secondInteractions).hasSize(1);
+        assertThat(interactionId(secondInteractions.get(0))).isEqualTo(expectedSecond);
+
+        List<Object> finalChunks = stream(agent, resumeInput(expectedSecond), conversationId);
+        assertThat(MockWorkflowAgent.chunksOfType(finalChunks, "__interaction__")).isEmpty();
+        String response = finalResponse(finalChunks);
+        assertThat(response).contains("shanghai");
+        assertThat(response).contains("confirmed");
+        assertAgentContextRoles(agent, conversationId, 6);
     }
-    
-    // ========== Resume Scenario Tests ==========
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test InteractiveInput for resume scenario")
-    void testInteractiveInputForResumeScenario() {
-        // Python: interactive_input = InteractiveInput()
-        //         interactive_input.update("questioner", "上海")
-        
+    @DisplayName("invoke resumes both parallel interrupts from one InteractiveInput")
+    void testMultiInterruptResumeAllAtOnce() {
+        Workflow workflow = buildMultiInterruptWorkflow();
+        WorkflowAgent agent = MockWorkflowAgent.createAgent("multi_interrupt_agent_all", workflow);
+        String conversationId = "test_multi_interrupt_all";
+
+        ControllerOutput first = agent.invoke(Map.of(
+                "query", "check weather",
+                "conversation_id", conversationId
+        ), null);
+
+        List<OutputSchema> interactions = MockWorkflowAgent.interactionData(first);
+        assertThat(interactions).hasSize(2);
+        assertThat(interactions)
+                .extracting(MockWorkflowAgentMultiInterruptTest::interactionId)
+                .containsExactlyInAnyOrder("questioner", "interactive");
+
         InteractiveInput interactiveInput = new InteractiveInput();
-        interactiveInput.update("questioner", "上海");
-        
-        assertNotNull(interactiveInput.getUserInputs());
-        assertTrue(interactiveInput.getUserInputs().containsKey("questioner"));
-        assertEquals("上海", interactiveInput.getUserInputs().get("questioner"));
+        interactiveInput.update("interactive", "confirmed");
+        interactiveInput.update("questioner", "shanghai");
+
+        ControllerOutput second = agent.invoke(Map.of(
+                "query", interactiveInput,
+                "conversation_id", conversationId
+        ), null);
+
+        Map<String, Object> result = MockWorkflowAgent.dataMap(second);
+        assertThat(result).isNotNull();
+        assertThat(result.get("result_type")).isEqualTo("answer");
+        assertThat(result.get("output")).isInstanceOf(WorkflowOutput.class);
+
+        WorkflowOutput workflowOutput = (WorkflowOutput) result.get("output");
+        assertThat(workflowOutput.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+        String response = MockWorkflowAgent.responseFrom(workflowOutput);
+        assertThat(response).contains("shanghai");
+        assertThat(response).contains("confirmed");
+        assertAgentContextRoles(agent, conversationId, 4);
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test resume result type")
-    void testResumeResultType() {
-        // Python: result2['result_type'] == 'answer'
-        Map<String, Object> resumeResult = new LinkedHashMap<>();
-        resumeResult.put("result_type", "answer");
-        resumeResult.put("output", Map.of(
-            "state", "COMPLETED",
-            "result", Map.of("location", "上海")
-        ));
-        
-        assertEquals("answer", resumeResult.get("result_type"));
-        assertNotNull(resumeResult.get("output"));
+
+    private static Workflow buildMultiInterruptWorkflow() {
+        WorkflowCard card = WorkflowCard.builder()
+                .id("multi_interrupt_wf")
+                .version("1.0")
+                .name("multi_interrupt_test")
+                .description("Multi-node interrupt workflow")
+                .build();
+        Workflow flow = new Workflow(card);
+
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"));
+        flow.addWorkflowComp("questioner", MockWorkflowAgent.questioner("What is your location?"),
+                Map.of("query", "${start.query}"));
+        flow.addWorkflowComp("interactive", new InteractiveConfirmComponent(),
+                Map.of("query", "${start.query}"));
+        flow.setEndComp("end",
+                new End(Map.of("responseTemplate", "{{user_response}} | confirm={{confirm_result}}")),
+                Map.of(
+                        "user_response", "${questioner.user_response}",
+                        "confirm_result", "${interactive.confirm_result}"
+                ));
+
+        flow.addConnection("start", "questioner");
+        flow.addConnection("start", "interactive");
+        flow.addConnection(List.of("questioner", "interactive"), "end");
+        return flow;
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test multi-step interrupt/resume flow")
-    void testMultiStepInterruptResumeFlow() {
-        // Python: Test full interrupt -> resume -> complete sequence
-        
-        List<Map<String, Object>> flowSteps = new ArrayList<>();
-        
-        // Step 1: Initial invoke - triggers interrupt
-        Map<String, Object> step1 = new LinkedHashMap<>();
-        step1.put("step", 1);
-        step1.put("result_type", "__interaction__");
-        step1.put("node_id", "questioner");
-        flowSteps.add(step1);
-        
-        // Step 2: Resume with InteractiveInput
-        Map<String, Object> step2 = new LinkedHashMap<>();
-        step2.put("step", 2);
-        step2.put("input_type", "InteractiveInput");
-        step2.put("user_input", "上海");
-        flowSteps.add(step2);
-        
-        // Step 3: Workflow completes
-        Map<String, Object> step3 = new LinkedHashMap<>();
-        step3.put("step", 3);
-        step3.put("result_type", "answer");
-        step3.put("state", "COMPLETED");
-        flowSteps.add(step3);
-        
-        // Verify 3-step flow
-        assertEquals(3, flowSteps.size());
-        assertEquals("__interaction__", flowSteps.get(0).get("result_type"));
-        assertEquals("InteractiveInput", flowSteps.get(1).get("input_type"));
-        assertEquals("answer", flowSteps.get(2).get("result_type"));
+
+    private static List<Object> stream(WorkflowAgent agent, Object query, String conversationId) {
+        return MockWorkflowAgent.collect(agent.stream(
+                Map.of("query", query, "conversation_id", conversationId),
+                null,
+                List.of(StreamMode.OUTPUT)));
     }
-    
-    // ========== Questioner Component Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test questioner field extraction structure")
-    void testQuestionerFieldExtractionStructure() {
-        // Python: Questioner extracts fields from user input
-        //         {"location": None} triggers interrupt
-        
-        Map<String, Object> fieldExtraction = new LinkedHashMap<>();
-        fieldExtraction.put("location", null);
-        
-        assertTrue(fieldExtraction.containsKey("location"));
-        assertNull(fieldExtraction.get("location"));
-        
-        // When field is null, should trigger interrupt
-        boolean shouldInterrupt = fieldExtraction.get("location") == null;
-        assertTrue(shouldInterrupt, "Null field should trigger interrupt");
+
+    private static InteractiveInput resumeInput(String nodeId) {
+        InteractiveInput interactiveInput = new InteractiveInput();
+        if ("interactive".equals(nodeId)) {
+            interactiveInput.update("interactive", "confirmed");
+        } else {
+            interactiveInput.update("questioner", "shanghai");
+        }
+        return interactiveInput;
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test questioner field with value")
-    void testQuestionerFieldWithValue() {
-        // Python: {"location": "上海"} - field has value, workflow continues
-        
-        Map<String, Object> fieldExtraction = new LinkedHashMap<>();
-        fieldExtraction.put("location", "上海");
-        
-        assertTrue(fieldExtraction.containsKey("location"));
-        assertEquals("上海", fieldExtraction.get("location"));
-        
-        // When field has value, workflow should continue
-        boolean shouldContinue = fieldExtraction.get("location") != null;
-        assertTrue(shouldContinue, "Non-null field should allow workflow to continue");
+
+    private static String interactionId(OutputSchema output) {
+        assertThat(output.getType()).isEqualTo("__interaction__");
+        assertThat(output.getPayload()).isInstanceOf(InteractionOutput.class);
+        return ((InteractionOutput) output.getPayload()).getId();
     }
-    
-    // ========== Conversation ID Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test conversation ID for interrupt tracking")
-    void testConversationIdForInterruptTracking() {
-        // Python: {"conversation_id": "test_interrupt", "query": "查询天气"}
-        
-        Map<String, Object> invokeInput = new LinkedHashMap<>();
-        invokeInput.put("conversation_id", "test_interrupt");
-        invokeInput.put("query", "查询天气");
-        
-        assertEquals("test_interrupt", invokeInput.get("conversation_id"));
-        assertEquals("查询天气", invokeInput.get("query"));
+
+    @SuppressWarnings("unchecked")
+    private static String finalResponse(List<Object> chunks) {
+        List<OutputSchema> finals = MockWorkflowAgent.chunksOfType(chunks, "workflow_final");
+        assertThat(finals).hasSize(1);
+        Object payload = finals.get(0).getPayload();
+        assertThat(payload).isInstanceOf(Map.class);
+        return String.valueOf(((Map<String, Object>) payload).get("response"));
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test conversation ID continuity for resume")
-    void testConversationIdContinuityForResume() {
-        // Python: Same conversation_id used for interrupt and resume
-        
-        String conversationId = "test_resume";
-        
-        // Interrupt invoke
-        Map<String, Object> interruptInvoke = new LinkedHashMap<>();
-        interruptInvoke.put("conversation_id", conversationId);
-        interruptInvoke.put("query", "查询天气");
-        
-        // Resume invoke - same conversation_id
-        Map<String, Object> resumeInvoke = new LinkedHashMap<>();
-        resumeInvoke.put("conversation_id", conversationId);
-        resumeInvoke.put("query", new InteractiveInput());
-        
-        assertEquals(conversationId, interruptInvoke.get("conversation_id"));
-        assertEquals(conversationId, resumeInvoke.get("conversation_id"));
+
+    private static void assertAgentContextRoles(WorkflowAgent agent, String conversationId, int expectedSize) {
+        ModelContext context = agent.getContextEngine().getContext(null, conversationId);
+        assertThat(context).isNotNull();
+        List<String> roles = context.getMessages().stream()
+                .map(BaseMessage::getRole)
+                .toList();
+
+        List<String> expectedRoles = new ArrayList<>();
+        for (int i = 0; i < expectedSize / 2; i++) {
+            expectedRoles.add("user");
+            expectedRoles.add("assistant");
+        }
+        assertThat(roles).containsExactlyElementsOf(expectedRoles);
     }
-    
-    // ========== Placeholder for Full Implementation ==========
-    
-    /**
-     * Full interrupt test placeholder.
-     * 
-     * Requires:
-     * 1. QuestionerComponent implementation
-     * 2. MockLLMModel with proper patch setup
-     * 3. WorkflowAgent.invoke() full implementation
-     */
-    @Test
-    @Disabled("Requires QuestionerComponent and Mock LLM infrastructure")
-    @DisplayName("Placeholder - Workflow Agent with interrupt (needs infrastructure)")
-    void testPlaceholderForWorkflowAgentWithInterrupt() {
-        assertTrue(true, "Placeholder - waiting for QuestionerComponent implementation");
-    }
-    
-    /**
-     * Full interrupt resume test placeholder.
-     */
-    @Test
-    @Disabled("Requires full WorkflowAgent invoke and resume support")
-    @DisplayName("Placeholder - Workflow Agent interrupt resume (needs infrastructure)")
-    void testPlaceholderForWorkflowAgentInterruptResume() {
-        assertTrue(true, "Placeholder - waiting for full invoke/resume implementation");
+
+    private static final class InteractiveConfirmComponent extends WorkflowComponent {
+        @Override
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
+            Object confirm = session.interact("Please confirm the operation");
+            return Map.of("confirm_result", confirm);
+        }
     }
 }

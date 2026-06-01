@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -270,6 +271,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
                     "reason", "no stream data in", "node_id", nodeId);
         }
+        Object actorManagerObj = session.actorManager();
+        if (actorManagerObj instanceof ActorManager) {
+            ((ActorManager) actorManagerObj).markProducerDone(nodeId);
+        }
 
         // 4. Send end tracer frame
         traceComponentDone();
@@ -439,7 +444,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         // Mix mode: end node with both batch and stream calls
         boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
         if (results instanceof Map && isEndMixMode) {
-            Map<String, Object> resultMap = (Map<String, Object>) results;
+            Map<String, Object> resultMap = new LinkedHashMap<>((Map<String, Object>) results);
+            results = resultMap;
             Object outputs = resultMap.get("output");
             if (outputs != null && !(outputs instanceof List)) {
                 resultMap.put("output", new ArrayList<>(List.of(outputs)));

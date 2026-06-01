@@ -126,6 +126,13 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * Returns the registered key-value store, primarily for provider integration checks.
+     */
+    public BaseKVStore getKvStore() {
+        return kvStore;
+    }
+
     // ========================= Store Registration =========================
 
     /**

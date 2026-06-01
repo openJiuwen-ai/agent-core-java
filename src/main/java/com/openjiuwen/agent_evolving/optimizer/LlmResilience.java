@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -317,19 +318,26 @@ ctx.getLastError(),
             Float temperature,
             double timeoutSecs) throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<Object> future = executor.submit(() -> llm.invoke(
-                Collections.singletonList(new UserMessage(prompt)),
-                null,
-                temperature,
-                null,
-                model,
-                null,
-                null,
-                null,
-                (float) timeoutSecs,
-                null));
+        CountDownLatch started = new CountDownLatch(1);
+        Future<Object> future = executor.submit(() -> {
+            started.countDown();
+            return llm.invoke(
+                    Collections.singletonList(new UserMessage(prompt)),
+                    null,
+                    temperature,
+                    null,
+                    model,
+                    null,
+                    null,
+                    null,
+                    (float) timeoutSecs,
+                    null);
+        });
         try {
             long timeoutMs = Math.max(1L, (long) Math.ceil(timeoutSecs * 1000.0));
+            if (!started.await(1, TimeUnit.SECONDS)) {
+                throw new TimeoutException("model invocation did not start");
+            }
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);

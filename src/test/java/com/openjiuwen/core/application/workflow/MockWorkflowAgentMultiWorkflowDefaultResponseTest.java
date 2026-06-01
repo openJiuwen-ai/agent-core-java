@@ -4,18 +4,20 @@
 package com.openjiuwen.core.application.workflow;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
-import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.workflow.component.Start;
-import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * WorkflowAgent multi-workflow default response UT.
@@ -67,249 +69,111 @@ import static org.junit.jupiter.api.Assertions.*;
  *         self.assertEqual(result["output"]["answer"], default_text)
  * </pre>
  * 
- * <p>NOTE: Full implementation requires DefaultResponse configuration and LLM intent mocking.
- * Current tests focus on structural validation and workflow setup.
  */
 @DisplayName("WorkflowAgent Multi Workflow Default Response")
 class MockWorkflowAgentMultiWorkflowDefaultResponseTest {
 
-    // ========== Test Constants ==========
-    
-    private static final String WEATHER_FLOW_ID = "weather_flow";
-    private static final String STOCK_FLOW_ID = "stock_flow";
-    private static final String WEATHER_PREFIX = "weather:";
-    private static final String STOCK_PREFIX = "stock:";
-    
-    // ========== Class Existence Tests (from original) ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("WorkflowAgentConfig class exists")
-    void testWorkflowAgentConfigExists() {
-        assertNotNull(com.openjiuwen.core.application.schema.WorkflowAgentConfig.class);
+    private static final String DEFAULT_TEXT = "Sorry, I cannot understand your question";
+
+    @BeforeEach
+    void setUp() {
+        Runner.start();
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("WorkflowAgent class exists")
-    void testWorkflowAgentExists() {
-        assertNotNull(WorkflowAgent.class);
+
+    @AfterEach
+    void tearDown() {
+        Runner.stop();
     }
-    
-    // ========== Workflow Structure Tests ==========
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test weather workflow card structure")
-    void testWeatherWorkflowCardStructure() {
-        // Python: WorkflowCard(name="weather_query", id="weather_flow", version="1.0")
-        WorkflowCard card = new WorkflowCard(WEATHER_FLOW_ID, "weather_query");
-        card.setVersion("1.0");
-        card.setDescription("Query weather, temperature, forecast");
-        
-        assertEquals(WEATHER_FLOW_ID, card.getId());
-        assertEquals("weather_query", card.getName());
-        assertEquals("1.0", card.getVersion());
-        assertEquals("Query weather, temperature, forecast", card.getDescription());
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test stock workflow card structure")
-    void testStockWorkflowCardStructure() {
-        // Python: WorkflowCard(name="stock_query", id="stock_flow", version="1.0")
-        WorkflowCard card = new WorkflowCard(STOCK_FLOW_ID, "stock_query");
-        card.setVersion("1.0");
-        card.setDescription("Query stock price, market trends");
-        
-        assertEquals(STOCK_FLOW_ID, card.getId());
-        assertEquals("stock_query", card.getName());
-        assertEquals("1.0", card.getVersion());
-        assertEquals("Query stock price, market trends", card.getDescription());
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test prefixed workflow end response template")
-    void testPrefixedWorkflowEndResponseTemplate() {
-        // Python: End({"responseTemplate": f"{prefix}{{{{output}}}}}"})
-        Map<String, Object> weatherTemplate = Map.of("responseTemplate", WEATHER_PREFIX + "{{output}}");
-        Map<String, Object> stockTemplate = Map.of("responseTemplate", STOCK_PREFIX + "{{output}}");
-        
-        assertTrue(weatherTemplate.get("responseTemplate").toString().startsWith(WEATHER_PREFIX));
-        assertTrue(stockTemplate.get("responseTemplate").toString().startsWith(STOCK_PREFIX));
-    }
-    
-    // ========== Multi-Workflow Configuration Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test two workflows configuration structure")
-    void testTwoWorkflowsConfigurationStructure() {
-        // Python: agent.add_workflows([weather_wf, stock_wf])
-        
-        List<Map<String, Object>> workflows = new ArrayList<>();
-        workflows.add(Map.of("id", WEATHER_FLOW_ID, "name", "weather_query", "prefix", WEATHER_PREFIX));
-        workflows.add(Map.of("id", STOCK_FLOW_ID, "name", "stock_query", "prefix", STOCK_PREFIX));
-        
-        assertEquals(2, workflows.size());
-        assertEquals(WEATHER_FLOW_ID, workflows.get(0).get("id"));
-        assertEquals(STOCK_FLOW_ID, workflows.get(1).get("id"));
-    }
-    
-    // ========== Default Response Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test default response configuration structure")
-    void testDefaultResponseConfigurationStructure() {
-        // Python: DefaultResponse(type="text", text=default_text)
-        String defaultText = "Sorry, I cannot understand your question";
-        
-        Map<String, Object> defaultResponse = new LinkedHashMap<>();
-        defaultResponse.put("type", "text");
-        defaultResponse.put("text", defaultText);
-        
-        assertEquals("text", defaultResponse.get("type"));
-        assertEquals(defaultText, defaultResponse.get("text"));
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test workflow agent config with default response")
-    void testWorkflowAgentConfigWithDefaultResponse() {
-        // Python: WorkflowAgentConfig(id="test_default_resp_agent", default_response=DefaultResponse(...))
-        
-        String defaultText = "Sorry, I cannot understand your question";
-        Map<String, Object> defaultResponseConfig = Map.of("type", "text", "text", defaultText);
-        
-        Map<String, Object> agentConfig = new LinkedHashMap<>();
-        agentConfig.put("id", "test_default_resp_agent");
-        agentConfig.put("version", "1.0");
-        agentConfig.put("description", "default response test");
-        agentConfig.put("default_response", defaultResponseConfig);
-        
-        assertEquals("test_default_resp_agent", agentConfig.get("id"));
-        assertNotNull(agentConfig.get("default_response"));
-    }
-    
-    // ========== Case #15: Default Response Test ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test default response result structure (Case #15)")
-    void testDefaultResponseResultStructure() {
-        // Python: result["status"] == "default_response"
-        //         result["result_type"] == "answer"
-        //         result["output"]["answer"] == default_text
-        
-        String defaultText = "Sorry, I cannot understand your question";
-        
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "default_response");
-        result.put("result_type", "answer");
-        result.put("output", Map.of("answer", defaultText));
-        
-        assertEquals("default_response", result.get("status"));
-        assertEquals("answer", result.get("result_type"));
-        assertEquals(defaultText, ((Map<?, ?>) result.get("output")).get("answer"));
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test default response fallback logic")
-    void testDefaultResponseFallbackLogic() {
-        // Python: When LLM intent detection returns None:
-        //         - With default_response: return configured text
-        //         - Without default_response: fall back to workflows[0]
-        
-        // Scenario 1: Has default_response
-        boolean hasDefaultResponse = true;
-        String expectedResponse = "Sorry, I cannot understand your question";
-        
-        if (hasDefaultResponse) {
-            // Should return default response text
-            assertEquals("Sorry, I cannot understand your question", expectedResponse);
-        }
-        
-        // Scenario 2: No default_response
-        boolean noDefaultResponse = false;
-        String firstWorkflowPrefix = WEATHER_PREFIX;
-        
-        if (!noDefaultResponse) {
-            // Should fall back to first workflow
-            assertNotNull(firstWorkflowPrefix);
-        }
-    }
-    
-    // ========== Invoke Input Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test invoke input structure for default response scenario")
-    void testInvokeInputStructureForDefaultResponseScenario() {
-        // Python: agent.invoke({"query": "blahblah random xyz", "conversation_id": conv_id})
-        
+    @DisplayName("default_response is returned when intent detection finds no workflow")
+    void testDefaultResponseWithConfig() {
+        MockWorkflowAgent.setMockResponses(MockWorkflowAgent.textResponse("{\"result\": 0}"));
+        WorkflowAgent agent = createDefaultResponseAgent("test_default_resp_agent");
+
         String conversationId = UUID.randomUUID().toString();
-        Map<String, Object> invokeInput = new LinkedHashMap<>();
-        invokeInput.put("query", "blahblah random xyz");
-        invokeInput.put("conversation_id", conversationId);
-        
-        assertEquals("blahblah random xyz", invokeInput.get("query"));
-        assertEquals(conversationId, invokeInput.get("conversation_id"));
+        ControllerOutput output = agent.invoke(Map.of(
+                "query", "blahblah random xyz",
+                "conversation_id", conversationId
+        ), null);
+
+        Map<String, Object> result = MockWorkflowAgent.dataMap(output);
+        assertThat(result).isNotNull();
+        assertThat(result.get("status")).isEqualTo("default_response");
+        assertThat(result.get("result_type")).isEqualTo("answer");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> outputMap = (Map<String, Object>) result.get("output");
+        assertThat(outputMap).containsEntry("answer", DEFAULT_TEXT);
+        assertAgentContextRecorded(agent, conversationId, 2);
     }
-    
-    // ========== Intent Detection Tests ==========
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test LLM intent detection returns None scenario")
-    void testLLMIntentDetectionReturnsNoneScenario() {
-        // Python: mock_detect.return_value = None (no intent match)
-        
-        Object detectedIntent = null; // Simulates None
-        
-        assertNull(detectedIntent);
-        
-        // When intent is null, should trigger default response or fallback
-        boolean shouldTriggerDefault = detectedIntent == null;
-        assertTrue(shouldTriggerDefault);
+    @DisplayName("fallback to first workflow when no default_response is configured")
+    void testFallbackToFirstWorkflow() {
+        MockWorkflowAgent.setMockResponses(MockWorkflowAgent.textResponse("{\"result\": 0}"));
+        WorkflowAgent agent = createFallbackAgent("test_no_default_resp_agent");
+
+        ControllerOutput output = (ControllerOutput) Runner.runAgent(agent, Map.of(
+                "query", "blahblah random xyz",
+                "conversation_id", UUID.randomUUID().toString()
+        ), null, null);
+
+        Map<String, Object> result = MockWorkflowAgent.dataMap(output);
+        assertThat(result).isNotNull();
+        assertThat(result.get("result_type")).isEqualTo("answer");
+        WorkflowOutput workflowOutput = (WorkflowOutput) result.get("output");
+        assertThat(MockWorkflowAgent.responseFrom(workflowOutput)).contains("weather:");
     }
-    
-    // ========== Placeholder Tests ==========
-    
-    /**
-     * Full default response test placeholder.
-     * 
-     * Requires:
-     * 1. DefaultResponse class implementation
-     * 2. Mock LLM intent detection
-     * 3. WorkflowAgent.invoke() with default response support
-     */
+
     @Test
-    @Tag("placeholder")
-    @DisplayName("Placeholder - Default response when no task detected (needs infrastructure)")
-    void testPlaceholderDefaultResponseWhenNoTaskDetected() {
-        assertTrue(true, "Placeholder - waiting for DefaultResponse implementation");
+    @DisplayName("stream emits workflow_final with configured default_response text")
+    void testDefaultResponseStream() {
+        MockWorkflowAgent.setMockResponses(MockWorkflowAgent.textResponse("{\"result\": 0}"));
+        WorkflowAgent agent = createDefaultResponseAgent("test_default_resp_stream_agent");
+
+        var chunks = MockWorkflowAgent.collect(Runner.runAgentStreaming(
+                agent,
+                Map.of("query", "blahblah random xyz", "conversation_id", UUID.randomUUID().toString()),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        assertThat(chunks).isNotEmpty();
+        var finalChunks = MockWorkflowAgent.chunksOfType(chunks, "workflow_final");
+        assertThat(finalChunks).hasSize(1);
+        assertThat(finalChunks.get(0).getPayload()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) finalChunks.get(0).getPayload();
+        assertThat(payload).containsEntry("response", DEFAULT_TEXT);
     }
-    
-    /**
-     * Full fallback test placeholder.
-     */
-    @Test
-    @Tag("placeholder")
-    @DisplayName("Placeholder - Fallback to first workflow when no default response (needs infrastructure)")
-    void testPlaceholderFallbackToFirstWorkflow() {
-        assertTrue(true, "Placeholder - waiting for full invoke implementation");
+
+    private static WorkflowAgent createDefaultResponseAgent(String agentId) {
+        WorkflowAgentConfig config = MockWorkflowAgent.configWithDefaultResponse(agentId, DEFAULT_TEXT);
+        MockWorkflowAgent mock = MockWorkflowAgent.of(config);
+        mock.addWorkflows(buildTwoWorkflows());
+        return mock.unwrap();
     }
-    
-    /**
-     * Full stream test placeholder.
-     */
-    @Test
-    @Tag("placeholder")
-    @DisplayName("Placeholder - Stream returns workflow final with default text (needs infrastructure)")
-    void testPlaceholderStreamReturnsWorkflowFinal() {
-        assertTrue(true, "Placeholder - waiting for stream implementation");
+
+    private static WorkflowAgent createFallbackAgent(String agentId) {
+        MockWorkflowAgent mock = MockWorkflowAgent.of(MockWorkflowAgent.configWithModel(agentId));
+        mock.addWorkflows(buildTwoWorkflows());
+        return mock.unwrap();
+    }
+
+    private static List<com.openjiuwen.core.workflow.Workflow> buildTwoWorkflows() {
+        return List.of(
+                MockWorkflowAgent.prefixedWorkflow(
+                        "weather_flow", "weather_query", "Query weather, temperature, forecast", "weather:"),
+                MockWorkflowAgent.prefixedWorkflow(
+                        "stock_flow", "stock_query", "Query stock price, market trends", "stock:")
+        );
+    }
+
+    private static void assertAgentContextRecorded(WorkflowAgent agent, String conversationId, int expectedMessages) {
+        ModelContext context = agent.getContextEngine().getContext(null, conversationId);
+        assertThat(context).isNotNull();
+        assertThat(context.getMessages()).hasSize(expectedMessages);
+        assertThat(context.getMessages().get(0).getRole()).isEqualTo("user");
+        assertThat(context.getMessages().get(1).getRole()).isEqualTo("assistant");
     }
 }

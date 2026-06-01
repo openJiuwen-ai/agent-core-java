@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -33,6 +34,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -46,10 +48,12 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final HttpClient httpClient;
+    private final Map<String, String> baseCustomHeaders;
 
     public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
+        this.baseCustomHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
     }
 
     @Override
@@ -80,11 +84,16 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                                    BaseOutputParser outputParser,
                                    Float timeout,
                                    Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = kwargs == null ? null : new java.util.LinkedHashMap<>(kwargs);
+        Object tracerRecordData = popTracerRecordData(effectiveKwargs);
+        Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
         Map<String, Object> params = buildRequestParams(
                 messages, tools,
                 temperature != null ? temperature.doubleValue() : null,
                 topP != null ? topP.doubleValue() : null,
-                model, stop, maxTokens, false, kwargs);
+                model, stop, maxTokens, false, effectiveKwargs);
+        applyExtraHeadersParam(params, requestCustomHeaders);
+        recordTracerData(tracerRecordData, "llm_params", params);
 
         HttpResponse<String> response = httpClient.send(
                 buildRequest(params, timeout),
@@ -93,7 +102,9 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);
-        return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+        AssistantMessage result = parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+        recordTracerData(tracerRecordData, "llm_response", result);
+        return result;
     }
 
     @Override
@@ -107,18 +118,25 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
                                                   Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = kwargs == null ? null : new java.util.LinkedHashMap<>(kwargs);
+        Object tracerRecordData = popTracerRecordData(effectiveKwargs);
+        Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
         Map<String, Object> params = buildRequestParams(
                 messages, tools,
                 temperature != null ? temperature.doubleValue() : null,
                 topP != null ? topP.doubleValue() : null,
-                model, stop, maxTokens, true, kwargs);
+                model, stop, maxTokens, true, effectiveKwargs);
+        applyExtraHeadersParam(params, requestCustomHeaders);
+        recordTracerData(tracerRecordData, "llm_params", params);
 
         HttpResponse<InputStream> response = httpClient.send(
                 buildRequest(params, timeout),
                 HttpResponse.BodyHandlers.ofInputStream());
         ensureSuccess(response.statusCode(), null);
 
-        return new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser);
+        return traceStreamingResponse(
+                new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser),
+                tracerRecordData);
     }
 
     @Override
@@ -160,13 +178,59 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
     }
 
     private HttpRequest buildRequest(Map<String, Object> params, Float timeoutOverride) throws Exception {
-        String body = MAPPER.writeValueAsString(params);
+        Map<String, Object> bodyParams = new LinkedHashMap<>(params);
+        Map<String, String> extraHeaders = extractExtraHeaders(bodyParams.remove("extra_headers"));
+        String body = MAPPER.writeValueAsString(bodyParams);
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(normalizedApiBase() + "/chat/completions"))
                 .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
         applyConfiguredHeaders(builder, true);
+        applyExtraHeaders(builder, extraHeaders);
         builder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         return builder.build();
+    }
+
+    private void applyExtraHeadersParam(Map<String, Object> params, Map<String, ?> requestCustomHeaders) {
+        Map<String, String> effectiveHeaders = HeadersHelper.mergeRequestHeaders(
+                baseCustomHeaders,
+                requestCustomHeaders);
+        if (!effectiveHeaders.isEmpty()) {
+            params.put("extra_headers", effectiveHeaders);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, ?> popRequestCustomHeaders(Map<String, Object> kwargs) {
+        if (kwargs == null) {
+            return null;
+        }
+        Object requestHeaders = kwargs.remove("custom_headers");
+        if (requestHeaders == null) {
+            requestHeaders = kwargs.remove("customHeaders");
+        }
+        if (requestHeaders instanceof Map<?, ?> map) {
+            return (Map<String, ?>) map;
+        }
+        return null;
+    }
+
+    private Map<String, String> extractExtraHeaders(Object extraHeaders) {
+        if (!(extraHeaders instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                result.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        return result;
+    }
+
+    private void applyExtraHeaders(HttpRequest.Builder builder, Map<String, String> extraHeaders) {
+        for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
+            builder.setHeader(entry.getKey(), entry.getValue());
+        }
     }
 
     private String normalizedApiBase() {

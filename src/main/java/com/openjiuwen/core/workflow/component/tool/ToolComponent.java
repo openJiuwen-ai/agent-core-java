@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.graph.Executable;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.ComponentComposable;
 
 /**
@@ -30,11 +31,12 @@ public class ToolComponent implements ComponentComposable {
 
     @Override
     public Executable<?, ?> toExecutable() {
-        if (tool == null) {
+        Tool executableTool = tool != null ? tool : resolveToolById();
+        if (executableTool == null) {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_INIT_FAILED,
                     "error_msg", "tool component not bind a valid tool");
         }
-        return new ToolExecutable(config).setTool(tool);
+        return new ToolExecutable(config).setTool(executableTool);
     }
 
     /**
@@ -43,5 +45,13 @@ public class ToolComponent implements ComponentComposable {
     public ToolComponent bindTool(Tool tool) {
         this.tool = tool;
         return this;
+    }
+
+    private Tool resolveToolById() {
+        if (config == null || config.getToolId() == null || config.getToolId().isBlank()) {
+            return null;
+        }
+        Object resolved = Runner.resourceMgr().getTool(config.getToolId());
+        return resolved instanceof Tool ? (Tool) resolved : null;
     }
 }

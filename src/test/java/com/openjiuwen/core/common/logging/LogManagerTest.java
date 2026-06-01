@@ -1,28 +1,40 @@
 /* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.common.logging;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
+import com.openjiuwen.core.common.logging.defaults.LogConfig;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for LogManager and LoggingUtils.
- * Ported from Python: tests/unit_tests/core/common/log/test_logger.py
+ * <p>
+ * Mirrors Python's {@code test_logger.py} in
+ * {@code tests.unit_tests.core.common.log.test_logger}.
  */
 class LogManagerTest {
 
     @BeforeEach
     void setUp() {
+        LogManager.LogConfigProvider.setProvider(null);
         LogManager.reset();
     }
 
     @AfterEach
     void tearDown() {
         LoggingUtils.clearSessionId();
+        LogManager.LogConfigProvider.setProvider(null);
         LogManager.reset();
     }
 
@@ -54,6 +66,19 @@ class LogManagerTest {
         @Override public void reconfigure(Map<String, Object> newConfig) { this.config = new HashMap<>(newConfig); }
     }
 
+    static class RecordingHandler extends Handler {
+        final List<LogRecord> records = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            records.add(record);
+        }
+
+        @Override public void flush() { }
+
+        @Override public void close() { }
+    }
+
     private void initializeWithTestFactory() {
         LogManager.setDefaultLoggerFactory(TestLogger::new);
         LogManager.LogConfigProvider.setProvider(() -> {
@@ -65,6 +90,16 @@ class LogManagerTest {
             return configs;
         });
         LogManager.initialize();
+    }
+
+    private static Map<String, Object> loggingConfig(Path logPath) {
+        return new HashMap<>(Map.of(
+                "backend", "default",
+                "level", "INFO",
+                "log_path", logPath.toString(),
+                "output", "console",
+                "structured_output_format", "json",
+                "loggers", Map.of()));
     }
 
     // ==========================================================================
@@ -83,6 +118,17 @@ class LogManagerTest {
 
         retrieved.info("Test custom logger");
         assertTrue(customLogger.messages.contains("INFO: Test custom logger"));
+    }
+
+    @Test
+    @DisplayName("registerLogger rejects null logger")
+    void testRegisterLoggerTypeCheck() {
+        initializeWithTestFactory();
+
+        LogManager.TypeError error = assertThrows(LogManager.TypeError.class, () ->
+                LogManager.registerLogger("bad", null));
+
+        assertTrue(error.getMessage().contains("Logger must implement LoggerProtocol"));
     }
 
     // ==========================================================================
@@ -138,6 +184,23 @@ class LogManagerTest {
         assertSame(logger1, logger2);
     }
 
+    @Test
+    @DisplayName("getLogger uses dynamic logger override from provider")
+    void testGetLoggerUsesDynamicLoggerOverride() {
+        LogManager.setDefaultLoggerFactory(TestLogger::new);
+        LogManager.LogConfigProvider.setProvider(() -> Map.of(
+                "common", Map.of("level", "INFO", "output", "console"),
+                "interface", Map.of("level", "INFO", "output", "console"),
+                "performance", Map.of("level", "INFO", "output", "console"),
+                "prompt_builder", Map.of("level", "INFO", "output", "console"),
+                "dynamic", Map.of("level", "DEBUG", "output", "console")));
+        LogManager.initialize();
+
+        TestLogger logger = (TestLogger) LogManager.getLogger("dynamic");
+
+        assertEquals("DEBUG", logger.getConfig().get("level"));
+    }
+
     // ==========================================================================
     // TestLogLevel: test_log_level_filtering (conceptual — actual filtering is in impl)
     // ==========================================================================
@@ -152,6 +215,19 @@ class LogManagerTest {
 
         logger.setLevel(400); // DEBUG level
         assertEquals(400, ((TestLogger) logger).currentLevel);
+    }
+
+    @Test
+    @DisplayName("log level filtering follows setLevel threshold")
+    void testLogLevelFiltering() {
+        initializeWithTestFactory();
+
+        TestLogger logger = (TestLogger) LogManager.getLogger("level_filter");
+        logger.setLevel(LogLevels.ERROR);
+        logger.error("error survives");
+
+        assertEquals(LogLevels.ERROR, logger.currentLevel);
+        assertTrue(logger.messages.stream().anyMatch(m -> m.contains("error survives")));
     }
 
     // ==========================================================================
@@ -227,6 +303,236 @@ class LogManagerTest {
         assertTrue(logger.messages.stream().anyMatch(m ->
                         m.contains("Exception occurred") && m.contains("Test exception")),
                 "Should contain both the message and exception detail");
+    }
+
+    @Test
+    @DisplayName("structured output format defaults to json")
+    void testStructuredOutputFormatDefaultsToJson() {
+        LogConfig config = new LogConfig();
+
+        assertEquals("json", config.getCommonConfig().get("structured_output_format"));
+    }
+
+    @Test
+    @DisplayName("structured output format can be loaded from yaml")
+    void testStructuredOutputFormatCanBeLoadedFromYaml(@TempDir Path tempDir) throws Exception {
+        Path yaml = tempDir.resolve("logging.yaml");
+        String logPath = tempDir.toString().replace("\\", "/");
+        Files.writeString(yaml, """
+                logging:
+                  backend: default
+                  level: INFO
+                  output: console
+                  log_path: "%s"
+                  structured_output_format: text
+                """.formatted(logPath));
+
+        LogConfig config = new LogConfig(yaml.toString());
+
+        assertEquals("text", config.getCommonConfig().get("structured_output_format"));
+    }
+
+    @Test
+    @DisplayName("normalize logging config normalizes per-logger levels")
+    void testNormalizeLoggingConfigNormalizesPerLoggerLevels(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("common", Map.of("level", "DEBUG")));
+
+        config.loadFromDict(raw);
+
+        assertEquals(LogLevels.DEBUG, config.getCommonConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("per-logger level override is loaded from config")
+    void testPerLoggerLevelOverrideIsLoadedFromYaml(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("interface", Map.of("level", "ERROR")));
+
+        config.loadFromDict(raw);
+
+        assertEquals(LogLevels.ERROR, config.getInterfaceConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("partial logger override inherits global settings")
+    void testPartialLoggerOverrideInheritsGlobalSettings(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("output", List.of("console", "file"));
+        raw.put("loggers", Map.of("common", Map.of("level", "DEBUG")));
+
+        config.loadFromDict(raw);
+        Map<String, Object> common = config.getCommonConfig();
+
+        assertEquals(LogLevels.DEBUG, common.get("level"));
+        assertEquals(List.of("console", "file"), common.get("output"));
+        assertEquals("json", common.get("structured_output_format"));
+    }
+
+    @Test
+    @DisplayName("built-in logger level override is scoped to target logger")
+    void testBuiltinLoggerLevelOverrideIsScopedToTargetLogger(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("interface", Map.of("level", "DEBUG")));
+
+        config.loadFromDict(raw);
+
+        assertEquals(LogLevels.DEBUG, config.getInterfaceConfig().get("level"));
+        assertEquals(LogLevels.INFO, config.getCommonConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("default backend rejects non-level logger overrides")
+    void testDefaultBackendRejectsNonLevelLoggerOverrides(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("common", Map.of("sinks", List.of("console"))));
+
+        assertThrows(BaseError.class, () -> config.loadFromDict(raw));
+    }
+
+    @Test
+    @DisplayName("default backend rejects loguru-specific root keys")
+    void testDefaultBackendRejectsLoguruSpecificRootKeys(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("serialize", true);
+
+        assertThrows(BaseError.class, () -> config.loadFromDict(raw));
+    }
+
+    @Test
+    @DisplayName("backend defaults to default when missing")
+    void testBackendDefaultsToDefaultWhenMissing(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.remove("backend");
+
+        config.loadFromDict(raw);
+
+        assertEquals("default", config.getBackend());
+    }
+
+    @Test
+    @DisplayName("default provider builds dynamic logger config")
+    void testDefaultProviderBuildsDynamicLoggerConfig() {
+        LogManager.setDefaultLoggerFactory(TestLogger::new);
+        LogManager.LogConfigProvider.setProvider(() -> Map.of(
+                "common", Map.of("level", "INFO", "output", "console"),
+                "interface", Map.of("level", "INFO", "output", "console"),
+                "performance", Map.of("level", "INFO", "output", "console"),
+                "prompt_builder", Map.of("level", "INFO", "output", "console"),
+                "agent", Map.of("level", "DEBUG", "output", "console")));
+        LogManager.initialize();
+
+        TestLogger agentLogger = (TestLogger) LogManager.getLogger("agent");
+
+        assertEquals("DEBUG", agentLogger.getConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("invalid per-logger level falls back to warning")
+    void testInvalidPerLoggerLevelFallsBackToWarning(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("common", Map.of("level", "not-a-level")));
+
+        config.loadFromDict(raw);
+
+        assertEquals(LogLevels.WARNING, config.getCommonConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("agent debug override does not enable common debug")
+    void testAgentDebugOverrideDoesNotEnableCommonDebug(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("loggers", Map.of("agent", Map.of("level", "DEBUG")));
+
+        config.loadFromDict(raw);
+
+        assertEquals(LogLevels.DEBUG, config.getCustomConfig("agent").get("level"));
+        assertEquals(LogLevels.INFO, config.getCommonConfig().get("level"));
+    }
+
+    @Test
+    @DisplayName("interface log file output config resolves interface path")
+    void testInterfaceLogFileOutput(@TempDir Path tempDir) {
+        LogConfig config = new LogConfig();
+        Map<String, Object> raw = loggingConfig(tempDir);
+        raw.put("output", List.of("console", "file"));
+
+        config.loadFromDict(raw);
+        String logFile = String.valueOf(config.getInterfaceConfig().get("log_file"));
+
+        assertTrue(logFile.contains("interface"));
+        assertTrue(logFile.endsWith("jiuwen_interface.log"));
+    }
+
+    @Test
+    @DisplayName("default logger sanitizes control characters")
+    void testMessageSanitization() {
+        DefaultLogger logger = new DefaultLogger("sanitize-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("line1\nline2\tend");
+
+        assertTrue(handler.records.stream().anyMatch(r ->
+                r.getMessage().contains("\\n") && r.getMessage().contains("\\t")));
+    }
+
+    @Test
+    @DisplayName("create nested log directory")
+    void testCreateNestedLogDirectory(@TempDir Path tempDir) {
+        Path logFile = tempDir.resolve("nested").resolve("logs").resolve("app.log");
+
+        new DefaultLogger("nested-dir", Map.of("output", "file", "log_file", logFile.toString()));
+
+        assertTrue(Files.isDirectory(logFile.getParent()));
+    }
+
+    @Test
+    @DisplayName("create log directory with configured path")
+    void testCreateLogDirectoryWithRelativePath(@TempDir Path tempDir) {
+        Path logFile = tempDir.resolve("relative").resolve("app.log");
+
+        new DefaultLogger("relative-dir", Map.of("output", List.of("console", "file"),
+                "log_file", logFile.toString()));
+
+        assertTrue(Files.isDirectory(logFile.getParent()));
+    }
+
+    @Test
+    @DisplayName("create log directory failure raises exception")
+    void testCreateLogDirectoryFailureRaisesException(@TempDir Path tempDir) throws Exception {
+        Path fileAsParent = tempDir.resolve("not-a-directory");
+        Files.writeString(fileAsParent, "occupied");
+        Path impossibleChild = fileAsParent.resolve("app.log");
+
+        assertThrows(IllegalStateException.class, () ->
+                new DefaultLogger("bad-dir", Map.of("output", "file", "log_file", impossibleChild.toString())));
+    }
+
+    @Test
+    @DisplayName("create existing directory no error")
+    void testCreateExistingDirectoryNoError(@TempDir Path tempDir) throws Exception {
+        Path existing = tempDir.resolve("existing");
+        Files.createDirectories(existing);
+
+        assertDoesNotThrow(() ->
+                new DefaultLogger("existing-dir", Map.of("output", "file",
+                        "log_file", existing.resolve("app.log").toString())));
+    }
+
+    @Test
+    @DisplayName("log path validation rejects null paths")
+    void testLogPathValidation() {
+        assertThrows(BaseError.class, () -> LoggingUtils.normalizeAndValidateLogPath(null));
     }
 
     // ==========================================================================

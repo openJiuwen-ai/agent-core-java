@@ -19,6 +19,7 @@ import org.slf4j.MDC;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -53,7 +54,7 @@ public class DefaultLogger implements LoggerProtocol {
 
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
-        this.config = config != null ? Map.copyOf(config) : Map.of();
+        this.config = config != null ? new LinkedHashMap<>(config) : Map.of();
         ensureLogDirectory(this.config);
         this.slf4jLogger = LoggerFactory.getLogger(logType);
         this.julLogger = java.util.logging.Logger.getLogger(logType + ".jul");
@@ -184,7 +185,7 @@ public class DefaultLogger implements LoggerProtocol {
 
     @Override
     public void reconfigure(Map<String, Object> newConfig) {
-        this.config = newConfig != null ? Map.copyOf(newConfig) : Map.of();
+        this.config = newConfig != null ? new LinkedHashMap<>(newConfig) : Map.of();
         ensureLogDirectory(this.config);
     }
 
@@ -231,11 +232,13 @@ public class DefaultLogger implements LoggerProtocol {
 
     private void setMdc() {
         MDC.put("trace_id", LoggingUtils.getSessionId());
+        MDC.put("member_id", LoggingUtils.getMemberId());
         MDC.put("log_type", logType);
     }
 
     private void clearMdc() {
         MDC.remove("trace_id");
+        MDC.remove("member_id");
         MDC.remove("log_type");
     }
 

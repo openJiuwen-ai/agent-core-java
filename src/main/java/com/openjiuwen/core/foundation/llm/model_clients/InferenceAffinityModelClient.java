@@ -76,8 +76,11 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                                    BaseOutputParser outputParser,
                                    Float timeout,
                                    Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = kwargs == null ? null : new LinkedHashMap<>(kwargs);
+        Object tracerRecordData = popTracerRecordData(effectiveKwargs);
         Map<String, Object> params = buildAndSanitizeParams(
-                messages, tools, temperature, topP, model, maxTokens, stop, false, kwargs);
+                messages, tools, temperature, topP, model, maxTokens, stop, false, effectiveKwargs);
+        recordTracerData(tracerRecordData, "llm_params", params);
 
         HttpResponse<String> response = httpClient.send(
                 buildJsonRequest("/v1/chat/completions", params, timeout),
@@ -86,7 +89,9 @@ public class InferenceAffinityModelClient extends BaseModelClient {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);
-        return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+        AssistantMessage result = parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+        recordTracerData(tracerRecordData, "llm_response", result);
+        return result;
     }
 
     @Override
@@ -100,14 +105,19 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
                                                   Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = kwargs == null ? null : new LinkedHashMap<>(kwargs);
+        Object tracerRecordData = popTracerRecordData(effectiveKwargs);
         Map<String, Object> params = buildAndSanitizeParams(
-                messages, tools, temperature, topP, model, maxTokens, stop, true, kwargs);
+                messages, tools, temperature, topP, model, maxTokens, stop, true, effectiveKwargs);
+        recordTracerData(tracerRecordData, "llm_params", params);
 
         HttpResponse<InputStream> response = httpClient.send(
                 buildJsonRequest("/v1/chat/completions", params, timeout),
                 HttpResponse.BodyHandlers.ofInputStream());
         ensureSuccess(response.statusCode(), null);
-        return new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser);
+        return traceStreamingResponse(
+                new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser),
+                tracerRecordData);
     }
 
     @Override

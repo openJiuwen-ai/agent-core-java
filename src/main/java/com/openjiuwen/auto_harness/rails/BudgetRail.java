@@ -8,6 +8,7 @@ import com.openjiuwen.auto_harness.infra.SessionBudgetController;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.harness.rails.DeepAgentRail;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -19,7 +20,7 @@ import java.util.logging.Logger;
  *
  * <p>Mirrors Python's {@code BudgetRail} in {@code openjiuwen.auto_harness.rails.budget_rail}.</p>
  */
-public class BudgetRail {
+public class BudgetRail extends DeepAgentRail {
 
     private static final Logger logger = Logger.getLogger(BudgetRail.class.getName());
     private static final double INPUT_COST_PER_TOKEN = 3e-6;
@@ -36,6 +37,11 @@ public class BudgetRail {
      *
      * @param ctx the agent callback context
      */
+    @Override
+    public void beforeToolCall(AgentCallbackContext ctx) {
+        beforeToolCall((Object) ctx);
+    }
+
     public void beforeToolCall(Object ctx) {
         if (budget.isShouldStop()) {
             logger.warning("Session budget exceeded");
@@ -48,6 +54,11 @@ public class BudgetRail {
      *
      * @param ctx the agent callback context
      */
+    @Override
+    public void afterModelCall(AgentCallbackContext ctx) {
+        afterModelCall((Object) ctx);
+    }
+
     public void afterModelCall(Object ctx) {
         ModelCallInputs inputs = modelInputs(ctx);
         if (inputs == null || inputs.getResponse() == null) {
@@ -86,6 +97,11 @@ public class BudgetRail {
      *
      * @param ctx the agent callback context
      */
+    @Override
+    public void beforeTaskIteration(AgentCallbackContext ctx) {
+        beforeTaskIteration((Object) ctx);
+    }
+
     public void beforeTaskIteration(Object ctx) {
         logger.info("CI gate rail: iteration starting");
     }
@@ -95,6 +111,11 @@ public class BudgetRail {
      *
      * @param ctx the agent callback context
      */
+    @Override
+    public void afterTaskIteration(AgentCallbackContext ctx) {
+        afterTaskIteration((Object) ctx);
+    }
+
     public void afterTaskIteration(Object ctx) {
         logger.info("CI gate rail: iteration complete");
     }

@@ -14,8 +14,11 @@ import java.util.logging.Logger;
 /**
  * Loguru-style logger implementation.
  * <p>
- * Mirrors Python's Loguru logging pattern.
- * Provides a simplified, fluent logging interface.
+ * Mirrors Python's {@code LoguruLogger} in
+ * {@code openjiuwen.core.common.logging.loguru.loguru_impl}.
+ *
+ * <p>Provides a simplified, fluent logging interface on top of the repository's
+ * Java logging stack.</p>
  */
 public class LoguruLogger implements LoggerProtocol {
 

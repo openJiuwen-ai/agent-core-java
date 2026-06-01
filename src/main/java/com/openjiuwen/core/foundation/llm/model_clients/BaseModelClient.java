@@ -32,6 +32,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * LLM Model Client abstract base class.
@@ -267,7 +269,11 @@ public abstract class BaseModelClient {
         }
 
         // Add extra kwargs (excluding internal params)
-        Set<String> internalParams = Set.of("parser", "output_parser");
+        Set<String> internalParams = Set.of(
+                "parser",
+                "output_parser",
+                "tracer_record_data",
+                "tracerRecordData");
         if (extraKwargs != null) {
             for (var entry : extraKwargs.entrySet()) {
                 if (!internalParams.contains(entry.getKey())) {
@@ -277,6 +283,88 @@ public abstract class BaseModelClient {
         }
 
         return params;
+    }
+
+    /**
+     * Remove and return the optional tracer callback from request kwargs.
+     * <p>
+     * Mirrors Python model clients' {@code tracer_record_data} hook while keeping
+     * callback objects out of JSON request payloads.
+     */
+    protected Object popTracerRecordData(Map<String, Object> kwargs) {
+        if (kwargs == null) {
+            return null;
+        }
+        Object tracer = kwargs.remove("tracer_record_data");
+        if (tracer == null) {
+            tracer = kwargs.remove("tracerRecordData");
+        }
+        return tracer;
+    }
+
+    /**
+     * Invoke a tracer callback with a Python-compatible single-key payload.
+     */
+    @SuppressWarnings("unchecked")
+    protected void recordTracerData(Object tracerRecordData, String key, Object value) {
+        if (tracerRecordData == null) {
+            return;
+        }
+        Map<String, Object> payload = Map.of(key, value);
+        try {
+            if (tracerRecordData instanceof Consumer<?> consumer) {
+                ((Consumer<Map<String, Object>>) consumer).accept(payload);
+                return;
+            }
+            if (tracerRecordData instanceof Function<?, ?> function) {
+                ((Function<Map<String, Object>, Object>) function).apply(payload);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to record LLM tracer data", e);
+        }
+    }
+
+    /**
+     * Wrap a stream iterator so the final accumulated message is emitted to the
+     * tracer once stream consumption finishes.
+     */
+    protected Iterator<AssistantMessageChunk> traceStreamingResponse(
+            Iterator<AssistantMessageChunk> delegate,
+            Object tracerRecordData) {
+        if (tracerRecordData == null || delegate == null) {
+            return delegate;
+        }
+        return new Iterator<>() {
+            private AssistantMessageChunk finalMessage;
+            private boolean tracerRecorded;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    recordFinalMessage();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                AssistantMessageChunk chunk = delegate.next();
+                if (chunk != null) {
+                    finalMessage = finalMessage == null ? chunk : finalMessage.merge(chunk);
+                }
+                return chunk;
+            }
+
+            private void recordFinalMessage() {
+                if (tracerRecorded) {
+                    return;
+                }
+                tracerRecorded = true;
+                recordTracerData(tracerRecordData, "llm_response",
+                        finalMessage != null ? finalMessage : AssistantMessageChunk.builder().build());
+            }
+        };
     }
 
     // ==================== Abstract Methods ====================

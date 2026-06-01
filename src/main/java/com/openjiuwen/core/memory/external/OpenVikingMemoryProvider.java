@@ -106,24 +106,39 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
     private final String account;
     private final String user;
     private final String agent;
+    private final HttpClientFactory httpClientFactory;
     private HttpClient httpClient;
     private String sessionId;
+
+    @FunctionalInterface
+    interface HttpClientFactory {
+        HttpClient create();
+    }
 
     public OpenVikingMemoryProvider() {
         this("", "", "", "", "");
     }
 
     public OpenVikingMemoryProvider(String endpoint, String apiKey, String account, String user, String agent) {
+        this(endpoint, apiKey, account, user, agent, System.getenv(), () -> HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build());
+    }
+
+    OpenVikingMemoryProvider(String endpoint, String apiKey, String account, String user, String agent,
+                             Map<String, String> env, HttpClientFactory httpClientFactory) {
+        Map<String, String> envVars = env == null ? Map.of() : env;
         this.endpoint = Optional.ofNullable(endpoint).filter(s -> !s.isEmpty())
-                .orElseGet(() -> System.getenv().getOrDefault("OPENVIKING_ENDPOINT", ""));
+                .orElseGet(() -> envVars.getOrDefault("OPENVIKING_ENDPOINT", ""));
         this.apiKey = Optional.ofNullable(apiKey).filter(s -> !s.isEmpty())
-                .orElseGet(() -> System.getenv().getOrDefault("OPENVIKING_API_KEY", ""));
+                .orElseGet(() -> envVars.getOrDefault("OPENVIKING_API_KEY", ""));
         this.account = Optional.ofNullable(account).filter(s -> !s.isEmpty())
-                .orElseGet(() -> System.getenv().getOrDefault("OPENVIKING_ACCOUNT", "default"));
+                .orElseGet(() -> envVars.getOrDefault("OPENVIKING_ACCOUNT", "default"));
         this.user = Optional.ofNullable(user).filter(s -> !s.isEmpty())
-                .orElseGet(() -> System.getenv().getOrDefault("OPENVIKING_USER", "default"));
+                .orElseGet(() -> envVars.getOrDefault("OPENVIKING_USER", "default"));
         this.agent = Optional.ofNullable(agent).filter(s -> !s.isEmpty())
-                .orElseGet(() -> System.getenv().getOrDefault("OPENVIKING_AGENT", "hermes"));
+                .orElseGet(() -> envVars.getOrDefault("OPENVIKING_AGENT", "hermes"));
+        this.httpClientFactory = Objects.requireNonNull(httpClientFactory, "httpClientFactory");
     }
 
     @Override
@@ -147,14 +162,14 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
             sessionId = kwargs != null && kwargs.containsKey("session_id")
                     ? String.valueOf(kwargs.get("session_id")) : "";
             try {
-                httpClient = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(30))
-                        .build();
+                httpClient = httpClientFactory.create();
                 // Health check
-                HttpRequest req = HttpRequest.newBuilder()
+                HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
                         .uri(URI.create(endpoint.replaceAll("/+$", "") + "/health"))
                         .timeout(Duration.ofSeconds(10))
-                        .GET().build();
+                        .GET();
+                addAuthHeaders(reqBuilder);
+                HttpRequest req = reqBuilder.build();
                 HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() != 200) {
                     Loggers.MEMORY.warn("OpenViking at {} not reachable", endpoint);
@@ -275,8 +290,13 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
     @Override
     public CompletableFuture<Void> shutdown() {
         if (httpClient != null) {
-            httpClient.close();
-            httpClient = null;
+            try {
+                httpClient.close();
+            } catch (Exception e) {
+                Loggers.MEMORY.debug("OpenViking client close failed: {}", e.getMessage());
+            } finally {
+                httpClient = null;
+            }
         }
         return CompletableFuture.completedFuture(null);
     }

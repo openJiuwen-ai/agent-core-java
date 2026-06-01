@@ -7,12 +7,14 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code TeamWorkspaceManager} and workspace models in
- * {@code openjiuwen.agent_teams.team_workspace.manager}.
+ * {@code openjiuwen.agent_teams.team_workspace.manager}, including
+ * {@code tests/unit_tests/agent_teams/team_workspace/test_manager.py}.
  */
 class WorkspaceManagerTest {
 
@@ -51,6 +53,49 @@ class WorkspaceManagerTest {
 
         assertNull(manager.getLock("src/main.py"));
         assertTrue(manager.listLocks().isEmpty());
+    }
+
+    @Test
+    void mountIntoWorkspaceCreatesTeamMountPoint() throws Exception {
+        WorkspaceManager manager = managerWithPlainWorkspace();
+        Path workspaceRoot = Files.createTempDirectory("agent-workspace");
+
+        manager.mountIntoWorkspace(workspaceRoot.toString());
+
+        Path mount = workspaceRoot.resolve(".team").resolve("team-alpha");
+        assertTrue(Files.exists(mount));
+    }
+
+    @Test
+    void initializeWithoutVersionControlCreatesArtifactDirsAndSkipsGit() throws Exception {
+        WorkspaceManager manager = managerWithPlainWorkspace();
+
+        manager.initialize().join();
+
+        Path workspace = Path.of(manager.getWorkspacePath());
+        assertFalse(Files.exists(workspace.resolve(".git")));
+        for (String dir : manager.getConfig().getArtifactDirs()) {
+            assertTrue(Files.isDirectory(workspace.resolve(dir)));
+        }
+        assertTrue(Files.isDirectory(workspace.resolve("skills")));
+    }
+
+    @Test
+    void autoCommitNoopsWhenVersionControlDisabled() throws Exception {
+        WorkspaceManager manager = managerWithPlainWorkspace();
+
+        manager.autoCommit("artifacts/code/a.py", "alice").join();
+
+        assertFalse(Files.exists(Path.of(manager.getWorkspacePath()).resolve(".git")));
+    }
+
+    @Test
+    void pullPushAndHistoryNoopWhenVersionControlDisabled() throws Exception {
+        WorkspaceManager manager = managerWithPlainWorkspace();
+
+        assertFalse(manager.pull().join());
+        assertTrue(manager.push().join());
+        assertTrue(manager.getHistory("artifacts/code/a.py").join().isEmpty());
     }
 
     private static WorkspaceManager managerWithPlainWorkspace() throws Exception {

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.store.vector;
 
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStoreFactory;
 
 import java.util.LinkedHashMap;
@@ -22,13 +23,33 @@ import java.util.Map;
  */
 public class GaussVectorStore extends AbstractRetrievalVectorStoreAdapter {
 
+    public GaussVectorStore(VectorStore delegate) {
+        super(delegate);
+    }
+
     public GaussVectorStore(Map<String, Object> options) {
-        super(VectorStoreFactory.createVectorStore(config(options), withFoundationAliases(options)));
+        super(createDelegate(options));
+    }
+
+    private static VectorStore createDelegate(Map<String, Object> options) {
+        Map<String, Object> resolved = withFoundationAliases(options);
+        if (hasConnectionOptions(resolved)) {
+            return VectorStoreFactory.createVectorStore(config(options), resolved);
+        }
+        return new com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore(
+                new VectorStoreConfig(
+                        "chroma",
+                        InMemoryVectorStore.stringOption(options, "database_name", "databaseName", "default"),
+                        InMemoryVectorStore.stringOption(options, "collection_name", "collectionName", "default_collection"),
+                        InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")
+                ),
+                InMemoryVectorStore.indexType(options)
+        );
     }
 
     private static VectorStoreConfig config(Map<String, Object> options) {
         return new VectorStoreConfig(
-                "gauss",
+                "pgvector",
                 InMemoryVectorStore.stringOption(options, "database_name", "databaseName", ""),
                 InMemoryVectorStore.stringOption(options, "collection_name", "collectionName", "default_collection"),
                 InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")
@@ -42,5 +63,15 @@ public class GaussVectorStore extends AbstractRetrievalVectorStoreAdapter {
         }
         resolved.putIfAbsent("vector_field", "embedding");
         return resolved;
+    }
+
+    private static boolean hasConnectionOptions(Map<String, Object> options) {
+        return options != null && (options.containsKey("dataSource")
+                || options.containsKey("data_source")
+                || options.containsKey("jdbcUrl")
+                || options.containsKey("jdbc_url")
+                || options.containsKey("pgUri")
+                || options.containsKey("pg_uri")
+                || options.containsKey("url"));
     }
 }

@@ -14,6 +14,12 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Tests for LLM-as-judge metric behavior.
+ *
+ * <p>Mirrors Python's {@code test_llm_as_judge.py} in
+ * {@code tests/unit_tests/agent_evolving/evaluator/test_metrics}.
+ */
 class LLMAsJudgeMetricTest {
 
     @Test

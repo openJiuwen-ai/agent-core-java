@@ -6,7 +6,8 @@ package com.openjiuwen.core.common.logging;
 /**
  * Test utility that initializes logging config and exposes a logger.
  * <p>
- * Mirrors Python's {@code test_logger.py} in {@code tests/test_logger.py}.
+ * Mirrors Python's {@code test_logger.py} in
+ * {@code tests.unit_tests.core.common.log.test_logger}.
  * <p>
  * Usage:
  * <pre>
@@ -23,6 +24,7 @@ public final class TestLoggerInitializer {
     }
 
     private TestLoggerInitializer() {
+        throw new AssertionError("No TestLoggerInitializer instances");
     }
 
     public static LoggerProtocol getLogger() {

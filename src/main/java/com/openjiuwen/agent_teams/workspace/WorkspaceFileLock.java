@@ -5,6 +5,8 @@
 package com.openjiuwen.agent_teams.workspace;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 
 /**
  * Minimal file-level lock entry for team shared workspace.
@@ -53,7 +55,15 @@ public class WorkspaceFileLock {
     }
 
     public boolean isExpired() {
-        Instant acquired = Instant.parse(acquiredAt);
+        Instant acquired = parseAcquiredAt(acquiredAt);
         return acquired.plusSeconds(timeoutSeconds).isBefore(Instant.now());
+    }
+
+    private static Instant parseAcquiredAt(String value) {
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException ignored) {
+            return OffsetDateTime.parse(value).toInstant();
+        }
     }
 }

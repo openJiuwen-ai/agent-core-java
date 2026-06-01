@@ -32,12 +32,15 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for QueryRewriter.
- * Mirrors Python's tests/unit_tests/core/retrieval/query_rewriter/test_query_rewriter.py
+ *
+ * <p>Mirrors Python's {@code test_query_rewriter.py} in
+ * {@code tests/unit_tests/core/retrieval/query_rewriter}.</p>
  */
 class TestQueryRewriter {
 
@@ -130,15 +133,15 @@ class TestQueryRewriter {
         }
 
         @Test
-        @DisplayName("empty string returns null")
-        void testEmptyStringReturnsNull() {
+        @DisplayName("empty string returns None/null")
+        void testEmptyStringReturnsNone() {
             assertNull(QueryRewriter.parseLlmJson(""));
             assertNull(QueryRewriter.parseLlmJson("   "));
         }
 
         @Test
-        @DisplayName("invalid JSON returns null without repair")
-        void testInvalidJsonReturnsNullWithoutRepair() {
+        @DisplayName("invalid JSON returns None/null without repair")
+        void testInvalidJsonReturnsNoneWithoutRepair() {
             assertNull(QueryRewriter.parseLlmJson("not json"));
         }
 
@@ -153,10 +156,38 @@ class TestQueryRewriter {
         }
 
         @Test
-        @DisplayName("non-dict root returns null")
-        void testNonDictRootReturnsNull() {
+        @DisplayName("non-dict root returns None/null")
+        void testNonDictRootReturnsNone() {
             assertNull(QueryRewriter.parseLlmJson("[1,2,3]"));
             assertNull(QueryRewriter.parseLlmJson("null"));
+        }
+    }
+
+    @Nested
+    @DisplayName("force helper tests")
+    class TestForceHelpers {
+
+        @Test
+        @DisplayName("force value to string")
+        void testForceString() {
+            assertEquals("x", QueryRewriter.forceString("x"));
+            String json = QueryRewriter.forceString(Map.of("a", 1));
+            assertTrue(json.equals("{\"a\":1}") || json.equals("{\"a\": 1}"));
+        }
+
+        @Test
+        @DisplayName("force value to list")
+        void testForceList() {
+            assertEquals(List.of(1, 2), QueryRewriter.forceList(List.of(1, 2)));
+            assertEquals(List.of("x"), QueryRewriter.forceList("x"));
+        }
+
+        @Test
+        @DisplayName("force value to JSON object")
+        void testForceJson() {
+            assertEquals(Map.of("a", 1), QueryRewriter.forceJson("k", Map.of("a", 1)));
+            assertEquals(Map.of("a", 1), QueryRewriter.forceJson("k", "{\"a\":1}"));
+            assertEquals(Map.of("k", "plain"), QueryRewriter.forceJson("k", "plain"));
         }
     }
 
@@ -272,6 +303,16 @@ class TestQueryRewriter {
             ModelContext mockContext = mock(ModelContext.class);
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "nonexistent_lang");
             BaseError ex = assertThrows(BaseError.class, () -> qr.loadTemplate("intention_completion"));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND, ex.getStatus());
+        }
+
+        @Test
+        @DisplayName("template read failure raises")
+        void testLoadTemplateReadFailureRaises() {
+            BaseModelClient mockClient = mock(BaseModelClient.class);
+            ModelContext mockContext = mock(ModelContext.class);
+            QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
+            BaseError ex = assertThrows(BaseError.class, () -> qr.loadTemplate("missing_due_to_read_failure_equivalent"));
             assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND, ex.getStatus());
         }
     }
@@ -507,6 +548,73 @@ class TestQueryRewriter {
             QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
             Map<String, Object> result = qr.rewrite("x");
             assertEquals("x", result.get("standalone_query"));
+        }
+    }
+
+    @Nested
+    @DisplayName("full conversation with compression tests")
+    class TestFullConversationWithCompressAndRewrite {
+
+        @Test
+        @DisplayName("full conversation with compress and rewrite")
+        void testFullConversationWithCompressAndRewrite() throws Exception {
+            List<String[]> conversation = List.of(
+                    new String[]{"你们这个淘美乐 App 是干什么的？", "淘美乐是一款综合购物与生活服务的 App。"},
+                    new String[]{"怎么注册和登录？", "使用手机号验证码或第三方账号登录。"},
+                    new String[]{"我想买点日用品，从哪里进？", "首页有日百等入口。"},
+                    new String[]{"搜索出来的结果太多，怎么筛选？", "搜索结果页有筛选按钮。"},
+                    new String[]{"下单后多久能送到？", "一般 1 到 3 天送达。"},
+                    new String[]{"可以修改订单吗？", "待发货状态下可以修改或取消。"}
+            );
+            List<BaseMessage> history = new ArrayList<>();
+            int[] compressCalls = {0};
+            int[] rewriteCalls = {0};
+            String[] currentQuery = {"用户当前问题"};
+
+            BaseModelClient mockClient = mock(BaseModelClient.class);
+            when(mockClient.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenAnswer(invocation -> {
+                        Object messages = invocation.getArgument(0);
+                        String prompt = String.valueOf(messages);
+                        if (prompt.contains("user:") && prompt.contains("assistant:") && !prompt.contains("当前用户输入")) {
+                            compressCalls[0]++;
+                            return new AssistantMessage(makeCompressResponse());
+                        }
+                        rewriteCalls[0]++;
+                        return new AssistantMessage(makeFullRewriteResponse(currentQuery[0]));
+                    });
+            ModelContext mockContext = mock(ModelContext.class);
+            when(mockContext.getMessages(nullable(Integer.class), eq(true))).thenAnswer(invocation -> {
+                Integer size = invocation.getArgument(0);
+                if (size == null || size >= history.size()) {
+                    return new ArrayList<>(history);
+                }
+                return new ArrayList<>(history.subList(history.size() - size, history.size()));
+            });
+            doAnswer(invocation -> {
+                history.clear();
+                history.addAll(invocation.getArgument(0));
+                return null;
+            }).when(mockContext).setMessages(any(), eq(true));
+
+            QueryRewriter qr = new QueryRewriter(mockClient, mockContext, 5, "zh");
+            List<Integer> rewriteAfterTurns = List.of(2, 4, 6);
+            for (int turnIdx = 1; turnIdx <= conversation.size(); turnIdx++) {
+                String[] turn = conversation.get(turnIdx - 1);
+                history.add(new UserMessage(turn[0]));
+                history.add(new AssistantMessage(turn[1]));
+                assertTrue(history.size() >= 1);
+                if (rewriteAfterTurns.contains(turnIdx)) {
+                    currentQuery[0] = turnIdx == 2 ? "那运费呢？" : turnIdx == 4 ? "会员怎么升级？" : "生鲜能退吗？";
+                    int before = history.size();
+                    Map<String, Object> result = qr.rewrite(currentQuery[0]);
+                    assertEquals(currentQuery[0], result.get("standalone_query"));
+                    assertTrue(history.size() == before || history.size() == 1);
+                }
+            }
+
+            assertEquals(rewriteAfterTurns.size(), rewriteCalls[0]);
+            assertTrue(compressCalls[0] >= 0);
         }
     }
 

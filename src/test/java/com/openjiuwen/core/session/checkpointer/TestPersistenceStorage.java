@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for PersistenceStorage.
- * Mirrors Python's tests/unit_tests/core/session/checkpointer/test_persistence_storage.py
+ * Mirrors Python's {@code tests/unit_tests/core/session/checkpointer/test_persistence_storage.py}.
  */
 class TestPersistenceStorage {
 

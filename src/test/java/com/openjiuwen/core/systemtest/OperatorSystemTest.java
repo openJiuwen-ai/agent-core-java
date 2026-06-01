@@ -66,7 +66,7 @@ class OperatorSystemTest {
                 "{{query}}");
 
         Map<String, Object> inputs = Map.of("query", "请用一句话解释什么是面向对象编程。");
-        Object result = operator.invoke(inputs, new MinimalSession());
+        Object result = operator.invoke(inputs, new MinimalSession(), Map.of());
 
         assertNotNull(result, "Operator result should not be null");
         assertTrue(result instanceof AssistantMessage, "Result should be AssistantMessage");
@@ -90,7 +90,7 @@ class OperatorSystemTest {
         assertTrue(tunables.isEmpty(), "Frozen prompts should have no tunables");
 
         Map<String, Object> inputs = Map.of("query", "Hello World");
-        Object result = operator.invoke(inputs, new MinimalSession());
+        Object result = operator.invoke(inputs, new MinimalSession(), Map.of());
 
         assertNotNull(result);
         AssistantMessage msg = (AssistantMessage) result;
@@ -140,7 +140,7 @@ class OperatorSystemTest {
 
         ToolCallOperator operator = new ToolCallOperator(tool);
         Map<String, Object> inputs = Map.of("a", 7, "b", 8);
-        Object result = operator.invoke(inputs, new MinimalSession());
+        Object result = operator.invoke(inputs, new MinimalSession(), Map.of());
 
         assertNotNull(result);
         System.out.println("[ToolCallOperator] Result: " + result);

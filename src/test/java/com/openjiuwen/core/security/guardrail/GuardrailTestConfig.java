@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * Test configuration and fixtures for guardrail framework tests.
- * Mirrors Python's tests/unit_tests/core/security/guardrail/conftest.py
+ * Mirrors Python's {@code tests/unit_tests/core/security/guardrail/conftest.py}.
  */
 public final class GuardrailTestConfig {
 

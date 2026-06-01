@@ -19,6 +19,10 @@ import java.util.Map;
  */
 public class MilvusVectorStore extends AbstractRetrievalVectorStoreAdapter {
 
+    public MilvusVectorStore(VectorStore delegate) {
+        super(delegate);
+    }
+
     public MilvusVectorStore(Map<String, Object> options) {
         super(new LazyMilvusRetrievalStore(options));
     }

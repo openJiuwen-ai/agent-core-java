@@ -4,312 +4,252 @@
 
 package com.openjiuwen.core.application.workflow;
 
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes.MockStartNode;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.component.Start;
+import com.openjiuwen.core.workflow.components.llm.FieldInfo;
+import com.openjiuwen.core.workflow.components.llm.QuestionerComponent;
+import com.openjiuwen.core.workflow.components.llm.QuestionerConfig;
+import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes.InteractiveNode4StreamCp;
 import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes.MockEndNode;
 import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes.MockStartNode4Cp;
-import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes.InteractiveNode4StreamCp;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for WorkflowAgent interrupt stream functionality.
- * 
- * <p>Mirrors Python's test_simple_stream_interactive_workflow from
- * {@code tests/unit_tests/core/workflow/test_workflow_with_interrupt.py}
- * 
- * <p>Python test logic (lines 610-651):
- * <pre>
- * async def test_simple_stream_interactive_workflow():
- *     """
- *     graph : start->a->end
- *     """
- *     start_node = MockStartNode4Cp("start")
- *     flow = Workflow(card=WorkflowCard(id="test_simple_stream_interactive_workflow"))
- *     flow.set_start_comp("start", start_node,
- *                         inputs_schema={"a": "${inputs.a}", "b": "${inputs.b}", "c": 1, "d": [1, 2, 3]})
- *     flow.add_workflow_comp("a", InteractiveNode4StreamCp("a"),
- *                            inputs_schema={"aa": "${start.a}", "ac": "${start.c}"})
- *     flow.set_end_comp("end", MockEndNode("end"),
- *                       inputs_schema={"result": "${a.aa}"})
- *     flow.add_connection("start", "a")
- *     flow.add_connection("a", "end")
- *     
- *     session_id = uuid.uuid4().hex
- *     async for res in flow.stream({"inputs": {"a": 1, "b": "haha"}}, create_workflow_session(session_id=session_id)):
- *         if res.type == INTERACTION:
- *             interaction_node = res.payload.id
- *             interaction_msg = res.payload.value
- *     assert interaction_node == "a"
- *     assert interaction_msg == "Please enter any key"
- *     
- *     user_input = InteractiveInput()
- *     user_input.update(interaction_node, {"aa": "any key"})
- *     async for res in flow.stream(user_input, create_workflow_session(session_id=session_id),
- *                                  stream_modes=[BaseStreamMode.OUTPUT]):
- *         if res.type == "output":
- *             assert res.payload[0] == "a"
- *             result = res.payload[1]
- *     assert result == {"aa": "any key"}
- *     assert start_node.runtime == 1
- * </pre>
- * 
- * <p>NOTE: Full stream execution requires Workflow.stream() implementation
- * and WorkflowSession factory. Current tests focus on structural validation
- * and mock node behavior.
+ * Workflow interrupt streaming tests.
+ *
+ * <p>Mirrors Python's {@code test_simple_stream_interactive_workflow} from
+ * {@code tests/unit_tests/core/workflow/test_workflow_with_interrupt.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code test_mock_workflow_agent_interrupt_stream.py} in
+ * {@code tests/unit_tests/agent/workflow_agent/}.</p>
  */
-@Disabled("Requires Workflow.stream() and WorkflowSession infrastructure")
 @DisplayName("WorkflowAgent Interrupt Stream Tests")
 class MockWorkflowAgentInterruptStreamTest {
 
-    // ========== Test Constants ==========
-    
-    private static final String TEST_WORKFLOW_ID = "test_simple_stream_interactive_workflow";
-    
-    // ========== Workflow Structure Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test interrupt stream workflow structure: start -> interactive_node -> end")
-    void testInterruptStreamWorkflowStructure() {
-        // Python: graph : start->a->end
-        // Validate workflow graph structure for interrupt stream scenario
-        
-        List<String> components = List.of("start", "interactive_node", "end");
-        List<String[]> connections = List.of(
-            new String[]{"start", "interactive_node"},
-            new String[]{"interactive_node", "end"}
-        );
-        
-        assertEquals(3, components.size(), "Workflow should have 3 components");
-        assertEquals(2, connections.size(), "Workflow should have 2 connections");
+    @BeforeEach
+    void setUp() {
+        Runner.start();
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test workflow card for interrupt stream")
-    void testWorkflowCardForInterruptStream() {
-        // Python: WorkflowCard(id="test_simple_stream_interactive_workflow")
-        WorkflowCard card = new WorkflowCard(TEST_WORKFLOW_ID, "Interrupt Stream Test");
-        
-        assertEquals(TEST_WORKFLOW_ID, card.getId());
-        assertNotNull(card.getName());
+
+    @AfterEach
+    void tearDown() {
+        Runner.stop();
     }
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test start node inputs schema structure")
-    void testStartNodeInputsSchema() {
-        // Python: inputs_schema={"a": "${inputs.a}", "b": "${inputs.b}", "c": 1, "d": [1, 2, 3]}
-        Map<String, Object> inputsSchema = new LinkedHashMap<>();
-        inputsSchema.put("a", "${inputs.a}");
-        inputsSchema.put("b", "${inputs.b}");
-        inputsSchema.put("c", 1);
-        inputsSchema.put("d", List.of(1, 2, 3));
-        
-        assertEquals(4, inputsSchema.size());
-        assertEquals("${inputs.a}", inputsSchema.get("a"));
-        assertEquals(1, inputsSchema.get("c"));
-        assertTrue(((List<?>) inputsSchema.get("d")).size() == 3);
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test interactive node inputs schema")
-    void testInteractiveNodeInputsSchema() {
-        // Python: inputs_schema={"aa": "${start.a}", "ac": "${start.c}"}
-        Map<String, Object> inputsSchema = new LinkedHashMap<>();
-        inputsSchema.put("aa", "${start.a}");
-        inputsSchema.put("ac", "${start.c}");
-        
-        assertEquals(2, inputsSchema.size());
-        assertEquals("${start.a}", inputsSchema.get("aa"));
-        assertEquals("${start.c}", inputsSchema.get("ac"));
-    }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test end node inputs schema")
-    void testEndNodeInputsSchema() {
-        // Python: inputs_schema={"result": "${a.aa}"}
-        Map<String, Object> inputsSchema = new LinkedHashMap<>();
-        inputsSchema.put("result", "${a.aa}");
-        
-        assertEquals(1, inputsSchema.size());
-        assertEquals("${a.aa}", inputsSchema.get("result"));
-    }
-    
-    // ========== Interactive Input Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test InteractiveInput creation and update")
-    void testInteractiveInputCreationAndUpdate() {
-        // Python: user_input = InteractiveInput()
-        //         user_input.update(interaction_node, {"aa": "any key"})
+    @DisplayName("stream pauses for interaction and resumes with InteractiveInput")
+    void testSimpleStreamInteractiveWorkflow() {
+        MockStartNode4Cp startNode = new MockStartNode4Cp("start");
+        Workflow flow = createSimpleStreamInteractiveWorkflow(startNode);
+        String sessionId = java.util.UUID.randomUUID().toString().replace("-", "");
+
+        List<Object> firstChunks = MockWorkflowAgent.collect(flow.stream(
+                Map.of("inputs", Map.of("a", 1, "b", "haha")),
+                WorkflowSessionApi.create(null, sessionId, null),
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> interactions = MockWorkflowAgent.chunksOfType(firstChunks, "__interaction__");
+        assertThat(interactions).hasSize(1);
+        assertThat(interactions.get(0).getPayload()).isInstanceOf(InteractionOutput.class);
+        InteractionOutput interaction = (InteractionOutput) interactions.get(0).getPayload();
+        assertThat(interaction.getId()).isEqualTo("a");
+        assertThat(interaction.getValue()).isEqualTo("Please enter any key");
+
         InteractiveInput userInput = new InteractiveInput();
-        String interactionNode = "a";
-        Map<String, Object> inputValue = Map.of("aa", "any key");
-        
-        userInput.update(interactionNode, inputValue);
-        
-        assertNotNull(userInput.getUserInputs());
-        assertTrue(userInput.getUserInputs().containsKey(interactionNode));
-        assertEquals(inputValue, userInput.getUserInputs().get(interactionNode));
+        userInput.update(interaction.getId(), Map.of("aa", "any key"));
+
+        List<Object> resumedChunks = MockWorkflowAgent.collect(flow.stream(
+                userInput,
+                WorkflowSessionApi.create(null, sessionId, null),
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> outputChunks = MockWorkflowAgent.chunksOfType(resumedChunks, "output");
+        assertThat(outputChunks).hasSize(1);
+        Object[] payload = (Object[]) outputChunks.get(0).getPayload();
+        assertThat(payload[0]).isEqualTo("a");
+        assertThat(payload[1]).isEqualTo(Map.of("aa", "any key"));
+        assertThat(startNode.getRuntime()).isEqualTo(1);
     }
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test interaction response structure")
-    void testInteractionResponseStructure() {
-        // Python: res.type == INTERACTION
-        //         interaction_node = res.payload.id
-        //         interaction_msg = res.payload.value
-        
-        String responseType = "INTERACTION";
-        String interactionNode = "a";
-        String interactionMsg = "Please enter any key";
-        
-        assertEquals("INTERACTION", responseType);
-        assertEquals("a", interactionNode);
-        assertEquals("Please enter any key", interactionMsg);
+    @DisplayName("WorkflowAgent agent.stream interrupt and resume")
+    void testStreamInterruptAndResume() {
+        Workflow workflow = buildQuestionerWorkflow(
+                "interrupt_stream_wf",
+                "interrupt_stream_test",
+                "Questioner interrupt workflow",
+                MockWorkflowAgent.questioner("What is your location?")
+        );
+        WorkflowAgent agent = MockWorkflowAgent.createAgent("interrupt_stream_agent", workflow);
+        String conversationId = java.util.UUID.randomUUID().toString();
+
+        List<Object> firstChunks = MockWorkflowAgent.collect(agent.stream(
+                Map.of("conversation_id", conversationId, "query", "check weather"),
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> interactionChunks = MockWorkflowAgent.chunksOfType(firstChunks, "__interaction__");
+        assertThat(interactionChunks).hasSize(1);
+        InteractionOutput interaction = interaction(interactionChunks.get(0));
+        assertThat(interaction.getId()).isEqualTo("questioner");
+
+        InteractiveInput interactiveInput = new InteractiveInput();
+        interactiveInput.update("questioner", "shanghai");
+
+        List<Object> secondChunks = MockWorkflowAgent.collect(agent.stream(
+                Map.of("conversation_id", conversationId, "query", interactiveInput),
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> finalChunks = MockWorkflowAgent.chunksOfType(secondChunks, "workflow_final");
+        assertThat(finalChunks).hasSize(1);
+        assertWorkflowFinalPayload(finalChunks.get(0), "shanghai");
+        assertContextRoles(agent, conversationId, "user", "assistant", "user", "assistant");
     }
-    
+
     @Test
-    @Tag("level0")
-    @DisplayName("Test stream output result structure")
-    void testStreamOutputResultStructure() {
-        // Python: result == {"aa": "any key"}
-        Map<String, Object> expectedResult = Map.of("aa", "any key");
-        
-        assertEquals(1, expectedResult.size());
-        assertEquals("any key", expectedResult.get("aa"));
+    @DisplayName("Runner.runAgentStreaming dict interrupt and resume")
+    void testStreamDictInterruptAndResume() {
+        MockWorkflowAgent.setMockResponses(
+                MockWorkflowAgent.textResponse("{}"),
+                MockWorkflowAgent.textResponse("{\"location\":\"shanghai\"}")
+        );
+
+        Workflow workflow = buildQuestionerWorkflow(
+                "interrupt_dict_stream_wf",
+                "interrupt_dict_stream_test",
+                "Questioner field-extract workflow",
+                fieldExtractQuestioner()
+        );
+        WorkflowAgent agent = MockWorkflowAgent.createAgent("interrupt_dict_stream_agent", workflow);
+        String conversationId = java.util.UUID.randomUUID().toString();
+
+        List<Object> firstChunks = MockWorkflowAgent.collect(Runner.runAgentStreaming(
+                agent,
+                Map.of("query", "check weather", "conversation_id", conversationId),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> interactionChunks = MockWorkflowAgent.chunksOfType(firstChunks, "__interaction__");
+        assertThat(interactionChunks).hasSize(1);
+        assertThat(interactionChunks.get(0).getType()).isEqualTo("__interaction__");
+
+        InteractiveInput interactiveInput = new InteractiveInput();
+        interactiveInput.update(interaction(interactionChunks.get(0)).getId(), Map.of("location", "shanghai"));
+
+        List<Object> secondChunks = MockWorkflowAgent.collect(Runner.runAgentStreaming(
+                agent,
+                Map.of("query", interactiveInput, "conversation_id", conversationId),
+                null,
+                null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<OutputSchema> finalChunks = MockWorkflowAgent.chunksOfType(secondChunks, "workflow_final");
+        assertThat(finalChunks).hasSize(1);
+        assertThat(finalChunks.get(0).getPayload()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) finalChunks.get(0).getPayload();
+        assertThat(payload).containsKey("response");
+        assertContextRoles(agent, conversationId, "user", "assistant", "user", "assistant");
     }
-    
-    // ========== Mock Node Behavior Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test MockStartNode basic invocation")
-    void testMockStartNodeInvocation() {
-        MockStartNode startNode = new MockStartNode("start");
-        Map<String, Object> inputs = Map.of("a", 1, "b", "haha", "c", 1, "d", List.of(1, 2, 3));
-        
-        Object result = startNode.invoke(inputs, null, null);
-        
-        assertNotNull(result);
-        assertEquals(inputs, result);
+
+    private static Workflow createSimpleStreamInteractiveWorkflow(MockStartNode4Cp startNode) {
+        Workflow flow = new Workflow(WorkflowCard.builder()
+                .id("test_simple_stream_interactive_workflow")
+                .name("test_simple_stream_interactive_workflow")
+                .version("1.0")
+                .build());
+
+        flow.setStartComp("start", startNode,
+                Map.of("a", "${inputs.a}", "b", "${inputs.b}", "c", 1, "d", List.of(1, 2, 3)));
+        flow.addWorkflowComp("a", new InteractiveNode4StreamCp("a"),
+                Map.of("aa", "${start.a}", "ac", "${start.c}"));
+        flow.setEndComp("end", new MockEndNode("end"), Map.of("result", "${a.aa}"));
+        flow.addConnection("start", "a");
+        flow.addConnection("a", "end");
+        return flow;
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test MockEndNode basic invocation")
-    void testMockEndNodeInvocation() {
-        MockEndNode endNode = new MockEndNode("end");
-        Map<String, Object> inputs = Map.of("result", Map.of("aa", "any key"));
-        
-        Object result = endNode.invoke(inputs, null, null);
-        
-        assertNotNull(result);
+
+    private static Workflow buildQuestionerWorkflow(String workflowId, String workflowName, String description,
+                                                    QuestionerComponent questioner) {
+        Workflow flow = new Workflow(WorkflowCard.builder()
+                .id(workflowId)
+                .version("1.0")
+                .name(workflowName)
+                .description(description)
+                .build());
+
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"));
+        flow.addWorkflowComp("questioner", questioner, Map.of("query", "${start.query}"));
+        flow.setEndComp("end", new End(Map.of("responseTemplate", "{{user_response}}")),
+                Map.of("user_response", "${questioner.user_response}"));
+        flow.addConnection("start", "questioner");
+        flow.addConnection("questioner", "end");
+        return flow;
     }
-    
-    // ========== Checkpoint-enabled Node Tests ==========
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test MockStartNode4Cp creation and runtime tracking")
-    void testMockStartNode4CpCreationAndRuntime() {
-        // Python: start_node = MockStartNode4Cp("start")
-        //         assert start_node.runtime == 1
-        MockStartNode4Cp startNode = new MockStartNode4Cp("start");
-        
-        assertEquals("start", startNode.getNodeId());
-        assertEquals(0, startNode.getRuntime());
-        
-        // Simulate invocation (would normally be called by workflow engine)
-        // Note: In actual execution, session.updateGlobalState would be called
-        // For this test, we just verify the runtime counter increments
-        startNode.invoke(Map.of("a", 1), null, null);
-        
-        assertEquals(1, startNode.getRuntime());
+
+    private static QuestionerComponent fieldExtractQuestioner() {
+        ModelClientConfig client = ModelClientConfig.builder()
+                .clientProvider(MockWorkflowAgent.MOCK_PROVIDER)
+                .apiKey("sk-fake")
+                .apiBase("https://mock.openai.com/v1")
+                .verifySsl(false)
+                .build();
+        ModelRequestConfig request = ModelRequestConfig.builder()
+                .modelName("gpt-4o-mock")
+                .temperature(0.0)
+                .build();
+        QuestionerConfig config = new QuestionerConfig(
+                request,
+                client,
+                "",
+                true,
+                List.of(new FieldInfo("location", "location", true)),
+                false
+        );
+        config.setAcceptLanguage("en");
+        return new QuestionerComponent(config);
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test InteractiveNode4StreamCp creation")
-    void testInteractiveNode4StreamCpCreation() {
-        // Python: InteractiveNode4StreamCp("a")
-        InteractiveNode4StreamCp interactiveNode = new InteractiveNode4StreamCp("a");
-        
-        assertEquals("a", interactiveNode.getNodeId());
+
+    private static InteractionOutput interaction(OutputSchema schema) {
+        assertThat(schema.getPayload()).isInstanceOf(InteractionOutput.class);
+        return (InteractionOutput) schema.getPayload();
     }
-    
-    @Test
-    @Tag("level0")
-    @DisplayName("Test MockStartNode4Cp global state validation")
-    void testMockStartNode4CpGlobalStateValidation() {
-        // Python: value = session.get_global_state("a")
-        //         if value is not None:
-        //             raise Exception("value is not None")
-        MockStartNode4Cp startNode = new MockStartNode4Cp("start");
-        
-        // First invocation - no global state, should succeed
-        Object result1 = startNode.invoke(Map.of("test", 1), null, null);
-        assertNotNull(result1);
-        
-        // Note: In actual execution with session, updateGlobalState would set "a" to 10
-        // Subsequent invocations with same session would fail
-        // This test verifies the logic without actual session
+
+    @SuppressWarnings("unchecked")
+    private static void assertWorkflowFinalPayload(OutputSchema chunk, String expectedResponse) {
+        assertThat(chunk.getPayload()).isInstanceOf(Map.class);
+        Map<String, Object> payload = (Map<String, Object>) chunk.getPayload();
+        assertThat(payload.get("response")).isEqualTo(expectedResponse);
     }
-    
-    // ========== Placeholder for Full Implementation ==========
-    
-    /**
-     * Full stream test placeholder.
-     * 
-     * Requires Workflow.stream() and WorkflowSession infrastructure to execute.
-     * Once available, this test will:
-     * 1. Create workflow with MockStartNode4Cp and InteractiveNode4StreamCp
-     * 2. Execute stream and capture INTERACTION response
-     * 3. Resume with InteractiveInput
-     * 4. Verify final result matches Python expectations
-     */
-    @Test
-    @Disabled("Requires Workflow.stream() implementation")
-    @DisplayName("Placeholder - Simple stream interactive workflow (needs infrastructure)")
-    void testPlaceholderForFullImplementation() {
-        assertTrue(true, "Placeholder - waiting for Workflow.stream() implementation");
-    }
-    
-    // ========== Helper Methods ==========
-    
-    private Map<String, Object> buildStartInputsSchema() {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("a", "${inputs.a}");
-        schema.put("b", "${inputs.b}");
-        schema.put("c", 1);
-        schema.put("d", List.of(1, 2, 3));
-        return schema;
-    }
-    
-    private Map<String, Object> buildInteractiveInputsSchema() {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("aa", "${start.a}");
-        schema.put("ac", "${start.c}");
-        return schema;
-    }
-    
-    private Map<String, Object> buildEndInputsSchema() {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("result", "${a.aa}");
-        return schema;
+
+    private static void assertContextRoles(WorkflowAgent agent, String conversationId, String... roles) {
+        ModelContext context = agent.getContextEngine().getContext(null, conversationId);
+        assertThat(context).isNotNull();
+        assertThat(context.getMessages()).extracting(BaseMessage::getRole).containsExactly(roles);
     }
 }

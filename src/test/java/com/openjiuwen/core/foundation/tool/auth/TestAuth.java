@@ -1,341 +1,254 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool.auth;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for Tool Authentication.
+ * Unit tests for tool authentication.
  * <p>
- * Mirrors Python's {@code test_auth.py} from
- * {@code tests/unit_tests/core/foundation/tool/test_auth.py}.
- * 
- * <p>Python source file contains 21 test methods across 7 test classes:
- * - TestToolAuthConfig (2 methods)
- * - TestToolAuthResult (2 methods)
- * - TestAuthHeaderAndQueryProvider (4 methods)
- * - TestAuthCallbacks (2 methods)
- * - TestSseClientAuth (3 methods)
- * - TestStreamableHttpClientAuth (5 methods)
- * - TestRestfulApiAuth (3 methods)
+ * Mirrors Python's {@code test_auth.py}.
  */
 @DisplayName("Tool Auth Tests")
 class TestAuth {
 
     @Nested
-    @DisplayName("ToolAuthConfig Tests")
     class TestToolAuthConfig {
-
         @Test
-        @Tag("level0")
-        @DisplayName("tool auth config creation")
         void testToolAuthConfigCreation() {
-            // Python: test_tool_auth_config_creation
-            // Tests creating ToolAuthConfig with all parameters
-            
-            Map<String, Object> configData = new HashMap<>();
-            configData.put("verify_switch_env", "RESTFUL_SSL_VERIFY");
-            
-            // Simulate ToolAuthConfig fields
-            String authType = "SSL";
-            String toolType = "restful_api";
-            String toolId = "test-tool-id";
-            
-            assertEquals("SSL", authType);
-            assertEquals("restful_api", toolType);
-            assertEquals("test-tool-id", toolId);
-            assertNotNull(configData);
+            ToolAuthConfig config = new ToolAuthConfig("ssl",
+                    Map.of("verify_switch_env", "RESTFUL_SSL_VERIFY"), "restful_api", "test-tool-id");
+
+            assertEquals("ssl", config.getAuthType());
+            assertEquals("restful_api", config.getToolType());
+            assertEquals("test-tool-id", config.getToolId());
+            assertEquals("RESTFUL_SSL_VERIFY", config.getConfig().get("verify_switch_env"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("tool auth config without tool id")
         void testToolAuthConfigWithoutToolId() {
-            // Python: test_tool_auth_config_without_tool_id
-            // Tests creating ToolAuthConfig without tool_id
-            
-            Map<String, Object> configData = new HashMap<>();
-            configData.put("api_key", "test-key");
-            
-            String authType = "api_key";
-            String toolType = "database";
-            String toolId = null; // Optional
-            
-            assertEquals("api_key", authType);
-            assertNull(toolId);
+            ToolAuthConfig config = new ToolAuthConfig("header_and_query", Map.of("api_key", "test-key"), "database");
+
+            assertEquals("header_and_query", config.getAuthType());
+            assertEquals("database", config.getToolType());
+            assertNull(config.getToolId());
         }
     }
 
     @Nested
-    @DisplayName("ToolAuthResult Tests")
     class TestToolAuthResult {
-
         @Test
-        @Tag("level0")
-        @DisplayName("tool auth result creation")
         void testToolAuthResultCreation() {
-            // Python: test_tool_auth_result_creation
-            // Tests successful auth result
-            
-            boolean success = true;
-            Map<String, Object> authData = new HashMap<>();
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "Bearer token");
-            authData.put("headers", headers);
-            String message = "Authentication successful";
-            
-            assertTrue(success);
-            assertNotNull(authData);
-            assertEquals("Bearer token", headers.get("Authorization"));
+            ToolAuthResult result = new ToolAuthResult(true,
+                    Map.of("headers", Map.of("Authorization", "Bearer token")),
+                    "Authentication successful");
+
+            assertTrue(result.isSuccess());
+            assertEquals("Authentication successful", result.getMessage());
+            assertEquals(Map.of("Authorization", "Bearer token"), result.getAuthData().get("headers"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("tool auth result with error")
         void testToolAuthResultWithError() {
-            // Python: test_tool_auth_result_with_error
-            // Tests auth result with error
-            
-            boolean success = false;
             RuntimeException error = new RuntimeException("Authentication failed");
-            String message = "Authentication failed";
-            
-            assertFalse(success);
-            assertNotNull(error);
-            assertEquals("Authentication failed", error.getMessage());
+            ToolAuthResult result = new ToolAuthResult(false, Map.of(), "Authentication failed", error);
+
+            assertFalse(result.isSuccess());
+            assertSame(error, result.getError());
+            assertEquals("Authentication failed", result.getMessage());
         }
     }
 
     @Nested
-    @DisplayName("AuthHeaderAndQueryProvider Tests")
     class TestAuthHeaderAndQueryProvider {
-
         @Test
-        @Tag("level0")
-        @DisplayName("auth provider with headers")
         void testAuthProviderWithHeaders() {
-            // Python: test_auth_provider_with_headers
-            // Tests provider adding headers to request
-            
-            Map<String, String> authHeaders = new HashMap<>();
-            authHeaders.put("Authorization", "Bearer test-token");
-            authHeaders.put("X-Custom", "value");
-            
-            assertEquals("Bearer test-token", authHeaders.get("Authorization"));
-            assertEquals("value", authHeaders.get("X-Custom"));
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer test-token", "X-Custom", "value"), Map.of());
+
+            assertTrue(result.isSuccess());
+            assertEquals("Bearer test-token", headers(result).get("Authorization"));
+            assertEquals("value", headers(result).get("X-Custom"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("auth provider with query params")
         void testAuthProviderWithQueryParams() {
-            // Python: test_auth_provider_with_query_params
-            // Tests provider adding query params
-            
-            Map<String, String> queryParams = new HashMap<>();
-            queryParams.put("api_key", "test-key");
-            queryParams.put("version", "v1");
-            
-            assertEquals("test-key", queryParams.get("api_key"));
-            assertEquals("v1", queryParams.get("version"));
+            ToolAuthResult result = headerAuth(Map.of(), Map.of("api_key", "test-key", "version", "v1"));
+
+            assertTrue(result.isSuccess());
+            assertEquals("test-key", queryParams(result).get("api_key"));
+            assertEquals("v1", queryParams(result).get("version"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("auth provider with both")
         void testAuthProviderWithBoth() {
-            // Python: test_auth_provider_with_both
-            // Tests provider with both headers and query params
-            
-            Map<String, String> authHeaders = new HashMap<>();
-            authHeaders.put("Authorization", "Bearer test-token");
-            
-            Map<String, String> queryParams = new HashMap<>();
-            queryParams.put("api_key", "test-key");
-            
-            assertNotNull(authHeaders);
-            assertNotNull(queryParams);
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer test-token"), Map.of("api_key", "test-key"));
+
+            assertEquals("Bearer test-token", headers(result).get("Authorization"));
+            assertEquals("test-key", queryParams(result).get("api_key"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("auth provider without credentials")
         void testAuthProviderWithoutCredentials() {
-            // Python: test_auth_provider_without_credentials
-            // Tests provider with empty credentials
-            
-            Map<String, String> authHeaders = new HashMap<>();
-            Map<String, String> queryParams = new HashMap<>();
-            
-            assertTrue(authHeaders.isEmpty());
-            assertTrue(queryParams.isEmpty());
+            ToolAuthResult result = headerAuth(Map.of(), Map.of());
+
+            assertTrue(result.isSuccess());
+            assertTrue(result.getAuthData().isEmpty());
         }
     }
 
     @Nested
-    @DisplayName("AuthCallbacks Tests")
     class TestAuthCallbacks {
-
         @Test
-        @Tag("level0")
-        @DisplayName("auth callbacks registered")
-        void testAuthCallbacksRegistered() {
-            // Python: test_auth_callbacks_registered (if exists)
-            // Tests auth callback registration
-            
-            assertTrue(true); // Callback registration pattern
+        void testSslAuthHandlerVerifyTrue() {
+            withSystemProperty("SSL_VERIFY", "true", () -> {
+                ToolAuthResult result = new SSLAuthStrategy().authenticate(
+                        new ToolAuthConfig("ssl", Map.of("url", "https://example.com"), "restful_api"));
+                assertTrue(result.isSuccess());
+                assertEquals(true, result.getAuthData().get("ssl_verify"));
+                assertEquals(true, result.getAuthData().get("url_is_https"));
+            });
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("auth callback invoked")
-        void testAuthCallbackInvoked() {
-            // Python: test_auth_callback_invoked (if exists)
-            // Tests auth callback invocation
-            
-            assertTrue(true); // Callback invocation pattern
+        void testSslAuthHandlerVerifyFalse() {
+            withSystemProperty("SSL_VERIFY", "false", () -> {
+                ToolAuthResult result = new SSLAuthStrategy().authenticate(
+                        new ToolAuthConfig("ssl", Map.of("url", "https://example.com"), "restful_api"));
+                assertTrue(result.isSuccess());
+                assertEquals(false, result.getAuthData().get("ssl_verify"));
+            });
+        }
+
+        @Test
+        void testSslAuthHandlerExceptionHandling() {
+            ToolAuthResult result = AuthStrategyRegistry.executeAuth(
+                    new ToolAuthConfig("unsupported", Map.of(), "restful_api"));
+            assertFalse(result.isSuccess());
+            assertTrue(result.getMessage().contains("Unsupported auth type"));
+        }
+
+        @Test
+        void testSslAuthHandlerCertEmpty() {
+            ToolAuthResult result = new SSLAuthStrategy().authenticate(
+                    new ToolAuthConfig("ssl", Map.of("ssl_cert_env", "MISSING_TEST_CERT"), "restful_api"));
+            assertTrue(result.isSuccess());
+            assertNull(result.getAuthData().get("ssl_cert"));
+        }
+
+        @Test
+        void testAuthHeaderAndQueryParamsHandlerWithCredentials() {
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer token"), Map.of("api_key", "key"));
+            assertTrue(result.isSuccess());
+            assertEquals("Bearer token", headers(result).get("Authorization"));
+            assertEquals("key", queryParams(result).get("api_key"));
+        }
+
+        @Test
+        void testAuthHeaderAndQueryParamsHandlerOnlyHeaders() {
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer token"), Map.of());
+            assertEquals("Bearer token", headers(result).get("Authorization"));
+            assertTrue(queryParams(result).isEmpty());
+        }
+
+        @Test
+        void testAuthHeaderAndQueryParamsHandlerOnlyQueryParams() {
+            ToolAuthResult result = headerAuth(Map.of(), Map.of("api_key", "key"));
+            assertTrue(headers(result).isEmpty());
+            assertEquals("key", queryParams(result).get("api_key"));
+        }
+
+        @Test
+        void testAuthHeaderAndQueryParamsHandlerEmptyCredentials() {
+            ToolAuthResult result = headerAuth(Map.of(), Map.of());
+            assertTrue(result.isSuccess());
+            assertTrue(result.getAuthData().isEmpty());
+        }
+
+        @Test
+        void testAuthHandlerWrongType() {
+            ToolAuthResult result = AuthStrategyRegistry.executeAuth(new ToolAuthConfig("wrong", Map.of(), "mcp"));
+            assertFalse(result.isSuccess());
         }
     }
 
     @Nested
-    @DisplayName("SseClientAuth Tests")
     class TestSseClientAuth {
-
         @Test
-        @Tag("level0")
-        @DisplayName("sse client auth configured")
-        void testSseClientAuthConfigured() {
-            // Python: test_sse_client_auth_configured
-            // Tests SSE client authentication
-            
-            assertTrue(true); // SSE auth configuration
+        void testSseClientAuthFlow() {
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer sse"), Map.of("transport", "sse"));
+            assertTrue(result.isSuccess());
+            assertEquals("Bearer sse", headers(result).get("Authorization"));
         }
 
         @Test
-        @Tag("level0")
-        @DisplayName("sse client auth headers applied")
-        void testSseClientAuthHeadersApplied() {
-            // Python: test_sse_client_auth_headers_applied
-            // Tests auth headers applied to SSE client
-            
-            assertTrue(true); // Header application pattern
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("sse client auth error handled")
-        void testSseClientAuthErrorHandled() {
-            // Python: test_sse_client_auth_error_handled
-            // Tests auth error handling
-            
-            Exception authError = new RuntimeException("SSE auth failed");
-            assertNotNull(authError);
+        void testSslAuthMissingCertRaisesException() {
+            ToolAuthResult result = new SSLAuthStrategy().authenticate(
+                    new ToolAuthConfig("ssl", Map.of("ssl_cert_env", "MISSING_TEST_CERT"), "sse"));
+            assertTrue(result.isSuccess());
+            assertNull(result.getAuthData().get("ssl_cert"));
         }
     }
 
     @Nested
-    @DisplayName("StreamableHttpClientAuth Tests")
     class TestStreamableHttpClientAuth {
-
         @Test
-        @Tag("level0")
-        @DisplayName("streamable http client auth configured")
-        void testStreamableHttpClientAuthConfigured() {
-            // Python: test_streamable_http_client_auth_configured
-            // Tests StreamableHttpClient auth configuration
-            
-            assertTrue(true); // Auth configuration pattern
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("streamable http client ssl auth")
-        void testStreamableHttpClientSslAuth() {
-            // Python: test_streamable_http_client_ssl_auth
-            // Tests SSL auth for StreamableHttpClient
-            
-            String authType = "SSL";
-            assertNotNull(authType);
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("streamable http client header auth")
-        void testStreamableHttpClientHeaderAuth() {
-            // Python: test_streamable_http_client_header_auth
-            // Tests header auth for StreamableHttpClient
-            
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "Bearer token");
-            assertNotNull(headers);
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("streamable http client query auth")
-        void testStreamableHttpClientQueryAuth() {
-            // Python: test_streamable_http_client_query_auth
-            // Tests query param auth
-            
-            Map<String, String> queryParams = new HashMap<>();
-            queryParams.put("api_key", "key");
-            assertNotNull(queryParams);
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("streamable http client auth error")
-        void testStreamableHttpClientAuthError() {
-            // Python: test_streamable_http_client_auth_error
-            // Tests auth error handling
-            
-            Exception authError = new RuntimeException("Auth failed");
-            assertNotNull(authError);
+        void testStreamableHttpClientAuthFlow() {
+            ToolAuthResult result = headerAuth(Map.of("Authorization", "Bearer stream"), Map.of("q", "1"));
+            assertTrue(result.isSuccess());
+            assertEquals("Bearer stream", headers(result).get("Authorization"));
+            assertEquals("1", queryParams(result).get("q"));
         }
     }
 
     @Nested
-    @DisplayName("RestfulApiAuth Tests")
     class TestRestfulApiAuth {
-
         @Test
-        @Tag("level0")
-        @DisplayName("restful api auth configured")
-        void testRestfulApiAuthConfigured() {
-            // Python: test_restful_api_auth_configured
-            // Tests RESTful API auth configuration
-            
-            assertTrue(true); // Auth configuration pattern
+        void testRestfulApiAuthFlow() {
+            withSystemProperty("RESTFUL_SSL_VERIFY", "false", () -> {
+                ToolAuthResult ssl = new SSLAuthStrategy().authenticate(new ToolAuthConfig("ssl",
+                        Map.of("verify_switch_env", "RESTFUL_SSL_VERIFY", "url", "https://api.example.com"),
+                        "restful_api"));
+                ToolAuthResult headers = headerAuth(Map.of("Authorization", "Bearer api-token"), Map.of());
+                assertEquals(false, ssl.getAuthData().get("ssl_verify"));
+                assertEquals("Bearer api-token", headers(headers).get("Authorization"));
+            });
         }
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("restful api ssl verify")
-        void testRestfulApiSslVerify() {
-            // Python: test_restful_api_ssl_verify
-            // Tests SSL verification for RESTful API
-            
-            String verifyEnv = "RESTFUL_SSL_VERIFY";
-            assertNotNull(verifyEnv);
-        }
+    private static ToolAuthResult headerAuth(Map<String, String> authHeaders, Map<String, String> authQueryParams) {
+        return new HeaderQueryAuthStrategy().authenticate(new ToolAuthConfig("header_and_query",
+                Map.of("auth_headers", authHeaders, "auth_query_params", authQueryParams), "mcp"));
+    }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("restful api auth header")
-        void testRestfulApiAuthHeader() {
-            // Python: test_restful_api_auth_header
-            // Tests auth header for RESTful API
-            
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "Bearer api-token");
-            assertNotNull(headers);
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> headers(ToolAuthResult result) {
+        return (Map<String, String>) result.getAuthData().getOrDefault("auth_headers", Map.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> queryParams(ToolAuthResult result) {
+        return (Map<String, String>) result.getAuthData().getOrDefault("auth_query_params", Map.of());
+    }
+
+    private static void withSystemProperty(String key, String value, Runnable action) {
+        String old = System.getProperty(key);
+        try {
+            System.setProperty(key, value);
+            action.run();
+        } finally {
+            if (old == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, old);
+            }
         }
     }
 }

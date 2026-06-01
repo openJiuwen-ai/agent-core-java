@@ -1,30 +1,31 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 package com.openjiuwen.core.retrieval.indexing.parser;
 
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.AutoLinkParser;
+import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for AutoLinkParser.
- * <p>
- * Mirrors Python's {@code test_auto_link_parser.py} in
- * {@code tests.unit_tests.core.retrieval.indexing.processor.parser.test_auto_link_parser}.
  *
- * <p>Tests cover:
- * <ul>
- *   <li>URL detection and support validation</li>
- *   <li>WeChat article URL handling</li>
- *   <li>Generic HTTP/HTTPS URL handling</li>
- *   <li>Non-URL input rejection</li>
- *   <li>Empty/whitespace input handling</li>
- * </ul>
+ * <p>Mirrors Python's {@code TestAutoLinkParser} in
+ * {@code tests.unit_tests.core.retrieval.indexing.processor.parser.test_auto_link_parser}.</p>
  */
 class TestAutoLinkParser {
 
@@ -33,145 +34,121 @@ class TestAutoLinkParser {
     @Tag("level0")
     class AutoLinkParserTests {
 
-        /**
-         * Test: AutoLinkParser exists.
-         * <p>
-         * Mirrors Python's basic parser existence tests.
-         */
         @Test
-        @DisplayName("AutoLinkParser class exists")
-        void testAutoLinkParserExists() {
-            assertNotNull(AutoLinkParser.class, "AutoLinkParser class should exist");
-        }
-
-        /**
-         * Test: WeChat URL is supported.
-         * <p>
-         * Mirrors Python's test_supports_wechat_url.
-         */
-        @Test
-        @DisplayName("supports() is True for WeChat article URL")
+        @DisplayName("test_supports_wechat_url")
         void testSupportsWeChatUrl() {
             AutoLinkParser parser = new AutoLinkParser();
-            assertTrue(parser.supports("https://mp.weixin.qq.com/s/abc123"),
-                "Should support WeChat HTTPS URL");
-            assertTrue(parser.supports("http://mp.weixin.qq.com/s/xyz"),
-                "Should support WeChat HTTP URL");
+
+            assertTrue(parser.supports("https://mp.weixin.qq.com/s/abc123"));
+            assertTrue(parser.supports("http://mp.weixin.qq.com/s/xyz"));
         }
 
-        /**
-         * Test: Generic HTTP URLs are supported.
-         * <p>
-         * Mirrors Python's test_supports_generic_http_url.
-         */
         @Test
-        @DisplayName("supports() is True for generic http(s) URL")
+        @DisplayName("test_supports_generic_http_url")
         void testSupportsGenericHttpUrl() {
             AutoLinkParser parser = new AutoLinkParser();
-            assertTrue(parser.supports("https://example.com/article"),
-                "Should support generic HTTPS URL");
-            assertTrue(parser.supports("http://blog.google/foo"),
-                "Should support generic HTTP URL");
+
+            assertTrue(parser.supports("https://example.com/article"));
+            assertTrue(parser.supports("http://blog.google/foo"));
         }
 
-        /**
-         * Test: Non-HTTP URLs are not supported.
-         * <p>
-         * Mirrors Python's test_supports_non_http_false.
-         */
         @Test
-        @DisplayName("supports() is False for non-http input")
+        @DisplayName("test_supports_non_http_false")
         void testSupportsNonHttpFalse() {
             AutoLinkParser parser = new AutoLinkParser();
-            assertFalse(parser.supports("ftp://example.com"),
-                "Should not support FTP URL");
-            assertFalse(parser.supports("/local/path/file.txt"),
-                "Should not support local path");
-            assertFalse(parser.supports("not-a-url"),
-                "Should not support non-URL string");
+
+            assertFalse(parser.supports("ftp://example.com"));
+            assertFalse(parser.supports("/local/path/file.txt"));
+            assertFalse(parser.supports("not-a-url"));
         }
 
-        /**
-         * Test: Empty or whitespace input is not supported.
-         * <p>
-         * Mirrors Python's test_supports_empty_or_none.
-         */
         @Test
-        @DisplayName("supports() is False for empty or whitespace")
-        void testSupportsEmptyOrWhitespace() {
+        @DisplayName("test_supports_empty_or_none")
+        void testSupportsEmptyOrNone() {
             AutoLinkParser parser = new AutoLinkParser();
-            assertFalse(parser.supports(""),
-                "Should not support empty string");
-            assertFalse(parser.supports("   "),
-                "Should not support whitespace string");
+
+            assertFalse(parser.supports(""));
+            assertFalse(parser.supports("   "));
+            assertFalse(parser.supports(null));
         }
 
-        /**
-         * Test: URL detection patterns work correctly.
-         */
         @Test
-        @DisplayName("URL detection patterns")
-        void testUrlDetectionPatterns() {
-            // Valid URLs
-            assertTrue(isValidHttpUrl("https://example.com"),
-                "HTTPS URL should be valid");
-            assertTrue(isValidHttpUrl("http://example.com/path?query=value"),
-                "HTTP URL with query should be valid");
-            assertTrue(isValidHttpUrl("https://sub.domain.example.com:8080/resource"),
-                "HTTPS URL with port should be valid");
+        @DisplayName("test_parse_delegates_to_first_matching_route")
+        void testParseDelegatesToFirstMatchingRoute() {
+            Document expected = new Document("doc", "first route", Map.of());
+            RecordingParser first = new RecordingParser(List.of(expected));
+            RecordingParser second = new RecordingParser(List.of(new Document("other", "second", Map.of())));
+            AutoLinkParser parser = new AutoLinkParser(List.of(
+                    new AutoLinkParser.Route(url -> true, first),
+                    new AutoLinkParser.Route(url -> true, second)));
 
-            // Invalid URLs
-            assertFalse(isValidHttpUrl("ftp://example.com"),
-                "FTP URL should not be valid HTTP");
-            assertFalse(isValidHttpUrl("example.com"),
-                "Missing protocol should not be valid");
-            assertFalse(isValidHttpUrl(""),
-                "Empty string should not be valid");
+            List<Document> result = parser.parse("https://example.com/article", "doc", null, Map.of());
+
+            assertEquals(1, result.size());
+            assertSame(expected, result.getFirst());
+            assertEquals(1, first.calls.get());
+            assertEquals(0, second.calls.get());
         }
 
-        /**
-         * Test: Link format validation.
-         * <p>
-         * Mirrors Python's link format validation tests.
-         */
         @Test
-        @DisplayName("Link format validation")
-        void testLinkFormatValidation() {
-            // Valid link formats
-            String validLink = "https://example.com/path";
-            assertTrue(validLink.contains("://"),
-                "Valid link should contain protocol separator");
-            assertTrue(validLink.startsWith("https://") || validLink.startsWith("http://"),
-                "Valid link should start with HTTP protocol");
+        @DisplayName("test_parse_second_route_when_first_no_match")
+        void testParseSecondRouteWhenFirstNoMatch() {
+            Document expected = new Document("doc", "second route", Map.of());
+            RecordingParser first = new RecordingParser(List.of(new Document("other", "first", Map.of())));
+            RecordingParser second = new RecordingParser(List.of(expected));
+            AutoLinkParser parser = new AutoLinkParser(List.of(
+                    new AutoLinkParser.Route(url -> false, first),
+                    new AutoLinkParser.Route(url -> true, second)));
 
-            // Link structure validation
-            assertTrue(hasValidStructure("https://example.com/path"),
-                "URL with path should have valid structure");
-            assertTrue(hasValidStructure("https://example.com?query=value"),
-                "URL with query should have valid structure");
+            List<Document> result = parser.parse("https://example.com/article", "doc", null, Map.of());
+
+            assertEquals(1, result.size());
+            assertSame(expected, result.getFirst());
+            assertEquals(0, first.calls.get());
+            assertEquals(1, second.calls.get());
+        }
+
+        @Test
+        @DisplayName("test_parse_no_match_returns_empty")
+        void testParseNoMatchReturnsEmpty() {
+            RecordingParser route = new RecordingParser(List.of(new Document("doc", "unused", Map.of())));
+            AutoLinkParser parser = new AutoLinkParser(List.of(new AutoLinkParser.Route(url -> false, route)));
+
+            assertTrue(parser.parse("https://example.com/article", "doc", null, Map.of()).isEmpty());
+            assertEquals(0, route.calls.get());
+        }
+
+        @Test
+        @DisplayName("test_custom_callable_route")
+        void testCustomCallableRoute() {
+            RecordingParser route = new RecordingParser(List.of(new Document("doc", "custom", Map.of())));
+            AutoLinkParser parser = new AutoLinkParser(List.of(
+                    new AutoLinkParser.Route(url -> url != null && url.length() > 10, route)));
+
+            assertEquals(10, "http://a.b".length());
+            assertEquals(11, "http://a.bc".length());
+            assertFalse(parser.supports("http://a.b"));
+            assertTrue(parser.supports("http://a.bc"));
         }
     }
 
-    /**
-     * Helper method to check if string is valid HTTP URL.
-     */
-    private boolean isValidHttpUrl(String url) {
-        if (url == null || url.isEmpty()) {
-            return false;
-        }
-        return url.startsWith("http://") || url.startsWith("https://");
-    }
+    private static final class RecordingParser extends Parser {
+        private final List<Document> result;
+        private final AtomicInteger calls = new AtomicInteger();
 
-    /**
-     * Helper method to check if URL has valid structure.
-     */
-    private boolean hasValidStructure(String url) {
-        if (!isValidHttpUrl(url)) {
-            return false;
+        private RecordingParser(List<Document> result) {
+            this.result = result;
         }
-        // Check for valid domain structure
-        int protocolEnd = url.indexOf("://");
-        String afterProtocol = url.substring(protocolEnd + 3);
-        return afterProtocol.contains(".") || afterProtocol.contains("/");
+
+        @Override
+        public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
+            calls.incrementAndGet();
+            return result;
+        }
+
+        @Override
+        protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
+            return null;
+        }
     }
 }

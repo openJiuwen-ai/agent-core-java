@@ -24,6 +24,9 @@ import java.util.function.BiConsumer;
 
 /**
  * LLM invocation operator with prompt tunables.
+ *
+ * <p>Mirrors Python's {@code LLMCallOperator} in
+ * {@code openjiuwen.core.operator.llm_call.base}.</p>
  */
 public class LLMCallOperator extends Operator {
 
@@ -103,14 +106,17 @@ public class LLMCallOperator extends Operator {
             return;
         }
         if (state.containsKey("system_prompt")) {
-            updateSystemPrompt(state.get("system_prompt"));
+            Object content = normalizePromptContent(state.get("system_prompt"));
+            this.systemPrompt = PromptTemplate.builder().content(content).build();
+            notifyParameterUpdated("system_prompt", content);
         }
         if (state.containsKey("user_prompt")) {
-            updateUserPrompt(state.get("user_prompt"));
+            Object content = normalizePromptContent(state.get("user_prompt"));
+            this.userPrompt = PromptTemplate.builder().content(content).build();
+            notifyParameterUpdated("user_prompt", content);
         }
     }
 
-    @Override
     public AssistantMessage invoke(Map<String, Object> inputs,
                                    Session session,
                                    Map<String, Object> kwargs) throws Exception {
@@ -128,7 +134,10 @@ public class LLMCallOperator extends Operator {
         }
     }
 
-    @Override
+    public AssistantMessage invoke(Map<String, Object> inputs, Session session) throws Exception {
+        return invoke(inputs, session, Collections.emptyMap());
+    }
+
     public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs,
                                                         Session session,
                                                         Map<String, Object> kwargs) throws Exception {
@@ -147,6 +156,10 @@ public class LLMCallOperator extends Operator {
             setOperatorContext(session, null);
             throw ex;
         }
+    }
+
+    public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs, Session session) throws Exception {
+        return stream(inputs, session, Collections.emptyMap());
     }
 
     public PromptTemplate getSystemPrompt() {

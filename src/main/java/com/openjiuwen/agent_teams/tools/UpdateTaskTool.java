@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_teams.tools;
 
+import com.openjiuwen.agent_teams.schema.task.TaskDetail;
+import com.openjiuwen.agent_teams.schema.task.TaskStatus;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,14 +47,25 @@ public class UpdateTaskTool extends TeamTool {
             return new TeamToolOutput(true, Map.of("cancelled_count", team.cancelAllTasks()), null);
         }
 
+        TaskDetail task = team.getTask(taskId);
+        if (task == null) {
+            return new TeamToolOutput(false, null, "Task not found");
+        }
+
         List<String> updatedFields = new ArrayList<>();
         if ("cancelled".equalsIgnoreCase(status)) {
+            if (isHumanAgentLocked(task)) {
+                return new TeamToolOutput(false, null,
+                        "Task " + taskId + " is claimed by a human member and cannot be cancelled");
+            }
+            cancelMemberIfClaimed(task);
             if (!team.cancelTask(taskId)) {
                 return new TeamToolOutput(false, null, "Failed to cancel task");
             }
             return new TeamToolOutput(true, Map.of("task_id", taskId, "status", "cancelled"), null);
         }
         if (!title.isBlank() || !content.isBlank()) {
+            cancelMemberIfClaimed(task);
             if (!team.updateTask(taskId, title, content)) {
                 return new TeamToolOutput(false, null, "Failed to update task");
             }
@@ -63,6 +77,14 @@ public class UpdateTaskTool extends TeamTool {
             }
         }
         if (!assignee.isBlank()) {
+            String currentAssignee = task.getAssignee();
+            if (currentAssignee != null && !currentAssignee.isBlank() && !currentAssignee.equals(assignee)) {
+                if (isHumanAgentLocked(task)) {
+                    return new TeamToolOutput(false, null,
+                            "Task " + taskId + " is claimed by a human member and cannot be reassigned to " + assignee);
+                }
+                team.cancelMember(currentAssignee);
+            }
             if (!team.assignTask(taskId, assignee)) {
                 return new TeamToolOutput(false, null, "Failed to assign task");
             }
@@ -83,5 +105,21 @@ public class UpdateTaskTool extends TeamTool {
         data.put("status", "updated");
         data.put("updated_fields", updatedFields);
         return new TeamToolOutput(true, data, null);
+    }
+
+    private boolean isHumanAgentLocked(TaskDetail task) {
+        return task != null
+                && task.getStatus() == TaskStatus.CLAIMED
+                && team.isHumanAgent(task.getAssignee());
+    }
+
+    private void cancelMemberIfClaimed(TaskDetail task) {
+        if (task == null || task.getStatus() != TaskStatus.CLAIMED) {
+            return;
+        }
+        String assignee = task.getAssignee();
+        if (assignee != null && !assignee.isBlank() && !team.isHumanAgent(assignee)) {
+            team.cancelMember(assignee);
+        }
     }
 }

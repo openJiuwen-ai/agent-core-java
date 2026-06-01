@@ -4,245 +4,84 @@
 
 package com.openjiuwen.core.foundation.store.vector;
 
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.spi.store.vector.CollectionSchema;
+import com.openjiuwen.spi.store.vector.FieldSchema;
+import com.openjiuwen.spi.store.vector.VectorDataType;
+import com.openjiuwen.spi.store.vector.VectorSearchResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for ChromaVectorStore.
  * <p>
- * Mirrors Python's {@code test_chroma_vector_store.py} from
- * {@code tests/unit_tests/core/foundation/store/test_chroma_vector_store.py}.
- * 
- * <p>Python source file contains 29 test methods across 8 test classes:
- * - TestChromaVectorStoreCreateCollection (6 methods)
- * - TestChromaVectorStoreDeleteCollection (2 methods)
- * - TestChromaVectorStoreCollectionExists (2 methods)
- * - TestChromaVectorStoreGetSchema (3 methods)
- * - TestChromaVectorStoreAddDocs (6 methods)
- * - TestChromaVectorStoreSearch (6 methods)
- * - TestChromaVectorStoreDeleteDocsByIds (2 methods)
- * - TestChromaVectorStoreDeleteDocsByFilters (2 methods)
+ * Mirrors Python's {@code test_chroma_vector_store.py}.
  */
 @DisplayName("ChromaVectorStore Tests")
 class TestChromaVectorStore {
-
-    /*
-     * Original Python test file uses extensive mocking of:
-     * - chromadb.PersistentClient
-     * - get_task_manager for async operations
-     * 
-     * In Java, we use Mockito to achieve similar mocking.
-     * Tests are translated to use synchronous calls since Java's
-     * ChromaVectorStore wraps async operations internally.
-     */
 
     @Nested
     @DisplayName("Create Collection Tests")
     class TestChromaVectorStoreCreateCollection {
 
         @Test
-        @DisplayName("create collection with schema object")
-        void testCreateCollectionWithSchemaObject() {
-            // Python: test_create_collection_with_schema_object
-            // Tests creating a collection with a CollectionSchema object
-            
-            // In Java, we test the schema object creation pattern
-            // The actual ChromaVectorStore requires chromadb integration
-            
-            // Verify CollectionSchema can be constructed with fields
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("embedding")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                    .dim(768)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("text")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(65535)
-                    .build()
-            );
-            
-            assertEquals(3, schema.getFields().size());
-            assertEquals("id", schema.getFields().get(0).getName());
-            assertTrue(schema.getFields().get(0).isPrimary());
+        void testCreateCollectionWithSchemaObject() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+
+            assertTrue(store.collectionExists("test_collection", null));
+            assertEquals("embedding", store.getCollectionMetadata("test_collection").get("vector_field"));
         }
 
         @Test
-        @DisplayName("create collection with dict schema")
-        void testCreateCollectionWithDictSchema() {
-            // Python: test_create_collection_with_dict_schema
-            // Tests creating a collection with a schema dictionary
-            
-            // In Java, we can create schema from Map representation
-            Map<String, Object> schemaDict = new HashMap<>();
-            List<Map<String, Object>> fields = new ArrayList<>();
-            
-            Map<String, Object> idField = new HashMap<>();
-            idField.put("name", "id");
-            idField.put("type", "VARCHAR");
-            idField.put("max_length", 256);
-            idField.put("is_primary", true);
-            fields.add(idField);
-            
-            Map<String, Object> embeddingField = new HashMap<>();
-            embeddingField.put("name", "embedding");
-            embeddingField.put("type", "FLOAT_VECTOR");
-            embeddingField.put("dim", 768);
-            fields.add(embeddingField);
-            
-            Map<String, Object> textField = new HashMap<>();
-            textField.put("name", "text");
-            textField.put("type", "VARCHAR");
-            textField.put("max_length", 65535);
-            fields.add(textField);
-            
-            schemaDict.put("fields", fields);
-            schemaDict.put("description", "Test collection");
-            schemaDict.put("enable_dynamic_field", false);
-            
-            // Verify the dict structure is valid for schema creation
-            assertNotNull(schemaDict.get("fields"));
-            assertEquals(3, ((List<?>) schemaDict.get("fields")).size());
+        void testCreateCollectionWithDictSchema() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema().toDict(), null);
+
+            assertEquals(3, store.getSchema("test_collection", null).getFields().size());
         }
 
         @Test
-        @DisplayName("create collection with custom distance metric")
-        void testCreateCollectionWithCustomDistanceMetric() {
-            // Python: test_create_collection_with_custom_distance_metric
-            // Tests creating a collection with L2 distance metric
-            
-            // Verify distance metric can be specified
-            String distanceMetric = "l2";
-            assertNotNull(distanceMetric);
-            
-            // Create schema for collection with custom metric
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("embedding")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                    .dim(768)
-                    .build()
-            );
-            
-            assertEquals(2, schema.getFields().size());
+        void testCreateCollectionWithCustomDistanceMetric() throws Exception {
+            ChromaVectorStore store = newStore("euclidean");
+            store.createCollection("test_collection", schema(), Map.of("distance_metric", "l2"));
+
+            assertEquals("l2", store.getCollectionMetadata("test_collection").get("distance_metric"));
         }
 
         @Test
-        @DisplayName("create collection with dot metric")
-        void testCreateCollectionWithDotMetric() {
-            // Python: test_create_collection_with_dot_metric
-            // Tests creating a collection with IP (inner product) distance metric
-            
-            String distanceMetric = "ip"; // inner product / dot product
-            assertNotNull(distanceMetric);
-            
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("embedding")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                    .dim(768)
-                    .build()
-            );
-            
-            assertEquals(2, schema.getFields().size());
+        void testCreateCollectionWithDotMetric() throws Exception {
+            ChromaVectorStore store = newStore("dot");
+            store.createCollection("test_collection", schema(), Map.of("distance_metric", "dot"));
+
+            assertEquals("dot", store.getCollectionMetadata("test_collection").get("distance_metric"));
         }
 
         @Test
-        @DisplayName("create collection with existing name")
-        void testCreateCollectionWithExistingName() {
-            // Python: test_create_collection_with_existing_name
-            // Tests creating a collection that already exists (get_or_create behavior)
-            
-            // This tests the get_or_create_collection semantics
-            // In mock environment, we verify the behavior is idempotent
-            
-            String collectionName = "test_collection";
-            assertNotNull(collectionName);
-            
-            // Schema for existing collection
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            
-            assertEquals(1, schema.getFields().size());
+        void testCreateCollectionMissingPrimaryKey() {
+            ChromaVectorStore store = newStore("cosine");
+            CollectionSchema noPrimary = new CollectionSchema()
+                    .addField(vectorField());
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> store.createCollection("test_collection", noPrimary, null));
         }
 
         @Test
-        @DisplayName("create collection handles error")
-        void testCreateCollectionHandlesError() {
-            // Python: test_create_collection_handles_error (if exists)
-            // Tests error handling during collection creation
-            
-            // Verify that schema validation throws appropriate error
-            assertThrows(Exception.class, () -> {
-                // Attempting to add duplicate primary key should fail
-                var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-                schema.addField(
-                    new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                        .name("id1")
-                        .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                        .maxLength(256)
-                        .isPrimary(true)
-                        .build()
-                );
-                schema.addField(
-                    new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                        .name("id2")
-                        .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                        .maxLength(256)
-                        .isPrimary(true)
-                        .build()
-                );
-            });
+        void testCreateCollectionMissingVectorField() {
+            ChromaVectorStore store = newStore("cosine");
+            CollectionSchema noVector = new CollectionSchema()
+                    .addField(idField());
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> store.createCollection("test_collection", noVector, null));
         }
     }
 
@@ -251,28 +90,20 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreDeleteCollection {
 
         @Test
-        @DisplayName("delete collection successfully")
-        void testDeleteCollectionSuccessfully() {
-            // Python: test_delete_collection_successfully
-            // Tests successful collection deletion
-            
-            String collectionName = "test_collection";
-            assertNotNull(collectionName);
-            
-            // In mock environment, verify delete semantics
-            // The actual ChromaVectorStore would call chromadb client delete
+        void testDeleteCollectionSuccess() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+
+            store.deleteCollection("test_collection", null);
+
+            assertFalse(store.collectionExists("test_collection", null));
         }
 
         @Test
-        @DisplayName("delete collection handles error")
-        void testDeleteCollectionHandlesError() {
-            // Python: test_delete_collection_handles_error
-            // Tests error handling during collection deletion
-            
-            // Verify error handling pattern
-            RuntimeException expectedError = new RuntimeException("Delete failed");
-            assertNotNull(expectedError);
-            assertEquals("Delete failed", expectedError.getMessage());
+        void testDeleteCollectionFailure() {
+            ChromaVectorStore store = new ChromaVectorStore(failingDeleteDelegate());
+
+            assertThrows(RuntimeException.class, () -> store.deleteCollection("test_collection", null));
         }
     }
 
@@ -281,31 +112,18 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreCollectionExists {
 
         @Test
-        @DisplayName("collection exists returns true")
-        void testCollectionExistsTrue() {
-            // Python: test_collection_exists_true
-            // Tests collection_exists returns True when collection exists
-            
-            String collectionName = "test_collection";
-            assertNotNull(collectionName);
-            
-            // In mock environment, simulate existing collection
-            boolean exists = true; // Mock result
-            assertTrue(exists);
+        void testCollectionExistsTrue() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+
+            assertTrue(store.collectionExists("test_collection", null));
         }
 
         @Test
-        @DisplayName("collection exists returns false")
-        void testCollectionExistsFalse() {
-            // Python: test_collection_exists_false
-            // Tests collection_exists returns False when collection does not exist
-            
-            String collectionName = "nonexistent_collection";
-            assertNotNull(collectionName);
-            
-            // In mock environment, simulate non-existing collection
-            boolean exists = false; // Mock result when get_collection throws exception
-            assertFalse(exists);
+        void testCollectionExistsFalse() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+
+            assertFalse(store.collectionExists("test_collection", null));
         }
     }
 
@@ -314,84 +132,32 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreGetSchema {
 
         @Test
-        @DisplayName("get schema from metadata")
-        void testGetSchemaFromMetadata() {
-            // Python: test_get_schema_from_metadata
-            // Tests getting schema from collection metadata
-            
-            // Create a schema that would be stored in metadata
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema(
-                List.of(
-                    new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                        .name("id")
-                        .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                        .maxLength(256)
-                        .isPrimary(true)
-                        .build(),
-                    new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                        .name("embedding")
-                        .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                        .dim(768)
-                        .build(),
-                    new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                        .name("text")
-                        .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                        .maxLength(65535)
-                        .build()
-                ),
-                "Test collection",
-                false
-            );
-            
-            assertEquals(3, schema.getFields().size());
-            assertEquals("id", schema.getFields().get(0).getName());
-            assertTrue(schema.getFields().get(0).isPrimary());
+        void testGetSchemaFromMetadata() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+
+            CollectionSchema result = store.getSchema("test_collection", null);
+
+            assertEquals("id", result.getFields().get(0).getName());
+            assertTrue(result.getFields().get(0).isPrimary());
         }
 
         @Test
-        @DisplayName("get schema default fallback")
-        void testGetSchemaDefaultFallback() {
-            // Python: test_get_schema_default_fallback
-            // Tests getting schema returns default when metadata not available
-            
-            // Default schema should have at least id, embedding, text fields
-            var defaultSchema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            defaultSchema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            defaultSchema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("embedding")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                    .dim(768)
-                    .build()
-            );
-            defaultSchema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("text")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(65535)
-                    .build()
-            );
-            
-            assertTrue(defaultSchema.getFields().size() >= 3);
+        void testGetSchemaDefaultFallback() throws Exception {
+            ChromaVectorStore store = newStore("cosine");
+
+            CollectionSchema result = store.getSchema("default_collection", null);
+
+            assertTrue(result.hasField("id"));
+            assertTrue(result.hasField("embedding"));
+            assertTrue(result.hasField("text"));
         }
 
         @Test
-        @DisplayName("get schema collection not exists")
         void testGetSchemaCollectionNotExists() {
-            // Python: test_get_schema_collection_not_exists
-            // Tests getting schema for non-existent collection raises error
-            
-            // Verify error handling
-            Exception expectedError = new Exception("Collection not found");
-            assertNotNull(expectedError);
-            assertEquals("Collection not found", expectedError.getMessage());
+            ChromaVectorStore store = newStore("cosine");
+
+            assertThrows(IllegalArgumentException.class, () -> store.getSchema("missing", null));
         }
     }
 
@@ -400,105 +166,57 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreAddDocs {
 
         @Test
-        @DisplayName("add docs basic")
-        void testAddDocsBasic() {
-            // Python: test_add_docs_basic
-            // Tests adding documents to a collection
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            Map<String, Object> doc1 = new HashMap<>();
-            doc1.put("id", "doc1");
-            doc1.put("embedding", List.of(0.1f, 0.2f, 0.3f));
-            doc1.put("text", "Test document");
-            docs.add(doc1);
-            
-            assertEquals(1, docs.size());
-            assertEquals("doc1", docs.get(0).get("id"));
+        void testAddDocsSuccess() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", docs(), null);
+
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("add docs with batch size")
-        void testAddDocsWithBatchSize() {
-            // Python: test_add_docs_with_batch_size
-            // Tests adding documents with specified batch size
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            for (int i = 0; i < 10; i++) {
-                Map<String, Object> doc = new HashMap<>();
-                doc.put("id", "doc" + i);
-                doc.put("embedding", List.of(0.1f * i, 0.2f * i, 0.3f * i));
-                doc.put("text", "Test document " + i);
-                docs.add(doc);
-            }
-            
-            int batchSize = 5;
-            assertEquals(10, docs.size());
-            assertTrue(batchSize > 0);
+        void testAddDocsMissingId() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            Map<String, Object> doc = Map.of("embedding", vector(0.1f, 0.2f, 0.3f), "text", "Missing id");
+
+            assertThrows(IllegalArgumentException.class, () -> store.addDocs("test_collection", List.of(doc), null));
         }
 
         @Test
-        @DisplayName("add docs with metadata")
-        void testAddDocsWithMetadata() {
-            // Python: test_add_docs_with_metadata
-            // Tests adding documents with metadata field
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            Map<String, Object> doc1 = new HashMap<>();
-            doc1.put("id", "doc1");
-            doc1.put("embedding", List.of(0.1f, 0.2f, 0.3f));
-            doc1.put("text", "Test document");
-            doc1.put("metadata", Map.of("source", "test", "author", "user"));
-            docs.add(doc1);
-            
-            assertEquals(1, docs.size());
-            assertNotNull(docs.get(0).get("metadata"));
+        void testAddDocsMissingEmbedding() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            Map<String, Object> doc = Map.of("id", "doc1", "text", "Missing embedding");
+
+            assertThrows(IllegalArgumentException.class, () -> store.addDocs("test_collection", List.of(doc), null));
         }
 
         @Test
-        @DisplayName("add docs with list metadata")
-        void testAddDocsWithListMetadata() {
-            // Python: test_add_docs_with_list_metadata
-            // Tests adding documents with list metadata (JSON serialized)
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            Map<String, Object> doc1 = new HashMap<>();
-            doc1.put("id", "doc1");
-            doc1.put("embedding", List.of(0.1f, 0.2f, 0.3f));
-            doc1.put("text", "Test document");
-            doc1.put("tags", List.of("tag1", "tag2")); // List metadata
-            docs.add(doc1);
-            
-            assertEquals(1, docs.size());
-            assertNotNull(docs.get(0).get("tags"));
+        void testAddDocsWithBatchSize() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+
+            store.addDocs("test_collection", docs(), Map.of("batch_size", 1));
+
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("add docs zero batch size")
-        void testAddDocsZeroBatchSize() {
-            // Python: test_add_docs_zero_batch_size
-            // Tests adding documents with zero batch size uses default
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            Map<String, Object> doc1 = new HashMap<>();
-            doc1.put("id", "doc1");
-            doc1.put("embedding", List.of(0.1f, 0.2f, 0.3f));
-            doc1.put("text", "Test document");
-            docs.add(doc1);
-            
-            int batchSize = 0; // Should use default
-            assertEquals(1, docs.size());
-            // Default batch size should be applied
+        void testAddDocsWithListMetadata() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", List.of(doc("doc1", "Text 1", vector(0.1f, 0.2f, 0.3f),
+                    Map.of("tags", List.of("tag1", "tag2")))), null);
+
+            VectorSearchResult result = store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 1, null, null).get(0);
+
+            assertEquals(List.of("tag1", "tag2"), result.getFields().get("tags"));
         }
 
         @Test
-        @DisplayName("add docs handles error")
-        void testAddDocsHandlesError() {
-            // Python: test_add_docs_handles_error
-            // Tests error handling during document addition
-            
-            Exception expectedError = new RuntimeException("Add failed");
-            assertNotNull(expectedError);
-            assertEquals("Add failed", expectedError.getMessage());
+        void testAddDocsZeroBatchSize() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+
+            store.addDocs("test_collection", docs(), Map.of("batch_size", 0));
+
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null).size());
         }
     }
 
@@ -507,90 +225,88 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreSearch {
 
         @Test
-        @DisplayName("search success")
-        void testSearchSuccess() {
-            // Python: test_search_success
-            // Tests successful vector search
-            
-            List<Float> queryVector = List.of(0.1f, 0.2f, 0.3f);
-            int topK = 5;
-            
-            assertNotNull(queryVector);
-            assertTrue(topK > 0);
-            
-            // Mock search results
-            List<Map<String, Object>> results = new ArrayList<>();
-            Map<String, Object> result1 = new HashMap<>();
-            result1.put("id", "doc1");
-            result1.put("text", "Test document");
-            result1.put("score", 0.95);
-            results.add(result1);
-            
+        void testSearchSuccess() throws Exception {
+            ChromaVectorStore store = populatedStore("cosine");
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null);
+
+            assertEquals("doc1", results.get(0).getFields().get("id"));
+            assertEquals("Text 1", results.get(0).getFields().get("text"));
+            assertTrue(results.get(0).getScore() > 0);
+        }
+
+        @Test
+        void testSearchWithFilters() throws Exception {
+            ChromaVectorStore store = populatedStore("cosine");
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, Map.of("source", "test2"), null);
+
             assertEquals(1, results.size());
-            assertTrue((Double) results.get(0).get("score") >= 0.0);
+            assertEquals("doc2", results.get(0).getFields().get("id"));
         }
 
         @Test
-        @DisplayName("search with filters")
-        void testSearchWithFilters() {
-            // Python: test_search_with_filters
-            // Tests vector search with metadata filters
-            
-            List<Float> queryVector = List.of(0.1f, 0.2f, 0.3f);
-            Map<String, Object> filters = Map.of("source", "test");
-            
-            assertNotNull(queryVector);
-            assertNotNull(filters);
+        void testSearchCosineDistanceConversion() throws Exception {
+            ChromaVectorStore store = populatedStore("cosine");
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 2, null, null);
+
+            assertTrue(results.get(0).getScore() >= results.get(1).getScore());
         }
 
         @Test
-        @DisplayName("search with text query")
-        void testSearchWithTextQuery() {
-            // Python: test_search_with_text_query (if exists)
-            // Tests hybrid search with text query
-            
-            String textQuery = "test document";
-            List<Float> queryVector = List.of(0.1f, 0.2f, 0.3f);
-            
-            assertNotNull(textQuery);
-            assertNotNull(queryVector);
+        void testSearchL2DistanceConversion() throws Exception {
+            ChromaVectorStore store = populatedStore("euclidean");
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 2, null, null);
+
+            assertTrue(results.get(0).getScore() >= results.get(1).getScore());
         }
 
         @Test
-        @DisplayName("search cosine distance conversion")
-        void testSearchCosineDistanceConversion() {
-            // Python: test_search_cosine_distance_conversion
-            // Tests cosine distance to similarity score conversion
-            
-            // Cosine distance: similarity = 1 - distance
-            double distance = 0.3;
-            double similarity = 1.0 - distance;
-            
-            assertTrue(similarity >= 0.0 && similarity <= 1.0);
-            assertEquals(0.7, similarity, 0.001);
+        void testSearchIpDistanceConversion() throws Exception {
+            ChromaVectorStore store = populatedStore("dot");
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 2, null, null);
+
+            assertTrue(results.get(0).getScore() >= results.get(1).getScore());
         }
 
         @Test
-        @DisplayName("search ip distance conversion")
-        void testSearchIpDistanceConversion() {
-            // Python: test_search_ip_distance_conversion
-            // Tests IP (inner product) distance to similarity score conversion
-            
-            // IP distance: similarity is normalized score
-            double distance = 0.5;
-            double similarity = distance; // For IP, distance is already similarity-like
-            
-            assertTrue(similarity >= 0.0);
+        void testSearchEmptyResults() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+
+            assertTrue(store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).isEmpty());
         }
 
         @Test
-        @DisplayName("search empty results")
-        void testSearchEmptyResults() {
-            // Python: test_search_empty_results
-            // Tests search with no results
-            
-            List<Map<String, Object>> emptyResults = new ArrayList<>();
-            assertTrue(emptyResults.isEmpty());
+        void testSearchWithJsonMetadata() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", List.of(doc("doc1", "Text 1", vector(0.1f, 0.2f, 0.3f),
+                    Map.of("tags", List.of("tag1", "tag2")))), null);
+
+            VectorSearchResult result = store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 1, null, null).get(0);
+
+            assertEquals(List.of("tag1", "tag2"), result.getFields().get("tags"));
+        }
+
+        @Test
+        void testSearchWithInvalidJsonMetadata() throws Exception {
+            ChromaVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", List.of(doc("doc1", "Text 1", vector(0.1f, 0.2f, 0.3f),
+                    Map.of("tags", "invalid json"))), null);
+
+            VectorSearchResult result = store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 1, null, null).get(0);
+
+            assertEquals("invalid json", result.getFields().get("tags"));
         }
     }
 
@@ -599,25 +315,15 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreDeleteDocsByIds {
 
         @Test
-        @DisplayName("delete docs by ids successfully")
-        void testDeleteDocsByIdsSuccessfully() {
-            // Python: test_delete_docs_by_ids_successfully
-            // Tests deleting documents by IDs
-            
-            List<String> idsToDelete = List.of("doc1", "doc2", "doc3");
-            assertEquals(3, idsToDelete.size());
-            
-            // In mock environment, verify delete semantics
-        }
+        void testDeleteDocsByIdsSuccess() throws Exception {
+            ChromaVectorStore store = populatedStore("cosine");
 
-        @Test
-        @DisplayName("delete docs by ids handles error")
-        void testDeleteDocsByIdsHandlesError() {
-            // Python: test_delete_docs_by_ids_handles_error
-            // Tests error handling during document deletion
-            
-            Exception expectedError = new RuntimeException("Delete by IDs failed");
-            assertNotNull(expectedError);
+            store.deleteDocsByIds("test_collection", List.of("doc1"), null);
+
+            List<VectorSearchResult> results = store.search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null);
+            assertEquals(1, results.size());
+            assertEquals("doc2", results.get(0).getFields().get("id"));
         }
     }
 
@@ -626,25 +332,88 @@ class TestChromaVectorStore {
     class TestChromaVectorStoreDeleteDocsByFilters {
 
         @Test
-        @DisplayName("delete docs by filters successfully")
-        void testDeleteDocsByFiltersSuccessfully() {
-            // Python: test_delete_docs_by_filters_successfully
-            // Tests deleting documents by metadata filters
-            
-            Map<String, Object> filters = Map.of("source", "test");
-            assertNotNull(filters);
-            
-            // In mock environment, verify delete semantics
-        }
+        void testDeleteDocsByFiltersSuccess() throws Exception {
+            ChromaVectorStore store = populatedStore("cosine");
 
-        @Test
-        @DisplayName("delete docs by filters handles error")
-        void testDeleteDocsByFiltersHandlesError() {
-            // Python: test_delete_docs_by_filters_handles_error
-            // Tests error handling during filtered document deletion
-            
-            Exception expectedError = new RuntimeException("Delete by filters failed");
-            assertNotNull(expectedError);
+            store.deleteDocsByFilters("test_collection", Map.of("source", "test1"), null);
+
+            assertEquals(1, store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).size());
         }
+    }
+
+    private static ChromaVectorStore newStore(String metric) {
+        return new ChromaVectorStore(Map.of(
+                "database_name", UUID.randomUUID().toString().replace("-", ""),
+                "collection_name", "default_collection",
+                "distance_metric", metric));
+    }
+
+    private static ChromaVectorStore preparedStore(String metric) throws Exception {
+        ChromaVectorStore store = newStore(metric);
+        store.createCollection("test_collection", schema(), null);
+        return store;
+    }
+
+    private static ChromaVectorStore populatedStore(String metric) throws Exception {
+        ChromaVectorStore store = preparedStore(metric);
+        store.addDocs("test_collection", docs(), null);
+        return store;
+    }
+
+    private static List<Map<String, Object>> docs() {
+        return List.of(
+                doc("doc1", "Text 1", vector(0.1f, 0.2f, 0.3f), Map.of("source", "test1")),
+                doc("doc2", "Text 2", vector(0.4f, 0.5f, 0.6f), Map.of("source", "test2")));
+    }
+
+    private static Map<String, Object> doc(String id, String text, List<Float> embedding, Map<String, Object> extra) {
+        return Map.of(
+                "id", id,
+                "embedding", embedding,
+                "text", text,
+                "metadata", extra);
+    }
+
+    private static CollectionSchema schema() {
+        return new CollectionSchema()
+                .addField(idField())
+                .addField(vectorField())
+                .addField(FieldSchema.builder()
+                        .name("text")
+                        .dtype(VectorDataType.VARCHAR)
+                        .maxLength(65535)
+                        .build());
+    }
+
+    private static FieldSchema idField() {
+        return FieldSchema.builder()
+                .name("id")
+                .dtype(VectorDataType.VARCHAR)
+                .maxLength(256)
+                .isPrimary(true)
+                .build();
+    }
+
+    private static FieldSchema vectorField() {
+        return FieldSchema.builder()
+                .name("embedding")
+                .dtype(VectorDataType.FLOAT_VECTOR)
+                .dim(3)
+                .build();
+    }
+
+    private static List<Float> vector(float a, float b, float c) {
+        return List.of(a, b, c);
+    }
+
+    private static com.openjiuwen.core.retrieval.vector_store.VectorStore failingDeleteDelegate() {
+        return new com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore(
+                new VectorStoreConfig("chroma", "test_collection"), "hybrid") {
+            @Override
+            public void deleteTable(String tableName) {
+                throw new RuntimeException("Delete failed");
+            }
+        };
     }
 }

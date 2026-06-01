@@ -63,4 +63,9 @@ class AutoHarnessOrchestratorTest {
     void testOrchestratorInitializesTaskContexts() throws Exception {
         OrchestratorParityAssertions.testOrchestratorInitializesTaskContexts();
     }
+
+    @Test
+    void testWriteDebugArtifactPersistsContentAndRaisesOnFailure() throws Exception {
+        OrchestratorParityAssertions.testWriteDebugArtifactPersistsContentAndRaisesOnFailure();
+    }
 }

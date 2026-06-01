@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link DialogueCompressor}.
  * <p>
- * Ported from Python's {@code test_dialogue_compressor.py}.
+ * Mirrors Python's {@code test_dialogue_compressor.py} in
+ * {@code tests.unit_tests.core.context_engine.test_dialogue_compressor}.
  */
 class DialogueCompressorTest {
 
@@ -46,7 +47,7 @@ class DialogueCompressorTest {
 
             @Override
             public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
+                return tools == null ? 0 : tools.size() * returnValue;
             }
         };
     }

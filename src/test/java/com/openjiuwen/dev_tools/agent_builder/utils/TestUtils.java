@@ -110,6 +110,17 @@ class TestUtils {
             assertEquals("user: Hello | assistant: Hi!",
                     AgentBuilderUtils.formatDialogHistory(history, " | "));
         }
+
+        @Test
+        void testFormatWithMissingKeys() {
+            List<Map<String, Object>> history = List.of(
+                    Map.of("role", "user"),
+                    Map.of("content", "Missing role"));
+
+            String result = AgentBuilderUtils.formatDialogHistory(history);
+            assertTrue(result.contains("user: "));
+            assertTrue(result.contains("unknown: Missing role"));
+        }
     }
 
     /**
@@ -126,6 +137,21 @@ class TestUtils {
         }
 
         @Test
+        void testValidSessionIdWithAlphanumeric() {
+            assertTrue(AgentBuilderUtils.validateSessionId("session123"));
+        }
+
+        @Test
+        void testValidSessionIdWithUnderscore() {
+            assertTrue(AgentBuilderUtils.validateSessionId("session_123"));
+        }
+
+        @Test
+        void testValidSessionIdWithHyphen() {
+            assertTrue(AgentBuilderUtils.validateSessionId("session-123"));
+        }
+
+        @Test
         void testValidateEmptySessionId() {
             assertFalse(AgentBuilderUtils.validateSessionId(""));
         }
@@ -133,6 +159,16 @@ class TestUtils {
         @Test
         void testValidateNullSessionId() {
             assertFalse(AgentBuilderUtils.validateSessionId(null));
+        }
+
+        @Test
+        void testInvalidSessionIdWithSpecialChars() {
+            assertFalse(AgentBuilderUtils.validateSessionId("session@123"));
+        }
+
+        @Test
+        void testInvalidSessionIdWithSpace() {
+            assertFalse(AgentBuilderUtils.validateSessionId("session 123"));
         }
     }
 
@@ -153,6 +189,82 @@ class TestUtils {
         @Test
         void testSafeJsonLoadsInvalidJson() {
             assertEquals(Map.of(), AgentBuilderUtils.safeJsonLoads("invalid json", Map.of()));
+        }
+
+        @Test
+        void testSafeJsonLoadsEmptyStringReturnsDefault() {
+            assertNull(AgentBuilderUtils.safeJsonLoads("", null));
+        }
+
+        @Test
+        void testSafeJsonLoadsNullReturnsDefault() {
+            assertEquals(List.of(), AgentBuilderUtils.safeJsonLoads(null, List.of()));
+        }
+
+        @Test
+        void testSafeJsonLoadsJsonArray() {
+            assertEquals(List.of(1, 2, 3), AgentBuilderUtils.safeJsonLoads("[1, 2, 3]"));
+        }
+    }
+
+    /**
+     * Test mergeDictLists function.
+     * <p>
+     * Mirrors Python's {@code TestMergeDictLists} class.
+     */
+    @Nested
+    class TestMergeDictLists {
+
+        @Test
+        void testMergeWithUniqueKeys() {
+            List<Map<String, Object>> existing = List.of(Map.of("id", "1", "name", "A"));
+            List<Map<String, Object>> newItems = List.of(Map.of("id", "2", "name", "B"));
+
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(existing, newItems, "id");
+            assertEquals(2, result.size());
+            assertEquals("1", result.get(0).get("id"));
+            assertEquals("2", result.get(1).get("id"));
+        }
+
+        @Test
+        void testMergeWithDuplicateKeys() {
+            List<Map<String, Object>> existing = List.of(Map.of("id", "1", "name", "A"));
+            List<Map<String, Object>> newItems = List.of(Map.of("id", "1", "name", "B"));
+
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(existing, newItems, "id");
+            assertEquals(1, result.size());
+            assertEquals("A", result.get(0).get("name"));
+        }
+
+        @Test
+        void testMergeEmptyNewItems() {
+            List<Map<String, Object>> existing = List.of(Map.of("id", "1", "name", "A"));
+
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(existing, List.of(), "id");
+            assertEquals(1, result.size());
+        }
+
+        @Test
+        void testMergeEmptyExisting() {
+            List<Map<String, Object>> newItems = List.of(Map.of("id", "1", "name", "A"));
+
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(List.of(), newItems, "id");
+            assertEquals(1, result.size());
+        }
+
+        @Test
+        void testMergeBothEmpty() {
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(List.of(), List.of(), "id");
+            assertEquals(List.of(), result);
+        }
+
+        @Test
+        void testMergeWithMissingUniqueKey() {
+            List<Map<String, Object>> existing = List.of(Map.of("id", "1", "name", "A"));
+            List<Map<String, Object>> newItems = List.of(Map.of("name", "B"));
+
+            List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(existing, newItems, "id");
+            assertEquals(1, result.size());
         }
     }
 
@@ -177,6 +289,26 @@ class TestUtils {
 
             assertEquals(Map.of("a", Map.of("b", 3, "c", 2, "d", 4)),
                     AgentBuilderUtils.deepMergeDict(base, update));
+        }
+
+        @Test
+        void testMergeOverwritesNonDictValues() {
+            assertEquals(Map.of("a", 2),
+                    AgentBuilderUtils.deepMergeDict(Map.of("a", 1), Map.of("a", 2)));
+        }
+
+        @Test
+        void testMergeDoesNotModifyOriginal() {
+            Map<String, Object> base = Map.of("a", 1);
+            Map<String, Object> result = AgentBuilderUtils.deepMergeDict(base, Map.of("b", 2));
+
+            assertFalse(base.containsKey("b"));
+            assertTrue(result.containsKey("b"));
+        }
+
+        @Test
+        void testMergeEmptyDicts() {
+            assertEquals(Map.of(), AgentBuilderUtils.deepMergeDict(Map.of(), Map.of()));
         }
     }
 }

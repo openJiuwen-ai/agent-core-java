@@ -22,7 +22,7 @@ class TrajectoryTypesTest {
         return TrajectoryStep.builder()
                 .kind(kind)
                 .error(error)
-                .inputs(detail)
+                .detail(detail)
                 .meta(meta != null ? meta : new HashMap<>())
                 .build();
     }
@@ -93,10 +93,10 @@ class TrajectoryTypesTest {
                 .build();
 
         assertEquals("gpt-4", detail.getModel());
-        assertNotNull(detail.getResponse());
-        assertNotNull(detail.getTools());
-        assertNotNull(detail.getUsage());
+        assertEquals(Map.of("content", "response"), detail.getResponse());
+        assertEquals(List.of(Map.of("name", "tool1")), detail.getTools());
         assertEquals(10, ((Number) detail.getUsage().get("prompt_tokens")).intValue());
+        assertEquals(5, ((Number) detail.getUsage().get("completion_tokens")).intValue());
     }
 
     // === ToolCallDetail Tests ===
@@ -120,34 +120,48 @@ class TrajectoryTypesTest {
         ToolCallDetail detail = ToolCallDetail.builder()
                 .toolName("test_tool")
                 .callArgs(Map.of("arg", "value"))
-                .callResult("result")
+                .callResult(Map.of("result", "success"))
                 .toolDescription("A test tool")
                 .toolSchema(schema)
-                .toolCallId("call_123")
                 .build();
 
         assertEquals("test_tool", detail.getToolName());
-        assertNotNull(detail.getCallArgs());
+        assertEquals(Map.of("arg", "value"), detail.getCallArgs());
+        assertEquals(Map.of("result", "success"), detail.getCallResult());
         assertEquals("A test tool", detail.getToolDescription());
-        assertEquals("call_123", detail.getToolCallId());
+        assertEquals(Map.of("type", "object"), detail.getToolSchema());
     }
 
     // === TrajectoryStep Tests ===
+
+    @Test
+    void trajectoryStepCreation() {
+        TrajectoryStep step = makeStep("llm", null, null, null);
+
+        assertEquals("llm", step.getKind());
+        assertNull(step.getError());
+        assertNull(step.getDetail());
+        assertEquals(Map.of(), step.getMeta());
+    }
 
     @Test
     void trajectoryStepLLMStep() {
         TrajectoryStep step = makeLLMStep("gpt-4", null, null, null, null);
 
         assertEquals("llm", step.getKind());
-        assertInstanceOf(LLMCallDetail.class, step.getInputs());
+        assertInstanceOf(LLMCallDetail.class, step.getDetail());
+        assertEquals("gpt-4", ((LLMCallDetail) step.getDetail()).getModel());
     }
 
     @Test
     void trajectoryStepToolStep() {
-        TrajectoryStep step = makeToolStep("search", null, null, null, null);
+        TrajectoryStep step = makeToolStep("test_tool", Map.of("arg", "value"), Map.of("result", "success"),
+                null, null);
 
         assertEquals("tool", step.getKind());
-        assertInstanceOf(ToolCallDetail.class, step.getInputs());
+        ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, step.getDetail());
+        assertEquals("test_tool", detail.getToolName());
+        assertEquals(Map.of("arg", "value"), detail.getCallArgs());
     }
 
     @Test
@@ -162,6 +176,35 @@ class TrajectoryTypesTest {
                 .build();
 
         assertNotNull(step.getError());
+    }
+
+    @Test
+    void trajectoryStepWithMeta() {
+        TrajectoryStep step = makeStep("llm", null, null, Map.of(
+                "operator_id", "op1",
+                "agent_id", "agent1",
+                "span_name", "test_span"
+        ));
+
+        assertEquals("op1", step.getMeta().get("operator_id"));
+        assertEquals("agent1", step.getMeta().get("agent_id"));
+        assertEquals("test_span", step.getMeta().get("span_name"));
+    }
+
+    @Test
+    void trajectoryStepWithRlFields() {
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("llm")
+                .reward(1.0)
+                .logprobs(List.of(-0.5, -0.3))
+                .promptTokenIds(List.of(1, 2, 3))
+                .completionTokenIds(List.of(101, 102, 103))
+                .build();
+
+        assertEquals(1.0, step.getReward());
+        assertEquals(List.of(-0.5, -0.3), step.getLogprobs());
+        assertEquals(List.of(1, 2, 3), step.getPromptTokenIds());
+        assertEquals(List.of(101, 102, 103), step.getCompletionTokenIds());
     }
 
     // === Trajectory Tests ===
@@ -207,5 +250,39 @@ class TrajectoryTypesTest {
 
         assertNotNull(traj.getCost());
         assertEquals(100, traj.getCost().get("input_tokens"));
+    }
+
+    @Test
+    void trajectoryOnlineTrajectory() {
+        Trajectory traj = Trajectory.builder()
+                .executionId("exec-online")
+                .source("online")
+                .sessionId("session-123")
+                .caseId(null)
+                .steps(List.of())
+                .build();
+
+        assertEquals("online", traj.getSource());
+        assertEquals("session-123", traj.getSessionId());
+        assertNull(traj.getCaseId());
+    }
+
+    @Test
+    void updateKeyTupleCreation() {
+        UpdateKey key = UpdateKey.of("op1", "system_prompt");
+
+        assertEquals(UpdateKey.of("op1", "system_prompt"), key);
+        assertEquals("op1", key.getOperatorId());
+        assertEquals("system_prompt", key.getTarget());
+    }
+
+    @Test
+    void updatesDictCreation() {
+        Updates updates = new Updates();
+        updates.put("op1", "system_prompt", "new prompt");
+        updates.put("op1", "user_prompt", "new user");
+
+        assertTrue(updates.containsKey(UpdateKey.of("op1", "system_prompt")));
+        assertEquals("new prompt", updates.get("op1", "system_prompt"));
     }
 }

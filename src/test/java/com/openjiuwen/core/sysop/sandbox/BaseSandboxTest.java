@@ -10,7 +10,10 @@ import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.config.ContainerScope;
+import com.openjiuwen.core.sysop.config.PreDeployLauncherConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,8 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Mirrors Python's {@code conftest.py} in
  * {@code tests/unit_tests/core/sys_operation/sandbox/conftest.py}.
  *
- * <p>Note: Sandbox mode in Java is currently a stub.
- * This class provides the fixture structure for future sandbox tests.
+ * <p>Like the Python fixture, this uses sandbox_type="local" so the tests
+ * exercise sandbox routing without depending on an external AIO service.
  */
 public abstract class BaseSandboxTest {
 
@@ -39,40 +42,35 @@ public abstract class BaseSandboxTest {
     /**
      * Setup fixture that provides a SysOperation using sandbox mode.
      *
-     * <p>Note: This test setup mirrors Python's local_op fixture but uses
-     * SANDBOX mode. In Java, the sandbox infrastructure is a stub,
-     * so tests inheriting from this class may be skipped if sandbox
-     * functionality is not fully implemented.
+     * <p>This mirrors Python's local_op fixture: SANDBOX mode with a
+     * pre-deployed local provider registered for fs/shell/code.
      */
     @BeforeEach
     void setUpSandbox() throws Exception {
         Runner.start();
         rm = Runner.resourceMgr();
+        LocalSandboxProviders.register();
 
         cardId = "local_sandbox_" + UUID.randomUUID().toString().substring(0, 8);
 
-        // SandboxGateway.getInstance() - stub in Java
-        // For now, create a basic SandboxGatewayConfig
         card = SysOperationCard.builder()
                 .id(cardId)
                 .mode(OperationMode.SANDBOX)
                 .gatewayConfig(SandboxGatewayConfig.builder()
+                        .isolation(SandboxIsolationConfig.builder()
+                                .containerScope(ContainerScope.SYSTEM)
+                                .build())
+                        .launcherConfig(PreDeployLauncherConfig.create("http://local-provider:9999", "local"))
                         .timeoutSeconds(30)
                         .build())
                 .build();
 
-        try {
-            var addRes = rm.addSysOperation(card, null);
-            assertTrue(addRes.isOk(), "Failed to add sys operation");
+        var addRes = rm.addSysOperation(card, null);
+        assertTrue(addRes.isOk(), "Failed to add sys operation");
 
-            Object result = rm.getSysOperation(cardId, null, TagMatchStrategy.ALL);
-            sysOp = extractSysOperation(result);
-            assertNotNull(sysOp, "SysOperation should be retrieved");
-        } catch (Exception e) {
-            // Sandbox mode may not be fully implemented - allow test to proceed
-            // Tests should check sysOp != null before using
-            sysOp = null;
-        }
+        Object result = rm.getSysOperation(cardId, null, TagMatchStrategy.ALL);
+        sysOp = extractSysOperation(result);
+        assertNotNull(sysOp, "SysOperation should be retrieved");
     }
 
     @AfterEach

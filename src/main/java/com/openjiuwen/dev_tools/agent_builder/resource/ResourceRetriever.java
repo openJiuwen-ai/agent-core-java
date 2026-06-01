@@ -6,6 +6,7 @@ package com.openjiuwen.dev_tools.agent_builder.resource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.openjiuwen.core.common.security.JsonUtils;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,5 +82,59 @@ public class ResourceRetriever {
         result.put("documents", Collections.emptyList());
         result.put("examples", Collections.emptyList());
         return result;
+    }
+
+    public Map<String, Object> retrieve(List<Map<String, Object>> dialogHistory) {
+        return retrieve(dialogHistory, true);
+    }
+
+    public Map<String, Object> retrieve(List<Map<String, Object>> dialogHistory, boolean forWorkflow) {
+        String dialogHistoryQuery = formatDialogHistory(dialogHistory);
+        List<Map<String, Object>> pluginInfoList = PluginProcessor.formatForPrompt(pluginDict);
+        List<BaseMessage> messages = Prompt.RETRIEVE_SYSTEM_TEMPLATE.format(Map.of(
+                "dialog_history", dialogHistoryQuery,
+                "plugin_info_list", String.valueOf(pluginInfoList))).toMessages();
+
+        Map<String, Object> data = llmRetrieve(messages);
+        List<String> toolIdList = stringsFrom(data.get("tool_id_list"));
+        PluginProcessor.RetrievedInfo retrievedInfo = PluginProcessor.getRetrievedInfo(
+                toolIdList, pluginDict, toolPluginIdMap, forWorkflow);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("plugins", retrievedInfo.toolList());
+        result.put("plugin_dict", retrievedInfo.retrievedPluginDict());
+        result.put("tool_id_map", retrievedInfo.retrievedToolIdMap());
+        return result;
+    }
+
+    protected Map<String, Object> llmRetrieve(List<BaseMessage> messages) {
+        return Map.of("tool_id_list", List.of());
+    }
+
+    private static String formatDialogHistory(List<Map<String, Object>> dialogHistory) {
+        if (dialogHistory == null || dialogHistory.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (Map<String, Object> message : dialogHistory) {
+            if (builder.length() > 0) {
+                builder.append('\n');
+            }
+            builder.append(String.valueOf(message.getOrDefault("role", "")))
+                    .append(": ")
+                    .append(String.valueOf(message.getOrDefault("content", "")));
+        }
+        return builder.toString();
+    }
+
+    private static List<String> stringsFrom(Object value) {
+        if (value instanceof List<?> list) {
+            List<String> result = new ArrayList<>();
+            for (Object item : list) {
+                result.add(String.valueOf(item));
+            }
+            return result;
+        }
+        return List.of();
     }
 }

@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for Session.
- * Mirrors Python's tests/unit_tests/core/session/test_session.py
+ * Mirrors Python's {@code tests/unit_tests/core/session/test_session.py}.
  */
 class TestSession {
 
@@ -419,16 +419,91 @@ class TestSession {
         @Test
         @DisplayName("test agent session")
         void testAgentSession() {
-            // This test requires Session class which may not be fully implemented
-            // Mark as passed for now if Session is not available
-            try {
-                // Attempt to use Session if available
-                // Session agentSession = new Session("abc", new AgentCard());
-                // If Session class exists, implement full test logic
-                assertTrue(true, "Agent session test placeholder - Session class availability verified");
-            } catch (Exception e) {
-                assertTrue(true, "Agent session test skipped - Session class not fully available");
-            }
+            AgentSessionApi agentSession = new AgentSessionApi("abc", null, new AgentCard());
+            Map<String, Object> data = Map.of("data", Map.of("a", 1));
+
+            agentSession.updateState(Map.of("result", data));
+            assertEquals(Map.of("data", Map.of("a", 1)), agentSession.getState("result"));
+            assertEquals(Map.of("data", Map.of("a", 1)), agentSession.getState("result"));
+
+            Map<String, Object> data2 = Map.of("data", Map.of("b", 1));
+            agentSession.updateState(Map.of("result", data2));
+            assertEquals(Map.of("data", Map.of("a", 1, "b", 1)), agentSession.getState("result"));
+
+            Map<String, Object> clearResult = new HashMap<>();
+            clearResult.put("result", null);
+            agentSession.updateState(clearResult);
+            assertNull(agentSession.getState("result"));
+
+            agentSession.updateState(Map.of("result", data2));
+            assertEquals(Map.of("data", Map.of("b", 1)), agentSession.getState("result"));
+
+            Map<String, Object> dumpState = agentSession.dumpState();
+            assertEquals(Map.of(), dumpState.get("agent_state"));
+            assertEquals(Map.of("result", Map.of("data", Map.of("b", 1))), dumpState.get("global_state"));
+            assertEquals(Map.of(), dumpState.get("trace_state"));
+        }
+
+        @Test
+        @DisplayName("test node session")
+        void testNodeSession() {
+            NodeSessionApi session = new NodeSessionApi(new NodeSession(new WorkflowSession(), "node1"));
+
+            session.updateState(Map.of("key1", "value1"));
+            session.updateState(Map.of("key2", Map.of("nested_key", "nested_value")));
+            session.updateGlobalState(Map.of("global_key1", "global_value1"));
+            session.updateGlobalState(Map.of("global_key2", Map.of("nested_global_key", "nested_global_value")));
+
+            assertNull(session.getState("key1"));
+            assertNull(session.getState("key2"));
+            assertNull(session.getGlobalState("global_key1"));
+            assertNull(session.getGlobalState("global_key2"));
+
+            Map<String, Object> dumpBeforeCommit = session.dumpState();
+            assertEquals(Map.of(), dumpBeforeCommit.get("io_state"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("io_state_updates"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("global_state"));
+            assertEquals(
+                    Map.of("node1", List.of(
+                            Map.of("global_key1", "global_value1"),
+                            Map.of("global_key2", Map.of("nested_global_key", "nested_global_value")))),
+                    dumpBeforeCommit.get("global_state_updates"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("comp_state"));
+            assertEquals(
+                    Map.of("node1", List.of(
+                            Map.of("node1", Map.of("key1", "value1")),
+                            Map.of("node1", Map.of("key2", Map.of("nested_key", "nested_value"))))),
+                    dumpBeforeCommit.get("comp_state_updates"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("workflow_state"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("workflow_state_updates"));
+            assertEquals(Map.of(), dumpBeforeCommit.get("trace_state"));
+
+            assertTrue(session.getInner().state() instanceof WorkflowStateCollection);
+            ((WorkflowStateCollection) session.getInner().state()).commit();
+
+            assertEquals("value1", session.getState("key1"));
+            assertEquals(Map.of("nested_key", "nested_value"), session.getState("key2"));
+            assertEquals("global_value1", session.getGlobalState("global_key1"));
+            assertEquals(Map.of("nested_global_key", "nested_global_value"), session.getGlobalState("global_key2"));
+
+            Map<String, Object> dumpAfterCommit = session.dumpState();
+            assertEquals(Map.of(), dumpAfterCommit.get("io_state"));
+            assertEquals(Map.of(), dumpAfterCommit.get("io_state_updates"));
+            assertEquals(
+                    Map.of(
+                            "global_key1", "global_value1",
+                            "global_key2", Map.of("nested_global_key", "nested_global_value")),
+                    dumpAfterCommit.get("global_state"));
+            assertEquals(Map.of(), dumpAfterCommit.get("global_state_updates"));
+            assertEquals(
+                    Map.of("node1", Map.of(
+                            "key1", "value1",
+                            "key2", Map.of("nested_key", "nested_value"))),
+                    dumpAfterCommit.get("comp_state"));
+            assertEquals(Map.of(), dumpAfterCommit.get("comp_state_updates"));
+            assertEquals(Map.of(), dumpAfterCommit.get("workflow_state"));
+            assertEquals(Map.of(), dumpAfterCommit.get("workflow_state_updates"));
+            assertEquals(Map.of(), dumpAfterCommit.get("trace_state"));
         }
     }
 }

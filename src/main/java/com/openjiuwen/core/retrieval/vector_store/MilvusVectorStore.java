@@ -12,6 +12,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.openjiuwen.core.retrieval.common.RRFRankConfig;
 import com.openjiuwen.core.retrieval.common.ResultRankRegistry;
+import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
@@ -30,6 +31,8 @@ import io.milvus.v2.service.collection.request.GetCollectionStatsReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.database.request.CreateDatabaseReq;
+import io.milvus.v2.service.index.request.DescribeIndexReq;
+import io.milvus.v2.service.index.response.DescribeIndexResp;
 import io.milvus.v2.service.utility.request.FlushReq;
 import io.milvus.v2.service.vector.request.AnnSearchReq;
 import io.milvus.v2.service.vector.request.DeleteReq;
@@ -61,7 +64,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Milvus-backed vector store for retrieval.
  *
  * <p>Mirrors Python's {@code MilvusVectorStore} in
- * {@code openjiuwen.core.foundation.store.vector.milvus_vector_store}.
+ * {@code openjiuwen.core.retrieval.vector_store.milvus_store}.
  */
 public class MilvusVectorStore implements VectorStore {
 
@@ -415,8 +418,12 @@ public class MilvusVectorStore implements VectorStore {
         if (filterExpr != null && !filterExpr.isBlank()) {
             builder.filter(filterExpr);
         }
-        SearchResp response = client.search(builder.build());
-        return toSearchResults(firstSearchResults(response), SearchMode.SPARSE);
+        try {
+            SearchResp response = client.search(builder.build());
+            return toSearchResults(firstSearchResults(response), SearchMode.SPARSE);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -475,29 +482,33 @@ public class MilvusVectorStore implements VectorStore {
 
     @Override
     public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
-        if (!tableExists(collectionName)) {
+        try {
+            if (!tableExists(collectionName)) {
+                return false;
+            }
+            List<String> clauses = new ArrayList<>();
+            if (ids != null && !ids.isEmpty()) {
+                clauses.add("chunk_id in " + formatCollection(ids));
+            }
+            String extraFilter = toFilterExpression(filterExpr);
+            if (extraFilter != null && !extraFilter.isBlank()) {
+                clauses.add(extraFilter);
+            }
+            if (clauses.isEmpty()) {
+                return false;
+            }
+            DeleteReq.DeleteReqBuilder builder = DeleteReq.builder()
+                    .collectionName(collectionName)
+                    .filter(String.join(" && ", clauses));
+            if (hasDatabase()) {
+                builder.databaseName(databaseName);
+            }
+            DeleteResp response = client.delete(builder.build());
+            flush(collectionName);
+            return response != null && response.getDeleteCnt() > 0;
+        } catch (RuntimeException ex) {
             return false;
         }
-        List<String> clauses = new ArrayList<>();
-        if (ids != null && !ids.isEmpty()) {
-            clauses.add("chunk_id in " + formatCollection(ids));
-        }
-        String extraFilter = toFilterExpression(filterExpr);
-        if (extraFilter != null && !extraFilter.isBlank()) {
-            clauses.add(extraFilter);
-        }
-        if (clauses.isEmpty()) {
-            return false;
-        }
-        DeleteReq.DeleteReqBuilder builder = DeleteReq.builder()
-                .collectionName(collectionName)
-                .filter(String.join(" && ", clauses));
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        DeleteResp response = client.delete(builder.build());
-        flush(collectionName);
-        return response != null && response.getDeleteCnt() > 0;
     }
 
     @Override
@@ -572,7 +583,46 @@ public class MilvusVectorStore implements VectorStore {
         if (!ownsClient) {
             return;
         }
-        client.close();
+        try {
+            client.close();
+        } catch (RuntimeException ignored) {
+            // Python close() logs and suppresses backend close failures.
+        }
+    }
+
+    @Override
+    public void checkVectorField() {
+        if (!tableExists(collectionName)) {
+            return;
+        }
+        DescribeIndexReq.DescribeIndexReqBuilder indexBuilder = DescribeIndexReq.builder()
+                .collectionName(collectionName)
+                .fieldName(vectorField);
+        if (hasDatabase()) {
+            indexBuilder.databaseName(databaseName);
+        }
+        DescribeIndexResp response = client.describeIndex(indexBuilder.build());
+        DescribeIndexResp.IndexDesc index = response == null ? null : response.getIndexDescByFieldName(vectorField);
+        if (index == null) {
+            throw RetrievalExceptions.error(
+                    com.openjiuwen.core.common.exception.StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "MilvusVectorStore has vector_field at " + vectorField + " while actual database has "
+                            + "vector field(s) at: " + actualVectorFields());
+        }
+
+        Map<String, Object> configured = new LinkedHashMap<>();
+        configured.put("index_type", IndexParam.IndexType.AUTOINDEX.name());
+        configured.put("metric_type", metricType().name());
+        Map<String, Object> actual = new LinkedHashMap<>();
+        actual.put("index_type", index.getIndexType() == null ? null : index.getIndexType().name());
+        actual.put("metric_type", index.getMetricType() == null ? null : index.getMetricType().name());
+        if (index.getExtraParams() != null) {
+            actual.putAll(index.getExtraParams());
+        }
+        if (index.getProperties() != null) {
+            actual.putAll(index.getProperties());
+        }
+        VectorStore.checkConfigsMatching(configured, actual);
     }
 
     @Override
@@ -635,6 +685,20 @@ public class MilvusVectorStore implements VectorStore {
 
     private boolean hasDatabase() {
         return databaseName != null && !databaseName.isBlank();
+    }
+
+    private List<String> actualVectorFields() {
+        try {
+            DescribeCollectionReq.DescribeCollectionReqBuilder builder = DescribeCollectionReq.builder()
+                    .collectionName(collectionName);
+            if (hasDatabase()) {
+                builder.databaseName(databaseName);
+            }
+            List<String> vectorFields = client.describeCollection(builder.build()).getVectorFieldNames();
+            return vectorFields == null ? List.of() : vectorFields;
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     private void ensureCollectionForWrite(List<Map<String, Object>> data, Map<String, Object> options) {

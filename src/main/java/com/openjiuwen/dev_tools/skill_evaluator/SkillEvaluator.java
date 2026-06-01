@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.skill_evaluator;
 
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +20,8 @@ public class SkillEvaluator {
 
     private static final Logger LOG = LoggerFactory.getLogger(SkillEvaluator.class);
 
+    private ReActAgent agent;
+
     /** Evaluate a skill. */
     public Map<String, Object> evaluate(Map<String, Object> skill) {
         LOG.info("[SkillEvaluator] Evaluating skill");
@@ -27,5 +30,13 @@ public class SkillEvaluator {
         result.put("feedback", "");
         result.put("passed", false);
         return result;
+    }
+
+    ReActAgent getAgent() {
+        return agent;
+    }
+
+    void setAgent(ReActAgent agent) {
+        this.agent = agent;
     }
 }

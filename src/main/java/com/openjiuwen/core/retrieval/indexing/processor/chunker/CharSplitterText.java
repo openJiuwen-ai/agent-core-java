@@ -14,7 +14,9 @@ import java.util.UUID;
 
 /**
  * Simple text splitter based on character length, no dependency on tokenizer.
- * Corresponds to Python {@code text_splitter.py::CharSplitter}.
+ *
+ * <p>Mirrors Python's {@code CharSplitter} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.chunker.text_splitter}.</p>
  */
 public class CharSplitterText extends TextSplitter {
 
@@ -53,6 +55,9 @@ public class CharSplitterText extends TextSplitter {
                     docId,
                     meta,
                     null));
+            if (end >= text.length()) {
+                break;
+            }
             start += step;
         }
         return result;

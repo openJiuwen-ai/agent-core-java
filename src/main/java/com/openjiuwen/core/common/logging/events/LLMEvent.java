@@ -11,7 +11,12 @@ import lombok.experimental.SuperBuilder;
 import java.util.List;
 import java.util.Map;
 
-/** LLM call related event. */
+/**
+ * LLM call related event.
+ *
+ * <p>Mirrors Python's {@code LLMEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

@@ -50,7 +50,8 @@ import java.util.concurrent.CompletableFuture;
  *   <li>Optionally writes conversation messages to long-term memory</li>
  * </ol>
  *
- * <p>Mirrors Python's {@code LLMAgent} in {@code openjiuwen.core.application.llm_agent}.
+ * <p>Mirrors Python's {@code LLMAgent} in
+ * {@code openjiuwen.core.application.llm_agent.llm_agent}.
  */
 public class LlmAgent extends ControllerAgent {
 

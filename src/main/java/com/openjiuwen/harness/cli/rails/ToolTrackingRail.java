@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.cli.rails;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
@@ -12,6 +14,7 @@ import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Emit tool call and tool result chunks for CLI rendering.
@@ -20,6 +23,8 @@ import java.util.Map;
  * {@code openjiuwen.harness.cli.rails.tool_tracker}.</p>
  */
 public class ToolTrackingRail extends AgentRail {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public ToolTrackingRail() {
         setPriority(5);
@@ -32,7 +37,7 @@ public class ToolTrackingRail extends AgentRail {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("tool_name", safe(inputs.getToolName()));
-        payload.put("tool_args", inputs.getToolArgs());
+        payload.put("tool_args", normalizeToolArgs(inputs.getToolArgs()));
         ctx.getSession().writeStream(new OutputSchema("tool_call", 0, payload));
     }
 
@@ -43,9 +48,20 @@ public class ToolTrackingRail extends AgentRail {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("tool_name", safe(inputs.getToolName()));
-        payload.put("tool_args", inputs.getToolArgs());
+        payload.put("tool_args", normalizeToolArgs(inputs.getToolArgs()));
         payload.putAll(buildToolResultPayload(safe(inputs.getToolName()), inputs.getToolResult()));
         ctx.getSession().writeStream(new OutputSchema("tool_result", 0, payload));
+    }
+
+    private static Object normalizeToolArgs(Object toolArgs) {
+        if (!(toolArgs instanceof String text)) {
+            return toolArgs;
+        }
+        try {
+            return OBJECT_MAPPER.readValue(text, Object.class);
+        } catch (JsonProcessingException | IllegalArgumentException ignored) {
+            return toolArgs;
+        }
     }
 
     private static Map<String, Object> buildToolResultPayload(String toolName, Object toolResult) {
@@ -55,8 +71,8 @@ public class ToolTrackingRail extends AgentRail {
             return payload;
         }
 
-        Object data = readProperty(toolResult, "data");
-        if (!(data instanceof Map<?, ?> map)) {
+        Optional<Object> data = readProperty(toolResult, "data");
+        if (data.isEmpty() || !(data.get() instanceof Map<?, ?> map)) {
             return payload;
         }
         Object content = map.get("content");
@@ -78,21 +94,21 @@ public class ToolTrackingRail extends AgentRail {
         return payload;
     }
 
-    private static Object readProperty(Object target, String propertyName) {
+    private static Optional<Object> readProperty(Object target, String propertyName) {
         if (target == null || propertyName == null || propertyName.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         String suffix = Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
         for (String methodName : java.util.List.of("get" + suffix, propertyName)) {
             try {
                 Method method = target.getClass().getMethod(methodName);
                 method.setAccessible(true);
-                return method.invoke(target);
+                return Optional.ofNullable(method.invoke(target));
             } catch (ReflectiveOperationException ignored) {
                 // Try next accessor shape.
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private static String safe(String value) {

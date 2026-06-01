@@ -76,6 +76,16 @@ public enum StatusCode {
     // 05. SubWorkflowComponent 101150 - 101159
     COMPONENT_SUB_WORKFLOW_PARAM_INVALID(101150, "component sub_workflow param is invalid, error=''{reason}''"),
 
+    // 06. Memory components
+    COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR(101150,
+            "component memory_write input parameter error, reason: {error_msg}"),
+    COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED(101151,
+            "component memory_write invoke call failed, reason: {error_msg}"),
+    COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR(101200,
+            "component memory_retrieval input parameter error, reason: {error_msg}"),
+    COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED(101201,
+            "component memory_retrieval invoke call failed, reason: {error_msg}"),
+
     // LLMComponent 101000 - 101049
     COMPONENT_LLM_TEMPLATE_CONFIG_ERROR(101000, "component llm_template config error, reason: {error_msg}"),
     COMPONENT_LLM_RESPONSE_CONFIG_INVALID(101001, "component llm_response_config is invalid, reason: {error_msg}"),

@@ -16,6 +16,9 @@ import java.util.Map;
 
 /**
  * TXT/MD file parser aligned with the Python TxtMdParser behavior.
+ *
+ * <p>Mirrors Python's {@code TxtMdParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.txt_md_parser}.
  */
 public class TxtMdParser extends Parser {
 
@@ -35,7 +38,8 @@ public class TxtMdParser extends Parser {
     @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         try {
-            return Files.readString(Path.of(doc), StandardCharsets.UTF_8).trim();
+            String content = Files.readString(Path.of(doc), StandardCharsets.UTF_8).trim();
+            return content.isEmpty() ? null : content;
         } catch (IOException ex) {
             return null;
         }

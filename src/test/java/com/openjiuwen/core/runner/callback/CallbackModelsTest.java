@@ -10,7 +10,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for callback framework data models.
- * Translated from Python test_models.py
+ *
+ * <p>Mirrors Python's {@code test_models.py} in
+ * {@code tests.unit_tests.core.runner.callback}.</p>
  */
 @DisplayName("Callback Models Tests")
 class CallbackModelsTest {
@@ -288,5 +290,28 @@ class CallbackModelsTest {
         assertEquals(3, info.getMaxRetries());
         assertEquals(1.0, info.getRetryDelay());
         assertEquals(30.0, info.getTimeout());
+    }
+
+    @Test
+    @DisplayName("CallbackInfo hash is callback identity")
+    void testCallbackInfoHash() {
+        java.util.function.Function<Map<String, Object>, Object> callback1 = kwargs -> null;
+        java.util.function.Function<Map<String, Object>, Object> callback2 = kwargs -> null;
+
+        CallbackInfo info1 = CallbackInfo.builder()
+                .callback(callback1)
+                .priority(0)
+                .build();
+        CallbackInfo info2 = CallbackInfo.builder()
+                .callback(callback1)
+                .priority(10)
+                .build();
+        CallbackInfo info3 = CallbackInfo.builder()
+                .callback(callback2)
+                .priority(0)
+                .build();
+
+        assertEquals(info1.hashCode(), info2.hashCode());
+        assertNotEquals(info1.hashCode(), info3.hashCode());
     }
 }

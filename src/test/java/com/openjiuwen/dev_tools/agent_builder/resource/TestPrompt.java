@@ -39,11 +39,11 @@ class TestPrompt {
 
         @Test
         void testPromptContainsKeySections() {
-            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Persona"));
-            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Task Description"));
-            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Input Information"));
-            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Selection Rules"));
-            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("Output Format"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("人设"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("任务描述"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("输入信息"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("选择规则"));
+            assertTrue(Prompt.RETRIEVE_SYSTEM_PROMPT.contains("输出格式"));
         }
 
         @Test

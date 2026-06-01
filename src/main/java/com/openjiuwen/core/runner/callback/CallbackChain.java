@@ -102,6 +102,9 @@ public class CallbackChain {
             if (!callbackInfo.isEnabled()) {
                 continue;
             }
+            if (CallbackFramework.CALLBACK_TYPE_TRANSFORM.equals(callbackInfo.getCallbackType())) {
+                continue;
+            }
 
             context.setCurrentIndex(i);
             Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
