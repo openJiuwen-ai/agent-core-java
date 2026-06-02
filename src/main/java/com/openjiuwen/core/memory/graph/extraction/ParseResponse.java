@@ -89,6 +89,19 @@ public final class ParseResponse {
      * Attempt to parse JSON without code block markers.
      */
     public static Object rawDecodeJson(String resp, List<String> mustContainKey) {
+        try {
+            Object direct = JSON_MAPPER.readValue(resp, Object.class);
+            if (mustContainKey != null) {
+                if (direct instanceof Map) {
+                    return extractRequiredKeys((Map<String, Object>) direct, mustContainKey);
+                }
+            } else {
+                return direct;
+            }
+        } catch (Exception e) {
+            Loggers.MEMORY.debug("Failed to directly decode JSON: {}", e.getMessage());
+        }
+
         List<String> possibleResp = new ArrayList<>();
         possibleResp.add(resp);
 

@@ -19,13 +19,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Tests for callback framework filters.
@@ -123,6 +126,21 @@ class TestFilters {
 
     @Test
     @Tag("level0")
+    @DisplayName("Test rate limit window expiration allows retry")
+    void testRateLimitFilterWindowExpiration() throws InterruptedException {
+        RateLimitFilter filter = new RateLimitFilter(1, 0.05);
+        CallbackInfo callback = createCallbackInfo("callback");
+
+        assertEquals(FilterAction.CONTINUE, filter.filter("test", callback, new Object[0], new HashMap<>()).getAction());
+        assertEquals(FilterAction.SKIP, filter.filter("test", callback, new Object[0], new HashMap<>()).getAction());
+        Thread.sleep(80);
+
+        FilterResult result = filter.filter("test", callback, new Object[0], new HashMap<>());
+        assertEquals(FilterAction.CONTINUE, result.getAction());
+    }
+
+    @Test
+    @Tag("level0")
     @DisplayName("Test RateLimitFilter can have custom name")
     void testRateLimitFilterCustomName() {
         RateLimitFilter filter = new RateLimitFilter(10, 1.0, "CustomRateLimit");
@@ -175,6 +193,21 @@ class TestFilters {
         // Add more failures - shouldn't trip breaker yet
         filter.recordFailure("test", callback);
         filter.recordFailure("test", callback);
+
+        FilterResult result = filter.filter("test", callback, new Object[0], new HashMap<>());
+        assertEquals(FilterAction.CONTINUE, result.getAction());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test circuit breaker timeout allows retry")
+    void testCircuitBreakerFilterTimeoutAllowsRetry() throws InterruptedException {
+        CircuitBreakerFilter filter = new CircuitBreakerFilter(1, 0.05);
+        CallbackInfo callback = createCallbackInfo("callback");
+
+        filter.recordFailure("test", callback);
+        assertEquals(FilterAction.SKIP, filter.filter("test", callback, new Object[0], new HashMap<>()).getAction());
+        Thread.sleep(80);
 
         FilterResult result = filter.filter("test", callback, new Object[0], new HashMap<>());
         assertEquals(FilterAction.CONTINUE, result.getAction());
@@ -244,6 +277,21 @@ class TestFilters {
 
     @Test
     @Tag("level0")
+    @DisplayName("Test validation filter can validate keyword arguments")
+    void testValidationFilterKwargsValidation() {
+        ValidationFilter filter = new ValidationFilter(kwargs -> "alice".equals(kwargs.get("user")));
+        CallbackInfo callback = createCallbackInfo("callback");
+
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("user", "alice");
+        assertEquals(FilterAction.CONTINUE, filter.filter("test", callback, new Object[0], kwargs).getAction());
+
+        kwargs.put("user", "bob");
+        assertEquals(FilterAction.SKIP, filter.filter("test", callback, new Object[0], kwargs).getAction());
+    }
+
+    @Test
+    @Tag("level0")
     @DisplayName("Test filter skips when validator raises exception")
     void testValidationFilterValidatorExceptionSkips() {
         ValidationFilter filter = new ValidationFilter(kwargs -> {
@@ -269,6 +317,38 @@ class TestFilters {
         kwargs.put("key", "value");
         FilterResult result = filter.filter("test", callback, new Object[]{"arg1"}, kwargs);
         assertEquals(FilterAction.CONTINUE, result.getAction());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test LoggingFilter logs execution info")
+    void testLoggingFilterLogsExecutionInfo() {
+        Logger logger = mock(Logger.class);
+        LoggingFilter filter = new LoggingFilter(logger, "Logging");
+        CallbackInfo callback = createCallbackInfo("callback");
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("key", "value");
+
+        filter.filter("test", callback, new Object[]{"arg1"}, kwargs);
+
+        verify(logger).info(eq("Event: {}, Callback: {}, Args: {}, Kwargs: {}"),
+                eq("test"), eq("callback"), any(), eq(kwargs));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test LoggingFilter accepts a custom logger")
+    void testLoggingFilterCustomLogger() {
+        Logger logger = mock(Logger.class);
+        LoggingFilter filter = new LoggingFilter(logger, "CustomLogging");
+        CallbackInfo callback = createCallbackInfo("callback");
+
+        FilterResult result = filter.filter("event", callback, new Object[0], new HashMap<>());
+
+        assertEquals("CustomLogging", filter.getName());
+        assertEquals(FilterAction.CONTINUE, result.getAction());
+        verify(logger).info(eq("Event: {}, Callback: {}, Args: {}, Kwargs: {}"),
+                eq("event"), eq("callback"), any(), any());
     }
 
     @Test

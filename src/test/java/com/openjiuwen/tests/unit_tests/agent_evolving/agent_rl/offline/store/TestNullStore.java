@@ -15,17 +15,16 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * System tests for NullRolloutStore.
+ * Unit tests for NullRolloutStore.
  * <p>
- * Mirrors Python's {@code test_null_store_e2e.py} in
- * {@code tests/system_tests/agent_evolving/agent_rl/offline/store/}.
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/store/test_null_store.py}.
  */
 @DisplayName("NullStore Tests")
 class TestNullStore {
 
     @Test
     @DisplayName("save rollout and summary have no side effects or errors")
-    void testNullStoreE2eSaveRolloutAndSummaryNoError() {
+    void testSaveRolloutSaveStepSummaryCloseNoError() {
         NullRolloutStore store = new NullRolloutStore();
         Rollout rollout = new Rollout();
         rollout.setTurnId(0);
@@ -41,23 +40,18 @@ class TestNullStore {
         msg.setGlobalReward(0.5);
         msg.setTurnCount(1);
 
-        store.saveRollout(0, "t1", msg, "train");
-        store.saveRollout(0, "t1", msg, "val");
+        store.saveRollout(0, "t1", msg);
         store.saveStepSummary(0, Map.of("loss", 0.1));
-    }
-
-    @Test
-    @DisplayName("query returns empty")
-    void testNullStoreE2eQueryReturnsEmpty() {
-        NullRolloutStore store = new NullRolloutStore();
+        store.close();
 
         assertThat(store.queryRollouts(Map.of(), 100)).isEmpty();
     }
 
     @Test
-    @DisplayName("close is no-op")
-    void testNullStoreE2eCloseNoError() {
+    @DisplayName("query returns empty")
+    void testQueryRolloutsReturnsEmptyList() {
         NullRolloutStore store = new NullRolloutStore();
-        store.close();
+
+        assertThat(store.queryRollouts(Map.of(), 100)).isEmpty();
     }
 }

@@ -4,15 +4,34 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.exception.FrameworkError;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.harness.tools.agent_control.SessionTools;
-import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionToolkit;
 import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionTaskRow;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionToolkit;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionTool;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionsCancelTool;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionsListTool;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.SessionsSpawnTool;
+import com.openjiuwen.harness.tools.agent_control.SessionTools.ToolOutput;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for session tools.
@@ -34,10 +53,8 @@ class TestSessionsTools {
 
         @Test
         void testUpsertAndGet() {
-            // Insert a running task
             toolkit.upsertRunning("t1", "sub1", "desc");
-            
-            // Get and verify
+
             SessionTaskRow row = toolkit.get("t1");
             assertNotNull(row);
             assertEquals("t1", row.getTaskId());
@@ -48,7 +65,6 @@ class TestSessionsTools {
 
         @Test
         void testMarkCompletedFailedCanceledClear() {
-            // Test completed
             toolkit.upsertRunning("t1", "sub1", "d");
             toolkit.markCompleted("t1", "ok");
             SessionTaskRow row1 = toolkit.get("t1");
@@ -56,7 +72,6 @@ class TestSessionsTools {
             assertEquals("completed", row1.getStatus());
             assertEquals("ok", row1.getResult());
 
-            // Test failed
             toolkit.upsertRunning("t2", "sub2", "d2");
             toolkit.markFailed("t2", "boom");
             SessionTaskRow row2 = toolkit.get("t2");
@@ -64,66 +79,15 @@ class TestSessionsTools {
             assertEquals("error", row2.getStatus());
             assertEquals("boom", row2.getError());
 
-            // Test canceled
             toolkit.upsertRunning("t3", "sub3", "d3");
             toolkit.markCanceled("t3");
             SessionTaskRow row3 = toolkit.get("t3");
             assertNotNull(row3);
             assertEquals("canceled", row3.getStatus());
 
-            // Test clear
             toolkit.clear();
-            assertTrue(toolkit.listAll().isEmpty());
-        }
-
-        @Test
-        void testGetMissingReturnsNull() {
-            // Get non-existent task should return null
-            SessionTaskRow row = toolkit.get("nonexistent");
-            assertNull(row);
-        }
-
-        @Test
-        void testUpsertOverwritesExisting() {
-            // Insert first
-            toolkit.upsertRunning("t1", "sub1", "desc1");
-            
-            // Upsert with same task_id but different values
-            toolkit.upsertRunning("t1", "sub2", "desc2");
-            
-            // Verify overwrite
-            SessionTaskRow row = toolkit.get("t1");
-            assertNotNull(row);
-            assertEquals("sub2", row.getSubSessionId());
-            assertEquals("desc2", row.getDescription());
-        }
-    }
-
-    @Nested
-    class TestSessionsSpawnTool {
-
-        @Test
-        void testSpawnRequiresTaskId() {
-            // Spawn should require task_id parameter
-            // (Implementation validation in invoke)
-            assertNotNull(toolkit);
-        }
-
-        @Test
-        void testSpawnRequiresDescription() {
-            // Spawn should require description parameter
-            // (Implementation validation in invoke)
-            assertNotNull(toolkit);
-        }
-
-        @Test
-        void testSpawnCreatesSubSession() {
-            // Upsert creates a sub-session entry
-            toolkit.upsertRunning("task1", "session1", "Test task");
-            
-            SessionTaskRow row = toolkit.get("task1");
-            assertNotNull(row);
-            assertNotNull(row.getSubSessionId());
+            assertEquals(List.of(), toolkit.listAll());
+            assertNull(toolkit.get("t1"));
         }
     }
 
@@ -131,25 +95,27 @@ class TestSessionsTools {
     class TestSessionsListTool {
 
         @Test
-        void testListReturnsEmptyInitially() {
-            // List should be empty initially
-            java.util.List<SessionTaskRow> list = toolkit.listAll();
-            assertTrue(list.isEmpty());
+        void testEmptyCn() {
+            SessionsListTool tool = new SessionsListTool(toolkit, "cn");
+
+            ToolOutput out = tool.invoke(Map.of());
+
+            assertTrue(out.isSuccess());
+            assertTrue(String.valueOf(out.getData()).contains("\u6ca1\u6709\u540e\u53f0"));
         }
 
         @Test
-        void testListReturnsRunningTasks() {
-            // Add running tasks
-            toolkit.upsertRunning("t1", "s1", "task1");
-            toolkit.upsertRunning("t2", "s2", "task2");
-            
-            // List should return tasks
-            java.util.List<SessionTaskRow> list = toolkit.listAll();
-            assertEquals(2, list.size());
-            
-            // Verify tasks are in list
-            assertTrue(list.stream().anyMatch(r -> r.getTaskId().equals("t1")));
-            assertTrue(list.stream().anyMatch(r -> r.getTaskId().equals("t2")));
+        void testOneRow() {
+            toolkit.upsertRunning("tid", "sid", "hello");
+            SessionsListTool tool = new SessionsListTool(toolkit, "en");
+
+            ToolOutput out = tool.invoke(Map.of());
+
+            assertTrue(out.isSuccess());
+            String data = String.valueOf(out.getData());
+            assertTrue(data.contains("tid"));
+            assertTrue(data.contains("hello"));
+            assertTrue(data.contains("running"));
         }
     }
 
@@ -157,38 +123,233 @@ class TestSessionsTools {
     class TestSessionsCancelTool {
 
         @Test
-        void testCancelRequiresTaskId() {
-            // Cancel should require task_id parameter
-            // (Implementation validation in invoke)
-            assertNotNull(toolkit);
+        void testInvalidInputs() {
+            SessionsCancelTool tool = new SessionsCancelTool(new FakeParent(null, null, null), toolkit, "en");
+
+            FrameworkError error = assertThrows(FrameworkError.class, () -> tool.invoke("not a dict"));
+
+            assertTrue(error.getMessage().contains("Invalid inputs"));
         }
 
         @Test
-        void testCancelMarksCanceled() {
-            // Add task
-            toolkit.upsertRunning("t1", "s1", "task1");
-            
-            // Cancel it
-            toolkit.markCanceled("t1");
-            
-            // Verify canceled
-            SessionTaskRow row = toolkit.get("t1");
-            assertNotNull(row);
-            assertEquals("canceled", row.getStatus());
+        void testMissingTaskId() {
+            SessionsCancelTool tool = new SessionsCancelTool(new FakeParent(null, null, null), toolkit, "en");
+
+            FrameworkError error = assertThrows(FrameworkError.class, () -> tool.invoke(Map.of()));
+
+            assertTrue(error.getMessage().contains("task_id"));
+        }
+
+        @Test
+        void testTaskNotFound() {
+            FakeScheduler scheduler = new FakeScheduler(true);
+            SessionsCancelTool tool = new SessionsCancelTool(
+                    new FakeParent(null, null, new FakeController(scheduler)),
+                    toolkit,
+                    "en"
+            );
+
+            FrameworkError error = assertThrows(FrameworkError.class, () -> tool.invoke(Map.of("task_id", "nope")));
+
+            assertTrue(error.getMessage().contains("not found"));
+        }
+
+        @Test
+        void testCancelSuccess() {
+            toolkit.upsertRunning("tid", "sid", "d");
+            FakeScheduler scheduler = new FakeScheduler(true);
+            SessionsCancelTool tool = new SessionsCancelTool(
+                    new FakeParent(null, null, new FakeController(scheduler)),
+                    toolkit,
+                    "cn"
+            );
+
+            ToolOutput out = tool.invoke(Map.of("task_id", "tid"));
+
+            assertTrue(out.isSuccess());
+            assertEquals("tid", scheduler.cancelledTaskId);
+            assertEquals(1, scheduler.cancelCalls);
+            assertEquals("canceled", toolkit.get("tid").getStatus());
+            Map<?, ?> data = assertInstanceOf(Map.class, out.getData());
+            assertEquals("tid", data.get("task_id"));
+            assertEquals("canceled", data.get("status"));
+        }
+
+        @Test
+        void testCancelSchedulerReturnsFalse() {
+            toolkit.upsertRunning("tid", "sid", "d");
+            FakeScheduler scheduler = new FakeScheduler(false);
+            SessionsCancelTool tool = new SessionsCancelTool(
+                    new FakeParent(null, null, new FakeController(scheduler)),
+                    toolkit,
+                    "en"
+            );
+
+            ToolOutput out = tool.invoke(Map.of("task_id", "tid"));
+
+            assertFalse(out.isSuccess());
+            assertEquals("tid", scheduler.cancelledTaskId);
+            assertEquals("running", toolkit.get("tid").getStatus());
+            Map<?, ?> data = assertInstanceOf(Map.class, out.getData());
+            assertEquals("running", data.get("status"));
         }
     }
 
     @Nested
-    class TestBuildSessionTools {
+    class TestSessionsSpawnTool {
 
         @Test
-        void testBuildReturnsTools() {
-            // SessionTools.SessionToolkit should be instantiable
-            SessionToolkit tk = new SessionToolkit();
-            assertNotNull(tk);
-            
-            // Verify SESSION_SPAWN_TASK_TYPE constant
-            assertEquals("session_spawn_task", SessionTools.SESSION_SPAWN_TASK_TYPE);
+        void testEnableTaskLoopRequired() {
+            SessionsSpawnTool tool = new SessionsSpawnTool(
+                    new FakeParent(null, null, null),
+                    toolkit,
+                    "en"
+            );
+
+            FrameworkError error = assertThrows(
+                    FrameworkError.class,
+                    () -> tool.invoke(Map.of(), new FakeSession("sess-1"))
+            );
+
+            assertTrue(error.getMessage().contains("enable_task_loop"));
+        }
+
+        @Test
+        void testSpawnSubmitsTask() {
+            FakeTaskManager taskManager = new FakeTaskManager();
+            SessionsSpawnTool tool = new SessionsSpawnTool(
+                    new FakeParent(new FakeDeepConfig(true), new FakeEventHandler(taskManager), null),
+                    toolkit,
+                    "cn"
+            );
+            FakeSession session = new FakeSession("sess-1");
+
+            ToolOutput out = tool.invoke(
+                    Map.of("subagent_type", "foo", "task_description", "do work"),
+                    session
+            );
+
+            assertTrue(out.isSuccess());
+            Map<?, ?> data = assertInstanceOf(Map.class, out.getData());
+            assertEquals("pending", data.get("status"));
+            assertTrue(String.valueOf(data.get("message")).contains("\u5df2\u63d0\u4ea4")
+                    || String.valueOf(data.get("message")).toLowerCase().contains("pending"));
+
+            assertEquals(1, taskManager.addCalls);
+            Task taskArg = taskManager.addedTask;
+            assertNotNull(taskArg);
+            assertEquals(SessionTools.SESSION_SPAWN_TASK_TYPE, taskArg.getTaskType());
+            assertEquals("sess-1", taskArg.getSessionId());
+            assertEquals(TaskStatus.SUBMITTED, taskArg.getStatus());
+            assertEquals("do work", taskArg.getDescription());
+            assertEquals("foo", taskArg.getMetadata().get("subagent_type"));
+            assertEquals("do work", taskArg.getMetadata().get("task_description"));
+            assertTrue(String.valueOf(taskArg.getMetadata().get("sub_session_id")).startsWith("sess-1_sub_"));
+
+            List<SessionTaskRow> rows = toolkit.listAll();
+            assertEquals(1, rows.size());
+            assertEquals("running", rows.get(0).getStatus());
+            assertEquals("do work", rows.get(0).getDescription());
+        }
+    }
+
+    @Test
+    void testBuildSessionToolsReturnsThree() {
+        List<Object> tools = SessionTools.createSessionTools(
+                new FakeParent(new FakeDeepConfig(true), new FakeEventHandler(new FakeTaskManager()), null),
+                toolkit,
+                "en"
+        );
+
+        assertEquals(3, tools.size());
+        Set<String> names = tools.stream()
+                .map(SessionTool.class::cast)
+                .map(SessionTool::getName)
+                .collect(Collectors.toSet());
+        assertEquals(Set.of("sessions_list", "sessions_spawn", "sessions_cancel"), names);
+    }
+
+    private static final class FakeParent {
+        private final Object deep_config;
+        private final Object event_handler;
+        private final Object loop_controller;
+
+        private FakeParent(Object deepConfig, Object eventHandler, Object loopController) {
+            this.deep_config = deepConfig;
+            this.event_handler = eventHandler;
+            this.loop_controller = loopController;
+        }
+    }
+
+    private static final class FakeDeepConfig {
+        private final boolean enable_task_loop;
+
+        private FakeDeepConfig(boolean enableTaskLoop) {
+            this.enable_task_loop = enableTaskLoop;
+        }
+    }
+
+    private static final class FakeEventHandler {
+        private final FakeTaskManager task_manager;
+
+        private FakeEventHandler(FakeTaskManager taskManager) {
+            this.task_manager = taskManager;
+        }
+    }
+
+    private static final class FakeTaskManager {
+        private int addCalls;
+        private Task addedTask;
+
+        void addTask(Task task) {
+            this.addCalls++;
+            this.addedTask = task;
+        }
+    }
+
+    private static final class FakeController {
+        private final FakeScheduler task_scheduler;
+
+        private FakeController(FakeScheduler scheduler) {
+            this.task_scheduler = scheduler;
+        }
+    }
+
+    private static final class FakeScheduler {
+        private final boolean cancelResult;
+        private int cancelCalls;
+        private String cancelledTaskId;
+
+        private FakeScheduler(boolean cancelResult) {
+            this.cancelResult = cancelResult;
+        }
+
+        boolean cancelTask(String taskId) {
+            this.cancelCalls++;
+            this.cancelledTaskId = taskId;
+            return cancelResult;
+        }
+    }
+
+    private static final class FakeSession implements Session {
+        private final String sessionId;
+
+        private FakeSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return null;
+        }
+
+        @Override
+        public void updateState(Map<String, Object> state) {
         }
     }
 }

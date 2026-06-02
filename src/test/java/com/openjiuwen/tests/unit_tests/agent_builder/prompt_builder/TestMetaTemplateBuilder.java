@@ -3,6 +3,8 @@
  */
 package com.openjiuwen.tests.unit_tests.agent_builder.prompt_builder;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
@@ -82,7 +84,9 @@ class TestMetaTemplateBuilder {
         builder.popMetaTemplate(META_TEMPLATE_NAME_PREFIX + "custom_general");
 
         Object invalidTemplate = new Object[] {"this is a invalid tuple meta template"};
-        assertThrows(Exception.class, () -> builder.registerMetaTemplate("custom_general", invalidTemplate));
+        BaseError error = assertThrows(BaseError.class,
+                () -> builder.registerMetaTemplate("custom_general", invalidTemplate));
+        assertEquals(StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR.getCode(), error.getCode());
     }
 
     @Test
@@ -107,11 +111,15 @@ class TestMetaTemplateBuilder {
         MetaTemplateBuilder builder = createBuilder();
         String prompt = "你是一个旅行助手";
 
-        assertThrows(Exception.class, () -> builder.build(prompt, null, "other").get());
+        BaseError missingTemplateType = assertThrows(BaseError.class,
+                () -> builder.build(prompt, null, "other").join());
+        assertEquals(StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR.getCode(), missingTemplateType.getCode());
 
         String template = "you are a custom meta template";
         builder.registerMetaTemplate("custom_general", template);
-        assertThrows(Exception.class, () -> builder.build(prompt, null, "other", "not_defined").get());
+        BaseError missingCustomTemplate = assertThrows(BaseError.class,
+                () -> builder.build(prompt, null, "other", "not_defined").join());
+        assertEquals(StatusCode.TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR.getCode(), missingCustomTemplate.getCode());
 
         String response = builder.build(prompt, null, "other", "custom_general").get();
         assertEquals(template, response);
@@ -194,13 +202,13 @@ class TestMetaTemplateBuilder {
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
                                                      String negativePrompt, int n, boolean promptExtend,
                                                      boolean watermark, int seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
                                                       String languageType, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
@@ -208,7 +216,7 @@ class TestMetaTemplateBuilder {
                                                      String model, String size, String resolution, int duration,
                                                      boolean promptExtend, boolean watermark, String negativePrompt,
                                                      Integer seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
     }
 }

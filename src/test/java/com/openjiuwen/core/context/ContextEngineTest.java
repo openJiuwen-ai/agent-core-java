@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python's {@code test_context_engine.py} in
  * {@code tests.unit_tests.core.context_engine.test_context_engine}.
  */
-class ContextEngineTest {
+public class ContextEngineTest {
 
     private ContextEngine engine;
     private Session testSession;

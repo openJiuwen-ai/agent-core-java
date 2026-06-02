@@ -26,7 +26,7 @@ public class Entity extends NamedGraphObject {
 
     public Entity() {
         super();
-        this.entityType = "";
+        this.entityType = "Entity";
         this.relations = new ArrayList<>();
         this.episodes = new ArrayList<>();
         this.attributes = new HashMap<>();
@@ -91,7 +91,7 @@ public class Entity extends NamedGraphObject {
 
     @Override
     public String getObjType() {
-        return entityType == null || entityType.isBlank() ? "entity" : entityType;
+        return entityType == null || entityType.isBlank() ? "Entity" : entityType;
     }
 
     @Override

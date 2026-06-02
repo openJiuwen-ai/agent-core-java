@@ -7,6 +7,7 @@ package com.openjiuwen.harness.cli.agent;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
@@ -266,13 +267,51 @@ public final class CliAgentFactory {
      * Mirrors Python's LocalBackend class.
      */
     public static class LocalBackend {
+        @FunctionalInterface
+        public interface AgentProvider {
+            AgentAndTracker create(Map<String, Object> config);
+        }
+
+        @FunctionalInterface
+        public interface StreamingRunner {
+            Iterator<Object> run(Object agent, Object inputs, Object session);
+        }
+
         private final Map<String, Object> cfg;
+        private final AgentProvider agentProvider;
+        private final Runnable runnerStart;
+        private final Runnable runnerStop;
+        private final StreamingRunner streamingRunner;
         private Object agent;
         private Object tracker;
         private String sessionId;
 
         public LocalBackend(Map<String, Object> config) {
+            this(
+                    config,
+                    CliAgentFactory::createFromConfig,
+                    Runner::start,
+                    Runner::stop,
+                    (agent, inputs, session) -> Runner.runAgentStreaming(
+                            agent,
+                            inputs,
+                            session,
+                            null,
+                            List.of(StreamMode.OUTPUT))
+            );
+        }
+
+        public LocalBackend(
+                Map<String, Object> config,
+                AgentProvider agentProvider,
+                Runnable runnerStart,
+                Runnable runnerStop,
+                StreamingRunner streamingRunner) {
             this.cfg = config;
+            this.agentProvider = agentProvider;
+            this.runnerStart = runnerStart;
+            this.runnerStop = runnerStop;
+            this.streamingRunner = streamingRunner;
             this.sessionId = "cli-" + UUID.randomUUID().toString().substring(0, 8);
         }
 
@@ -280,25 +319,31 @@ public final class CliAgentFactory {
          * Create the agent and start the Runner.
          */
         public void start() {
-            AgentAndTracker result = createFromConfig(cfg);
+            AgentAndTracker result = agentProvider.create(cfg);
             this.agent = result.getAgent();
             this.tracker = result.getTracker();
-            Runner.start();
+            runnerStart.run();
         }
 
         /**
          * Stop the Runner.
          */
         public void stop() {
-            Runner.stop();
+            runnerStop.run();
         }
 
         /**
          * Execute query and stream OutputSchema chunks.
          */
         public Iterator<Object> runStreaming(Object query, String sessionId) {
-            // Placeholder - actual implementation would stream agent output
-            return Collections.emptyIterator();
+            String sid = sessionId != null ? sessionId : this.sessionId;
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("query", query);
+            return streamingRunner.run(agent, inputs, sid);
+        }
+
+        public Iterator<Object> runStreaming(Object query) {
+            return runStreaming(query, null);
         }
 
         /**

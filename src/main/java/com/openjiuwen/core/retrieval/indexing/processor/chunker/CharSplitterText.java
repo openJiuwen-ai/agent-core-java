@@ -38,6 +38,14 @@ public class CharSplitterText extends TextSplitter {
         this.chunkOverlap = overlap;
     }
 
+    public int getChunkSize() {
+        return chunkSize;
+    }
+
+    public int getChunkOverlap() {
+        return chunkOverlap;
+    }
+
     @Override
     public List<TextChunk> split(Document doc) {
         String text = doc.getText() != null ? doc.getText() : "";

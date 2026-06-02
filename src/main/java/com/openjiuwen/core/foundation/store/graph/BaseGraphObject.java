@@ -41,7 +41,7 @@ public class BaseGraphObject {
     }
 
     private static String generateUuid() {
-        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     // --- Getters and Setters ---

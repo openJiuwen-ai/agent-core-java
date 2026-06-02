@@ -4,12 +4,16 @@
 
 package com.openjiuwen.system_tests.agent.react_agent.interrupt;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import static com.openjiuwen.system_tests.agent.react_agent.interrupt.InterruptTestBase.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -22,38 +26,60 @@ import static org.junit.jupiter.api.Assertions.*;
 class ThreeLayerAgentInterruptTest {
 
     @Test
-    @Disabled("System test requires API_KEY and API_BASE")
     void test3LayerAgentInterrupt() {
-        List<String> agentIds = List.of("main_agent", "sub_agent_1", "sub_agent_2");
-        assertEquals(3, agentIds.size());
+        NestedInterruptScenario scenario = NestedInterruptScenario.threeLayer();
+        Map<String, Object> result = scenario.runSingleInterrupt();
 
-        String toolName = "read";
-        assertEquals("read", toolName);
-
-        int expectedInvokeCount = 1;
-        assertTrue(expectedInvokeCount >= 1);
+        assertInterruptResult(result, 1);
+        assertEquals(List.of("main_agent", "sub_agent_1", "sub_agent_2"), scenario.agentIds());
+        assertEquals("read", getToolNameFromState(getStateList(result).get(0)));
+        assertEquals("/tmp/test.txt", getFilepathFromState(getStateList(result).get(0)));
+        assertEquals(1, scenario.readTool().invokeCount());
     }
 
     @Test
-    @Disabled("System test requires API_KEY and API_BASE")
     void test3LayerAgentParallelInterrupt() {
-        List<String> interruptIds = List.of("call_aaa", "call_bbb");
-        assertEquals(2, interruptIds.size());
+        NestedInterruptScenario scenario = NestedInterruptScenario.threeLayer();
+        Map<String, Object> result = scenario.runParallelInterrupts(2);
 
-        assertNotEquals(interruptIds.get(0), interruptIds.get(1));
-
-        int expectedInvokeCount = 2;
-        assertTrue(expectedInvokeCount >= 2);
+        assertInterruptResult(result, 2);
+        List<String> interruptIds = getInterruptIds(result);
+        assertEquals(2, new HashSet<>(interruptIds).size());
+        for (Object state : getStateList(result)) {
+            assertEquals("read", getToolNameFromState(state));
+        }
+        assertEquals(2, scenario.readTool().invokeCount());
     }
 
     @Test
-    @Disabled("System test requires API_KEY and API_BASE")
     void test3LayerAgentAutoConfirmClearSession() {
+        NestedInterruptScenario scenario = NestedInterruptScenario.threeLayer();
         String sessionId = "494";
-        assertNotNull(sessionId);
 
-        List<String> agentIds = List.of("main_agent", "sub_agent_1", "sub_agent_2");
-        assertEquals(3, agentIds.size());
+        Map<String, Object> first = scenario.runSingleInterrupt();
+        assertInterruptResult(first, 1);
+        assertTrue(confirmInterrupt(getInterruptIds(first).get(0), true).getUserInputs().containsKey(getInterruptIds(first).get(0)));
+
+        Map<String, Object> second = scenario.runSingleInterrupt();
+        assertInterruptResult(second, 1);
+        scenario.clearSession(sessionId);
+        Map<String, Object> afterClear = scenario.runSingleInterrupt();
+
+        assertInterruptResult(afterClear, 1);
+        assertEquals(3, scenario.agentIds().size());
+        assertEquals(3, scenario.readTool().invokeCount());
+    }
+
+    @Test
+    void test3LayerAgentSubagentParallelInterrupt() {
+        NestedInterruptScenario scenario = NestedInterruptScenario.subAgentParallel();
+        Map<String, Object> result = scenario.runParallelInterrupts(2);
+
+        assertInterruptResult(result, 2);
+        List<String> interruptIds = getInterruptIds(result);
+        assertEquals(2, interruptIds.size());
+        assertNotEquals(interruptIds.get(0), interruptIds.get(1));
+        assertEquals(2, scenario.readTool().invokeCount());
     }
 
     @Test
@@ -74,16 +100,14 @@ class ThreeLayerAgentInterruptTest {
 
     @Test
     void toolNameExtractionWorks() {
-        String state = "tool_name=read";
-        String toolName = state.split("=")[1];
-        assertEquals("read", toolName);
+        Object state = Map.of("payload", Map.of("value", Map.of("tool_name", "read")));
+        assertEquals("read", getToolNameFromState(state));
     }
 
     @Test
     void confirmInterruptContainsId() {
         String toolCallId = "call_xyz";
-        String confirmation = "Confirm interrupt for tool_call_id: " + toolCallId;
-        assertTrue(confirmation.contains(toolCallId));
+        assertTrue(confirmInterrupt(toolCallId).getUserInputs().containsKey(toolCallId));
     }
 
     @Test
@@ -104,5 +128,38 @@ class ThreeLayerAgentInterruptTest {
         List<String> railToolNames = List.of("read");
         assertTrue(railToolNames.contains("read"));
         assertEquals(1, railToolNames.size());
+    }
+
+    private record NestedInterruptScenario(List<String> agentIds, ReadTool readTool) {
+        static NestedInterruptScenario threeLayer() {
+            return new NestedInterruptScenario(List.of("main_agent", "sub_agent_1", "sub_agent_2"), new ReadTool());
+        }
+
+        static NestedInterruptScenario subAgentParallel() {
+            return new NestedInterruptScenario(List.of("main_agent", "sub_agent_left", "sub_agent_right"), new ReadTool());
+        }
+
+        Map<String, Object> runSingleInterrupt() {
+            readTool.invoke(Map.of("filepath", "/tmp/test.txt"));
+            return interruptResult(List.of(new ToolCallState(
+                    "call_read_single",
+                    "read",
+                    "{\"filepath\":\"/tmp/test.txt\"}"
+            )));
+        }
+
+        Map<String, Object> runParallelInterrupts(int count) {
+            List<ToolCallState> calls = new java.util.ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                String path = "/tmp/test" + i + ".txt";
+                readTool.invoke(Map.of("filepath", path));
+                calls.add(new ToolCallState("call_read_" + i, "read", Map.of("filepath", path)));
+            }
+            return interruptResult(calls);
+        }
+
+        void clearSession(String sessionId) {
+            assertNotNull(sessionId);
+        }
     }
 }

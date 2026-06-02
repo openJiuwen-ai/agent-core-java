@@ -80,8 +80,8 @@ public class McpRail extends DeepAgentRail {
         }
 
         // Create MCP tools (mirrors Python: ListMcpResourcesTool(lang, agent_id))
-        ListMcpResourcesTool listTool = new ListMcpResourcesTool();
-        ReadMcpResourceTool readTool = new ReadMcpResourceTool();
+        ListMcpResourcesTool listTool = new ListMcpResourcesTool(lang, agentId);
+        ReadMcpResourceTool readTool = new ReadMcpResourceTool(lang, agentId);
 
         this.mcpTools = new ArrayList<>();
         this.mcpTools.add(listTool);

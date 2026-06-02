@@ -4,29 +4,30 @@
 
 package com.openjiuwen.unit_tests.core.tool_impls;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.tools.ReadFileTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import com.openjiuwen.harness.tools.WriteFileTool;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import com.openjiuwen.harness.tools.ReadFileTool;
-import com.openjiuwen.harness.tools.WriteFileTool;
-import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for write diff tool implementation.
- * <p>
- * Mirrors Python's tests.unit_tests.harness.tools.test_filesystem_tools write-related tests.
- * Tests diff-based file writing and update operations.
+ * Tests for updating existing files through {@link WriteFileTool}.
+ *
+ * <p>Mirrors the Python write/update workflow coverage in
+ * {@code tests.unit_tests.harness.tools.test_filesystem_tools}.
  */
 class TestWriteDiff {
 
@@ -48,36 +49,41 @@ class TestWriteDiff {
     @Test
     @Tag("level0")
     void testWriteDiffToolExists() {
-        // Java uses WriteFileTool for write operations
         assertNotNull(WriteFileTool.class);
     }
 
     @Test
     @Tag("level1")
     void testWriteDiffConstruction() {
-        WriteFileTool tool = new WriteFileTool(sysOp);
-        assertNotNull(tool);
+        assertNotNull(new WriteFileTool(sysOp));
     }
 
     @Test
     @Tag("level1")
     void testWriteFileUpdate() throws IOException {
-        // Create initial file
         Path filePath = tempDir.resolve("update_test.txt");
         Files.writeString(filePath, "old content");
 
-        // Update file
+        ReadFileTool readTool = new ReadFileTool(sysOp);
+        ToolOutput readResult = (ToolOutput) readTool.invoke(
+                Map.of("path", filePath.toString()),
+                Map.of()
+        );
+        assertTrue(readResult.isSuccess());
+
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput result = (ToolOutput) writeTool.invoke(
-            Map.of("path", filePath.toString(), "content", "new content"),
-            Map.of()
+                Map.of("path", filePath.toString(), "content", "new content"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
-        
-        // Verify content changed
-        String updatedContent = Files.readString(filePath);
-        assertTrue(updatedContent.contains("new content"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals("update", data.get("type"));
+        assertEquals(Boolean.FALSE, data.get("created"));
+        assertEquals("old content", data.get("original_file"));
+        assertEquals("new content", Files.readString(filePath));
     }
 
     @Test
@@ -88,24 +94,50 @@ class TestWriteDiff {
 
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput result = (ToolOutput) writeTool.invoke(
-            Map.of("path", filePath.toString(), "content", content),
-            Map.of()
+                Map.of("path", filePath.toString(), "content", content),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
-        assertTrue(Files.readString(filePath).contains("中文内容"));
+        assertTrue(Files.readString(filePath).contains("原始中文内容"));
     }
 
     @Test
     @Tag("level1")
-    void testWriteDiffOverwriteNonexistentFile() throws IOException {
-        // Writing to a non-existent file should create it
-        Path filePath = tempDir.resolve("new_file.txt");
-        
+    void testWriteDiffRejectsExternallyModifiedFile() throws IOException {
+        Path filePath = tempDir.resolve("stale.txt");
+        Files.writeString(filePath, "before");
+
+        ReadFileTool readTool = new ReadFileTool(sysOp);
+        ToolOutput readResult = (ToolOutput) readTool.invoke(
+                Map.of("path", filePath.toString()),
+                Map.of()
+        );
+        assertTrue(readResult.isSuccess());
+
+        Files.writeString(filePath, "changed externally");
+
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput result = (ToolOutput) writeTool.invoke(
-            Map.of("path", filePath.toString(), "content", "new file content"),
-            Map.of()
+                Map.of("path", filePath.toString(), "content", "replacement"),
+                Map.of()
+        );
+
+        assertFalse(result.isSuccess());
+        assertNotNull(result.getError());
+        assertTrue(result.getError().contains("modified since read"));
+        assertEquals("changed externally", Files.readString(filePath));
+    }
+
+    @Test
+    @Tag("level1")
+    void testWriteDiffOverwriteNonexistentFile() {
+        Path filePath = tempDir.resolve("new_file.txt");
+
+        WriteFileTool writeTool = new WriteFileTool(sysOp);
+        ToolOutput result = (ToolOutput) writeTool.invoke(
+                Map.of("path", filePath.toString(), "content", "new file content"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());

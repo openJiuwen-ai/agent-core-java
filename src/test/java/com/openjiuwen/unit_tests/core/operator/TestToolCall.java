@@ -4,44 +4,152 @@
 
 package com.openjiuwen.unit_tests.core.operator;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.operator.TunableSpec;
+import com.openjiuwen.core.operator.tool_call.ToolCallOperator;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
-import java.util.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ToolCall operator.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/operator/test_tool_call.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/operator/test_tool_call.py
+ * Unit tests for ToolCallOperator.
+ *
+ * <p>Mirrors Python's tests/unit_tests/core/operator/test_tool_call.py.</p>
  */
-@Disabled("Requires ToolCall implementation")
 class TestToolCall {
 
-    @Test
-    @DisplayName("Test ToolCall creation")
-    void testToolCallCreation() {
-        assertTrue(true, "ToolCall creation test placeholder");
-    }
+    @Nested
+    @DisplayName("ToolCall tests")
+    class ToolCallTests {
 
-    @Test
-    @DisplayName("Test ToolCall execute")
-    void testToolCallExecute() {
-        assertTrue(true, "ToolCall execute test placeholder");
-    }
+        @Test
+        @DisplayName("test operator id")
+        void testOperatorId() {
+            ToolCallOperator op = new ToolCallOperator("test_tool");
+            assertEquals("test_tool", op.getOperatorId());
+        }
 
-    @Test
-    @DisplayName("Test ToolCall with tool config")
-    void testToolCallWithToolConfig() {
-        assertTrue(true, "ToolCall with tool config test placeholder");
-    }
+        @Test
+        @DisplayName("test get tunables without descriptions")
+        void testGetTunablesWithoutDescriptions() {
+            ToolCallOperator op = new ToolCallOperator("test_tool");
+            Map<String, TunableSpec> tunables = op.getTunables();
 
-    @Test
-    @DisplayName("Test ToolCall error handling")
-    void testToolCallErrorHandling() {
-        assertTrue(true, "ToolCall error handling test placeholder");
+            assertTrue(tunables.isEmpty());
+        }
+
+        @Test
+        @DisplayName("test get tunables with descriptions")
+        void testGetTunablesWithDescriptions() {
+            ToolCallOperator op = new ToolCallOperator(
+                    "test_tool",
+                    Map.of("tool1", "Description 1", "tool2", "Description 2"));
+            Map<String, TunableSpec> tunables = op.getTunables();
+
+            assertTrue(tunables.containsKey("tool_description"));
+            assertEquals("text", tunables.get("tool_description").kind());
+        }
+
+        @Test
+        @DisplayName("test set parameter tool description")
+        void testSetParameterToolDescription() {
+            AtomicInteger calls = new AtomicInteger();
+            AtomicReference<String> targetRef = new AtomicReference<>();
+            AtomicReference<Object> valueRef = new AtomicReference<>();
+            ToolCallOperator op = new ToolCallOperator("test_tool", null, (target, value) -> {
+                calls.incrementAndGet();
+                targetRef.set(target);
+                valueRef.set(value);
+            });
+
+            Map<String, String> descriptions = new LinkedHashMap<>();
+            descriptions.put("tool1", "Updated description 1");
+            descriptions.put("tool2", "Updated description 2");
+            op.setParameter("tool_description", descriptions);
+
+            assertEquals(1, calls.get());
+            assertEquals("tool_description", targetRef.get());
+            assertEquals(descriptions, valueRef.get());
+        }
+
+        @Test
+        @DisplayName("test set parameter unknown target")
+        void testSetParameterUnknownTarget() {
+            AtomicInteger calls = new AtomicInteger();
+            ToolCallOperator op = new ToolCallOperator("test_tool", null, (target, value) -> calls.incrementAndGet());
+
+            op.setParameter("unknown", "value");
+            assertEquals(0, calls.get());
+        }
+
+        @Test
+        @DisplayName("test set parameter invalid value")
+        void testSetParameterInvalidValue() {
+            AtomicInteger calls = new AtomicInteger();
+            ToolCallOperator op = new ToolCallOperator("test_tool", null, (target, value) -> calls.incrementAndGet());
+
+            op.setParameter("tool_description", "not a dict");
+            assertEquals(0, calls.get());
+        }
+
+        @Test
+        @DisplayName("test get state")
+        void testGetState() {
+            ToolCallOperator op = new ToolCallOperator("test_tool", Map.of("tool1", "Description 1"));
+
+            Map<String, Object> state = op.getState();
+
+            assertTrue(state.containsKey("tool_description"));
+            assertEquals(Map.of("tool1", "Description 1"), state.get("tool_description"));
+        }
+
+        @Test
+        @DisplayName("test load state")
+        void testLoadState() {
+            ToolCallOperator op = new ToolCallOperator("test_tool");
+
+            op.loadState(Map.of("tool_description", Map.of("tool1", "loaded desc")));
+
+            assertEquals(Map.of("tool1", "loaded desc"), op.getState().get("tool_description"));
+        }
+
+        @Test
+        @DisplayName("test set parameter triggers callback")
+        void testSetParameterTriggersCallback() {
+            AtomicInteger calls = new AtomicInteger();
+            AtomicReference<Object> valueRef = new AtomicReference<>();
+            ToolCallOperator op = new ToolCallOperator("test_tool", null, (target, value) -> {
+                calls.incrementAndGet();
+                valueRef.set(value);
+            });
+
+            op.setParameter("tool_description", Map.of("tool1", "new desc"));
+
+            assertEquals(1, calls.get());
+            assertEquals(Map.of("tool1", "new desc"), valueRef.get());
+        }
+
+        @Test
+        @DisplayName("test load state triggers callback")
+        void testLoadStateTriggersCallback() {
+            AtomicInteger calls = new AtomicInteger();
+            AtomicReference<Object> valueRef = new AtomicReference<>();
+            ToolCallOperator op = new ToolCallOperator("test_tool", null, (target, value) -> {
+                calls.incrementAndGet();
+                valueRef.set(value);
+            });
+
+            op.loadState(Map.of("tool_description", Map.of("tool1", "loaded desc")));
+
+            assertEquals(1, calls.get());
+            assertEquals(Map.of("tool1", "loaded desc"), valueRef.get());
+        }
     }
 }

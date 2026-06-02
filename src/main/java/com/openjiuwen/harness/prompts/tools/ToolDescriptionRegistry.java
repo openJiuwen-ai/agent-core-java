@@ -7,7 +7,12 @@ package com.openjiuwen.harness.prompts.tools;
 import com.openjiuwen.core.single_agent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 
 /**
  * Central tool description registry and card builder.
@@ -24,13 +29,21 @@ public final class ToolDescriptionRegistry {
     private ToolDescriptionRegistry() {
     }
 
+    private static void ensureRegistered() {
+        if (REGISTRY.isEmpty()) {
+            BuiltinToolProviders.registerAll();
+        }
+    }
+
     /** Register a tool provider. */
     public static void register(ToolMetadataProvider provider) {
+        provider.validate();
         REGISTRY.put(provider.getName(), provider);
     }
 
     /** Look up a tool description. Throws if not found. */
     public static String getToolDescription(String name, String language) {
+        ensureRegistered();
         ToolMetadataProvider provider = REGISTRY.get(name);
         if (provider == null) {
             throw new KeyError("Tool '" + name + "' not registered. Available: "
@@ -41,6 +54,7 @@ public final class ToolDescriptionRegistry {
 
     /** Look up tool input params schema. Throws if not found. */
     public static Map<String, Object> getToolInputParams(String name, String language) {
+        ensureRegistered();
         ToolMetadataProvider provider = REGISTRY.get(name);
         if (provider == null) {
             throw new KeyError("Tool '" + name + "' not registered. Available: "
@@ -52,6 +66,7 @@ public final class ToolDescriptionRegistry {
     /** Build a ToolCard-like map for the given tool. */
     public static Map<String, Object> buildToolCard(String name, String toolIdPrefix,
                                                      String language, String agentId) {
+        ensureRegistered();
         String description = getToolDescription(name, language);
         String finalToolId = agentId != null
                 ? toolIdPrefix + "_" + agentId
@@ -74,25 +89,37 @@ public final class ToolDescriptionRegistry {
         if (toolDescriptions == null || toolDescriptions.isEmpty()) {
             return null;
         }
-        Map<String, String> header = new LinkedHashMap<>();
-        header.put("cn", "## 可用工具");
-        header.put("en", "## Available Tools");
+        String lang = "en".equalsIgnoreCase(language) ? "en" : "cn";
 
         StringBuilder sb = new StringBuilder();
-        sb.append(header.getOrDefault(language, header.get("cn")));
+        sb.append("en".equals(lang) ? "## Available Tools" : "## 可用工具");
         sb.append("\n");
         for (Map.Entry<String, String> entry : toolDescriptions.entrySet()) {
             sb.append("- **").append(entry.getKey()).append("**: ")
-              .append(entry.getValue()).append("\n");
+                    .append(entry.getValue()).append("\n");
         }
 
-        Map<String, String> content = Collections.singletonMap(language, sb.toString());
+        Map<String, String> content = Collections.singletonMap(lang, sb.toString());
         return new PromptSection(SectionName.TOOLS, content, 40);
     }
 
     /** Get all registered provider names. */
     public static Set<String> getRegisteredNames() {
+        ensureRegistered();
         return Collections.unmodifiableSet(REGISTRY.keySet());
+    }
+
+    /** Python-style runtime registration alias. */
+    public static void registerToolProvider(ToolMetadataProvider provider) {
+        register(provider);
+    }
+
+    /** Validate all registered providers. */
+    public static void validateAllToolProviders() {
+        ensureRegistered();
+        for (ToolMetadataProvider provider : REGISTRY.values()) {
+            provider.validate();
+        }
     }
 
     /** Simple KeyError for fail-fast behavior. */

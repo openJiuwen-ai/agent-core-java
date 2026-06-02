@@ -95,7 +95,7 @@ public class GraphRetriever extends AbstractRetriever {
                     (isChunk ? "chunk" : "triple") + "_collection is required for dynamic retriever creation");
         }
         VectorStore scoped = vectorStore.withCollection(collection);
-        return switch (mode) {
+        Retriever retriever = switch (mode) {
             case "vector" -> {
                 if (embedModel == null) {
                     throw RetrievalExceptions.error(
@@ -110,6 +110,10 @@ public class GraphRetriever extends AbstractRetriever {
                     StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
                     "Unsupported mode: " + mode);
         };
+        if (indexType != null && retriever instanceof AbstractStoreBackedRetriever storeBacked) {
+            storeBacked.setIndexType(indexType);
+        }
+        return retriever;
     }
 
     @Override
@@ -152,7 +156,7 @@ public class GraphRetriever extends AbstractRetriever {
         int graphHops = options != null && options.get("graph_hops") instanceof Number n ? n.intValue() : 2;
         List<TripleBeam> beams;
         try {
-            beams = new TripleBeamSearch(getRetrieverForMode(mode, false), 10, 100, graphHops)
+            beams = new TripleBeamSearch(getRetrieverForMode(mode, false), 10, 100, graphHops, mode)
                     .beamSearch(query, effectiveTriples);
         } catch (Exception e) {
             return trim(chunks, topK);

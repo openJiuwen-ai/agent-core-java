@@ -3,13 +3,30 @@
  */
 package com.openjiuwen.harness;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.skills.Skill;
+import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.tools.ListSkillTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for SkillUseRail.
@@ -23,30 +40,21 @@ class SkillRailTest {
     @TempDir
     Path tmpPath;
 
-    /**
-     * Helper to create a minimal skill directory with SKILL.md.
-     */
     private Path writeSkill(Path root, String name, String description) throws Exception {
         Path skillDir = root.resolve(name);
-        skillDir.toFile().mkdirs();
-        Path skillMd = skillDir.resolve("SKILL.md");
-        String content = "---\n" +
-                "description: " + description + "\n" +
-                "---\n\n" +
-                "# " + name + "\n";
-        java.nio.file.Files.writeString(skillMd, content);
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: " + description + "\n"
+                        + "---\n\n"
+                        + "# " + name + "\n");
         return skillDir;
     }
 
-    /**
-     * Sort skill names for comparison.
-     */
-    private List<String> sortedSkillNames(List<?> skills) {
-        // Placeholder - actual implementation would extract names from SkillMeta objects
+    private static List<String> sortedSkillNames(List<Skill> skills) {
         List<String> names = new ArrayList<>();
-        for (Object skill : skills) {
-            // Assuming skill has a getName() method
-            names.add(skill.toString());
+        for (Skill skill : skills) {
+            names.add(skill.getName());
         }
         Collections.sort(names);
         return names;
@@ -56,193 +64,215 @@ class SkillRailTest {
     @DisplayName("SkillUseRail should auto-load skills in before_invoke without explicit prepare()")
     void testSkillRailAllModeLoadsSkillsOnBeforeInvoke() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
 
-        // Placeholder: SkillUseRail instantiation
-        // SkillUseRail skillRail = new SkillUseRail();
-        // skillRail.setSkillsDir(skillsRoot.toString());
-        // skillRail.setSkillMode("all");
-        // skillRail.setIncludeTools(true);
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_ALL, true, true, null, null);
 
-        // Placeholder: AgentCallbackContext creation
-        // AgentCallbackContext ctx = new AgentCallbackContext();
-        // skillRail.beforeInvoke(ctx).join();
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        // Placeholder assertion - actual implementation would verify skills loaded
-        // assertEquals(List.of("invoice-parser", "xlsx-writer"), sortedSkillNames(skillRail.getSkills()));
-        
-        // Temporary placeholder assertion
-        assertTrue(skillsRoot.toFile().exists(), "Skills root directory should exist");
+        assertEquals(List.of("invoice-parser", "xlsx-writer"), sortedSkillNames(skillRail.getLoadedSkills()));
+        assertEquals(List.of("invoice-parser", "xlsx-writer"),
+                sortedSkillNames(skillRail.getSkillsMeta().stream().map(Skill.class::cast).toList()));
     }
 
     @Test
     @DisplayName("All mode should add skills section to builder before model call")
     void testSkillRailAllModeInjectsSkillPrompt() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        SystemPromptBuilder builder = new SystemPromptBuilder();
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_ALL, true, true, null, null);
 
-        // Placeholder: SystemPromptBuilder and SkillUseRail setup
-        // String content = builder.build();
-        // assertTrue(content.contains("invoice-parser"));
-        // assertTrue(content.contains("xlsx-writer"));
+        skillRail.init(new PromptAgent(builder));
+        skillRail.beforeModelCall(AgentCallbackContext.builder().agent(new PromptAgent(builder)).build());
 
-        assertTrue(skillsRoot.toFile().exists());
+        String content = builder.build();
+        assertTrue(content.contains("invoice-parser"));
+        assertTrue(content.contains("xlsx-writer"));
+        assertTrue(content.contains("Parse invoice pdf files"));
+        assertTrue(content.contains("Write xlsx reports"));
+        assertFalse(content.contains("list_skill 查看可用技能"));
     }
 
     @Test
     @DisplayName("SkillUseRail should respect enabled_skills and disabled_skills")
     void testSkillRailFiltersEnabledAndDisabledSkills() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
         writeSkill(skillsRoot, "legacy-skill", "Old skill");
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_ALL, true, true,
+                Set.of("invoice-parser", "xlsx-writer", "legacy-skill"), Set.of("legacy-skill"));
 
-        // Placeholder: Test enabled/disabled skills filtering
-        // SkillUseRail skillRail = new SkillUseRail();
-        // skillRail.setEnabledSkills("invoice-parser,xlsx-writer,legacy-skill");
-        // skillRail.setDisabledSkills("legacy-skill");
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(skillsRoot.resolve("legacy-skill").toFile().exists());
+        assertEquals(List.of("invoice-parser", "xlsx-writer"), sortedSkillNames(skillRail.getLoadedSkills()));
     }
 
     @Test
     @DisplayName("auto_list mode should register list_skill tool through agent.register_rail()")
     void testSkillRailRegisterRailAutoListRegistersListSkillTool() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_AUTO_LIST, true, true, null, null);
 
-        // Placeholder: Test auto_list mode tool registration
-        // Verify list_skill tool is registered
+        skillRail.init(new PromptAgent(new SystemPromptBuilder()));
 
-        assertTrue(skillsRoot.toFile().exists());
+        assertTrue(skillRail.getOwnedToolNames().contains("list_skill"));
+        assertTrue(skillRail.getOwnedToolNames().contains("read_file"));
+        assertTrue(skillRail.getOwnedToolNames().contains("code"));
+        assertTrue(skillRail.getOwnedToolNames().contains("bash"));
     }
 
     @Test
     @DisplayName("auto_list mode should add guide prompt to builder without pre-expanding skills")
     void testAutoListPromptIsInjectedWithoutPreselectingSkills() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
+        SystemPromptBuilder builder = new SystemPromptBuilder();
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_AUTO_LIST, true, true, null, null);
 
-        // Placeholder: Test auto_list prompt injection
-        // Verify prompt contains list_skill guide but not pre-expanded skills
+        skillRail.init(new PromptAgent(builder));
+        skillRail.beforeModelCall(AgentCallbackContext.builder().agent(new PromptAgent(builder)).build());
 
-        assertTrue(skillsRoot.toFile().exists());
+        String content = builder.build();
+        assertTrue(content.contains("list_skill"));
+        assertTrue(content.contains("read_file"));
+        assertTrue(content.contains("code"));
+        assertTrue(content.contains("bash"));
+        assertFalse(content.contains("invoice-parser: Parse invoice pdf files"));
     }
 
     @Test
     @DisplayName("ListSkillTool should read latest skills via get_skills instead of fixed snapshot")
     void testListSkillToolReadsLatestSkillsFromSkillRail() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_AUTO_LIST, true, true, null, null);
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
+        ListSkillTool tool = new ListSkillTool(skillRail::getLoadedSkills,
+                new DummyModel("{\"skills\": [\"xlsx-writer\"]}"));
 
-        // Placeholder: Test ListSkillTool dynamic skill retrieval
+        ToolOutput result = (ToolOutput) tool.invoke(Map.of("query", "generate xlsx report"), Map.of());
 
-        assertTrue(skillsRoot.toFile().exists());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertTrue(result.isSuccess());
+        assertEquals("filtered", data.get("mode"));
+        assertEquals(List.of("xlsx-writer"), data.get("selected_skill_names"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) data.get("skills");
+        assertEquals("xlsx-writer", skills.get(0).get("name"));
     }
 
     @Test
     @DisplayName("ListSkillTool should return all skills when query is empty")
     void testListSkillToolReturnsAllSkillsWhenQueryEmpty() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        SkillUseRail skillRail = new SkillUseRail(List.of(skillsRoot.toString()),
+                SkillUseRail.SKILL_MODE_AUTO_LIST, true, true, null, null);
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
+        ListSkillTool tool = new ListSkillTool(skillRail::getLoadedSkills);
 
-        // Placeholder: Test empty query returns all skills
+        ToolOutput result = (ToolOutput) tool.invoke(Map.of(), Map.of());
 
-        assertTrue(skillsRoot.toFile().exists());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> skills = (List<Map<String, Object>>) data.get("skills");
+        assertTrue(result.isSuccess());
+        assertEquals("all", data.get("mode"));
+        assertEquals(List.of("invoice-parser", "xlsx-writer"),
+                skills.stream().map(item -> String.valueOf(item.get("name"))).sorted().toList());
     }
 
     @Test
     @DisplayName("SkillUseRail should reuse cached skills across invokes when no skill is changed")
     void testSkillRailReusesCachedSkillsAcrossInvokes() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        TrackingSkillUseRail skillRail = new TrackingSkillUseRail(List.of(skillsRoot.toString()));
 
-        // Placeholder: Test skill caching behavior
-        // First invoke loads both skills, second invoke should reuse cache
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
+        assertEquals(List.of("invoice-parser", "xlsx-writer"), skillRail.sortedLoadCalls());
+        skillRail.loadCalls.clear();
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(skillsRoot.toFile().exists());
+        assertTrue(skillRail.loadCalls.isEmpty());
     }
 
     @Test
     @DisplayName("SkillUseRail should load only newly added skills on later invokes")
     void testSkillRailOnlyLoadsNewSkillOnIncrementalRefresh() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
+        TrackingSkillUseRail skillRail = new TrackingSkillUseRail(List.of(skillsRoot.toString()));
 
-        // Placeholder: First invoke loads invoice-parser
-        // Add new skill xlsx-writer
-        // Second invoke should only load xlsx-writer
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
+        assertEquals(List.of("invoice-parser"), skillRail.loadCalls);
+        skillRail.loadCalls.clear();
+        writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(skillsRoot.resolve("invoice-parser").toFile().exists());
+        assertEquals(List.of("xlsx-writer"), skillRail.loadCalls);
     }
 
     @Test
     @DisplayName("SkillUseRail should reload only updated skills when SKILL.md update_at changes")
     void testSkillRailReloadUpdatedSkillByUpdateAt() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
-        writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
+        Path invoiceSkill = writeSkill(skillsRoot, "invoice-parser", "Parse invoice pdf files");
         writeSkill(skillsRoot, "xlsx-writer", "Write xlsx reports");
+        TrackingSkillUseRail skillRail = new TrackingSkillUseRail(List.of(skillsRoot.toString()));
 
-        // Placeholder: Test skill reload on update_at timestamp change
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
+        skillRail.loadCalls.clear();
+        Files.setLastModifiedTime(invoiceSkill.resolve("SKILL.md"),
+                FileTime.from(Instant.now().plusSeconds(5)));
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(skillsRoot.toFile().exists());
+        assertEquals(List.of("invoice-parser"), skillRail.loadCalls);
     }
 
     @Test
     @DisplayName("SkillUseRail should silently skip directories that do not exist")
     void testSkillRailSkipsNonexistentDirectories() throws Exception {
         Path skillsRoot = tmpPath.resolve("skills");
-        skillsRoot.toFile().mkdirs();
-
         writeSkill(skillsRoot, "my-skill", "Real skill");
-
         Path nonexistent = tmpPath.resolve("does_not_exist");
         Path anotherNonexistent = tmpPath.resolve("also_missing");
+        SkillUseRail skillRail = new SkillUseRail(List.of(nonexistent.toString(), skillsRoot.toString(),
+                anotherNonexistent.toString()), SkillUseRail.SKILL_MODE_ALL, true, false, null, null);
 
-        // Placeholder: Test with mixed existing and non-existing directories
-        // SkillUseRail should skip non-existing and load from existing
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(skillsRoot.resolve("my-skill").toFile().exists());
-        assertFalse(nonexistent.toFile().exists());
+        assertEquals(List.of("my-skill"), sortedSkillNames(skillRail.getLoadedSkills()));
     }
 
     @Test
     @DisplayName("SkillUseRail should produce empty skills when all directories are missing")
-    void testSkillRailAllDirsNonexistentProducesEmptySkills() throws Exception {
+    void testSkillRailAllDirsNonexistentProducesEmptySkills() {
         Path nonexistentA = tmpPath.resolve("missing_a");
         Path nonexistentB = tmpPath.resolve("missing_b");
+        SkillUseRail skillRail = new SkillUseRail(List.of(nonexistentA.toString(), nonexistentB.toString()),
+                SkillUseRail.SKILL_MODE_ALL, true, false, null, null);
 
-        // Placeholder: Test with all directories missing
-        // SkillUseRail should produce empty skills list
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertFalse(nonexistentA.toFile().exists());
-        assertFalse(nonexistentB.toFile().exists());
+        assertTrue(skillRail.getLoadedSkills().isEmpty());
     }
 
     @Test
@@ -250,16 +280,21 @@ class SkillRailTest {
     void testSkillRailPriorityDedupFirstDirWins() throws Exception {
         Path highPrio = tmpPath.resolve("high");
         Path lowPrio = tmpPath.resolve("low");
-
         writeSkill(highPrio, "shared-skill", "High priority version");
         writeSkill(lowPrio, "shared-skill", "Low priority version");
         writeSkill(lowPrio, "unique-skill", "Only in low");
+        SkillUseRail skillRail = new SkillUseRail(List.of(highPrio.toString(), lowPrio.toString()),
+                SkillUseRail.SKILL_MODE_ALL, true, false, null, null);
 
-        // Placeholder: Test priority deduplication
-        // First directory should win for shared skill name
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(highPrio.resolve("shared-skill").toFile().exists());
-        assertTrue(lowPrio.resolve("shared-skill").toFile().exists());
+        assertEquals(List.of("shared-skill", "unique-skill"), sortedSkillNames(skillRail.getLoadedSkills()));
+        Skill shared = skillRail.getLoadedSkills().stream()
+                .filter(skill -> "shared-skill".equals(skill.getName()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("High priority version", shared.getDescription());
+        assertTrue(shared.getDirectory().contains(highPrio.toString()));
     }
 
     @Test
@@ -268,15 +303,63 @@ class SkillRailTest {
         Path existingA = tmpPath.resolve("dir_a");
         Path missingB = tmpPath.resolve("dir_b");
         Path existingC = tmpPath.resolve("dir_c");
-
         writeSkill(existingA, "skill-a", "From dir A");
-        // dir_b does not exist
         writeSkill(existingC, "skill-c", "From dir C");
+        SkillUseRail skillRail = new SkillUseRail(List.of(existingA.toString(), missingB.toString(),
+                existingC.toString()), SkillUseRail.SKILL_MODE_ALL, true, false, null, null);
 
-        // Placeholder: Test mixed existing and missing directories
+        skillRail.beforeInvoke(AgentCallbackContext.builder().build());
 
-        assertTrue(existingA.resolve("skill-a").toFile().exists());
-        assertFalse(missingB.toFile().exists());
-        assertTrue(existingC.resolve("skill-c").toFile().exists());
+        assertEquals(List.of("skill-a", "skill-c"), sortedSkillNames(skillRail.getLoadedSkills()));
+    }
+
+    private static final class PromptAgent {
+        private final SystemPromptBuilder builder;
+
+        private PromptAgent(SystemPromptBuilder builder) {
+            this.builder = builder;
+        }
+
+        public SystemPromptBuilder getSystemPromptBuilder() {
+            return builder;
+        }
+    }
+
+    private static final class DummyModel {
+        private final String content;
+
+        private DummyModel(String content) {
+            this.content = content;
+        }
+
+        public DummyResponse invoke(Map<String, Object> ignored) {
+            return new DummyResponse(content);
+        }
+    }
+
+    private record DummyResponse(String content) {
+        public String getContent() {
+            return content;
+        }
+    }
+
+    private static final class TrackingSkillUseRail extends SkillUseRail {
+        private final List<String> loadCalls = new ArrayList<>();
+
+        private TrackingSkillUseRail(List<String> skillsDir) {
+            super(skillsDir, SkillUseRail.SKILL_MODE_ALL, true, false, null, null);
+        }
+
+        @Override
+        protected Skill loadSkill(Path skillDir, long updateAt) {
+            loadCalls.add(skillDir.getFileName().toString());
+            return super.loadSkill(skillDir, updateAt);
+        }
+
+        private List<String> sortedLoadCalls() {
+            List<String> result = new ArrayList<>(loadCalls);
+            Collections.sort(result);
+            return result;
+        }
     }
 }

@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Ported from Python's {@code test_message_offloader.py}.
  */
-class MessageOffloaderTest {
+public class MessageOffloaderTest {
 
     private static List<ToolCall> createToolCallList(List<String> ids) {
         return ids.stream()

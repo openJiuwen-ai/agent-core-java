@@ -5,6 +5,7 @@ package com.openjiuwen.harness.tools.test_bash;
 
 import com.openjiuwen.harness.tools.shell.bash.BashSemanticsUtils;
 import com.openjiuwen.harness.tools.shell.bash.CommandKind;
+import com.openjiuwen.harness.tools.shell.bash.ExitCodeMeaning;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -172,6 +173,14 @@ class TestSemantics {
             
             assertEquals(CommandKind.OTHER, kind);
         }
+
+        @Test
+        @DisplayName("test env prefix stripped")
+        void testEnvPrefixStripped() {
+            CommandKind kind = BashSemanticsUtils.classifyCommand("FOO=bar grep pattern");
+
+            assertEquals(CommandKind.SEARCH, kind);
+        }
     }
 
     @Nested
@@ -202,6 +211,42 @@ class TestSemantics {
         void testRmIsNotReadOnly() {
             assertFalse(BashSemanticsUtils.isReadOnly("rm foo.txt"));
         }
+
+        @Test
+        @DisplayName("test pure read pipeline")
+        void testPureReadPipeline() {
+            assertTrue(BashSemanticsUtils.isReadOnly("cat foo.txt | grep bar | wc -l"));
+        }
+
+        @Test
+        @DisplayName("test echo is neutral")
+        void testEchoIsNeutral() {
+            assertTrue(BashSemanticsUtils.isReadOnly("echo hello | grep h"));
+        }
+
+        @Test
+        @DisplayName("test write command breaks readonly")
+        void testWriteCommandBreaksReadonly() {
+            assertFalse(BashSemanticsUtils.isReadOnly("cat foo.txt && rm foo.txt"));
+        }
+
+        @Test
+        @DisplayName("test unknown breaks readonly")
+        void testUnknownBreaksReadonly() {
+            assertFalse(BashSemanticsUtils.isReadOnly("docker ps"));
+        }
+
+        @Test
+        @DisplayName("test single list")
+        void testSingleList() {
+            assertTrue(BashSemanticsUtils.isReadOnly("ls -la"));
+        }
+
+        @Test
+        @DisplayName("test empty readonly command")
+        void testEmptyReadOnlyCommand() {
+            assertFalse(BashSemanticsUtils.isReadOnly(""));
+        }
     }
 
     @Nested
@@ -225,6 +270,104 @@ class TestSemantics {
         @DisplayName("test echo neutral segment is treated as silent")
         void testEchoNeutralSegmentIsTreatedAsSilent() {
             assertTrue(BashSemanticsUtils.isSilent("echo hello"));
+        }
+
+        @Test
+        @DisplayName("test mv and cp are silent")
+        void testMvAndCpAreSilent() {
+            assertTrue(BashSemanticsUtils.isSilent("mv a b && cp c d"));
+        }
+
+        @Test
+        @DisplayName("test grep not silent")
+        void testGrepNotSilent() {
+            assertFalse(BashSemanticsUtils.isSilent("grep foo bar"));
+        }
+
+        @Test
+        @DisplayName("test empty silent command")
+        void testEmptySilentCommand() {
+            assertFalse(BashSemanticsUtils.isSilent(""));
+        }
+    }
+
+    @Nested
+    @DisplayName("Interpret Exit Code Tests")
+    class InterpretExitCodeTests {
+
+        @Test
+        @DisplayName("test zero always ok")
+        void testZeroAlwaysOk() {
+            ExitCodeMeaning meaning = BashSemanticsUtils.interpretExitCode("anything", 0);
+
+            assertFalse(meaning.isError());
+            assertNull(meaning.getMessage());
+        }
+
+        @Test
+        @DisplayName("test grep 1 no match")
+        void testGrep1NoMatch() {
+            ExitCodeMeaning meaning = BashSemanticsUtils.interpretExitCode("grep foo bar.txt", 1);
+
+            assertFalse(meaning.isError());
+            assertEquals("No matches found", meaning.getMessage());
+        }
+
+        @Test
+        @DisplayName("test grep 2 is error")
+        void testGrep2IsError() {
+            assertTrue(BashSemanticsUtils.interpretExitCode("grep foo bar.txt", 2).isError());
+        }
+
+        @Test
+        @DisplayName("test diff 1 files differ")
+        void testDiff1FilesDiffer() {
+            ExitCodeMeaning meaning = BashSemanticsUtils.interpretExitCode("diff a.txt b.txt", 1);
+
+            assertFalse(meaning.isError());
+            assertEquals("Files differ", meaning.getMessage());
+        }
+
+        @Test
+        @DisplayName("test diff 2 is error")
+        void testDiff2IsError() {
+            assertTrue(BashSemanticsUtils.interpretExitCode("diff a.txt b.txt", 2).isError());
+        }
+
+        @Test
+        @DisplayName("test find 1 partial")
+        void testFind1Partial() {
+            assertFalse(BashSemanticsUtils.interpretExitCode("find / -name foo", 1).isError());
+        }
+
+        @Test
+        @DisplayName("test test 1 false")
+        void testTest1False() {
+            ExitCodeMeaning meaning = BashSemanticsUtils.interpretExitCode("test -f missing.txt", 1);
+
+            assertFalse(meaning.isError());
+            assertEquals("Condition is false", meaning.getMessage());
+        }
+
+        @Test
+        @DisplayName("test pipeline uses last segment for exit code")
+        void testPipelineUsesLastSegmentForExitCode() {
+            ExitCodeMeaning meaning = BashSemanticsUtils.interpretExitCode("cat file | grep missing", 1);
+
+            assertFalse(meaning.isError());
+            assertEquals("No matches found", meaning.getMessage());
+        }
+
+        @Test
+        @DisplayName("test unknown command 1 is error")
+        void testUnknownCommand1IsError() {
+            assertTrue(BashSemanticsUtils.interpretExitCode("python script.py", 1).isError());
+        }
+
+        @Test
+        @DisplayName("test rg 1 no match")
+        void testRg1NoMatch() {
+            assertFalse(BashSemanticsUtils.interpretExitCode("rg pattern .", 1).isError());
         }
     }
 }

@@ -48,7 +48,7 @@ public class ManagedBrowserDriver {
         }
     }
 
-    protected boolean isEndpointReady() {
+    public boolean isEndpointReady() {
         String endpoint = profile.getCdpUrl();
         if (endpoint == null || endpoint.isBlank()) {
             return false;

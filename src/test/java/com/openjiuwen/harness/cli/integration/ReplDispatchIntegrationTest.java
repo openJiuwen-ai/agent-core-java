@@ -7,9 +7,6 @@ package com.openjiuwen.harness.cli.integration;
 import com.openjiuwen.harness.cli.ui.CliRepl;
 import org.junit.jupiter.api.Test;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -21,27 +18,41 @@ import static org.junit.jupiter.api.Assertions.*;
 class ReplDispatchIntegrationTest {
 
     @Test
-    void replStartAndStop() {
-        CliRepl repl = new CliRepl();
-        assertFalse(repl.isRunning());
-        repl.start();
-        assertTrue(repl.isRunning());
-        repl.stop();
-        assertFalse(repl.isRunning());
+    void slashHelpRouting() {
+        StringBuilder output = new StringBuilder();
+
+        String result = CliRepl.handleSlash("/help", output);
+
+        assertNull(result);
+        assertTrue(output.toString().contains("/help"));
+        assertTrue(output.toString().contains("/exit"));
+        assertTrue(output.toString().contains("/status"));
     }
 
     @Test
-    void shellPassthroughEcho() throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "echo test_output_12345");
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        String output = new String(process.getInputStream().readAllBytes());
+    void unknownSlashCommand() {
+        StringBuilder output = new StringBuilder();
+
+        String result = CliRepl.handleSlash("/foobar", output);
+
+        assertNull(result);
+        assertTrue(output.toString().contains("Unknown command"));
+    }
+
+    @Test
+    void shellPassthrough() throws Exception {
+        String output = CliRepl.handleShell("echo test_output_12345");
         assertTrue(output.contains("test_output_12345"));
-        process.waitFor();
     }
 
     @Test
-    void emptyInputIsIgnored() {
+    void shellStderr() throws Exception {
+        String output = CliRepl.handleShell("__openjiuwen_nonexistent_command_xyz__");
+        assertTrue(output.length() > 0);
+    }
+
+    @Test
+    void emptyInputIgnored() {
         String text = "   \t  \n  ";
         assertTrue(text.strip().isEmpty());
     }

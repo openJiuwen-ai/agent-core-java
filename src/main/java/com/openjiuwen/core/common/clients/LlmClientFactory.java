@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.common.clients;
 
+import com.openjiuwen.core.common.security.UrlUtils;
+import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
 import java.net.http.HttpClient;
@@ -128,14 +130,12 @@ public class LlmClientFactory {
 
     /**
      * Get global proxy URL for a given API base URL.
-     * Placeholder implementation - should integrate with UrlUtils.
      *
      * @param apiBase the API base URL
      * @return proxy URL or null
      */
     private static String getGlobalProxyUrl(String apiBase) {
-        // TODO: Integrate with UrlUtils.getGlobalProxyUrl
-        return null;
+        return UrlUtils.getGlobalProxyUrl(apiBase);
     }
 
     /**
@@ -144,18 +144,7 @@ public class LlmClientFactory {
      * @param headers map of headers to sanitize
      * @return sanitized headers map
      */
-    public static Map<String, String> sanitizeHeaders(Map<String, String> headers) {
-        if (headers == null || headers.isEmpty()) {
-            return new HashMap<>();
-        }
-        Map<String, String> sanitized = new HashMap<>();
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            String key = entry.getKey().trim();
-            String value = entry.getValue();
-            if (!key.isEmpty() && value != null) {
-                sanitized.put(key, value.trim());
-            }
-        }
-        return sanitized;
+    public static Map<String, String> sanitizeHeaders(Map<String, ?> headers) {
+        return HeadersHelper.sanitizeHeaders(headers);
     }
 }

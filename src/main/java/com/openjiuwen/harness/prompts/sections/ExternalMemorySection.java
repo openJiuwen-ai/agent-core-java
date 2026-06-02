@@ -37,6 +37,18 @@ public final class ExternalMemorySection {
         EXTERNAL_MEMORY.put("en", EN);
     }
 
+    public static PromptSection buildExternalMemorySection(String promptBlock, String language) {
+        if (promptBlock == null || promptBlock.isBlank()) {
+            return null;
+        }
+        String resolvedLanguage = language == null || language.isBlank() ? "cn" : language;
+        return new PromptSection(
+                SectionName.EXTERNAL_MEMORY,
+                Map.of(resolvedLanguage, promptBlock),
+                55
+        );
+    }
+
     public static PromptSection build() {
         return new PromptSection(SectionName.EXTERNAL_MEMORY, EXTERNAL_MEMORY, 88);
     }

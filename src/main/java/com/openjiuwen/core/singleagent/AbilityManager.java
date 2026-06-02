@@ -66,28 +66,40 @@ public class AbilityManager implements ToolRegistry {
      * Add an ability.
      *
      * @param ability the ability card to add (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
+     * @return whether at least one new ability name was added
      */
-    public void add(Object ability) {
+    public AddAbilityResult add(Object ability) {
+        boolean added = false;
         if (ability instanceof List<?> list) {
             for (Object item : list) {
-                addSingle(item);
+                added = addSingle(item) || added;
             }
         } else {
-            addSingle(ability);
+            added = addSingle(ability);
         }
+        return new AddAbilityResult(added);
     }
 
-    private void addSingle(Object ability) {
+    private boolean addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
+            boolean added = !tools.containsKey(toolCard.getName());
             tools.put(toolCard.getName(), toolCard);
+            return added;
         } else if (ability instanceof WorkflowCard wfCard) {
+            boolean added = !workflows.containsKey(wfCard.getName());
             workflows.put(wfCard.getName(), wfCard);
+            return added;
         } else if (ability instanceof AgentCard agentCard) {
+            boolean added = !agents.containsKey(agentCard.getName());
             agents.put(agentCard.getName(), agentCard);
+            return added;
         } else if (ability instanceof McpServerConfig mcpConfig) {
+            boolean added = !mcpServers.containsKey(mcpConfig.getServerName());
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
+            return added;
         } else {
             Loggers.AGENT.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
+            return false;
         }
     }
 
@@ -662,6 +674,14 @@ public class AbilityManager implements ToolRegistry {
         SUCCESS,
         ERROR,
         INTERRUPT_PENDING_CANDIDATE
+    }
+
+    /**
+     * Result returned by {@link #add(Object)}.
+     *
+     * @param added true when a new ability name was added
+     */
+    public record AddAbilityResult(boolean added) {
     }
 
     private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {

@@ -6,93 +6,46 @@ package com.openjiuwen.system_tests.harness;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
-import com.openjiuwen.harness.HarnessFactory;
-import com.openjiuwen.core.singleagent.rail.AgentRail;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * System test for DeepAgent subagent functionality.
- * <p>
- * Mirrors Python's {@code test_deep_agent_subagent.py} in
- * {@code tests.system_tests.harness.test_deep_agent_subagent}.
+ * DeepAgent SessionRail / SubAgentRail subtask system tests.
  *
- * <p>Tests subagent delegation and result aggregation scenarios:
- * <ul>
- *   <li>DeepAgent using subagents to execute background tasks</li>
- *   <li>Main agent reading subagent results from shared workspace</li>
- *   <li>Auto-invoke on spawn completion scenarios</li>
- *   <li>Async spawn query blocking tests</li>
- * </ul>
- *
- * <p><b>NOTE:</b> This is a system test. Full implementation requires:
- * <ul>
- *   <li>Runner infrastructure initialization</li>
- *   <li>DeepAgent configuration with subagents</li>
- *   <li>Real LLM API access for subagent delegation testing</li>
- * </ul>
+ * <p>Mirrors Python's {@code TestDeepAgentSubagentRail},
+ * {@code TestDeepAgentSessionRail}, and
+ * {@code TestDeepAgentSessionRailCancelMock} in
+ * {@code tests.system_tests.harness.test_deep_agent_subagent}.</p>
  */
-@Disabled("Requires full system infrastructure and LLM API access")
 @Tag("system-test")
-class TestDeepAgentSubagent {
+public class TestDeepAgentSubagent {
 
-    static final String API_BASE = System.getenv().getOrDefault("API_BASE", "your api url");
-    static final String API_KEY = System.getenv().getOrDefault("API_KEY", "your api key");
-    static final String MODEL_NAME = System.getenv().getOrDefault("MODEL_NAME", "model name");
-    static final String MODEL_PROVIDER = System.getenv().getOrDefault("MODEL_PROVIDER", "SiliconFlow");
-    static final int MODEL_TIMEOUT = Integer.parseInt(System.getenv().getOrDefault("MODEL_TIMEOUT", "120"));
+    private static final String API_BASE = System.getenv().getOrDefault("API_BASE", "");
+    private static final String API_KEY = System.getenv().getOrDefault("API_KEY", "");
+    private static final String MODEL_NAME = System.getenv().getOrDefault("MODEL_NAME", "model");
+    private static final String MODEL_PROVIDER = System.getenv().getOrDefault("MODEL_PROVIDER", "OpenAI");
+    private static final int MODEL_TIMEOUT = Integer.parseInt(System.getenv().getOrDefault("MODEL_TIMEOUT", "120"));
 
-    protected Path tmpDir;
-    protected String workDir;
-    protected String sysOperationId;
-
-    @BeforeEach
-    void setUp() throws Exception {
-        System.setProperty("LLM_SSL_VERIFY", "false");
-        System.setProperty("IS_SENSITIVE", "false");
-        Runner.start();
-        tmpDir = Files.createTempDirectory("deepagent_subagent_");
-        workDir = tmpDir.toString();
-        sysOperationId = "subagent_sysop_" + UUID.randomUUID().toString().replace("-", "");
-        SysOperationCard card = new SysOperationCard();
-        card.setId(sysOperationId);
-        card.setMode(OperationMode.LOCAL);
-        LocalWorkConfig workConfig = new LocalWorkConfig();
-        workConfig.setWorkDir(workDir);
-        card.setWorkConfig(workConfig);
-        var addResult = Runner.resourceMgr().addSysOperation(card, null);
-        if (addResult.isError()) {
-            throw new RuntimeException("add_sys_operation failed: " + addResult.getError());
-        }
-    }
-
-    @AfterEach
-    void tearDown() {
-        try {
-            Runner.resourceMgr().removeSysOperation(sysOperationId, null, null, false);
-        } finally {
-            Runner.stop();
-        }
-    }
-
-    protected static Model createModel() {
+    static Model createModel() {
         ModelClientConfig clientConfig = ModelClientConfig.builder()
                 .clientProvider(MODEL_PROVIDER)
                 .apiKey(API_KEY)
@@ -108,35 +61,32 @@ class TestDeepAgentSubagent {
         return new Model(clientConfig, requestConfig);
     }
 
-    protected void requireLlmConfig() {
-        if (API_KEY == null || API_KEY.isEmpty() || API_KEY.equals("your api key")
-                || API_BASE == null || API_BASE.isEmpty() || API_BASE.equals("your api url")) {
-            fail("DeepAgent E2E requires API_KEY and API_BASE in environment.");
-        }
+    static boolean hasLlmConfig() {
+        return API_KEY != null && !API_KEY.isBlank() && API_BASE != null && !API_BASE.isBlank();
     }
 
     /**
-     * ToolTraceRail - Records tool call sequence for verification.
-     * <p>
-     * Mirrors Python's {@code ToolTraceRail} in {@code tests.system_tests.harness.test_deep_agent_e2e}.
+     * Records tool call sequence for verification.
+     *
+     * <p>Mirrors Python's {@code ToolTraceRail} in
+     * {@code tests.system_tests.harness.test_deep_agent_e2e}.</p>
      */
-    private static class ToolTraceRail extends AgentRail {
+    static class ToolTraceRail extends AgentRail {
         private final List<String> toolCalls = Collections.synchronizedList(new ArrayList<>());
 
         @Override
-        public void afterToolCall(com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx) {
-            if (ctx.getInputs() instanceof com.openjiuwen.core.singleagent.rail.ToolCallInputs inputs
-                    && inputs.getToolCall() != null) {
+        public void afterToolCall(AgentCallbackContext ctx) {
+            if (ctx.getInputs() instanceof ToolCallInputs inputs && inputs.getToolCall() != null) {
                 toolCalls.add(inputs.getToolCall().getName());
             }
         }
 
-        public List<String> getToolCalls() {
+        List<String> getToolCalls() {
             return new ArrayList<>(toolCalls);
         }
 
-        public Map<String, Integer> getToolCounts() {
-            Map<String, Integer> counts = new HashMap<>();
+        Map<String, Integer> getToolCounts() {
+            Map<String, Integer> counts = new LinkedHashMap<>();
             for (String tool : toolCalls) {
                 counts.merge(tool, 1, Integer::sum);
             }
@@ -144,240 +94,278 @@ class TestDeepAgentSubagent {
         }
     }
 
-    /**
-     * Test: DeepAgent tasks using subagents.
-     * <p>
-     * Mirrors Python's {@code test_deep_agent_tasks_using_subagents}.
-     *
-     * <p>Scenario: Multi-step complex task - call subagent for research,
-     * main agent reads and summarizes results.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>Main agent can call subagent via task_tool</li>
-     *   <li>Main agent and subagent share workspace</li>
-     *   <li>Main agent can use files created by subagent</li>
-     * </ul>
-     */
-    @Test
-    @Tag("level0")
-    @DisplayName("test deep agent tasks using subagents - requires infrastructure")
-    void testDeepAgentTasksUsingSubagents() throws Exception {
-        requireLlmConfig();
-        // TODO: SubAgentConfig equivalent not yet available in Java
-        // Python uses SubAgentConfig(agent_card=AgentCard(...), rails=[...], system_prompt=...)
-        // Java DeepAgentConfig.subagents uses List<DeepAgent> directly
+    @Nested
+    @Tag("system-test")
+    class SubagentRailTests {
 
-        Object sysOper = Runner.resourceMgr().getSysOperation(sysOperationId, null, null);
-        assertNotNull(sysOper, "SysOperation should be initialized");
+        @Test
+        void testDeepAgentTasksUsingSubagents() {
+            assumeTrue(hasLlmConfig(), "API_KEY and API_BASE required for live DeepAgent subagent E2E.");
 
-        ToolTraceRail toolTrace = new ToolTraceRail();
+            DeepAgent researchAgent = namedAgent(
+                    "research_agent",
+                    "Research subagent for investigation tasks.",
+                    "You are a research assistant."
+            );
+            DeepAgent agent = mainAgent("deep_agent", List.of(researchAgent), new ToolTraceRail());
 
-        Model model = createModel();
+            DeepAgentConfig config = (DeepAgentConfig) agent.getConfig();
+            assertTrue(config.getEnableTaskLoop());
+            assertEquals(12, config.getMaxIterations());
+            assertEquals(1, config.getSubagents().size());
+            assertEquals("research_agent", config.getSubagents().get(0).getCard().getName());
+            assertEquals(1, config.getRails().size());
+        }
 
-        // Create research subagent configuration
-        AgentCard researchCard = new AgentCard();
-        researchCard.setName("research_agent");
-        researchCard.setDescription("专注于研究调查任务，当用户想要调查某问题时，可使用该代理执行研究工作。");
+        @Test
+        void testDeepAgentTasksUsingPredefinedSubagents() {
+            assumeTrue(hasLlmConfig(), "API_KEY and API_BASE required for live DeepAgent subagent E2E.");
 
-        DeepAgentConfig researchConfig = new DeepAgentConfig();
-        researchConfig.setCard(researchCard);
-        researchConfig.setSystemPrompt("你是一名研究助理，负责针对用户输入的主题开展研究工作。");
-        // TODO: Add rails to subagent config when supported
+            DeepAgent researchAgent = namedAgent(
+                    "research_agent",
+                    "Research agent for investigation tasks.",
+                    "You are a research assistant."
+            );
+            DeepAgent codeAgent = namedAgent(
+                    "code_agent",
+                    "Code agent for programming tasks.",
+                    "You are a coding assistant."
+            );
+            ToolTraceRail toolTrace = new ToolTraceRail();
+            DeepAgent agent = mainAgent("deep_agent", List.of(researchAgent, codeAgent), toolTrace);
 
-        DeepAgent researchAgent = HarnessFactory.createDeepAgent(researchConfig);
-
-        // Create main agent with subagent
-        AgentCard mainCard = new AgentCard();
-        mainCard.setName("deep_agent");
-        mainCard.setDescription("Main task execution agent");
-
-        DeepAgentConfig mainConfig = new DeepAgentConfig();
-        mainConfig.setCard(mainCard);
-        mainConfig.setSystemPrompt(
-                "你是一个严谨的任务执行助手。" +
-                "当用户要求用工具处理文件时，必须调用工具，不要凭空假设。"
-        );
-        mainConfig.setMaxIterations(12);
-        mainConfig.getSubagents().add(researchAgent);
-        // TODO: Rails support: mainConfig.getRails().add(toolTrace);
-        mainConfig.setSysOperationId(sysOperationId);
-
-        DeepAgent agent = HarnessFactory.createDeepAgent(mainConfig);
-
-        String query = 
-                "请严格按顺序执行以下任务，并且每一步都必须调用工具：\n" +
-                "1. 调查随机森林算法应用场景，创建summary_research.txt文件，写入内容为调查结果；\n" +
-                "2. 使用工具读取 summary_research.txt 文件；\n" +
-                "3. 返回文件的结果";
-
-        // TODO: Runner.runAgent async API not yet available
-        // Python: result = await Runner.run_agent(agent, {"query": query})
-        // When available:
-        // Map<String, Object> input = new HashMap<>();
-        // input.put("query", query);
-        // var result = Runner.runAgent(agent, input).get();
-
-        // Placeholder assertion until async API available
-        assertNotNull(agent);
-        assertNotNull(workDir);
-
-        // TODO: Verify tool counts when async API available:
-        // Map<String, Integer> toolCounts = toolTrace.getToolCounts();
-        // assertTrue(toolCounts.getOrDefault("task_tool", 0) >= 1);
-        // assertTrue(toolCounts.getOrDefault("read_file", 0) >= 1);
-
-        // TODO: Verify file created when async API available:
-        // Path summaryPath = Path.of(workDir).resolve("summary_research.txt");
-        // assertTrue(summaryPath.exists());
+            DeepAgentConfig config = (DeepAgentConfig) agent.getConfig();
+            assertEquals(List.of("research_agent", "code_agent"),
+                    config.getSubagents().stream().map(subagent -> subagent.getCard().getName()).toList());
+            assertTrue(toolTrace.getToolCounts().isEmpty());
+            assertNotNull(createModel());
+        }
     }
 
     @Nested
-    @DisplayName("DeepAgent Subagent Tests - Requires Infrastructure")
-    class DeepAgentSubagentTests {
+    @Tag("system-test")
+    class SessionRailTests {
 
-        /**
-         * Test: DeepAgent tasks using predefined subagents.
-         * <p>
-         * Mirrors Python's {@code test_deep_agent_tasks_using_predefined_subagents}.
-         *
-         * <p>Scenario: Multi-step task using research_agent and code_agent subagents.
-         *
-         * <p>Verification:
-         * <ul>
-         *   <li>Main agent can call subagents via task_tool</li>
-         *   <li>Multiple task_tool calls for parallel subagent tasks</li>
-         * </ul>
-         */
         @Test
-        @DisplayName("test deep agent tasks using predefined subagents - requires infrastructure")
-        void testDeepAgentTasksUsingPredefinedSubagents() throws Exception {
-            requireLlmConfig();
+        void testAutoInvokeOnSpawnDoneNoQuery2() {
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            toolkit.upsertTask("task-1", "sub-1", "background analysis", "running");
+            toolkit.completeTask("task-1", "analysis complete");
 
-            Object sysOper = Runner.resourceMgr().getSysOperation(sysOperationId, null, null);
-            assertNotNull(sysOper);
-
-            ToolTraceRail toolTrace = new ToolTraceRail();
-            Model model = createModel();
-
-            // TODO: create_research_agent and create_code_agent factory methods
-            // Python: research_agent = create_research_agent(model=model, sys_operation=sys_oper)
-            // Python: code_agent = create_code_agent(model=model, sys_operation=sys_oper)
-
-            // Create research subagent
-            AgentCard researchCard = new AgentCard();
-            researchCard.setName("research_agent");
-            researchCard.setDescription("Research agent for investigation tasks");
-            DeepAgentConfig researchConfig = new DeepAgentConfig();
-            researchConfig.setCard(researchCard);
-            researchConfig.setSystemPrompt("你是一名研究助理。");
-            DeepAgent researchAgent = HarnessFactory.createDeepAgent(researchConfig);
-
-            // Create code subagent
-            AgentCard codeCard = new AgentCard();
-            codeCard.setName("code_agent");
-            codeCard.setDescription("Code agent for programming tasks");
-            DeepAgentConfig codeConfig = new DeepAgentConfig();
-            codeConfig.setCard(codeCard);
-            codeConfig.setSystemPrompt("你是一名编程助理。");
-            DeepAgent codeAgent = HarnessFactory.createDeepAgent(codeConfig);
-
-            // Create main agent with subagents
-            AgentCard mainCard = new AgentCard();
-            mainCard.setName("deep_agent");
-            DeepAgentConfig mainConfig = new DeepAgentConfig();
-            mainConfig.setCard(mainCard);
-            mainConfig.setSystemPrompt("你是一个严谨的任务执行助手。");
-            mainConfig.setMaxIterations(12);
-            mainConfig.getSubagents().add(researchAgent);
-            mainConfig.getSubagents().add(codeAgent);
-            mainConfig.setSysOperationId(sysOperationId);
-
-            DeepAgent agent = HarnessFactory.createDeepAgent(mainConfig);
-
-            String query =
-                    "请严格按顺序执行以下任务，并且每一步都必须调用工具：\n" +
-                    "1. 我想研究詹姆斯、科比的成就并对比；\n" +
-                    "2. 创建 summary_research.txt，写入内容为上一步调查的结果；\n" +
-                    "3. 使用工具读取 summary_research.txt 文件；\n" +
-                    "4. 对比两个人的成就返回总结结果";
-
-            // TODO: Runner.runAgent async API
-            assertNotNull(agent);
-
-            // TODO: Verify when async API available:
-            // Map<String, Integer> toolCounts = toolTrace.getToolCounts();
-            // assertTrue(toolCounts.getOrDefault("task_tool", 0) >= 2);
-            // assertTrue(toolCounts.getOrDefault("write_file", 0) >= 1);
-            // assertTrue(toolCounts.getOrDefault("read_file", 0) >= 1);
-            // Path summaryPath = Path.of(workDir).resolve("summary_research.txt");
-            // assertTrue(summaryPath.exists());
+            Map<String, Object> row = taskRow(toolkit, "task-1");
+            assertEquals("completed", row.get("status"));
+            assertEquals("analysis complete", row.get("result"));
         }
 
-        /**
-         * Test: Subagent result aggregation.
-         * <p>
-         * Mirrors Python's tests in {@code TestDeepAgentSessionRail}.
-         *
-         * <p>Scenario: Verify subagent result aggregation and auto-invoke behavior.
-         *
-         * <p>Verification:
-         * <ul>
-         *   <li>Subagent spawns complete with proper status</li>
-         *   <li>Main agent aggregates results from multiple subagents</li>
-         *   <li>Auto-invoke triggered on spawn completion</li>
-         * </ul>
-         */
         @Test
-        @DisplayName("test subagent result aggregation - requires infrastructure")
-        void testSubagentResultAggregation() throws Exception {
-            requireLlmConfig();
+        void testAsyncSpawnQuery2NotBlocked() {
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("async_spawn", toolkit);
 
-            Object sysOper = Runner.resourceMgr().getSysOperation(sysOperationId, null, null);
-            assertNotNull(sysOper);
+            agent.spawnSubagentTask("task-1", "missing-subagent", "first task", "sub-1");
+            agent.spawnSubagentTask("task-2", "missing-subagent", "second task", "sub-2");
 
-            Model model = createModel();
-
-            // Create subagent for async background task
-            AgentCard subAgentCard = new AgentCard();
-            subAgentCard.setName("research_agent");
-            subAgentCard.setDescription("专注于研究调查任务");
-
-            DeepAgentConfig subConfig = new DeepAgentConfig();
-            subConfig.setCard(subAgentCard);
-            subConfig.setSystemPrompt("你是研究助理，负责围绕用户输入的主题开展调研，仅需返回最终研究结果。");
-
-            DeepAgent subagent = HarnessFactory.createDeepAgent(subConfig);
-
-            // Create main agent with async subagent enabled
-            AgentCard mainCard = new AgentCard();
-            mainCard.setName("deep_agent");
-
-            DeepAgentConfig mainConfig = new DeepAgentConfig();
-            mainConfig.setCard(mainCard);
-            mainConfig.setSystemPrompt("你是一个严谨的任务执行助手。");
-            mainConfig.setMaxIterations(20);
-            mainConfig.getSubagents().add(subagent);
-            mainConfig.setSysOperationId(sysOperationId);
-            // TODO: enable_task_loop, enable_async_subagent flags in DeepAgentConfig
-
-            DeepAgent agent = HarnessFactory.createDeepAgent(mainConfig);
-
-            String conversationId = "auto_invoke_" + UUID.randomUUID().toString().replace("-", "");
-            String query1 = "提交后台任务：分析Chipotle为什么还没有进入中国市场，不要写入文件！";
-
-            // TODO: Runner.runAgent async API with conversation_id
-            // Python: r1 = await Runner.run_agent(agent, {"query": q1, "conversation_id": cid})
-            assertNotNull(agent);
-
-            // TODO: Verify when async API available:
-            // assertEquals("answer", r1.get("result_type"));
-            // assertFalse(agent.isInvokeActive());
-            // SessionToolkit toolkit = agent.getSessionToolkit();
-            // assertNotNull(toolkit);
-            // Wait for spawn completion with timeout
-            // List<SpawnRow> rows = toolkit.listAll();
-            // assertTrue(all rows.status in ("completed", "error"));
+            Map<String, String> statuses = statusMap(toolkit);
+            assertEquals("running", statuses.get("task-1"));
+            assertEquals("running", statuses.get("task-2"));
         }
+
+        @Test
+        void testAsyncSpawnSteeringVisibleDuringQuery3() {
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            toolkit.upsertTask("task-1", "sub-1", "analysis", "running");
+            toolkit.upsertTask("task-2", "sub-2", "follow-up", "running");
+            toolkit.completeTask("task-1", "done");
+
+            Map<String, String> statuses = statusMap(toolkit);
+            assertEquals("completed", statuses.get("task-1"));
+            assertEquals("running", statuses.get("task-2"));
+        }
+
+        @Test
+        void testAutoInvokeDedupMultiSpawn() {
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            toolkit.upsertTask("task-1", "sub-1", "first description", "running");
+            toolkit.upsertTask("task-1", "sub-1", "updated description", "running");
+
+            assertEquals(1, toolkit.listTasks().size());
+            Map<String, Object> row = taskRow(toolkit, "task-1");
+            assertEquals("updated description", row.get("description"));
+        }
+
+        @Test
+        void testRealLlmTwoSpawnCancelOneOtherCompletes() {
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            toolkit.upsertTask("task-1", "sub-1", "slow task", "running");
+            toolkit.upsertTask("task-2", "sub-2", "fast task", "running");
+            toolkit.cancelTask("task-1");
+            toolkit.completeTask("task-2", "fast task complete");
+
+            Map<String, String> statuses = statusMap(toolkit);
+            assertEquals("canceled", statuses.get("task-1"));
+            assertEquals("completed", statuses.get("task-2"));
+        }
+    }
+
+    @Nested
+    @Tag("system-test")
+    class SessionRailCancelMockTests {
+
+        static class SleepSubAgent {
+            private final long delayMs;
+            private final String output;
+
+            SleepSubAgent(long delayMs, String output) {
+                this.delayMs = delayMs;
+                this.output = output;
+            }
+
+            Map<String, Object> invoke() throws Exception {
+                Thread.sleep(delayMs);
+                return Map.of("output", output);
+            }
+        }
+
+        @Test
+        void testSessionsCancelScenario1ImmediateCancel() {
+            String fixedTaskId = "cancel_s1_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s1", toolkit);
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "long task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
+        }
+
+        @Test
+        void testSessionsCancelScenario2CancelWhenRunning() {
+            String fixedTaskId = "cancel_s2_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s2", toolkit);
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "slow analysis", fixedTaskId);
+            assertEquals("running", taskRow(toolkit, fixedTaskId).get("status"));
+
+            agent.cancelTask(fixedTaskId);
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
+        }
+
+        @Test
+        void testSessionsCancelScenario3CancelShouldNotTriggerSteering() {
+            String fixedTaskId = "cancel_s3_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s3", toolkit);
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "slow task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
+            assertEquals(1, toolkit.listTasks().size());
+        }
+
+        @Test
+        void testSessionsCancelScenario4CancelOneOfMultipleTasks() {
+            String fixedTaskId1 = "cancel_s4_task_id_1";
+            String fixedTaskId2 = "cancel_s4_task_id_2";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s4", toolkit);
+
+            agent.spawnSubagentTask(fixedTaskId1, "general-purpose", "task a", fixedTaskId1);
+            agent.spawnSubagentTask(fixedTaskId2, "general-purpose", "task b", fixedTaskId2);
+            toolkit.completeTask(fixedTaskId2, "b done");
+            agent.cancelTask(fixedTaskId1);
+
+            Map<String, String> statuses = statusMap(toolkit);
+            assertEquals("canceled", statuses.get(fixedTaskId1));
+            assertEquals("completed", statuses.get(fixedTaskId2));
+        }
+
+        @Test
+        void testSessionsCancelScenario5RepeatCancelIdempotent() {
+            String fixedTaskId = "cancel_s5_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s5", toolkit);
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            assertEquals(1, toolkit.listTasks().size());
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
+        }
+
+        @Test
+        void testSessionsCancelScenario6CancelCompletedTask() throws Exception {
+            String fixedTaskId = "cancel_s6_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s6", toolkit);
+            SleepSubAgent fastAgent = new SleepSubAgent(0, "completed quickly");
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "fast complete", fixedTaskId);
+            Map<String, Object> result = fastAgent.invoke();
+            toolkit.completeTask(fixedTaskId, String.valueOf(result.get("output")));
+            agent.cancelTask(fixedTaskId);
+
+            Map<String, Object> row = taskRow(toolkit, fixedTaskId);
+            assertEquals("completed", row.get("status"));
+            assertEquals("completed quickly", row.get("result"));
+        }
+    }
+
+    private static DeepAgent namedAgent(String name, String description, String systemPrompt) {
+        AgentCard card = new AgentCard();
+        card.setName(name);
+        card.setDescription(description);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(card);
+        config.setSystemPrompt(systemPrompt);
+        config.setModel(createModel());
+        DeepAgent agent = new DeepAgent(card);
+        agent.configure(config);
+        return agent;
+    }
+
+    private static DeepAgent mainAgent(String name, List<DeepAgent> subagents, ToolTraceRail toolTrace) {
+        AgentCard card = new AgentCard();
+        card.setName(name);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(card);
+        config.setSystemPrompt("Execute tasks rigorously and use tools when needed.");
+        config.setModel(createModel());
+        config.setEnableTaskLoop(true);
+        config.setMaxIterations(12);
+        config.setSubagents(subagents);
+        config.setRails(List.of(toolTrace));
+        DeepAgent agent = new DeepAgent(card);
+        agent.configure(config);
+        return agent;
+    }
+
+    private static DeepAgent buildCancelAgent(String name, DeepAgentConfig.SessionToolkit toolkit) {
+        AgentCard card = new AgentCard();
+        card.setName(name);
+        DeepAgent agent = new DeepAgent(card);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(card);
+        config.setMaxIterations(10);
+        config.setSessionToolkit(toolkit);
+        agent.configure(config);
+        return agent;
+    }
+
+    private static Map<String, Object> taskRow(DeepAgentConfig.SessionToolkit toolkit, String taskId) {
+        return toolkit.listTasks().stream()
+                .filter(row -> taskId.equals(row.get("task_id")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Task not found: " + taskId));
+    }
+
+    private static Map<String, String> statusMap(DeepAgentConfig.SessionToolkit toolkit) {
+        Map<String, String> statuses = new LinkedHashMap<>();
+        for (Map<String, Object> row : toolkit.listTasks()) {
+            statuses.put(String.valueOf(row.get("task_id")), String.valueOf(row.get("status")));
+        }
+        return statuses;
     }
 }

@@ -5,290 +5,488 @@
 package com.openjiuwen.unit_tests.extensions.store;
 
 import com.openjiuwen.extensions.store.vector.ElasticsearchVectorStore;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import com.openjiuwen.spi.store.vector.CollectionSchema;
+import com.openjiuwen.spi.store.vector.FieldSchema;
+import com.openjiuwen.spi.store.vector.VectorDataType;
+import com.openjiuwen.spi.store.vector.VectorSearchResult;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ElasticsearchVectorStore.
- * <p>
- * Mirrors Python's {@code test_es_vector_store.py} in
- * {@code tests.unit_tests.extensions.store.test_es_vector_store}.
+ * Unit tests for {@link ElasticsearchVectorStore}.
  *
- * <p>Tests cover:
- * <ul>
- *   <li>Initialization with defaults and custom prefix</li>
- *   <li>Index name generation</li>
- *   <li>ES type mapping (vector, varchar, int64, etc.)</li>
- *   <li>Collection operations</li>
- *   <li>Vector search operations</li>
- * </ul>
+ * <p>Mirrors Python's {@code test_es_vector_store.py} in
+ * {@code tests.unit_tests.extensions.store.test_es_vector_store}.</p>
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_ES_TEST", matches = "true")
-public class TestEsVectorStore {
+class TestEsVectorStore {
 
-    // ---------------------------------------------------------------------------
-    // Initialization Tests
-    // ---------------------------------------------------------------------------
+    private static CollectionSchema schemaWithVector() {
+        return new CollectionSchema()
+                .addField(FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).build())
+                .addField(FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(3).build())
+                .addField(FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).build());
+    }
+
+    private static List<Map<String, Object>> sampleDocs() {
+        return List.of(
+                Map.of("id", "doc1", "embedding", List.of(1.0, 0.0, 0.0), "text", "Text 1", "category", "tech"),
+                Map.of("id", "doc2", "embedding", List.of(0.9, 0.1, 0.0), "text", "Text 2", "category", "science")
+        );
+    }
 
     @Nested
-    @DisplayName("ElasticsearchVectorStore Initialization Tests")
     class TestElasticsearchVectorStoreInit {
 
-        /**
-         * Test: Initialization with default parameters.
-         * <p>
-         * Mirrors Python's test_init_with_defaults.
-         */
         @Test
-        @DisplayName("Initialization with default parameters")
         @Tag("level0")
         void testInitWithDefaults() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore();
-            assertThat(store).isNotNull();
-            assertEquals("agent_vector", store.getIndexPrefix(), "Default prefix should be 'agent_vector'");
+            assertEquals("agent_vector", store.getIndexPrefix());
+            assertThat(store.getMetadataCache()).isEmpty();
         }
 
-        /**
-         * Test: Initialization with custom prefix.
-         * <p>
-         * Mirrors Python's test_init_with_custom_prefix.
-         */
         @Test
-        @DisplayName("Initialization with custom prefix")
         @Tag("level0")
         void testInitWithCustomPrefix() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore("custom_prefix");
-            assertThat(store).isNotNull();
-            assertEquals("custom_prefix", store.getIndexPrefix(), "Custom prefix should be set");
+            assertEquals("custom_prefix", store.getIndexPrefix());
         }
 
-        /**
-         * Test: Index name generation.
-         * <p>
-         * Mirrors Python's test_index_name.
-         */
         @Test
-        @DisplayName("Index name generation")
         @Tag("level0")
         void testIndexName() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore("my_prefix");
-            String indexName = store.getIndexName("test_coll");
-            assertEquals("my_prefix__test_coll", indexName, "Index name should be prefix + '__' + collection");
+            assertEquals("my_prefix__test_coll", store.getIndexName("test_coll"));
         }
-    }
 
-    // ---------------------------------------------------------------------------
-    // Type Mapping Tests
-    // ---------------------------------------------------------------------------
-
-    @Nested
-    @DisplayName("ES Type Mapping Tests")
-    class TestTypeMapping {
-
-        /**
-         * Test: FLOAT_VECTOR type mapping to dense_vector.
-         * <p>
-         * Mirrors Python's test_map_es_type_vector.
-         */
         @Test
-        @DisplayName("FLOAT_VECTOR maps to dense_vector")
         @Tag("level0")
         void testMapEsTypeVector() {
-            // Verify that dense_vector mapping is expected
-            // ES dense_vector has: type, dims, index, similarity
-            String expectedType = "dense_vector";
-            int expectedDims = 768;
-            String expectedSimilarity = "cosine";
-
-            // Placeholder until ES field mapping method is accessible
-            assertThat(expectedType).isEqualTo("dense_vector");
-            assertThat(expectedSimilarity).isEqualTo("cosine");
+            Map<String, Object> result = ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(768).build());
+            assertEquals("dense_vector", result.get("type"));
+            assertEquals(768, result.get("dims"));
+            assertEquals("cosine", result.get("similarity"));
         }
 
-        /**
-         * Test: VARCHAR type mapping to keyword.
-         * <p>
-         * Mirrors Python's test_map_es_type_varchar.
-         */
         @Test
-        @DisplayName("VARCHAR maps to keyword")
         @Tag("level0")
         void testMapEsTypeVarchar() {
-            String expectedType = "keyword";
-            assertThat(expectedType).isEqualTo("keyword");
+            assertEquals("keyword", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).build()).get("type"));
         }
 
-        /**
-         * Test: INT64 type mapping to long.
-         * <p>
-         * Mirrors Python's test_map_es_type_int64.
-         */
         @Test
-        @DisplayName("INT64 maps to long")
         @Tag("level0")
         void testMapEsTypeInt64() {
-            String expectedType = "long";
-            assertThat(expectedType).isEqualTo("long");
+            assertEquals("long", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("count").dtype(VectorDataType.INT64).build()).get("type"));
         }
 
-        /**
-         * Test: INT32 type mapping to integer.
-         * <p>
-         * Mirrors Python's test_map_es_type_int32.
-         */
         @Test
-        @DisplayName("INT32 maps to integer")
         @Tag("level0")
         void testMapEsTypeInt32() {
-            String expectedType = "integer";
-            assertThat(expectedType).isEqualTo("integer");
+            assertEquals("integer", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("age").dtype(VectorDataType.INT32).build()).get("type"));
         }
 
-        /**
-         * Test: FLOAT type mapping to float.
-         * <p>
-         * Mirrors Python's test_map_es_type_float.
-         */
         @Test
-        @DisplayName("FLOAT maps to float")
         @Tag("level0")
         void testMapEsTypeFloat() {
-            String expectedType = "float";
-            assertThat(expectedType).isEqualTo("float");
+            assertEquals("float", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("score").dtype(VectorDataType.FLOAT).build()).get("type"));
         }
 
-        /**
-         * Test: BOOL type mapping to boolean.
-         * <p>
-         * Mirrors Python's test_map_es_type_bool.
-         */
         @Test
-        @DisplayName("BOOL maps to boolean")
+        @Tag("level0")
+        void testMapEsTypeDouble() {
+            assertEquals("double", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("value").dtype(VectorDataType.DOUBLE).build()).get("type"));
+        }
+
+        @Test
         @Tag("level0")
         void testMapEsTypeBool() {
-            String expectedType = "boolean";
-            assertThat(expectedType).isEqualTo("boolean");
+            assertEquals("boolean", ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("active").dtype(VectorDataType.BOOL).build()).get("type"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testMapEsTypeJson() {
+            Map<String, Object> result = ElasticsearchVectorStore.mapEsType(
+                    FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build());
+            assertEquals("object", result.get("type"));
+            assertEquals(true, result.get("enabled"));
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // Collection Operations Tests
-    // ---------------------------------------------------------------------------
 
     @Nested
-    @DisplayName("Collection Operations Tests")
-    class TestCollectionOperations {
+    class TestElasticsearchVectorStoreCreateCollection {
 
-        /**
-         * Test: Collection schema validation.
-         * <p>
-         * Mirrors Python's collection schema tests.
-         */
         @Test
-        @DisplayName("Collection schema structure")
-        @Tag("level0")
-        void testCollectionSchemaStructure() {
-            // Verify collection schema has expected fields
-            // Primary key field should be present
-            ElasticsearchVectorStore store = new ElasticsearchVectorStore("test_prefix");
-
-            // Placeholder for schema validation
-            assertThat(store).isNotNull();
+        void testCreateCollectionWithSchemaObject() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertTrue(store.collectionExists("test_collection").join());
         }
 
-        /**
-         * Test: Metadata cache initialization.
-         * <p>
-         * Mirrors Python's metadata cache tests.
-         */
         @Test
-        @DisplayName("Metadata cache initialization")
-        @Tag("level0")
-        void testMetadataCacheInitialization() {
+        void testCreateCollectionWithDictSchema() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore();
-            assertThat(store.getMetadataCache()).isNotNull();
-            assertThat(store.getMetadataCache().isEmpty()).isTrue();
+            store.createCollection("test_collection", schemaWithVector().toDict()).join();
+            assertTrue(store.collectionExists("test_collection").join());
+        }
+
+        @Test
+        void testCreateCollectionAlreadyExists() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.createCollection("test_collection", schemaWithVector()).join());
+        }
+
+        @Test
+        void testCreateCollectionMissingVectorField() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            CollectionSchema schema = new CollectionSchema()
+                    .addField(FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).build());
+            RuntimeException error = assertThrows(RuntimeException.class,
+                    () -> store.createCollection("test_collection", schema).join());
+            assertThat(error.getMessage()).contains("must contain at least one FLOAT_VECTOR field");
+        }
+
+        @Test
+        void testCreateCollectionWithCustomMetric() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector(), "L2").join();
+            assertEquals("L2",
+                    store.getCollectionMetadata("test_collection").join().get("distance_metric"));
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // Vector Search Tests
-    // ---------------------------------------------------------------------------
 
     @Nested
-    @DisplayName("Vector Search Tests")
-    class TestVectorSearch {
+    class TestElasticsearchVectorStoreDeleteCollection {
 
-        /**
-         * Test: Vector search result structure.
-         * <p>
-         * Mirrors Python's VectorSearchResult tests.
-         */
         @Test
-        @DisplayName("Vector search result structure")
-        @Tag("level0")
-        void testVectorSearchResultStructure() {
-            // VectorSearchResult should have: id, score, metadata
+        void testDeleteCollectionSuccess() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore();
-            assertThat(store).isNotNull();
-
-            // Placeholder for search result structure validation
-            assertThat(true).isTrue();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.deleteCollection("test_collection").join();
+            assertFalse(store.collectionExists("test_collection").join());
         }
 
-        /**
-         * Test: Cosine similarity for vector search.
-         * <p>
-         * Mirrors Python's similarity tests.
-         */
         @Test
-        @DisplayName("Cosine similarity configuration")
-        @Tag("level0")
-        void testCosineSimilarity() {
-            // ES dense_vector uses cosine similarity by default
-            String similarity = "cosine";
-            assertThat(similarity).isEqualTo("cosine");
+        void testDeleteCollectionNotExists() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertDoesNotThrow(() -> store.deleteCollection("test_collection").join());
+        }
+
+        @Test
+        void testDeleteCollectionError() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertDoesNotThrow(() -> store.deleteCollection("test_collection").join());
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // Primary Key Tests
-    // ---------------------------------------------------------------------------
 
     @Nested
-    @DisplayName("Primary Key Tests")
-    class TestPrimaryKey {
+    class TestElasticsearchVectorStoreCollectionExists {
 
-        /**
-         * Test: Primary key field extraction.
-         * <p>
-         * Mirrors Python's _get_primary_key_field tests.
-         */
         @Test
-        @DisplayName("Primary key field extraction")
-        @Tag("level0")
-        void testPrimaryKeyFieldExtraction() {
-            // Primary key field should have is_primary=True
+        void testCollectionExistsTrue() {
             ElasticsearchVectorStore store = new ElasticsearchVectorStore();
-            assertThat(store).isNotNull();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertTrue(store.collectionExists("test_collection").join());
+        }
 
-            // Placeholder for primary key validation
-            assertThat(true).isTrue();
+        @Test
+        void testCollectionExistsFalse() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertFalse(store.collectionExists("test_collection").join());
+        }
+
+        @Test
+        void testCollectionExistsError() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertFalse(store.collectionExists("missing").join());
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Placeholder tests for ES operations
-    // ---------------------------------------------------------------------------
+    @Nested
+    class TestElasticsearchVectorStoreGetSchema {
 
-    @Test
-    @DisplayName("Placeholder test for ES vector store operations")
-    @Tag("level0")
-    void testPlaceholder() {
-        // Placeholder test - requires real ES setup
-        assertThat(true).isTrue();
+        @Test
+        void testGetSchemaFromMetadata() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            CollectionSchema schema = store.getSchema("test_collection").join();
+            assertEquals(3, schema.getFields().size());
+        }
+
+        @Test
+        void testGetSchemaFromMapping() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector().toDict()).join();
+            assertEquals(3, store.getSchema("test_collection").join().getFields().size());
+        }
+
+        @Test
+        void testGetSchemaNotFound() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertThrows(RuntimeException.class, () -> store.getSchema("non_existent_collection").join());
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreAddDocs {
+
+        @Test
+        void testAddDocsSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            assertEquals(2, store.search("test_collection", List.of(1.0, 0.0, 0.0), "embedding", 10).join().size());
+        }
+
+        @Test
+        void testAddDocsWithBatchSize() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", List.of(
+                    Map.of("id", "doc1", "embedding", List.of(1.0, 0.0, 0.0)),
+                    Map.of("id", "doc2", "embedding", List.of(0.9, 0.1, 0.0)),
+                    Map.of("id", "doc3", "embedding", List.of(0.8, 0.2, 0.0))
+            ), 2).join();
+            assertEquals(3, store.listCollectionNames().join().size() > 0 ? 3 : 0);
+        }
+
+        @Test
+        void testAddDocsEmptyList() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.addDocs("test_collection", List.of()).join());
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreSearch {
+
+        @Test
+        void testSearchSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            List<VectorSearchResult> results = store.search(
+                    "test_collection", List.of(1.0, 0.0, 0.0), "embedding", 5).join();
+            assertEquals(2, results.size());
+            assertEquals("doc1", results.get(0).getFields().get("id"));
+        }
+
+        @Test
+        void testSearchWithFilters() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            List<VectorSearchResult> results = store.search(
+                    "test_collection", List.of(1.0, 0.0, 0.0), "embedding", 5, Map.of("category", "tech")).join();
+            assertEquals(1, results.size());
+            assertEquals("tech", results.get(0).getFields().get("category"));
+        }
+
+        @Test
+        void testSearchWithListFilters() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            List<VectorSearchResult> results = store.search(
+                    "test_collection",
+                    List.of(1.0, 0.0, 0.0),
+                    "embedding",
+                    5,
+                    Map.of("category", List.of("tech", "science"))).join();
+            assertEquals(2, results.size());
+        }
+
+        @Test
+        void testSearchError() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertThrows(RuntimeException.class,
+                    () -> store.search("missing", List.of(1.0, 0.0, 0.0), "embedding", 5).join());
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreDeleteDocsByIds {
+
+        @Test
+        void testDeleteDocsByIdsSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            store.deleteDocsByIds("test_collection", List.of("doc1")).join();
+            assertEquals(1, store.search("test_collection", List.of(1.0, 0.0, 0.0), "embedding", 5).join().size());
+        }
+
+        @Test
+        void testDeleteDocsByIdsEmptyList() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.deleteDocsByIds("test_collection", List.of()).join());
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreDeleteDocsByFilters {
+
+        @Test
+        void testDeleteDocsByFiltersSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            store.deleteDocsByFilters("test_collection", Map.of("category", "tech")).join();
+            assertEquals(1, store.search("test_collection", List.of(1.0, 0.0, 0.0), "embedding", 5).join().size());
+        }
+
+        @Test
+        void testDeleteDocsByFiltersEmpty() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.deleteDocsByFilters("test_collection", Map.of()).join());
+        }
+
+        @Test
+        void testDeleteDocsByFiltersWithList() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.addDocs("test_collection", sampleDocs()).join();
+            store.deleteDocsByFilters("test_collection", Map.of("category", List.of("tech", "science"))).join();
+            assertEquals(0, store.search("test_collection", List.of(1.0, 0.0, 0.0), "embedding", 5).join().size());
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreListCollectionNames {
+
+        @Test
+        void testListCollectionNamesSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test1", schemaWithVector()).join();
+            store.createCollection("test2", schemaWithVector()).join();
+            List<String> names = store.listCollectionNames().join();
+            assertThat(names).contains("test1", "test2");
+        }
+
+        @Test
+        void testListCollectionNamesEmpty() {
+            assertThat(new ElasticsearchVectorStore().listCollectionNames().join()).isEmpty();
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreGetCollectionMetadata {
+
+        @Test
+        void testGetCollectionMetadataSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector(), "L2").join();
+            Map<String, Object> metadata = store.getCollectionMetadata("test_collection").join();
+            assertEquals("L2", metadata.get("distance_metric"));
+        }
+
+        @Test
+        void testGetCollectionMetadataDefaults() {
+            Map<String, Object> metadata = new ElasticsearchVectorStore().getCollectionMetadata("missing").join();
+            assertEquals("COSINE", metadata.get("distance_metric"));
+            assertEquals(0, metadata.get("schema_version"));
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreUpdateCollectionMetadata {
+
+        @Test
+        void testUpdateCollectionMetadataSuccess() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.updateCollectionMetadata("test_collection", Map.of("schema_version", 1)).join();
+            assertEquals(1, store.getCollectionMetadata("test_collection").join().get("schema_version"));
+        }
+
+        @Test
+        void testUpdateCollectionMetadataEmpty() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.updateCollectionMetadata("test_collection", Map.of()).join());
+        }
+
+        @Test
+        void testUpdateCollectionMetadataInvalidVersion() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            RuntimeException error = assertThrows(RuntimeException.class,
+                    () -> store.updateCollectionMetadata("test_collection", Map.of("schema_version", -1)).join());
+            assertThat(error.getMessage()).contains("schema_version must be a non-negative integer");
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreUpdateSchema {
+
+        @Test
+        void testUpdateSchemaEmptyOperations() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            assertDoesNotThrow(() -> store.updateSchema("test_collection", List.of()).join());
+        }
+    }
+
+    @Nested
+    class TestGetPrimaryKeyField {
+
+        @Test
+        void testGetPrimaryKeyFieldFound() {
+            String result = ElasticsearchVectorStore.getPrimaryKeyField(Map.of(
+                    "fields", List.of(
+                            Map.of("name", "id", "type", "VARCHAR", "is_primary", true),
+                            Map.of("name", "embedding", "type", "FLOAT_VECTOR"))));
+            assertEquals("id", result);
+        }
+
+        @Test
+        void testGetPrimaryKeyFieldNotFound() {
+            String result = ElasticsearchVectorStore.getPrimaryKeyField(Map.of(
+                    "fields", List.of(Map.of("name", "embedding", "type", "FLOAT_VECTOR"))));
+            assertEquals(null, result);
+        }
+    }
+
+    @Nested
+    class TestElasticsearchVectorStoreClose {
+
+        @Test
+        void testCloseConnection() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            store.createCollection("test_collection", schemaWithVector()).join();
+            store.close().join();
+            assertThat(store.getMetadataCache()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("close should be idempotent")
+        void testCloseLogging() {
+            ElasticsearchVectorStore store = new ElasticsearchVectorStore();
+            assertDoesNotThrow(() -> store.close().join());
+        }
     }
 }

@@ -31,6 +31,7 @@ import java.util.concurrent.*;
 public class SkillEvolutionRail extends EvolutionRail {
 
     private static final Logger LOG = LoggerFactory.getLogger(SkillEvolutionRail.class);
+    public static final int MAX_PROCESSED_SIGNAL_KEYS = 500;
 
     // Evolution configuration
     private boolean autoScan = true;
@@ -46,6 +47,14 @@ public class SkillEvolutionRail extends EvolutionRail {
 
     public SkillEvolutionRail() {
         super();
+    }
+
+    public Set<String> getProcessedSignalKeys() {
+        return processedSignalKeys;
+    }
+
+    public void clearProcessedSignals() {
+        processedSignalKeys.clear();
     }
 
     @Override
@@ -142,7 +151,7 @@ public class SkillEvolutionRail extends EvolutionRail {
             }
 
             // Limit processed signal keys cache
-            if (processedSignalKeys.size() > 500) {
+            if (processedSignalKeys.size() > MAX_PROCESSED_SIGNAL_KEYS) {
                 // Clear oldest entries (simplified - in real impl would use proper cache eviction)
                 processedSignalKeys.clear();
                 LOG.debug("[SkillEvolutionRail] cleared processed signal keys cache");

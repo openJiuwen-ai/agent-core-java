@@ -3,51 +3,120 @@
  */
 package com.openjiuwen.harness;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.agent_evolving.trajectory.StepKind;
+import com.openjiuwen.agent_evolving.trajectory.ToolCallDetail;
+import com.openjiuwen.agent_evolving.trajectory.TrajectoryBuilder;
+import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.harness.rails.skills.TeamSkillCreateRail;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for TeamSkillCreateRail.
- * <p>
  * Mirrors Python's {@code test_team_skill_create_rail} in
  * {@code tests.unit_tests.harness.test_team_skill_create_rail}.
  */
-@Tag("unit-test")
 class TeamSkillCreateRailTest {
 
+    @TempDir
+    Path tmpDir;
+
     @Test
-    @DisplayName("TeamSkillCreateRail can be initialized")
-    void testTeamSkillCreateRailInit() {
-        // Test basic initialization
-        java.util.Map<String, Object> tools = new java.util.HashMap<>();
-        assertTrue(tools.isEmpty());
+    void testDefaultValues() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString());
+
+        assertEquals(tmpDir.toString(), rail.getSkillsDir());
+        assertTrue(rail.isAutoTrigger());
+        assertEquals(2, rail.getMinTeamMembers());
+        assertEquals(85, rail.getPriority());
     }
 
     @Test
-    @DisplayName("TeamSkillCreateRail creates skill from template")
-    void testSkillCreationFromTemplate() {
-        // Test skill creation from template
-        java.util.Map<String, Object> skill = new java.util.HashMap<>();
-        skill.put("name", "test_skill");
-        skill.put("template", "default");
-        assertNotNull(skill.get("name"));
+    void testCustomMinMembers() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "en", true, 3);
+
+        assertEquals(3, rail.getMinTeamMembers());
+        assertEquals("en", rail.getLanguage());
     }
 
     @Test
-    @DisplayName("TeamSkillCreateRail validates skill parameters")
-    void testSkillParameterValidation() {
-        // Test parameter validation
-        String name = "valid_skill_name";
-        assertTrue(name.matches("^[a-z_]+$"));
+    void testShouldProposeWhenSpawnMeetsThreshold() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "cn", true, 2);
+        rail.setBuilder(builder("spawn_member", "agent_teams.spawn_member"));
+
+        assertTrue(rail.shouldProposeNewTeamSkill());
     }
 
     @Test
-    @DisplayName("TeamSkillCreateRail registers created skill")
-    void testSkillRegistration() {
-        // Test skill registration
-        java.util.List<String> skills = new java.util.ArrayList<>();
-        skills.add("test_skill");
-        assertEquals(1, skills.size());
+    void testShouldNotProposeWhenBelowThreshold() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "cn", true, 3);
+        rail.setBuilder(builder("spawn_member", "read_file"));
+
+        assertFalse(rail.shouldProposeNewTeamSkill());
+    }
+
+    @Test
+    void testShouldNotProposeWhenNoBuilder() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "cn", true, 1);
+
+        assertFalse(rail.shouldProposeNewTeamSkill());
+    }
+
+    @Test
+    void testEmptySteps() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "cn", true, 1);
+        rail.setBuilder(new TrajectoryBuilder());
+
+        assertFalse(rail.shouldProposeNewTeamSkill());
+    }
+
+    @Test
+    void testFollowUpWhenThresholdMet() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "en", true, 2);
+        rail.setBuilder(builder("spawn_member", "spawn_member"));
+        TestSkillCreateRail.FakeAgent agent = new TestSkillCreateRail.FakeAgent();
+
+        rail.afterTaskIteration(AgentCallbackContext.builder().agent(agent).build());
+
+        assertEquals(1, agent.loopController.followUps.size());
+        assertTrue(agent.loopController.followUps.getFirst().contains("team-skill-creator"));
+        assertTrue(agent.loopController.followUps.getFirst().contains(tmpDir.toString()));
+    }
+
+    @Test
+    void testNoFollowUpWhenBelowThreshold() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "en", true, 2);
+        rail.setBuilder(builder("spawn_member", "read_file"));
+        TestSkillCreateRail.FakeAgent agent = new TestSkillCreateRail.FakeAgent();
+
+        rail.afterTaskIteration(AgentCallbackContext.builder().agent(agent).build());
+
+        assertTrue(agent.loopController.followUps.isEmpty());
+    }
+
+    @Test
+    void testNoFollowUpWhenAutoTriggerFalse() {
+        TeamSkillCreateRail rail = new TeamSkillCreateRail(tmpDir.toString(), "en", false, 1);
+        rail.setBuilder(builder("spawn_member"));
+        TestSkillCreateRail.FakeAgent agent = new TestSkillCreateRail.FakeAgent();
+
+        rail.afterTaskIteration(AgentCallbackContext.builder().agent(agent).build());
+
+        assertTrue(agent.loopController.followUps.isEmpty());
+    }
+
+    private static TrajectoryBuilder builder(String... toolNames) {
+        TrajectoryBuilder builder = new TrajectoryBuilder();
+        for (String toolName : toolNames) {
+            builder.recordStep(TrajectoryStep.builder()
+                    .kind(StepKind.TOOL)
+                    .detail(ToolCallDetail.builder().toolName(toolName).build())
+                    .build());
+        }
+        return builder;
     }
 }

@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Ported from Python's {@code test_kv_cache_manager.py}.
  */
-class KVCacheManagerTest {
+public class KVCacheManagerTest {
 
     private ContextWindow buildWindow(List<BaseMessage> systemMessages,
                                       List<BaseMessage> contextMessages,

@@ -75,9 +75,21 @@ public class Workflow {
     private boolean isStreaming = false;
 
     public Workflow(WorkflowCard card) {
+        this(card, null);
+    }
+
+    public Workflow(int workflowMaxNestingDepth) {
+        this(null, workflowMaxNestingDepth);
+    }
+
+    private Workflow(WorkflowCard card, Integer workflowMaxNestingDepth) {
         this.card = card != null ? card
                 : WorkflowCard.builder().id(UUID.randomUUID().toString().replace("-", "")).build();
-        this.internal = new BaseWorkflow(new WorkflowConfig(this.card), new PregelGraph());
+        WorkflowConfig workflowConfig = new WorkflowConfig(this.card);
+        if (workflowMaxNestingDepth != null) {
+            workflowConfig.setWorkflowMaxNestingDepth(workflowMaxNestingDepth);
+        }
+        this.internal = new BaseWorkflow(workflowConfig, new PregelGraph());
     }
 
     public Workflow() {

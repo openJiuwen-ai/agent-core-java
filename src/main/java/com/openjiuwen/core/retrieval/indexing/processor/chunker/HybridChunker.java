@@ -8,7 +8,10 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
@@ -20,16 +23,21 @@ public class HybridChunker extends Chunker {
     private final Predicate<Document> noSplitWhen;
 
     public HybridChunker(Chunker innerChunker) {
-        this(innerChunker, doc -> {
-            Object sourceType = doc.getMetadata().get("source_type");
-            return "row".equals(sourceType) || "column".equals(sourceType);
-        });
+        this(innerChunker, null);
     }
 
     public HybridChunker(Chunker innerChunker, Predicate<Document> noSplitWhen) {
         super(innerChunker.chunkSize, innerChunker.chunkOverlap);
-        this.innerChunker = innerChunker;
-        this.noSplitWhen = noSplitWhen;
+        this.innerChunker = Objects.requireNonNull(innerChunker, "innerChunker");
+        this.noSplitWhen = noSplitWhen != null ? noSplitWhen : HybridChunker::defaultNoSplit;
+    }
+
+    public static boolean defaultNoSplit(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return false;
+        }
+        Object sourceType = doc.getMetadata().get("source_type");
+        return "row".equals(sourceType) || "column".equals(sourceType);
     }
 
     @Override
@@ -44,8 +52,19 @@ public class HybridChunker extends Chunker {
             return result;
         }
         for (Document document : documents) {
-            if (noSplitWhen.test(document)) {
-                result.add(TextChunk.fromDocument(document, document.getText()));
+            String text = document == null ? null : document.getText();
+            if (document != null && noSplitWhen.test(document) && text != null && !text.trim().isEmpty()) {
+                String chunkId = UUID.randomUUID().toString();
+                TextChunk chunk = new TextChunk(
+                        chunkId,
+                        text.trim(),
+                        document.getId(),
+                        new LinkedHashMap<>(document.getMetadata()),
+                        null);
+                chunk.getMetadata().put("chunk_index", 0);
+                chunk.getMetadata().put("total_chunks", 1);
+                chunk.getMetadata().put("chunk_id", chunkId);
+                result.add(chunk);
             } else {
                 result.addAll(innerChunker.chunkDocuments(List.of(document)));
             }

@@ -6,10 +6,14 @@ package com.openjiuwen.core.foundation.store.graph.milvus;
 
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
 import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
+import com.openjiuwen.core.foundation.store.graph.RRFRankConfig;
+import com.openjiuwen.core.foundation.store.graph.RankConfigRegistry;
+import com.openjiuwen.core.foundation.store.graph.WeightedRankConfig;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Episode;
 import com.openjiuwen.core.foundation.store.graph.GraphConfig;
 import com.openjiuwen.core.foundation.store.graph.GraphStore;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreFactory;
 import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.spi.store.query.QueryExpr;
 
@@ -33,6 +37,8 @@ import java.util.logging.Logger;
 public class MilvusGraphStore implements GraphStore {
 
     private static final Logger LOGGER = Logger.getLogger(MilvusGraphStore.class.getName());
+    private static final Object REGISTER_LOCK = new Object();
+    private static volatile boolean MILVUS_SUPPORT_REGISTERED = false;
 
     private final GraphConfig config;
     private Embedding embedder;
@@ -79,6 +85,10 @@ public class MilvusGraphStore implements GraphStore {
         buildIndices();
     }
 
+    static {
+        registerMilvusSupport();
+    }
+
     /**
      * Create a MilvusGraphStore instance from configuration.
      *
@@ -87,6 +97,25 @@ public class MilvusGraphStore implements GraphStore {
      */
     public static MilvusGraphStore fromConfig(GraphConfig config) {
         return new MilvusGraphStore(config);
+    }
+
+    public static void registerMilvusSupport() {
+        synchronized (REGISTER_LOCK) {
+            if (MILVUS_SUPPORT_REGISTERED) {
+                return;
+            }
+            GraphStoreFactory.registerBackend("milvus", MilvusGraphStore.class, true);
+            RankConfigRegistry.registerResultRankerCls(
+                    "milvus",
+                    WeightedRankConfig.class,
+                    RRFRankConfig.class,
+                    Map.of());
+            MILVUS_SUPPORT_REGISTERED = true;
+        }
+    }
+
+    public static boolean isMilvusSupportRegistered() {
+        return MILVUS_SUPPORT_REGISTERED;
     }
 
     private void buildIndices() {

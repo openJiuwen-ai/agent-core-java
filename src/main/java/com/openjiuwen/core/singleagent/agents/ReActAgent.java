@@ -51,6 +51,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -82,6 +85,8 @@ public class ReActAgent extends BaseAgent {
     private ContextEngine contextEngine;
     private Model llm;
     private String warnedKvCacheReleaseProvider;
+    private final Queue<String> steeringQueue = new ConcurrentLinkedQueue<>();
+    private final Map<String, Queue<String>> steeringQueuesBySession = new ConcurrentHashMap<>();
 
     /**
      * Create a ReAct agent with the given card metadata.
@@ -199,6 +204,28 @@ public class ReActAgent extends BaseAgent {
      */
     public void setLlm(Model model) {
         this.llm = model;
+    }
+
+    /**
+     * Queue a steering instruction for the next model call in an active invoke.
+     */
+    public void pushSteering(String msg) {
+        pushSteering(null, msg);
+    }
+
+    /**
+     * Queue a steering instruction for the next model call in a specific session.
+     */
+    public void pushSteering(String sessionId, String msg) {
+        if (msg != null && !msg.isBlank()) {
+            if (sessionId == null || sessionId.isBlank()) {
+                steeringQueue.offer(msg);
+            } else {
+                steeringQueuesBySession
+                        .computeIfAbsent(sessionId, key -> new ConcurrentLinkedQueue<>())
+                        .offer(msg);
+            }
+        }
     }
 
     private Map<String, Object> buildContextWindowKwargs(Model model) {
@@ -468,6 +495,7 @@ public class ReActAgent extends BaseAgent {
                 .inputs(invokeInputs)
                 .session(runtimeSession)
                 .build();
+        ctx.bindSteeringQueue(resolveSteeringQueue(runtimeSession));
         populateInvocationExtra(ctx, inputs, false);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -515,6 +543,7 @@ public class ReActAgent extends BaseAgent {
                         .inputs(invokeInputs)
                         .session(runtimeSession)
                         .build();
+                ctx.bindSteeringQueue(resolveSteeringQueue(runtimeSession));
                 populateInvocationExtra(ctx, inputs, true);
                 invokeLifecycleInputs = ctx.getInputs();
 
@@ -1500,6 +1529,7 @@ public class ReActAgent extends BaseAgent {
 
             for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
                 Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+                injectPendingSteering(ctx, prepared.context());
 
                 AssistantMessage aiMessage = agentSession == null
                         ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
@@ -1563,6 +1593,22 @@ public class ReActAgent extends BaseAgent {
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
             return buildFailureOutcome(errorMsg, e);
         }
+    }
+
+    private void injectPendingSteering(AgentCallbackContext ctx, ModelContext context) {
+        List<String> messages = ctx != null ? ctx.drainSteering() : List.of();
+        for (String message : messages) {
+            if (message != null && !message.isBlank()) {
+                context.addMessages(new UserMessage("[STEERING] " + message));
+            }
+        }
+    }
+
+    private Queue<String> resolveSteeringQueue(Session session) {
+        if (session == null || session.getSessionId() == null || session.getSessionId().isBlank()) {
+            return steeringQueue;
+        }
+        return steeringQueuesBySession.computeIfAbsent(session.getSessionId(), key -> new ConcurrentLinkedQueue<>());
     }
 
     private void rethrowInvokeException(Throwable throwable) {

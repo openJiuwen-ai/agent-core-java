@@ -115,55 +115,46 @@ class MemoryRailE2ETest {
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test01MemoryRailBasicInvoke() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test02WriteMemoryTool() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test03MemorySearchTool() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test04ReadMemoryTool() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test05EditMemoryTool() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test06MemoryGetTool() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test07WriteMemoryAppendMode() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test08UpdateUserProfile() {
         requireApiConfig();
     }
 
     @Test
-    @Disabled("need llm and embedding")
     void test09WriteMemoryMdFile() {
         requireApiConfig();
     }

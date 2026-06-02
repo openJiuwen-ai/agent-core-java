@@ -6,6 +6,8 @@ package com.openjiuwen.core.multiagent.teams.handoff;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 /**
  * Per-session coordinator for HandoffTeam.
@@ -21,7 +23,9 @@ public class HandoffOrchestrator {
     public static final String HANDOFF_HISTORY_KEY = "__handoff_history__";
     
     private final int maxHandoffs;
+    private final Function<Object, Object> terminationCondition;
     private final Map<String, Set<String>> routeGraph;
+    private CompletableFuture<Object> doneFuture;
     private int handoffCount;
     private String currentAgentId;
     
@@ -59,6 +63,7 @@ public class HandoffOrchestrator {
     
     public HandoffOrchestrator(String startAgentId, List<String> registeredAgents, HandoffConfig config) {
         this.maxHandoffs = config != null ? config.getMaxHandoffs() : 10;
+        this.terminationCondition = config != null ? config.getTerminationCondition() : null;
         this.routeGraph = buildRouteGraph(registeredAgents, 
             config != null ? config.getRoutes() : Collections.emptyList());
         this.handoffCount = 0;
@@ -81,10 +86,86 @@ public class HandoffOrchestrator {
         if (handoffCount >= maxHandoffs) {
             return false; // Max handoffs reached
         }
+
+        if (terminationCondition != null) {
+            Object result = terminationCondition.apply(this);
+            if (result instanceof CompletionStage<?> stage) {
+                result = stage.toCompletableFuture().join();
+            }
+            if (Boolean.TRUE.equals(result)) {
+                return false;
+            }
+        }
         
         handoffCount++;
         currentAgentId = targetId;
         return true;
+    }
+
+    /**
+     * Complete the handoff chain with a result.
+     *
+     * @param result final result
+     */
+    public void complete(Object result) {
+        getDoneFuture().complete(result);
+    }
+
+    /**
+     * Complete the handoff chain exceptionally.
+     *
+     * @param exception exception to propagate
+     */
+    public void error(Throwable exception) {
+        getDoneFuture().completeExceptionally(exception);
+    }
+
+    /**
+     * Persist coordinator state to a session.
+     *
+     * @param session session to update
+     */
+    public void saveToSession(com.openjiuwen.core.session.Session session) {
+        session.updateState(Map.of(COORDINATOR_STATE_KEY, Map.of(
+                "current_agent_id", currentAgentId,
+                "handoff_count", handoffCount
+        )));
+    }
+
+    /**
+     * Restore an orchestrator from session state.
+     *
+     * @param session session to read from
+     * @param startAgentId start agent
+     * @param registeredAgents registered agent IDs
+     * @param config configuration
+     * @return restored or fresh orchestrator
+     */
+    public static HandoffOrchestrator restoreFromSession(
+            com.openjiuwen.core.session.Session session,
+            String startAgentId,
+            List<String> registeredAgents,
+            HandoffConfig config) {
+        HandoffOrchestrator orchestrator = new HandoffOrchestrator(startAgentId, registeredAgents, config);
+        Object snapshot = session.getState(COORDINATOR_STATE_KEY);
+        if (snapshot instanceof Map<?, ?> map) {
+            Object current = map.get("current_agent_id");
+            Object count = map.get("handoff_count");
+            if (current instanceof String agentId) {
+                orchestrator.currentAgentId = agentId;
+            }
+            if (count instanceof Number number) {
+                orchestrator.handoffCount = number.intValue();
+            }
+        }
+        return orchestrator;
+    }
+
+    public static HandoffOrchestrator restoreFromSession(
+            com.openjiuwen.core.session.Session session,
+            String startAgentId,
+            List<String> registeredAgents) {
+        return restoreFromSession(session, startAgentId, registeredAgents, null);
     }
     
     /**
@@ -100,4 +181,10 @@ public class HandoffOrchestrator {
     public int getHandoffCount() { return handoffCount; }
     public String getCurrentAgentId() { return currentAgentId; }
     public int getMaxHandoffs() { return maxHandoffs; }
+    public CompletableFuture<Object> getDoneFuture() {
+        if (doneFuture == null) {
+            doneFuture = new CompletableFuture<>();
+        }
+        return doneFuture;
+    }
 }

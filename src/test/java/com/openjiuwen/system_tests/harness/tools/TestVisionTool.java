@@ -9,7 +9,6 @@ import com.openjiuwen.harness.schema.config.VisionModelConfig;
 import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.VisualQuestionAnsweringTool;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Mirrors Python's {@code test_vision_tool.py} in {@code tests.system_tests.harness.tools}.
@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for vision tool registration and invocation.
  */
 @Tag("system-test")
-class TestVisionTool {
+public class TestVisionTool {
 
     static boolean visionSystemTestsEnabled() {
         String value = System.getenv("RUN_VISION_SYSTEM_TESTS");
@@ -129,9 +129,8 @@ class TestVisionTool {
         if (apiKey == null) {
             apiKey = System.getenv("OPENAI_API_KEY");
         }
-        if (apiKey == null || apiKey.isBlank()) {
-            return;
-        }
+        assumeTrue(apiKey != null && !apiKey.isBlank(),
+                "Missing vision API configuration. Set VISION_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY.");
 
         VisionModelConfig visionModelConfig = new VisionModelConfig();
         visionModelConfig.setApiKey(apiKey);

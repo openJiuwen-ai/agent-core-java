@@ -272,17 +272,7 @@ public class BrowserRuntimeRail extends DeepAgentRail {
     }
 
     protected static Object getAttribute(Object obj, String name) {
-        try {
-            java.lang.reflect.Method method = obj.getClass().getMethod("get" + name.substring(0, 1).toUpperCase() + name.substring(1));
-            return method.invoke(obj);
-        } catch (Exception e) {
-            try {
-                java.lang.reflect.Field field = obj.getClass().getField(name);
-                return field.get(obj);
-            } catch (Exception ex) {
-                return null;
-            }
-        }
+        return getAttributeValue(obj, name, toSnakeCase(name));
     }
 
     protected static Object getInputAttribute(AgentCallbackContext ctx, String name) {
@@ -290,32 +280,14 @@ public class BrowserRuntimeRail extends DeepAgentRail {
         if (inputs == null) {
             return null;
         }
-        try {
-            if (inputs instanceof Map) {
-                return ((Map<?, ?>) inputs).get(name);
-            }
-            java.lang.reflect.Method method = inputs.getClass().getMethod("get" + name.substring(0, 1).toUpperCase() + name.substring(1));
-            return method.invoke(inputs);
-        } catch (Exception e) {
-            return null;
-        }
+        return getAttributeValue(inputs, name, toSnakeCase(name));
     }
 
     protected static Object getAgentAttribute(Object agent, String name) {
         if (agent == null) {
             return null;
         }
-        try {
-            java.lang.reflect.Method method = agent.getClass().getMethod("get" + name.substring(0, 1).toUpperCase() + name.substring(1));
-            return method.invoke(agent);
-        } catch (Exception e) {
-            try {
-                java.lang.reflect.Field field = agent.getClass().getField(name);
-                return field.get(agent);
-            } catch (Exception ex) {
-                return null;
-            }
-        }
+        return getAttributeValue(agent, name, toSnakeCase(name));
     }
 
     protected static void addPromptSection(Object builder, PromptSection section) {
@@ -323,7 +295,11 @@ public class BrowserRuntimeRail extends DeepAgentRail {
             return;
         }
         try {
-            java.lang.reflect.Method method = builder.getClass().getMethod("addSection", PromptSection.class);
+            java.lang.reflect.Method method = findCompatibleMethod(builder.getClass(), "addSection", PromptSection.class);
+            if (method == null) {
+                return;
+            }
+            method.setAccessible(true);
             method.invoke(builder, section);
         } catch (Exception e) {
         }
@@ -334,7 +310,11 @@ public class BrowserRuntimeRail extends DeepAgentRail {
             return;
         }
         try {
-            java.lang.reflect.Method method = builder.getClass().getMethod("removeSection", String.class);
+            java.lang.reflect.Method method = findCompatibleMethod(builder.getClass(), "removeSection", String.class);
+            if (method == null) {
+                return;
+            }
+            method.setAccessible(true);
             method.invoke(builder, sectionName);
         } catch (Exception e) {
         }
@@ -404,7 +384,8 @@ public class BrowserRuntimeRail extends DeepAgentRail {
         String resultType = result.containsKey("result_type")
                 ? String.valueOf(result.get("result_type")).toLowerCase()
                 : "";
-        return "error".equals(resultType) && BrowserService.MAX_ITERATION_MESSAGE.toLowerCase().contains(output.toLowerCase());
+        return "error".equals(resultType)
+                && output.toLowerCase().contains(BrowserService.MAX_ITERATION_MESSAGE.toLowerCase());
     }
 
     protected static String loadTaskText(Session session) {
@@ -476,10 +457,132 @@ public class BrowserRuntimeRail extends DeepAgentRail {
             return;
         }
         try {
-            java.lang.reflect.Method addMethod = abilityManager.getClass().getMethod("add", Object.class);
+            java.lang.reflect.Method addMethod = findCompatibleMethod(abilityManager.getClass(), "add", Object.class);
+            if (addMethod == null) {
+                return;
+            }
+            addMethod.setAccessible(true);
             addMethod.invoke(abilityManager, runtime.getService().getMcpCfg());
         } catch (Exception e) {
         }
+    }
+
+    private static Object getAttributeValue(Object obj, String... names) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof Map<?, ?> map) {
+            for (String name : names) {
+                if (map.containsKey(name)) {
+                    return map.get(name);
+                }
+            }
+        }
+        for (String name : names) {
+            for (String methodName : List.of("get" + toUpperCamel(name), name)) {
+                java.lang.reflect.Method method = findNoArgMethod(obj.getClass(), methodName);
+                if (method == null) {
+                    continue;
+                }
+                try {
+                    method.setAccessible(true);
+                    return method.invoke(obj);
+                } catch (Exception ignored) {
+                    // Try the next accessor shape.
+                }
+            }
+            java.lang.reflect.Field field = findField(obj.getClass(), name);
+            if (field != null) {
+                try {
+                    field.setAccessible(true);
+                    return field.get(obj);
+                } catch (Exception ignored) {
+                    // Try the next field name.
+                }
+            }
+        }
+        return null;
+    }
+
+    private static java.lang.reflect.Method findNoArgMethod(Class<?> type, String methodName) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(methodName);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        try {
+            return type.getMethod(methodName);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static java.lang.reflect.Method findCompatibleMethod(Class<?> type, String methodName, Class<?> parameterType) {
+        Class<?> current = type;
+        while (current != null) {
+            for (java.lang.reflect.Method method : current.getDeclaredMethods()) {
+                if (method.getName().equals(methodName)
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0].isAssignableFrom(parameterType)) {
+                    return method;
+                }
+            }
+            current = current.getSuperclass();
+        }
+        for (java.lang.reflect.Method method : type.getMethods()) {
+            if (method.getName().equals(methodName)
+                    && method.getParameterCount() == 1
+                    && method.getParameterTypes()[0].isAssignableFrom(parameterType)) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        try {
+            return type.getField(name);
+        } catch (NoSuchFieldException ignored) {
+            return null;
+        }
+    }
+
+    private static String toUpperCamel(String name) {
+        String[] parts = name.split("_");
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isEmpty()) {
+                continue;
+            }
+            result.append(part.substring(0, 1).toUpperCase()).append(part.substring(1));
+        }
+        return result.toString();
+    }
+
+    private static String toSnakeCase(String name) {
+        if (name == null || name.isEmpty()) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isUpperCase(c) && i > 0) {
+                result.append('_');
+            }
+            result.append(Character.toLowerCase(c));
+        }
+        return result.toString();
     }
 
     protected static class ExtractResult {

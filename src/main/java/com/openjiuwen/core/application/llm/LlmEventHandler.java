@@ -13,6 +13,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.schema.Param;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.modules.EventHandler;
@@ -33,6 +34,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.memory.LongTermMemory;
+import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -47,6 +49,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -1090,8 +1094,99 @@ public class LlmEventHandler extends EventHandler {
         if (!enableMemory) {
             return result;
         }
-        // Memory keyword retrieval would be implemented here
+
+        Map<String, Object> inputMap = extractInputMap(event);
+        String userId = firstNonBlank(inputMap.get("user_id"), inputMap.get("userId"));
+        if (userId.isBlank()) {
+            return result;
+        }
+
+        String scopeId = agentConfig.getMemoryScopeId();
+        String query = getDisplayContent(event);
+        if (query.isBlank()) {
+            query = stringValue(inputMap.get("query"));
+        }
+
+        if (enableMemVariables) {
+            loadMemoryVariables(userId, scopeId, result);
+        }
+        if (enableLongTermMem) {
+            loadLongTermMemory(userId, scopeId, query, result);
+        }
         return result;
+    }
+
+    private void loadMemoryVariables(String userId, String scopeId, Map<String, String> result) {
+        try {
+            Map<String, String> variables = longTermMemoryInstance.getVariables(null, userId, scopeId);
+            if (variables == null || variables.isEmpty()) {
+                result.put("sys_memory_variables", "{}");
+                return;
+            }
+            Set<String> allowed = new HashSet<>();
+            for (Param param : agentConfig.getAgentMemoryConfig().getMemVariables()) {
+                if (param != null && param.getName() != null) {
+                    allowed.add(param.getName());
+                }
+            }
+            Map<String, String> filtered = new LinkedHashMap<>();
+            for (Map.Entry<String, String> entry : variables.entrySet()) {
+                if (allowed.contains(entry.getKey())) {
+                    filtered.put(entry.getKey(), entry.getValue());
+                }
+            }
+            result.put("sys_memory_variables", toJson(filtered, "{}"));
+        } catch (Exception e) {
+            Loggers.CONTROLLER.warning("Memory variable retrieval failed: {}", e.getMessage());
+            result.put("sys_memory_variables", "{}");
+        }
+    }
+
+    private void loadLongTermMemory(String userId, String scopeId, String query, Map<String, String> result) {
+        List<String> memoryContents = new ArrayList<>();
+        try {
+            if (enableFragmentMemory) {
+                List<MemResult> mems = longTermMemoryInstance.searchUserMem(query, 10, userId, scopeId, 0.0);
+                appendMemoryContents(memoryContents, mems);
+            }
+            if (enableSummaryMemory) {
+                List<MemResult> summaries = longTermMemoryInstance.searchUserHistorySummary(
+                        query, 5, userId, scopeId, 0.0);
+                appendMemoryContents(memoryContents, summaries);
+            }
+            result.put("sys_long_term_memory", toJson(memoryContents, "[]"));
+        } catch (Exception e) {
+            Loggers.CONTROLLER.warning("Long-term memory retrieval failed: {}", e.getMessage());
+            result.put("sys_long_term_memory", "[]");
+        }
+    }
+
+    private static void appendMemoryContents(List<String> memoryContents, List<MemResult> mems) {
+        if (mems == null) {
+            return;
+        }
+        for (MemResult mem : mems) {
+            if (mem != null && mem.getMemInfo() != null && mem.getMemInfo().getContent() != null) {
+                memoryContents.add(mem.getMemInfo().getContent());
+            }
+        }
+    }
+
+    private static String firstNonBlank(Object first, Object second) {
+        String firstValue = stringValue(first);
+        return !firstValue.isBlank() ? firstValue : stringValue(second);
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : "";
+    }
+
+    private static String toJson(Object value, String fallback) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     private Map<String, Object> buildInteractiveInputExtensions(InteractiveInput input) {

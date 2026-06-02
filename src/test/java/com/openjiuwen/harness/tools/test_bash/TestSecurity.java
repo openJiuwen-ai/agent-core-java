@@ -120,6 +120,15 @@ class TestSecurity {
         }
 
         @Test
+        @DisplayName("test git push short force detected")
+        void testGitPushShortForceDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("git push -f origin main");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("remote history"));
+        }
+
+        @Test
         @DisplayName("test git clean detected")
         void testGitCleanDetected() {
             // Python: test_destructive_detected - git clean
@@ -150,6 +159,15 @@ class TestSecurity {
         }
 
         @Test
+        @DisplayName("test git stash clear detected")
+        void testGitStashClearDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("git stash clear");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("stashed"));
+        }
+
+        @Test
         @DisplayName("test git branch D detected")
         void testGitBranchDDetected() {
             // Python: test_destructive_detected - git branch -D
@@ -167,6 +185,51 @@ class TestSecurity {
             
             assertNotNull(warning);
             assertTrue(warning.toLowerCase().contains("rewrite"));
+        }
+
+        @Test
+        @DisplayName("test git push no verify detected")
+        void testGitPushNoVerifyDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("git push --no-verify");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("hooks"));
+        }
+
+        @Test
+        @DisplayName("test drop table detected")
+        void testDropTableDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("DROP TABLE users;");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("database"));
+        }
+
+        @Test
+        @DisplayName("test truncate table detected")
+        void testTruncateTableDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("TRUNCATE TABLE logs;");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("truncate"));
+        }
+
+        @Test
+        @DisplayName("test kubectl delete detected")
+        void testKubectlDeleteDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("kubectl delete pod foo");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("kubernetes"));
+        }
+
+        @Test
+        @DisplayName("test terraform destroy detected")
+        void testTerraformDestroyDetected() {
+            String warning = BashSecurityUtils.getDestructiveWarning("terraform destroy");
+
+            assertNotNull(warning);
+            assertTrue(warning.toLowerCase().contains("terraform"));
         }
 
         @Test
@@ -194,6 +257,12 @@ class TestSecurity {
             String warning = BashSecurityUtils.getDestructiveWarning("ls -la");
             
             assertNull(warning);
+        }
+
+        @Test
+        @DisplayName("test python command no warning")
+        void testPythonCommandNoWarning() {
+            assertNull(BashSecurityUtils.getDestructiveWarning("python test.py"));
         }
     }
 }

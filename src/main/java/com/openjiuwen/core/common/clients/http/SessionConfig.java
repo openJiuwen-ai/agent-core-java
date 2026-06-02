@@ -85,23 +85,23 @@ public class SessionConfig {
             parts.append(connectorPoolConfig.generateKey());
         }
 
-        if (headers != null && !headers.isEmpty()) {
-            parts.append("&headers:").append(headers.toString());
-        }
-
+        appendSortedMap(parts, "headers", headers);
         if (proxy != null) {
             parts.append("&proxy:").append(proxy);
         }
-
         if (timeout != null) {
             parts.append("&timeout:").append(timeout);
         }
-
         if (connectTimeout != null) {
             parts.append("&connectTimeout:").append(connectTimeout);
         }
-
+        appendSortedMap(parts, "timeoutArgs", timeoutArgs);
         parts.append("&raiseForStatus:").append(raiseForStatus);
+        parts.append("&trustEnv:").append(trustEnv);
+        if (auth != null) {
+            parts.append("&auth:").append(auth);
+        }
+        appendSortedMap(parts, "extendArgs", extendArgs);
 
         String keyStr = parts.toString();
 
@@ -121,5 +121,20 @@ public class SessionConfig {
         }
 
         return keyStr;
+    }
+
+    private static void appendSortedMap(StringBuilder parts, String label, Map<?, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return;
+        }
+        Map<String, Object> sorted = new java.util.TreeMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                sorted.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        if (!sorted.isEmpty()) {
+            parts.append('&').append(label).append(':').append(sorted);
+        }
     }
 }

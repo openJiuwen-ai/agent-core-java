@@ -175,6 +175,18 @@ public class AgentTeamSession extends BaseSession {
         postRunDone = true;
     }
 
+    @Override
+    public Object getState(String key) {
+        return stateField.getGlobal(key);
+    }
+
+    @Override
+    public void updateState(Map<String, Object> stateMap) {
+        if (stateMap != null) {
+            stateField.updateGlobal(stateMap);
+        }
+    }
+
     /**
      * Get the team identifier.
      *

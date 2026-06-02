@@ -36,7 +36,9 @@ public class ToolMessageChunk extends ToolMessage {
         return ToolMessageChunk.builder()
                 .role("tool")
                 .content(orEmpty(this.getContentAsString()) + orEmpty(other.getContentAsString()))
-                .toolCallId(other.getToolCallId() != null ? other.getToolCallId() : this.getToolCallId())
+                .toolCallId(other.getToolCallId() != null && !other.getToolCallId().isBlank()
+                        ? other.getToolCallId()
+                        : this.getToolCallId())
                 .build();
     }
 

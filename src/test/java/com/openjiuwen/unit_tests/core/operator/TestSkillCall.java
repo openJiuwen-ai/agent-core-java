@@ -4,80 +4,132 @@
 
 package com.openjiuwen.unit_tests.core.operator;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.operator.TunableSpec;
+import com.openjiuwen.core.operator.skill_call.SkillCallOperator;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import java.util.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for SkillCall operator.
- * <p>
- * Mirrors Python's {@code test_skill_call} in
- * {@code tests.unit_tests.core.operator}.
- * </p>
+ * Unit tests for SkillCallOperator.
+ *
+ * <p>Mirrors Python's tests/unit_tests/core/operator/test_skill_call.py.</p>
  */
-@DisplayName("TestSkillCall")
 class TestSkillCall {
 
     @Nested
-    @DisplayName("SkillCall creation tests")
-    class SkillCallCreationTests {
+    @DisplayName("SkillCall tests")
+    class SkillCallTests {
 
         @Test
-        @DisplayName("Test SkillCall creation")
-        void testSkillCallCreation() {
-            // Mirrors Python: test_skill_call_creation
-            // Verify SkillCall can be instantiated
-            assertNotNull(Object.class, "SkillCall infrastructure should exist");
+        @DisplayName("test operator id includes skill name")
+        void testOperatorIdIncludesSkillName() {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+            assertEquals("skill_call_skill-a", op.getOperatorId());
         }
 
         @Test
-        @DisplayName("Test SkillCall with skill config")
-        void testSkillCallWithSkillConfig() {
-            // Test SkillCall with configuration
-            assertNotNull(Object.class, "SkillCall with config should be supported");
+        @DisplayName("test get tunables")
+        void testGetTunables() {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+            Map<String, TunableSpec> tunables = op.getTunables();
+
+            assertTrue(tunables.containsKey("experiences"));
+        }
+
+        @Test
+        @DisplayName("test set parameter experiences")
+        void testSetParameterExperiences() {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+
+            op.setParameter("experiences", "record1");
+
+            List<Object> staged = op.getStagedRecords();
+            assertTrue(staged.contains("record1"));
+        }
+
+        @Test
+        @DisplayName("test discard staged")
+        void testDiscardStaged() {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+
+            op.setParameter("experiences", "record1");
+            op.discardStaged();
+
+            assertTrue(op.getStagedRecords().isEmpty());
+        }
+
+        @Test
+        @DisplayName("test flush records to store does not mutate staged queue")
+        void testFlushRecordsToStoreDoesNotMutateStagedQueue() throws Exception {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+            op.setParameter("experiences", "later-record");
+            RecordingStore store = new RecordingStore();
+
+            SkillCallOperator.FlushResult result =
+                    op.flushRecordsToStore(store, List.of("approved-record")).get();
+
+            assertEquals(List.of(List.of("skill-a", "approved-record")), store.calls);
+            assertEquals(1, result.getFlushedCount());
+            assertTrue(result.getRemainingRecords().isEmpty());
+            assertEquals(List.of("later-record"), op.getStagedRecords());
+        }
+
+        @Test
+        @DisplayName("test flush records to store returns remaining tail on failure")
+        void testFlushRecordsToStoreReturnsRemainingTailOnFailure() throws Exception {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+            RecordingStore store = new RecordingStore();
+            store.failOnRecord = "r2";
+
+            SkillCallOperator.FlushResult result =
+                    op.flushRecordsToStore(store, List.of("r1", "r2", "r3")).get();
+
+            assertEquals(1, result.getFlushedCount());
+            assertEquals(List.of("r2", "r3"), result.getRemainingRecords());
+            assertTrue(op.getStagedRecords().isEmpty());
+            assertEquals(List.of("r1"), op.getFlushedRecords());
+        }
+
+        @Test
+        @DisplayName("test flush to store preserves records staged during io")
+        void testFlushToStorePreservesRecordsStagedDuringIo() throws Exception {
+            SkillCallOperator op = new SkillCallOperator("skill-a");
+            op.setParameter("experiences", "r1");
+            RecordingStore store = new RecordingStore();
+            store.onAppend = record -> {
+                if ("r1".equals(record)) {
+                    op.setParameter("experiences", "r2");
+                }
+            };
+
+            int flushed = op.flushToStore(store).get();
+
+            assertEquals(1, flushed);
+            assertEquals(List.of("r2"), op.getStagedRecords());
         }
     }
 
-    @Nested
-    @DisplayName("SkillCall execution tests")
-    class SkillCallExecutionTests {
+    private static class RecordingStore {
+        private final List<List<Object>> calls = new ArrayList<>();
+        private String failOnRecord;
+        private java.util.function.Consumer<Object> onAppend;
 
-        @Test
-        @DisplayName("Test SkillCall execute")
-        void testSkillCallExecute() {
-            // Mirrors Python: test_skill_call_execute
-            // Verify execute method exists
-            assertNotNull(Object.class, "Execute should be callable");
-        }
-
-        @Test
-        @DisplayName("Test SkillCall error handling")
-        void testSkillCallErrorHandling() {
-            // Test error handling during skill call
-            assertNotNull(Object.class, "Error handling should be supported");
-        }
-    }
-
-    @Nested
-    @DisplayName("SkillCall validation tests")
-    class SkillCallValidationTests {
-
-        @Test
-        @DisplayName("Test SkillCall input validation")
-        void testSkillCallInputValidation() {
-            // Verify input validation
-            assertNotNull(Object.class, "Input validation should exist");
-        }
-
-        @Test
-        @DisplayName("Test SkillCall output validation")
-        void testSkillCallOutputValidation() {
-            // Verify output validation
-            assertNotNull(Object.class, "Output validation should exist");
+        public void appendRecord(String skillName, Object record) {
+            if (failOnRecord != null && failOnRecord.equals(record)) {
+                throw new RuntimeException("disk full");
+            }
+            calls.add(List.of(skillName, record));
+            if (onAppend != null) {
+                onAppend.accept(record);
+            }
         }
     }
 }

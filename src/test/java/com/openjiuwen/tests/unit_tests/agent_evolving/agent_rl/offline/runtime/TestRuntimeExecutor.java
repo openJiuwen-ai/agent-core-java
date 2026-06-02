@@ -24,8 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for RuntimeExecutor.
  * <p>
- * Mirrors Python's {@code test_runtime_executor.py} in
- * {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/}.
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/test_runtime_executor.py}.
  */
 @DisplayName("RuntimeExecutor Tests")
 class TestRuntimeExecutor {

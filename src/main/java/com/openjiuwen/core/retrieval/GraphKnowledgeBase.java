@@ -188,6 +188,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
+        stats.put("index_type", config.getIndexType());
         stats.put("use_graph", config.isUseGraph());
         Indexer activeIndexManager = resolveIndexManager();
         if (activeIndexManager == null) {
@@ -198,6 +199,12 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         if (config.isUseGraph()) {
             stats.put("triple_index_info", activeIndexManager.getIndexInfo(tripleIndexName()));
         }
+        stats.put("has_parser", parser != null);
+        stats.put("has_chunker", chunker != null);
+        stats.put("has_extractor", extractor != null);
+        stats.put("has_embed_model", embedModel != null);
+        stats.put("has_vector_store", vectorStore != null);
+        stats.put("has_graph_retriever", graphRetriever != null);
         return stats;
     }
 

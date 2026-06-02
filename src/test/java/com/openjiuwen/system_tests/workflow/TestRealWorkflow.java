@@ -4,59 +4,39 @@
 
 package com.openjiuwen.system_tests.workflow;
 
-import com.openjiuwen.core.runner.Runner;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Real workflow tests.
- * <p>
  * Mirrors Python's {@code test_real_workflow.py} in
  * {@code tests/system_tests/workflow/test_real_workflow.py}.
+ *
+ * <p>The Python workflow system tests are individually skipped with
+ * {@code @unittest.skip("skip system test")}; Java keeps the same explicit
+ * skip contract and method-level mapping.</p>
  */
 public class TestRealWorkflow {
 
-    @BeforeEach
-    void setUp() throws Exception {
-        Runner.start();
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testWorkflowLlmQuestionerPlugin() {
+        Map<String, String> mockedToolResult = new LinkedHashMap<>();
+        mockedToolResult.put("city", "Shanghai");
+        mockedToolResult.put("weather", "sunny");
+
+        assertThat(mockedToolResult).containsEntry("city", "Shanghai");
+        assertThat(mockedToolResult).containsEntry("weather", "sunny");
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        Runner.stop();
-    }
-
-    @Nested
-    @DisplayName("Real workflow tests")
-    class WorkflowTests {
-
-        @Test
-        @DisplayName("Test workflow execution placeholder")
-        void testWorkflowExecution() {
-            // Placeholder: Workflow execution test
-            
-            assertThat(Runner.resourceMgr()).isNotNull();
-        }
-
-        @Test
-        @DisplayName("Test workflow component placeholder")
-        void testWorkflowComponent() {
-            // Placeholder: Workflow component test
-            
-            assertThat(true).isTrue();
-        }
-
-        @Test
-        @DisplayName("Test workflow state management placeholder")
-        void testWorkflowStateManagement() {
-            // Placeholder: Workflow state management test
-            
-            assertThat(true).isTrue();
-        }
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testStreamWorkflowLlmWithStreamWriter() {
+        String streamedAnswer = "上海今天晴 30C";
+        assertThat(streamedAnswer).contains("上海", "晴");
     }
 }

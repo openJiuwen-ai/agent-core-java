@@ -4,30 +4,32 @@
 
 package com.openjiuwen.unit_tests.core.tool_impls;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.tools.GrepTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
-import com.openjiuwen.harness.tools.GrepTool;
-import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for grep tool implementation.
- * <p>
- * Mirrors Python's tests.unit_tests.harness.tools.test_filesystem_tools grep-related tests
- * and tests.unit_tests.harness.tools.test_grep_select_string.
- * Tests grep functionality for pattern matching in files.
+ *
+ * <p>Mirrors grep-related coverage from
+ * {@code tests.unit_tests.harness.tools.test_filesystem_tools}.</p>
  */
 class TestGrep {
 
@@ -62,14 +64,12 @@ class TestGrep {
     @Test
     @Tag("level1")
     void testGrepToolSearchPattern() throws IOException {
-        // Create test file with content
-        Path file = tempDir.resolve("test.txt");
-        Files.writeString(file, "第一行\n第二行\n第三行包含关键词\n第四行");
+        Files.writeString(tempDir.resolve("test.txt"), "line one\nline two\nline three has keyword\nline four");
 
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "关键词"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", "keyword"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
@@ -81,11 +81,10 @@ class TestGrep {
     void testGrepToolEmptyPattern() {
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", ""),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", ""),
+                Map.of()
         );
 
-        // Empty pattern should fail
         assertFalse(result.isSuccess());
         assertNotNull(result.getError());
         assertTrue(result.getError().toLowerCase().contains("pattern"));
@@ -93,24 +92,48 @@ class TestGrep {
 
     @Test
     @Tag("level1")
-    void testGrepToolChineseCharacters() throws IOException {
-        // Create file with Chinese content
-        Path file = tempDir.resolve("chinese.txt");
-        Files.writeString(file, "中文测试内容\n寻找中文字符\n测试成功");
+    void testGrepToolIgnoreCase() throws IOException {
+        Files.writeString(tempDir.resolve("mixed-case.txt"), "Hello World\nHELLO AGAIN\nbye");
 
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "中文"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", "hello", "ignore_case", true),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
     }
 
     @Test
+    @Tag("level1")
+    void testGrepToolCountModeReturnsStructuredCounts() throws IOException {
+        Files.writeString(tempDir.resolve("one.py"), "hit\nhit\n");
+        Files.writeString(tempDir.resolve("two.py"), "hit\n");
+
+        GrepTool tool = new GrepTool(sysOp);
+        ToolOutput result = (ToolOutput) tool.invoke(
+                Map.of(
+                        "path", tempDir.toString(),
+                        "pattern", "hit",
+                        "glob", "*.py",
+                        "output_mode", "count"
+                ),
+                Map.of()
+        );
+
+        assertTrue(result.isSuccess());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals("count", data.get("mode"));
+        assertEquals(2, data.get("numFiles"));
+        assertEquals(3, data.get("numMatches"));
+        assertTrue(String.valueOf(data.get("content")).contains("one.py:2"));
+        assertTrue(String.valueOf(data.get("content")).contains("two.py:1"));
+    }
+
+    @Test
     @Tag("level0")
     void testGrepConfigExists() {
-        // GrepTool doesn't use separate config class
         assertTrue(GrepTool.class.getDeclaredMethods().length > 0);
     }
 

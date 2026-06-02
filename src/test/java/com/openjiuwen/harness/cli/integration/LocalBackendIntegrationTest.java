@@ -5,11 +5,15 @@
 package com.openjiuwen.harness.cli.integration;
 
 import com.openjiuwen.harness.cli.agent.CliAgentFactory;
-
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,40 +26,62 @@ import static org.junit.jupiter.api.Assertions.*;
 class LocalBackendIntegrationTest {
 
     @Test
-    void fakeChunkHoldsTypeAndIndex() {
-        FakeChunk chunk = new FakeChunk("llm_output", 0);
-        assertEquals("llm_output", chunk.type);
-        assertEquals(0, chunk.index);
+    void startInitializesAgent() {
+        Object agent = new Object();
+        Object tracker = new Object();
+        AtomicInteger startCalls = new AtomicInteger();
+        CliAgentFactory.LocalBackend backend = backend(
+                new CliAgentFactory.AgentAndTracker(agent, tracker),
+                startCalls::incrementAndGet,
+                () -> {
+                },
+                (a, inputs, session) -> List.of().iterator());
+
+        backend.start();
+
+        assertSame(agent, backend.getAgent());
+        assertSame(tracker, backend.getTracker());
+        assertEquals(1, startCalls.get());
     }
 
     @Test
-    void fakeChunkDefaultPayload() {
-        FakeChunk chunk = new FakeChunk("answer", 1);
-        assertNotNull(chunk.payload);
-        assertTrue(chunk.payload.isEmpty());
+    void runStreamingYieldsChunks() {
+        List<Object> chunks = List.of(
+                new FakeChunk("llm_output", 0, Map.of("content", "hi")),
+                new FakeChunk("answer", 1, Map.of("output", "done")));
+        AtomicReference<Object> inputsSeen = new AtomicReference<>();
+        CliAgentFactory.LocalBackend backend = backend(
+                new CliAgentFactory.AgentAndTracker(new Object(), new Object()),
+                () -> {
+                },
+                () -> {
+                },
+                (agent, inputs, session) -> {
+                    inputsSeen.set(inputs);
+                    return chunks.iterator();
+                });
+        backend.start();
+
+        List<Object> results = new ArrayList<>();
+        backend.runStreaming("test").forEachRemaining(results::add);
+
+        assertEquals(2, results.size());
+        assertEquals("llm_output", ((FakeChunk) results.get(0)).type());
+        assertEquals("answer", ((FakeChunk) results.get(1)).type());
+        assertEquals("test", ((Map<?, ?>) inputsSeen.get()).get("query"));
     }
 
     @Test
-    void fakeChunkCustomPayload() {
-        FakeChunk chunk = new FakeChunk("llm_output", 0);
-        chunk.payload.put("content", "hello");
-        assertEquals("hello", chunk.payload.get("content"));
-    }
-
-    @Test
-    void abortWithoutAgentDoesNotCrash() {
-        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
-
-        assertDoesNotThrow(backend::abort);
-    }
-
-    @Test
-    void abortInvokesAgentAbortWhenAvailable() throws Exception {
-        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
+    void abortCallsAgentAbort() {
         FakeAbortableAgent agent = new FakeAbortableAgent();
-        Field agentField = CliAgentFactory.LocalBackend.class.getDeclaredField("agent");
-        agentField.setAccessible(true);
-        agentField.set(backend, agent);
+        CliAgentFactory.LocalBackend backend = backend(
+                new CliAgentFactory.AgentAndTracker(agent, new Object()),
+                () -> {
+                },
+                () -> {
+                },
+                (a, inputs, session) -> List.of().iterator());
+        backend.start();
 
         backend.abort();
 
@@ -63,28 +89,40 @@ class LocalBackendIntegrationTest {
     }
 
     @Test
-    void stopWithoutStartedRunnerDoesNotCrash() {
-        CliAgentFactory.LocalBackend backend = new CliAgentFactory.LocalBackend(new LinkedHashMap<>());
+    void abortWithoutAgent() {
+        CliAgentFactory.LocalBackend backend = backend(
+                new CliAgentFactory.AgentAndTracker(new Object(), new Object()),
+                () -> {
+                },
+                () -> {
+                },
+                (a, inputs, session) -> List.of().iterator());
 
-        assertDoesNotThrow(backend::stop);
+        assertDoesNotThrow(backend::abort);
     }
 
-    static class FakeChunk {
-        final String type;
-        final int index;
-        final java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    private static CliAgentFactory.LocalBackend backend(
+            CliAgentFactory.AgentAndTracker agentAndTracker,
+            Runnable runnerStart,
+            Runnable runnerStop,
+            CliAgentFactory.LocalBackend.StreamingRunner streamingRunner) {
+        return new CliAgentFactory.LocalBackend(
+                new LinkedHashMap<>(),
+                ignored -> agentAndTracker,
+                runnerStart,
+                runnerStop,
+                streamingRunner);
+    }
 
-        FakeChunk(String type, int index) {
-            this.type = type;
-            this.index = index;
-        }
+    record FakeChunk(String type, int index, Map<String, Object> payload) {
     }
 
     public static class FakeAbortableAgent {
         int abortCalls;
 
-        public void abort() {
+        public CompletableFuture<Void> abort() {
             abortCalls += 1;
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

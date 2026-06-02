@@ -20,6 +20,10 @@ public class MessageRouter {
     
     private final SubscriptionManager subscriptionManager;
     private TeamRuntime runtime;
+
+    public MessageRouter(SubscriptionManager subscriptionManager) {
+        this(subscriptionManager, null);
+    }
     
     public MessageRouter(SubscriptionManager subscriptionManager, TeamRuntime runtime) {
         this.subscriptionManager = subscriptionManager;
@@ -76,7 +80,7 @@ public class MessageRouter {
                     throw new IllegalStateException("MessageRouter requires a TeamRuntime for Pub-Sub routing");
                 }
                 runtime.dispatchToAgent(agentId, envelope.getMessage(), envelope.getSessionId().orElse(null));
-            });
+            }).exceptionally(error -> null);
             futures.add(delivery);
         }
         

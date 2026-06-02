@@ -11,6 +11,9 @@ public class WhitespaceNormalizer implements TextPreprocessor {
 
     @Override
     public String process(String text) {
-        return text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return text.replaceAll("\\s+", " ").trim();
     }
 }

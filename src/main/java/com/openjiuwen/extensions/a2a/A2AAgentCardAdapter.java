@@ -4,6 +4,8 @@
 
 package com.openjiuwen.extensions.a2a;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.*;
@@ -16,6 +18,10 @@ import java.util.*;
  */
 public class A2AAgentCardAdapter {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final List<String> DEFAULT_INPUT_MODES = List.of("text/plain", "application/json");
+    private static final List<String> DEFAULT_OUTPUT_MODES = List.of("text/plain", "application/json");
+
     public record SupportedInterface(String url, String protocolBinding, String protocolVersion, String tenant) {
     }
 
@@ -26,7 +32,7 @@ public class A2AAgentCardAdapter {
         private final List<String> defaultOutputModes;
         private final List<SupportedInterface> supportedInterfaces;
 
-        private A2aAgentCard(
+        public A2aAgentCard(
                 String name,
                 String description,
                 List<String> defaultInputModes,
@@ -58,6 +64,16 @@ public class A2AAgentCardAdapter {
         public List<SupportedInterface> getSupportedInterfaces() {
             return supportedInterfaces;
         }
+
+        public Map<String, Object> toMap() {
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("name", name);
+            value.put("description", description);
+            value.put("default_input_modes", defaultInputModes);
+            value.put("default_output_modes", defaultOutputModes);
+            value.put("supported_interfaces", supportedInterfaces);
+            return value;
+        }
     }
 
     public static A2aAgentCard toA2aAgentCard(AgentCard card) {
@@ -71,20 +87,72 @@ public class A2AAgentCardAdapter {
             String protocolBinding,
             String protocolVersion,
             String tenant) {
+        if (card == null) {
+            return null;
+        }
         List<SupportedInterface> interfaces = new ArrayList<>(supportedInterfaces != null
                 ? supportedInterfaces : List.of());
         if (interfaces.isEmpty() && interfaceUrl != null) {
-            interfaces.add(new SupportedInterface(interfaceUrl, protocolBinding, protocolVersion, tenant));
+            interfaces.add(new SupportedInterface(
+                    interfaceUrl,
+                    protocolBinding != null ? protocolBinding : "HTTP+JSON",
+                    protocolVersion != null ? protocolVersion : "1.0",
+                    tenant));
         }
-        String description = card.getDescription()
-                + "\n[input_params] " + card.getInputParamsAsMap()
-                + "\n[output_params] " + card.getOutputParamsAsMap();
+        String description = buildDescription(card.getDescription(), card.getInputParams(), card.getOutputParams());
         return new A2aAgentCard(
-                card.getName(),
+                card.getName() != null ? card.getName() : "",
                 description,
-                List.of("text/plain", "application/json"),
-                List.of("text/plain", "application/json"),
+                DEFAULT_INPUT_MODES,
+                DEFAULT_OUTPUT_MODES,
                 interfaces);
+    }
+
+    public static AgentCard fromA2aAgentCard(A2aAgentCard a2aAgentCard) {
+        if (a2aAgentCard == null) {
+            return AgentCard.builder().build();
+        }
+        return AgentCard.builder()
+                .name(a2aAgentCard.getName())
+                .description(a2aAgentCard.getDescription())
+                .build();
+    }
+
+    private static String buildDescription(String baseDescription, Object inputParams, Object outputParams) {
+        List<String> sections = new ArrayList<>();
+        String base = baseDescription != null ? baseDescription.strip() : "";
+        if (!base.isEmpty()) {
+            sections.add(base);
+        }
+        String inputText = serializeParamPayload(inputParams);
+        String outputText = serializeParamPayload(outputParams);
+        if (!inputText.isEmpty()) {
+            sections.add("[input_params] " + inputText);
+        }
+        if (!outputText.isEmpty()) {
+            sections.add("[output_params] " + outputText);
+        }
+        return String.join("\n", sections).strip();
+    }
+
+    private static String serializeParamPayload(Object value) {
+        if (value == null) {
+            return "";
+        }
+        Object payload = value;
+        if (value instanceof Class<?> cls) {
+            payload = Map.of("type", cls.getSimpleName());
+        } else if (!(value instanceof Map<?, ?>)) {
+            payload = Map.of("value", String.valueOf(value));
+        }
+        try {
+            return OBJECT_MAPPER
+                    .writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(payload)
+                    .replace("\r\n", "\n");
+        } catch (JsonProcessingException e) {
+            return String.valueOf(payload);
+        }
     }
 
     /** Convert an openjiuwen agent card to A2A agent card. */

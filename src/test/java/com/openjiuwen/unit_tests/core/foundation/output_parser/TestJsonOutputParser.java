@@ -5,23 +5,28 @@
 package com.openjiuwen.unit_tests.core.foundation.output_parser;
 
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for JsonOutputParser.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/foundation/output_parser/test_json_output_parser.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/foundation/output_parser/test_json_output_parser.py
- * 
- * Tests JSON parsing from strings, markdown code blocks, and AIMessage objects.
+ * Tests for JsonOutputParser.
+ *
+ * <p>Mirrors Python's tests/unit_tests/core/foundation/output_parser/test_json_output_parser.py.</p>
  */
+@DisplayName("TestJsonOutputParser")
 class TestJsonOutputParser {
 
     private JsonOutputParser parser;
@@ -31,195 +36,209 @@ class TestJsonOutputParser {
         parser = new JsonOutputParser();
     }
 
-    // ==================== Parse Valid JSON Tests ====================
+    @Nested
+    @DisplayName("Parse single input tests")
+    class ParseTests {
 
-    @Test
-    @DisplayName("Test parse valid JSON string")
-    void testParseValidJsonString() {
-        // In Python: json_str = '{"name": "test", "value": 123}'
-        // result = await self.parser.parse(json_str)
-        // assert result == {"name": "test", "value": 123}
-        
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("name", "test");
-        expected.put("value", 123);
-        
-        assertTrue(true, "Parse valid JSON string test placeholder");
+        @Test
+        @DisplayName("Test parse valid JSON string")
+        void testParseValidJsonString() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("{\"name\": \"test\", \"value\": 123}");
+
+            assertNotNull(result);
+            assertEquals("test", result.get("name"));
+            assertEquals(123, result.get("value"));
+        }
+
+        @Test
+        @DisplayName("Test parse valid JSON in markdown code block")
+        void testParseValidJsonInMarkdown() {
+            String markdownJson = "Here is some info:\n```json\n{\"item\": \"apple\", \"price\": 1.5}\n```\nThanks!";
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse(markdownJson);
+
+            assertNotNull(result);
+            assertEquals("apple", result.get("item"));
+            assertEquals(1.5, result.get("price"));
+        }
+
+        @Test
+        @DisplayName("Test parse valid JSON in AIMessage object")
+        void testParseValidJsonInAIMessage() {
+            AssistantMessage aiMessage = new AssistantMessage("```json\n{\"status\": \"success\", \"code\": 200}\n```");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse(aiMessage);
+
+            assertNotNull(result);
+            assertEquals("success", result.get("status"));
+            assertEquals(200, result.get("code"));
+        }
+
+        @Test
+        @DisplayName("Test parse invalid JSON string")
+        void testParseInvalidJsonString() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("{\"name\": \"test\", \"value\": 123,");
+            assertNull(result);
+        }
+
+        @Test
+        @DisplayName("Test parse non-JSON text")
+        void testParseNonJsonString() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("This is just plain text.");
+            assertNull(result);
+        }
+
+        @Test
+        @DisplayName("Test parse empty string")
+        void testParseEmptyString() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("");
+            assertNull(result);
+        }
+
+        @Test
+        @DisplayName("Test parse None input")
+        void testParseNoneInput() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse((String) null);
+            assertNull(result);
+        }
+
+        @Test
+        @DisplayName("Test parse complex JSON structure")
+        void testParseComplexJson() {
+            String complexJson = "```json\n"
+                    + "{\n"
+                    + "  \"users\": [\n"
+                    + "    {\"id\": 1, \"name\": \"Alice\", \"active\": true},\n"
+                    + "    {\"id\": 2, \"name\": \"Bob\", \"active\": false}\n"
+                    + "  ],\n"
+                    + "  \"metadata\": {\"total\": 2, \"page\": 1}\n"
+                    + "}\n"
+                    + "```";
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse(complexJson);
+
+            assertNotNull(result);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> users = (List<Map<String, Object>>) result.get("users");
+            assertEquals(2, users.size());
+            assertEquals("Alice", users.get(0).get("name"));
+            assertEquals("Bob", users.get(1).get("name"));
+        }
+
+        @Test
+        @DisplayName("Test parse JSON with Unicode characters")
+        void testParseJsonWithUnicode() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("{\"message\":\"你好，世界\"}");
+            assertNotNull(result);
+            assertEquals("你好，世界", result.get("message"));
+        }
+
+        @Test
+        @DisplayName("Test parse JSON with special characters")
+        void testParseJsonWithSpecialCharacters() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("{\"path\":\"C:/temp/file.txt\",\"ok\":true}");
+            assertNotNull(result);
+            assertEquals("C:/temp/file.txt", result.get("path"));
+            assertEquals(true, result.get("ok"));
+        }
+
+        @Test
+        @DisplayName("Test parse JSON with escaped strings")
+        void testParseJsonWithEscapedStrings() {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) parser.parse("{\"quote\":\"He said \\\"hi\\\"\"}");
+            assertNotNull(result);
+            assertEquals("He said \"hi\"", result.get("quote"));
+        }
     }
 
-    @Test
-    @DisplayName("Test parse valid JSON in markdown code block")
-    void testParseValidJsonInMarkdown() {
-        // In Python: markdown_json = "Here is some info:\n```json\n{\"item\": \"apple\", \"price\": 1.5}\n```\nThanks!"
-        // result = await self.parser.parse(markdown_json)
-        // assert result == {"item": "apple", "price": 1.5}
-        
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("item", "apple");
-        expected.put("price", 1.5);
-        
-        assertTrue(true, "Parse JSON in markdown test placeholder");
-    }
+    @Nested
+    @DisplayName("Stream parse tests")
+    class StreamParseTests {
 
-    @Test
-    @DisplayName("Test parse valid JSON in AIMessage object")
-    void testParseValidJsonInAIMessage() {
-        // In Python: ai_message = AssistantMessage(content="```json\n{\"status\": \"success\", \"code\": 200}\n```")
-        // result = await self.parser.parse(ai_message)
-        // assert result == {"status": "success", "code": 200}
-        
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("status", "success");
-        expected.put("code", 200);
-        
-        assertTrue(true, "Parse JSON in AIMessage test placeholder");
-    }
+        @Test
+        @DisplayName("Test stream parse valid JSON chunks")
+        void testStreamParseValidJsonChunks() {
+            List<String> chunks = List.of("```json\n", "{\"data\": ", "\"value\"}\n", "```");
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    // ==================== Parse Invalid JSON Tests ====================
+            assertEquals(1, parsedObjects.size());
+            assertEquals(Map.of("data", "value"), parsedObjects.get(0));
+        }
 
-    @Test
-    @DisplayName("Test parse invalid JSON string")
-    void testParseInvalidJsonString() {
-        // In Python: invalid_json = '{"name": "test", "value": 123,'
-        // result = await self.parser.parse(invalid_json)
-        // assert result is None
-        
-        assertTrue(true, "Parse invalid JSON string test placeholder");
-    }
+        @Test
+        @DisplayName("Test stream parse fragmented JSON chunks")
+        void testStreamParseFragmentedJsonChunks() {
+            List<String> chunks = List.of(
+                    "Some text before.\n",
+                    "```json\n",
+                    "{\"id\": 1,",
+                    "\"name\": \"",
+                    "Fragmented Item\"",
+                    "}\n",
+                    "```\n",
+                    "More text after.");
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    @Test
-    @DisplayName("Test parse non-JSON text")
-    void testParseNonJsonString() {
-        // In Python: non_json = "This is just plain text."
-        // result = await self.parser.parse(non_json)
-        // assert result is None
-        
-        assertTrue(true, "Parse non-JSON text test placeholder");
-    }
+            assertEquals(1, parsedObjects.size());
+            assertEquals(Map.of("id", 1, "name", "Fragmented Item"), parsedObjects.get(0));
+        }
 
-    @Test
-    @DisplayName("Test parse empty string")
-    void testParseEmptyString() {
-        // In Python: result = await self.parser.parse("")
-        // assert result is None
-        
-        assertTrue(true, "Parse empty string test placeholder");
-    }
+        @Test
+        @DisplayName("Test stream parse multiple JSON objects")
+        void testStreamParseMultipleJsonObjects() {
+            List<String> chunks = List.of("```json\n{\"a\":1}\n```", "Some text.", "```json\n{\"b\":2}\n```");
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    @Test
-    @DisplayName("Test parse None input")
-    void testParseNoneInput() {
-        // In Python: result = await self.parser.parse(None)
-        // assert result is None
-        
-        assertTrue(true, "Parse None input test placeholder");
-    }
+            assertEquals(2, parsedObjects.size());
+            assertEquals(List.of(Map.of("a", 1), Map.of("b", 2)), parsedObjects);
+        }
 
-    // ==================== Parse Complex JSON Tests ====================
+        @Test
+        @DisplayName("Test stream parse invalid JSON chunks")
+        void testStreamParseInvalidJsonChunks() {
+            List<String> chunks = List.of("```json\n", "{\"data\": ", "\"value\" \n", "```");
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    @Test
-    @DisplayName("Test parse complex JSON structure")
-    void testParseComplexJson() {
-        // Complex JSON with nested arrays and objects
-        Map<String, Object> expected = new HashMap<>();
-        
-        List<Map<String, Object>> users = new ArrayList<>();
-        Map<String, Object> user1 = new HashMap<>();
-        user1.put("id", 1);
-        user1.put("name", "Alice");
-        user1.put("active", true);
-        users.add(user1);
-        
-        Map<String, Object> user2 = new HashMap<>();
-        user2.put("id", 2);
-        user2.put("name", "Bob");
-        user2.put("active", false);
-        users.add(user2);
-        
-        expected.put("users", users);
-        
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("total", 2);
-        metadata.put("page", 1);
-        expected.put("metadata", metadata);
-        
-        assertTrue(true, "Parse complex JSON test placeholder");
-    }
+            assertTrue(parsedObjects.isEmpty());
+        }
 
-    // ==================== Stream Parse Tests ====================
+        @Test
+        @DisplayName("Test stream parse empty chunks")
+        void testStreamParseEmptyChunks() {
+            List<String> chunks = new ArrayList<>();
+            chunks.add("");
+            chunks.add(null);
+            chunks.add("");
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    @Test
-    @DisplayName("Test stream parse valid JSON chunks")
-    void testStreamParseValidJsonChunks() {
-        // In Python: chunks = ["```json\n", "{\"data\": ", "\"value\"}\n", "```"]
-        // expected_result = {"data": "value"}
-        
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("data", "value");
-        
-        assertTrue(true, "Stream parse valid JSON chunks test placeholder");
-    }
+            assertTrue(parsedObjects.isEmpty());
+        }
 
-    @Test
-    @DisplayName("Test stream parse fragmented JSON chunks")
-    void testStreamParseFragmentedJsonChunks() {
-        // In Python: chunks = ["Some text before.\n", "```json\n", "{\"id\": 1,", ...]
-        // expected_result = {"id": 1, "name": "Fragmented Item"}
-        
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("id", 1);
-        expected.put("name", "Fragmented Item");
-        
-        assertTrue(true, "Stream parse fragmented JSON chunks test placeholder");
-    }
+        @Test
+        @DisplayName("Test stream parse AssistantMessageChunk")
+        void testStreamParseAssistantMessageChunks() {
+            List<AssistantMessageChunk> chunks = List.of(
+                    AssistantMessageChunk.builder().content("```json\n{\"status\":").build(),
+                    AssistantMessageChunk.builder().content("\"ok\"}\n```").build());
+            List<Object> parsedObjects = new ArrayList<>();
+            parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);
 
-    @Test
-    @DisplayName("Test stream parse multiple JSON objects")
-    void testStreamParseMultipleJsonObjects() {
-        // In Python: chunks = ["```json\n{\"a\":1}\n```", "Some text.", "```json\n{\"b\":2}\n```"]
-        // expected_results = [{"a": 1}, {"b": 2}]
-        
-        assertTrue(true, "Stream parse multiple JSON objects test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test stream parse invalid JSON chunks")
-    void testStreamParseInvalidJsonChunks() {
-        // In Python: chunks with missing closing brace
-        // parsed_objects should be empty
-        
-        assertTrue(true, "Stream parse invalid JSON chunks test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test stream parse empty chunks")
-    void testStreamParseEmptyChunks() {
-        // In Python: empty chunks list
-        // parsed_objects should be empty
-        
-        assertTrue(true, "Stream parse empty chunks test placeholder");
-    }
-
-    // ==================== Edge Cases Tests ====================
-
-    @Test
-    @DisplayName("Test parse JSON with Unicode characters")
-    void testParseJsonWithUnicode() {
-        // Placeholder - Unicode handling test
-        assertTrue(true, "Parse JSON with Unicode test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test parse JSON with special characters")
-    void testParseJsonWithSpecialCharacters() {
-        // Placeholder - Special characters handling test
-        assertTrue(true, "Parse JSON with special characters test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test parse JSON with escaped strings")
-    void testParseJsonWithEscapedStrings() {
-        // Placeholder - Escaped strings handling test
-        assertTrue(true, "Parse JSON with escaped strings test placeholder");
+            assertEquals(1, parsedObjects.size());
+            assertEquals(Map.of("status", "ok"), parsedObjects.get(0));
+        }
     }
 }

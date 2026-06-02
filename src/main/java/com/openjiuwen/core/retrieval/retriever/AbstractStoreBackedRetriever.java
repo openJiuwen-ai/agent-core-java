@@ -14,6 +14,7 @@ public abstract class AbstractStoreBackedRetriever extends AbstractRetriever {
 
     protected final VectorStore vectorStore;
     protected final Embedding embedModel;
+    private String indexTypeOverride;
 
     protected AbstractStoreBackedRetriever(VectorStore vectorStore, Embedding embedModel) {
         this.vectorStore = vectorStore;
@@ -28,8 +29,15 @@ public abstract class AbstractStoreBackedRetriever extends AbstractRetriever {
         return embedModel;
     }
 
+    public void setIndexType(String indexType) {
+        this.indexTypeOverride = indexType;
+    }
+
     @Override
     public String getIndexType() {
-        return vectorStore.getIndexType();
+        if (indexTypeOverride != null) {
+            return indexTypeOverride;
+        }
+        return vectorStore == null ? null : vectorStore.getIndexType();
     }
 }

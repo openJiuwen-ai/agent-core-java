@@ -206,7 +206,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
         if (!continueLoop) {
             Map<String, Object> stateReset = new java.util.HashMap<>();
-            stateReset.put(Constant.INDEX, 0);
+            stateReset.put(Constant.INDEX, null);
             stateReset.put(BROKEN, false);
             state.update(stateReset);
             postBody.setFinishIndex(-1);
@@ -216,7 +216,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
                 ((WorkflowStateCollection) nodeSession.parent().state()).update(postBodyReset);
             }
             Map<String, Object> outputReset = new java.util.HashMap<>();
-            outputReset.put(Constant.INDEX, 0);
+            outputReset.put(Constant.INDEX, null);
             state.setOutputs(outputReset);
         }
 

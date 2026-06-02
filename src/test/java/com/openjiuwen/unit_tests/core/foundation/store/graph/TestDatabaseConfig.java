@@ -1,112 +1,108 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.unit_tests.core.foundation.store.graph;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.foundation.store.graph.BM25Config;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreIndexConfig;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreStorageConfig;
+import com.openjiuwen.core.foundation.store.vector_fields.MilvusAUTO;
+import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
-import java.util.Map;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for database configuration.
- * <p>
- * Mirrors Python's {@code test_database_config.py} from
- * {@code tests/unit_tests/core/foundation/store/graph/test_database_config.py}.
- * Tests database configuration creation and validation.
- */
 class TestDatabaseConfig {
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 0 (Config basics)
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
-    void testMapClassExists() {
-        assertNotNull(Map.class);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 1 (Database config creation)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level1")
-    void testDatabaseConfigCreation() {
-        Map<String, Object> config = new HashMap<>();
-        assertNotNull(config);
+    void testDefaultValues() {
+        BM25Config config = new BM25Config();
+        assertEquals(0.75, config.getBm25B());
+        assertEquals(1.2, config.getBm25K1());
     }
 
     @Test
-    @Tag("level1")
-    void testDatabaseHost() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("host", "localhost");
-        assertEquals("localhost", config.get("host"));
+    void testBm25BInRange() {
+        assertEquals(0.0, new BM25Config(0.0, 1.2).getBm25B());
+        assertEquals(1.0, new BM25Config(1.0, 1.2).getBm25B());
     }
 
     @Test
-    @Tag("level1")
-    void testDatabasePort() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("port", 19530);
-        assertEquals(19530, config.get("port"));
+    void testBm25BOutOfRangeRaises() {
+        assertThrows(IllegalArgumentException.class, () -> new BM25Config(1.5, 1.2));
     }
 
     @Test
-    @Tag("level1")
-    void testDatabaseName() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("database", "default");
-        assertEquals("default", config.get("database"));
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 2 (Connection pool config)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level2")
-    void testMaxConnections() {
-        int maxConnections = 10;
-        assertTrue(maxConnections > 0);
+    void testBm25K1GeZero() {
+        assertEquals(0.0, new BM25Config(0.75, 0.0).getBm25K1());
     }
 
     @Test
-    @Tag("level2")
-    void testConnectionTimeout() {
-        int timeoutMs = 5000;
-        assertTrue(timeoutMs > 0);
+    void testBm25K1NegativeRaises() {
+        assertThrows(IllegalArgumentException.class, () -> new BM25Config(0.75, -0.1));
     }
 
     @Test
-    @Tag("level2")
-    void testIdleTimeout() {
-        int idleTimeoutMs = 30000;
-        assertTrue(idleTimeoutMs > 0);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 3 (SSL configuration)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level3")
-    void testSslEnabled() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("ssl", true);
-        assertTrue((Boolean) config.get("ssl"));
+    void testRequiredFields() {
+        GraphStoreIndexConfig config = new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null);
+        assertEquals("cosine", config.getDistanceMetric());
+        assertNotNull(config.getIndexType());
     }
 
     @Test
-    @Tag("level3")
-    void testSslDisabled() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("ssl", false);
-        assertFalse((Boolean) config.get("ssl"));
+    void testDefaults() {
+        GraphStoreIndexConfig config = new GraphStoreIndexConfig(new MilvusAUTO(), "euclidean", null, null, null);
+        assertTrue(config.getExtraConfigs().isEmpty());
+        assertNotNull(config.getBm25Config());
+    }
+
+    @Test
+    void testDistanceMetricCosine() {
+        assertEquals("cosine",
+                new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null).getDistanceMetric());
+    }
+
+    @Test
+    void testDistanceMetricEuclidean() {
+        assertEquals("euclidean",
+                new GraphStoreIndexConfig(new MilvusAUTO(), "euclidean", null, null, null).getDistanceMetric());
+    }
+
+    @Test
+    void testDistanceMetricDot() {
+        assertEquals("dot",
+                new GraphStoreIndexConfig(new MilvusAUTO(), "dot", null, null, null).getDistanceMetric());
+    }
+
+    @Test
+    void testDistanceMetricInvalidRaises() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new GraphStoreIndexConfig(new MilvusAUTO(), "l2", null, null, null));
+    }
+
+    @Test
+    void testStorageDefaultValues() {
+        GraphStoreStorageConfig config = new GraphStoreStorageConfig();
+        assertEquals(32, config.getUuid());
+        assertEquals(500, config.getName());
+        assertEquals(65535, config.getContent());
+        assertEquals(10, config.getLanguage());
+        assertEquals(32, config.getUserId());
+        assertEquals(4096, config.getEntities());
+        assertEquals(4096, config.getRelations());
+        assertEquals(4096, config.getEpisodes());
+        assertEquals(20, config.getObjType());
+    }
+
+    @Test
+    void testVarcharFieldOutOfRangeRaises() {
+        assertThrows(IllegalArgumentException.class, () -> GraphStoreStorageConfig.builder().uuid(1).build());
+        assertThrows(IllegalArgumentException.class, () -> GraphStoreStorageConfig.builder().uuid(0).build());
+        assertThrows(IllegalArgumentException.class, () -> GraphStoreStorageConfig.builder().name(65536).build());
+    }
+
+    @Test
+    void testArrayLimitOutOfRangeRaises() {
+        assertThrows(IllegalArgumentException.class, () -> GraphStoreStorageConfig.builder().entities(1).build());
+        assertThrows(IllegalArgumentException.class, () -> GraphStoreStorageConfig.builder().relations(5000).build());
     }
 }

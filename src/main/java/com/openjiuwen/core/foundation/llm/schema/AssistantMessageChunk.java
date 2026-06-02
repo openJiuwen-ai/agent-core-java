@@ -71,6 +71,10 @@ public class AssistantMessageChunk extends AssistantMessage {
         String mergedFinishReason = !"null".equals(other.getFinishReason())
                 ? other.getFinishReason()
                 : this.getFinishReason();
+        Object mergedParserContent = MergeUtils.mergeParserContent(this.getParserContent(), other.getParserContent());
+        Object mergedReasoningContent = MergeUtils.mergeParserContent(
+                this.getReasoningContent(),
+                other.getReasoningContent());
 
         return AssistantMessageChunk.builder()
                 .role(this.getRole())
@@ -78,9 +82,8 @@ public class AssistantMessageChunk extends AssistantMessage {
                 .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
                 .usageMetadata(other.getUsageMetadata() != null ? other.getUsageMetadata() : this.getUsageMetadata())
                 .finishReason(mergedFinishReason)
-                .parserContent(other.getParserContent() != null ? other.getParserContent() : this.getParserContent())
-                .reasoningContent(other.getReasoningContent() != null
-                        ? other.getReasoningContent() : this.getReasoningContent())
+                .parserContent(mergedParserContent)
+                .reasoningContent(mergedReasoningContent != null ? mergedReasoningContent.toString() : null)
                 .build();
     }
 

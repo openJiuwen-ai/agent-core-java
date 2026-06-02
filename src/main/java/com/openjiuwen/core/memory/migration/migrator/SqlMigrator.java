@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.migration.migrator;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.memory.manage.mem_model.DbModel;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
 import com.openjiuwen.core.memory.migration.operation.AddColumnOperation;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,6 +38,39 @@ public class SqlMigrator {
     public SqlMigrator(SqlDbStore sqlDb) {
         this.sqlDb = sqlDb;
         this.memoryMetaManager = new MemoryMetaManager(sqlDb);
+    }
+
+    /**
+     * Translate Python/SQLAlchemy-style type names into JDBC DDL fragments.
+     */
+    public String getSqlalchemyType(String typeString) {
+        if (typeString == null || typeString.isBlank()) {
+            return "CLOB";
+        }
+
+        String normalized = typeString.trim();
+        int paramStart = normalized.indexOf('(');
+        if (paramStart > 0 && normalized.endsWith(")")) {
+            String baseType = normalized.substring(0, paramStart).trim().toUpperCase(Locale.ROOT);
+            String rawParam = normalized.substring(paramStart + 1, normalized.length() - 1).trim();
+            if (("STRING".equals(baseType) || "VARCHAR".equals(baseType)) && rawParam.matches("\\d+")) {
+                return "VARCHAR(" + rawParam + ")";
+            }
+            if ("TEXT".equals(baseType)) {
+                return "CLOB";
+            }
+        }
+
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        return switch (upper) {
+            case "STRING", "VARCHAR" -> "VARCHAR(255)";
+            case "INTEGER", "INT" -> "INTEGER";
+            case "DATETIME", "TIMESTAMP" -> "TIMESTAMP";
+            case "BOOLEAN", "BOOL" -> "BOOLEAN";
+            case "TEXT", "CLOB" -> "CLOB";
+            case "FLOAT", "DOUBLE", "REAL" -> "DOUBLE";
+            default -> "CLOB";
+        };
     }
 
     public boolean tryMigrate(String entityKey, List<BaseOperation> operations) {
@@ -107,6 +142,27 @@ public class SqlMigrator {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public Map<String, Boolean> batchMigrate(List<Map<String, Object>> migrations) {
+        Map<String, Boolean> results = new LinkedHashMap<>();
+        if (migrations == null) {
+            return results;
+        }
+
+        for (Map<String, Object> migration : migrations) {
+            String tableName = migration == null ? null : String.valueOf(migration.get("table_name"));
+            List<BaseOperation> operations = List.of();
+            if (migration != null && migration.get("operations") instanceof List<?>) {
+                operations = ((List<?>) migration.get("operations")).stream()
+                        .filter(BaseOperation.class::isInstance)
+                        .map(BaseOperation.class::cast)
+                        .toList();
+            }
+            results.put(tableName, tryMigrate(tableName, operations));
+        }
+        return results;
+    }
+
     private void executeSqlOperation(Connection conn, BaseOperation op, String dialect) throws SQLException {
         if (op instanceof AddColumnOperation addColumnOperation) {
             executeAddColumn(conn, addColumnOperation);
@@ -124,9 +180,10 @@ public class SqlMigrator {
     }
 
     private void executeAddColumn(Connection conn, AddColumnOperation op) throws SQLException {
+        validateTable(op.getTable());
         StringBuilder sql = new StringBuilder("ALTER TABLE ")
                 .append(op.getTable()).append(" ADD COLUMN ").append(op.getColumnName())
-                .append(" ").append(op.getColumnType());
+                .append(" ").append(getSqlalchemyType(op.getColumnType()));
         if (!op.isNullable()) {
             sql.append(" NOT NULL");
         }
@@ -139,6 +196,7 @@ public class SqlMigrator {
     }
 
     private void executeRenameColumn(Connection conn, RenameColumnOperation op, String dialect) throws SQLException {
+        validateTable(op.getTable());
         String sql = "ALTER TABLE " + op.getTable() + " RENAME COLUMN "
                 + op.getOldColumnName() + " TO " + op.getNewColumnName();
         try (Statement stmt = conn.createStatement()) {
@@ -147,12 +205,22 @@ public class SqlMigrator {
     }
 
     private void executeUpdateColumnType(Connection conn, UpdateColumnTypeOperation op, String dialect) throws SQLException {
+        validateTable(op.getTable());
+        String resolvedType = getSqlalchemyType(op.getNewColumnType());
         if ("sqlite".equals(dialect)) {
-            alterColumnTypeSqlite(conn, op.getTable(), op.getColumnName(), op.getNewColumnType());
+            alterColumnTypeSqlite(conn, op.getTable(), op.getColumnName(), resolvedType);
+            return;
+        }
+        if ("h2".equals(dialect)) {
+            String sql = "ALTER TABLE " + op.getTable() + " ALTER COLUMN " + op.getColumnName()
+                    + " " + resolvedType;
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(sql);
+            }
             return;
         }
         String sql = "ALTER TABLE " + op.getTable() + " ALTER COLUMN " + op.getColumnName()
-                + " TYPE " + op.getNewColumnType();
+                + " TYPE " + resolvedType;
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         }
@@ -272,6 +340,7 @@ public class SqlMigrator {
         try {
             String driverName = conn.getMetaData().getDriverName().toLowerCase();
             if (driverName.contains("sqlite")) return "sqlite";
+            if (driverName.contains("h2")) return "h2";
             if (driverName.contains("mysql")) return "mysql";
             if (driverName.contains("postgresql") || driverName.contains("postgres")) return "postgresql";
             return "unknown";
@@ -285,5 +354,14 @@ public class SqlMigrator {
             return "'" + value.toString().replace("'", "''") + "'";
         }
         return String.valueOf(value);
+    }
+
+    private void validateTable(String tableName) throws SQLException {
+        for (String[] tableConfig : DbModel.MEMORY_TABLES_CONFIG) {
+            if (tableConfig[0].equals(tableName)) {
+                return;
+            }
+        }
+        throw new SQLException("Unsupported table name: " + tableName);
     }
 }

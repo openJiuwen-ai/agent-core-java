@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.offline.coordinator;
 
+import com.openjiuwen.agent_evolving.agent_rl.offline.runtime.ParallelRuntimeExecutor;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutWithReward;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Core loop coordinator handling task submission, rollout collection,
@@ -261,10 +263,46 @@ public class TrainingCoordinator {
     /**
      * Basic parallel-executor injection hook retained for Java integrations.
      *
-     * @param executor executor instance
+     * @param executor executor instance or agent factory
      */
     public void configureParallelExecutor(Object executor) {
+        if (executor instanceof ParallelRuntimeExecutor runtimeExecutor) {
+            this.parallelExecutor = runtimeExecutor;
+            return;
+        }
+        if (executor instanceof Function<?, ?> function) {
+            configureParallelExecutor(function, null, null);
+            return;
+        }
         this.parallelExecutor = executor;
+    }
+
+    /**
+     * Inject runtime configuration into the lazily-created parallel executor.
+     */
+    public void configureParallelExecutor(Function<?, ?> agentFactory,
+                                          Function<?, ?> taskDataFn,
+                                          Function<?, ?> rewardFn) {
+        ParallelRuntimeExecutor executor = ensureParallelExecutor();
+        if (agentFactory != null) {
+            executor.setAgentFactory(agentFactory);
+        }
+        if (taskDataFn != null) {
+            executor.setTaskDataFn(taskDataFn);
+        }
+        if (rewardFn != null) {
+            executor.setRewardFn(rewardFn);
+        }
+    }
+
+    private ParallelRuntimeExecutor ensureParallelExecutor() {
+        if (parallelExecutor instanceof ParallelRuntimeExecutor executor) {
+            return executor;
+        }
+        int numWorkers = readInt(config, 1, "trainer", "runtime_parallel_num");
+        ParallelRuntimeExecutor executor = new ParallelRuntimeExecutor(datastore, numWorkers);
+        parallelExecutor = executor;
+        return executor;
     }
 
     /**

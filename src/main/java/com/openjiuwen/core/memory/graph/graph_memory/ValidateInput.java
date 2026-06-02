@@ -49,10 +49,11 @@ public final class ValidateInput {
         }
 
         // Validate all keys and values are non-empty strings
-        for (Map.Entry<String, String> entry : contentFmtKwargs.entrySet()) {
-            String k = entry.getKey();
-            String v = entry.getValue();
-            if (k == null || k.isEmpty() || v == null || v.isEmpty()) {
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) contentFmtKwargs).entrySet()) {
+            Object rawKey = entry.getKey();
+            Object rawValue = entry.getValue();
+            if (!(rawKey instanceof String k) || k.isEmpty()
+                    || !(rawValue instanceof String v) || v.isEmpty()) {
                 throw ErrorHelper.buildError(StatusCode.MEMORY_STORE_VALIDATION_INVALID,
                         "store_type", STORE_TYPE,
                         "error_msg", "content_fmt_kwargs must have non-empty keys and values of string type");
@@ -126,8 +127,8 @@ public final class ValidateInput {
                     "store_type", STORE_TYPE,
                     "error_msg", "entity, relation, episode must be boolean values True or False");
         }
-        for (Boolean s : settings) {
-            if (s == null) {
+        for (Object rawSetting : settings) {
+            if (!(rawSetting instanceof Boolean)) {
                 throw ErrorHelper.buildError(StatusCode.MEMORY_STORE_VALIDATION_INVALID,
                         "store_type", STORE_TYPE,
                         "error_msg", "entity, relation, episode must be boolean values True or False");

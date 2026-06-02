@@ -25,7 +25,7 @@ public class Relation extends NamedGraphObject {
 
     public Relation() {
         super();
-        this.relationType = "";
+        this.relationType = "Relation";
         this.validSince = getCreatedAt();
         this.validUntil = -1;
         this.offsetSince = 0;
@@ -77,7 +77,7 @@ public class Relation extends NamedGraphObject {
 
     @Override
     public String getObjType() {
-        return relationType == null || relationType.isBlank() ? "relation" : relationType;
+        return relationType == null || relationType.isBlank() ? "Relation" : relationType;
     }
 
     public Relation updateConnectedEntities(Entity lhs, Entity rhs) {

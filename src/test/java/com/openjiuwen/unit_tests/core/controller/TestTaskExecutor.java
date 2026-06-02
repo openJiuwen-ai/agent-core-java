@@ -4,40 +4,57 @@
 
 package com.openjiuwen.unit_tests.core.controller;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import static org.junit.jupiter.api.Assertions.*;
+import com.openjiuwen.core.controller.ControllerConfig;
+import com.openjiuwen.core.controller.modules.EventQueue;
+import com.openjiuwen.core.controller.modules.TaskExecutor;
+import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
+import com.openjiuwen.core.controller.modules.TaskExecutorRegistry;
+import com.openjiuwen.core.controller.modules.TaskManager;
+import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.session.AgentSessionApi;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Task Executor lifecycle tests.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/controller/test_task_executor.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/controller/test_task_executor.py
- * 
- * Test scenarios:
- * 1. Executor registration (add/remove/get)
- * 2. Executor creation (one instance per task)
- * 3. Executor cleanup (after task completion)
+ *
+ * <p>Mirrors Python's tests/unit_tests/core/controller/test_task_executor.py.</p>
  */
-@Disabled("Requires controller configuration and async execution")
+@DisplayName("TestTaskExecutor")
 class TestTaskExecutor {
 
-    // ==================== Test Helper Classes ====================
+    private TaskExecutorRegistry registry;
+    private TaskExecutorDependencies dependencies;
 
-    /**
-     * Trackable TaskExecutor that tracks its lifecycle.
-     * Used to verify executor creation and cleanup.
-     */
+    @BeforeEach
+    void setUp() {
+        ControllerConfig config = new ControllerConfig();
+        TaskManager taskManager = new TaskManager(config);
+        EventQueue eventQueue = new EventQueue(config);
+        registry = new TaskExecutorRegistry();
+        dependencies = new TaskExecutorDependencies(config, null, null, taskManager, eventQueue);
+        TrackableTaskExecutorStats.resetTracking();
+    }
+
     static class TrackableTaskExecutorStats {
-        static AtomicInteger instancesCreated = new AtomicInteger(0);
-        static AtomicInteger instancesCleaned = new AtomicInteger(0);
-        static List<Integer> activeInstances = new ArrayList<>();
+        static final AtomicInteger instancesCreated = new AtomicInteger();
+        static final AtomicInteger instancesCleaned = new AtomicInteger();
+        static final List<Integer> activeInstances = new ArrayList<>();
 
         static void resetTracking() {
             instancesCreated.set(0);
@@ -46,115 +63,208 @@ class TestTaskExecutor {
         }
     }
 
-    // ==================== Test Executor Registration ====================
+    static class TrackableTaskExecutor extends TaskExecutor {
+        private final int instanceId;
+
+        TrackableTaskExecutor(TaskExecutorDependencies dependencies) {
+            super(dependencies);
+            instanceId = TrackableTaskExecutorStats.instancesCreated.incrementAndGet();
+            TrackableTaskExecutorStats.activeInstances.add(instanceId);
+        }
+
+        @Override
+        public Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi session) {
+            List<ControllerOutputChunk> chunks = List.of(
+                    new ControllerOutputChunk(
+                            0,
+                            new ControllerOutputPayload(
+                                    ControllerOutputPayload.TASK_PROCESSING,
+                                    List.of(new DataFrame.TextDataFrame("Task " + taskId + " executed by instance " + instanceId))),
+                            false),
+                    new ControllerOutputChunk(
+                            1,
+                            new ControllerOutputPayload(
+                                    EventType.TASK_COMPLETION,
+                                    List.of(new DataFrame.TextDataFrame("Task " + taskId + " completed"))),
+                            true));
+            return new Iterator<>() {
+                private int index;
+
+                @Override
+                public boolean hasNext() {
+                    return index < chunks.size();
+                }
+
+                @Override
+                public ControllerOutputChunk next() {
+                    ControllerOutputChunk chunk = chunks.get(index++);
+                    if (chunk.isLastChunk()) {
+                        TrackableTaskExecutorStats.instancesCleaned.incrementAndGet();
+                        TrackableTaskExecutorStats.activeInstances.remove(Integer.valueOf(instanceId));
+                    }
+                    return chunk;
+                }
+            };
+        }
+
+        @Override
+        public PauseCheckResult canPause(String taskId, AgentSessionApi session) {
+            return new PauseCheckResult(true, "");
+        }
+
+        @Override
+        public boolean pause(String taskId, AgentSessionApi session) {
+            return true;
+        }
+
+        @Override
+        public CancelCheckResult canCancel(String taskId, AgentSessionApi session) {
+            return new CancelCheckResult(true, "");
+        }
+
+        @Override
+        public boolean cancel(String taskId, AgentSessionApi session) {
+            return true;
+        }
+    }
+
+    private TrackableTaskExecutor newExecutor() {
+        return (TrackableTaskExecutor) registry.getTaskExecutor("trackable", dependencies);
+    }
 
     @Test
     @DisplayName("Test register and retrieve executor")
     void testRegisterAndRetrieveExecutor() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "Executor registration test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+
+        TaskExecutor executor = registry.getTaskExecutor("trackable", dependencies);
+
+        assertInstanceOf(TrackableTaskExecutor.class, executor);
     }
 
     @Test
     @DisplayName("Test remove executor")
     void testRemoveExecutor() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "Executor removal test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        registry.removeTaskExecutor("trackable");
+
+        assertThrows(Exception.class, () -> registry.getTaskExecutor("trackable", dependencies));
     }
 
     @Test
     @DisplayName("Test handle unregistered task types")
     void testHandleUnregisteredTaskTypes() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "Unregistered task type handling test placeholder");
+        Exception exception = assertThrows(Exception.class,
+                () -> registry.getTaskExecutor("unregistered", dependencies));
+        assertTrue(exception.getMessage().contains("task executor not found"));
     }
-
-    // ==================== Test Executor Creation ====================
 
     @Test
     @DisplayName("Test executor creation - one instance per task")
     void testExecutorCreationOneInstancePerTask() {
-        TrackableTaskExecutorStats.resetTracking();
-        
-        // Placeholder - requires Controller implementation
-        // In Python: multiple tasks create independent executor instances
-        assertTrue(true, "Executor creation test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+
+        newExecutor();
+        newExecutor();
+        newExecutor();
+
+        assertEquals(3, TrackableTaskExecutorStats.instancesCreated.get());
+        assertEquals(3, TrackableTaskExecutorStats.activeInstances.size());
     }
 
     @Test
     @DisplayName("Test independent executor instances for different tasks")
     void testIndependentExecutorInstances() {
-        // Placeholder - requires Controller implementation
-        // Verify that each task gets its own executor instance
-        assertTrue(true, "Independent executor instances test placeholder");
-    }
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
 
-    // ==================== Test Executor Cleanup ====================
+        TaskExecutor executor1 = registry.getTaskExecutor("trackable", dependencies);
+        TaskExecutor executor2 = registry.getTaskExecutor("trackable", dependencies);
+
+        assertNotSame(executor1, executor2);
+    }
 
     @Test
     @DisplayName("Test executor cleanup after task completion")
     void testExecutorCleanupAfterTaskCompletion() {
-        TrackableTaskExecutorStats.resetTracking();
-        
-        // Placeholder - requires Controller implementation
-        // In Python: executor is cleaned up after task completes
-        assertTrue(true, "Executor cleanup test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        List<ControllerOutputChunk> chunks = new ArrayList<>();
+        executor.executeAbility("task-1", new AgentSessionApi("session-1")).forEachRemaining(chunks::add);
+
+        assertEquals(2, chunks.size());
+        assertEquals(1, TrackableTaskExecutorStats.instancesCleaned.get());
+        assertTrue(TrackableTaskExecutorStats.activeInstances.isEmpty());
     }
 
     @Test
     @DisplayName("Test executor cleanup tracking")
     void testExecutorCleanupTracking() {
-        TrackableTaskExecutorStats.resetTracking();
-        
-        // Verify tracking counters are reset
         assertEquals(0, TrackableTaskExecutorStats.instancesCreated.get());
         assertEquals(0, TrackableTaskExecutorStats.instancesCleaned.get());
         assertTrue(TrackableTaskExecutorStats.activeInstances.isEmpty());
     }
 
-    // ==================== Test Pause/Cancel Capabilities ====================
-
     @Test
     @DisplayName("Test can_pause returns true")
     void testCanPauseReturnsTrue() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "can_pause test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        assertTrue(executor.canPause("task-1", new AgentSessionApi("session-1")).canPause());
     }
 
     @Test
     @DisplayName("Test pause returns true")
     void testPauseReturnsTrue() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "pause test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        assertTrue(executor.pause("task-1", new AgentSessionApi("session-1")));
     }
 
     @Test
     @DisplayName("Test can_cancel returns true")
     void testCanCancelReturnsTrue() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "can_cancel test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        assertTrue(executor.canCancel("task-1", new AgentSessionApi("session-1")).canCancel());
     }
 
     @Test
     @DisplayName("Test cancel returns true")
     void testCancelReturnsTrue() {
-        // Placeholder - requires Controller implementation
-        assertTrue(true, "cancel test placeholder");
-    }
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
 
-    // ==================== Test Execute Ability ====================
+        assertTrue(executor.cancel("task-1", new AgentSessionApi("session-1")));
+    }
 
     @Test
     @DisplayName("Test execute_ability produces output chunks")
     void testExecuteAbilityProducesOutputChunks() {
-        // Placeholder - requires async execution
-        assertTrue(true, "execute_ability test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        List<ControllerOutputChunk> chunks = new ArrayList<>();
+        executor.executeAbility("task-1", new AgentSessionApi("session-1")).forEachRemaining(chunks::add);
+
+        assertEquals(2, chunks.size());
+        assertEquals(ControllerOutputPayload.TASK_PROCESSING, chunks.get(0).getControllerPayload().getType());
     }
 
     @Test
     @DisplayName("Test execute_ability produces completion chunk")
     void testExecuteAbilityProducesCompletionChunk() {
-        // Placeholder - requires async execution
-        assertTrue(true, "execute_ability completion test placeholder");
+        registry.addTaskExecutor("trackable", TrackableTaskExecutor::new);
+        TrackableTaskExecutor executor = newExecutor();
+
+        List<ControllerOutputChunk> chunks = new ArrayList<>();
+        executor.executeAbility("task-1", new AgentSessionApi("session-1")).forEachRemaining(chunks::add);
+
+        ControllerOutputChunk lastChunk = chunks.get(chunks.size() - 1);
+        assertTrue(lastChunk.isLastChunk());
+        assertEquals(EventType.TASK_COMPLETION.getValue(), lastChunk.getControllerPayload().getType());
     }
 }

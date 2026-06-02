@@ -3,9 +3,17 @@
  */
 package com.openjiuwen.tests.unit_tests.core.common.log;
 
+import com.openjiuwen.core.common.logging.LoguruLogger;
 import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
+import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -137,8 +145,94 @@ class TestAutoFormat {
 
     @Test
     @Tag("level0")
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+    @DisplayName("DefaultLogger handles percent style")
+    void testDefaultLoggerPercentStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("user %s logged in", "alice");
+
+        assertTrue(handler.messages().contains("user alice logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("DefaultLogger handles brace style")
+    void testDefaultLoggerBraceStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("user {} logged in", "bob");
+
+        assertTrue(handler.messages().contains("user bob logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("DefaultLogger prefers brace style over percent")
+    void testDefaultLoggerMixedBracePercentPrefersBrace() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("{}% complete", 75);
+
+        assertTrue(handler.messages().contains("75% complete"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("LoguruLogger handles percent style")
+    void testLoguruLoggerPercentStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        LoguruLogger logger = makeLoguruLogger(handler);
+
+        logger.info("user %s logged in", "charlie");
+
+        assertTrue(handler.messages().contains("user charlie logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("LoguruLogger handles brace style")
+    void testLoguruLoggerBraceStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        LoguruLogger logger = makeLoguruLogger(handler);
+
+        logger.info("user {} logged in", "dave");
+
+        assertTrue(handler.messages().contains("user dave logged in"));
+    }
+
+    private DefaultLogger makeDefaultLogger(RecordingHandler handler) {
+        DefaultLogger logger = new DefaultLogger("test_auto_fmt_default", Map.of("level", "DEBUG", "output", "console"));
+        logger.addHandler(handler);
+        return logger;
+    }
+
+    private LoguruLogger makeLoguruLogger(RecordingHandler handler) {
+        LoguruLogger logger = new LoguruLogger("test_auto_fmt_loguru", Map.of("level", "DEBUG", "output", "console"));
+        logger.addHandler(handler);
+        return logger;
+    }
+
+    private static class RecordingHandler extends Handler {
+        private final List<String> messages = new ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            messages.add(record.getMessage());
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        List<String> messages() {
+            return messages;
+        }
     }
 }

@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Uses a registered test model client to cover offload behavior without
  * network calls.
  */
-class MessageSummaryOffloaderTest {
+public class MessageSummaryOffloaderTest {
 
     private static final String TEST_MODEL_PROVIDER = "MessageSummaryOffloaderTest";
     private static final AtomicReference<String> NEXT_RESPONSE = new AtomicReference<>("summary");

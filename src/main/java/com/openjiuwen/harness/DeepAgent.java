@@ -7,6 +7,7 @@ package com.openjiuwen.harness;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.internal.AgentTeamSession;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
@@ -14,6 +15,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.prompts.DeepAgentPromptBuilder;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.workspace.Workspace;
 
@@ -40,13 +42,17 @@ public class DeepAgent extends BaseAgent {
     private static final String SESSION_STATE_KEY = "deepagent";
 
     private DeepAgentConfig config;
+    private ReActAgentConfig reactConfig;
     private ReActAgent delegate;
+    private DeepAgentPromptBuilder systemPromptBuilder;
 
     public DeepAgent(AgentCard card) {
         super(card);
         this.config = new DeepAgentConfig();
         this.config.setCard(card);
+        this.reactConfig = new ReActAgentConfig();
         this.delegate = new ReActAgent(card);
+        this.systemPromptBuilder = new DeepAgentPromptBuilder("cn", DeepAgentPromptBuilder.PromptMode.FULL);
     }
 
     @Override
@@ -56,11 +62,14 @@ public class DeepAgent extends BaseAgent {
                     + (configObj != null ? configObj.getClass().getName() : "null"));
         }
         this.config = deepAgentConfig;
+        this.reactConfig = toReActConfig(deepAgentConfig);
         this.delegate = new ReActAgent(deepAgentConfig.getCard() != null ? deepAgentConfig.getCard() : getCard());
-        this.delegate.configure(toReActConfig(deepAgentConfig));
+        this.delegate.configure(reactConfig);
         if (deepAgentConfig.getModel() != null) {
             this.delegate.setLlm(deepAgentConfig.getModel());
         }
+        String language = deepAgentConfig.getWorkspace() != null ? deepAgentConfig.getWorkspace().getLanguage() : "cn";
+        this.systemPromptBuilder = new DeepAgentPromptBuilder(language, DeepAgentPromptBuilder.PromptMode.FULL);
         if (deepAgentConfig.getTools() != null && !deepAgentConfig.getTools().isEmpty()) {
             this.delegate.getAbilityManager().add(deepAgentConfig.getTools());
         }
@@ -90,6 +99,19 @@ public class DeepAgent extends BaseAgent {
 
     public ReActAgent getDelegate() {
         return delegate;
+    }
+
+    @Override
+    public AbilityManager getAbilityManager() {
+        return delegate != null ? delegate.getAbilityManager() : super.getAbilityManager();
+    }
+
+    public DeepAgentPromptBuilder getSystemPromptBuilder() {
+        return systemPromptBuilder;
+    }
+
+    public ReActAgentConfig getReactConfig() {
+        return reactConfig;
     }
 
     @Override
@@ -217,8 +239,10 @@ public class DeepAgent extends BaseAgent {
             );
         }
 
-        DeepAgent subagent = findConfiguredSubagent(subagentType);
-        if (subagent == null) {
+        DeepAgent subagent;
+        try {
+            subagent = createSubagent(subagentType, effectiveSubSessionId);
+        } catch (IllegalArgumentException e) {
             return;
         }
         DeepAgentConfig.SessionToolkit toolkit = config != null ? config.getSessionToolkit() : null;
@@ -237,6 +261,49 @@ public class DeepAgent extends BaseAgent {
                 }
             }
         });
+    }
+
+    /**
+     * Create or resolve a subagent for delegated task execution.
+     *
+     * <p>Explicitly configured subagents win. When enabled, the implicit
+     * {@code general-purpose} subagent inherits the parent's tools, MCPs,
+     * skills, model, workspace, and sys-operation context.</p>
+     */
+    public DeepAgent createSubagent(String subagentType, String sessionId) {
+        DeepAgent explicit = findConfiguredSubagent(subagentType);
+        if (explicit != null) {
+            return explicit;
+        }
+        String requested = subagentType != null ? subagentType : "";
+        if (!"general-purpose".equals(requested)
+                || config == null
+                || !config.getAddGeneralPurposeAgent()) {
+            throw new IllegalArgumentException("Subagent not found: " + requested);
+        }
+
+        AgentCard card = AgentCard.builder()
+                .name("general-purpose")
+                .description("General-purpose subagent")
+                .id(sessionId != null && !sessionId.isBlank() ? sessionId : "general-purpose")
+                .build();
+        DeepAgentConfig subConfig = new DeepAgentConfig();
+        subConfig.setCard(card);
+        subConfig.setSystemPrompt(config.getSystemPrompt());
+        subConfig.setModel(config.getModel());
+        subConfig.setModelClientConfig(config.getModelClientConfig());
+        subConfig.setModelRequestConfig(config.getModelRequestConfig());
+        subConfig.setSysOperation(config.getSysOperation());
+        subConfig.setSysOperationId(config.getSysOperationId());
+        subConfig.setWorkspace(config.getWorkspace());
+        subConfig.setTools(config.getTools());
+        subConfig.setMcps(config.getMcps());
+        subConfig.setSkills(config.getSkills());
+        subConfig.setMaxIterations(config.getMaxIterations());
+
+        DeepAgent subagent = new DeepAgent(card);
+        subagent.configure(subConfig);
+        return subagent;
     }
 
     private static AgentCallbackEvent resolveCallbackEvent(String eventName) {
@@ -407,11 +474,11 @@ public class DeepAgent extends BaseAgent {
     }
 
     /**
-     * Publish steering text to a running task loop. The current Java task-loop
-     * port does not expose an event queue yet, so this method preserves the
-     * public API as a no-op until that runtime is available.
+     * Publish steering text to a running task loop.
      */
     public void steer(String msg, Session session) {
-        // No-op compatibility surface for Python's async DeepAgent.steer().
+        if (delegate != null) {
+            delegate.pushSteering(session != null ? session.getSessionId() : null, msg);
+        }
     }
 }

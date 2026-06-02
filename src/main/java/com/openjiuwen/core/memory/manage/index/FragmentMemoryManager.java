@@ -135,7 +135,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
         List<Map<String, Object>> retrieveRes = memStore.batchGet(userId, scopeId, memIds);
         if (retrieveRes == null || retrieveRes.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         for (Map<String, Object> item : retrieveRes) {
             String id = String.valueOf(item.getOrDefault("id", ""));

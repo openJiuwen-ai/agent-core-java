@@ -7,7 +7,6 @@ package com.openjiuwen.core.multiagent.teams.hierarchicaltools;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
 import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -22,10 +21,14 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class HierarchicalTeamConfig extends TeamConfig {
     
     /** Top-level entry agent AgentCard (root, required). */
     private AgentCard rootAgent;
+
+    public HierarchicalTeamConfig(AgentCard rootAgent) {
+        super();
+        this.rootAgent = rootAgent;
+    }
 }

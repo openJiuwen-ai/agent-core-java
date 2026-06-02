@@ -2,11 +2,6 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.harness.schema.config.AudioModelConfig;
 
-import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import java.io.File;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -16,28 +11,38 @@ public class AudioMetadataTool extends AbstractHarnessTool {
 
     public final AudioModelConfig audioModelConfig;
 
+    public AudioMetadataTool() {
+        this(null);
+    }
+
     public AudioMetadataTool(AudioModelConfig audioModelConfig) {
         super(toolCard("audio_metadata", "audio_metadata", "Inspect audio metadata."), null);
         this.audioModelConfig = audioModelConfig;
     }
 
     @Override
-    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        String audioPathOrUrl = String.valueOf(inputs.getOrDefault("audio_path_or_url", ""));
-        double durationSeconds = extractDurationSeconds(audioPathOrUrl);
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("duration_seconds", durationSeconds);
-        data.put("identified", false);
-        data.put("note", "ACR credentials not configured.");
-        return new ToolOutput(true, data, null);
+    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        AudioSupport.ResolvedAudioPath resolved = null;
+        try {
+            AudioModelConfig config = AudioSupport.requireAudioModelConfig(audioModelConfig);
+            String audioPathOrUrl = String.valueOf(inputs.getOrDefault("audio_path_or_url", ""));
+            resolved = AudioSupport.resolveAudioPath(audioPathOrUrl, config);
+            String resolvedPath = resolved.path().toString();
+            Map<String, Object> data = AudioSupport.callWithRetries(config,
+                    () -> invokeAudioMetadata(config, resolvedPath));
+            return new ToolOutput(true, data, null);
+        } catch (Exception exc) {
+            return new ToolOutput(false, null, exc.getMessage());
+        } finally {
+            AudioSupport.deleteIfTemporary(resolved);
+        }
     }
 
-    protected double extractDurationSeconds(String audioPath) throws Exception {
-        try (AudioInputStream stream = AudioSystem.getAudioInputStream(new File(audioPath))) {
-            AudioFileFormat format = AudioSystem.getAudioFileFormat(new File(audioPath));
-            long frames = stream.getFrameLength();
-            float rate = format.getFormat().getFrameRate();
-            return rate > 0 ? frames / rate : 0.0;
-        }
+    protected Map<String, Object> invokeAudioMetadata(AudioModelConfig config, String audioPath) throws Exception {
+        return AudioSupport.invokeAudioMetadata(config, audioPath);
+    }
+
+    protected double extractDurationSeconds(String audioPath) {
+        return AudioSupport.getAudioDuration(audioPath);
     }
 }

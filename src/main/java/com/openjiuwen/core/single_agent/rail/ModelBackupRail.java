@@ -32,34 +32,46 @@ public class ModelBackupRail extends AgentRail {
     @Override
     public void onModelException(AgentCallbackContext ctx) {
         // Try to set backup LLM if agent supports it
-        if (hasSetLlmMethod(ctx.getAgent()) && index < backupModels.size()) {
-            setLlm(ctx.getAgent(), backupModels.get(index));
+        if (index < backupModels.size() && setLlm(ctx.getAgent(), backupModels.get(index))) {
             index++;
             ctx.requestRetry(0);
         }
     }
 
     /**
-     * Check if agent has set_llm method.
-     */
-    private boolean hasSetLlmMethod(Object agent) {
-        try {
-            agent.getClass().getMethod("setLlm", Object.class);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
-        }
-    }
-
-    /**
      * Set LLM on agent.
      */
-    private void setLlm(Object agent, Object llm) {
+    private boolean setLlm(Object agent, Object llm) {
+        if (agent == null) {
+            return false;
+        }
+        Class<?> type = agent.getClass();
+        while (type != null) {
+            for (java.lang.reflect.Method method : type.getDeclaredMethods()) {
+                if (!method.getName().equals("setLlm") || method.getParameterCount() != 1) {
+                    continue;
+                }
+                if (llm != null && !method.getParameterTypes()[0].isInstance(llm)
+                        && method.getParameterTypes()[0] != Object.class) {
+                    continue;
+                }
+                try {
+                    method.setAccessible(true);
+                    method.invoke(agent, llm);
+                    return true;
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+            type = type.getSuperclass();
+        }
         try {
             java.lang.reflect.Method method = agent.getClass().getMethod("setLlm", Object.class);
+            method.setAccessible(true);
             method.invoke(agent, llm);
+            return true;
         } catch (Exception e) {
-            // Ignore
+            return false;
         }
     }
 }

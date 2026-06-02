@@ -7,6 +7,8 @@ package com.openjiuwen.extensions.checkpointer;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowUtils;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 
@@ -50,6 +52,46 @@ class TestIntegrationRunner {
 
             assertEquals("waiting", resumed.state().get("step"));
             assertEquals(List.of("continue"), resumed.state().get(Constant.INTERACTIVE_INPUT));
+        }
+
+        @Test
+        void testWorkflowAgentInvokeWithInterruptRecovery() {
+            RedisCheckpointer checkpointer = checkpointer();
+            AgentSession interrupted = session("conversation-1", "workflow-agent", checkpointer);
+            interrupted.state().update(Map.of("interaction", "weather_city"));
+
+            checkpointer.interruptAgentExecute(interrupted);
+            AgentSession resumed = session("conversation-1", "workflow-agent", checkpointer);
+            checkpointer.preAgentExecute(resumed, Map.of("query", "上海", "conversation_id", "conversation-1"));
+
+            assertEquals("weather_city", resumed.state().get("interaction"));
+            assertEquals(
+                    List.of(Map.of("query", "上海", "conversation_id", "conversation-1")),
+                    resumed.state().get(Constant.INTERACTIVE_INPUT));
+        }
+
+        @Test
+        void testRedisCheckpointerInitialization() {
+            RedisCheckpointer checkpointer = checkpointer();
+
+            assertNotNull(checkpointer);
+            assertEquals("RedisCheckpointer", checkpointer.getClass().getSimpleName());
+        }
+
+        @Test
+        void testWorkflowRegistration() {
+            WorkflowCard card = WorkflowCard.builder()
+                    .id("test_interrupt_workflow")
+                    .name("interrupt_test")
+                    .version("1.0")
+                    .build();
+            Map<String, WorkflowCard> registered = Map.of(
+                    WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion()), card);
+
+            WorkflowCard workflow = registered.get(WorkflowUtils.generateWorkflowKey("test_interrupt_workflow", "1.0"));
+
+            assertNotNull(workflow);
+            assertEquals("interrupt_test", workflow.getName());
         }
     }
 

@@ -209,11 +209,21 @@ class TestChromaFields {
             extraSearch.put("resize_factor", 1.5);
             extraSearch.put("num_threads", 4);
             extraSearch.put("batch_size", 100);
+            extraSearch.put("sync_threshold", 10);
 
             field.setExtraSearch(extraSearch);
             assertEquals(1.5, field.getExtraSearch().get("resize_factor"));
             assertEquals(4, field.getExtraSearch().get("num_threads"));
             assertEquals(100, field.getExtraSearch().get("batch_size"));
+            assertEquals(10, field.getExtraSearch().get("sync_threshold"));
+        }
+
+        @Test
+        @DisplayName("Partial extra search configuration")
+        void testPartialExtraSearch() {
+            ChromaVectorField field = new ChromaVectorField();
+            field.setExtraSearch(Map.of("num_threads", 8));
+            assertEquals(8, field.getExtraSearch().get("num_threads"));
         }
 
         /**
@@ -227,6 +237,30 @@ class TestChromaFields {
             extraSearch.put("resize_factor", "invalid");
 
             assertThrows(IllegalArgumentException.class, () -> field.setExtraSearch(extraSearch));
+        }
+
+        @Test
+        @DisplayName("Invalid num_threads type throws exception")
+        void testInvalidNumThreads() {
+            ChromaVectorField field = new ChromaVectorField();
+            assertThrows(IllegalArgumentException.class,
+                    () -> field.setExtraSearch(Map.of("num_threads", "invalid")));
+        }
+
+        @Test
+        @DisplayName("Invalid batch_size type throws exception")
+        void testInvalidBatchSize() {
+            ChromaVectorField field = new ChromaVectorField();
+            assertThrows(IllegalArgumentException.class,
+                    () -> field.setExtraSearch(Map.of("batch_size", "invalid")));
+        }
+
+        @Test
+        @DisplayName("Invalid sync_threshold type throws exception")
+        void testInvalidSyncThreshold() {
+            ChromaVectorField field = new ChromaVectorField();
+            assertThrows(IllegalArgumentException.class,
+                    () -> field.setExtraSearch(Map.of("sync_threshold", "invalid")));
         }
     }
 
@@ -242,6 +276,62 @@ class TestChromaFields {
         @DisplayName("ChromaFields.defaultSchema exists")
         void testChromaFieldsDefaultSchema() {
             assertNotNull(ChromaFields.class, "ChromaFields class should exist");
+        }
+
+        @Test
+        @DisplayName("Search stage unpacks extra_search")
+        void testToDictSearch() {
+            ChromaVectorField field = new ChromaVectorField();
+            field.setMaxNeighbors(32);
+            field.setEfConstruction(200);
+            field.setEfSearch(150);
+            field.setExtraSearch(Map.of("num_threads", 4));
+
+            Map<String, Object> result = field.toDict("search");
+            assertEquals(4, result.get("num_threads"));
+            assertFalse(result.containsKey("max_neighbors"));
+            assertFalse(result.containsKey("ef_construction"));
+            assertFalse(result.containsKey("ef_search"));
+            assertFalse(result.containsKey("extra_search"));
+        }
+
+        @Test
+        @DisplayName("Construct stage contains build parameters")
+        void testToDictConstruct() {
+            ChromaVectorField field = new ChromaVectorField();
+            field.setMaxNeighbors(32);
+            field.setEfConstruction(200);
+            field.setEfSearch(150);
+            field.setExtraSearch(Map.of("num_threads", 4));
+
+            Map<String, Object> result = field.toDict("construct");
+            assertEquals(32, result.get("max_neighbors"));
+            assertEquals(200, result.get("ef_construction"));
+            assertEquals(150.0f, result.get("ef_search"));
+            assertFalse(result.containsKey("extra_search"));
+        }
+
+        @Test
+        @DisplayName("Search stage omits construct-only defaults")
+        void testToDictSearchWithDefaultsOnly() {
+            ChromaVectorField field = new ChromaVectorField();
+            field.setMaxNeighbors(32);
+            field.setEfConstruction(200);
+            assertTrue(field.toDict("search").isEmpty());
+        }
+
+        @Test
+        @DisplayName("Extra search is merged in search dict")
+        void testExtraSearchMergedInToDict() {
+            ChromaVectorField field = new ChromaVectorField();
+            field.setEfSearch(100);
+            field.setExtraSearch(Map.of("resize_factor", 2.0, "num_threads", 4));
+
+            Map<String, Object> result = field.toDict("search");
+            assertEquals(2.0, result.get("resize_factor"));
+            assertEquals(4, result.get("num_threads"));
+            assertFalse(result.containsKey("ef_search"));
+            assertFalse(result.containsKey("extra_search"));
         }
     }
 }

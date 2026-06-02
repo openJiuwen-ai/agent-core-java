@@ -110,15 +110,19 @@ public class ExpressionCondition extends Condition {
         // Preprocess: replace operators
         String processed = convertCondition(expr);
 
-        // Substitute variables
-        for (Map.Entry<String, Object> entry : inputs.entrySet()) {
+        Map<String, Object> variables = new HashMap<>();
+        List<Map.Entry<String, Object>> entries = new ArrayList<>(inputs.entrySet());
+        entries.sort((left, right) -> Integer.compare(right.getKey().length(), left.getKey().length()));
+        int index = 0;
+        for (Map.Entry<String, Object> entry : entries) {
             String varRef = entry.getKey();
-            Object value = entry.getValue();
-            processed = processed.replace(varRef, toLiteral(value));
+            String variableName = "var_" + index++;
+            processed = processed.replace(varRef, variableName);
+            variables.put(variableName, entry.getValue());
         }
 
         try {
-            ExpressionParser parser = new ExpressionParser(processed.trim());
+            ExpressionParser parser = new ExpressionParser(processed.trim(), variables);
             Object result = parseOrExpression(parser);
             parser.ensureEof();
             return toBoolean(result);
@@ -295,8 +299,28 @@ public class ExpressionCondition extends Condition {
         return parsePrimary(parser);
     }
 
-    @SuppressWarnings("unchecked")
     private static Object parsePrimary(ExpressionParser parser) {
+        Object value = parseAtom(parser);
+        while (true) {
+            if (parser.matchChar('[')) {
+                Object index = parseOrExpression(parser);
+                parser.expect(']');
+                value = resolveSubscript(value, index);
+            } else if (parser.matchChar('.')) {
+                String attribute = parser.readIdentifier();
+                if (attribute == null || attribute.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR,
+                            "error_msg", "expected attribute name after '.'");
+                }
+                value = resolveAttribute(value, attribute);
+            } else {
+                return value;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object parseAtom(ExpressionParser parser) {
         parser.skipWhitespace();
         if (parser.isEof()) {
             return null;
@@ -350,6 +374,9 @@ public class ExpressionCondition extends Condition {
         }
         if ("None".equals(ident)) {
             return null;
+        }
+        if (parser.hasVariable(ident)) {
+            return parser.getVariable(ident);
         }
 
         // Functions
@@ -434,6 +461,8 @@ public class ExpressionCondition extends Condition {
         if (value instanceof Number) return ((Number) value).doubleValue() != 0;
         if (value instanceof String) return !((String) value).isEmpty();
         if (value instanceof Collection) return !((Collection<?>) value).isEmpty();
+        if (value instanceof Map<?, ?> map) return !map.isEmpty();
+        if (value.getClass().isArray()) return java.lang.reflect.Array.getLength(value) > 0;
         return true;
     }
 
@@ -466,10 +495,70 @@ public class ExpressionCondition extends Condition {
         if (right instanceof Collection) {
             return ((Collection<?>) right).contains(left);
         }
+        if (right instanceof Map<?, ?> map) {
+            return map.containsKey(left);
+        }
         if (right instanceof String && left instanceof String) {
             return ((String) right).contains((String) left);
         }
         return false;
+    }
+
+    private static Object resolveSubscript(Object value, Object index) {
+        if (value == null) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "cannot subscript null value");
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.get(index);
+        }
+        if (value instanceof List<?> list) {
+            int resolvedIndex = normalizeIndex(index, list.size());
+            return list.get(resolvedIndex);
+        }
+        if (value instanceof Object[] array) {
+            int resolvedIndex = normalizeIndex(index, array.length);
+            return array[resolvedIndex];
+        }
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            int resolvedIndex = normalizeIndex(index, length);
+            return java.lang.reflect.Array.get(value, resolvedIndex);
+        }
+        if (value instanceof String string) {
+            int resolvedIndex = normalizeIndex(index, string.length());
+            return String.valueOf(string.charAt(resolvedIndex));
+        }
+        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                "error_msg", "object of type '" + typeName(value) + "' is not subscriptable");
+    }
+
+    private static int normalizeIndex(Object index, int size) {
+        if (!(index instanceof Number number)) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "collection index must be numeric");
+        }
+        int resolved = number.intValue();
+        if (resolved < 0) {
+            resolved += size;
+        }
+        if (resolved < 0 || resolved >= size) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "collection index out of range");
+        }
+        return resolved;
+    }
+
+    private static Object resolveAttribute(Object value, String attribute) {
+        if (attribute.startsWith("__") && attribute.endsWith("__")) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "disallowed operation: access to special attribute '" + attribute + "' is prohibited");
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.get(attribute);
+        }
+        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                "error_msg", "object of type '" + typeName(value) + "' has no attribute '" + attribute + "'");
     }
 
     private static Object numericOp(Object left, Object right, char op) {
@@ -570,12 +659,26 @@ public class ExpressionCondition extends Condition {
 
     private static class ExpressionParser {
         private final String input;
+        private final Map<String, Object> variables;
         private int pos;
         private int nestingDepth;
 
         ExpressionParser(String input) {
+            this(input, Map.of());
+        }
+
+        ExpressionParser(String input, Map<String, Object> variables) {
             this.input = input;
+            this.variables = variables != null ? variables : Map.of();
             this.pos = 0;
+        }
+
+        boolean hasVariable(String name) {
+            return variables.containsKey(name);
+        }
+
+        Object getVariable(String name) {
+            return variables.get(name);
         }
 
         void skipWhitespace() {

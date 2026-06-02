@@ -79,7 +79,8 @@ public class AgenticRetriever extends AbstractRetriever {
         this.llm = llmClient;
         this.maxIter = maxIter > 0 ? maxIter : 2;
         this.graphRetriever = retriever instanceof GraphRetriever;
-        this.defaultMode = switch (retriever.getIndexType()) {
+        String indexType = retriever.getIndexType();
+        this.defaultMode = switch (indexType == null ? "hybrid" : indexType) {
             case "vector" -> "vector";
             case "bm25" -> "sparse";
             default -> "hybrid";

@@ -5,117 +5,232 @@
 package com.openjiuwen.unit_tests.core.memory.manage;
 
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.memory.manage.update.CheckResult;
+import com.openjiuwen.core.memory.manage.update.MemCheckItem;
 import com.openjiuwen.core.memory.manage.update.MemUpdateChecker;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.memory.manage.update.MemoryActionItem;
+import com.openjiuwen.core.memory.manage.update.MemoryStatus;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-
-import java.util.*;
 
 /**
  * Unit tests for MemUpdateChecker.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/memory/manage/test_mem_update_checker.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/memory/manage/test_mem_update_checker.py
- * 
- * Tests for MemUpdateChecker class that detects redundancy
- * and conflicts between memories using LLM analysis.
+ *
+ * <p>Mirrors Python's {@code tests/unit_tests/core/memory/manage/test_mem_update_checker.py}.
  */
-@ExtendWith(MockitoExtension.class)
-@Disabled("Requires MemUpdateChecker implementation")
 class TestMemUpdateChecker {
 
-    // ==================== Test Fixtures ====================
+    @Nested
+    @DisplayName("Check method tests")
+    class CheckTests {
 
-    private MemUpdateChecker checker;
-    private Model mockModelClient;
+        @Test
+        void testCheckWithNoModel() {
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I enjoy books"),
+                    null
+            );
 
-    @BeforeEach
-    void setUp() {
-        checker = new MemUpdateChecker();
-        mockModelClient = mock(Model.class);
+            assertEquals(1, results.size());
+            assertEquals("1", results.getFirst().getId());
+            assertEquals("I like reading", results.getFirst().getContent());
+            assertEquals(MemoryStatus.ADD, results.getFirst().getStatus());
+        }
+
+        @Test
+        void testCheckWithDuplicateIds() throws Exception {
+            Model model = modelReturning(
+                    "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"none\",\"related_infos\":{}}]"
+            );
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading", "2", "I enjoy books"),
+                    linkedMap("1", "I like reading", "3", "I love novels"),
+                    Map.entry("test_model", model)
+            );
+
+            assertTrue(results.size() >= 1);
+        }
+
+        @Test
+        void testCheckWithRedundantResult() throws Exception {
+            Model model = modelReturning(
+                    "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"redundant\","
+                            + "\"related_infos\":{\"2\":\"I enjoy books\"}}]"
+            );
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I enjoy books"),
+                    Map.entry("test_model", model)
+            );
+
+            assertTrue(results.isEmpty());
+        }
+
+        @Test
+        void testCheckWithConflictingResult() throws Exception {
+            Model model = modelReturning(
+                    "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"conflicting\","
+                            + "\"related_infos\":{\"2\":\"I hate books\"}}]"
+            );
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I hate books"),
+                    Map.entry("test_model", model)
+            );
+
+            assertEquals(2, results.size());
+            assertTrue(results.stream().anyMatch(item ->
+                    item.getId().equals("1") && item.getStatus() == MemoryStatus.ADD));
+            assertTrue(results.stream().anyMatch(item ->
+                    item.getId().equals("2") && item.getStatus() == MemoryStatus.DELETE));
+        }
+
+        @Test
+        void testCheckWithNoneResult() throws Exception {
+            Model model = modelReturning(
+                    "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"none\",\"related_infos\":{}}]"
+            );
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I enjoy sports"),
+                    Map.entry("test_model", model)
+            );
+
+            assertEquals(1, results.size());
+            assertEquals("1", results.getFirst().getId());
+            assertEquals(MemoryStatus.ADD, results.getFirst().getStatus());
+        }
+
+        @Test
+        void testCheckWithMalformedResponse() throws Exception {
+            Model model = modelReturning("invalid json");
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I enjoy books"),
+                    Map.entry("test_model", model)
+            );
+
+            assertEquals(1, results.size());
+            assertEquals("1", results.getFirst().getId());
+            assertEquals(MemoryStatus.ADD, results.getFirst().getStatus());
+        }
+
+        @Test
+        void testCheckWithSingleObjectResponse() throws Exception {
+            Model model = modelReturning(
+                    "{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"none\",\"related_infos\":{}}"
+            );
+
+            List<MemoryActionItem> results = new MemUpdateChecker().check(
+                    linkedMap("1", "I like reading"),
+                    linkedMap("2", "I enjoy books"),
+                    Map.entry("test_model", model)
+            );
+
+            assertEquals(1, results.size());
+            assertEquals("1", results.getFirst().getId());
+            assertEquals(MemoryStatus.ADD, results.getFirst().getStatus());
+        }
     }
 
-    // ==================== Check Method Tests ====================
+    @Nested
+    @DisplayName("Formatting and DTO tests")
+    class DataTests {
 
-    @Test
-    @DisplayName("Test check with no model")
-    void testCheckWithNoModel() {
-        // In Python:
-        // new_memories = {"1": "I like reading"}
-        // old_memories = {"2": "I enjoy books"}
-        // results = await checker.check(new_memories, old_memories, None)
-        // assert len(results) == 1
-        // assert results[0].status == MemoryStatus.ADD
-        
-        Map<String, String> newMemories = Map.of("1", "I like reading");
-        Map<String, String> oldMemories = Map.of("2", "I enjoy books");
-        
-        assertTrue(true, "Check with no model test placeholder");
+        @Test
+        void testFormatInputFunction() {
+            assertArrayEquals(
+                    new String[]{
+                            "2: I enjoy books\n1: I like reading",
+                            "3: I love novels\n4: I hate sports"
+                    },
+                    MemUpdateChecker.formatInput(
+                            linkedMap("1", "I like reading", "2", "I enjoy books"),
+                            linkedMap("3", "I love novels", "4", "I hate sports")
+                    )
+            );
+        }
+
+        @Test
+        void testFormatInputEmptyDicts() {
+            assertArrayEquals(new String[]{"", ""}, MemUpdateChecker.formatInput(Map.of(), Map.of()));
+        }
+
+        @Test
+        void testMemoryActionItemCreation() {
+            MemoryActionItem item = MemoryActionItem.builder()
+                    .id("test_id")
+                    .content("test content")
+                    .status(MemoryStatus.ADD)
+                    .build();
+
+            assertEquals("test_id", item.getId());
+            assertEquals("test content", item.getContent());
+            assertEquals(MemoryStatus.ADD, item.getStatus());
+        }
+
+        @Test
+        void testMemCheckItemCreation() {
+            MemCheckItem item = MemCheckItem.builder()
+                    .infoId("test_id")
+                    .infoText("test content")
+                    .result(CheckResult.NONE)
+                    .relatedInfos(linkedMap("old_id", "old content"))
+                    .build();
+
+            assertEquals("test_id", item.getInfoId());
+            assertEquals("test content", item.getInfoText());
+            assertEquals(CheckResult.NONE, item.getResult());
+            assertEquals(linkedMap("old_id", "old content"), item.getRelatedInfos());
+        }
+
+        @Test
+        void testEnumValues() {
+            assertEquals("redundant", CheckResult.REDUNDANT.getValue());
+            assertEquals("conflicting", CheckResult.CONFLICTING.getValue());
+            assertEquals("none", CheckResult.NONE.getValue());
+            assertEquals("add", MemoryStatus.ADD.getValue());
+            assertEquals("delete", MemoryStatus.DELETE.getValue());
+        }
     }
 
-    @Test
-    @DisplayName("Test check with duplicate IDs")
-    void testCheckWithDuplicateIds() {
-        // In Python:
-        // new_memories = {"1": "I like reading", "2": "I enjoy books"}
-        // old_memories = {"1": "I like reading", "3": "I love novels"}
-        
-        assertTrue(true, "Check with duplicate IDs test placeholder");
+    private static Model modelReturning(String content) throws Exception {
+        Model model = mock(Model.class);
+        doReturn(AssistantMessage.builder().content(content).build())
+                .when(model).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        return model;
     }
 
-    @Test
-    @DisplayName("Test check with empty memories")
-    void testCheckWithEmptyMemories() {
-        assertTrue(true, "Check with empty memories test placeholder");
+    private static LinkedHashMap<String, String> linkedMap(String key, String value) {
+        LinkedHashMap<String, String> map = new LinkedHashMap<>();
+        map.put(key, value);
+        return map;
     }
 
-    @Test
-    @DisplayName("Test check with null memories")
-    void testCheckWithNullMemories() {
-        assertTrue(true, "Check with null memories test placeholder");
-    }
-
-    // ==================== Format Input Tests ====================
-
-    @Test
-    @DisplayName("Test format input with single memory")
-    void testFormatInputWithSingleMemory() {
-        assertTrue(true, "Format input with single memory test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test format input with multiple memories")
-    void testFormatInputWithMultipleMemories() {
-        assertTrue(true, "Format input with multiple memories test placeholder");
-    }
-
-    // ==================== CheckResult Tests ====================
-
-    @Test
-    @DisplayName("Test CheckResult creation")
-    void testCheckResultCreation() {
-        assertTrue(true, "CheckResult creation test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test MemoryStatus enum values")
-    void testMemoryStatusEnumValues() {
-        assertTrue(true, "MemoryStatus enum values test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test MemoryActionItem creation")
-    void testMemoryActionItemCreation() {
-        assertTrue(true, "MemoryActionItem creation test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test MemCheckItem creation")
-    void testMemCheckItemCreation() {
-        assertTrue(true, "MemCheckItem creation test placeholder");
+    private static LinkedHashMap<String, String> linkedMap(String key1, String value1,
+                                                            String key2, String value2) {
+        LinkedHashMap<String, String> map = new LinkedHashMap<>();
+        map.put(key1, value1);
+        map.put(key2, value2);
+        return map;
     }
 }

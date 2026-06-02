@@ -149,5 +149,128 @@ class TestPermission {
             
             assertFalse(result.isAllowed());
         }
+
+        @Test
+        @DisplayName("test ls allowed")
+        void testLsAllowed() {
+            PermissionConfig config = makeConfig("read_only", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("ls -la", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test git push denied")
+        void testGitPushDenied() {
+            PermissionConfig config = makeConfig("read_only", null, null);
+
+            assertFalse(BashPermissionUtils.checkPermission("git push origin main", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test echo pipeline to grep")
+        void testEchoPipelineToGrep() {
+            PermissionConfig config = makeConfig("read_only", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("echo hello | grep h", config).isAllowed());
+        }
+    }
+
+    @Nested
+    @DisplayName("Accept Edits Mode Tests")
+    class AcceptEditsModeTests {
+
+        @Test
+        @DisplayName("test file ops allowed")
+        void testFileOpsAllowed() {
+            PermissionConfig config = makeConfig("accept_edits", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("mkdir -p /tmp/foo", config).isAllowed());
+            assertTrue(BashPermissionUtils.checkPermission("cp a.txt b.txt", config).isAllowed());
+            assertTrue(BashPermissionUtils.checkPermission("sed -i 's/old/new/' file", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test known dev tools allowed")
+        void testKnownDevToolsAllowed() {
+            PermissionConfig config = makeConfig("accept_edits", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("git commit -m test", config).isAllowed());
+            assertTrue(BashPermissionUtils.checkPermission("python3 -m pytest", config).isAllowed());
+            assertTrue(BashPermissionUtils.checkPermission("make test", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test unknown command denied")
+        void testUnknownCommandDenied() {
+            PermissionConfig config = makeConfig("accept_edits", null, null);
+
+            PermissionResult result = BashPermissionUtils.checkPermission("my_custom_script --dangerous", config);
+
+            assertFalse(result.isAllowed());
+            assertTrue(result.getReason().toLowerCase().contains("unknown command"));
+        }
+
+        @Test
+        @DisplayName("test pipeline with unknown denied")
+        void testPipelineWithUnknownDenied() {
+            PermissionConfig config = makeConfig("accept_edits", null, null);
+
+            assertFalse(BashPermissionUtils.checkPermission("cat file | evil_binary", config).isAllowed());
+        }
+    }
+
+    @Nested
+    @DisplayName("Auto Mode Tests")
+    class AutoModeTests {
+
+        @Test
+        @DisplayName("test any command allowed")
+        void testAnyCommandAllowed() {
+            PermissionConfig config = makeConfig("auto", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("anything_at_all --foo", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test deny still works")
+        void testDenyStillWorks() {
+            PermissionConfig config = makeConfig("auto", List.of(Pattern.compile("\\bsudo\\b")), null);
+
+            assertFalse(BashPermissionUtils.checkPermission("sudo rm -rf /", config).isAllowed());
+        }
+
+        @Test
+        @DisplayName("test empty command")
+        void testEmptyCommand() {
+            PermissionConfig config = makeConfig("auto", null, null);
+
+            assertTrue(BashPermissionUtils.checkPermission("", config).isAllowed());
+        }
+    }
+
+    @Nested
+    @DisplayName("Compile Pattern Tests")
+    class CompilePatternTests {
+
+        @Test
+        @DisplayName("test none returns empty")
+        void testNoneReturnsEmpty() {
+            assertTrue(PermissionConfig.compilePatterns(null).isEmpty());
+        }
+
+        @Test
+        @DisplayName("test empty returns empty")
+        void testEmptyReturnsEmpty() {
+            assertTrue(PermissionConfig.compilePatterns(List.of()).isEmpty());
+        }
+
+        @Test
+        @DisplayName("test compiles regex")
+        void testCompilesRegex() {
+            List<Pattern> patterns = PermissionConfig.compilePatterns(List.of("\\bfoo\\b", "bar"));
+
+            assertEquals(2, patterns.size());
+            assertTrue(patterns.stream().allMatch(pattern -> pattern instanceof Pattern));
+        }
     }
 }

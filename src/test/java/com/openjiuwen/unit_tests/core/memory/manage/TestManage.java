@@ -4,211 +4,210 @@
 
 package com.openjiuwen.unit_tests.core.memory.manage;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
+import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
+import com.openjiuwen.core.memory.manage.index.VariableManager;
+import com.openjiuwen.core.memory.manage.index.WriteManager;
+import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
+import com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for Memory Manage module.
- * <p>
- * Mirrors Python's test_manage.py from
- * <code>tests/unit_tests/core/memory/manage/test_manage.py</code>.
+ *
+ * <p>Mirrors Python's {@code test_manage.py} from
+ * {@code tests/unit_tests/core/memory/manage/test_manage.py}.
  */
-@DisplayName("Memory Manage Tests")
 class TestManage {
 
-    // Stub classes
-    static class DataIdManager {
-        Map<String, String> idMapping = new HashMap<>();
+    @Test
+    void testBasic() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        DataIdManager dataIdGenerator = new DataIdManager();
+        UserMemStore memStore = new UserMemStore(kvStore);
+        SemanticStore semanticStore = mockSemanticStore();
 
-        String generateId(String type) {
-            String id = type + "_" + System.currentTimeMillis();
-            return id;
+        FragmentMemoryManager userProfileManager = new FragmentMemoryManager(memStore, dataIdGenerator, new byte[0]);
+        VariableManager variableManager = new VariableManager(kvStore, new byte[0]);
+        Map<String, BaseMemoryManager> managers = new LinkedHashMap<>();
+        managers.put(MemoryType.FRAGMENT_MEMORY.getValue(), userProfileManager);
+        managers.put(MemoryType.VARIABLE.getValue(), variableManager);
+        WriteManager writeManager = new WriteManager(managers, memStore);
+
+        addTestMemories(writeManager, semanticStore, "usrZH2025", "fitnesstrackerv3", List.of(
+                "用户非常喜欢川菜，尤其是水煮鱼和麻婆豆腐",
+                "用户的职业是软件工程师，居住在北京市",
+                "用户的副业是短视频直播",
+                "用户的银行卡账户余额为10000元",
+                "用户的朋友圈中有50个好友",
+                "用户的宠物是一只金毛犬"
+        ));
+        addTestMemories(writeManager, semanticStore, "usrZH2026", "fitnesstrackerv3", List.of(
+                "用户喜欢打篮球和阅读历史小说",
+                "用户的生日是1990年1月1日",
+                "用户的汽车型号是特斯拉Model 3",
+                "用户在Twitter上有200个关注者"
+        ));
+
+        List<Map<String, Object>> searchResults = userProfileManager.search(
+                "usrZH2025",
+                "fitnesstrackerv3",
+                "用户的职业",
+                5,
+                Map.of("semantic_store", semanticStore)
+        );
+        assertEquals(5, searchResults.size());
+
+        Map<String, Object> firstResult = searchResults.getFirst();
+        userProfileManager.update(
+                String.valueOf(firstResult.get("user_id")),
+                String.valueOf(firstResult.get("scope_id")),
+                String.valueOf(firstResult.get("id")),
+                "用户不是软件工程师，而是系统分析师",
+                Map.of("semantic_store", semanticStore)
+        );
+        Map<String, Object> updated = userProfileManager.get(
+                String.valueOf(firstResult.get("user_id")),
+                String.valueOf(firstResult.get("scope_id")),
+                String.valueOf(firstResult.get("id"))
+        );
+        assertEquals("用户不是软件工程师，而是系统分析师", updated.get("mem"));
+
+        List<Map<String, Object>> allMemories = userProfileManager.listFragmentMemories(
+                "usrZH2025",
+                "fitnesstrackerv3",
+                null
+        );
+        assertEquals(6, allMemories.size());
+
+        for (Map<String, Object> memory : allMemories.subList(0, 2)) {
+            writeManager.deleteMemById(
+                    String.valueOf(memory.get("user_id")),
+                    String.valueOf(memory.get("scope_id")),
+                    String.valueOf(memory.get("id")),
+                    semanticStore
+            );
         }
 
-        void registerId(String type, String id, String dataPath) {
-            idMapping.put(type + ":" + id, dataPath);
-        }
+        List<Map<String, Object>> afterDelete = userProfileManager.search(
+                "usrZH2025",
+                "fitnesstrackerv3",
+                "用户的职业",
+                5,
+                Map.of("semantic_store", semanticStore)
+        );
+        assertEquals(4, afterDelete.size());
 
-        String getDataPath(String type, String id) {
-            return idMapping.get(type + ":" + id);
+        writeManager.deleteMemByUserId("usrZH2026", "fitnesstrackerv3", semanticStore);
+        List<Map<String, Object>> otherUserResults = userProfileManager.search(
+                "usrZH2026",
+                "fitnesstrackerv3",
+                "用户的职业",
+                5,
+                Map.of("semantic_store", semanticStore)
+        );
+        assertTrue(otherUserResults.isEmpty());
+    }
+
+    private static void addTestMemories(WriteManager writeManager,
+                                        SemanticStore semanticStore,
+                                        String userId,
+                                        String scopeId,
+                                        List<String> contents) {
+        for (int index = 0; index < contents.size(); index++) {
+            FragmentMemoryUnit fragment = FragmentMemoryUnit.builder()
+                    .fragmentType("user_profile")
+                    .content(contents.get(index))
+                    .messageMemId("fragment-" + index)
+                    .build();
+            writeManager.addMemories(
+                    userId,
+                    scopeId,
+                    Map.of(MemoryType.FRAGMENT_MEMORY.getValue(), List.of(fragment)),
+                    null,
+                    semanticStore
+            );
+
+            VariableUnit variable = VariableUnit.builder()
+                    .variableName("memory_" + index)
+                    .variableMem(contents.get(index))
+                    .build();
+            writeManager.addMemories(
+                    userId,
+                    scopeId,
+                    Map.of(MemoryType.VARIABLE.getValue(), List.of(variable)),
+                    null,
+                    semanticStore
+            );
         }
     }
 
-    static class FragmentMemoryManager {
-        Map<String, Object> fragments = new HashMap<>();
+    private static SemanticStore mockSemanticStore() {
+        SemanticStore semanticStore = mock(SemanticStore.class);
+        Map<String, LinkedHashMap<String, String>> tables = new LinkedHashMap<>();
 
-        void addFragment(String id, Object data) {
-            fragments.put(id, data);
-        }
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<Map.Entry<String, String>> docs = invocation.getArgument(0);
+            String tableName = invocation.getArgument(1);
+            LinkedHashMap<String, String> table = tables.computeIfAbsent(tableName, ignored -> new LinkedHashMap<>());
+            for (Map.Entry<String, String> doc : docs) {
+                table.put(doc.getKey(), doc.getValue());
+            }
+            return true;
+        }).when(semanticStore).addDocs(anyList(), anyString());
 
-        Object getFragment(String id) {
-            return fragments.get(id);
-        }
+        doAnswer(invocation -> {
+            String tableName = invocation.getArgument(1);
+            int topK = invocation.getArgument(2);
+            LinkedHashMap<String, String> table = tables.getOrDefault(tableName, new LinkedHashMap<>());
+            List<Map.Entry<String, Double>> results = new ArrayList<>();
+            int count = 0;
+            for (String id : table.keySet()) {
+                if (count++ >= topK) {
+                    break;
+                }
+                results.add(new AbstractMap.SimpleEntry<>(id, 0.99));
+            }
+            return results;
+        }).when(semanticStore).search(anyString(), anyString(), anyInt());
 
-        int fragmentCount() {
-            return fragments.size();
-        }
-    }
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<String> ids = invocation.getArgument(0);
+            String tableName = invocation.getArgument(1);
+            LinkedHashMap<String, String> table = tables.get(tableName);
+            if (table != null) {
+                ids.forEach(table::remove);
+            }
+            return null;
+        }).when(semanticStore).deleteDocs(anyList(), anyString());
 
-    static class VariableManager {
-        Map<String, Object> variables = new HashMap<>();
+        doAnswer(invocation -> {
+            String tableName = invocation.getArgument(0);
+            tables.remove(tableName);
+            return null;
+        }).when(semanticStore).deleteTable(anyString());
 
-        void setVariable(String name, Object value) {
-            variables.put(name, value);
-        }
-
-        Object getVariable(String name) {
-            return variables.get(name);
-        }
-
-        boolean hasVariable(String name) {
-            return variables.containsKey(name);
-        }
-
-        void clear() {
-            variables.clear();
-        }
-    }
-
-    static class WriteManager {
-        int writeCount = 0;
-        int conflictCount = 0;
-
-        void recordWrite() {
-            writeCount++;
-        }
-
-        void recordConflict() {
-            conflictCount++;
-        }
-
-        int getWriteCount() {
-            return writeCount;
-        }
-
-        int getConflictCount() {
-            return conflictCount;
-        }
-    }
-
-    @Nested
-    @DisplayName("Data ID Manager Tests")
-    class TestDataIdManager {
-
-        @Test
-        @DisplayName("generate id")
-        void testGenerateId() {
-            DataIdManager manager = new DataIdManager();
-
-            String id = manager.generateId("memory");
-
-            assertNotNull(id);
-            assertTrue(id.startsWith("memory_"));
-        }
-
-        @Test
-        @DisplayName("register and retrieve id")
-        void testRegisterAndRetrieveId() {
-            DataIdManager manager = new DataIdManager();
-            manager.registerId("memory", "mem_123", "/data/memory/mem_123");
-
-            String path = manager.getDataPath("memory", "mem_123");
-
-            assertEquals("/data/memory/mem_123", path);
-        }
-    }
-
-    @Nested
-    @DisplayName("Fragment Memory Manager Tests")
-    class TestFragmentMemoryManager {
-
-        @Test
-        @DisplayName("add and get fragment")
-        void testAddAndGetFragment() {
-            FragmentMemoryManager manager = new FragmentMemoryManager();
-            manager.addFragment("frag1", "fragment data");
-
-            Object data = manager.getFragment("frag1");
-
-            assertEquals("fragment data", data);
-        }
-
-        @Test
-        @DisplayName("fragment count")
-        void testFragmentCount() {
-            FragmentMemoryManager manager = new FragmentMemoryManager();
-            manager.addFragment("f1", "d1");
-            manager.addFragment("f2", "d2");
-
-            assertEquals(2, manager.fragmentCount());
-        }
-    }
-
-    @Nested
-    @DisplayName("Variable Manager Tests")
-    class TestVariableManager {
-
-        @Test
-        @DisplayName("set and get variable")
-        void testSetAndGetVariable() {
-            VariableManager manager = new VariableManager();
-            manager.setVariable("key", "value");
-
-            Object value = manager.getVariable("key");
-
-            assertEquals("value", value);
-        }
-
-        @Test
-        @DisplayName("has variable")
-        void testHasVariable() {
-            VariableManager manager = new VariableManager();
-            manager.setVariable("existing", "value");
-
-            assertTrue(manager.hasVariable("existing"));
-            assertFalse(manager.hasVariable("nonexistent"));
-        }
-
-        @Test
-        @DisplayName("clear variables")
-        void testClearVariables() {
-            VariableManager manager = new VariableManager();
-            manager.setVariable("k1", "v1");
-            manager.setVariable("k2", "v2");
-
-            manager.clear();
-
-            assertEquals(0, manager.variables.size());
-        }
-    }
-
-    @Nested
-    @DisplayName("Write Manager Tests")
-    class TestWriteManager {
-
-        @Test
-        @DisplayName("record write")
-        void testRecordWrite() {
-            WriteManager manager = new WriteManager();
-            manager.recordWrite();
-            manager.recordWrite();
-
-            assertEquals(2, manager.getWriteCount());
-        }
-
-        @Test
-        @DisplayName("record conflict")
-        void testRecordConflict() {
-            WriteManager manager = new WriteManager();
-            manager.recordConflict();
-
-            assertEquals(1, manager.getConflictCount());
-        }
+        return semanticStore;
     }
 }

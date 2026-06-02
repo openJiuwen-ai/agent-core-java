@@ -6,8 +6,11 @@ package com.openjiuwen.core.foundation.store.graph.milvus;
 
 import com.openjiuwen.core.foundation.store.graph.GraphStoreIndexConfig;
 import com.openjiuwen.core.foundation.store.graph.GraphStoreStorageConfig;
+import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -54,6 +57,11 @@ public class GenerateMilvusSchema {
             GraphStoreIndexConfig embedConfig,
             int dim,
             boolean dynamicField) {
+        if (!ENTITY_COLLECTION.equals(collection)
+                && !RELATION_COLLECTION.equals(collection)
+                && !EPISODE_COLLECTION.equals(collection)) {
+            throw new IllegalArgumentException("Collection not supported, collection=" + collection);
+        }
 
         // Determine index type
         String indexType = "AUTOINDEX";
@@ -78,8 +86,40 @@ public class GenerateMilvusSchema {
 
         LOGGER.info("Generating schema for collection: " + collection);
 
-        // TODO: Implement actual schema generation with Milvus client
-        return new SchemaResult(collection, indexType, metricType);
+        SchemaResult result = new SchemaResult(collection, indexType, metricType, dynamicField);
+        addCommonFields(result, storageConfig);
+        switch (collection) {
+            case ENTITY_COLLECTION -> {
+                result.addField("name", storageConfig.getName());
+                result.addField("name_embedding", dim);
+                result.addField("attributes", "json");
+                result.addField("relations", storageConfig.getRelations());
+                result.addField("episodes", storageConfig.getEpisodes());
+                result.addIndex("name_embedding");
+            }
+            case RELATION_COLLECTION -> {
+                result.addField("valid_since", "int64");
+                result.addField("valid_until", "int64");
+                result.addField("offset_since", "int8");
+                result.addField("offset_until", "int8");
+                result.addField("name", storageConfig.getName());
+                result.addField("lhs", storageConfig.getUuid());
+                result.addField("rhs", storageConfig.getUuid());
+            }
+            case EPISODE_COLLECTION -> {
+                result.addField("valid_since", "int64");
+                result.addField("entities", storageConfig.getEntities());
+            }
+            default -> throw new IllegalStateException("Unexpected value: " + collection);
+        }
+        result.addField("content", storageConfig.getContent());
+        if (dim > 0) {
+            result.addField("content_embedding", dim);
+            result.addIndex("content_embedding");
+        }
+        result.addField("content_bm25", "sparse_float_vector");
+        result.addIndex("content_bm25");
+        return result;
     }
 
     /**
@@ -90,17 +130,40 @@ public class GenerateMilvusSchema {
         private final String indexType;
         private final String metricType;
         private final Map<String, Object> fields;
+        private final List<String> indexedFields;
+        private final boolean dynamicField;
 
-        public SchemaResult(String collection, String indexType, String metricType) {
+        public SchemaResult(String collection, String indexType, String metricType, boolean dynamicField) {
             this.collection = collection;
             this.indexType = indexType;
             this.metricType = metricType;
             this.fields = new HashMap<>();
+            this.indexedFields = new ArrayList<>();
+            this.dynamicField = dynamicField;
         }
 
         public String getCollection() { return collection; }
         public String getIndexType() { return indexType; }
         public String getMetricType() { return metricType; }
         public Map<String, Object> getFields() { return fields; }
+        public List<String> getIndexedFields() { return indexedFields; }
+        public boolean isDynamicField() { return dynamicField; }
+
+        public void addField(String name, Object value) {
+            fields.put(name, value);
+        }
+
+        public void addIndex(String fieldName) {
+            indexedFields.add(fieldName);
+        }
+    }
+
+    private static void addCommonFields(SchemaResult result, GraphStoreStorageConfig storageConfig) {
+        result.addField("uuid", storageConfig.getUuid());
+        result.addField("created_at", "int64");
+        result.addField("user_id", storageConfig.getUserId());
+        result.addField("obj_type", storageConfig.getObjType());
+        result.addField("language", storageConfig.getLanguage());
+        result.addField("metadata", "json");
     }
 }

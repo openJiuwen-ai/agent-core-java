@@ -11,6 +11,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.*;
@@ -103,10 +104,54 @@ class DeepAgentE2ETest {
     @Test
     void testDeepAgentComplexTaskMultiToolChain() {
         var toolCalls = new ArrayList<String>();
+        Object sysOper = Runner.resourceMgr().getSysOperation(sysOperationId, null, null);
+        assertInstanceOf(SysOperation.class, sysOper);
+        SysOperation sysOperation = (SysOperation) sysOper;
 
-        assertTrue(true, "Test infrastructure validated");
-        assertNotNull(workDir);
-        assertNotNull(sysOperationId);
+        var writeAlpha = sysOperation.fs().writeFile(
+                "todo_alpha.txt",
+                "prepare data\nimplement feature\nverify result",
+                "text",
+                false,
+                false,
+                true,
+                null,
+                "UTF-8",
+                Map.of());
+        toolCalls.add("write_file");
+        var writeBeta = sysOperation.fs().writeFile(
+                "todo_beta.txt",
+                "publish release\nrollback plan",
+                "text",
+                false,
+                false,
+                true,
+                null,
+                "UTF-8",
+                Map.of());
+        toolCalls.add("write_file");
+        var listFiles = sysOperation.fs().listFiles(".", false, null, "name", false, null, Map.of());
+        toolCalls.add("list_files");
+        var readAlpha = sysOperation.fs().readFile("todo_alpha.txt", "text",
+                null, null, null, "UTF-8", 0, Map.of());
+        toolCalls.add("read_file");
+        var readBeta = sysOperation.fs().readFile("todo_beta.txt", "text",
+                null, null, null, "UTF-8", 0, Map.of());
+        toolCalls.add("read_file");
+
+        assertEquals(0, writeAlpha.getCode());
+        assertEquals(0, writeBeta.getCode());
+        assertEquals(0, listFiles.getCode());
+        assertEquals(0, readAlpha.getCode());
+        assertEquals(0, readBeta.getCode());
+        assertTrue(Files.exists(tmpDir.resolve("todo_alpha.txt")));
+        assertTrue(Files.exists(tmpDir.resolve("todo_beta.txt")));
+        assertTrue(String.valueOf(readAlpha.getData().getContent()).contains("implement feature"));
+        assertTrue(String.valueOf(readBeta.getData().getContent()).contains("rollback plan"));
+        assertEquals(2, Collections.frequency(toolCalls, "write_file"));
+        assertEquals(1, Collections.frequency(toolCalls, "list_files"));
+        assertEquals(2, Collections.frequency(toolCalls, "read_file"));
+        assertTrue(toolCalls.size() >= 4);
     }
 
     @Test

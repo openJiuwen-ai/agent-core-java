@@ -4,15 +4,26 @@
 
 package com.openjiuwen.core.multiagent.teams.hierarchicalmsgbus;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.multiagent.teamruntime.CommunicableAgent;
 import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * AbilityManager that routes AgentCard tool calls via TeamRuntime P2P send().
@@ -26,6 +37,7 @@ import java.util.ArrayList;
 public class P2PAbilityManager extends AbilityManager {
     
     private static final LoggerProtocol LOGGER = Loggers.MULTI_AGENT;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
     
     private final CommunicableAgent supervisor;
     private final int maxParallelSubAgents;
@@ -65,85 +77,220 @@ public class P2PAbilityManager extends AbilityManager {
         return agentSemaphore;
     }
     
-    /**
-     * Execute tool calls, dispatching AgentCard calls via P2P.
-     * 
-     * @param toolCalls List of tool calls from the LLM
-     * @param sessionId Session ID for routing
-     * @return List of results
-     */
-    public List<Object> execute(List<Object> toolCalls, String sessionId) {
-        List<Object> results = new ArrayList<>();
-        List<CompletableFuture<Object>> futures = new ArrayList<>();
-        
-        for (Object toolCall : toolCalls) {
-            // Check if this is an AgentCard tool call
-            if (isAgentCardCall(toolCall)) {
-                String targetAgentId = extractTargetAgentId(toolCall);
-                Object message = extractMessage(toolCall);
-                
-                // Dispatch via P2P
-                CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> {
-                    try {
-                        getSemaphore().acquire();
-                        try {
-                            return supervisor.send(message, targetAgentId, sessionId).join();
-                        } finally {
-                            getSemaphore().release();
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return CompletableFuture.failedFuture(e);
-                    }
-                });
-                futures.add(future);
+    @Override
+    public List<ToolExecutionEntry> execute(
+            AgentCallbackContext ctx,
+            Object toolCall,
+            Session session,
+            String tag
+    ) {
+        List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
+        if (toolCalls.isEmpty()) {
+            return List.of();
+        }
+
+        List<Integer> agentIndices = new ArrayList<>();
+        List<Integer> otherIndices = new ArrayList<>();
+        for (int i = 0; i < toolCalls.size(); i++) {
+            if (getAgentCard(toolCalls.get(i).getName()) != null) {
+                agentIndices.add(i);
             } else {
-                // Forward to base AbilityManager — wrap single tool call result
-                results.add(toolCall);
+                otherIndices.add(i);
             }
         }
-        
-        // Wait for all P2P dispatches to complete
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        
-        for (CompletableFuture<Object> future : futures) {
-            results.add(future.join());
+
+        if (agentIndices.isEmpty()) {
+            return executeNonAgentCalls(ctx, toolCalls, session, tag);
         }
-        
-        return results;
+
+        List<ToolExecutionEntry> finalResults = new ArrayList<>(java.util.Collections.nCopies(toolCalls.size(), null));
+        List<CompletableFuture<ToolExecutionEntry>> agentFutures = new ArrayList<>();
+        for (Integer idx : agentIndices) {
+            ToolCall tc = toolCalls.get(idx);
+            agentFutures.add(CompletableFuture.supplyAsync(() -> dispatchAgentCall(tc, session)));
+        }
+
+        if (!otherIndices.isEmpty()) {
+            List<ToolCall> otherCalls = otherIndices.stream().map(toolCalls::get).toList();
+            List<ToolExecutionEntry> otherResults = executeNonAgentCalls(ctx, otherCalls, session, tag);
+            for (int i = 0; i < otherResults.size() && i < otherIndices.size(); i++) {
+                finalResults.set(otherIndices.get(i), otherResults.get(i));
+            }
+        }
+
+        for (int i = 0; i < agentFutures.size(); i++) {
+            ToolExecutionEntry entry = joinAgentFuture(toolCalls.get(agentIndices.get(i)), agentFutures.get(i));
+            finalResults.set(agentIndices.get(i), entry);
+        }
+
+        LOGGER.debug("[P2PAbilityManager] parallel dispatch complete: {} agent call(s) / {} other call(s) / max_parallel={}",
+                agentIndices.size(), otherIndices.size(), maxParallelSubAgents);
+        return finalResults.stream().filter(Objects::nonNull).toList();
     }
-    
+
     /**
-     * Check if a tool call is an AgentCard call.
-     * 
-     * @param toolCall Tool call to check
-     * @return true if it's an AgentCard call
+     * Compatibility bridge for older tests/callers that used the temporary list API.
      */
+    public List<Object> execute(List<Object> toolCalls, String sessionId) {
+        List<ToolCall> calls = toolCalls == null
+                ? List.of()
+                : toolCalls.stream().filter(ToolCall.class::isInstance).map(ToolCall.class::cast).toList();
+        Session session = sessionId != null ? simpleSession(sessionId) : null;
+        return execute(AgentCallbackContext.builder().build(), calls, session, null)
+                .stream()
+                .map(ToolExecutionEntry::result)
+                .toList();
+    }
+
+    protected List<ToolExecutionEntry> executeNonAgentCalls(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            Session session,
+            String tag
+    ) {
+        Object callArg = toolCalls.size() == 1 ? toolCalls.get(0) : toolCalls;
+        return super.execute(ctx, callArg, session, tag);
+    }
+
+    protected ToolExecutionEntry dispatchAgentCall(ToolCall toolCall, Session session) {
+        Semaphore semaphore = getSemaphore();
+        boolean acquired = false;
+        try {
+            semaphore.acquire();
+            acquired = true;
+            AgentCard agentCard = getAgentCard(toolCall.getName());
+            if (agentCard == null) {
+                return errorEntry(toolCall, "Agent ability not found: " + toolCall.getName());
+            }
+            String sessionId = session != null ? session.getSessionId() : null;
+            Object message = parseArguments(toolCall);
+            Double timeout = resolveTimeout();
+
+            LOGGER.debug("[P2PAbilityManager] P2P dispatch tool='{}' agent_id='{}' session_id={} timeout={}s",
+                    toolCall.getName(), agentCard.getId(), sessionId, timeout);
+
+            Object result = supervisor.send(message, agentCard.getId(), sessionId, timeout).get();
+            ToolMessage toolMessage = new ToolMessage(String.valueOf(result), toolCall.getId());
+            return new ToolExecutionEntry(
+                    toolCall,
+                    result,
+                    toolMessage,
+                    ToolExecutionClassification.SUCCESS,
+                    null
+            );
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return errorEntry(toolCall, "P2P parallel dispatch failed: " + e.getMessage());
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            return errorEntry(toolCall, "P2P parallel dispatch failed: " + cause.getMessage());
+        } catch (Exception e) {
+            return errorEntry(toolCall, "P2P parallel dispatch failed: " + e.getMessage());
+        } finally {
+            if (acquired) {
+                semaphore.release();
+            }
+        }
+    }
+
+    private ToolExecutionEntry joinAgentFuture(ToolCall toolCall, CompletableFuture<ToolExecutionEntry> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return errorEntry(toolCall, "P2P parallel dispatch failed: " + e.getMessage());
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            return errorEntry(toolCall, "P2P parallel dispatch failed: " + cause.getMessage());
+        }
+    }
+
+    protected AgentCard getAgentCard(String toolName) {
+        Object ability = get(toolName);
+        return ability instanceof AgentCard agentCard ? agentCard : null;
+    }
+
     protected boolean isAgentCardCall(Object toolCall) {
-        // TODO: Implement actual check based on tool call structure
-        return false;
+        return toolCall instanceof ToolCall tc && getAgentCard(tc.getName()) != null;
     }
-    
-    /**
-     * Extract target agent ID from a tool call.
-     * 
-     * @param toolCall Tool call
-     * @return Target agent ID
-     */
+
     protected String extractTargetAgentId(Object toolCall) {
-        // TODO: Implement actual extraction
+        if (toolCall instanceof ToolCall tc) {
+            AgentCard card = getAgentCard(tc.getName());
+            return card != null ? card.getId() : "";
+        }
         return "";
     }
-    
-    /**
-     * Extract message from a tool call.
-     * 
-     * @param toolCall Tool call
-     * @return Message payload
-     */
+
     protected Object extractMessage(Object toolCall) {
-        // TODO: Implement actual extraction
-        return "";
+        return toolCall instanceof ToolCall tc ? parseArguments(tc) : Map.of();
+    }
+
+    private Object parseArguments(ToolCall toolCall) {
+        String arguments = toolCall.getArguments();
+        if (arguments == null || arguments.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> parsed = MAPPER.readValue(arguments, new TypeReference<>() {
+            });
+            return parsed != null ? parsed : Map.of();
+        } catch (JsonProcessingException ignored) {
+            return Map.of();
+        }
+    }
+
+    private Double resolveTimeout() {
+        try {
+            return supervisor.getRuntime().getP2pTimeout();
+        } catch (Exception ignored) {
+            return 1800.0;
+        }
+    }
+
+    private static List<ToolCall> normalizeToolCalls(Object toolCall) {
+        if (toolCall instanceof ToolCall tc) {
+            return List.of(tc);
+        }
+        if (toolCall instanceof List<?> list) {
+            List<ToolCall> calls = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof ToolCall tc) {
+                    calls.add(tc);
+                }
+            }
+            return calls;
+        }
+        return List.of();
+    }
+
+    private static ToolExecutionEntry errorEntry(ToolCall toolCall, String message) {
+        return new ToolExecutionEntry(
+                toolCall,
+                null,
+                new ToolMessage(message, toolCall.getId()),
+                ToolExecutionClassification.ERROR,
+                message
+        );
+    }
+
+    private static Session simpleSession(String sessionId) {
+        return new Session() {
+            @Override
+            public String getSessionId() {
+                return sessionId;
+            }
+
+            @Override
+            public Object getState(String key) {
+                return null;
+            }
+
+            @Override
+            public void updateState(Map<String, Object> state) {
+                // Compatibility bridge only; no persistent state needed.
+            }
+        };
     }
     
     // ========== Getters ==========

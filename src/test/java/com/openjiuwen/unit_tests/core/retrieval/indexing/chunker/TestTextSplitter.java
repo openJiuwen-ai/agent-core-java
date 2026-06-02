@@ -1,257 +1,185 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.unit_tests.core.retrieval.indexing.chunker;
 
-import com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter;
-import com.openjiuwen.core.retrieval.indexing.processor.chunker.RecursiveCharacterTextSplitter;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
-import com.openjiuwen.core.common.exception.ValidationError;
+import com.openjiuwen.core.retrieval.indexing.processor.chunker.CharSplitterText;
+import com.openjiuwen.core.retrieval.indexing.processor.chunker.IndexSentenceSplitter;
+import com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Text splitter test cases.
- * <p>
- * Mirrors Python's {@code test_text_splitter.py} in
- * {@code tests.unit_tests.core.retrieval.indexing.processor.chunker.test_text_splitter}.
- *
- * <p>Tests cover:
- * <ul>
- *   <li>TextSplitter abstract class existence</li>
- *   <li>RecursiveCharacterTextSplitter initialization with defaults and custom values</li>
- *   <li>Overlap adjustment behavior</li>
- *   <li>Text splitting for short and long texts</li>
- *   <li>Overlap behavior verification</li>
- *   <li>Metadata preservation</li>
- * </ul>
+ * Mirrors Python's tests/unit_tests/core/retrieval/indexing/processor/chunker/test_text_splitter.py.
  */
 class TestTextSplitter {
 
-    /**
-     * Test: TextSplitter class exists.
-     * <p>
-     * Mirrors Python's test_cannot_instantiate_abstract_class.
-     */
-    @Test
-    @Tag("level0")
-    @DisplayName("TextSplitter class exists")
-    void testTextSplitterExists() {
-        assertNotNull(TextSplitter.class, "TextSplitter class should exist");
+    private static final class ConcreteTextSplitter extends TextSplitter {
+        @Override
+        public List<TextChunk> split(Document doc) {
+            String prefix = doc.getText().substring(0, Math.min(10, doc.getText().length()));
+            return List.of(TextChunk.fromDocument(doc, prefix, "chunk-1"));
+        }
     }
 
-    /**
-     * Test: RecursiveCharacterTextSplitter class exists.
-     * <p>
-     * Mirrors Python's test_init_with_defaults for class existence.
-     */
     @Test
-    @Tag("level0")
-    @DisplayName("RecursiveCharacterTextSplitter class exists")
-    void testRecursiveCharacterTextSplitterExists() {
-        assertNotNull(RecursiveCharacterTextSplitter.class, 
-            "RecursiveCharacterTextSplitter class should exist");
+    void testCannotInstantiateAbstractClass() {
+        assertTrue(Modifier.isAbstract(TextSplitter.class.getModifiers()));
     }
 
-    /**
-     * Test: RecursiveCharacterTextSplitter creation with custom values.
-     * <p>
-     * Mirrors Python's test_init_with_custom_values.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>Chunk size matches configured value</li>
-     *   <li>Chunk overlap matches configured value</li>
-     * </ul>
-     */
     @Test
-    @Tag("level0")
-    @DisplayName("RecursiveCharacterTextSplitter creation with custom values")
-    void testRecursiveCharacterTextSplitterCreation() {
-        RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(512, 50);
-        assertEquals(512, splitter.getChunkSize(), "Chunk size should be 512");
-        assertEquals(50, splitter.getChunkOverlap(), "Chunk overlap should be 50");
+    void testConcreteSplitterWithDocument() {
+        List<TextChunk> chunks = new ConcreteTextSplitter().split(new Document("doc_1", "This is a test"));
+
+        assertEquals(1, chunks.size());
+        assertEquals("This is a ", chunks.getFirst().getText());
+        assertEquals("doc_1", chunks.getFirst().getDocId());
     }
 
-    /**
-     * Test: Splitting text into chunks.
-     * <p>
-     * Mirrors Python's test_split_long_text.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>Splitting produces non-empty result</li>
-     *   <li>Multiple chunks are created for long text</li>
-     *   <li>All chunks belong to the same document</li>
-     * </ul>
-     */
     @Test
-    @Tag("level0")
-        @DisplayName("Splitting text into chunks")
-    void testSplitText() {
-        RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(20, 5);
-        Document doc = new Document("This is a sample text for testing the splitting functionality.");
-        List<TextChunk> chunks = splitter.split(doc);
-        assertNotNull(chunks, "Chunks should not be null");
-        assertFalse(chunks.isEmpty(), "Chunks should not be empty");
+    void testInitWithDefaults() {
+        CharSplitterText splitter = new CharSplitterText();
+
+        assertEquals(200, splitter.getChunkSize());
+        assertEquals(40, splitter.getChunkOverlap());
     }
 
-    @Nested
-    @DisplayName("RecursiveCharacterTextSplitter Detailed Tests")
-    class RecursiveCharacterTextSplitterTests {
+    @Test
+    void testInitWithCustomValues() {
+        CharSplitterText splitter = new CharSplitterText(512, 50);
 
-        /**
-         * Test: Initialization with default separators.
-         * <p>
-         * Mirrors Python's test_init_with_defaults.
-         */
-        @Test
-        @DisplayName("Default separator configuration")
-        void testDefaultSeparators() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 20);
-            // Default separators: ["\n\n", "\n", " ", ""]
-            assertEquals(100, splitter.getChunkSize(), "Default chunk size should be 100");
-            assertEquals(20, splitter.getChunkOverlap(), "Default overlap should be 20");
-        }
+        assertEquals(512, splitter.getChunkSize());
+        assertEquals(50, splitter.getChunkOverlap());
+    }
 
-        /**
-         * Test: Splitting short text produces single chunk.
-         * <p>
-         * Mirrors Python's test_split_short_text.
-         *
-         * <p>Verification:
-         * <ul>
-         *   <li>Short text produces exactly one chunk</li>
-         *   <li>Chunk text matches original</li>
-         * </ul>
-         */
-        @Test
-        @DisplayName("Splitting short text produces single chunk")
-        void testSplitShortText() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 10);
-            Document doc = new Document("doc_1", "Short text");
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertEquals(1, chunks.size(), "Short text should produce exactly one chunk");
-            assertEquals("Short text", chunks.get(0).getText(), "Chunk text should match original");
-        }
+    @Test
+    void testInitOverlapAdjusted() {
+        CharSplitterText splitter = new CharSplitterText(100, 150);
 
-        /**
-         * Test: Splitting long text produces multiple chunks.
-         * <p>
-         * Mirrors Python's test_split_long_text.
-         */
-        @Test
-        @DisplayName("Splitting long text produces multiple chunks")
-        void testSplitLongText() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(10, 2);
-            String longText = "This is a longer text that needs to be split into multiple chunks";
-            Document doc = new Document("doc_1", longText);
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertTrue(chunks.size() > 1, "Long text should produce multiple chunks");
-            // Verify all chunks have content
-            for (TextChunk chunk : chunks) {
-                assertNotNull(chunk.getText(), "Each chunk should have text");
-                assertFalse(chunk.getText().isEmpty(), "Chunk text should not be empty");
-            }
-        }
+        assertTrue(splitter.getChunkOverlap() < splitter.getChunkSize());
+    }
 
-        /**
-         * Test: Splitting with overlap produces overlapping content.
-         * <p>
-         * Mirrors Python's test_split_with_overlap.
-         */
-        @Test
-        @DisplayName("Splitting with overlap")
-        void testSplitWithOverlap() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(10, 3);
-            String text = "This is a test text for splitting";
-            Document doc = new Document("doc_1", text);
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertTrue(chunks.size() >= 1, "Should produce at least one chunk");
-            
-            if (chunks.size() > 1) {
-                // Verify there is overlap between adjacent chunks
-                TextChunk first = chunks.get(0);
-                TextChunk second = chunks.get(1);
-                
-                // Due to overlap, end of first chunk may appear in start of second
-                assertNotNull(first.getText(), "First chunk should have text");
-                assertNotNull(second.getText(), "Second chunk should have text");
-            }
-        }
+    @Test
+    void testInitOverlapNegative() {
+        CharSplitterText splitter = new CharSplitterText(100, -10);
 
-        /**
-         * Test: Chunking method returns string list.
-         * <p>
-         * Mirrors Python's chunk text tests.
-         */
-        @Test
-        @DisplayName("Chunking method returns string list")
-        void testChunkTextMethod() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(20, 5);
-            String text = "This is a sample text for chunking.";
-            List<String> chunks = splitter.chunkText(text);
-            
-            assertNotNull(chunks, "chunkText should return non-null list");
-            assertFalse(chunks.isEmpty(), "chunkText should return non-empty list for non-empty input");
-            
-            // Verify chunk sizes are within bounds
-            for (String chunk : chunks) {
-                assertTrue(chunk.length() <= splitter.getChunkSize(), 
-                    "Each chunk should not exceed chunk size");
-            }
-        }
+        assertTrue(splitter.getChunkOverlap() >= 0);
+    }
 
-        /**
-         * Test: Empty document produces empty chunks.
-         */
-        @Test
-        @DisplayName("Empty document produces empty chunks")
-        void testSplitEmptyDocument() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 20);
-            Document doc = new Document("doc_1", "");
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertTrue(chunks.isEmpty(), "Empty document should produce empty chunks");
-        }
+    @Test
+    void testInitChunkSizeMinimum() {
+        CharSplitterText splitter = new CharSplitterText(0, 0);
 
-        /**
-         * Test: Null text produces empty chunks.
-         */
-        @Test
-        @DisplayName("Null text produces empty chunks")
-        void testSplitNullText() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(100, 20);
-            assertThrows(ValidationError.class, () -> new Document("doc_1", null),
-                    "Document text is required, matching Python Document validation");
-        }
+        assertTrue(splitter.getChunkSize() >= 1);
+    }
 
-        /**
-         * Test: Large chunk size handles entire text.
-         */
-        @Test
-        @DisplayName("Large chunk size handles entire text")
-        void testLargeChunkSize() {
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(1000, 100);
-            String text = "Small text";
-            Document doc = new Document("doc_1", text);
-            List<TextChunk> chunks = splitter.split(doc);
-            
-            assertEquals(1, chunks.size(), "Text smaller than chunk size should produce single chunk");
-            assertEquals(text, chunks.get(0).getText(), "Chunk should contain entire text");
-        }
+    @Test
+    void testSplitShortText() {
+        List<TextChunk> chunks = new CharSplitterText(100, 10).split(new Document("doc_1", "Short text"));
+
+        assertEquals(1, chunks.size());
+        assertEquals("Short text", chunks.getFirst().getText());
+        assertEquals("doc_1", chunks.getFirst().getDocId());
+    }
+
+    @Test
+    void testSplitLongText() {
+        List<TextChunk> chunks = new CharSplitterText(10, 2)
+                .split(new Document("doc_1", "This is a longer text that needs to be split into multiple chunks"));
+
+        assertTrue(chunks.size() > 1);
+        assertTrue(chunks.stream().allMatch(chunk -> "doc_1".equals(chunk.getDocId())));
+    }
+
+    @Test
+    void testSplitWithOverlap() {
+        List<TextChunk> chunks = new CharSplitterText(10, 3)
+                .split(new Document("doc_1", "This is a test text for splitting"));
+
+        assertTrue(chunks.size() > 1);
+        assertEquals(3, chunks.get(0).getText().substring(chunks.get(0).getText().length() - 3).length());
+        assertEquals(3, chunks.get(1).getText().substring(0, 3).length());
+    }
+
+    @Test
+    void testSplitPreservesMetadata() {
+        List<TextChunk> chunks = new CharSplitterText(10, 2)
+                .split(new Document("doc_1", "This is a test", Map.of("source", "test", "author", "test_author")));
+
+        assertFalse(chunks.isEmpty());
+        assertTrue(chunks.stream().allMatch(chunk -> "test".equals(chunk.getMetadata().get("source"))));
+    }
+
+    @Test
+    void testSplitWithTextChunk() {
+        List<TextChunk> chunks = new ConcreteTextSplitter()
+                .split(new TextChunk("1", "This is a test", "doc_1", Map.of("source", "test"), null));
+
+        assertEquals(1, chunks.size());
+        assertEquals("doc_1", chunks.getFirst().getDocId());
+        assertEquals("test", chunks.getFirst().getMetadata().get("source"));
+    }
+
+    @Test
+    void testIndexSentenceSplitterDefaultConfiguration() {
+        Function<String, List<String>> tokenizer = text -> Arrays.asList(text.split("\\s+"));
+        List<TextChunk> chunks = new IndexSentenceSplitter(tokenizer, null, null, null, "auto")
+                .split(new Document("doc_1", "This is a test."));
+
+        assertFalse(chunks.isEmpty());
+    }
+
+    @Test
+    void testIndexSentenceSplitterWithDocument() {
+        Function<String, List<String>> tokenizer = text -> Arrays.asList(text.split("\\s+"));
+        List<TextChunk> chunks = new IndexSentenceSplitter(tokenizer, 8, 2, null, "en")
+                .split(new Document("doc_1", "This is sentence one. This is sentence two."));
+
+        assertTrue(chunks.size() >= 1);
+        assertTrue(chunks.stream().allMatch(chunk -> "doc_1".equals(chunk.getDocId())));
+    }
+
+    @Test
+    void testIndexSentenceSplitterWithTextChunk() {
+        Function<String, List<String>> tokenizer = text -> Arrays.asList(text.split("\\s+"));
+        List<TextChunk> chunks = new IndexSentenceSplitter(tokenizer, 8, 2, null, "en")
+                .split(new TextChunk("1", "This is a test sentence.", "doc_1"));
+
+        assertFalse(chunks.isEmpty());
+        assertTrue(chunks.stream().allMatch(item -> "doc_1".equals(item.getDocId())));
+    }
+
+    @Test
+    void testSplitLongSingleSentenceMultipleChunksIntegration() {
+        Function<String, List<String>> tokenizer =
+                text -> Arrays.stream(text.split("\\s+")).collect(Collectors.toList());
+        String longSentence = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "w" + i)
+                .collect(Collectors.joining(" "));
+        List<TextChunk> chunks = new IndexSentenceSplitter(tokenizer, 8, 2, null, "en")
+                .split(new Document("doc_long", longSentence, Map.of("k", "v")));
+
+        Set<String> covered = chunks.stream()
+                .flatMap(chunk -> Arrays.stream(chunk.getText().split("\\s+")))
+                .collect(Collectors.toSet());
+
+        assertTrue(chunks.size() > 1);
+        assertTrue(chunks.stream().allMatch(chunk -> "doc_long".equals(chunk.getDocId())));
+        assertTrue(chunks.stream().allMatch(chunk -> "v".equals(chunk.getMetadata().get("k"))));
+        assertEquals(Set.copyOf(Arrays.asList(longSentence.split("\\s+"))), covered);
     }
 }

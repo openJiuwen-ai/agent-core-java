@@ -5,11 +5,13 @@
 package com.openjiuwen.harness.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentConfig;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,7 +28,11 @@ public class TaskTool extends AbstractHarnessTool {
     private final DeepAgent parentAgent;
 
     public TaskTool(DeepAgent parentAgent) {
-        super(toolCard("harness.task", "task", "Delegate a task to a configured subagent."), null);
+        this(toolCard("harness.task", "task", "Delegate a task to a configured subagent."), parentAgent);
+    }
+
+    public TaskTool(ToolCard card, DeepAgent parentAgent) {
+        super(card, null);
         this.parentAgent = parentAgent;
     }
 
@@ -34,25 +40,23 @@ public class TaskTool extends AbstractHarnessTool {
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Object rawSession = kwargs.get("session");
         if (!(rawSession instanceof com.openjiuwen.core.session.Session session)) {
-            return new ToolOutput(false, null, "task tool requires valid session");
+            throw new IllegalArgumentException("TaskTool requires a valid session in kwargs");
         }
         String agentName = stringValue(inputs.get("subagent_type"));
         if (agentName.isBlank()) {
             agentName = stringValue(inputs.get("agent_name"));
-        }
-        DeepAgent target = findSubagent(agentName);
-        if (target == null) {
-            return new ToolOutput(false, null, "subagent not found: " + agentName);
         }
         String description = stringValue(inputs.get("task_description"));
         if (description.isBlank()) {
             description = stringValue(inputs.get("description"));
         }
         String prompt = stringValue(inputs.get("prompt"));
-        if (description.isBlank() && prompt.isBlank()) {
-            return new ToolOutput(false, null, "required field missing: task_description or prompt");
+        if (agentName.isBlank() || (description.isBlank() && prompt.isBlank())) {
+            throw new IllegalArgumentException("Both 'subagent_type' and 'task' are required");
         }
+
         String taskId = buildSubSessionId(session.getSessionId(), agentName);
+        DeepAgent target = parentAgent.createSubagent(agentName, taskId);
         AgentSessionApi childSession = AgentSessionApi.create(taskId, null, target.getCard());
         if (parentAgent.getConfig() instanceof DeepAgentConfig config && config.getSessionToolkit() != null) {
             config.getSessionToolkit().register(childSession, safeCardValue(target.getCard(), "name"), description);
@@ -64,13 +68,7 @@ public class TaskTool extends AbstractHarnessTool {
         toolArgs.put("conversation_id", taskId);
 
         Object result;
-        if (parentAgent.getConfig() instanceof DeepAgentConfig config && config instanceof DeepAgentConfig) {
-            result = prompt.isBlank() && description.isBlank()
-                    ? null
-                    : runSubagent(target, toolArgs, childSession);
-        } else {
-            result = runSubagent(target, toolArgs, childSession);
-        }
+        result = runSubagent(target, toolArgs, childSession);
 
         if (parentAgent.getConfig() instanceof DeepAgentConfig config && config.getSessionToolkit() != null) {
             config.getSessionToolkit().completeTask(taskId, result != null ? String.valueOf(result) : "");
@@ -103,24 +101,33 @@ public class TaskTool extends AbstractHarnessTool {
         return com.openjiuwen.core.runner.Runner.runAgent(target, toolArgs, childSession, null);
     }
 
-    private DeepAgent findSubagent(String agentName) {
-        if (parentAgent.getConfig() instanceof DeepAgentConfig config) {
-            for (DeepAgent subagent : config.getSubagents()) {
-                String name = safeCardValue(subagent.getCard(), "name");
-                if (agentName.equals(name)) {
-                    return subagent;
-                }
-            }
-        }
-        return null;
-    }
-
     private static String serialize(Map<String, Object> toolArgs) {
         try {
             return OBJECT_MAPPER.writeValueAsString(toolArgs);
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    public static List<TaskTool> createTaskTool(DeepAgent parentAgent, String availableAgents, String language) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("available_agents", availableAgents != null ? availableAgents : "");
+        properties.put("language", language != null ? language : "cn");
+        ToolCard card = ToolCard.builder()
+                .id("task_tool")
+                .name("task_tool")
+                .description("Delegate a task to one of the available subagents.")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "required", List.of("subagent_type", "task_description"),
+                        "properties", Map.of(
+                                "subagent_type", Map.of("type", "string"),
+                                "task_description", Map.of("type", "string")
+                        )
+                ))
+                .properties(properties)
+                .build();
+        return List.of(new TaskTool(card, parentAgent));
     }
 
     private static String safeCardValue(Object card, String fieldName) {

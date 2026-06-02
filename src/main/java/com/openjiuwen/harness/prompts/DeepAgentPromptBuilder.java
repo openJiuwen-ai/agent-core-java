@@ -68,6 +68,13 @@ public class DeepAgentPromptBuilder extends SystemPromptBuilder {
         this.mode = mode;
     }
 
+    /**
+     * Build a diagnostic report from the current builder state.
+     */
+    public PromptReport buildReport() {
+        return PromptReport.fromBuilder(this);
+    }
+
     @Override
     public String build() {
         if (mode == PromptMode.NONE) {

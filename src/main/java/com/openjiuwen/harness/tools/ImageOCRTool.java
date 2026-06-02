@@ -2,10 +2,6 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.harness.schema.config.VisionModelConfig;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -16,28 +12,61 @@ public class ImageOCRTool extends AbstractHarnessTool {
     private final VisionModelConfig visionModelConfig;
 
     public ImageOCRTool(VisionModelConfig visionModelConfig) {
-        super(toolCard("image_ocr", "image_ocr", "Extract text from an image."), null);
+        this("cn", visionModelConfig);
+    }
+
+    public ImageOCRTool(String language, VisionModelConfig visionModelConfig) {
+        super(toolCard("image_ocr", "image_ocr", description(language)), null);
         this.visionModelConfig = visionModelConfig;
     }
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        String imagePathOrUrl = String.valueOf(inputs.getOrDefault("image_path_or_url", ""));
-        Map<String, Object> imageContent = buildImageContent(imagePathOrUrl);
-        String text = callVisionModel(imagePathOrUrl, "ocr", visionModelConfig);
-        return new ToolOutput(true, Map.of("text", text, "image_content", imageContent), null);
+        String imagePathOrUrl = stringInput(inputs, "image_path_or_url");
+        String prompt = stringInput(inputs, "prompt");
+        if (prompt.isBlank()) {
+            prompt = VisionTools.DEFAULT_OCR_PROMPT;
+        }
+
+        try {
+            Map<String, Object> imageContent = buildImageContent(imagePathOrUrl);
+            String text = callVisionModel(imagePathOrUrl, prompt, visionModelConfig);
+            return new ToolOutput(
+                    true,
+                    Map.of(
+                            "text", text,
+                            "model", visionModelConfig != null ? visionModelConfig.getModel() : "",
+                            "image_content", imageContent
+                    ),
+                    null
+            );
+        } catch (Exception exc) {
+            return new ToolOutput(false, null, exc.getMessage());
+        }
     }
 
-    protected String callVisionModel(String imagePathOrUrl, String prompt, VisionModelConfig configuredModel) {
-        return "";
+    public VisionModelConfig getVisionModelConfig() {
+        return visionModelConfig;
+    }
+
+    protected String callVisionModel(
+            String imagePathOrUrl,
+            String prompt,
+            VisionModelConfig configuredModel
+    ) throws Exception {
+        return VisionTools.callVisionModel(imagePathOrUrl, prompt, configuredModel);
     }
 
     protected Map<String, Object> buildImageContent(String imagePathOrUrl) throws Exception {
-        if (imagePathOrUrl.startsWith("http://") || imagePathOrUrl.startsWith("https://")) {
-            return Map.of("type", "image_url", "image_url", Map.of("url", imagePathOrUrl));
-        }
-        byte[] bytes = Files.readAllBytes(Path.of(imagePathOrUrl));
-        String base64 = Base64.getEncoder().encodeToString(bytes);
-        return Map.of("type", "image_url", "image_url", Map.of("url", "data:image/png;base64," + base64));
+        return VisionTools.buildImageContent(imagePathOrUrl);
+    }
+
+    private static String stringInput(Map<String, Object> inputs, String key) {
+        Object value = inputs.get(key);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String description(String language) {
+        return "Extract text from an image.";
     }
 }

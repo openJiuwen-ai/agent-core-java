@@ -4,129 +4,204 @@
 
 package com.openjiuwen.unit_tests.agent.llm_agent;
 
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.application.llm.LlmAgent;
+import com.openjiuwen.core.application.schema.LlmAgentConfig;
+import com.openjiuwen.core.application.schema.PluginSchema;
+import com.openjiuwen.core.application.schema.WorkflowSchema;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.singleagent.ReActAgent;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowUtils;
 
-import java.util.*;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * Mock LLM agent for testing.
+ * LLMAgent-compatible fixture backed by the Java application {@link LlmAgent}.
  * <p>
- * Mirrors Python's {@code mock_llm_agent.py} in
- * {@code tests/unit_tests/agent/llm_agent/mock_llm_agent.py}.
+ * Mirrors Python's {@code MockLLMAgent}, {@code create_llm_agent_config}, and
+ * {@code create_llm_agent} in
+ * {@code tests.unit_tests.agent.llm_agent.mock_llm_agent}.
+ * <p>
+ * Java adaptation note: the production Java {@link LlmAgent} already contains
+ * the legacy-to-application config bridge used by Python's mock adapter, so
+ * this fixture keeps the same public helper surface while delegating invocation
+ * and streaming to the underlying Java agent.
  */
-public class MockLlmAgent {
+public class MockLlmAgent extends LlmAgent {
 
-    private List<Map<String, Object>> invokeCalls = new ArrayList<>();
-    private List<Map<String, Object>> responses = new ArrayList<>();
+    private final LlmAgentConfig agentConfig;
+    private final List<Tool> tools = new ArrayList<>();
+    private final List<Workflow> workflows = new ArrayList<>();
 
-    @BeforeEach
-    void setUp() throws Exception {
-        Runner.start();
+    public MockLlmAgent(LlmAgentConfig agentConfig) {
+        super(Objects.requireNonNull(agentConfig, "agentConfig"));
+        this.agentConfig = agentConfig;
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        Runner.stop();
+    public LlmAgentConfig config() {
+        return agentConfig;
     }
 
-    /**
-     * Mock invoke that returns predetermined responses.
-     */
-    public Map<String, Object> mockInvoke(Map<String, Object> inputs) {
-        invokeCalls.add(inputs);
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("output", "mock_response");
-        result.put("result_type", "answer");
-        return result;
+    public List<Tool> tools() {
+        return List.copyOf(tools);
     }
 
-    /**
-     * Create text response.
-     */
-    public static Map<String, Object> createTextResponse(String text) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("content", text);
-        response.put("role", "assistant");
-        return response;
+    public List<Workflow> workflows() {
+        return List.copyOf(workflows);
     }
 
-    /**
-     * Create tool call response.
-     */
-    public static Map<String, Object> createToolCallResponse(String toolName, Map<String, Object> args) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("tool_name", toolName);
-        response.put("tool_args", args);
-        return response;
+    @Override
+    public ContextEngine getContextEngine() {
+        return super.getContextEngine();
     }
 
-    @Nested
-    @DisplayName("Mock LLM agent tests")
-    class MockLlmAgentTests {
-
-        @Test
-        @DisplayName("Test mock invoke")
-        void testMockInvoke() {
-            MockLlmAgent mockAgent = new MockLlmAgent();
-            
-            Map<String, Object> inputs = new HashMap<>();
-            inputs.put("query", "test query");
-            
-            Map<String, Object> result = mockAgent.mockInvoke(inputs);
-            
-            assertThat(result).containsKey("output");
-            assertThat(result.get("result_type")).isEqualTo("answer");
+    @Override
+    public void addPrompt(List<Map<String, String>> promptTemplate) {
+        if (promptTemplate == null || promptTemplate.isEmpty()) {
+            return;
         }
-
-        @Test
-        @DisplayName("Test create text response")
-        void testCreateTextResponse() {
-            Map<String, Object> response = MockLlmAgent.createTextResponse("Hello World");
-            
-            assertThat(response.get("content")).isEqualTo("Hello World");
-            assertThat(response.get("role")).isEqualTo("assistant");
+        List<Map<String, String>> merged = agentConfig.getPromptTemplate() == null
+            ? new ArrayList<>()
+            : new ArrayList<>(agentConfig.getPromptTemplate());
+        for (Map<String, String> entry : promptTemplate) {
+            merged.add(new LinkedHashMap<>(entry));
         }
+        setPromptTemplate(merged);
+    }
 
-        @Test
-        @DisplayName("Test create tool call response")
-        void testCreateToolCallResponse() {
-            Map<String, Object> args = new HashMap<>();
-            args.put("param", "value");
-            
-            Map<String, Object> response = MockLlmAgent.createToolCallResponse("test_tool", args);
-            
-            assertThat(response.get("tool_name")).isEqualTo("test_tool");
-            assertThat(response.get("tool_args")).isEqualTo(args);
+    @Override
+    public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
+        List<Map<String, String>> copied = new ArrayList<>();
+        if (promptTemplate != null) {
+            for (Map<String, String> entry : promptTemplate) {
+                copied.add(new LinkedHashMap<>(entry));
+            }
         }
+        super.setPromptTemplate(copied);
+    }
 
-        @Test
-        @DisplayName("Test mock model config")
-        void testMockModelConfig() {
-            ModelClientConfig clientConfig = ModelClientConfig.builder()
-                    .clientProvider("MockProvider")
-                    .apiKey("mock_key")
-                    .apiBase("mock_url")
-                    .timeout(30)
-                    .verifySsl(false)
-                    .build();
-            
-            assertThat(clientConfig).isNotNull();
-            assertThat(clientConfig.getClientProvider()).isEqualTo("MockProvider");
+    public void addTools(List<Tool> newTools) {
+        if (newTools == null) {
+            return;
         }
+        for (Tool tool : newTools) {
+            if (tool == null || tool.getCard() == null) {
+                continue;
+            }
+            ToolCard card = tool.getCard();
+            if (tools.stream().noneMatch(existing -> Objects.equals(existing.getCard().getName(), card.getName()))) {
+                tools.add(tool);
+            }
+        }
+        super.addTools(newTools);
+    }
+
+    public void addWorkflows(List<Workflow> newWorkflows) {
+        if (newWorkflows == null) {
+            return;
+        }
+        for (Workflow workflow : newWorkflows) {
+            if (workflow == null || workflow.getCard() == null) {
+                continue;
+            }
+            WorkflowCard card = workflow.getCard();
+            String workflowKey = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            if (workflows.stream().noneMatch(existing -> Objects.equals(
+                WorkflowUtils.generateWorkflowKey(existing.getCard().getId(), existing.getCard().getVersion()),
+                workflowKey))) {
+                workflows.add(workflow);
+            }
+        }
+        super.addWorkflows(newWorkflows);
+    }
+
+    @Override
+    public void removeWorkflows(Collection<String[]> workflowIds) {
+        if (workflowIds == null || workflowIds.isEmpty()) {
+            return;
+        }
+        for (String[] workflowId : workflowIds) {
+            if (workflowId == null || workflowId.length < 2) {
+                continue;
+            }
+            String workflowKey = WorkflowUtils.generateWorkflowKey(workflowId[0], workflowId[1]);
+            workflows.removeIf(workflow -> Objects.equals(
+                WorkflowUtils.generateWorkflowKey(workflow.getCard().getId(), workflow.getCard().getVersion()),
+                workflowKey));
+        }
+        super.removeWorkflows(workflowIds);
+    }
+
+    public void bindWorkflows(List<Workflow> newWorkflows) {
+        addWorkflows(newWorkflows);
+    }
+
+    public void addPlugins(List<PluginSchema> plugins) {
+        if (plugins == null) {
+            return;
+        }
+        for (PluginSchema plugin : plugins) {
+            boolean exists = agentConfig.getPlugins().stream()
+                .anyMatch(existing -> Objects.equals(existing.getName(), plugin.getName()));
+            if (!exists) {
+                agentConfig.getPlugins().add(plugin);
+            }
+        }
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        return super.stream(inputs, session, streamModes);
+    }
+
+    public void clearSession() {
+        clearSession("default_session");
+    }
+
+    public void clearSession(String sessionId) {
+        releaseSession(sessionId);
+        getContextEngine().clearContext(null, sessionId);
+    }
+
+    public static LlmAgentConfig createLlmAgentConfig(
+            String agentId,
+            String agentVersion,
+            String description,
+            List<WorkflowSchema> workflows,
+            List<PluginSchema> plugins,
+            ModelConfig model,
+            List<Map<String, String>> promptTemplate,
+            List<String> tools) {
+        return LlmAgent.createLlmAgentConfig(
+            agentId,
+            agentVersion,
+            description,
+            workflows,
+            plugins,
+            model,
+            promptTemplate,
+            tools
+        );
+    }
+
+    public static MockLlmAgent createLlmAgent(
+            LlmAgentConfig agentConfig,
+            List<Workflow> workflows,
+            List<Tool> tools) {
+        MockLlmAgent agent = new MockLlmAgent(agentConfig);
+        agent.addWorkflows(workflows);
+        agent.addTools(tools);
+        return agent;
     }
 }

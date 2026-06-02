@@ -21,7 +21,7 @@ public class Episode extends BaseGraphObject {
 
     public Episode() {
         super();
-        this.episodeType = "";
+        this.episodeType = "Episode";
         this.validSince = getCreatedAt();
         this.entities = new ArrayList<>();
     }
@@ -47,5 +47,5 @@ public class Episode extends BaseGraphObject {
     }
 
     @Override
-    public String getObjType() { return "episode"; }
+    public String getObjType() { return "Episode"; }
 }

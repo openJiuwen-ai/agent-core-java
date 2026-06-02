@@ -33,6 +33,7 @@ import java.util.stream.Stream;
 public class ActionController extends BaseController {
 
     private static final Logger LOG = LoggerFactory.getLogger(ActionController.class);
+    private static final ActionController DEFAULT_CONTROLLER = new ActionController();
 
     /** JSON mapper used for JavaScript payload generation. */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -51,6 +52,15 @@ public class ActionController extends BaseController {
 
     /** Browser worker action context flag. */
     private boolean inBrowserWorkerAction = false;
+
+    public static ActionController getDefaultController() {
+        return DEFAULT_CONTROLLER;
+    }
+
+    public AutoCloseable browserWorkerActionContext() {
+        enterBrowserWorkerActionContext();
+        return this::exitBrowserWorkerActionContext;
+    }
 
     @Override
     public void bindRuntime(Object runtime) {
@@ -288,6 +298,28 @@ public class ActionController extends BaseController {
         registerActionSpec("run_browser_task", "Alias of browser_task",
             "Same behavior as browser_task", Map.of("task", "Task description", "timeout_s", "Timeout in seconds"));
 
+        registerAction("browser_get_element_coordinates",
+            (sid, rid, params) -> browserGetElementCoordinates(sid, rid, params), true);
+        registerActionSpec("browser_get_element_coordinates",
+            "Resolve source and optional target screen coordinates",
+            "Use before coordinate-based browser actions when selectors or visible text need point resolution",
+            Map.of(
+                "element_source", "Source selector or visible text",
+                "element_target", "Optional target selector or visible text",
+                "timeout_s", "Optional timeout in seconds"));
+
+        registerAction("browser_drag_and_drop", (sid, rid, params) -> browserDragAndDrop(sid, rid, params), true);
+        registerActionSpec("browser_drag_and_drop",
+            "Perform drag-and-drop using selectors or coordinates",
+            "Use for drag-and-drop tasks instead of generic text-only instructions",
+            Map.of(
+                "element_source", "Source selector or visible text",
+                "element_target", "Target selector or visible text",
+                "coord_source_x", "Source x coordinate",
+                "coord_source_y", "Source y coordinate",
+                "coord_target_x", "Target x coordinate",
+                "coord_target_y", "Target y coordinate"));
+
         // browser_set_input_files action
         registerAction("browser_set_input_files", (sid, rid, params) -> browserSetInputFiles(sid, rid, params), true);
         registerActionSpec("browser_set_input_files", "Set files on a file input",
@@ -300,6 +332,10 @@ public class ActionController extends BaseController {
             "Discover files from BROWSER_UPLOAD_ROOT before browser_set_input_files", Map.of());
 
         LOG.info("[ActionController] registered {} builtin actions", actions.size());
+    }
+
+    public void registerExampleActions() {
+        registerBuiltinActions();
     }
 
     /**
@@ -471,6 +507,159 @@ public class ActionController extends BaseController {
         result.put("error", parsed.get("error"));
         result.put("runtime", runtimeResult);
         return result;
+    }
+
+    private Map<String, Object> browserGetElementCoordinates(String sessionId, String requestId, Map<String, Object> params) {
+        boolean hasSelector = hasNonBlank(params, "element_source") || hasNonBlank(params, "source")
+                || hasNonBlank(params, "element_target") || hasNonBlank(params, "target");
+        boolean hasCoordinates = params != null
+                && (params.containsKey("coord_source_x") || params.containsKey("source_x"))
+                && (params.containsKey("coord_source_y") || params.containsKey("source_y"));
+        if (!hasSelector && !hasCoordinates) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", "Missing location inputs");
+            return result;
+        }
+
+        String jsCode = "// resolve source/target coordinates";
+        if (codeExecutor != null) {
+            try {
+                return coordinateResultFromParsed(ParsingUtils.extractJsonObject(invokeCodeExecutor(jsCode)), null);
+            } catch (Exception e) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("ok", false);
+                result.put("error", "browser_run_code failed: " + e.getMessage());
+                result.put("session_id", sessionId);
+                result.put("request_id", requestId);
+                return result;
+            }
+        }
+        if (runtimeRunner == null) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", "runtime_not_bound: call bind_runtime(...) before browser_get_element_coordinates");
+            result.put("session_id", sessionId);
+            result.put("request_id", requestId);
+            return result;
+        }
+        Map<String, Object> runtimeResult = invokeRuntimeRunner(
+            buildRunCodeTask(jsCode, "resolve source/target coordinates"),
+            sessionId,
+            requestId,
+            normalizeTimeout(params != null ? params.get("timeout_s") : null)
+        );
+        if (!Boolean.TRUE.equals(runtimeResult.get("ok"))) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", runtimeResult.getOrDefault("error", "runtime error"));
+            result.put("runtime", runtimeResult);
+            return result;
+        }
+        return coordinateResultFromParsed(ParsingUtils.extractJsonObject(runtimeResult.get("final")), runtimeResult);
+    }
+
+    private Map<String, Object> browserDragAndDrop(String sessionId, String requestId, Map<String, Object> params) {
+        boolean hasSelectors = (hasNonBlank(params, "element_source") || hasNonBlank(params, "source"))
+                && (hasNonBlank(params, "element_target") || hasNonBlank(params, "target"));
+        boolean hasCoordinates = params != null
+                && (params.containsKey("coord_source_x") || params.containsKey("source_x"))
+                && (params.containsKey("coord_source_y") || params.containsKey("source_y"))
+                && (params.containsKey("coord_target_x") || params.containsKey("target_x"))
+                && (params.containsKey("coord_target_y") || params.containsKey("target_y"));
+        if (!hasSelectors && !hasCoordinates) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", "Missing drag inputs");
+            return result;
+        }
+
+        String jsCode = "// drag and drop";
+        if (codeExecutor != null) {
+            try {
+                return dragResultFromParsed(ParsingUtils.extractJsonObject(invokeCodeExecutor(jsCode)), null);
+            } catch (Exception e) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("ok", false);
+                result.put("error", "browser_run_code failed: " + e.getMessage());
+                result.put("session_id", sessionId);
+                result.put("request_id", requestId);
+                return result;
+            }
+        }
+        if (runtimeRunner == null) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", "runtime_not_bound: call bind_runtime(...) before browser_drag_and_drop");
+            result.put("session_id", sessionId);
+            result.put("request_id", requestId);
+            return result;
+        }
+        Map<String, Object> runtimeResult = invokeRuntimeRunner(
+            buildRunCodeTask(jsCode, "drag and drop"),
+            sessionId,
+            requestId,
+            normalizeTimeout(params != null ? params.get("timeout_s") : null)
+        );
+        if (!Boolean.TRUE.equals(runtimeResult.get("ok"))) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", false);
+            result.put("error", runtimeResult.getOrDefault("error", "runtime error"));
+            result.put("runtime", runtimeResult);
+            return result;
+        }
+        return dragResultFromParsed(ParsingUtils.extractJsonObject(runtimeResult.get("final")), runtimeResult);
+    }
+
+    private static Map<String, Object> coordinateResultFromParsed(Map<String, Object> parsed, Map<String, Object> runtimeResult) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (parsed == null || parsed.isEmpty()) {
+            result.put("ok", false);
+            result.put("error", runtimeResult == null
+                ? "Could not parse coordinate result JSON from browser_run_code output"
+                : "Could not parse coordinate result JSON from runtime final output");
+            if (runtimeResult != null) {
+                result.put("runtime", runtimeResult);
+            }
+            return result;
+        }
+        result.put("ok", Boolean.TRUE.equals(parsed.get("ok")));
+        result.put("source", parsed.get("source"));
+        result.put("target", parsed.get("target"));
+        result.put("error", parsed.get("error"));
+        if (runtimeResult != null) {
+            result.put("runtime", runtimeResult);
+        }
+        return result;
+    }
+
+    private static Map<String, Object> dragResultFromParsed(Map<String, Object> parsed, Map<String, Object> runtimeResult) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (parsed == null || parsed.isEmpty()) {
+            result.put("ok", false);
+            result.put("error", runtimeResult == null
+                ? "Could not parse drag result JSON from browser_run_code output"
+                : "Could not parse drag result JSON from runtime final output");
+            if (runtimeResult != null) {
+                result.put("runtime", runtimeResult);
+            }
+            return result;
+        }
+        result.put("ok", Boolean.TRUE.equals(parsed.get("ok")));
+        result.put("message", parsed.get("message"));
+        result.put("source", parsed.get("source"));
+        result.put("target", parsed.get("target"));
+        result.put("steps", parsed.get("steps"));
+        result.put("delay_ms", parsed.get("delay_ms"));
+        result.put("error", parsed.get("error"));
+        if (runtimeResult != null) {
+            result.put("runtime", runtimeResult);
+        }
+        return result;
+    }
+
+    private static boolean hasNonBlank(Map<String, Object> params, String key) {
+        return params != null && params.get(key) != null && !String.valueOf(params.get(key)).trim().isEmpty();
     }
 
     private static String buildRunCodeTask(String jsCode, String purpose) {
@@ -665,7 +854,38 @@ public class ActionController extends BaseController {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("actions", new HashMap<>(actions));
         state.put("action_specs", new HashMap<>(actionSpecs));
+        state.put("runtime_runner", runtimeRunner);
+        state.put("code_executor", codeExecutor);
         return state;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void restore(Map<String, Object> snapshot) {
+        actions.clear();
+        actionSpecs.clear();
+        if (snapshot == null) {
+            runtimeRunner = null;
+            codeExecutor = null;
+            return;
+        }
+        Object restoredActions = snapshot.get("actions");
+        if (restoredActions instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() instanceof ActionHandler handler) {
+                    actions.put(String.valueOf(entry.getKey()), handler);
+                }
+            }
+        }
+        Object restoredSpecs = snapshot.get("action_specs");
+        if (restoredSpecs instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() instanceof ActionSpec spec) {
+                    actionSpecs.put(String.valueOf(entry.getKey()), spec);
+                }
+            }
+        }
+        runtimeRunner = snapshot.get("runtime_runner");
+        codeExecutor = snapshot.get("code_executor");
     }
 
     /**

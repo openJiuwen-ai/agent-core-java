@@ -4,9 +4,9 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.common.logging.Loggers;
-
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -53,11 +53,7 @@ public class SkillManager {
             return;
         }
 
-        try {
-            registerRoot(Path.of(skillPath), sessionId, overwrite);
-        } catch (Exception e) {
-            Loggers.AGENT.warning("Failed to register skill from path: " + skillPath + " - " + e.getMessage());
-        }
+        registerRoot(Path.of(skillPath), sessionId, overwrite);
     }
 
     public void register(String skillPath) {
@@ -128,9 +124,8 @@ public class SkillManager {
      * Register skill directory by scanning for Skill.md files.
      */
     private void registerRoot(Path root, String sessionId, boolean overwrite) {
-        // Try to create skill from the file directly
-        Skill skill = createSkillFromPath(root);
-        if (skill != null) {
+        if (Files.isRegularFile(root)) {
+            Skill skill = createSkillFromPath(root);
             if (!overwrite && registry.containsKey(skill.getName())) {
                 throw new IllegalStateException("Skill already exists: " + skill.getName());
             }
@@ -140,7 +135,7 @@ public class SkillManager {
 
         File dir = root.toFile();
         if (!dir.isDirectory()) {
-            return;
+            throw new IllegalArgumentException("Skill path does not exist or is not readable: " + root);
         }
 
         // Python first treats the provided directory as a skill directory.
@@ -163,12 +158,10 @@ public class SkillManager {
                 Path childSkillMd = findSkillMarkdown(subdir);
                 if (childSkillMd != null) {
                     Skill s = createSkillFromPath(childSkillMd);
-                    if (s != null) {
-                        if (!overwrite && registry.containsKey(s.getName())) {
-                            throw new IllegalStateException("Skill already exists: " + s.getName());
-                        }
-                        registry.put(s.getName(), s);
+                    if (!overwrite && registry.containsKey(s.getName())) {
+                        throw new IllegalStateException("Skill already exists: " + s.getName());
                     }
+                    registry.put(s.getName(), s);
                 }
             }
         }
@@ -186,20 +179,16 @@ public class SkillManager {
      * Create a Skill object from a Skill.md file path.
      */
     private Skill createSkillFromPath(Path path) {
-        try {
-            String descriptionText = loadDescription(path);
-            if (descriptionText != null) {
-                Path skillDir = path.getParent();
-                return Skill.builder()
-                        .name(skillDir.getFileName().toString())
-                        .description(descriptionText)
-                        .directory(skillDir.toString())
-                        .build();
-            }
-        } catch (Exception e) {
-            Loggers.AGENT.warning("Failed to create skill from path: " + path + " - " + e.getMessage());
+        String descriptionText = loadDescription(path);
+        Path skillDir = path.getParent();
+        if (skillDir == null) {
+            throw new IllegalArgumentException("Skill.md must have a parent directory: " + path);
         }
-        return null;
+        return Skill.builder()
+                .name(skillDir.getFileName().toString())
+                .description(descriptionText)
+                .directory(skillDir.toString())
+                .build();
     }
 
     /**
@@ -207,7 +196,7 @@ public class SkillManager {
      */
     private String loadDescription(Path path) {
         try {
-            String content = java.nio.file.Files.readString(path);
+            String content = Files.readString(path);
             if (content.startsWith("---")) {
                 String[] parts = content.split("---", 3);
                 if (parts.length >= 2) {
@@ -221,10 +210,10 @@ public class SkillManager {
                     }
                 }
             }
-        } catch (Exception e) {
-            // File might not exist or not be readable
+            throw new IllegalArgumentException("description is required in skill front matter: " + path);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to read skill file: " + path, e);
         }
-        return null;
     }
 
     /**

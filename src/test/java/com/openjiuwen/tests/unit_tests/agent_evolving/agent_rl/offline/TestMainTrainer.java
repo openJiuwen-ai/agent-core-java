@@ -18,15 +18,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for MainTrainer.
  * <p>
- * Mirrors Python's {@code test_main_trainer.py} in
- * {@code tests/unit_tests/agent_evolving/agent_rl/offline/}.
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/test_main_trainer.py}.
  */
 @DisplayName("MainTrainer Tests")
 class TestMainTrainer {
 
     @Test
     @DisplayName("init creates coordinator and proxy")
-    void initCreatesCoordinatorAndProxy() {
+    void testMainTrainerInitCreatesCoordinatorAndProxy() {
         FakeRlTrainer rlTrainer = new FakeRlTrainer();
         FakeAgentFactory agentFactory = new FakeAgentFactory();
 
@@ -38,8 +37,19 @@ class TestMainTrainer {
     }
 
     @Test
+    @DisplayName("proxy url returns proxy url after start")
+    void testProxyUrlReturnsProxyUrlAfterStart() {
+        MainTrainer trainer = new MainTrainer(new FakeRlTrainer(), config(), null, null, new FakeAgentFactory());
+
+        trainer.updateBackends(List.of("http://a:8000"));
+
+        assertThat(trainer.getProxyUrl()).isEqualTo("http://127.0.0.1:0");
+        assertThat(trainer.isProxyStarted()).isTrue();
+    }
+
+    @Test
     @DisplayName("update backends starts proxy and updates agent factory url")
-    void updateBackendsStartsProxyAndUpdatesAgentFactoryUrl() {
+    void testUpdateBackendsCallsProxyUpdateBackendServers() {
         FakeRlTrainer rlTrainer = new FakeRlTrainer();
         FakeAgentFactory agentFactory = new FakeAgentFactory();
         MainTrainer trainer = new MainTrainer(rlTrainer, config(), null, null, agentFactory);

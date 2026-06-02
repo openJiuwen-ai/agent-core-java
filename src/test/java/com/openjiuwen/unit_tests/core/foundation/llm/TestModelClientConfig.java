@@ -4,117 +4,159 @@
 
 package com.openjiuwen.unit_tests.core.foundation.llm;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ProviderType;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ModelClientConfig.
- * 
- * <p>Mirrors Python's tests/unit_tests/core/foundation/llm/test_model_client_config.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/core/foundation/llm/test_model_client_config.py
- * 
- * Tests configuration validation and provider handling.
+ * Tests for ModelClientConfig.
+ *
+ * <p>Mirrors Python's tests/unit_tests/core/foundation/llm/test_model_client_config.py.</p>
  */
+@DisplayName("TestModelClientConfig")
 class TestModelClientConfig {
 
-    // ==================== Provider Tests ====================
+    @Nested
+    @DisplayName("Provider tests")
+    class ProviderTests {
 
-    @Test
-    @DisplayName("Test ModelClientConfig accepts supported providers - OpenAI")
-    void testModelClientConfigAcceptsOpenAIProvider() {
-        // In Python: cfg = ModelClientConfig(client_provider=ProviderType.OpenAI, ...)
-        // assert cfg.client_provider == ProviderType.OpenAI
-        assertTrue(true, "OpenAI provider test placeholder");
+        @Test
+        @DisplayName("Test ModelClientConfig accepts supported providers - OpenAI")
+        void testModelClientConfigAcceptsOpenAIProvider() {
+            ModelClientConfig cfg = baseBuilder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .build();
+            assertEquals(ProviderType.OpenAI.getValue(), cfg.getClientProvider());
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig accepts supported providers - SiliconFlow")
+        void testModelClientConfigAcceptsSiliconFlowProvider() {
+            ModelClientConfig cfg = baseBuilder()
+                    .clientProvider(ProviderType.SiliconFlow.getValue())
+                    .build();
+            assertEquals(ProviderType.SiliconFlow.getValue(), cfg.getClientProvider());
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig accepts supported providers - OpenRouter")
+        void testModelClientConfigAcceptsOpenRouterProvider() {
+            ModelClientConfig cfg = baseBuilder()
+                    .clientProvider(ProviderType.OpenRouter.getValue())
+                    .build();
+            assertEquals(ProviderType.OpenRouter.getValue(), cfg.getClientProvider());
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig normalizes OpenRouter provider case")
+        void testModelClientConfigNormalizesOpenRouterProviderCase() {
+            assertEquals(ProviderType.OpenRouter, ProviderType.fromValue("OPENROUTER"));
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig allows registered string provider")
+        void testModelClientConfigAllowsRegisteredStringProvider() {
+            ModelClientConfig cfg = baseBuilder()
+                    .clientProvider("TempMockLLM")
+                    .build();
+            assertEquals("TempMockLLM", cfg.getClientProvider());
+        }
     }
 
-    @Test
-    @DisplayName("Test ModelClientConfig accepts supported providers - SiliconFlow")
-    void testModelClientConfigAcceptsSiliconFlowProvider() {
-        // In Python: cfg2 = ModelClientConfig(client_provider=ProviderType.SiliconFlow, ...)
-        // assert cfg2.client_provider == ProviderType.SiliconFlow
-        assertTrue(true, "SiliconFlow provider test placeholder");
+    @Nested
+    @DisplayName("Validation tests")
+    class ValidationTests {
+
+        @Test
+        @DisplayName("Test ModelClientConfig timeout must be positive")
+        void testModelClientConfigTimeoutMustBePositive() {
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> baseBuilder()
+                    .timeout(0)
+                    .build());
+            assertTrue(exception.getMessage().contains("greater than 0"));
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig accepts custom headers")
+        void testModelClientConfigAcceptsCustomHeaders() {
+            ModelClientConfig cfg = baseBuilder()
+                    .customHeaders(Map.of("X-Custom", "custom"))
+                    .build();
+            assertEquals(Map.of("X-Custom", "custom"), cfg.getCustomHeaders());
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig rejects invalid provider")
+        void testModelClientConfigRejectsInvalidProvider() {
+            assertThrows(IllegalArgumentException.class, () -> ProviderType.fromValue("invalid-provider"));
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig requires api_key")
+        void testModelClientConfigRequiresApiKey() {
+            assertThrows(NullPointerException.class, () -> ModelClientConfig.builder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .apiBase("http://localhost")
+                    .build());
+        }
+
+        @Test
+        @DisplayName("Test ModelClientConfig requires api_base")
+        void testModelClientConfigRequiresApiBase() {
+            assertThrows(NullPointerException.class, () -> ModelClientConfig.builder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .apiKey("sk-test")
+                    .build());
+        }
     }
 
-    @Test
-    @DisplayName("Test ModelClientConfig accepts supported providers - OpenRouter")
-    void testModelClientConfigAcceptsOpenRouterProvider() {
-        // In Python: cfg3 = ModelClientConfig(client_provider=ProviderType.OpenRouter, ...)
-        // assert cfg3.client_provider == ProviderType.OpenRouter
-        assertTrue(true, "OpenRouter provider test placeholder");
+    @Nested
+    @DisplayName("Mock client tests")
+    class MockClientTests {
+
+        /**
+         * TempMockLLM client for testing.
+         * Mirrors Python's {@code _TempMockClient} class.
+         */
+        static class TempMockClient {
+            static final String CLIENT_NAME = "TempMockLLM";
+        }
+
+        @Test
+        @DisplayName("Test mock client name is registered")
+        void testMockClientNameIsRegistered() {
+            assertEquals("TempMockLLM", TempMockClient.CLIENT_NAME);
+        }
+
+        @Test
+        @DisplayName("Test builder keeps default values aligned with runtime expectations")
+        void testBuilderDefaults() {
+            ModelClientConfig cfg = baseBuilder()
+                    .clientProvider(ProviderType.OpenAI.getValue())
+                    .build();
+
+            assertNotNull(cfg.getClientId());
+            assertFalse(cfg.getClientId().isEmpty());
+            assertEquals(60.0, cfg.getTimeout());
+            assertEquals(3, cfg.getMaxRetries());
+            assertTrue(cfg.isVerifySsl());
+        }
     }
 
-    @Test
-    @DisplayName("Test ModelClientConfig normalizes OpenRouter provider case")
-    void testModelClientConfigNormalizesOpenRouterProviderCase() {
-        // In Python: cfg = ModelClientConfig(client_provider="OPENROUTER", ...)
-        // assert cfg.client_provider == ProviderType.OpenRouter
-        assertTrue(true, "OpenRouter case normalization test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test ModelClientConfig allows registered string provider")
-    void testModelClientConfigAllowsRegisteredStringProvider() {
-        // In Python: provider = "TempMockLLM"
-        // cfg = ModelClientConfig(client_provider=provider, ...)
-        // assert cfg.client_provider == provider
-        assertTrue(true, "Registered string provider test placeholder");
-    }
-
-    // ==================== Validation Tests ====================
-
-    @Test
-    @DisplayName("Test ModelClientConfig timeout must be positive")
-    void testModelClientConfigTimeoutMustBePositive() {
-        // In Python: with pytest.raises(ValidationError):
-        //     ModelClientConfig(timeout=0)
-        assertTrue(true, "Timeout validation test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test ModelClientConfig accepts custom headers")
-    void testModelClientConfigAcceptsCustomHeaders() {
-        // In Python: cfg = ModelClientConfig(custom_headers={"X-Custom": "custom"})
-        // assert cfg.custom_headers == {"X-Custom": "custom"}
-        assertTrue(true, "Custom headers test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test ModelClientConfig rejects invalid provider")
-    void testModelClientConfigRejectsInvalidProvider() {
-        // Placeholder - requires ModelClientConfig implementation
-        assertTrue(true, "Invalid provider rejection test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test ModelClientConfig requires api_key")
-    void testModelClientConfigRequiresApiKey() {
-        // Placeholder - requires ModelClientConfig implementation
-        assertTrue(true, "API key requirement test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test ModelClientConfig requires api_base")
-    void testModelClientConfigRequiresApiBase() {
-        // Placeholder - requires ModelClientConfig implementation
-        assertTrue(true, "API base requirement test placeholder");
-    }
-
-    // ==================== Mock Client Tests ====================
-
-    /**
-     * TempMockLLM client for testing.
-     * Mirrors Python's _TempMockClient class.
-     */
-    static class TempMockClient {
-        static final String CLIENT_NAME = "TempMockLLM";
-    }
-
-    @Test
-    @DisplayName("Test mock client name is registered")
-    void testMockClientNameIsRegistered() {
-        assertEquals("TempMockLLM", TempMockClient.CLIENT_NAME);
+    private static ModelClientConfig.Builder baseBuilder() {
+        return ModelClientConfig.builder()
+                .clientProvider(ProviderType.OpenAI.getValue())
+                .apiKey("sk-test")
+                .apiBase("http://localhost");
     }
 }

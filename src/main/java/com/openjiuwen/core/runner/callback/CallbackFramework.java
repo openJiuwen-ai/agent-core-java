@@ -451,6 +451,13 @@ if (enableLogging) {
                 errorKwargs.put("_error", e);
                 executeHooks(event, HookType.ERROR, args, errorKwargs);
                 if (e instanceof AbortError abortError) {
+                    Throwable cause = abortError.getCause();
+                    if (cause instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    if (cause != null) {
+                        throw new RuntimeException(cause);
+                    }
                     throw abortError;
                 }
                 RuntimeException requested = extractRequestedException(errorKwargs);
@@ -805,7 +812,19 @@ if (enableLogging) {
                 combinedArgs = newArgs;
             }
             List<Object> results = trigger(event, combinedArgs, kwargs);
-            allResults.addAll(results);
+            for (Object result : results) {
+                if (result instanceof Iterable<?> iterable) {
+                    for (Object value : iterable) {
+                        allResults.add(value);
+                    }
+                } else if (result instanceof Iterator<?> iterator) {
+                    while (iterator.hasNext()) {
+                        allResults.add(iterator.next());
+                    }
+                } else {
+                    allResults.add(result);
+                }
+            }
         }
         return allResults.iterator();
     }
@@ -853,77 +872,111 @@ if (enableLogging) {
 
         List<CallbackInfo> eventCallbacks = callbacks.getOrDefault(event, Collections.emptyList());
 
-        for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
-            if (!callbackInfo.isEnabled()) {
-                continue;
-            }
-            if (isTransformCallback(callbackInfo)) {
-                continue;
-            }
-
-            try {
-                FilterResult filterResult = applyFilters(event, callbackInfo, args, kwargs);
-
-                if (filterResult.getAction() == FilterAction.STOP) {
-                    break;
-                } else if (filterResult.getAction() == FilterAction.SKIP) {
+        try {
+            for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
+                if (!callbackInfo.isEnabled()) {
+                    continue;
+                }
+                if (isTransformCallback(callbackInfo)) {
                     continue;
                 }
 
-                Object[] finalArgs = filterResult.getModifiedArgs() != null ? filterResult.getModifiedArgs() : args;
-                Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
-                        ? filterResult.getModifiedKwargs() : kwargs;
-
-                CallbackKwargs callbackKwargs = prepareCallbackKwargs(finalKwargs, finalArgs);
-
-                long startTime = System.nanoTime();
-                Object result;
                 try {
-                    result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
-                } finally {
-                    callbackKwargs.restoreInternalArgs();
-                }
-                double executionTime = (System.nanoTime() - startTime) / 1_000_000_000.0;
+                    FilterResult filterResult = applyFilters(event, callbackInfo, args, kwargs);
 
-                if (enableMetrics) {
-                    String key = event + ":" + callbackInfo.getCallbackDisplayName();
-                    metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(executionTime, false);
-                }
-
-                // Flatten Iterable/Iterator results
-                if (result instanceof Iterable<?> iterable) {
-                    for (Object item : iterable) {
-                        aggregated.add(item);
+                    if (filterResult.getAction() == FilterAction.STOP) {
+                        break;
+                    } else if (filterResult.getAction() == FilterAction.SKIP) {
+                        continue;
                     }
-                } else if (result instanceof Iterator<?> iter) {
-                    while (iter.hasNext()) {
-                        aggregated.add(iter.next());
+
+                    Object[] finalArgs = filterResult.getModifiedArgs() != null ? filterResult.getModifiedArgs() : args;
+                    Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
+                            ? filterResult.getModifiedKwargs() : kwargs;
+
+                    CallbackKwargs callbackKwargs = prepareCallbackKwargs(finalKwargs, finalArgs);
+
+                    long startTime = System.nanoTime();
+                    Object result;
+                    try {
+                        result = callbackInfo.getCallback().apply(callbackKwargs.kwargs);
+                    } finally {
+                        callbackKwargs.restoreInternalArgs();
                     }
-                } else if (result != null) {
-                    aggregated.add(result);
-                }
+                    double executionTime = (System.nanoTime() - startTime) / 1_000_000_000.0;
 
-                if (callbackInfo.isOnce()) {
-                    callbackInfo.setEnabled(false);
-                }
+                    if (enableMetrics) {
+                        String key = event + ":" + callbackInfo.getCallbackDisplayName();
+                        metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(executionTime, false);
+                    }
 
-            } catch (Exception e) {
-                if (enableMetrics) {
-                    String key = event + ":" + callbackInfo.getCallbackDisplayName();
-                    metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(0.0, true);
-                }
-                if (enableLogging) {
-                    log.error("Callback {} failed in triggerGenerator: {}",
-                            callbackInfo.getCallbackDisplayName(), e.getMessage(), e);
+                    // Flatten Iterable/Iterator results
+                    if (result instanceof Iterable<?> iterable) {
+                        for (Object item : iterable) {
+                            aggregated.add(item);
+                        }
+                    } else if (result instanceof Iterator<?> iter) {
+                        while (iter.hasNext()) {
+                            aggregated.add(iter.next());
+                        }
+                    } else if (result != null) {
+                        aggregated.add(result);
+                    }
+
+                    if (callbackInfo.isOnce()) {
+                        callbackInfo.setEnabled(false);
+                    }
+
+                } catch (Exception e) {
+                    if (enableMetrics) {
+                        String key = event + ":" + callbackInfo.getCallbackDisplayName();
+                        metrics.computeIfAbsent(key, k -> new CallbackMetrics()).update(0.0, true);
+                    }
+                    if (enableLogging) {
+                        log.error("Callback {} failed in triggerGenerator: {}",
+                                callbackInfo.getCallbackDisplayName(), e.getMessage(), e);
+                    }
                 }
             }
+
+            Map<String, Object> afterKwargs = new HashMap<>(kwargs);
+            afterKwargs.put("_results", aggregated);
+            executeHooks(event, HookType.AFTER, args, afterKwargs);
+        } catch (Exception e) {
+            executeHooks(event, HookType.CLEANUP, args, kwargs);
+            if (e instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(e);
         }
 
-        Map<String, Object> afterKwargs = new HashMap<>(kwargs);
-        afterKwargs.put("_results", aggregated);
-        executeHooks(event, HookType.AFTER, args, afterKwargs);
+        Iterator<Object> source = aggregated.iterator();
+        Object[] cleanupArgs = args;
+        Map<String, Object> cleanupKwargs = kwargs;
+        return new Iterator<>() {
+            private boolean cleaned = false;
 
-        return aggregated.iterator();
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = source.hasNext();
+                if (!hasNext) {
+                    cleanupOnce();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                return source.next();
+            }
+
+            private void cleanupOnce() {
+                if (!cleaned) {
+                    cleaned = true;
+                    executeHooks(event, HookType.CLEANUP, cleanupArgs, cleanupKwargs);
+                }
+            }
+        };
     }
 
     // ========== Filters ==========
@@ -1399,6 +1452,24 @@ if (enableLogging) {
             String event,
             Function<Map<String, Object>, Object> wrapped,
             String itemKey) {
+        return emitsStream(event, wrapped, itemKey, false);
+    }
+
+    /**
+     * Wrap an iterator-producing function so that each yielded item triggers an event.
+     *
+     * @param event       Event name to trigger for each item
+     * @param wrapped     Function that returns an Iterator or Iterable
+     * @param itemKey     Keyword argument name for the yielded item
+     * @param includeArgs Whether original function arguments should be included in each event
+     * @return Wrapped function that returns an Iterator with event triggers
+     */
+    @SuppressWarnings("unchecked")
+    public Function<Map<String, Object>, Object> emitsStream(
+            String event,
+            Function<Map<String, Object>, Object> wrapped,
+            String itemKey,
+            boolean includeArgs) {
         return kwargs -> {
             Object rawResult = wrapped.apply(kwargs);
             if (!(rawResult instanceof Iterator<?> || rawResult instanceof Iterable<?>)) {
@@ -1417,8 +1488,13 @@ if (enableLogging) {
             while (source.hasNext()) {
                 Object item = source.next();
                 Map<String, Object> eventKwargs = new HashMap<>();
+                if (includeArgs) {
+                    eventKwargs.putAll(kwargs);
+                }
                 eventKwargs.put(itemKey, item);
-                trigger(event, new Object[0], eventKwargs);
+                Object[] args = includeArgs && kwargs.get("_args") instanceof Object[]
+                        ? (Object[]) kwargs.get("_args") : new Object[0];
+                trigger(event, args, eventKwargs);
                 collected.add(item);
             }
             return collected.iterator();

@@ -253,4 +253,7 @@ public class ParallelRuntimeExecutor {
     public int getConcurrency() { return numWorkers; }
     public List<RolloutCollector> getCollectors() { return collectors; }
     public TaskQueue getDataStore() { return dataStore; }
+    public Function<?, ?> getAgentFactory() { return agentFactory; }
+    public Function<?, ?> getTaskDataFn() { return taskDataFn; }
+    public Function<?, ?> getRewardFn() { return rewardFn; }
 }

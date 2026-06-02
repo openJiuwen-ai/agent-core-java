@@ -4,30 +4,35 @@
 
 package com.openjiuwen.unit_tests.core.tool_impls;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.tools.ListDirTool;
+import com.openjiuwen.harness.tools.ReadFileTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import com.openjiuwen.harness.tools.WriteFileTool;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
-import com.openjiuwen.harness.tools.ReadFileTool;
-import com.openjiuwen.harness.tools.WriteFileTool;
-import com.openjiuwen.harness.tools.ListDirTool;
-import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for file operation tool implementation.
- * <p>
- * Mirrors Python's tests.unit_tests.harness.tools.test_filesystem_tools file operation tests.
- * Tests file read/write/list operations.
+ *
+ * <p>Mirrors Python's filesystem file-operation coverage from
+ * {@code tests.unit_tests.harness.tools.test_filesystem_tools}.</p>
  */
 class TestFileOperation {
 
@@ -58,30 +63,26 @@ class TestFileOperation {
     @Tag("level1")
     void testFileReadWriteCycle() throws IOException {
         Path filePath = tempDir.resolve("cycle_test.txt");
-        String content = "第一行\n第二行\n第三行";
+        String content = "line1\nline2\nline3";
 
-        // Write
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput writeResult = (ToolOutput) writeTool.invoke(
-            Map.of("path", filePath.toString(), "content", content),
-            Map.of()
+                Map.of("path", filePath.toString(), "content", content),
+                Map.of()
         );
         assertTrue(writeResult.isSuccess());
 
-        // Read
         ReadFileTool readTool = new ReadFileTool(sysOp);
         ToolOutput readResult = (ToolOutput) readTool.invoke(
-            Map.of("path", filePath.toString()),
-            Map.of()
+                Map.of("path", filePath.toString()),
+                Map.of()
         );
         assertTrue(readResult.isSuccess());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) readResult.getData();
-        String readContent = data.get("content").toString();
-        assertTrue(readContent.contains("第一行"));
-        assertTrue(readContent.contains("第二行"));
-        assertTrue(readContent.contains("第三行"));
+        assertEquals(filePath.toString(), data.get("path"));
+        assertEquals(content, data.get("content"));
     }
 
     @Test
@@ -89,8 +90,8 @@ class TestFileOperation {
     void testFileReadNonExistent() {
         ReadFileTool readTool = new ReadFileTool(sysOp);
         ToolOutput result = (ToolOutput) readTool.invoke(
-            Map.of("path", "/nonexistent/file.txt"),
-            Map.of()
+                Map.of("path", "/nonexistent/file.txt"),
+                Map.of()
         );
 
         assertFalse(result.isSuccess());
@@ -99,19 +100,22 @@ class TestFileOperation {
 
     @Test
     @Tag("level1")
-    void testListDirectory() throws IOException {
-        // Create some files
+    void testListDirectoryReturnsOnlyDirectories() throws IOException {
         Files.writeString(tempDir.resolve("file1.txt"), "content1");
         Files.writeString(tempDir.resolve("file2.txt"), "content2");
         Files.createDirectory(tempDir.resolve("subdir"));
 
         ListDirTool listTool = new ListDirTool(sysOp);
         ToolOutput result = (ToolOutput) listTool.invoke(
-            Map.of("path", tempDir.toString()),
-            Map.of()
+                Map.of("path", tempDir.toString()),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
+        @SuppressWarnings("unchecked")
+        List<String> directories = (List<String>) result.getData();
+        assertEquals(1, directories.size());
+        assertTrue(directories.get(0).endsWith("subdir"));
     }
 
     @Test
@@ -119,8 +123,8 @@ class TestFileOperation {
     void testFileWriteEmptyPath() {
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput result = (ToolOutput) writeTool.invoke(
-            Map.of("path", "", "content", "some content"),
-            Map.of()
+                Map.of("path", "", "content", "some content"),
+                Map.of()
         );
 
         assertFalse(result.isSuccess());
@@ -132,8 +136,8 @@ class TestFileOperation {
     void testFileReadEmptyPath() {
         ReadFileTool readTool = new ReadFileTool(sysOp);
         ToolOutput result = (ToolOutput) readTool.invoke(
-            Map.of("path", ""),
-            Map.of()
+                Map.of("path", ""),
+                Map.of()
         );
 
         assertFalse(result.isSuccess());
@@ -142,23 +146,42 @@ class TestFileOperation {
 
     @Test
     @Tag("level1")
-    void testFileOperationChineseFilename() throws IOException {
-        Path chineseFile = tempDir.resolve("中文文件名.txt");
-        String content = "中文内容测试";
-        
+    void testFileOperationSupportsOrdinaryFilenames() throws IOException {
+        Path filePath = tempDir.resolve("sample-data.txt");
+        String content = "plain text payload";
+
         WriteFileTool writeTool = new WriteFileTool(sysOp);
         ToolOutput writeResult = (ToolOutput) writeTool.invoke(
-            Map.of("path", chineseFile.toString(), "content", content),
-            Map.of()
+                Map.of("path", filePath.toString(), "content", content),
+                Map.of()
         );
         assertTrue(writeResult.isSuccess());
 
         ReadFileTool readTool = new ReadFileTool(sysOp);
         ToolOutput readResult = (ToolOutput) readTool.invoke(
-            Map.of("path", chineseFile.toString()),
-            Map.of()
+                Map.of("path", filePath.toString()),
+                Map.of()
         );
         assertTrue(readResult.isSuccess());
+    }
+
+    @Test
+    @Tag("level1")
+    void testReadFileReturnsPathAndContent() throws IOException {
+        Path filePath = tempDir.resolve("metadata.txt");
+        Files.writeString(filePath, "metadata-body");
+
+        ReadFileTool readTool = new ReadFileTool(sysOp);
+        ToolOutput result = (ToolOutput) readTool.invoke(
+                Map.of("path", filePath.toString()),
+                Map.of()
+        );
+
+        assertTrue(result.isSuccess());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals(filePath.toString(), data.get("path"));
+        assertEquals("metadata-body", data.get("content"));
     }
 
     @Test

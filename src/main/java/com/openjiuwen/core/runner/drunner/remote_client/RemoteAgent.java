@@ -11,8 +11,10 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.drunner.DistributedRunner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -41,15 +43,28 @@ public class RemoteAgent {
         this.description = description;
         this.topic = topic != null ? topic : DistributedRunner.agentTopic(agentId, this.version);
         this.protocol = protocol != null ? protocol : ProtocolEnum.MQ;
+        Map<String, Object> rawConfig = config != null ? new LinkedHashMap<>(config) : new LinkedHashMap<>();
+        Map<String, Object> kwargs = rawConfig.get("kwargs") instanceof Map<?, ?> nestedKwargs
+                ? stringifyKeys(nestedKwargs)
+                : rawConfig;
+        String url = rawConfig.get("url") != null ? String.valueOf(rawConfig.get("url")) : null;
         RemoteClientConfig clientConfig = RemoteClientConfig.builder()
                 .id(agentId)
                 .version(this.version)
                 .description(description)
                 .topic(this.topic)
                 .protocol(this.protocol)
-                .kwargs(config)
+                .url(url)
+                .kwargs(kwargs)
                 .build();
-        this.client = new MqRemoteClient(clientConfig);
+        if (this.protocol == ProtocolEnum.A2A) {
+            Object card = kwargs.get("card");
+            this.client = RemoteClientFactory.createA2a(clientConfig, card instanceof AgentCard agentCard
+                    ? agentCard
+                    : AgentCard.builder().id(agentId).name(agentId).description(description).build());
+        } else {
+            this.client = new MqRemoteClient(clientConfig);
+        }
     }
 
     public RemoteAgent(String agentId) {
@@ -175,5 +190,11 @@ public class RemoteAgent {
                 null,
                 cause,
                 Map.of("agent_id", agentId, "reason", "cancelled"));
+    }
+
+    private static Map<String, Object> stringifyKeys(Map<?, ?> map) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 }

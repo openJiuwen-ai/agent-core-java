@@ -1,231 +1,188 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness;
 
-import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
-import com.openjiuwen.harness.task_loop.LoopQueues;
-import com.openjiuwen.harness.DeepAgent;
-import com.openjiuwen.harness.DeepAgentConfig;
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
+import com.openjiuwen.core.controller.schema.TaskFailedEvent;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.task_loop.LoopCoordinator;
+import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for TaskLoopEventHandler.
- * <p>
  * Mirrors Python's {@code test_deep_agent_event_handler} in
  * {@code tests.unit_tests.harness.test_deep_agent_event_handler}.
- *
- * <p>Tests cover:
- * <ul>
- *   <li>Event handler processing events correctly</li>
- *   <li>Interaction queues functionality</li>
- *   <li>Round preparation and completion</li>
- *   <li>Steering message handling</li>
- * </ul>
  */
 class TestDeepAgentEventHandler {
 
-    /**
-     * Test: Event handler processes events correctly.
-     * <p>
-     * Mirrors Python's basic handler construction tests.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>TaskLoopEventHandler is constructable</li>
-     *   <li>Task type constant matches expected value</li>
-     *   <li>Interaction queues are initialized</li>
-     *   <li>Last result is null initially</li>
-     * </ul>
-     */
-    @Test
-    @Tag("level0")
-    @DisplayName("Event handler processes events correctly")
-    void testEventHandlerProcessesEvents() {
-        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
-        assertNotNull(handler, "TaskLoopEventHandler should be constructable");
-        assertEquals("deep_agent_task", TaskLoopEventHandler.DEEP_TASK_TYPE,
-            "Task type constant should match");
+    static final class TestDeepAgent extends DeepAgent {
+        LoopCoordinator _loopCoordinator;
 
-        // Verify interaction queues are initialized
-        LoopQueues queues = handler.getInteractionQueues();
-        assertNotNull(queues, "Interaction queues should be initialized");
-        assertFalse(queues.hasSteering(), "Steering queue should be empty initially");
-        assertFalse(queues.hasFollowUp(), "Follow-up queue should be empty initially");
-
-        // Verify last result is null initially
-        assertNull(handler.getLastResult(), "Last result should be null initially");
+        TestDeepAgent(AgentCard card) {
+            super(card);
+        }
     }
 
-    /**
-     * Test: Event handler has interaction queues.
-     * <p>
-     * Mirrors Python's interaction queue tests.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>Interaction queues exist and can be accessed</li>
-     *   <li>Steering messages can be pushed and drained</li>
-     *   <li>Follow-up messages can be pushed and drained</li>
-     * </ul>
-     */
-    @Test
-    @Tag("level0")
-    @DisplayName("Event handler has interaction queues")
-    void testEventHandlerHasInteractionQueues() {
-        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
-        assertNotNull(handler);
+    static final class FakeTaskManager implements TaskLoopEventHandler.TaskManagerAdapter {
+        final List<Task> addedTasks = new ArrayList<>();
 
-        LoopQueues queues = handler.getInteractionQueues();
-        assertNotNull(queues, "Interaction queues should exist");
-
-        // Test steering queue functionality
-        queues.pushSteer("test steering message");
-        assertTrue(queues.hasSteering(), "Steering queue should have messages after push");
-
-        List<String> steeringMsgs = queues.drainSteering();
-        assertEquals(1, steeringMsgs.size(), "Should drain one steering message");
-        assertEquals("test steering message", steeringMsgs.get(0), "Steering message content should match");
-        assertFalse(queues.hasSteering(), "Steering queue should be empty after drain");
-
-        // Test follow-up queue functionality
-        queues.pushFollowUp("test follow-up message");
-        assertTrue(queues.hasFollowUp(), "Follow-up queue should have messages after push");
-
-        List<String> followUpMsgs = queues.drainFollowUp();
-        assertEquals(1, followUpMsgs.size(), "Should drain one follow-up message");
-        assertEquals("test follow-up message", followUpMsgs.get(0), "Follow-up message content should match");
-        assertFalse(queues.hasFollowUp(), "Follow-up queue should be empty after drain");
+        @Override
+        public void addTask(Task task) {
+            addedTasks.add(task);
+        }
     }
 
-    /**
-     * Test: Prepare round creates future.
-     * <p>
-     * Mirrors Python's test_handle_input_creates_task for round preparation.
-     *
-     * <p>Verification:
-     * <ul>
-     *   <li>prepareRound returns a valid round ID</li>
-     *   <li>waitForRoundCompletion returns a CompletableFuture</li>
-     *   <li>Future resolves on completion</li>
-     * </ul>
-     */
+    private static AgentCard card() {
+        AgentCard card = new AgentCard();
+        card.setName("test");
+        card.setDescription("t");
+        return card;
+    }
+
+    private static EventHandlerInput input(Object event, AgentSessionApi session) {
+        return new EventHandlerInput((com.openjiuwen.core.controller.schema.Event) event, session);
+    }
+
     @Test
     @Tag("level0")
-    @DisplayName("Prepare round creates future for completion")
-    void testPrepareRoundCreatesFuture() throws Exception {
-        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
+    @DisplayName("handleInput creates submitted task and resolves waitCompletion")
+    void testHandleInputCreatesTask() {
+        TestDeepAgent agent = new TestDeepAgent(card());
+        agent._loopCoordinator = new LoopCoordinator();
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(agent);
+        FakeTaskManager taskManager = new FakeTaskManager();
+        handler.setTaskManager(taskManager);
 
         String roundId = handler.prepareRound();
-        assertNotNull(roundId, "Round ID should not be null");
-        assertTrue(roundId.startsWith("round_"), "Round ID should start with 'round_'");
+        InputEvent event = InputEvent.fromUserInput("hello world");
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("_handler_round_id", roundId);
+        event.setMetadata(metadata);
 
-        CompletableFuture<Map<String, Object>> future = handler.waitForRoundCompletion(roundId, 5000);
-        assertNotNull(future, "Future should be created");
+        AgentSessionApi session = new AgentSessionApi("s1");
+        Map<String, Object> ack = handler.handleInput(input(event, session));
 
-        // Simulate completion by resolving the future
-        Map<String, Object> testResult = new HashMap<>();
-        testResult.put("output", "test output");
-        // Note: In real implementation, the future would be resolved by handle_completion event
-        // For this test, we verify the structure exists
-        assertFalse(future.isDone(), "Future should not be done immediately");
+        handler.resolveFuture(Map.of("output", "done:hello world"), roundId);
+        Map<String, Object> result = handler.waitCompletion(1000);
+
+        assertEquals("submitted", ack.get("status"));
+        assertEquals(1, taskManager.addedTasks.size());
+        Task task = taskManager.addedTasks.get(0);
+        assertEquals("deep_agent_task", task.getTaskType());
+        assertEquals("hello world", task.getDescription());
+        assertEquals(TaskStatus.SUBMITTED, task.getStatus());
+        assertEquals("done:hello world", result.get("output"));
+        assertEquals(result, handler.getLastResult());
     }
 
-    /**
-     * Test: Multiple steering messages can be queued.
-     * <p>
-     * Mirrors Python's steering queue tests with multiple messages.
-     */
     @Test
     @Tag("level0")
-    @DisplayName("Multiple steering messages can be queued")
-    void testMultipleSteeringMessages() {
-        TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
-        LoopQueues queues = handler.getInteractionQueues();
+    @DisplayName("handleInput fails when loop coordinator is missing")
+    void testHandleInputNoCoordinator() {
+        DeepAgent agent = new DeepAgent(card());
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(agent);
 
-        // Push multiple steering messages
-        queues.pushSteer("steer1");
-        queues.pushSteer("steer2");
-        queues.pushSteer("steer3");
+        InputEvent event = InputEvent.fromUserInput("test");
+        event.setMetadata(Map.of("_handler_round_id", handler.prepareRound()));
+        Map<String, Object> result = handler.handleInput(input(event, new AgentSessionApi("s1")));
 
-        assertTrue(queues.hasSteering(), "Steering queue should have messages");
-
-        List<String> msgs = queues.drainSteering();
-        assertEquals(3, msgs.size(), "Should drain all three steering messages");
-        assertEquals("steer1", msgs.get(0), "First message should match");
-        assertEquals("steer2", msgs.get(1), "Second message should match");
-        assertEquals("steer3", msgs.get(2), "Third message should match");
+        assertEquals("failed", result.get("status"));
     }
 
-    @Nested
-    @DisplayName("DeepAgent EventHandler Integration Tests")
-    class DeepAgentEventHandlerIntegrationTests {
+    @Test
+    @Tag("level0")
+    @DisplayName("handleTaskInteraction pushes steering message into queue")
+    void testHandleTaskInteraction() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler();
+        TaskInteractionEvent event = new TaskInteractionEvent(List.of(new DataFrame.TextDataFrame("change plan")), null);
 
-        /**
-         * Test: Handler with DeepAgent reference.
-         * <p>
-         * Mirrors Python's test_handle_input_no_coordinator.
-         *
-         * <p>Verification:
-         * <ul>
-         *   <li>Handler can be created with DeepAgent reference</li>
-         *   <li>Handler accesses agent's coordinator</li>
-         * </ul>
-         */
-        @Test
-        @DisplayName("Handler can be created with DeepAgent reference")
-        void testHandlerWithDeepAgentReference() {
-            AgentCard card = new AgentCard();
-            card.setName("test_agent");
-            card.setDescription("Test agent for event handler");
+        Map<String, Object> result = handler.handleTaskInteraction(input(event, new AgentSessionApi("s1")));
 
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
+        assertEquals("steer_injected", result.get("status"));
+        assertEquals("change plan", result.get("msg"));
+        assertEquals(List.of("change plan"), handler.getInteractionQueues().drainSteering());
+    }
 
-            DeepAgent agent = new DeepAgent(card);
-            agent.configure(config);
+    @Test
+    @Tag("level0")
+    @DisplayName("handleTaskCompletion resolves current round future")
+    void testHandleTaskCompletionSignals() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler();
+        String roundId = handler.prepareRound();
 
-            TaskLoopEventHandler handler = new TaskLoopEventHandler(agent);
-            assertNotNull(handler, "Handler with DeepAgent should be constructable");
-            assertNotNull(handler.getInteractionQueues(), "Interaction queues should be available");
-        }
+        TaskCompletionEvent event = new TaskCompletionEvent(List.of(), null);
+        event.setMetadata(Map.of("task_id", "t1", "_handler_round_id", roundId));
 
-        /**
-         * Test: Round completion timeout behavior.
-         * <p>
-         * Mirrors Python's timeout handling in wait_completion.
-         */
-        @Test
-        @DisplayName("Round completion times out correctly")
-        void testRoundCompletionTimeout() throws Exception {
-            TaskLoopEventHandler handler = new TaskLoopEventHandler(null);
+        Map<String, Object> ack = handler.handleTaskCompletion(input(event, new AgentSessionApi("s1")));
+        Map<String, Object> result = handler.waitCompletion(1000);
 
-            String roundId = handler.prepareRound();
-            CompletableFuture<Map<String, Object>> future = handler.waitForRoundCompletion(roundId, 100); // 100ms timeout
+        assertEquals("completed", ack.get("status"));
+        assertEquals("completed", result.get("status"));
+    }
 
-            // Wait for timeout
+    @Test
+    @Tag("level0")
+    @DisplayName("handleTaskFailed resolves current round future with error")
+    void testHandleTaskFailedSignals() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler();
+        String roundId = handler.prepareRound();
+
+        TaskFailedEvent event = new TaskFailedEvent("timeout", null);
+        event.setMetadata(Map.of("task_id", "t2", "_handler_round_id", roundId));
+
+        Map<String, Object> ack = handler.handleTaskFailed(input(event, new AgentSessionApi("s1")));
+        Map<String, Object> result = handler.waitCompletion(1000);
+
+        assertEquals("failed", ack.get("status"));
+        assertEquals("timeout", result.get("error"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("waitCompletion blocks until delayed round resolution")
+    void testHandleInputWaitsForCompletion() {
+        TestDeepAgent agent = new TestDeepAgent(card());
+        agent._loopCoordinator = new LoopCoordinator();
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(agent);
+        handler.setTaskManager(new FakeTaskManager());
+
+        String roundId = handler.prepareRound();
+        InputEvent event = InputEvent.fromUserInput("wait test");
+        event.setMetadata(Map.of("_handler_round_id", roundId));
+
+        CompletableFuture.runAsync(() -> {
             try {
-                future.get(200, TimeUnit.MILLISECONDS);
-                // If completed without exception, that's fine (resolved by something else)
-            } catch (TimeoutException e) {
-                // Expected timeout behavior
-                assertTrue(true, "Future timed out as expected");
-            } catch (Exception e) {
-                // Some other exception - still valid completion behavior
-                assertTrue(true, "Future completed (or timed out) with: " + e.getClass().getSimpleName());
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
-        }
+            handler.resolveFuture(Map.of("output", "waited"), roundId);
+        });
+
+        Map<String, Object> ack = handler.handleInput(input(event, new AgentSessionApi("s1")));
+        Map<String, Object> result = handler.waitCompletion(2000);
+
+        assertEquals("submitted", ack.get("status"));
+        assertEquals("waited", result.get("output"));
     }
 }

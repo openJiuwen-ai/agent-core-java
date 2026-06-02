@@ -1,93 +1,96 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness.prompts;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.harness.prompts.tools.ToolDescriptionRegistry;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Tests for harness prompts tool descriptions.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/harness/prompts/test_tool_descriptions.py}.
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_PROMPT_TESTS", matches = "true")
-public class TestToolDescriptions {
+class TestToolDescriptions {
 
-    // ---------------------------------------------------------------------------
-    // Tool Description Format Tests
-    // ---------------------------------------------------------------------------
-
-    @Nested
-    class TestToolDescriptionFormat {
-
-        @Test
-        @DisplayName("Test tool description section format")
-        @Tag("level0")
-        void testToolDescriptionSectionFormat() {
-            String sectionName = "tools";
-            int priority = 10;
-            
-            assertThat(sectionName).isEqualTo("tools");
-            assertThat(priority).isEqualTo(10);
-        }
-
-        @Test
-        @DisplayName("Test tool description content structure")
-        @Tag("level0")
-        void testToolDescriptionContentStructure() {
-            Map<String, Object> toolDescription = new LinkedHashMap<>();
-            toolDescription.put("name", "calculate");
-            toolDescription.put("description", "Perform mathematical calculations");
-            toolDescription.put("parameters", new LinkedHashMap<>());
-            
-            assertThat(toolDescription.get("name")).isEqualTo("calculate");
-            assertThat(toolDescription.containsKey("parameters")).isTrue();
+    @Test
+    void testCoreDescriptionsAreBilingual() {
+        for (String name : coreToolNames()) {
+            assertThat(ToolDescriptionRegistry.getToolDescription(name, "cn")).isNotBlank();
+            assertThat(ToolDescriptionRegistry.getToolDescription(name, "en")).isNotBlank();
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Multiple Tools Tests
-    // ---------------------------------------------------------------------------
+    @Test
+    void testKnownToolCn() {
+        assertThat(ToolDescriptionRegistry.getToolDescription("bash", "cn")).isNotBlank();
+        assertThat(ToolDescriptionRegistry.getToolDescription("powershell", "cn")).isNotBlank();
+    }
 
-    @Nested
-    class TestMultipleTools {
+    @Test
+    void testKnownToolEn() {
+        assertThat(ToolDescriptionRegistry.getToolDescription("bash", "en")).isNotBlank();
+        assertThat(ToolDescriptionRegistry.getToolDescription("powershell", "en")).isNotBlank();
+    }
 
-        @Test
-        @DisplayName("Test multiple tool descriptions")
-        @Tag("level0")
-        void testMultipleToolDescriptions() {
-            List<Map<String, Object>> tools = new ArrayList<>();
-            
-            Map<String, Object> tool1 = new LinkedHashMap<>();
-            tool1.put("name", "search");
-            tool1.put("description", "Search for information");
-            tools.add(tool1);
-            
-            Map<String, Object> tool2 = new LinkedHashMap<>();
-            tool2.put("name", "execute");
-            tool2.put("description", "Execute code");
-            tools.add(tool2);
-            
-            assertThat(tools).hasSize(2);
+    @Test
+    void testUnknownToolRaises() {
+        assertThrows(
+                ToolDescriptionRegistry.KeyError.class,
+                () -> ToolDescriptionRegistry.getToolDescription("nonexistent", "cn")
+        );
+    }
+
+    @Test
+    void testAllRegisteredTools() {
+        for (String name : coreToolNames()) {
+            assertThat(ToolDescriptionRegistry.getToolDescription(name, "cn")).isNotBlank();
+            assertThat(ToolDescriptionRegistry.getToolDescription(name, "en")).isNotBlank();
         }
+    }
 
-        @Test
-        @DisplayName("Test tool section ordering")
-        @Tag("level0")
-        void testToolSectionOrdering() {
-            List<String> expectedOrder = Arrays.asList(
-                "role", "instruction", "external_memory", "tools", "constraints"
-            );
-            
-            assertThat(expectedOrder.indexOf("tools")).isEqualTo(3);
-        }
+    @Test
+    void testBuildToolCardUsesRegistryDescriptions() {
+        Object bashDescription = ToolDescriptionRegistry.buildToolCard("bash", "BashTool", "en", null).get("description");
+        Object powershellDescription =
+                ToolDescriptionRegistry.buildToolCard("powershell", "PowerShellTool", "en", null).get("description");
+
+        assertThat(bashDescription).isEqualTo(ToolDescriptionRegistry.getToolDescription("bash", "en"));
+        assertThat(powershellDescription).isEqualTo(ToolDescriptionRegistry.getToolDescription("powershell", "en"));
+    }
+
+    @Test
+    void testBuildToolCardUsesRegistryForVisionAndAudioTools() {
+        assertThat(ToolDescriptionRegistry.buildToolCard("image_ocr", "ImageOCRTool", "en", null).get("description"))
+                .isEqualTo(ToolDescriptionRegistry.getToolDescription("image_ocr", "en"));
+        assertThat(ToolDescriptionRegistry.buildToolCard("audio_metadata", "AudioMetadataTool", "en", null).get("description"))
+                .isEqualTo(ToolDescriptionRegistry.getToolDescription("audio_metadata", "en"));
+    }
+
+    private static List<String> coreToolNames() {
+        return List.of(
+                "bash",
+                "powershell",
+                "code",
+                "read_file",
+                "write_file",
+                "edit_file",
+                "glob",
+                "list_files",
+                "grep",
+                "list_skill",
+                "todo_create",
+                "todo_list",
+                "todo_modify",
+                "image_ocr",
+                "visual_question_answering",
+                "audio_transcription",
+                "audio_question_answering",
+                "audio_metadata"
+        );
     }
 }

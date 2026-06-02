@@ -4,12 +4,22 @@
 
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.harness.tools.SkillTool;
+import com.openjiuwen.core.singleagent.skills.Skill;
+import com.openjiuwen.core.sysop.SysOperation;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.io.TempDir;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for skill tool.
@@ -19,67 +29,101 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TestSkillTool {
 
-    @Nested
-    class TestSkillToolInvoke {
+    @Test
+    void testSkillTool(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = tempDir.resolve("skills");
+        Files.createDirectories(skillsRoot);
+        Skill skill = writeSkill(skillsRoot, "test_skill_1", "skill description 1", "skill body 1");
+        SkillTool skillTool = new SkillTool((SysOperation) null, skills(List.of(skill)));
 
-        @Test
-        void testInvokeRequiresName() {
-            // SkillTool requires skill name parameter
-            // (Implementation validation in invoke)
-            assertNotNull(SkillTool.class);
-        }
+        ToolOutput skillRes = invoke(skillTool, "test_skill_1", "");
 
-        @Test
-        void testInvokeLoadsSkill() {
-            // SkillTool should load skill content from file
-            // (Implementation depends on skill discovery)
-            assertNotNull(SkillTool.class);
-        }
-
-        @Test
-        void testInvokeReturnsSkillContent() {
-            // SkillTool should return skill content
-            // (Implementation depends on skill format)
-            assertNotNull(SkillTool.class);
-        }
-
-        @Test
-        void testInvokeInvalidSkillName() {
-            // Invalid skill name should return error
-            // (Implementation validation in invoke)
-            assertNotNull(SkillTool.class);
-        }
-
-        @Test
-        void testInvokeWithUserMessage() {
-            // SkillTool can include user message in skill context
-            // (Implementation depends on skill template)
-            assertNotNull(SkillTool.class);
-        }
+        assertTrue(skillRes.isSuccess());
+        assertTrue(dataContainsString(skillRes.getData(), skill.getDirectory()));
+        assertTrue(dataContainsString(skillRes.getData(), "skill body 1"));
     }
 
-    @Nested
-    class TestSkillDiscovery {
+    @Test
+    void testSkillToolInvalidSkill(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = tempDir.resolve("skills");
+        Files.createDirectories(skillsRoot);
+        Skill skill = writeSkill(skillsRoot, "test_skill_1", "skill description 1", "skill body 1");
+        SkillTool skillTool = new SkillTool((SysOperation) null, skills(List.of(skill)));
 
-        @Test
-        void testDiscoverSkillsInDirectory() {
-            // Skill discovery should find skills in directory
-            // (Implementation depends on skill file format)
-            assertNotNull(SkillTool.class);
-        }
+        ToolOutput skillRes = invoke(skillTool, "test_skill_2", "");
 
-        @Test
-        void testSkillMetadataParsing() {
-            // Skill metadata should be parsed from skill files
-            // (Implementation depends on skill format)
-            assertNotNull(SkillTool.class);
-        }
+        assertFalse(skillRes.isSuccess());
+        assertNotNull(skillRes.getError());
+    }
 
-        @Test
-        void testSkillFileNotFound() {
-            // Missing skill file should return error
-            // (Implementation validation in invoke)
-            assertNotNull(SkillTool.class);
+    @Test
+    void testSkillToolReferenceFile(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = tempDir.resolve("skills");
+        Files.createDirectories(skillsRoot);
+        Skill skill = writeSkill(skillsRoot, "test_skill_1", "skill description 1", "skill body 1");
+        writeSkillReferenceFile(skillsRoot, "test_skill_1", "reference/temp_file.md",
+                "test_skill_1 temp file content");
+        SkillTool skillTool = new SkillTool((SysOperation) null, skills(List.of(skill)));
+
+        ToolOutput skillRes = invoke(skillTool, "test_skill_1", "reference/temp_file.md");
+
+        assertTrue(skillRes.isSuccess());
+        assertTrue(dataContainsString(skillRes.getData(), "test_skill_1 temp file content"));
+    }
+
+    @Test
+    void testSkillToolInvalidReferenceFile(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = tempDir.resolve("skills");
+        Files.createDirectories(skillsRoot);
+        Skill skill = writeSkill(skillsRoot, "test_skill_1", "skill description 1", "skill body 1");
+        writeSkillReferenceFile(skillsRoot, "test_skill_1", "reference/temp_file.md",
+                "test_skill_1 temp file content");
+        SkillTool skillTool = new SkillTool((SysOperation) null, skills(List.of(skill)));
+
+        ToolOutput skillRes = invoke(skillTool, "test_skill_1", "reference/unknown_file.md");
+
+        assertFalse(skillRes.isSuccess());
+        assertNotNull(skillRes.getError());
+    }
+
+    private static Supplier<List<Skill>> skills(List<Skill> skillList) {
+        return () -> skillList;
+    }
+
+    private static Skill writeSkill(Path root, String name, String description, String body) throws IOException {
+        Path skillDir = root.resolve(name);
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: " + description + "\n"
+                        + "---\n\n"
+                        + "# " + name + "\n"
+                        + body);
+        return Skill.builder()
+                .name(name)
+                .description(description)
+                .directory(skillDir.toString())
+                .build();
+    }
+
+    private static void writeSkillReferenceFile(Path root, String skillName, String relativeFilePath, String body)
+            throws IOException {
+        Path filePath = root.resolve(skillName).resolve(relativeFilePath);
+        Files.createDirectories(filePath.getParent());
+        Files.writeString(filePath, body);
+    }
+
+    private static ToolOutput invoke(SkillTool skillTool, String skillName, String relativeFilePath) {
+        return (ToolOutput) skillTool.invoke(Map.of(
+                "skill_name", skillName,
+                "relative_file_path", relativeFilePath
+        ), Map.of());
+    }
+
+    private static boolean dataContainsString(Object data, String query) {
+        if (!(data instanceof Map<?, ?> values)) {
+            return false;
         }
+        return values.values().stream().anyMatch(value -> String.valueOf(value).contains(query));
     }
 }

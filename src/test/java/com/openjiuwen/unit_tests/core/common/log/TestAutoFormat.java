@@ -1,136 +1,203 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.unit_tests.core.common.log;
 
-import org.junit.jupiter.api.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
+import com.openjiuwen.core.common.logging.LoguruLogger;
 import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
 import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
-import com.openjiuwen.core.common.logging.LoguruLogger;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for auto-detecting placeholder style ({ } vs %) in log messages.
- * <p>
- * Mirrors Python's {@code tests.unit_tests.core.common.log.test_auto_format}.
- * Tests the _auto_format_message static method behavior.
+ * Mirrors Python's {@code test_auto_format.py} in {@code tests.unit_tests.core.common.log}.
+ *
+ * Tests for auto-detecting placeholder style ({} vs %) in log messages.
  */
+@Tag("unit-test")
 class TestAutoFormat {
 
-    // ---------------------------------------------------------------------------
-    // Test no args returns msg - Mirrors Python test_no_args_returns_msg
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
+    @DisplayName("Test no args returns msg")
     void testNoArgsReturnsMsg() {
-        // Python: _fmt("hello world", ()) == "hello world"
-        String result = StructuredLoggerMixin.autoFormatMessage("hello world", new Object[]{});
+        String result = autoFormatMessage("hello world", new Object[]{});
         assertEquals("hello world", result);
     }
 
-    // ---------------------------------------------------------------------------
-    // Test percent style formatting - Mirrors Python test_percent_s, test_percent_d
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
+    @DisplayName("Test percent %s placeholder")
     void testPercentS() {
-        // Python: _fmt("hello %s", ("world",)) == "hello world"
-        String result = StructuredLoggerMixin.autoFormatMessage("hello %s", new Object[]{"world"});
+        String result = autoFormatMessage("hello %s", new Object[]{"world"});
         assertEquals("hello world", result);
     }
 
     @Test
-    @Tag("level0")
+    @DisplayName("Test percent %d placeholder")
     void testPercentD() {
-        // Python: _fmt("count: %d", (42,)) == "count: 42"
-        String result = StructuredLoggerMixin.autoFormatMessage("count: %d", new Object[]{42});
+        String result = autoFormatMessage("count: %d", new Object[]{42});
         assertEquals("count: 42", result);
     }
 
     @Test
-    @Tag("level0")
+    @DisplayName("Test multiple percent placeholders")
     void testPercentMultiple() {
-        // Python: _fmt("%s has %d items", ("list", 3)) == "list has 3 items"
-        String result = StructuredLoggerMixin.autoFormatMessage("%s has %d items", new Object[]{"list", 3});
+        String result = autoFormatMessage("%s has %d items", new Object[]{"list", 3});
         assertEquals("list has 3 items", result);
     }
 
-    // ---------------------------------------------------------------------------
-    // Test brace style formatting - Mirrors Python test_brace_positional, test_brace_indexed
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
+    @DisplayName("Test brace positional placeholder")
     void testBracePositional() {
-        // Python: _fmt("hello {}", ("world",)) == "hello world"
-        String result = StructuredLoggerMixin.autoFormatMessage("hello {}", new Object[]{"world"});
+        String result = autoFormatMessage("hello {}", new Object[]{"world"});
         assertEquals("hello world", result);
     }
 
     @Test
-    @Tag("level0")
+    @DisplayName("Test brace indexed placeholder")
     void testBraceIndexed() {
-        // Python: _fmt("{0} has {1} items", ("list", 3)) == "list has 3 items"
-        String result = StructuredLoggerMixin.autoFormatMessage("{0} has {1} items", new Object[]{"list", 3});
+        String result = autoFormatMessage("{0} has {1} items", new Object[]{"list", 3});
         assertEquals("list has 3 items", result);
     }
 
     @Test
-    @Tag("level0")
+    @DisplayName("Test brace format spec placeholder")
     void testBraceFormatSpec() {
-        // Python: _fmt("pi is {:.2f}", (3.14159,)) == "pi is 3.14"
-        String result = StructuredLoggerMixin.autoFormatMessage("pi is {:.2f}", new Object[]{3.14159});
-        assertTrue(result.contains("3.14"));
+        String result = autoFormatMessage("pi is {:.2f}", new Object[]{3.14159});
+        assertEquals("pi is 3.14", result);
     }
 
-    // ---------------------------------------------------------------------------
-    // Test brace priority over percent - Mirrors Python test_brace_priority_over_percent
-    // ---------------------------------------------------------------------------
+    @Test
+    @DisplayName("Test brace repr placeholder")
+    void testBraceRepr() {
+        String result = autoFormatMessage("value is {!r}", new Object[]{"abc"});
+        assertEquals("value is 'abc'", result);
+    }
 
     @Test
-    @Tag("level0")
+    @DisplayName("Test brace priority over percent")
     void testBracePriorityOverPercent() {
-        // Python: _fmt("{}% done", (50,)) == "50% done"
-        String result = StructuredLoggerMixin.autoFormatMessage("{}% done", new Object[]{50});
+        String result = autoFormatMessage("{}% done", new Object[]{50});
         assertEquals("50% done", result);
     }
 
-    // ---------------------------------------------------------------------------
-    // Test no placeholder with args - Mirrors Python test_no_placeholder_with_args_falls_through
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
+    @DisplayName("Test no placeholder with args falls through")
     void testNoPlaceholderWithArgsFallsThrough() {
-        // Python: _fmt("no placeholders here", ("extra",))
-        String result = StructuredLoggerMixin.autoFormatMessage("no placeholders here", new Object[]{"extra"});
-        assertNotNull(result);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Test StructuredLoggerMixin class - Additional validation
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level0")
-    void testStructuredLoggerMixinExists() {
-        assertNotNull(StructuredLoggerMixin.class);
+        String result = autoFormatMessage("no placeholders here", new Object[]{"extra"});
+        assertEquals("no placeholders here", result);
     }
 
     @Test
-    @Tag("level0")
-    void testDefaultLoggerExists() {
-        assertNotNull(DefaultLogger.class);
+    @DisplayName("Test non-string message")
+    void testNonStringMsg() {
+        String result = autoFormatMessage(12345, new Object[]{});
+        assertEquals("12345", result);
+    }
+
+    private String autoFormatMessage(Object msg, Object[] args) {
+        return StructuredLoggerMixin.autoFormatMessage(String.valueOf(msg), args);
     }
 
     @Test
     @Tag("level0")
-    void testLoguruLoggerExists() {
-        assertNotNull(LoguruLogger.class);
+    @DisplayName("DefaultLogger handles percent style")
+    void testDefaultLoggerPercentStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("user %s logged in", "alice");
+
+        assertTrue(handler.messages().contains("user alice logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("DefaultLogger handles brace style")
+    void testDefaultLoggerBraceStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("user {} logged in", "bob");
+
+        assertTrue(handler.messages().contains("user bob logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("DefaultLogger prefers brace style over percent")
+    void testDefaultLoggerMixedBracePercentPrefersBrace() {
+        RecordingHandler handler = new RecordingHandler();
+        DefaultLogger logger = makeDefaultLogger(handler);
+
+        logger.info("{}% complete", 75);
+
+        assertTrue(handler.messages().contains("75% complete"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("LoguruLogger handles percent style")
+    void testLoguruLoggerPercentStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        LoguruLogger logger = makeLoguruLogger(handler);
+
+        logger.info("user %s logged in", "charlie");
+
+        assertTrue(handler.messages().contains("user charlie logged in"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("LoguruLogger handles brace style")
+    void testLoguruLoggerBraceStyle() {
+        RecordingHandler handler = new RecordingHandler();
+        LoguruLogger logger = makeLoguruLogger(handler);
+
+        logger.info("user {} logged in", "dave");
+
+        assertTrue(handler.messages().contains("user dave logged in"));
+    }
+
+    private DefaultLogger makeDefaultLogger(RecordingHandler handler) {
+        DefaultLogger logger = new DefaultLogger("test_auto_fmt_default", Map.of("level", "DEBUG", "output", "console"));
+        logger.addHandler(handler);
+        return logger;
+    }
+
+    private LoguruLogger makeLoguruLogger(RecordingHandler handler) {
+        LoguruLogger logger = new LoguruLogger("test_auto_fmt_loguru", Map.of("level", "DEBUG", "output", "console"));
+        logger.addHandler(handler);
+        return logger;
+    }
+
+    private static class RecordingHandler extends Handler {
+        private final List<String> messages = new ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            messages.add(record.getMessage());
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        List<String> messages() {
+            return messages;
+        }
     }
 }

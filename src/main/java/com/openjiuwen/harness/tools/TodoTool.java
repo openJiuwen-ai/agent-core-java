@@ -32,7 +32,9 @@ public abstract class TodoTool extends AbstractHarnessTool {
         }
         List<TodoItem> todos = new ArrayList<>();
         for (Object item : list) {
-            if (item instanceof Map<?, ?> map) {
+            if (item instanceof TodoItem todoItem) {
+                todos.add(todoItem);
+            } else if (item instanceof Map<?, ?> map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> typed = (Map<String, Object>) map;
                 todos.add(TodoItem.fromMap(typed));

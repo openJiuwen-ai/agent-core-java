@@ -608,6 +608,7 @@ class TestTeamTools {
         @Test
         void testInvokeListTasksByStatus() throws Exception {
             TeamBackend team = agentTeam();
+            spawnReady(team, "dev-1");
             team.createTask("Task 1", "Content 1", "task1", List.of());
             team.createTask("Task 2", "Content 2", "task2", List.of());
             team.getTaskManager().assign("task2", "dev-1");
@@ -628,6 +629,7 @@ class TestTeamTools {
         @Test
         void testInvokeDefaultActionIsList() throws Exception {
             TeamBackend team = agentTeam();
+            spawnReady(team, "dev-1");
             team.createTask("Task 1", "Content 1", "task1", List.of());
             team.createTask("Task 2", "Content 2", "task2", List.of());
             team.getTaskManager().assign("task2", "dev-1");
@@ -643,6 +645,7 @@ class TestTeamTools {
         @Test
         void testInvokeClaimable() throws Exception {
             TeamBackend team = agentTeam();
+            spawnReady(team, "dev-1");
             team.createTask("Task 1", "Content 1", "task1", List.of());
             team.createTask("Task 2", "Content 2", "task2", List.of());
             team.getTaskManager().assign("task2", "dev-1");

@@ -252,4 +252,123 @@ public class ExternalMemoryRail extends DeepAgentRail {
     public boolean isInitialized() {
         return initialized;
     }
+
+    /**
+     * Resolve user text for memory storage.
+     */
+    public static String resolveUserTextForMemory(Object callbackContext) {
+        Object inputs = readField(callbackContext, "inputs");
+        Object query = readProperty(inputs, "query");
+        if (query instanceof String text && !text.trim().isEmpty()) {
+            return text.trim();
+        }
+
+        Object messages = readProperty(inputs, "messages");
+        if (messages instanceof List<?> list) {
+            for (int i = list.size() - 1; i >= 0; i--) {
+                Object message = list.get(i);
+                Object role = valueFromMessage(message, "role");
+                if (!"user".equals(String.valueOf(role))) {
+                    continue;
+                }
+                Object content = valueFromMessage(message, "content");
+                if (content instanceof String text && !text.trim().isEmpty()) {
+                    return text.trim();
+                }
+                if (content instanceof List<?> chunks) {
+                    List<String> parts = new ArrayList<>();
+                    for (Object chunk : chunks) {
+                        if (chunk instanceof Map<?, ?> map) {
+                            Object type = map.get("type");
+                            Object textValue = map.get("text");
+                            if ("text".equals(String.valueOf(type))
+                                    && textValue instanceof String piece
+                                    && !piece.trim().isEmpty()) {
+                                parts.add(piece.trim());
+                            }
+                        }
+                    }
+                    if (!parts.isEmpty()) {
+                        return String.join(" ", parts);
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Extract assistant output from an invoke context.
+     */
+    public static String extractAssistantOutput(Object callbackContext) {
+        Object inputs = readField(callbackContext, "inputs");
+        Object result = readProperty(inputs, "result");
+        if (result instanceof Map<?, ?> map) {
+            Object output = map.get("output");
+            if (output != null) {
+                return String.valueOf(output);
+            }
+            Object message = map.get("message");
+            if (message instanceof Map<?, ?> messageMap && messageMap.get("content") != null) {
+                return String.valueOf(messageMap.get("content"));
+            }
+            if (map.get("content") != null) {
+                return String.valueOf(map.get("content"));
+            }
+            return "";
+        }
+        return result != null ? String.valueOf(result) : "";
+    }
+
+    /**
+     * Build a fenced memory-context block for prompt injection.
+     */
+    public static String buildMemoryContextBlock(String rawContext) {
+        String safe = rawContext != null ? rawContext : "";
+        return "<memory-context>\n"
+                + "The following recalled memory is NOT new user input.\n"
+                + safe
+                + "\n</memory-context>";
+    }
+
+    private static Object readProperty(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            return map.get(name);
+        }
+        try {
+            return target.getClass().getMethod("get" + Character.toUpperCase(name.charAt(0)) + name.substring(1))
+                    .invoke(target);
+        } catch (Exception ignored) {
+            return readField(target, name);
+        }
+    }
+
+    private static Object valueFromMessage(Object message, String name) {
+        if (message instanceof Map<?, ?> map) {
+            return map.get(name);
+        }
+        return readProperty(message, name);
+    }
+
+    private static Object readField(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                java.lang.reflect.Field field = type.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (IllegalAccessException e) {
+                return null;
+            }
+        }
+        return null;
+    }
 }

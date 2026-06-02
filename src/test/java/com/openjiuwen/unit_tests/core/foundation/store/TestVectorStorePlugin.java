@@ -4,166 +4,127 @@
 
 package com.openjiuwen.unit_tests.core.foundation.store;
 
+import com.openjiuwen.core.foundation.store.vector.ChromaVectorStore;
+import com.openjiuwen.core.foundation.store.vector.GaussVectorStore;
+import com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore;
+import com.openjiuwen.core.foundation.store.vector.MilvusVectorStore;
+
+import com.openjiuwen.core.foundation.store.StoreFactory;
+import com.openjiuwen.spi.store.vector.BaseVectorStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for VectorStorePlugin.
+ * Unit tests for the vector-store factory plugin framework.
  * <p>
- * Mirrors Python's test_vector_store_plugin.py from
- * <code>tests/unit_tests/core/foundation/store/test_vector_store_plugin.py</code>.
+ * Mirrors Python's {@code test_vector_store_plugin.py}.
  */
 @DisplayName("Vector Store Plugin Tests")
 class TestVectorStorePlugin {
 
-    // Stub classes
-    static class PluginConfigStub {
-        String pluginName;
-        Map<String, Object> settings = new HashMap<>();
-
-        PluginConfigStub(String pluginName) {
-            this.pluginName = pluginName;
+    @Nested
+    class TestBuiltinRegression {
+        @Test
+        void testUnknownReturnsNone() {
+            assertNull(StoreFactory.createVectorStore("this_backend_does_not_exist"));
         }
 
-        void setSetting(String key, Object value) {
-            settings.put(key, value);
-        }
-    }
-
-    static class VectorStorePluginStub {
-        String name;
-        PluginConfigStub config;
-        boolean initialized = false;
-
-        VectorStorePluginStub(String name, PluginConfigStub config) {
-            this.name = name;
-            this.config = config;
+        @Test
+        void testChromaDispatchesToChromaClass() {
+            BaseVectorStore store = StoreFactory.createVectorStore("chroma",
+                    Map.of("database_name", uniqueDb()));
+            assertInstanceOf(ChromaVectorStore.class, store);
         }
 
-        void initialize() {
-            initialized = true;
+        @Test
+        void testMilvusDispatchesToMilvusClass() {
+            BaseVectorStore store = StoreFactory.createVectorStore("milvus",
+                    Map.of("milvus_uri", "http://localhost:19530", "database_name", uniqueDb()));
+            assertInstanceOf(MilvusVectorStore.class, store);
         }
 
-        boolean isInitialized() {
-            return initialized;
-        }
-
-        Object createStore() {
-            if (!initialized) {
-                throw new IllegalStateException("Plugin not initialized");
-            }
-            return new Object(); // Return mock store
-        }
-    }
-
-    static class PluginRegistry {
-        Map<String, VectorStorePluginStub> plugins = new HashMap<>();
-
-        void register(VectorStorePluginStub plugin) {
-            plugins.put(plugin.name, plugin);
-        }
-
-        VectorStorePluginStub get(String name) {
-            return plugins.get(name);
-        }
-
-        void unregister(String name) {
-            plugins.remove(name);
+        @Test
+        void testGaussvectorDispatchesToGaussClass() {
+            BaseVectorStore store = StoreFactory.createVectorStore("gaussvector",
+                    Map.of("database_name", uniqueDb()));
+            assertInstanceOf(GaussVectorStore.class, store);
         }
     }
 
     @Nested
-    @DisplayName("Plugin Registration Tests")
-    class TestPluginRegistration {
-
+    class TestExplicitRegistration {
         @Test
-        @DisplayName("register plugin")
-        void testRegisterPlugin() {
-            PluginRegistry registry = new PluginRegistry();
-            VectorStorePluginStub plugin = new VectorStorePluginStub(
-                "chroma", new PluginConfigStub("chroma")
-            );
+        void testRegisterThenCreate() {
+            String name = "test_fake_" + uniqueDb();
+            StoreFactory.registerVectorStore(name, options -> new InMemoryVectorStore(options));
 
-            registry.register(plugin);
+            BaseVectorStore store = StoreFactory.createVectorStore(name,
+                    Map.of("database_name", uniqueDb(), "collection_name", "custom_collection"));
 
-            assertNotNull(registry.get("chroma"));
+            assertInstanceOf(InMemoryVectorStore.class, store);
         }
 
         @Test
-        @DisplayName("unregister plugin")
-        void testUnregisterPlugin() {
-            PluginRegistry registry = new PluginRegistry();
-            VectorStorePluginStub plugin = new VectorStorePluginStub(
-                "chroma", new PluginConfigStub("chroma")
-            );
-            registry.register(plugin);
+        void testRegisterDoesNotShadowBuiltin() {
+            StoreFactory.registerVectorStore("chroma", options -> new FakeVectorStore());
 
-            registry.unregister("chroma");
+            BaseVectorStore store = StoreFactory.createVectorStore("chroma",
+                    Map.of("database_name", uniqueDb()));
 
-            assertNull(registry.get("chroma"));
+            assertInstanceOf(ChromaVectorStore.class, store);
         }
     }
 
     @Nested
-    @DisplayName("Plugin Initialization Tests")
-    class TestPluginInitialization {
-
+    class TestEntryPointsDiscovery {
         @Test
-        @DisplayName("initialize plugin")
-        void testInitializePlugin() {
-            VectorStorePluginStub plugin = new VectorStorePluginStub(
-                "chroma", new PluginConfigStub("chroma")
-            );
+        void testEntryPointIsDiscovered() {
+            String name = "test_ep_fake_" + uniqueDb();
+            StoreFactory.registerVectorStore(name, options -> new FakeVectorStore());
 
-            plugin.initialize();
-
-            assertTrue(plugin.isInitialized());
+            assertInstanceOf(FakeVectorStore.class, StoreFactory.createVectorStore(name));
         }
 
         @Test
-        @DisplayName("create store requires initialization")
-        void testCreateStoreRequiresInitialization() {
-            VectorStorePluginStub plugin = new VectorStorePluginStub(
-                "chroma", new PluginConfigStub("chroma")
-            );
+        void testEntryPointLoadErrorIsSwallowed() {
+            String name = "broken_" + uniqueDb();
+            StoreFactory.registerVectorStore(name, options -> {
+                throw new IllegalStateException("fake import failure");
+            });
 
-            assertThrows(IllegalStateException.class, () -> plugin.createStore());
+            assertNull(StoreFactory.createVectorStore(name));
         }
 
         @Test
-        @DisplayName("create store after initialization")
-        void testCreateStoreAfterInitialization() {
-            VectorStorePluginStub plugin = new VectorStorePluginStub(
-                "chroma", new PluginConfigStub("chroma")
-            );
-            plugin.initialize();
+        void testBuiltinWinsOverEntryPoint() {
+            StoreFactory.registerVectorStore("chroma", options -> new FakeVectorStore());
 
-            Object store = plugin.createStore();
-
-            assertNotNull(store);
+            assertInstanceOf(ChromaVectorStore.class, StoreFactory.createVectorStore("chroma",
+                    Map.of("database_name", uniqueDb())));
         }
     }
 
     @Nested
-    @DisplayName("Plugin Config Tests")
-    class TestPluginConfig {
-
+    class TestEntryPointsGroupName {
         @Test
-        @DisplayName("plugin config settings")
-        void testPluginConfigSettings() {
-            PluginConfigStub config = new PluginConfigStub("milvus");
-            config.setSetting("host", "localhost");
-            config.setSetting("port", 19530);
+        void testGroupNameIsDocumentedConstant() {
+            assertEquals("openjiuwen.vector_stores", StoreFactory.VECTOR_STORE_ENTRY_POINT_GROUP);
+        }
+    }
 
-            assertEquals("milvus", config.pluginName);
-            assertEquals("localhost", config.settings.get("host"));
-            assertEquals(19530, config.settings.get("port"));
+    private static String uniqueDb() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static class FakeVectorStore extends InMemoryVectorStore {
+        FakeVectorStore() {
+            super(Map.of("database_name", uniqueDb()));
         }
     }
 }

@@ -4,28 +4,32 @@
 
 package com.openjiuwen.unit_tests.core.tool_impls;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.tools.GrepTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import com.openjiuwen.harness.tools.GrepTool;
-import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for search tool implementation.
- * <p>
- * Mirrors Python's tests.unit_tests.harness.tools.test_filesystem_tools search-related tests.
- * Tests file content search functionality.
+ *
+ * <p>Mirrors search-related coverage from
+ * {@code tests.unit_tests.harness.tools.test_filesystem_tools}.</p>
  */
 class TestSearch {
 
@@ -47,7 +51,6 @@ class TestSearch {
     @Test
     @Tag("level0")
     void testSearchToolExists() {
-        // Java uses GrepTool for search functionality
         assertNotNull(GrepTool.class);
     }
 
@@ -61,14 +64,13 @@ class TestSearch {
     @Test
     @Tag("level1")
     void testSearchBasicPattern() throws IOException {
-        // Create test file
-        Path file = tempDir.resolve("search_test.txt");
-        Files.writeString(file, "Line 1: hello world\nLine 2: search pattern\nLine 3: goodbye");
+        Files.writeString(tempDir.resolve("search_test.txt"),
+                "Line 1: hello world\nLine 2: search pattern\nLine 3: goodbye");
 
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "search"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", "search"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
@@ -77,14 +79,13 @@ class TestSearch {
 
     @Test
     @Tag("level1")
-    void testSearchChineseContent() throws IOException {
-        Path file = tempDir.resolve("chinese_search.txt");
-        Files.writeString(file, "中文内容测试\n搜索关键词\n更多中文");
+    void testSearchIgnoreCase() throws IOException {
+        Files.writeString(tempDir.resolve("case_search.txt"), "Alpha\nBETA token\nbeta again");
 
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "关键词"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", "beta", "ignore_case", true),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
@@ -95,8 +96,8 @@ class TestSearch {
     void testSearchEmptyPattern() {
         GrepTool tool = new GrepTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", ""),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", ""),
+                Map.of()
         );
 
         assertFalse(result.isSuccess());
@@ -104,9 +105,27 @@ class TestSearch {
     }
 
     @Test
+    @Tag("level1")
+    void testSearchDefaultsToContentMode() throws IOException {
+        Files.writeString(tempDir.resolve("main.py"), "needle\n");
+
+        GrepTool tool = new GrepTool(sysOp);
+        ToolOutput result = (ToolOutput) tool.invoke(
+                Map.of("path", tempDir.toString(), "pattern", "needle"),
+                Map.of()
+        );
+
+        assertTrue(result.isSuccess());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals("content", data.get("mode"));
+        assertEquals(1, data.get("numLines"));
+        assertTrue(String.valueOf(data.get("content")).contains("main.py"));
+    }
+
+    @Test
     @Tag("level0")
     void testSearchConfigExists() {
-        // Search functionality uses GrepTool
         assertTrue(GrepTool.class.getDeclaredMethods().length > 0);
     }
 

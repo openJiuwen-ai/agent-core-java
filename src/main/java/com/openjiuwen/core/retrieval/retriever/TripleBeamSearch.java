@@ -31,12 +31,21 @@ public class TripleBeamSearch {
     private final int numCandidatesPerBeam;
     private final int maxLength;
     private final Embedding embedModel;
+    private final String retrieveMode;
 
     public TripleBeamSearch(Retriever retriever) {
         this(retriever, 10, 100, 2);
     }
 
     public TripleBeamSearch(Retriever retriever, int numBeams, int numCandidatesPerBeam, int maxLength) {
+        this(retriever, numBeams, numCandidatesPerBeam, maxLength, null);
+    }
+
+    public TripleBeamSearch(Retriever retriever,
+                            int numBeams,
+                            int numCandidatesPerBeam,
+                            int maxLength,
+                            String retrieveMode) {
         if (maxLength < 1) {
             throw RetrievalExceptions.error(
                     StatusCode.RETRIEVAL_RETRIEVER_MODE_INVALID,
@@ -47,6 +56,7 @@ public class TripleBeamSearch {
         this.numCandidatesPerBeam = numCandidatesPerBeam;
         this.maxLength = maxLength;
         this.embedModel = retriever instanceof AbstractStoreBackedRetriever storeBacked ? storeBacked.getEmbedModel() : null;
+        this.retrieveMode = retrieveMode;
     }
 
     public List<TripleBeam> beamSearch(String query, List<RetrievalResult> triples) {
@@ -157,7 +167,7 @@ public class TripleBeamSearch {
                     String.join(" ", entities),
                     numCandidatesPerBeam,
                     null,
-                    "vector",
+                    resolveCandidateMode(),
                     Map.of());
             List<RetrievalResult> result = new ArrayList<>();
             for (RetrievalResult node : nodes) {
@@ -181,6 +191,17 @@ public class TripleBeamSearch {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private String resolveCandidateMode() {
+        String mode = retriever.getIndexType();
+        if (mode == null || mode.isBlank()) {
+            mode = retrieveMode;
+        }
+        if (mode == null || mode.isBlank()) {
+            mode = "hybrid";
+        }
+        return "bm25".equals(mode) ? "sparse" : mode;
     }
 
     private static String formatBeam(List<RetrievalResult> triples) {

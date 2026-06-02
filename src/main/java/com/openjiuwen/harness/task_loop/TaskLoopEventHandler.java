@@ -4,11 +4,21 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
+import com.openjiuwen.core.controller.schema.TaskFailedEvent;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.session.AgentSessionApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,6 +49,14 @@ public class TaskLoopEventHandler {
     private final AtomicReference<Map<String, Object>> lastResult = new AtomicReference<>(null);
     private final AtomicReference<CompletableFuture<Map<String, Object>>> currentFuture = new AtomicReference<>(null);
     private final LoopQueues interactionQueues;
+    private TaskManagerAdapter taskManager;
+
+    /**
+     * Minimal adapter used by tests and the task-loop bridge.
+     */
+    public interface TaskManagerAdapter {
+        void addTask(Task task);
+    }
 
     /**
      * Construct with deep agent reference.
@@ -60,6 +78,10 @@ public class TaskLoopEventHandler {
      */
     public LoopQueues getInteractionQueues() {
         return interactionQueues;
+    }
+
+    public void setTaskManager(TaskManagerAdapter taskManager) {
+        this.taskManager = taskManager;
     }
 
     /**
@@ -107,10 +129,185 @@ public class TaskLoopEventHandler {
     }
 
     /**
+     * Mirrors Python's {@code wait_completion()} helper.
+     */
+    public Map<String, Object> waitCompletion(long timeoutMs) {
+        CompletableFuture<Map<String, Object>> future = currentFuture.get();
+        if (future == null) {
+            return Map.of("error", "no active round");
+        }
+        try {
+            Map<String, Object> result = timeoutMs > 0
+                    ? future.get(timeoutMs, TimeUnit.MILLISECONDS)
+                    : future.get();
+            if (result == null || result.isEmpty()) {
+                result = Map.of("status", "completed");
+            }
+            lastResult.set(result);
+            return result;
+        } catch (java.util.concurrent.TimeoutException e) {
+            Map<String, Object> result = Map.of("error", "completion_timeout");
+            lastResult.set(result);
+            return result;
+        } catch (java.util.concurrent.CancellationException e) {
+            Map<String, Object> result = Map.of("error", "cancelled");
+            lastResult.set(result);
+            return result;
+        } catch (Exception e) {
+            Map<String, Object> result = Map.of("error", e.getMessage() != null ? e.getMessage() : "unknown");
+            lastResult.set(result);
+            return result;
+        }
+    }
+
+    /**
      * Get last result.
      */
     public Map<String, Object> getLastResult() {
         return lastResult.get();
+    }
+
+    /**
+     * Resolve the current future if the round matches.
+     */
+    public void resolveFuture(Map<String, Object> result, String roundIdStr) {
+        if (roundIdStr == null || !roundIdStr.startsWith("round_")) {
+            return;
+        }
+        try {
+            int parsed = Integer.parseInt(roundIdStr.substring("round_".length()));
+            resolveFuture(result, parsed);
+        } catch (NumberFormatException ignored) {
+            // Ignore malformed round ids for parity with Python's stale-result guard.
+        }
+    }
+
+    public void resolveFuture(Map<String, Object> result, int expectedRoundId) {
+        if (expectedRoundId != roundId.get()) {
+            LOG.warn("Stale resolve: round_id={} != current={}, discarding result", expectedRoundId, roundId.get());
+            return;
+        }
+        CompletableFuture<Map<String, Object>> future = currentFuture.get();
+        if (future != null && !future.isDone()) {
+            future.complete(result);
+        }
+    }
+
+    /**
+     * Python parity helper for input submission.
+     */
+    public Map<String, Object> handleInput(EventHandlerInput inputs) {
+        if (inputs == null || !(inputs.getEvent() instanceof InputEvent event)) {
+            return Map.of("status", "failed");
+        }
+        String roundIdStr = event.getMetadata() != null
+                ? String.valueOf(event.getMetadata().getOrDefault("_handler_round_id", "round_" + roundId.get()))
+                : "round_" + roundId.get();
+
+        if (!(deepAgent instanceof com.openjiuwen.harness.DeepAgent)) {
+            resolveFuture(Map.of("error", "no LoopCoordinator"), roundIdStr);
+            return Map.of("status", "failed");
+        }
+        Object coordinator = lookupField(deepAgent, "loopCoordinator");
+        if (coordinator == null) {
+            coordinator = lookupField(deepAgent, "_loopCoordinator");
+        }
+        if (!(coordinator instanceof LoopCoordinator)) {
+            resolveFuture(Map.of("error", "no LoopCoordinator"), roundIdStr);
+            return Map.of("status", "failed");
+        }
+
+        String taskId = event.getMetadata() != null ? asString(event.getMetadata().get("task_id")) : null;
+        boolean isFollowUp = event.getMetadata() != null
+                && Boolean.parseBoolean(String.valueOf(event.getMetadata().getOrDefault("is_follow_up", false)));
+        if (taskId == null || taskId.isBlank()) {
+            taskId = UUID.randomUUID().toString().replace("-", "");
+        }
+
+        Task task = new Task();
+        AgentSessionApi session = inputs.getSession();
+        task.setSessionId(session != null ? session.getSessionId() : "default");
+        task.setTaskId(taskId);
+        task.setTaskType(DEEP_TASK_TYPE);
+        task.setDescription(extractQuery(event));
+        task.setStatus(TaskStatus.SUBMITTED);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("_handler_round_id", roundIdStr);
+        metadata.put("run_kind", event.getMetadata() != null ? event.getMetadata().get("run_kind") : null);
+        metadata.put("run_context", event.getMetadata() != null ? event.getMetadata().get("run_context") : null);
+        metadata.put("is_follow_up", isFollowUp);
+        task.setMetadata(metadata);
+        task.setInputs(List.of(event));
+
+        if (taskManager == null) {
+            resolveFuture(Map.of("error", "task_manager is None"), roundIdStr);
+            return Map.of("status", "failed");
+        }
+        taskManager.addTask(task);
+        return Map.of("status", "submitted", "task_id", taskId);
+    }
+
+    public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
+        if (inputs == null || !(inputs.getEvent() instanceof TaskInteractionEvent event)) {
+            return Map.of("status", "steer_injected", "msg", "");
+        }
+        String msg = "";
+        if (event.getInteraction() != null && !event.getInteraction().isEmpty()) {
+            DataFrame first = event.getInteraction().get(0);
+            if (first instanceof DataFrame.TextDataFrame textFrame) {
+                msg = textFrame.text();
+            } else {
+                msg = String.valueOf(first);
+            }
+        }
+        if (!msg.isEmpty()) {
+            interactionQueues.pushSteer(msg);
+        }
+        return Map.of("status", "steer_injected", "msg", msg);
+    }
+
+    public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+        if (inputs == null || !(inputs.getEvent() instanceof TaskCompletionEvent event)) {
+            return Map.of("status", "completed");
+        }
+        String roundIdStr = event.getMetadata() != null
+                ? String.valueOf(event.getMetadata().getOrDefault("_handler_round_id", "round_" + roundId.get()))
+                : "round_" + roundId.get();
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (event.getTaskResult() != null) {
+            for (DataFrame frame : event.getTaskResult()) {
+                if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame) {
+                    result.putAll(jsonDataFrame.data());
+                    break;
+                }
+                if (frame instanceof DataFrame.TextDataFrame textDataFrame) {
+                    result.put("output", textDataFrame.text());
+                }
+            }
+        }
+        resolveFuture(result, roundIdStr);
+        return Map.of(
+                "status", "completed",
+                "task_id", event.getMetadata() != null ? asString(event.getMetadata().get("task_id")) : null);
+    }
+
+    public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
+        if (inputs == null || !(inputs.getEvent() instanceof TaskFailedEvent event)) {
+            return Map.of("status", "failed", "error", "unknown");
+        }
+        String roundIdStr = event.getMetadata() != null
+                ? String.valueOf(event.getMetadata().getOrDefault("_handler_round_id", "round_" + roundId.get()))
+                : "round_" + roundId.get();
+        String error = event.getErrorMessage() != null ? event.getErrorMessage() : "unknown";
+        resolveFuture(Map.of("error", error), roundIdStr);
+        return Map.of(
+                "status", "failed",
+                "task_id", event.getMetadata() != null ? asString(event.getMetadata().get("task_id")) : null,
+                "error", error);
+    }
+
+    public void onAbort() {
+        resolveFuture(Map.of("error", "aborted"), roundId.get());
     }
 
     /**
@@ -152,6 +349,45 @@ public class TaskLoopEventHandler {
                 LOG.error("[TaskLoopEventHandler] handle_input_event failed", e);
             }
         }
+    }
+
+    private static String extractQuery(InputEvent event) {
+        if (event == null || event.getInputData() == null) {
+            return "";
+        }
+        for (DataFrame frame : event.getInputData()) {
+            if (frame instanceof DataFrame.TextDataFrame textFrame) {
+                return textFrame.text();
+            }
+            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame) {
+                Object query = jsonDataFrame.data().get("query");
+                return query != null ? String.valueOf(query) : String.valueOf(jsonDataFrame.data());
+            }
+        }
+        return "";
+    }
+
+    private static String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Object lookupField(Object target, String fieldName) {
+        if (target == null) {
+            return null;
+        }
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                java.lang.reflect.Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (IllegalAccessException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
     
 /**

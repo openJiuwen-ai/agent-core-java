@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code agent-core-0.1.12/tests/unit_tests/core/context_engine/test_inference_affinity_kv_cache_release_with_processors.py}.
  */
 @DisplayName("TestInferenceAffinityKvCacheReleaseWithProcessors")
-class TestInferenceAffinityKvCacheReleaseWithProcessors {
+public class TestInferenceAffinityKvCacheReleaseWithProcessors {
 
     @Test
     @DisplayName("KV cache release with MessageOffloader")

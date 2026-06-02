@@ -84,6 +84,12 @@ public class UpdateTaskTool extends TeamTool {
                             "Task " + taskId + " is claimed by a human member and cannot be reassigned to " + assignee);
                 }
                 team.cancelMember(currentAssignee);
+                TeamTaskManager.TaskOpResult resetResult = team.getTaskManager().resetResult(taskId);
+                if (!resetResult.ok()) {
+                    return new TeamToolOutput(false, null,
+                            "Failed to reset task before reassigning from "
+                                    + currentAssignee + " to " + assignee + ": " + resetResult.reason());
+                }
             }
             if (!team.assignTask(taskId, assignee)) {
                 return new TeamToolOutput(false, null, "Failed to assign task");

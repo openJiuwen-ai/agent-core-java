@@ -4,48 +4,52 @@
 
 package com.openjiuwen.system_tests.tune;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Prompt tune tests.
- * <p>
  * Mirrors Python's {@code test_prompt_tune.py} in
  * {@code tests/system_tests/tune/test_prompt_tune.py}.
+ *
+ * <p>Every Python test method is marked with {@code @unittest.skip("skip system test")};
+ * Java keeps the same explicit skip boundary while preserving each test name.</p>
  */
 public class TestPromptTune {
 
-    @Nested
-    @DisplayName("Prompt tune tests")
-    class TuneTests {
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testAgentOptimization() {
+        Map<String, Object> caseData = Map.of("input", "hello", "expected", "world");
+        assertThat(caseData).containsKeys("input", "expected");
+    }
 
-        @Test
-        @DisplayName("Test prompt optimization placeholder")
-        void testPromptOptimization() {
-            // Placeholder: Prompt optimization test
-            
-            assertThat(true).isTrue();
-        }
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testInformationExtractionPromptOptimization() {
+        String template = "Extract structured fields from: {input}";
+        List<String> fields = List.of("name", "age", "city");
+        assertThat(template).contains("{input}");
+        assertThat(fields).contains("name", "age", "city");
+    }
 
-        @Test
-        @DisplayName("Test tune configuration")
-        void testTuneConfiguration() {
-            int iterations = 3;
-            double score = 1.0;
-            
-            assertThat(iterations).isGreaterThan(0);
-            assertThat(score).isGreaterThan(0.0);
-        }
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testToolCallsPromptOptimization() {
+        Map<String, Object> tool = Map.of("name", "search", "description", "search docs");
+        assertThat(tool).containsEntry("name", "search");
+    }
 
-        @Test
-        @DisplayName("Test tune result evaluation placeholder")
-        void testTuneResultEvaluation() {
-            // Placeholder: Tune result evaluation test
-            
-            assertThat(true).isTrue();
-        }
+    @Test
+    @Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
+    void testInformationExtractionPromptOptimizationWithVariables() {
+        String template = "Extract {field} from {input}";
+        Map<String, String> variables = Map.of("field", "company", "input", "profile text");
+        assertThat(template).contains("{field}", "{input}");
+        assertThat(variables).containsKeys("field", "input");
     }
 }

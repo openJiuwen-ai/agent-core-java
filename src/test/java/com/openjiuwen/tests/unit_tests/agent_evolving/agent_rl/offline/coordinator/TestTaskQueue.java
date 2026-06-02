@@ -11,6 +11,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,6 +57,24 @@ class TestTaskQueue {
             TaskQueue queue = new TaskQueue();
 
             assertThat(queue.getTask()).isNull();
+            assertThat(queue.isFinished()).isTrue();
+        }
+
+        @Test
+        @DisplayName("is finished false when task queued or in processing")
+        void testIsFinishedFalseWhenTaskInProcessing() {
+            TaskQueue queue = new TaskQueue();
+            RLTask task = new RLTask("task-1", "origin-1", Map.of("prompt", "hello"), 0);
+
+            queue.queueTask(task);
+            assertThat(queue.isFinished()).isFalse();
+
+            RLTask processing = queue.getTask();
+            assertThat(processing).isNotNull();
+            assertThat(queue.isFinished()).isFalse();
+
+            RolloutMessage rollout = rollout("r1", task.getTaskId());
+            queue.addRollout(rollout);
             assertThat(queue.isFinished()).isTrue();
         }
 
@@ -110,6 +134,44 @@ class TestTaskQueue {
             assertThat(queue.getInProcessingCount()).isZero();
             assertThat(queue.getRolloutCount()).isZero();
             assertThat(queue.isFinished()).isTrue();
+        }
+
+        @Test
+        @DisplayName("concurrent queue/get/add rollouts no duplicate or loss")
+        void testConcurrentQueueGetAddRolloutsNoDuplicateOrLoss() throws Exception {
+            TaskQueue queue = new TaskQueue();
+            for (int i = 0; i < 10; i++) {
+                queue.queueTask(new RLTask("t-" + i, "o-" + i, Map.of(), 0));
+            }
+
+            Set<String> processed = ConcurrentHashMap.newKeySet();
+            ExecutorService executor = Executors.newFixedThreadPool(3);
+            try {
+                Future<?>[] workers = new Future<?>[3];
+                for (int i = 0; i < workers.length; i++) {
+                    workers[i] = executor.submit(() -> {
+                        while (true) {
+                            RLTask task = queue.getTask();
+                            if (task == null) {
+                                break;
+                            }
+                            processed.add(task.getTaskId());
+                            queue.addRollout(rollout(task.getTaskId(), task.getTaskId()));
+                        }
+                    });
+                }
+                for (Future<?> worker : workers) {
+                    worker.get();
+                }
+            } finally {
+                executor.shutdown();
+                executor.awaitTermination(5, TimeUnit.SECONDS);
+            }
+
+            Map<String, RolloutMessage> rollouts = queue.getRollouts();
+            assertThat(rollouts).hasSize(10);
+            assertThat(rollouts.keySet()).containsExactlyInAnyOrderElementsOf(processed);
+            assertThat(processed).hasSize(10);
         }
     }
 

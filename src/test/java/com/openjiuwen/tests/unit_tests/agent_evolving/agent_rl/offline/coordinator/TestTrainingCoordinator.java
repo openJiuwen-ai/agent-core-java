@@ -4,6 +4,7 @@
 package com.openjiuwen.tests.unit_tests.agent_evolving.agent_rl.offline.coordinator;
 
 import com.openjiuwen.agent_evolving.agent_rl.offline.coordinator.TrainingCoordinator;
+import com.openjiuwen.agent_evolving.agent_rl.offline.runtime.ParallelRuntimeExecutor;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.Rollout;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,8 +25,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for TrainingCoordinator.
  * <p>
- * Mirrors Python's {@code test_training_coordinator.py} in
- * {@code tests/unit_tests/agent_evolving/agent_rl/offline/coordinator/}.
+ * Mirrors Python's
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/coordinator/test_training_coordinator.py}.
  */
 @DisplayName("TrainingCoordinator Tests")
 class TestTrainingCoordinator {
@@ -35,7 +37,7 @@ class TestTrainingCoordinator {
 
         @Test
         @DisplayName("init with legal config succeeds")
-        void testInitWithLegalConfigSucceeds() {
+        void testInitWithLegalConfigSucceedsAndWholeTrajectoryFalse() {
             TrainingCoordinator coordinator = newCoordinator(config(false, "default_sampling"));
 
             assertThat(coordinator.isWholeTrajectory()).isFalse();
@@ -62,7 +64,7 @@ class TestTrainingCoordinator {
 
         @Test
         @DisplayName("build initial tasks returns dict keyed by task id")
-        void testBuildInitialTasksReturnsDictKeyedByTaskId() {
+        void testBuildInitialTasksReturnsDictKeyedByTaskIdAndRoundNum() {
             TrainingCoordinator coordinator = newCoordinator(config(false, "default_sampling"));
             Map<String, List<?>> rlData = new HashMap<>();
             rlData.put("col_a", List.of(1, 2));
@@ -86,6 +88,30 @@ class TestTrainingCoordinator {
             Map<String, List<?>> rlData = Map.of("col_a", List.of(), "col_b", List.of());
 
             assertThat(coordinator.buildInitialTasks(rlData)).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Configure Parallel Executor")
+    class TestConfigureParallelExecutor {
+
+        @Test
+        @DisplayName("configure parallel executor calls setters on executor")
+        void testConfigureParallelExecutorCallsSettersOnExecutor() {
+            TrainingCoordinator coordinator = newCoordinator(config(false, "default_sampling"));
+            Function<RLTask, Object> agentFactory = task -> null;
+            Function<Map<String, Object>, Map<String, Object>> taskDataFn = Map::copyOf;
+            Function<RolloutMessage, Map<String, Object>> rewardFn = message -> Map.of("global_reward", 0.0d);
+
+            coordinator.configureParallelExecutor(agentFactory, taskDataFn, rewardFn);
+
+            assertThat(coordinator.getParallelExecutor()).isInstanceOf(ParallelRuntimeExecutor.class);
+            ParallelRuntimeExecutor executor = (ParallelRuntimeExecutor) coordinator.getParallelExecutor();
+            assertThat(executor.getAgentFactory()).isSameAs(agentFactory);
+            assertThat(executor.getTaskDataFn()).isSameAs(taskDataFn);
+            assertThat(executor.getRewardFn()).isSameAs(rewardFn);
+            assertThat(executor.getDataStore()).isSameAs(coordinator.getDatastore());
+            assertThat(executor.getNumWorkers()).isEqualTo(2);
         }
     }
 

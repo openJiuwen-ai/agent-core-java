@@ -4,10 +4,16 @@
 
 package com.openjiuwen.unit_tests.core.tool_impls;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.tools.GlobTool;
+import com.openjiuwen.harness.tools.ToolOutput;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,18 +21,15 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import com.openjiuwen.harness.tools.GlobTool;
-import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for glob tool implementation.
- * <p>
- * Mirrors Python's tests.unit_tests.harness.tools.test_filesystem_tools glob-related tests.
- * Tests glob functionality for file pattern matching.
+ *
+ * <p>Mirrors the glob-related behaviors from
+ * {@code tests.unit_tests.harness.tools.test_filesystem_tools}.</p>
  */
 class TestGlob {
 
@@ -61,37 +64,31 @@ class TestGlob {
     @Test
     @Tag("level1")
     void testGlobToolListFiles() throws IOException {
-        // Create test files
-        Path file1 = tempDir.resolve("test1.txt");
-        Path file2 = tempDir.resolve("test2.txt");
-        Files.writeString(file1, "content1");
-        Files.writeString(file2, "content2");
+        Files.writeString(tempDir.resolve("test1.txt"), "content1");
+        Files.writeString(tempDir.resolve("test2.txt"), "content2");
 
         GlobTool tool = new GlobTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "*.txt"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", ".txt"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
         assertNotNull(result.getData());
-        
         @SuppressWarnings("unchecked")
         List<String> files = (List<String>) result.getData();
-        assertFalse(files.isEmpty());
+        assertEqualsAtLeastOne(files);
     }
 
     @Test
     @Tag("level1")
-    void testGlobToolWithEmptyPattern() throws IOException {
-        // Create test files
-        Path file = tempDir.resolve("test.txt");
-        Files.writeString(file, "content");
+    void testGlobToolWithEmptyPatternReturnsEverything() throws IOException {
+        Files.writeString(tempDir.resolve("test.txt"), "content");
 
         GlobTool tool = new GlobTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", ""),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", ""),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
@@ -101,7 +98,6 @@ class TestGlob {
     @Test
     @Tag("level1")
     void testGlobToolRecursively() throws IOException {
-        // Create nested directory structure
         Path subdir = tempDir.resolve("subdir");
         Files.createDirectory(subdir);
         Path nestedFile = subdir.resolve("nested.txt");
@@ -109,22 +105,45 @@ class TestGlob {
 
         GlobTool tool = new GlobTool(sysOp);
         ToolOutput result = (ToolOutput) tool.invoke(
-            Map.of("path", tempDir.toString(), "pattern", "*.txt"),
-            Map.of()
+                Map.of("path", tempDir.toString(), "pattern", ".txt"),
+                Map.of()
         );
 
         assertTrue(result.isSuccess());
-        
         @SuppressWarnings("unchecked")
         List<String> files = (List<String>) result.getData();
-        // Should include nested files
-        assertTrue(files.size() >= 1);
+        assertTrue(files.stream().anyMatch(path -> path.endsWith("nested.txt")));
+    }
+
+    @Test
+    @Tag("level1")
+    void testGlobToolDefaultsToCurrentDirectoryWhenPathMissing() throws IOException {
+        Path workingDir = Path.of("").toAbsolutePath();
+        Path probeFile = workingDir.resolve("glob-default-path-probe.py");
+        Files.writeString(probeFile, "content");
+        try {
+            GlobTool tool = new GlobTool(sysOp);
+            ToolOutput result = (ToolOutput) tool.invoke(
+                    Map.of("pattern", ".py"),
+                    Map.of()
+            );
+
+            assertTrue(result.isSuccess());
+            @SuppressWarnings("unchecked")
+            List<String> files = (List<String>) result.getData();
+            assertTrue(files.stream().anyMatch(path -> path.endsWith("glob-default-path-probe.py")));
+        } finally {
+            Files.deleteIfExists(probeFile);
+        }
     }
 
     @Test
     @Tag("level0")
     void testGlobConfigExists() {
-        // GlobTool doesn't use separate config class, test it directly
         assertTrue(GlobTool.class.getDeclaredMethods().length > 0);
+    }
+
+    private void assertEqualsAtLeastOne(List<String> files) {
+        assertFalse(files.isEmpty());
     }
 }

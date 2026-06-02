@@ -2,12 +2,18 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.multiagent.schema.GroupCard;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.runner.resourcemanager.ToolMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
@@ -30,8 +36,12 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -39,8 +49,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for Runner singleton and RunnerImpl lifecycle/behavior.
- * Expanded from the original Python test_runner.py coverage to verify
- * workflow/agent/group execution paths in Java.
+ * <p>
+ * Mirrors Python's {@code test_runner.py} in
+ * {@code tests/system_tests/runner/test_runner.py}.
+ * Python marks the network-backed cases as skipped; the Java port keeps
+ * deterministic workflow/agent/group and MCP resource-manager branches executable.
  */
 @DisplayName("Runner Tests")
 class RunnerTest {
@@ -55,6 +68,7 @@ class RunnerTest {
         sessionsToRelease.clear();
         Runner.stop();
         Runner.setConfig(RunnerConfig.DEFAULT);
+        ToolMgr.setClientFactoryOverrideForTesting(null);
     }
 
     @Test
@@ -304,6 +318,107 @@ class RunnerTest {
     }
 
     @Test
+    @DisplayName("Runner resourceMgr manages SSE MCP tools")
+    void testMcpToolsSse() throws Exception {
+        String serverName = "browser-use-server";
+        assertMcpLifecycle(
+                serverName,
+                "browser-use-server-id",
+                "sse",
+                "http://127.0.0.1:8930/sse",
+                List.of(
+                        mcpCard(serverName, "browser_navigate", "Navigate to a URL",
+                                Map.of("url", Map.of("type", "string", "description", "The URL to navigate to")),
+                                List.of("url")),
+                        mcpCard(serverName, "browser_extract_text", "Extract text from the current page",
+                                Map.of("selector", Map.of("type", "string", "description", "CSS selector")),
+                                List.of("selector"))),
+                "browser_navigate",
+                Map.of("url", "https://example.com"),
+                "Successfully navigated to example.com and extracted title: Example Domain");
+    }
+
+    @Test
+    @DisplayName("Runner resourceMgr manages stdio MCP tools")
+    void testMcpToolsStdio() throws Exception {
+        String serverName = "doubter-mcp-server";
+        assertMcpLifecycle(
+                serverName,
+                "doubter-mcp-server-id",
+                "stdio",
+                "",
+                List.of(
+                        mcpCard(serverName, "doubter", "Doubter tool via stdio",
+                                Map.of("history",
+                                        Map.of("type", "string", "description", "Agent action history")),
+                                List.of("history")),
+                        mcpCard(serverName, "checker", "Checker tool via stdio",
+                                Map.of("url", Map.of("type", "string", "description", "URL to check")),
+                                List.of("url"))),
+                "doubter",
+                Map.of("history", "single_agent navigated to example.com and extracted title"),
+                "score: 0.85, decision: ACCEPT, review: actions verified");
+    }
+
+    @Test
+    @DisplayName("Runner resourceMgr manages Playwright MCP tools")
+    void testMcpToolsPlaywright() throws Exception {
+        String serverName = "playwright-mcp-server";
+        assertMcpLifecycle(
+                serverName,
+                "playwright-mcp-server-id",
+                "playwright",
+                "http://127.0.0.1:8931/sse",
+                List.of(
+                        mcpCard(serverName, "browser_navigate", "Navigate to a URL via Playwright",
+                                Map.of("url", Map.of("type", "string", "description", "The URL to navigate to")),
+                                List.of("url")),
+                        mcpCard(serverName, "browser_click", "Click an element via Playwright",
+                                Map.of("selector", Map.of("type", "string", "description", "CSS selector")),
+                                List.of("selector"))),
+                "browser_navigate",
+                Map.of("url", "https://example.com"),
+                "Navigated to https://example.com and clicked button");
+    }
+
+    @Test
+    @DisplayName("SSE MCP server keeps auth query parameters")
+    void testConnectAndListToolsWithQueryAk() throws Exception {
+        String serverName = "example-mcp-server";
+        FakeMcpClient fakeClient = new FakeMcpClient("https://mcp.example.com/sse",
+                List.of(mcpCard(serverName, "browser_navigate", "Navigate to a URL",
+                        Map.of("url", Map.of("type", "string")), List.of("url"))),
+                (toolName, arguments) -> "ok");
+        AtomicReference<McpServerConfig> capturedConfig = new AtomicReference<>();
+        ToolMgr.setClientFactoryOverrideForTesting(config -> {
+            capturedConfig.set(config);
+            return fakeClient;
+        });
+        ResourceMgr resourceMgr = new ResourceMgr();
+        McpServerConfig config = McpServerConfig.builder()
+                .serverId("example-mcp-server-id")
+                .serverName(serverName)
+                .serverPath("https://mcp.example.com/sse")
+                .clientType("sse")
+                .authQueryParams(Map.of("ak", "your-ak"))
+                .build();
+
+        var addResults = resourceMgr.addMcpServer(config, null, null);
+        assertEquals(1, addResults.size());
+        assertTrue(addResults.get(0).isOk());
+        assertEquals("https://mcp.example.com/sse", capturedConfig.get().getServerPath());
+        assertEquals(Map.of("ak", "your-ak"), capturedConfig.get().getAuthQueryParams());
+
+        List<ToolInfo> tools = resourceMgr.getMcpToolInfos(null, null, serverName, null, null, false, true);
+        assertFalse(tools.isEmpty(), "Expected the server to return at least one tool");
+
+        var removeResults = resourceMgr.removeMcpServer(null, serverName, null, null, false);
+        assertEquals(1, removeResults.size());
+        assertTrue(removeResults.get(0).isOk());
+        assertTrue(fakeClient.disconnected);
+    }
+
+    @Test
     @DisplayName("RunnerImpl runAgentGroup supports typed invoke and stream methods")
     void testRunAgentGroupUsesCompatibleReflection() {
         RunnerImpl runner = new RunnerImpl("group-runner", RunnerConfig.DEFAULT);
@@ -348,6 +463,76 @@ class RunnerTest {
         List<T> values = new ArrayList<>();
         iterator.forEachRemaining(values::add);
         return values;
+    }
+
+    private void assertMcpLifecycle(String serverName, String serverId, String clientType, String serverPath,
+                                    List<McpToolCard> toolCards, String firstToolName,
+                                    Map<String, Object> testInputs, String mockToolResult) throws Exception {
+        FakeMcpClient fakeClient = new FakeMcpClient(serverPath, toolCards,
+                (toolName, arguments) -> mockToolResult);
+        ToolMgr.setClientFactoryOverrideForTesting(config -> fakeClient);
+        ResourceMgr resourceMgr = new ResourceMgr();
+        McpServerConfig config = McpServerConfig.builder()
+                .serverId(serverId)
+                .serverName(serverName)
+                .serverPath(serverPath)
+                .clientType(clientType)
+                .params("stdio".equals(clientType)
+                        ? Map.of("command", "python", "args", List.of("dummy.py"))
+                        : Map.of())
+                .build();
+
+        var addResults = resourceMgr.addMcpServer(config, null, null);
+        assertEquals(1, addResults.size());
+        assertTrue(addResults.get(0).isOk());
+        assertEquals(serverId, addResults.get(0).getValue());
+
+        List<ToolInfo> toolInfos = resourceMgr.getMcpToolInfos(null, null, serverName,
+                null, null, false, true);
+        assertEquals(toolCards.size(), toolInfos.size());
+        assertEquals(firstToolName, toolInfos.get(0).getName());
+
+        List<Tool> tools = tools(resourceMgr.getMcpTool(firstToolName, null, serverName,
+                null, null, false));
+        assertEquals(1, tools.size());
+        Object result = tools.get(0).invoke(testInputs);
+
+        assertEquals(Map.of("result", mockToolResult), result);
+        assertEquals(firstToolName, fakeClient.lastToolName);
+        assertEquals(testInputs, fakeClient.lastArguments);
+
+        var removeResults = resourceMgr.removeMcpServer(null, serverName, null, null, false);
+        assertEquals(1, removeResults.size());
+        assertTrue(removeResults.get(0).isOk());
+        assertEquals(List.of(), resourceMgr.getMcpToolInfos(null, null, serverName,
+                null, null, false, true));
+        assertTrue(fakeClient.disconnected);
+    }
+
+    private McpToolCard mcpCard(String serverName, String name, String description,
+                                Map<String, Object> properties, List<String> required) {
+        return McpToolCard.builder()
+                .name(name)
+                .serverName(serverName)
+                .description(description)
+                .inputParams(schema(properties, required))
+                .build();
+    }
+
+    private Map<String, Object> schema(Map<String, Object> properties, List<String> required) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        if (!required.isEmpty()) {
+            schema.put("required", required);
+        }
+        return schema;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Tool> tools(Object raw) {
+        assertInstanceOf(List.class, raw);
+        return (List<Tool>) raw;
     }
 
     private Workflow createEchoWorkflow(String workflowId) {
@@ -458,6 +643,60 @@ class RunnerTest {
                     Map.of("group_value", inputs.get("value"), "session_id", sessionId),
                     Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionId))
                     .iterator();
+        }
+    }
+
+    private static final class FakeMcpClient implements McpClient {
+        private final String serverPath;
+        private final List<Object> tools;
+        private final BiFunction<String, Map<String, Object>, Object> callHandler;
+        private boolean disconnected;
+        private String lastToolName;
+        private Map<String, Object> lastArguments = Map.of();
+
+        private FakeMcpClient(String serverPath, List<McpToolCard> tools,
+                              BiFunction<String, Map<String, Object>, Object> callHandler) {
+            this.serverPath = serverPath;
+            this.tools = new ArrayList<>(tools);
+            this.callHandler = callHandler;
+        }
+
+        @Override
+        public boolean connect(int retryTimes, float timeout) {
+            return true;
+        }
+
+        @Override
+        public boolean disconnect(float timeout) {
+            disconnected = true;
+            return true;
+        }
+
+        @Override
+        public List<Object> listTools(float timeout) {
+            return new ArrayList<>(tools);
+        }
+
+        @Override
+        public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            lastToolName = toolName;
+            lastArguments = new LinkedHashMap<>(arguments == null ? Map.of() : arguments);
+            return callHandler.apply(toolName, lastArguments);
+        }
+
+        @Override
+        public Optional<Object> getToolInfo(String toolName, float timeout) {
+            return tools.stream()
+                    .filter(McpToolCard.class::isInstance)
+                    .map(McpToolCard.class::cast)
+                    .filter(card -> toolName.equals(card.getName()))
+                    .map(card -> (Object) card)
+                    .findFirst();
+        }
+
+        @Override
+        public String getServerPath() {
+            return serverPath;
         }
     }
 }

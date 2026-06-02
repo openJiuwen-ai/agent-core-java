@@ -24,6 +24,7 @@ import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -107,6 +108,35 @@ class TestBadcasePromptBuilder {
         assertEquals(expectedContent, response);
     }
 
+    @Test
+    void testBadCasePromptBuilderUsesLastSummary() throws Exception {
+        BadCasePromptBuilder builder = createBuilderWithMockModel();
+        Method method = BadCasePromptBuilder.class.getDeclaredMethod("parseFeedbackSummary", AssistantMessage.class);
+        method.setAccessible(true);
+
+        String summary = (String) method.invoke(builder,
+                new AssistantMessage("<summary>first</summary><summary>second</summary>"));
+
+        assertEquals("second", summary);
+    }
+
+    @Test
+    void testBadCaseStringDoesNotAppendTrailingNewline() throws Exception {
+        BadCasePromptBuilder builder = createBuilderWithMockModel();
+        Method method = BadCasePromptBuilder.class.getDeclaredMethod("buildBadCaseString", List.class);
+        method.setAccessible(true);
+
+        List<EvaluatedCase> cases = List.of(
+                new EvaluatedCase(new Case(Map.of("query", "q1"), Map.of("label", "l1")), Map.of("answer", "a1")),
+                new EvaluatedCase(new Case(Map.of("query", "q2"), Map.of("label", "l2")), Map.of("answer", "a2"))
+        );
+        String first = (String) method.invoke(builder, cases.subList(0, 1));
+        String second = (String) method.invoke(builder, cases.subList(1, 2));
+        String rendered = (String) method.invoke(builder, cases);
+
+        assertEquals(first + "\n" + second, rendered);
+    }
+
     private static final class MockBadCaseModelFactory implements Model.ModelClientFactory {
         @Override
         public String providerName() {
@@ -156,13 +186,13 @@ class TestBadcasePromptBuilder {
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
                                                      String negativePrompt, int n, boolean promptExtend,
                                                      boolean watermark, int seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
                                                       String languageType, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
@@ -170,7 +200,7 @@ class TestBadcasePromptBuilder {
                                                      String model, String size, String resolution, int duration,
                                                      boolean promptExtend, boolean watermark, String negativePrompt,
                                                      Integer seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
     }
 }

@@ -24,8 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for AgentFactory.
  * <p>
- * Mirrors Python's {@code test_agent_factory.py} in
- * {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/}.
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/test_agent_factory.py}.
  */
 @DisplayName("AgentFactory Tests")
 class TestAgentFactory {

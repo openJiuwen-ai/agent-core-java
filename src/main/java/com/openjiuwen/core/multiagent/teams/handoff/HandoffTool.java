@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
@@ -22,6 +24,8 @@ import java.util.Map;
  * The tool name exposed to the LLM is {@code transfer_to_{target_id}}.
  */
 public class HandoffTool extends Tool {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     
     private final String targetId;
     
@@ -94,17 +98,24 @@ public class HandoffTool extends Tool {
         result.put(HandoffSignal.HANDOFF_TARGET_KEY, targetId);
         
         // Extract reason and message from inputs
-        Object reason = inputs.get("reason");
-        Object message = inputs.get("message");
-        
-        if (reason != null) {
-            result.put(HandoffSignal.HANDOFF_REASON_KEY, reason.toString());
-        }
-        if (message != null) {
-            result.put(HandoffSignal.HANDOFF_MESSAGE_KEY, message.toString());
-        }
+        Object reason = inputs != null ? inputs.get("reason") : null;
+        Object message = inputs != null ? inputs.get("message") : null;
+
+        result.put(HandoffSignal.HANDOFF_REASON_KEY, reason != null ? reason.toString() : "");
+        result.put(HandoffSignal.HANDOFF_MESSAGE_KEY, message != null ? message.toString() : "");
         
         return result;
+    }
+
+    /**
+     * Execute the handoff tool with Python-compatible dynamic input normalization.
+     *
+     * @param inputs map, JSON string, plain string, or null
+     * @return Map with handoff signal keys
+     * @throws Exception when execution fails
+     */
+    public Object invoke(Object inputs) throws Exception {
+        return invoke(normalizeInputs(inputs), Map.of());
     }
     
     /**
@@ -120,5 +131,39 @@ public class HandoffTool extends Tool {
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         Object result = invoke(inputs, kwargs);
         return Collections.singletonList(result).iterator();
+    }
+
+    /**
+     * Stream execution with Python-compatible dynamic input normalization.
+     *
+     * @param inputs map, JSON string, plain string, or null
+     * @return single-result iterator
+     * @throws Exception when execution fails
+     */
+    public Iterator<Object> stream(Object inputs) throws Exception {
+        return stream(normalizeInputs(inputs), Map.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> normalizeInputs(Object inputs) {
+        if (inputs instanceof Map<?, ?> map) {
+            return new HashMap<>((Map<String, Object>) map);
+        }
+        if (inputs instanceof String text) {
+            Map<String, Object> parsed = parseJsonMap(text);
+            if (parsed != null) {
+                return parsed;
+            }
+            return new HashMap<>(Map.of("reason", text));
+        }
+        return new HashMap<>();
+    }
+
+    private Map<String, Object> parseJsonMap(String text) {
+        try {
+            return OBJECT_MAPPER.readValue(text, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

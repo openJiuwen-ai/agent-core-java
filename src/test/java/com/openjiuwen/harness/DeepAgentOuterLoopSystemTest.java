@@ -5,6 +5,7 @@ package com.openjiuwen.harness;
 
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.task_loop.TaskLoopController;
 import org.junit.jupiter.api.*;
 
 import java.util.*;
@@ -124,12 +125,29 @@ class DeepAgentOuterLoopSystemTest {
         config.setMaxIterations(8);
         agent.configure(config);
 
-        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of(1, 2));
+        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of());
+        TaskLoopController controller = new TaskLoopController();
+        controller.pushSteering("please prioritize validation");
+
+        Map<String, Object> firstInputs = new HashMap<>();
+        firstInputs.put("query", "step-1");
+        firstInputs.put("steering", String.join("\n", controller.getPendingSteering()));
+        Map<String, Object> firstResult = fakeReact.invoke(firstInputs, session);
+        controller.enqueueFollowUp("follow-up: summarize artifacts");
+        List<String> followUps = controller.drainFollowUp();
+        Map<String, Object> secondInputs = new HashMap<>();
+        secondInputs.put("query", followUps.get(0));
+        Map<String, Object> secondResult = fakeReact.invoke(secondInputs, session);
 
         Map<String, Object> persisted = (Map<String, Object>) session.getState("deepagent");
         assertNotNull(persisted);
         Map<String, Object> plan = (Map<String, Object>) persisted.get("task_plan");
         assertEquals("验证外循环能力", plan.get("goal"));
+        assertEquals("ok:step-1", firstResult.get("output"));
+        assertEquals("ok:follow-up: summarize artifacts", secondResult.get("output"));
+        assertEquals(2, fakeReact.invokeCalls.size());
+        assertTrue(String.valueOf(((Map<?, ?>) fakeReact.invokeCalls.get(0).get("inputs")).get("steering"))
+                .contains("prioritize validation"));
     }
 
     @Test
@@ -153,15 +171,24 @@ class DeepAgentOuterLoopSystemTest {
         config.setMaxIterations(10);
         agent.configure(config);
 
-        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of(1));
+        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of());
+        TaskLoopController controller = new TaskLoopController();
+        controller.pushFollowUp("follow-up-1");
+        controller.pushFollowUp("follow-up-2");
 
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("query", "base");
         var result = fakeReact.invoke(inputs, session);
+        List<String> followUps = controller.drainFollowUp();
+        for (String followUp : followUps) {
+            fakeReact.invoke(Map.of("query", followUp), session);
+        }
 
-        fakeReact.releaseCall(1);
-        assertEquals(1, fakeReact.invokeCalls.size());
+        assertEquals(3, fakeReact.invokeCalls.size());
         assertEquals("ok:base", result.get("output"));
+        assertEquals(List.of("follow-up-1", "follow-up-2"), followUps);
+        assertEquals("follow-up-1", ((Map<?, ?>) fakeReact.invokeCalls.get(1).get("inputs")).get("query"));
+        assertEquals("follow-up-2", ((Map<?, ?>) fakeReact.invokeCalls.get(2).get("inputs")).get("query"));
     }
 
     @Test
@@ -185,14 +212,24 @@ class DeepAgentOuterLoopSystemTest {
         config.setMaxIterations(10);
         agent.configure(config);
 
-        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of(1, 2));
+        ControlledReactAgent fakeReact = new ControlledReactAgent(Set.of());
+        TaskLoopController controller = new TaskLoopController();
+        controller.pushFollowUp("persisted follow-up");
 
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("query", "base");
         var result = fakeReact.invoke(inputs, session);
+        List<String> pendingFollowUps = controller.drainFollowUp();
+        persistedState(session).put("pending_follow_ups", pendingFollowUps);
 
         assertNotNull(result);
         Map<String, Object> persisted = (Map<String, Object>) session.getState("deepagent");
         assertNotNull(persisted);
+        assertEquals(List.of("persisted follow-up"), persisted.get("pending_follow_ups"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> persistedState(Session session) {
+        return (Map<String, Object>) session.getState("deepagent");
     }
 }

@@ -91,5 +91,21 @@ class TestA2aAgentcardAdapter {
             assertEquals("1.0", item.protocolVersion());
             assertEquals("tenant-a", item.tenant());
         }
+
+        @Test
+        void testFromA2aAgentCardShouldMapNameAndDescription() {
+            A2AAgentCardAdapter.A2aAgentCard a2aCard = new A2AAgentCardAdapter.A2aAgentCard(
+                    "Recipe Agent",
+                    "Agent that helps users with recipes and cooking.",
+                    List.of(),
+                    List.of(),
+                    List.of());
+
+            AgentCard result = A2AAgentCardAdapter.fromA2aAgentCard(a2aCard);
+
+            assertNotNull(result.getId());
+            assertEquals("Recipe Agent", result.getName());
+            assertEquals("Agent that helps users with recipes and cooking.", result.getDescription());
+        }
     }
 }

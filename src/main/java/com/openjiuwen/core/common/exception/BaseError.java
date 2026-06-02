@@ -108,7 +108,11 @@ public class BaseError extends RuntimeException {
         }
         String template = status.getErrmsg();
         if (params == null || params.isEmpty()) {
-            return template;
+            try {
+                return formatTemplate(template, Map.of());
+            } catch (Exception e) {
+                return template;
+            }
         }
         try {
             return formatTemplate(template, params);

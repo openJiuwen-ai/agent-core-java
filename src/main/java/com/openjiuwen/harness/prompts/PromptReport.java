@@ -4,12 +4,15 @@
 
 package com.openjiuwen.harness.prompts;
 
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +54,44 @@ public class PromptReport {
     }
 
     /**
+     * Create a report from the current state of a builder.
+     */
+    public static PromptReport fromBuilder(SystemPromptBuilder builder) {
+        if (builder == null) {
+            return PromptReport.builder().build();
+        }
+        String builderLanguage = builder.getLanguage() != null ? builder.getLanguage() : "cn";
+        String builderMode = "full";
+        if (builder instanceof DeepAgentPromptBuilder deepAgentPromptBuilder) {
+            builderMode = deepAgentPromptBuilder.getMode().name().toLowerCase();
+        }
+
+        List<SectionInfo> sectionInfos = new ArrayList<>();
+        int total = 0;
+        List<PromptSection> sortedSections = builder.getAllSections().values().stream()
+                .sorted(Comparator.comparingInt(PromptSection::getPriority))
+                .toList();
+        for (PromptSection section : sortedSections) {
+            int charCount = section.charCount(builderLanguage);
+            sectionInfos.add(SectionInfo.builder()
+                    .name(section.getName())
+                    .priority(section.getPriority())
+                    .charCount(charCount)
+                    .build());
+            total += charCount;
+        }
+
+        return PromptReport.builder()
+                .totalChars(total)
+                .estimatedTokens(estimateTokens(total, builderLanguage))
+                .sectionCount(sectionInfos.size())
+                .sections(sectionInfos)
+                .mode(builderMode)
+                .language(builderLanguage)
+                .build();
+    }
+
+    /**
      * Serialize to a plain dict/map.
      */
     public Map<String, Object> toMap() {
@@ -73,10 +114,17 @@ public class PromptReport {
     }
 
     /**
+     * Python-style alias retained for parity tests.
+     */
+    public Map<String, Object> toDict() {
+        return toMap();
+    }
+
+    /**
      * Human-readable one-line summary.
      */
     public String summary() {
-        return String.format("[PromptReport] mode=%s lang=%s sections=%d chars=%d tokens≈%d",
+        return String.format("[PromptReport] mode=%s lang=%s sections=%d chars=%d est_tokens~%d",
                 mode, language, sectionCount, totalChars, estimatedTokens);
     }
 }

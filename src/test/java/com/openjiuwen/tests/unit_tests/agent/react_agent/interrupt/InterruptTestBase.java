@@ -12,6 +12,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -69,6 +70,35 @@ class InterruptTestBase {
 
         AgentWithToolsConfig(List<Tool> tools) {
             this.tools = tools;
+        }
+    }
+
+    static class AgentWithToolsFixture {
+        final ReActAgent agent;
+        final AgentSessionApi session;
+        final TraceRail traceRail;
+
+        AgentWithToolsFixture(ReActAgent agent, AgentSessionApi session, TraceRail traceRail) {
+            this.agent = agent;
+            this.session = session;
+            this.traceRail = traceRail;
+        }
+    }
+
+    static class SimpleAgentFixture {
+        final ReActAgent agent;
+        final AgentSessionApi session;
+        final ReadTool readTool;
+        final WriteTool writeTool;
+        final TraceRail traceRail;
+
+        SimpleAgentFixture(ReActAgent agent, AgentSessionApi session, ReadTool readTool, WriteTool writeTool,
+                           TraceRail traceRail) {
+            this.agent = agent;
+            this.session = session;
+            this.readTool = readTool;
+            this.writeTool = writeTool;
+            this.traceRail = traceRail;
         }
     }
 
@@ -252,6 +282,13 @@ class InterruptTestBase {
      * Create agent with tools.
      */
     protected ReActAgent createAgentWithTools(AgentWithToolsConfig config) throws Exception {
+        return createAgentWithToolsFixture(config).agent;
+    }
+
+    /**
+     * Create agent with tools and return the test session/trace rail, mirroring Python's tuple helper.
+     */
+    protected AgentWithToolsFixture createAgentWithToolsFixture(AgentWithToolsConfig config) throws Exception {
         AgentCard card = AgentCard.builder()
             .id(config.sessionIdPrefix + "_agent")
             .name(config.sessionIdPrefix + "_agent")
@@ -274,12 +311,53 @@ class InterruptTestBase {
             agent.getAbilityManager().add(tool.getCard());
         }
 
+        TraceRail traceRail = null;
+        if (config.traceToolNames != null && !config.traceToolNames.isEmpty()) {
+            traceRail = new TraceRail(config.traceToolNames);
+            agent.registerRail(traceRail);
+        }
+
         if (config.railToolNames != null && !config.railToolNames.isEmpty()) {
             ConfirmInterruptRail rail = new ConfirmInterruptRail(config.railToolNames);
             agent.registerRail(rail);
         }
 
-        return agent;
+        AgentSessionApi session = AgentSessionApi.create(config.sessionIdPrefix + "_test", null, card);
+        return new AgentWithToolsFixture(agent, session, traceRail);
+    }
+
+    /**
+     * Create simple agent with read tool and optional write tool.
+     */
+    protected SimpleAgentFixture createSimpleAgent() throws Exception {
+        return createSimpleAgent("test",
+            "You are an assistant. When the user requests to execute operations, call the read tool.",
+            List.of("read"),
+            false);
+    }
+
+    /**
+     * Create simple agent with read tool and optional write tool.
+     */
+    protected SimpleAgentFixture createSimpleAgent(String sessionIdPrefix, String systemPrompt,
+                                                  List<String> railToolNames, boolean withWriteTool) throws Exception {
+        ReadTool readTool = new ReadTool();
+        WriteTool writeTool = null;
+        List<Tool> tools = new ArrayList<>();
+        tools.add(readTool);
+        if (withWriteTool) {
+            writeTool = new WriteTool();
+            tools.add(writeTool);
+        }
+
+        AgentWithToolsConfig config = new AgentWithToolsConfig(tools);
+        config.sessionIdPrefix = sessionIdPrefix;
+        config.systemPrompt = systemPrompt;
+        config.railToolNames = railToolNames != null ? railToolNames : List.of("read");
+        config.traceToolNames = tools.stream().map(tool -> tool.getCard().getName()).toList();
+
+        AgentWithToolsFixture fixture = createAgentWithToolsFixture(config);
+        return new SimpleAgentFixture(fixture.agent, fixture.session, readTool, writeTool, fixture.traceRail);
     }
 
     /**

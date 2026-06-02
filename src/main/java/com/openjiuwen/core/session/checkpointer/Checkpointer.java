@@ -23,6 +23,11 @@ public abstract class Checkpointer {
     public static final String SESSION_NAMESPACE_AGENT = "agent";
 
     /**
+     * Namespace for agent-team state under session.
+     */
+    public static final String SESSION_NAMESPACE_AGENT_TEAM = "agent-team";
+
+    /**
      * Namespace for workflow state under session.
      */
     public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";

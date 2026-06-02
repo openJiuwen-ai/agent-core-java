@@ -5,12 +5,14 @@
 package com.openjiuwen.harness.cli.unit;
 
 import com.openjiuwen.harness.cli.agent.CliAgentConfig;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,129 +33,227 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ConfigUnitTest {
 
-    // -------------------------------------------------------------------
-    // TestCLIConfig - Default values and validation
-    // -------------------------------------------------------------------
+    @Nested
+    class TestCliConfig {
+        @Test
+        void defaultValues() {
+            Map<String, Object> cfg = CliAgentConfig.defaultConfig();
+            assertEquals("OpenAI", cfg.get("provider"));
+            assertEquals("gpt-4o", cfg.get("model"));
+            assertEquals("", cfg.get("api_key"));
+            assertEquals(8192, cfg.get("max_tokens"));
+            assertEquals(30, cfg.get("max_iterations"));
+            assertEquals("https://api.openai.com/v1", cfg.get("api_base"));
+            assertEquals("", cfg.get("server_url"));
+        }
 
-    @Test
-    void defaultValues() {
-        /** Default configuration values are correct. */
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-        assertEquals("cn", config.get("language"));
-        assertEquals("full", config.get("mode"));
+        @Test
+        void validateNoApiKey() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "");
+            IllegalArgumentException error =
+                    assertThrows(IllegalArgumentException.class, () -> CliAgentConfig.validate(cfg));
+            assertTrue(error.getMessage().contains("API key"));
+        }
+
+        @Test
+        void validateSmallMaxTokens() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "test");
+            cfg.put("max_tokens", 32);
+            IllegalArgumentException error =
+                    assertThrows(IllegalArgumentException.class, () -> CliAgentConfig.validate(cfg));
+            assertTrue(error.getMessage().contains("dangerously small"));
+        }
+
+        @Test
+        void validateMaxTokensBoundary() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "test");
+            cfg.put("max_tokens", 256);
+            assertDoesNotThrow(() -> CliAgentConfig.validate(cfg));
+        }
+
+        @Test
+        void validateBadMaxIterations() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "test");
+            cfg.put("max_iterations", 0);
+            IllegalArgumentException error =
+                    assertThrows(IllegalArgumentException.class, () -> CliAgentConfig.validate(cfg));
+            assertTrue(error.getMessage().contains("max_iterations"));
+        }
+
+        @Test
+        void validateWithServerUrl() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "");
+            cfg.put("server_url", "http://localhost:8080");
+            assertDoesNotThrow(() -> CliAgentConfig.validate(cfg));
+        }
+
+        @Test
+        void validateSuccess() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "sk-test-key");
+            assertDoesNotThrow(() -> CliAgentConfig.validate(cfg));
+        }
+
+        @Test
+        void validateErrorMentionsSettingsJson() {
+            Map<String, Object> cfg = defaultConfig();
+            cfg.put("api_key", "");
+            IllegalArgumentException error =
+                    assertThrows(IllegalArgumentException.class, () -> CliAgentConfig.validate(cfg));
+            assertTrue(error.getMessage().contains("settings.json"));
+        }
     }
 
-    @Test
-    void loadConfigSetsWorkspace() {
-        /** Workspace is set to current directory by default. */
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config.get("workspace"));
+    @Nested
+    class TestLoadSettingsJson {
+        @Test
+        void missingFile(@TempDir Path tempDir) {
+            assertTrue(CliAgentConfig.loadSettingsJson(tempDir.resolve("nope.json")).isEmpty());
+        }
+
+        @Test
+        void validFile(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"sk-test\", \"model\": \"gpt-4o\"}");
+            Map<String, Object> result = CliAgentConfig.loadSettingsJson(settings);
+            assertEquals("sk-test", result.get("apiKey"));
+            assertEquals("gpt-4o", result.get("model"));
+        }
+
+        @Test
+        void malformedJson(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{invalid json");
+            assertTrue(CliAgentConfig.loadSettingsJson(settings).isEmpty());
+        }
+
+        @Test
+        void nonDictJson(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "[\"a\", \"b\"]");
+            assertTrue(CliAgentConfig.loadSettingsJson(settings).isEmpty());
+        }
+
+        @Test
+        void emptyFile(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "");
+            assertTrue(CliAgentConfig.loadSettingsJson(settings).isEmpty());
+        }
     }
 
-    // -------------------------------------------------------------------
-    // TestLoadSettingsJson - Settings file loading
-    // -------------------------------------------------------------------
+    @Nested
+    class TestSaveSettingsJson {
+        @Test
+        void createsNewFile(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("sub").resolve("settings.json");
+            CliAgentConfig.saveSettingsJson(Map.of("apiKey", "sk-test"), settings);
+            Map<String, Object> data = CliAgentConfig.loadSettingsJson(settings);
+            assertEquals("sk-test", data.get("apiKey"));
+        }
 
-    @Test
-    void loadConfigWithNullPath(@TempDir Path tempDir) {
-        /** Returns default config when no path provided. */
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertFalse(config.containsKey("config_path"));
+        @Test
+        void mergesExisting(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"model\": \"gpt-4o\", \"apiKey\": \"old\"}");
+            CliAgentConfig.saveSettingsJson(Map.of("apiKey", "new"), settings);
+            Map<String, Object> data = CliAgentConfig.loadSettingsJson(settings);
+            assertEquals("new", data.get("apiKey"));
+            assertEquals("gpt-4o", data.get("model"));
+        }
+
+        @Test
+        void returnsPath(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Path result = CliAgentConfig.saveSettingsJson(Map.of("a", 1), settings);
+            assertEquals(settings, result);
+        }
     }
 
-    @Test
-    void loadConfigWithCustomPath(@TempDir Path tempDir) {
-        /** Custom path is stored in config. */
-        String customPath = "/custom/settings.yaml";
-        Map<String, Object> config = CliAgentConfig.loadConfig(customPath);
-        assertEquals(customPath, config.get("config_path"));
+    @Nested
+    class TestLoadConfig {
+        @Test
+        void envOverride(@TempDir Path tempDir) {
+            Map<String, String> env = Map.of(
+                    "OPENJIUWEN_MODEL", "qwen-max",
+                    "OPENJIUWEN_PROVIDER", "DashScope",
+                    "OPENJIUWEN_API_KEY", "test-key");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(
+                    Map.of(), env, tempDir.resolve("settings.json"));
+            assertEquals("qwen-max", cfg.get("model"));
+            assertEquals("DashScope", cfg.get("provider"));
+        }
+
+        @Test
+        void cliArgsOverrideEnv(@TempDir Path tempDir) {
+            Map<String, String> env = Map.of(
+                    "OPENJIUWEN_MODEL", "qwen-max",
+                    "OPENJIUWEN_API_KEY", "test-key");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(
+                    Map.of("model", "gpt-4o-mini"), env, tempDir.resolve("settings.json"));
+            assertEquals("gpt-4o-mini", cfg.get("model"));
+        }
+
+        @Test
+        void loadConfigValidates(@TempDir Path tempDir) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> CliAgentConfig.loadConfig(Map.of(), Map.of(), tempDir.resolve("settings.json")));
+        }
+
+        @Test
+        void settingsJsonOverridesDefaults(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"from-json\", \"model\": \"qwen\"}");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(Map.of(), Map.of(), settings);
+            assertEquals("from-json", cfg.get("api_key"));
+            assertEquals("qwen", cfg.get("model"));
+        }
+
+        @Test
+        void envOverridesSettingsJson(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"from-json\", \"model\": \"from-json\"}");
+            Map<String, String> env = Map.of(
+                    "OPENJIUWEN_API_KEY", "from-env",
+                    "OPENJIUWEN_MODEL", "from-env");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(Map.of(), env, settings);
+            assertEquals("from-env", cfg.get("api_key"));
+            assertEquals("from-env", cfg.get("model"));
+        }
+
+        @Test
+        void cliOverridesSettingsJson(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"from-json\"}");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(
+                    Map.of("api_key", "from-cli"), Map.of(), settings);
+            assertEquals("from-cli", cfg.get("api_key"));
+        }
+
+        @Test
+        void settingsJsonMaxTokens(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"k\", \"maxTokens\": 4096}");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(Map.of(), Map.of(), settings);
+            assertEquals(4096, cfg.get("max_tokens"));
+        }
+
+        @Test
+        void settingsJsonMaxIterations(@TempDir Path tempDir) throws IOException {
+            Path settings = tempDir.resolve("settings.json");
+            Files.writeString(settings, "{\"apiKey\": \"k\", \"maxIterations\": 15}");
+            Map<String, Object> cfg = CliAgentConfig.loadConfig(Map.of(), Map.of(), settings);
+            assertEquals(15, cfg.get("max_iterations"));
+        }
     }
 
-    // -------------------------------------------------------------------
-    // Placeholder tests for future implementation
-    // -------------------------------------------------------------------
-
-    @Test
-    void placeholder_validateNoApiKey() {
-        /** Missing API key raises validation error - placeholder. */
-        // TODO: Implement CLIConfig.validate() in Java
-        // For now, verify that loadConfig returns a valid config
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    @Test
-    void placeholder_validateSmallMaxTokens() {
-        /** max_tokens < 256 raises ValueError - placeholder. */
-        // TODO: Implement max_tokens validation in Java
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    @Test
-    void placeholder_envOverride() {
-        /** Environment variables override defaults - placeholder. */
-        // TODO: Implement three-layer priority (env > settings > defaults)
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    @Test
-    void placeholder_settingsJsonOverridesDefaults(@TempDir Path tempDir) throws IOException {
-        /** settings.json values override defaults - placeholder. */
-        // Create a test settings file
-        Path settingsFile = tempDir.resolve("settings.json");
-        String jsonContent = "{\"apiKey\": \"test-key\", \"model\": \"gpt-4o\"}";
-        Files.writeString(settingsFile, jsonContent);
-
-        // TODO: Implement settings.json loading
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    @Test
-    void placeholder_saveSettingsJson(@TempDir Path tempDir) throws IOException {
-        /** save_settings_json creates file - placeholder. */
-        Path settingsFile = tempDir.resolve("settings.json");
-
-        // TODO: Implement save_settings_json in Java
-        assertTrue(Files.exists(tempDir));
-    }
-
-    @Test
-    void placeholder_mergeExistingSettings(@TempDir Path tempDir) throws IOException {
-        /** Merges into existing file, overriding keys - placeholder. */
-        Path settingsFile = tempDir.resolve("settings.json");
-        String initialContent = "{\"model\": \"gpt-4o\", \"apiKey\": \"old\"}";
-        Files.writeString(settingsFile, initialContent);
-
-        // TODO: Implement settings merge functionality
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    // -------------------------------------------------------------------
-    // Three-layer priority tests (placeholders)
-    // -------------------------------------------------------------------
-
-    @Test
-    void placeholder_cliArgsOverrideEnv() {
-        /** CLI arguments override environment variables - placeholder. */
-        // TODO: Implement CLI args priority over env vars
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
-    }
-
-    @Test
-    void placeholder_envOverridesSettingsJson(@TempDir Path tempDir) throws IOException {
-        /** Env vars override settings.json values - placeholder. */
-        Path settingsFile = tempDir.resolve("settings.json");
-        String jsonContent = "{\"apiKey\": \"from-json\", \"model\": \"qwen\"}";
-        Files.writeString(settingsFile, jsonContent);
-
-        // TODO: Implement env > settings.json priority
-        Map<String, Object> config = CliAgentConfig.loadConfig(null);
-        assertNotNull(config);
+    private static Map<String, Object> defaultConfig() {
+        return new LinkedHashMap<>(CliAgentConfig.defaultConfig());
     }
 }

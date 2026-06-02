@@ -16,9 +16,14 @@ import com.openjiuwen.core.session.stream.StreamMode;
 
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -36,6 +41,7 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
     
     private final Supplier<BaseAgent> targetProvider;
     private final Set<String> allowedTargets;
+    private final Function<String, HandoffOrchestrator> coordinatorLookup;
     private BaseAgent targetInstance;
     private boolean toolsInjected = false;
     
@@ -51,9 +57,26 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
      * @param allowedTargets Set of agent IDs this agent can hand off to
      */
     public ContainerAgent(AgentCard targetCard, Supplier<BaseAgent> targetProvider, Set<String> allowedTargets) {
+        this(targetCard, targetProvider, allowedTargets, null);
+    }
+
+    /**
+     * Create a ContainerAgent wrapper with coordinator lookup.
+     *
+     * @param targetCard AgentCard for the wrapped agent
+     * @param targetProvider Supplier that creates the target agent instance
+     * @param allowedTargets Set of agent IDs this agent can hand off to
+     * @param coordinatorLookup function that resolves a session coordinator
+     */
+    public ContainerAgent(
+            AgentCard targetCard,
+            Supplier<BaseAgent> targetProvider,
+            Set<String> allowedTargets,
+            Function<String, HandoffOrchestrator> coordinatorLookup) {
         super(targetCard);
         this.targetProvider = targetProvider;
         this.allowedTargets = allowedTargets;
+        this.coordinatorLookup = coordinatorLookup;
         this.targetInstance = null;
         this.toolsInjected = false;
     }
@@ -142,14 +165,14 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
     @Override
     public void subscribe(String topicPattern) {
         if (runtime != null) {
-            runtime.getSubscriptionManager().subscribe(topicPattern, agentId);
+            runtime.getSubscriptionManager().subscribe(agentId, topicPattern);
         }
     }
     
     @Override
     public void unsubscribe(String topicPattern) {
         if (runtime != null) {
-            runtime.getSubscriptionManager().unsubscribe(topicPattern, agentId);
+            runtime.getSubscriptionManager().unsubscribe(agentId, topicPattern);
         }
     }
     
@@ -173,21 +196,135 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
         return targetProvider;
     }
 
+    /**
+     * Build target-agent input from handoff request.
+     *
+     * @param inputs request input
+     * @return raw or history-enriched input
+     */
+    protected Object buildAgentInput(HandoffRequest inputs) {
+        Object message = inputs.getInputMessage();
+        List<Map<String, Object>> history = inputs.getHistory();
+        if (history == null || history.isEmpty()) {
+            return message;
+        }
+        if (message instanceof Map<?, ?> raw) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            raw.forEach((key, value) -> result.put(String.valueOf(key), value));
+            result.put("handoff_history", history);
+            return result;
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("query", message);
+        result.put("handoff_history", history);
+        return result;
+    }
+
+    /**
+     * Remove tool messages and assistant tool-call messages from context history.
+     *
+     * @param messages message list
+     * @return cleaned list
+     */
+    public static List<Object> stripHandoffMessages(List<?> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<Object> cleaned = new ArrayList<>();
+        for (Object message : messages) {
+            Object role = readProperty(message, "role");
+            if ("tool".equals(role)) {
+                continue;
+            }
+            Object toolCalls = readProperty(message, "toolCalls");
+            if (toolCalls == null) {
+                toolCalls = readProperty(message, "tool_calls");
+            }
+            if ("assistant".equals(role) && toolCalls instanceof List<?> list && !list.isEmpty()) {
+                continue;
+            }
+            cleaned.add(message);
+        }
+        return cleaned;
+    }
+
+    private static Object readProperty(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            return map.get(name);
+        }
+        String accessor = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        try {
+            return target.getClass().getMethod(accessor).invoke(target);
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                var field = target.getClass().getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (ReflectiveOperationException ignoredAgain) {
+                return null;
+            }
+        }
+    }
+
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        // Delegate to target agent
-        if (targetInstance != null) {
-            return targetInstance.stream(inputs, session, streamModes);
-        }
-        return Collections.emptyIterator();
+        return Collections.singletonList(invoke(inputs, session)).iterator();
     }
 
     @Override
     public Object invoke(Object inputs, Session session) {
-        if (targetInstance != null) {
-            return targetInstance.invoke(inputs, session);
+        if (!(inputs instanceof HandoffRequest request)) {
+            return Map.of();
         }
-        return null;
+        HandoffOrchestrator coordinator = coordinatorLookup != null
+                ? coordinatorLookup.apply(request.getSessionId())
+                : null;
+        if (coordinator == null) {
+            throw new IllegalStateException("ContainerAgent invoked without a HandoffTeam session");
+        }
+        List<Map<String, Object>> history = request.getHistory() != null
+                ? new ArrayList<>(request.getHistory())
+                : new ArrayList<>();
+        try {
+            BaseAgent targetAgent = getTargetAgent();
+            injectToolsOnce(targetAgent);
+            Object result = targetAgent.invoke(buildAgentInput(request), session);
+            history.add(Map.of("agent", targetAgent.getCard().getId(), "output", result));
+
+            Optional<TeamInterruptSignal> interruptSignal = Interrupt.extractInterruptSignal(result);
+            if (interruptSignal.isPresent()) {
+                coordinator.complete(interruptSignal.get().getResult());
+                return Map.of();
+            }
+
+            Optional<HandoffSignal> signal = HandoffSignal.extractHandoffSignal(result, session);
+            if (signal.isEmpty()) {
+                coordinator.complete(result);
+                return Map.of();
+            }
+
+            HandoffSignal handoffSignal = signal.get();
+            if (coordinator.requestHandoff(handoffSignal.getTarget())) {
+                Object nextInput = handoffSignal.getMessage().orElse(request.getInputMessage() != null
+                        ? request.getInputMessage().toString()
+                        : null);
+                publish(new HandoffRequest(nextInput, history, request.getSessionId()),
+                        "container_" + handoffSignal.getTarget(), request.getSessionId());
+            } else {
+                coordinator.complete(result);
+            }
+        } catch (RuntimeException e) {
+            Optional<TeamInterruptSignal> interruptSignal = Interrupt.extractInterruptSignal(null, e);
+            if (interruptSignal.isPresent()) {
+                coordinator.complete(interruptSignal.get().getResult());
+                return Map.of();
+            }
+            coordinator.error(e);
+        }
+        return Map.of();
     }
 
     @Override

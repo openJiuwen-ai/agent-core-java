@@ -8,7 +8,10 @@ import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.Set;
@@ -29,6 +32,7 @@ public class TeamRuntime {
     private final RuntimeConfig config;
     private final String teamId;
     private final SubscriptionManager subscriptionManager;
+    private final MessageBus messageBus;
     
     /** Agent card registry */
     private final ConcurrentHashMap<String, AgentCard> agentCards = new ConcurrentHashMap<>();
@@ -41,6 +45,9 @@ public class TeamRuntime {
     
     /** P2P timeout in seconds */
     private double p2pTimeout;
+
+    /** Running state. */
+    private volatile boolean running;
     
     public TeamRuntime() {
         this(new RuntimeConfig());
@@ -51,6 +58,10 @@ public class TeamRuntime {
         this.teamId = config.getTeamId();
         this.subscriptionManager = new SubscriptionManager();
         this.p2pTimeout = config.getP2pTimeout();
+        MessageBusConfig busConfig = config.getMessageBus().orElseGet(MessageBusConfig::new);
+        busConfig.setTeamId(teamId);
+        this.messageBus = new MessageBus(busConfig, this);
+        this.running = false;
     }
     
     /**
@@ -60,8 +71,9 @@ public class TeamRuntime {
      * @param provider Supplier that creates agent instance
      */
     public void registerAgent(AgentCard card, Supplier<?> provider) {
-        agentCards.put(card.getId(), card);
-        agentProviders.put(card.getId(), provider);
+        String agentId = card.getId();
+        agentCards.put(agentId, card);
+        agentProviders.put(agentId, wrapProvider(provider, agentId));
     }
     
     /**
@@ -92,6 +104,24 @@ public class TeamRuntime {
     public Set<String> getAgentIds() {
         return agentCards.keySet();
     }
+
+    /**
+     * Get the number of registered agents.
+     *
+     * @return agent count
+     */
+    public int getAgentCount() {
+        return agentCards.size();
+    }
+
+    /**
+     * List all registered agent IDs.
+     *
+     * @return list of agent IDs
+     */
+    public List<String> listAgents() {
+        return new ArrayList<>(agentCards.keySet());
+    }
     
     /**
      * Set P2P timeout.
@@ -100,6 +130,15 @@ public class TeamRuntime {
      */
     public void setP2pTimeout(double timeout) {
         this.p2pTimeout = timeout;
+    }
+
+    /**
+     * Get P2P timeout.
+     *
+     * @return timeout in seconds
+     */
+    public double getP2pTimeout() {
+        return p2pTimeout;
     }
     
     /**
@@ -117,17 +156,8 @@ public class TeamRuntime {
      * @return MessageBus
      */
     public MessageBus getMessageBus() {
-        // Lazy create message bus if needed
-        if (messageBus == null) {
-            MessageBusConfig busConfig = MessageBusConfig.builder()
-                    .teamId(teamId)
-                    .build();
-            messageBus = new MessageBus(busConfig, this);
-        }
         return messageBus;
     }
-    
-    private MessageBus messageBus;
     
     /**
      * Get team ID.
@@ -136,6 +166,15 @@ public class TeamRuntime {
      */
     public String getTeamId() {
         return teamId;
+    }
+
+    /**
+     * Check whether the runtime is currently running.
+     *
+     * @return true if running
+     */
+    public boolean isRunning() {
+        return running;
     }
 
     /**
@@ -188,13 +227,21 @@ public class TeamRuntime {
      * Start the runtime message bus.
      */
     public void start() {
+        if (running) {
+            return;
+        }
         getMessageBus().start();
+        running = true;
     }
 
     /**
      * Stop the runtime message bus.
      */
     public void stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
         getMessageBus().stop();
     }
 
@@ -211,6 +258,26 @@ public class TeamRuntime {
     }
 
     /**
+     * Send a P2P message through the runtime with an explicit timeout.
+     *
+     * @param message message payload
+     * @param recipient recipient agent ID
+     * @param sender sender agent ID
+     * @param sessionId optional session ID
+     * @param timeout optional timeout in seconds
+     * @return response future
+     */
+    public CompletableFuture<Object> send(Object message, String recipient, String sender, String sessionId, Double timeout) {
+        validateSendInputs(recipient, sender);
+        if (!hasAgent(recipient)) {
+            throw new IllegalArgumentException("Recipient '" + recipient + "' not registered in runtime");
+        }
+        ensureStarted();
+        return getMessageBus().send(message, recipient, Optional.ofNullable(sender),
+                Optional.ofNullable(sessionId), Optional.ofNullable(timeout != null ? timeout : p2pTimeout));
+    }
+
+    /**
      * Send a P2P message through the runtime with session isolation.
      *
      * @param message message payload
@@ -220,8 +287,7 @@ public class TeamRuntime {
      * @return response future
      */
     public CompletableFuture<Object> send(Object message, String recipient, String sender, String sessionId) {
-        return getMessageBus().send(message, recipient, Optional.ofNullable(sender),
-                Optional.ofNullable(sessionId), Optional.of(p2pTimeout));
+        return send(message, recipient, sender, sessionId, p2pTimeout);
     }
 
     /**
@@ -246,6 +312,8 @@ public class TeamRuntime {
      * @return completion future
      */
     public CompletableFuture<Void> publish(Object message, String topicId, String sender, String sessionId) {
+        validatePublishInputs(topicId, sender);
+        ensureStarted();
         return getMessageBus().publish(message, topicId, Optional.ofNullable(sender),
                 Optional.ofNullable(sessionId));
     }
@@ -257,7 +325,57 @@ public class TeamRuntime {
      * @param topicPattern topic pattern
      */
     public void subscribe(String agentId, String topicPattern) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("agentId is required for subscription");
+        }
+        if (topicPattern == null || topicPattern.isBlank()) {
+            throw new IllegalArgumentException("topic is required for subscription");
+        }
         subscriptionManager.subscribe(agentId, topicPattern);
+    }
+
+    /**
+     * Unsubscribe an agent from a topic pattern.
+     *
+     * @param agentId agent ID
+     * @param topicPattern topic pattern
+     */
+    public void unsubscribe(String agentId, String topicPattern) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("agentId is required for unsubscription");
+        }
+        if (topicPattern == null || topicPattern.isBlank()) {
+            throw new IllegalArgumentException("topic is required for unsubscription");
+        }
+        subscriptionManager.unsubscribe(agentId, topicPattern);
+    }
+
+    /**
+     * List subscriptions for debugging and introspection.
+     *
+     * @param agentId optional agent ID filter
+     * @return subscription snapshot
+     */
+    public java.util.Map<String, Object> listSubscriptions(String agentId) {
+        return getMessageBus().listSubscriptions(agentId);
+    }
+
+    /**
+     * List subscriptions for debugging and introspection.
+     *
+     * @return subscription snapshot
+     */
+    public java.util.Map<String, Object> listSubscriptions() {
+        return listSubscriptions(null);
+    }
+
+    /**
+     * Return the total number of topic subscriptions.
+     *
+     * @return subscription count
+     */
+    public int getSubscriptionCount() {
+        return getMessageBus().getSubscriptionCount();
     }
 
     Object dispatchToAgent(String agentId, Object message, String sessionId) {
@@ -277,7 +395,17 @@ public class TeamRuntime {
             Function<Object, Object> typedFunction = (Function<Object, Object>) function;
             return typedFunction.apply(message);
         }
-        return invokeReflectively(agent, message, session);
+        return invokeReflectively(agent, message, session, sessionId);
+    }
+
+    /**
+     * Create a fresh agent instance from its registered provider.
+     *
+     * @param agentId agent ID
+     * @return new agent instance or null
+     */
+    public Object createAgent(String agentId) {
+        return resolveAgent(agentId);
     }
 
     private Object resolveAgent(String agentId) {
@@ -285,21 +413,62 @@ public class TeamRuntime {
         return provider != null ? provider.get() : null;
     }
 
-    private Object invokeReflectively(Object agent, Object message, Session session) {
+    private Object invokeReflectively(Object agent, Object message, Session session, String sessionId) {
         try {
-            Method method = agent.getClass().getMethod("invoke", Object.class, Session.class);
+            Method method = findAccessibleMethod(agent.getClass(), "invoke", Object.class, Session.class);
             return method.invoke(agent, message, session);
         } catch (NoSuchMethodException ignored) {
             try {
-                Method method = agent.getClass().getMethod("invoke", Object.class);
-                return method.invoke(agent, message);
+                Method method = findAccessibleMethod(agent.getClass(), "invoke", Object.class, String.class);
+                return method.invoke(agent, message, session != null ? session.getSessionId() : sessionId);
+            } catch (NoSuchMethodException e) {
+                try {
+                    Method method = findAccessibleMethod(agent.getClass(), "invoke", Object.class);
+                    return method.invoke(agent, message);
+                } catch (InvocationTargetException nested) {
+                    throw unwrapInvocationTarget(nested);
+                } catch (ReflectiveOperationException nested) {
+                    throw new IllegalArgumentException("Agent does not expose an invoke method: "
+                            + agent.getClass().getName(), nested);
+                }
+            } catch (InvocationTargetException e) {
+                throw unwrapInvocationTarget(e);
             } catch (ReflectiveOperationException e) {
-                throw new IllegalArgumentException("Agent does not expose an invoke method: "
-                        + agent.getClass().getName(), e);
+                throw new IllegalStateException("Failed to invoke agent: " + agent.getClass().getName(), e);
             }
+        } catch (InvocationTargetException e) {
+            throw unwrapInvocationTarget(e);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Failed to invoke agent: " + agent.getClass().getName(), e);
         }
+    }
+
+    private static Method findAccessibleMethod(Class<?> type, String name, Class<?>... parameterTypes)
+            throws NoSuchMethodException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                Method method = current.getDeclaredMethod(name, parameterTypes);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        Method method = type.getMethod(name, parameterTypes);
+        method.setAccessible(true);
+        return method;
+    }
+
+    private static RuntimeException unwrapInvocationTarget(InvocationTargetException exception) {
+        Throwable cause = exception.getCause();
+        if (cause instanceof RuntimeException runtimeException) {
+            return runtimeException;
+        }
+        if (cause instanceof Error error) {
+            throw error;
+        }
+        return new IllegalStateException("Agent invocation failed", cause);
     }
     
     /**
@@ -307,9 +476,44 @@ public class TeamRuntime {
      * 
      * @param agentId Agent ID
      */
-    public void unregisterAgent(String agentId) {
-        agentCards.remove(agentId);
+    public AgentCard unregisterAgent(String agentId) {
+        AgentCard removed = agentCards.remove(agentId);
         agentProviders.remove(agentId);
         subscriptionManager.unsubscribeAll(agentId);
+        return removed;
+    }
+
+    private Supplier<?> wrapProvider(Supplier<?> provider, String agentId) {
+        return () -> {
+            Object agent = provider.get();
+            if (agent instanceof CommunicableAgent communicableAgent) {
+                communicableAgent.bindRuntime(this, agentId);
+            }
+            return agent;
+        };
+    }
+
+    private void ensureStarted() {
+        if (!running) {
+            start();
+        }
+    }
+
+    private static void validateSendInputs(String recipient, String sender) {
+        if (sender == null || sender.isBlank()) {
+            throw new IllegalArgumentException("sender is required for message tracing");
+        }
+        if (recipient == null || recipient.isBlank()) {
+            throw new IllegalArgumentException("recipient is required");
+        }
+    }
+
+    private static void validatePublishInputs(String topicId, String sender) {
+        if (sender == null || sender.isBlank()) {
+            throw new IllegalArgumentException("sender is required for message tracing");
+        }
+        if (topicId == null || topicId.isBlank()) {
+            throw new IllegalArgumentException("topic_id is required");
+        }
     }
 }

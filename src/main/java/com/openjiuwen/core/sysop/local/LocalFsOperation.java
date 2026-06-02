@@ -176,7 +176,12 @@ public class LocalFsOperation extends BaseFsOperation {
                 dataBytes = txt.getBytes(resolveCharset(encoding));
             }
 
-            Files.write(filePath, dataBytes);
+            boolean append = optionAsBoolean(options, "append");
+            if (append) {
+                Files.write(filePath, dataBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.write(filePath, dataBytes);
+            }
             applyPermissions(filePath, permissions);
 
             WriteFileResult result = WriteFileResult.builder()
@@ -917,6 +922,17 @@ public class LocalFsOperation extends BaseFsOperation {
 
     private boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    private boolean optionAsBoolean(Map<String, Object> options, String key) {
+        if (options == null || !options.containsKey(key)) {
+            return false;
+        }
+        Object value = options.get(key);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 
     private String toPermString(int perm) {

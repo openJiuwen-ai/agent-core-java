@@ -8,11 +8,13 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import java.util.Optional;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -36,10 +38,16 @@ public class HierarchicalTeam extends BaseTeam {
     private String supervisorId;
     
     public HierarchicalTeam(TeamCard card, HierarchicalTeamConfig config) {
-        super(card, config);
+        this(card, config, null);
+    }
+
+    public HierarchicalTeam(TeamCard card, HierarchicalTeamConfig config, TeamRuntime runtime) {
+        super(card, config, runtime);
+        if (config == null || config.getSupervisorAgent() == null) {
+            throw new IllegalArgumentException("supervisorAgent is required");
+        }
         this.hierarchicalConfig = config;
-        this.supervisorId = config.getSupervisorAgent() != null ? 
-            config.getSupervisorAgent().getId() : null;
+        this.supervisorId = config.getSupervisorAgent().getId();
     }
     
     @Override
@@ -85,20 +93,24 @@ public class HierarchicalTeam extends BaseTeam {
      */
     @Override
     public CompletableFuture<Object> invoke(Object input) {
+        return invoke(input, null);
+    }
+
+    @Override
+    public CompletableFuture<Object> invoke(Object input, Session session) {
+        return invoke(input, session, null);
+    }
+
+    public CompletableFuture<Object> invoke(Object input, Session session, Double timeout) {
         assertReady();
         
-        String sessionId = "hierarchical_msgbus_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        String sessionId = session != null ? session.getSessionId() : resolveSessionId(input, "hierarchical_msgbus_");
         
         LOG.debug("[HierarchicalTeam] invoke start session_id={} supervisor={}", sessionId, supervisorId);
         
-        // Get timeout from config
-        double timeout = hierarchicalConfig.getTimeout().orElse(30.0);
+        double effectiveTimeout = timeout != null ? timeout : hierarchicalConfig.getP2pTimeout();
         
-        // Use runtime.send to invoke supervisor agent
-        return runtime.getMessageBus().send(input, supervisorId,
-                Optional.ofNullable(getTeamId()),
-                Optional.of(sessionId),
-                Optional.of(timeout))
+        return runtime.send(input, supervisorId, card.getId(), sessionId, effectiveTimeout)
             .whenComplete((result, error) -> {
                 if (error != null) {
                     LOG.error("[HierarchicalTeam] invoke failed session_id={}: {}", sessionId, error.getMessage());
@@ -118,23 +130,38 @@ public class HierarchicalTeam extends BaseTeam {
      */
     @Override
     public Stream<Object> stream(Object input) {
+        return stream(input, null);
+    }
+
+    @Override
+    public Stream<Object> stream(Object input, Session session) {
+        return stream(input, session, null);
+    }
+
+    public Stream<Object> stream(Object input, Session session, Double timeout) {
         assertReady();
         
-        String sessionId = "hierarchical_stream_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        String sessionId = session != null ? session.getSessionId() : resolveSessionId(input, "hierarchical_stream_");
         
         LOG.debug("[HierarchicalTeam] stream start session_id={} supervisor={}", sessionId, supervisorId);
         
-        try {
-            Object result = invoke(input).join();
-            LOG.debug("[HierarchicalTeam] stream completed session_id={}", sessionId);
-            return Stream.of(result);
-        } catch (Exception e) {
-            LOG.error("[HierarchicalTeam] stream failed session_id={}: {}", sessionId, e.getMessage());
-            return Stream.empty();
-        }
+        double effectiveTimeout = timeout != null ? timeout : hierarchicalConfig.getP2pTimeout();
+        Object result = runtime.send(input, supervisorId, card.getId(), sessionId, effectiveTimeout).join();
+        LOG.debug("[HierarchicalTeam] stream completed session_id={}", sessionId);
+        return result != null ? Stream.of(result) : Stream.empty();
     }
     
     public String getSupervisorId() {
         return supervisorId;
+    }
+
+    private static String resolveSessionId(Object input, String prefix) {
+        if (input instanceof Map<?, ?> map) {
+            Object conversationId = map.get("conversation_id");
+            if (conversationId != null) {
+                return conversationId.toString();
+            }
+        }
+        return prefix + java.util.UUID.randomUUID().toString().replace("-", "");
     }
 }

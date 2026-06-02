@@ -4,46 +4,43 @@
 
 package com.openjiuwen.system_tests.rail;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.single_agent.rail.ModelBackupRail;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Model backup rail tests.
- * <p>
  * Mirrors Python's {@code test_model_backup_rail.py} in
  * {@code tests/system_tests/rail/test_model_backup_rail.py}.
  */
 public class TestModelBackupRail {
 
-    @Nested
-    @DisplayName("Model backup rail tests")
-    class ModelBackupTests {
+    @Test
+    void testMiddlewareExecutesWhenReactAgentInvoke() {
+        RecordingAgent agent = new RecordingAgent();
+        Object backupModel = new Object();
+        ModelBackupRail rail = new ModelBackupRail(List.of(backupModel));
+        AgentCallbackContext ctx = AgentCallbackContext.builder()
+                .agent(agent)
+                .exception(new RuntimeException("primary model failed"))
+                .build();
 
-        @Test
-        @DisplayName("Test backup trigger placeholder")
-        void testBackupTrigger() {
-            // Placeholder: Backup trigger test
-            
-            assertThat(true).isTrue();
-        }
+        rail.onModelException(ctx);
 
-        @Test
-        @DisplayName("Test backup restore placeholder")
-        void testBackupRestore() {
-            // Placeholder: Backup restore test
-            
-            assertThat(true).isTrue();
-        }
+        assertThat(agent.models).containsExactly(backupModel);
+        assertThat(ctx.getRetryRequest()).isNotNull();
+        assertThat(ctx.getRetryRequest().getDelaySeconds()).isZero();
+    }
 
-        @Test
-        @DisplayName("Test backup configuration")
-        void testBackupConfiguration() {
-            int maxBackups = 3;
-            
-            assertThat(maxBackups).isGreaterThan(0);
+    static final class RecordingAgent {
+        private final List<Object> models = new ArrayList<>();
+
+        public void setLlm(Object model) {
+            models.add(model);
         }
     }
 }

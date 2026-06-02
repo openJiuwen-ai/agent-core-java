@@ -70,6 +70,27 @@ public final class A2ATransformer {
     }
 
     /** Convert A2A response to openjiuwen result format. */
+    public static Map<String, Object> fromA2aResponse(Object response) {
+        if (response instanceof Map<?, ?> map) {
+            return fromA2aResponse(stringifyKeys(map));
+        }
+        if (response instanceof List<?> list && !list.isEmpty()) {
+            Object streamResponse = list.get(0);
+            Object fallbackPayload = list.size() > 1 ? list.get(1) : null;
+            if (streamResponse instanceof Map<?, ?> streamMap) {
+                Map<String, Object> candidate = stringifyKeys(streamMap);
+                if (candidate.get("message") instanceof Map<?, ?> || candidate.get("task") instanceof Map<?, ?>) {
+                    return fromA2aResponse(candidate);
+                }
+            }
+            if (fallbackPayload instanceof Map<?, ?> fallbackMap) {
+                return fromA2aResponse(stringifyKeys(fallbackMap));
+            }
+        }
+        return buildAgentResult(null, null, "completed", List.of(), Map.of());
+    }
+
+    /** Convert A2A response to openjiuwen result format. */
     public static Map<String, Object> fromA2aResponse(Map<String, Object> response) {
         if (response == null) {
             return buildAgentResult(null, null, "completed", List.of(), Map.of());

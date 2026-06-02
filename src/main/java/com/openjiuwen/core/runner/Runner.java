@@ -7,12 +7,15 @@ package com.openjiuwen.core.runner;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.agent_teams.RuntimeManager;
 import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.core.multiagent.BaseTeam;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.internal.AgentTeamSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
@@ -221,6 +224,17 @@ public final class Runner {
      * {@link TeamAgent}.</p>
      */
     public static Iterator<Object> runAgentTeamStreaming(Object agentTeam, Object inputs, Object session) {
+        if (agentTeam instanceof BaseTeam baseTeam) {
+            AgentTeamSession teamSession = createBaseTeamSession(baseTeam, session);
+            Object preRunInputs = inputs instanceof Map<?, ?> ? inputs : null;
+            teamSession.preRun(preRunInputs);
+            TeamRuntime runtime = baseTeam.getRuntime();
+            if (runtime != null) {
+                runtime.bindTeamSession(teamSession);
+            }
+            Iterator<Object> raw = baseTeam.stream(inputs, teamSession).iterator();
+            return closeBaseTeamSessionWhenExhausted(raw, runtime, teamSession);
+        }
         RuntimeManager.TeamRuntimeActivation activation =
                 TEAM_RUNTIME_MANAGER.activate(agentTeam, session, inputs).join();
         if ("same_session".equals(activation.getActivationKind())
@@ -246,6 +260,23 @@ public final class Runner {
      * <p>Mirrors Python's {@code Runner.run_agent_team}.</p>
      */
     public static Object runAgentTeam(Object agentTeam, Object inputs, Object session) {
+        if (agentTeam instanceof BaseTeam baseTeam) {
+            AgentTeamSession teamSession = createBaseTeamSession(baseTeam, session);
+            Object preRunInputs = inputs instanceof Map<?, ?> ? inputs : null;
+            teamSession.preRun(preRunInputs);
+            TeamRuntime runtime = baseTeam.getRuntime();
+            if (runtime != null) {
+                runtime.bindTeamSession(teamSession);
+            }
+            try {
+                return baseTeam.invoke(inputs, teamSession).join();
+            } finally {
+                if (runtime != null) {
+                    runtime.unbindTeamSession(teamSession.getSessionId());
+                }
+                teamSession.postRun();
+            }
+        }
         RuntimeManager.TeamRuntimeActivation activation =
                 TEAM_RUNTIME_MANAGER.activate(agentTeam, session, inputs).join();
         if ("same_session".equals(activation.getActivationKind())
@@ -472,5 +503,62 @@ public final class Runner {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Failed to finalize team session", e);
         }
+    }
+
+    private static AgentTeamSession createBaseTeamSession(BaseTeam team, Object session) {
+        if (session instanceof AgentTeamSession agentTeamSession) {
+            return agentTeamSession;
+        }
+        String sessionId = null;
+        if (session instanceof Session typedSession) {
+            sessionId = typedSession.getSessionId();
+        } else if (session instanceof String rawSessionId && !rawSessionId.isBlank()) {
+            sessionId = rawSessionId;
+        }
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = java.util.UUID.randomUUID().toString();
+        }
+        String teamId = team.getCard() != null && team.getCard().getId() != null
+                ? team.getCard().getId()
+                : "agent_team";
+        return new AgentTeamSession(sessionId, teamId);
+    }
+
+    private static Iterator<Object> closeBaseTeamSessionWhenExhausted(
+            Iterator<Object> delegate,
+            TeamRuntime runtime,
+            AgentTeamSession session
+    ) {
+        return new Iterator<>() {
+            private boolean closed;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    closeOnce();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return delegate.next();
+            }
+
+            private void closeOnce() {
+                if (closed) {
+                    return;
+                }
+                if (runtime != null) {
+                    runtime.unbindTeamSession(session.getSessionId());
+                }
+                session.postRun();
+                closed = true;
+            }
+        };
     }
 }

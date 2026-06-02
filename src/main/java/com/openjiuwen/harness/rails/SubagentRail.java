@@ -22,6 +22,7 @@ import java.util.List;
 public class SubagentRail extends DeepAgentRail {
 
     private final List<com.openjiuwen.core.foundation.tool.Tool> tools = new ArrayList<>();
+    private String availableAgentsDescription = "";
 
     public SubagentRail() {
         setPriority(95);
@@ -35,6 +36,7 @@ public class SubagentRail extends DeepAgentRail {
         if (config.getSubagents().isEmpty()) {
             return;
         }
+        availableAgentsDescription = buildAvailableAgentsDescription(config.getSubagents());
         tools.clear();
         tools.add(new TaskTool(deepAgent));
         for (com.openjiuwen.core.foundation.tool.Tool tool : tools) {
@@ -54,6 +56,53 @@ public class SubagentRail extends DeepAgentRail {
                     TagMatchStrategy.ALL, true);
         }
         tools.clear();
+        availableAgentsDescription = "";
+    }
+
+    public List<com.openjiuwen.core.foundation.tool.Tool> getRegisteredTools() {
+        return List.copyOf(tools);
+    }
+
+    public String getAvailableAgentsDescription() {
+        return availableAgentsDescription;
+    }
+
+    public static String buildAvailableAgentsDescription(List<?> subagents) {
+        if (subagents == null || subagents.isEmpty()) {
+            return "";
+        }
+        List<String> lines = new ArrayList<>();
+        boolean hasGeneralPurpose = false;
+        for (Object subagent : subagents) {
+            AgentMeta meta = extractAgentMeta(subagent);
+            if ("general-purpose".equals(meta.name())) {
+                if (hasGeneralPurpose) {
+                    continue;
+                }
+                hasGeneralPurpose = true;
+            }
+            lines.add("\"" + meta.name() + "\": " + meta.description());
+        }
+        return String.join("\n", lines);
+    }
+
+    public static AgentMeta extractAgentMeta(Object subagent) {
+        Object card = readField(subagent, "card");
+        if (card == null) {
+            card = invokeNoArg(subagent, "getCard");
+        }
+        String name = readStringField(card, "name");
+        String description = readStringField(card, "description");
+        if (name == null || name.isBlank()) {
+            name = "general-purpose";
+        }
+        if (description == null || description.isBlank()) {
+            description = subagent instanceof DeepAgent ? "DeepAgent instance" : "";
+        }
+        return new AgentMeta(name, description);
+    }
+
+    public record AgentMeta(String name, String description) {
     }
 
     private static Object readField(Object target, String fieldName) {
@@ -73,6 +122,19 @@ public class SubagentRail extends DeepAgentRail {
             }
         }
         return null;
+    }
+
+    private static Object invokeNoArg(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            java.lang.reflect.Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 
     private static String readStringField(Object target, String fieldName) {

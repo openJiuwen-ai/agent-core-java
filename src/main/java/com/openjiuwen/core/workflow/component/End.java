@@ -68,7 +68,7 @@ public class End extends WorkflowComponent implements Vertex.MixModeAware {
 
     @SuppressWarnings("unchecked")
     public End(Map<String, Object> confMap) {
-        this(confMap != null ? EndConfig.fromMap(confMap) : null);
+        this(confMap != null && !confMap.isEmpty() ? EndConfig.fromMap(confMap) : null);
     }
 
     public End() {

@@ -289,7 +289,8 @@ public final class GraphMemoryUtils {
 
         // Get messages from template
         if (template != null) {
-            List<BaseMessage> templateMessages = template.toMessages();
+            PromptTemplate formattedTemplate = template.format(kwargs == null ? Collections.emptyMap() : kwargs);
+            List<BaseMessage> templateMessages = formattedTemplate.toMessages();
             params.put("messages", msg2dict(templateMessages, false));
         } else {
             params.put("messages", Collections.emptyList());

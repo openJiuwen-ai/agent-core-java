@@ -4,10 +4,15 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import com.openjiuwen.core.retrieval.common.Document;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.function.Predicate;
 
 /**
  * Registry for named chunkers.
@@ -18,30 +23,42 @@ import java.util.function.Supplier;
  */
 public final class ChunkerRegistry {
 
-    private static final Map<String, Function<Map<String, Object>, Chunker>> REGISTRY = new ConcurrentHashMap<>();
+    private static final Map<String, Function<Map<String, Object>, Object>> REGISTRY = new ConcurrentHashMap<>();
+    private static final Set<String> BUILT_INS = Set.of("char", "token", "text", "hybrid");
 
     static {
-        registerChunker("char", () -> new CharChunker(512, 50));
-        registerChunker("token", () -> new TokenizerChunker(512, 50));
-        registerChunker("text", () -> new TextChunker(512, 50, "token"));
-        registerChunker("hybrid", () -> new HybridChunker(new TextChunker(512, 50, "token")));
+        registerChunker("char", kwargs -> new CharChunker(
+                intValue(kwargs, "chunk_size", 512),
+                intValue(kwargs, "chunk_overlap", 50)),
+                true);
+        registerChunker("token", kwargs -> new TokenizerChunker(
+                intValue(kwargs, "chunk_size", 512),
+                intValue(kwargs, "chunk_overlap", 50)),
+                true);
+        registerChunker("text", kwargs -> new TextChunker(
+                intValue(kwargs, "chunk_size", 512),
+                intValue(kwargs, "chunk_overlap", 50),
+                String.valueOf(kwargs.getOrDefault("chunk_unit", "token"))),
+                true);
+        registerChunker("hybrid", ChunkerRegistry::buildHybridChunker, true);
     }
 
     private ChunkerRegistry() {
     }
 
-    /**
-     * Register a chunker with a zero-arg supplier (convenience overload).
-     */
-    public static void registerChunker(String name, Supplier<Chunker> factory) {
-        REGISTRY.put(name, kwargs -> factory.get());
+    public static void registerChunker(String name, Function<Map<String, Object>, Object> factory) {
+        registerChunker(name, factory, false);
     }
 
-    /**
-     * Register a chunker with a parameterized factory accepting kwargs.
-     * Corresponds to Python's {@code register_chunker(name, callable(**kwargs) -> Chunker)}.
-     */
-    public static void registerChunker(String name, Function<Map<String, Object>, Chunker> factory) {
+    public static void registerChunker(String name, Function<Map<String, Object>, Object> factory, boolean overwrite) {
+        validateName(name);
+        if (factory == null) {
+            throw new IllegalArgumentException("chunker factory must not be null");
+        }
+        if (REGISTRY.containsKey(name) && !overwrite) {
+            throw new IllegalArgumentException(
+                    "Chunker '" + name + "' is already registered. Use overwrite=true to replace it.");
+        }
         REGISTRY.put(name, factory);
     }
 
@@ -57,10 +74,72 @@ public final class ChunkerRegistry {
      * Corresponds to Python's {@code get_chunker(name, **kwargs)}.
      */
     public static Chunker getChunker(String name, Map<String, Object> kwargs) {
-        Function<Map<String, Object>, Chunker> factory = REGISTRY.get(name);
+        validateName(name);
+        Function<Map<String, Object>, Object> factory = REGISTRY.get(name);
         if (factory == null) {
+            throw new NoSuchElementException("Unknown chunker: " + name + ". Registered: " + REGISTRY.keySet());
+        }
+        Map<String, Object> params = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
+        Object chunker = factory.apply(params);
+        if (!(chunker instanceof Chunker typedChunker)) {
+            throw new IllegalArgumentException(
+                    "Chunker entry '" + name + "' must return a Chunker instance, got "
+                            + (chunker == null ? "null" : chunker.getClass().getSimpleName()));
+        }
+        return typedChunker;
+    }
+
+    public static boolean isRegistered(String name) {
+        return REGISTRY.containsKey(name);
+    }
+
+    private static Object buildHybridChunker(Map<String, Object> kwargs) {
+        Map<String, Object> params = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        Object inner = params.remove("inner_chunker");
+        int chunkSize = intValue(params, "chunk_size", 512);
+        int chunkOverlap = intValue(params, "chunk_overlap", 50);
+        Predicate<Document> noSplitWhen = predicateValue(params.remove("no_split_when"));
+
+        if (inner == null) {
+            if (!params.isEmpty()) {
+                throw new IllegalArgumentException("Unknown kwargs for 'hybrid' chunker: " + String.join(", ", params.keySet()));
+            }
+            return new HybridChunker(new CharChunker(chunkSize, chunkOverlap), noSplitWhen);
+        }
+        if (!(inner instanceof Chunker innerChunker)) {
+            throw new IllegalArgumentException("inner_chunker must be a Chunker instance");
+        }
+        if (!params.isEmpty()) {
+            throw new IllegalArgumentException("Unknown kwargs for 'hybrid' chunker: " + String.join(", ", params.keySet()));
+        }
+        return new HybridChunker(innerChunker, noSplitWhen);
+    }
+
+    private static int intValue(Map<String, Object> kwargs, String key, int defaultValue) {
+        Object raw = kwargs.remove(key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(raw));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Predicate<Document> predicateValue(Object raw) {
+        if (raw == null) {
             return null;
         }
-        return factory.apply(kwargs != null ? kwargs : Map.of());
+        if (raw instanceof Predicate<?> predicate) {
+            return (Predicate<Document>) predicate;
+        }
+        throw new IllegalArgumentException("no_split_when must be a Predicate<Document>");
+    }
+
+    private static void validateName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("chunker name must be a non-empty string");
+        }
     }
 }

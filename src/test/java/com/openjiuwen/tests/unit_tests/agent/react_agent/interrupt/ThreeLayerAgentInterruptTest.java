@@ -6,6 +6,8 @@ package com.openjiuwen.tests.unit_tests.agent.react_agent.interrupt;
 
 import com.openjiuwen.core.singleagent.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,7 @@ class ThreeLayerAgentInterruptTest extends InterruptTestBase {
                 "required", List.of("query")
             ))
             .build();
+        Runner.resourceMgr().addAgent(subAgent2Card, () -> subAgent2, null);
 
         NestedAgentConfig subAgent1Config = new NestedAgentConfig(
             "sub_agent_1",
@@ -69,6 +72,7 @@ class ThreeLayerAgentInterruptTest extends InterruptTestBase {
                 "required", List.of("query")
             ))
             .build();
+        Runner.resourceMgr().addAgent(subAgent1Card, () -> subAgent1, null);
 
         NestedAgentConfig mainAgentConfig = new NestedAgentConfig(
             "main_agent",
@@ -77,10 +81,14 @@ class ThreeLayerAgentInterruptTest extends InterruptTestBase {
         );
         mainAgentConfig.subAgentCards.add(subAgent1Card);
         ReActAgent mainAgent = createNestedAgent(mainAgentConfig);
+        Runner.resourceMgr().addAgent(mainAgent.getCard(), () -> mainAgent, null);
 
         assertNotNull(mainAgent);
         assertNotNull(subAgent1);
         assertNotNull(subAgent2);
+        assertNotNull(Runner.resourceMgr().getAgent("sub_agent_2"));
+        assertNotNull(Runner.resourceMgr().getAgent("sub_agent_1"));
+        assertNotNull(Runner.resourceMgr().getAgent("main_agent"));
         assertNotNull(mainAgent.getAbilityManager().get("sub_agent_1"));
         assertNotNull(subAgent1.getAbilityManager().get("sub_agent_2"));
         assertNotNull(subAgent2.getAbilityManager().get("read"));
@@ -97,5 +105,10 @@ class ThreeLayerAgentInterruptTest extends InterruptTestBase {
         Map<String, Object> second = flow.resume(confirmInterrupt("call_read"));
         assertAnswerResult(second);
         assertEquals(1, readTool.getInvokeCount());
+
+        Runner.resourceMgr().removeAgent("sub_agent_2", null, TagMatchStrategy.ALL, true);
+        Runner.resourceMgr().removeAgent("sub_agent_1", null, TagMatchStrategy.ALL, true);
+        Runner.resourceMgr().removeAgent("main_agent", null, TagMatchStrategy.ALL, true);
+        Runner.resourceMgr().removeTool(readTool.getCard().getId(), null, TagMatchStrategy.ALL, true);
     }
 }

@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python's {@code test_context_model.py} in
  * {@code tests.unit_tests.core.context_engine.test_context_model}.
  */
-class ModelContextTest {
+public class ModelContextTest {
 
     // ===================== Helper Methods =====================
 

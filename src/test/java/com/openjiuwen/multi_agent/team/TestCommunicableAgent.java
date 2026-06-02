@@ -4,82 +4,149 @@
 
 package com.openjiuwen.multi_agent.team;
 
-import org.junit.jupiter.api.Test;
+import com.openjiuwen.core.multiagent.teamruntime.CommunicableAgent;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for communicable agent.
+ * Unit tests for CommunicableAgent mixin behavior.
  *
  * <p>Mirrors Python's {@code test_communicable_agent.py} in
  * {@code tests.unit_tests.multi_agent.team}.
  */
 class TestCommunicableAgent {
 
+    static class SimpleAgent implements CommunicableAgent {
+    }
+
     @Nested
-    class TestCommunicableAgentCreation {
+    class TestCommunicableAgentBinding {
 
         @Test
-        void testCreateAgent() {
-            // Agent should be created
-            assertTrue(true, "Create agent test placeholder");
+        void testIsBoundFalseBeforeBinding() {
+            assertFalse(new SimpleAgent().isBound());
         }
 
         @Test
-        void testAgentCard() {
-            // Agent should have card
-            assertTrue(true, "Agent card test placeholder");
+        void testIsBoundTrueAfterBindRuntime() {
+            SimpleAgent agent = new SimpleAgent();
+            agent.bindRuntime(new TeamRuntime(), "agent_x");
+
+            assertTrue(agent.isBound());
         }
 
         @Test
-        void testAgentId() {
-            // Agent should have ID
-            assertTrue(true, "Agent ID test placeholder");
+        void testRuntimePropertyReturnsBoundRuntime() {
+            SimpleAgent agent = new SimpleAgent();
+            TeamRuntime runtime = new TeamRuntime();
+
+            agent.bindRuntime(runtime, "agent_x");
+
+            assertSame(runtime, agent.getRuntime());
+        }
+
+        @Test
+        void testAgentIdPropertyReturnsBoundId() {
+            SimpleAgent agent = new SimpleAgent();
+            agent.bindRuntime(new TeamRuntime(), "my_agent");
+
+            assertEquals("my_agent", agent.getAgentId());
+        }
+
+        @Test
+        void testRuntimePropertyRaisesWhenNotBound() {
+            assertThrows(Exception.class, () -> new SimpleAgent().getRuntime());
+        }
+
+        @Test
+        void testAgentIdPropertyRaisesWhenNotBound() {
+            assertThrows(Exception.class, () -> new SimpleAgent().getAgentId());
+        }
+
+        @Test
+        void testBindRuntimeIdempotentSameRuntimeSameId() {
+            SimpleAgent agent = new SimpleAgent();
+            TeamRuntime runtime = new TeamRuntime();
+
+            agent.bindRuntime(runtime, "agent_x");
+            agent.bindRuntime(runtime, "agent_x");
+
+            assertEquals("agent_x", agent.getAgentId());
+            assertSame(runtime, agent.getRuntime());
+        }
+
+        @Test
+        void testBindRuntimeRebindDifferentRuntimeWarns() {
+            SimpleAgent agent = new SimpleAgent();
+            TeamRuntime runtime1 = new TeamRuntime();
+            TeamRuntime runtime2 = new TeamRuntime();
+
+            agent.bindRuntime(runtime1, "agent_x");
+            agent.bindRuntime(runtime2, "agent_y");
+
+            assertEquals("agent_y", agent.getAgentId());
+            assertSame(runtime2, agent.getRuntime());
         }
     }
 
     @Nested
-    class TestCommunicableAgentSend {
+    class TestCommunicableAgentMessaging {
+        private SimpleAgent agent;
+        private TeamRuntime runtime;
 
-        @Test
-        void testSendMessage() {
-            // Send message should work
-            assertTrue(true, "Send message test placeholder");
+        @BeforeEach
+        void setup() {
+            agent = new SimpleAgent();
+            runtime = new TeamRuntime();
+            agent.bindRuntime(runtime, "sender_agent");
         }
 
         @Test
-        void testSendToTarget() {
-            // Send to target should work
-            assertTrue(true, "Send to target test placeholder");
+        void testSendMethodAcceptsSessionIdParameter() throws NoSuchMethodException {
+            Method method = CommunicableAgent.class.getMethod("send", Object.class, String.class, String.class);
+
+            assertEquals(3, method.getParameterCount());
         }
 
         @Test
-        void testSendWithEnvelope() {
-            // Send with envelope should work
-            assertTrue(true, "Send with envelope test placeholder");
-        }
-    }
+        void testSendMethodAcceptsTimeoutParameter() throws NoSuchMethodException {
+            Method method = CommunicableAgent.class.getMethod(
+                    "send", Object.class, String.class, String.class, Double.class);
 
-    @Nested
-    class TestCommunicableAgentReceive {
-
-        @Test
-        void testReceiveMessage() {
-            // Receive message should work
-            assertTrue(true, "Receive message test placeholder");
+            assertEquals(4, method.getParameterCount());
         }
 
         @Test
-        void testReceiveFromEnvelope() {
-            // Receive from envelope should work
-            assertTrue(true, "Receive from envelope test placeholder");
+        void testPublishMethodAcceptsSessionIdParameter() throws NoSuchMethodException {
+            Method method = CommunicableAgent.class.getMethod("publish", Object.class, String.class, String.class);
+
+            assertEquals(3, method.getParameterCount());
         }
 
         @Test
-        void testReceiveBroadcast() {
-            // Receive broadcast should work
-            assertTrue(true, "Receive broadcast test placeholder");
+        void testAgentHasSendMethod() {
+            assertDoesNotThrow(() -> agent.getClass().getMethod("send", Object.class, String.class, String.class));
+        }
+
+        @Test
+        void testAgentHasPublishMethod() {
+            assertDoesNotThrow(() -> agent.getClass().getMethod("publish", Object.class, String.class, String.class));
+        }
+
+        @Test
+        void testAgentHasSubscribeMethod() {
+            assertDoesNotThrow(() -> agent.getClass().getMethod("subscribe", String.class));
+        }
+
+        @Test
+        void testAgentHasUnsubscribeMethod() {
+            assertDoesNotThrow(() -> agent.getClass().getMethod("unsubscribe", String.class));
         }
     }
 }

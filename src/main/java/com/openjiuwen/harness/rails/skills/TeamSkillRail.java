@@ -15,9 +15,11 @@ import com.openjiuwen.agent_evolving.checkpointing.PendingChange;
 import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
 import com.openjiuwen.agent_evolving.optimizer.TeamSkillOptimizer;
 import com.openjiuwen.agent_evolving.optimizer.skill_call.ExperienceScorer;
+import com.openjiuwen.agent_evolving.trajectory.TeamTrajectoryAggregator;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryBuilder;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agent_evolving.trajectory.TrajectoryStore;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.memory.lite.Frontmatter;
 import com.openjiuwen.core.operator.skill_call.SkillCallOperator;
@@ -69,8 +71,18 @@ public class TeamSkillRail extends EvolutionRail {
     private static final TypeReference<List<Map<String, Object>>> LIST_OF_MAPS =
             new TypeReference<>() {
             };
+    private static final TypeReference<Map<String, Object>> MAP_OF_OBJECTS =
+            new TypeReference<>() {
+            };
     private static final Pattern JSON_BLOCK_PATTERN =
             Pattern.compile("```(?:json)?\\s*\\n?([\\s\\S]*?)```", Pattern.MULTILINE);
+    private static final Pattern LEGACY_SKILL_MD_PATTERN =
+            Pattern.compile("[/\\\\]([^/\\\\]+)[/\\\\]SKILL\\.md", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SKILLS_PATH_PATTERN =
+            Pattern.compile("[/\\\\]skills[/\\\\]([^/\\\\]+)(?=[/\\\\])", Pattern.CASE_INSENSITIVE);
+    private static final Pattern INLINE_SKILL_TOOL_PATTERN =
+            Pattern.compile("\\bskill_tool\\s*\\(\\s*skill_name\\s*=\\s*['\"]?([A-Za-z0-9._-]+)['\"]?",
+                    Pattern.CASE_INSENSITIVE);
 
     public static final double DEFAULT_TEAM_EVOLUTION_TOTAL_TIMEOUT_SECS = 600.0;
     public static final LlmResilience.LLMInvokePolicy TEAM_USER_REQUEST_LLM_POLICY =
@@ -179,6 +191,7 @@ public class TeamSkillRail extends EvolutionRail {
     private final List<OutputSchema> pendingApprovalEvents = Collections.synchronizedList(new ArrayList<>());
     private final List<Map<String, Object>> pendingEvolutionOutcomes =
             Collections.synchronizedList(new ArrayList<>());
+    private final TrajectoryStore teamTrajectoryStore;
     private volatile boolean evolutionInProgress;
     private String teamId;
     private Path trajectoriesDir;
@@ -233,12 +246,52 @@ public class TeamSkillRail extends EvolutionRail {
     }
 
     public TeamSkillRail(
+            String skillsDir,
+            Model llm,
+            String model,
+            String language,
+            boolean autoSave,
+            boolean asyncEvolution,
+            TrajectoryStore teamTrajectoryStore,
+            LlmResilience.LLMInvokePolicy userRequestLlmPolicy,
+            LlmResilience.LLMInvokePolicy trajectoryIssueLlmPolicy,
+            LlmResilience.LLMInvokePolicy patchLlmPolicy,
+            LlmResilience.LLMInvokePolicy evaluateLlmPolicy,
+            LlmResilience.LLMInvokePolicy simplifyLlmPolicy,
+            double evolutionTotalTimeoutSecs
+    ) {
+        this(new FileEvolutionStore(skillsDir), llm, model, language, autoSave, asyncEvolution,
+                teamTrajectoryStore, userRequestLlmPolicy, trajectoryIssueLlmPolicy, patchLlmPolicy,
+                evaluateLlmPolicy, simplifyLlmPolicy, evolutionTotalTimeoutSecs);
+    }
+
+    public TeamSkillRail(
             TeamSkillStore store,
             Model llm,
             String model,
             String language,
             boolean autoSave,
             boolean asyncEvolution,
+            LlmResilience.LLMInvokePolicy userRequestLlmPolicy,
+            LlmResilience.LLMInvokePolicy trajectoryIssueLlmPolicy,
+            LlmResilience.LLMInvokePolicy patchLlmPolicy,
+            LlmResilience.LLMInvokePolicy evaluateLlmPolicy,
+            LlmResilience.LLMInvokePolicy simplifyLlmPolicy,
+            double evolutionTotalTimeoutSecs
+    ) {
+        this(store, llm, model, language, autoSave, asyncEvolution, null, userRequestLlmPolicy,
+                trajectoryIssueLlmPolicy, patchLlmPolicy, evaluateLlmPolicy, simplifyLlmPolicy,
+                evolutionTotalTimeoutSecs);
+    }
+
+    public TeamSkillRail(
+            TeamSkillStore store,
+            Model llm,
+            String model,
+            String language,
+            boolean autoSave,
+            boolean asyncEvolution,
+            TrajectoryStore teamTrajectoryStore,
             LlmResilience.LLMInvokePolicy userRequestLlmPolicy,
             LlmResilience.LLMInvokePolicy trajectoryIssueLlmPolicy,
             LlmResilience.LLMInvokePolicy patchLlmPolicy,
@@ -267,20 +320,33 @@ public class TeamSkillRail extends EvolutionRail {
         this.trajectoryIssueLlmPolicy =
                 trajectoryIssueLlmPolicy != null ? trajectoryIssueLlmPolicy : TEAM_TRAJECTORY_ISSUE_LLM_POLICY;
         this.evolutionTotalTimeoutSecs = evolutionTotalTimeoutSecs;
+        this.teamTrajectoryStore = teamTrajectoryStore;
         LOG.info("[TeamSkillRail] initialized: skillsDir={}, model={}, autoSave={}",
                 this.store.primaryBaseDir(), model, autoSave);
     }
 
     public TeamSkillRail(TeamSkillStore store, TeamSkillOptimizer optimizer, ExperienceScorer scorer) {
+        this(store, optimizer, scorer, false, true, null);
+    }
+
+    public TeamSkillRail(
+            TeamSkillStore store,
+            TeamSkillOptimizer optimizer,
+            ExperienceScorer scorer,
+            boolean autoSave,
+            boolean asyncEvolution,
+            TrajectoryStore teamTrajectoryStore
+    ) {
         super(EvolutionTrigger.MANUAL);
         this.store = store != null ? store : new FileEvolutionStore(defaultSkillsDir());
         this.optimizer = optimizer;
         this.scorer = scorer;
-        this.autoSave = false;
-        this.asyncEvolution = true;
+        this.autoSave = autoSave;
+        this.asyncEvolution = asyncEvolution;
         this.userRequestLlmPolicy = TEAM_USER_REQUEST_LLM_POLICY;
         this.trajectoryIssueLlmPolicy = TEAM_TRAJECTORY_ISSUE_LLM_POLICY;
         this.evolutionTotalTimeoutSecs = DEFAULT_TEAM_EVOLUTION_TOTAL_TIMEOUT_SECS;
+        this.teamTrajectoryStore = teamTrajectoryStore;
     }
 
     public TeamSkillStore store() {
@@ -386,8 +452,24 @@ public class TeamSkillRail extends EvolutionRail {
         this.trajectoriesDir = trajectoriesDir;
     }
 
+    public TrajectoryStore getTeamTrajectoryStore() {
+        return teamTrajectoryStore;
+    }
+
+    public boolean isEvolutionInProgress() {
+        return evolutionInProgress;
+    }
+
     public Map<String, PendingChange> getPendingPatchSnapshots() {
         return pendingPatchSnapshots;
+    }
+
+    public List<Map<String, Object>> drainEvolutionOutcomes() {
+        synchronized (pendingEvolutionOutcomes) {
+            List<Map<String, Object>> outcomes = new ArrayList<>(pendingEvolutionOutcomes);
+            pendingEvolutionOutcomes.clear();
+            return outcomes;
+        }
     }
 
     public List<OutputSchema> getPendingApprovalEventsSnapshot() {
@@ -479,6 +561,7 @@ public class TeamSkillRail extends EvolutionRail {
     public void runEvolution(Trajectory trajectory) {
         long start = System.nanoTime();
         try {
+            trajectory = aggregateTeamTrajectoryIfAvailable(trajectory);
             String usedSkill = detectUsedTeamSkill(trajectory);
             if (usedSkill == null || usedSkill.isBlank()) {
                 LOG.info("[TeamSkillRail] no existing skill detected, skipping");
@@ -514,6 +597,26 @@ public class TeamSkillRail extends EvolutionRail {
             emitProgress("evolution analysis failed: " + exc.getMessage());
         } finally {
             evolutionInProgress = false;
+        }
+    }
+
+    public Map<String, Object> snapshotForEvolution(
+            Trajectory trajectory,
+            List<Map<String, Object>> parsedMessages
+    ) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("trajectory", trajectory);
+        snapshot.put("parsed_messages", parsedMessages != null ? new ArrayList<>(parsedMessages) : new ArrayList<>());
+        snapshot.put("skill_name", "team-skill");
+        return snapshot;
+    }
+
+    public void runEvolution(Trajectory trajectory, Object ctx, Map<String, Object> snapshot) {
+        Object snapTrajectory = snapshot != null ? snapshot.get("trajectory") : null;
+        if (snapTrajectory instanceof Trajectory trajectoryFromSnapshot) {
+            runEvolution(trajectoryFromSnapshot);
+        } else {
+            runEvolution(trajectory);
         }
     }
 
@@ -694,6 +797,7 @@ public class TeamSkillRail extends EvolutionRail {
             return null;
         }
 
+        List<Object> skillToolPayloads = new ArrayList<>();
         List<String> texts = new ArrayList<>();
         for (TrajectoryStep step : trajectory.getSteps()) {
             if (step == null || !"tool".equals(step.getKind())) {
@@ -702,21 +806,12 @@ public class TeamSkillRail extends EvolutionRail {
             Object detail = step.getDetail();
             Object toolName = readValue(detail, "tool_name");
             if ("skill_tool".equals(String.valueOf(toolName))) {
-                texts.add(String.valueOf(readValue(detail, "call_args")));
+                skillToolPayloads.add(readValue(detail, "call_args"));
             }
             texts.add(String.valueOf(readValue(detail, "call_args")));
             texts.add(String.valueOf(readValue(detail, "call_result")));
-            texts.add(String.valueOf(step.getInputs()));
-            texts.add(String.valueOf(step.getOutputs()));
         }
-        String combined = String.join("\n", texts).toLowerCase(Locale.ROOT);
-        for (String skill : knownSkills) {
-            String lower = skill.toLowerCase(Locale.ROOT);
-            if (combined.contains(lower) || combined.contains(lower + "/skill.md")) {
-                return skill;
-            }
-        }
-        return null;
+        return inferSkillFromTexts(knownSkills, skillToolPayloads, texts);
     }
 
     public Optional<UserIntent> detectUserRequest(List<Map<String, Object>> messages, String teamSkillContent) {
@@ -887,6 +982,27 @@ public class TeamSkillRail extends EvolutionRail {
         }
     }
 
+    private Trajectory aggregateTeamTrajectoryIfAvailable(Trajectory trajectory) {
+        if (teamTrajectoryStore == null || trajectory == null || trajectory.getSessionId() == null
+                || trajectory.getSessionId().isBlank()) {
+            return trajectory;
+        }
+        TeamTrajectoryAggregator aggregator = new TeamTrajectoryAggregator(
+                teamTrajectoryStore,
+                teamId != null && !teamId.isBlank() ? teamId : "unknown");
+        TeamTrajectoryAggregator.TeamTrajectory teamTrajectory =
+                aggregator.aggregate(trajectory.getSessionId(), true);
+        if (teamTrajectory == null || teamTrajectory.getMembers() == null || teamTrajectory.getMembers().isEmpty()) {
+            return trajectory;
+        }
+        Trajectory combined = teamTrajectory.getCombined();
+        int memberCount = combined.getMeta() != null && combined.getMeta().get("member_count") instanceof Number number
+                ? number.intValue() : teamTrajectory.getMembers().size();
+        int stepCount = combined.getSteps() != null ? combined.getSteps().size() : 0;
+        emitProgress("aggregated " + memberCount + " members, " + stepCount + " collaborative steps");
+        return combined;
+    }
+
     private void handlePatchRecord(EvolutionRecord record, String skillName) {
         EvolutionPatch change = record.getChange();
         LOG.info("[TeamSkillRail] PATCH generated: section='{}', contentLen={}",
@@ -992,6 +1108,111 @@ public class TeamSkillRail extends EvolutionRail {
             }
         }
         return null;
+    }
+
+    private static String inferSkillFromTexts(
+            Set<String> knownSkills,
+            List<Object> skillToolPayloads,
+            List<String> texts
+    ) {
+        if (knownSkills == null || knownSkills.isEmpty()) {
+            return null;
+        }
+        Map<String, SkillReferenceScore> hits = new LinkedHashMap<>();
+        for (Object payload : skillToolPayloads) {
+            String skillName = extractSkillToolName(payload);
+            if (knownSkills.contains(skillName)) {
+                hits.computeIfAbsent(skillName, ignored -> new SkillReferenceScore()).skillToolHits++;
+            }
+        }
+        for (String text : texts) {
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            collectPatternHits(text, INLINE_SKILL_TOOL_PATTERN, knownSkills, hits, "skill_tool");
+            collectPatternHits(text, SKILLS_PATH_PATTERN, knownSkills, hits, "skills_path");
+            collectPatternHits(text, LEGACY_SKILL_MD_PATTERN, knownSkills, hits, "legacy_skill_md");
+        }
+        if (hits.isEmpty()) {
+            String combined = String.join("\n", texts).toLowerCase(Locale.ROOT);
+            for (String skill : knownSkills) {
+                String lower = skill.toLowerCase(Locale.ROOT);
+                if (combined.contains(lower) || combined.contains(lower + "/skill.md")) {
+                    return skill;
+                }
+            }
+        }
+        return hits.entrySet().stream()
+                .max((left, right) -> left.getValue().compareTo(right.getValue()))
+                .map(Map.Entry::getKey)
+                .orElse(null);
+    }
+
+    private static void collectPatternHits(
+            String text,
+            Pattern pattern,
+            Set<String> knownSkills,
+            Map<String, SkillReferenceScore> hits,
+            String kind
+    ) {
+        Matcher matcher = pattern.matcher(text);
+        while (matcher.find()) {
+            String skillName = matcher.group(1);
+            if (!knownSkills.contains(skillName)) {
+                continue;
+            }
+            SkillReferenceScore score = hits.computeIfAbsent(skillName, ignored -> new SkillReferenceScore());
+            switch (kind) {
+                case "skill_tool" -> score.skillToolHits++;
+                case "skills_path" -> score.skillsPathHits++;
+                case "legacy_skill_md" -> score.legacySkillMdHits++;
+                default -> {
+                    // No-op for unknown score kinds.
+                }
+            }
+        }
+    }
+
+    private static String extractSkillToolName(Object payload) {
+        if (payload instanceof Map<?, ?> map) {
+            Object value = map.get("skill_name");
+            if (value == null) {
+                value = map.get("skillName");
+            }
+            return value != null ? String.valueOf(value) : "";
+        }
+        if (payload instanceof String text && !text.isBlank()) {
+            try {
+                Map<String, Object> parsed = MAPPER.readValue(text, MAP_OF_OBJECTS);
+                Object value = parsed.get("skill_name");
+                if (value == null) {
+                    value = parsed.get("skillName");
+                }
+                return value != null ? String.valueOf(value) : "";
+            } catch (JsonProcessingException ignored) {
+                return "";
+            }
+        }
+        return "";
+    }
+
+    private static final class SkillReferenceScore implements Comparable<SkillReferenceScore> {
+        private int skillToolHits;
+        private int skillsPathHits;
+        private int legacySkillMdHits;
+
+        @Override
+        public int compareTo(SkillReferenceScore other) {
+            int bySkillTool = Integer.compare(skillToolHits, other.skillToolHits);
+            if (bySkillTool != 0) {
+                return bySkillTool;
+            }
+            int bySkillsPath = Integer.compare(skillsPathHits, other.skillsPathHits);
+            if (bySkillsPath != 0) {
+                return bySkillsPath;
+            }
+            return Integer.compare(legacySkillMdHits, other.legacySkillMdHits);
+        }
     }
 
     private static String fixJsonText(String text) {

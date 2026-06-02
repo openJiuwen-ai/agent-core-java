@@ -8,13 +8,17 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,9 +46,21 @@ public class HierarchicalTeam extends BaseTeam {
     private final ConcurrentHashMap<String, java.util.List<AgentCard>> pendingChildren = new ConcurrentHashMap<>();
     
     public HierarchicalTeam(TeamCard card, HierarchicalTeamConfig config) {
-        super(card, config);
+        this(card, config, null);
+    }
+
+    public HierarchicalTeam(TeamCard card, HierarchicalTeamConfig config, TeamRuntime runtime) {
+        super(card, config, runtime);
+        if (config == null || config.getRootAgent() == null) {
+            throw new IllegalArgumentException("rootAgent is required");
+        }
         this.hierarchicalConfig = config;
-        this.rootAgentId = config.getRootAgent() != null ? config.getRootAgent().getId() : "";
+        this.rootAgentId = config.getRootAgent().getId();
+    }
+
+    @Override
+    public HierarchicalTeam addAgent(AgentCard card, Supplier<?> provider) {
+        return addAgent(card, provider, null);
     }
     
     /**
@@ -58,6 +74,28 @@ public class HierarchicalTeam extends BaseTeam {
         }
         
         return this;
+    }
+
+    /**
+     * Wire pending child cards into their parent agents' ability managers.
+     * <p>
+     * Mirrors Python's protected {@code _setup_hierarchy}.
+     */
+    public void setupHierarchy() {
+        if (pendingChildren.isEmpty()) {
+            return;
+        }
+        pendingChildren.forEach((parentId, childCards) -> {
+            Object parentAgent = runtime.createAgent(parentId);
+            Object abilityManager = resolveAbilityManager(parentAgent);
+            if (abilityManager == null) {
+                return;
+            }
+            for (AgentCard childCard : childCards) {
+                invokeAbilityManagerAdd(abilityManager, childCard);
+            }
+        });
+        pendingChildren.clear();
     }
     
     /**
@@ -94,20 +132,21 @@ public class HierarchicalTeam extends BaseTeam {
      */
     @Override
     public CompletableFuture<Object> invoke(Object input) {
+        return invoke(input, null);
+    }
+
+    @Override
+    public CompletableFuture<Object> invoke(Object input, Session session) {
         assertReady();
-        
-        String sessionId = "hierarchical_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        setupHierarchy();
+
+        String sessionId = session != null ? session.getSessionId() : resolveSessionId(input, "hierarchical_");
         
         LOG.debug("[HierarchicalTeam] invoke start session_id={} root={}", sessionId, rootAgentId);
         
         double timeout = hierarchicalConfig.getP2pTimeout();
         
-        // Use runtime.send to invoke supervisor/root agent
-        // Python: result = await self.runtime.send(message=message, recipient=self._supervisor_id, ...)
-        return runtime.getMessageBus().send(input, rootAgentId,
-                Optional.ofNullable(card.getId()),
-                Optional.of(sessionId),
-                Optional.of(timeout))
+        return runtime.send(input, rootAgentId, card.getId(), sessionId, timeout)
             .whenComplete((result, error) -> {
                 if (error != null) {
                     LOG.error("[HierarchicalTeam] invoke failed session_id={}: {}", sessionId, error.getMessage());
@@ -133,20 +172,21 @@ public class HierarchicalTeam extends BaseTeam {
      */
     @Override
     public Stream<Object> stream(Object input) {
+        return stream(input, null);
+    }
+
+    @Override
+    public Stream<Object> stream(Object input, Session session) {
         assertReady();
-        
-        String sessionId = "hierarchical_stream_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        setupHierarchy();
+
+        String sessionId = session != null ? session.getSessionId() : resolveSessionId(input, "hierarchical_stream_");
         
         LOG.debug("[HierarchicalTeam] stream start session_id={} root={}", sessionId, rootAgentId);
-        
-        try {
-            Object result = invoke(input).join();
-            LOG.debug("[HierarchicalTeam] stream completed session_id={}", sessionId);
-            return Stream.of(result);
-        } catch (Exception e) {
-            LOG.error("[HierarchicalTeam] stream failed session_id={}: {}", sessionId, e.getMessage());
-            return Stream.empty();
-        }
+
+        Object result = runtime.send(input, rootAgentId, card.getId(), sessionId, hierarchicalConfig.getP2pTimeout()).join();
+        LOG.debug("[HierarchicalTeam] stream completed session_id={}", sessionId);
+        return Stream.of(result);
     }
     
     public String getRootAgentId() {
@@ -158,5 +198,51 @@ public class HierarchicalTeam extends BaseTeam {
      */
     public java.util.List<AgentCard> getPendingChildren(String agentId) {
         return pendingChildren.getOrDefault(agentId, java.util.Collections.emptyList());
+    }
+
+    private static String resolveSessionId(Object input, String prefix) {
+        if (input instanceof Map<?, ?> map) {
+            Object conversationId = map.get("conversation_id");
+            if (conversationId != null) {
+                return conversationId.toString();
+            }
+        }
+        return prefix + java.util.UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static Object resolveAbilityManager(Object parentAgent) {
+        if (parentAgent == null) {
+            return null;
+        }
+        try {
+            Method method = parentAgent.getClass().getMethod("getAbilityManager");
+            return method.invoke(parentAgent);
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                Field field = parentAgent.getClass().getDeclaredField("abilityManager");
+                field.setAccessible(true);
+                return field.get(parentAgent);
+            } catch (ReflectiveOperationException ignoredAgain) {
+                return null;
+            }
+        }
+    }
+
+    private static void invokeAbilityManagerAdd(Object abilityManager, AgentCard childCard) {
+        try {
+            Method method = abilityManager.getClass().getMethod("add", AgentCard.class);
+            method.setAccessible(true);
+            method.invoke(abilityManager, childCard);
+        } catch (NoSuchMethodException e) {
+            try {
+                Method method = abilityManager.getClass().getMethod("add", Object.class);
+                method.setAccessible(true);
+                method.invoke(abilityManager, childCard);
+            } catch (ReflectiveOperationException ex) {
+                throw new IllegalStateException("abilityManager.add failed", ex);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("abilityManager.add failed", e);
+        }
     }
 }

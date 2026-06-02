@@ -76,7 +76,7 @@ public class LspTool extends AbstractHarnessTool {
         return new ToolOutput(true, payload.payload(), null);
     }
 
-    static LspOperation normalizeOperation(String operation) {
+    public static LspOperation normalizeOperation(String operation) {
         if (operation == null || operation.isBlank()) {
             return null;
         }

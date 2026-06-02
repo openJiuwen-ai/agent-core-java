@@ -46,7 +46,7 @@ class TestManagedBrowser {
 
         // Override to control behavior in tests
         @Override
-        protected boolean isEndpointReady() {
+        public boolean isEndpointReady() {
             if (endpointReadyOverride != null) {
                 return endpointReadyOverride;
             }

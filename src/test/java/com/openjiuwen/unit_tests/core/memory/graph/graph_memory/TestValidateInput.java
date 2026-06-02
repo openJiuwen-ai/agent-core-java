@@ -9,6 +9,7 @@ import com.openjiuwen.core.memory.config.EpisodeType;
 import com.openjiuwen.core.memory.graph.graph_memory.ValidateInput;
 import org.junit.jupiter.api.*;
 
+import java.lang.reflect.Method;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -64,14 +65,12 @@ class TestValidateInput {
         @Test
         @Tag("level0")
         void testContentFmtKwargsNotMapRaises() {
-            /** The Java version enforces Map type at compile time, so this test verifies null handling */
-            // In Java, we can't pass a non-Map, so we test with null which is handled differently
-            ValidateInput.validateAddMemoryInput(
-                    32,
-                    EpisodeType.CONVERSATION,
-                    "user-1",
-                    null
-            );
+            /** Java's static typing rejects non-Map content_fmt_kwargs before method execution. */
+            assertThrows(IllegalArgumentException.class, () -> {
+                Method method = ValidateInput.class.getMethod(
+                        "validateAddMemoryInput", int.class, EpisodeType.class, String.class, Map.class);
+                method.invoke(null, 32, EpisodeType.CONVERSATION, "user-1", "not a dict");
+            });
         }
 
         @Test
@@ -212,8 +211,60 @@ class TestValidateInput {
                 ValidateInput.validateSearchInput(
                         "   ",
                         "user-1",
+                    Arrays.asList(true, true, true)
+                );
+            });
+        }
+
+        @Test
+        @Tag("level0")
+        void testQueryNotStringRaises() {
+            /** Java's static typing rejects non-string query arguments before method execution. */
+            assertThrows(IllegalArgumentException.class, () -> {
+                Method method = ValidateInput.class.getMethod(
+                        "validateSearchInput", String.class, Object.class, List.class);
+                method.invoke(null, 123, "user-1", Arrays.asList(true, true, true));
+            });
+        }
+
+        @Test
+        @Tag("level0")
+        void testUserIdInvalidRaises() {
+            /** Invalid user_id (empty, too long, invalid item in list) raises */
+            assertThrows(BaseError.class, () -> {
+                ValidateInput.validateSearchInput(
+                        "q",
+                        "",
                         Arrays.asList(true, true, true)
                 );
+            });
+
+            assertThrows(BaseError.class, () -> {
+                ValidateInput.validateSearchInput(
+                        "q",
+                        "x".repeat(33),
+                        Arrays.asList(true, true, true)
+                );
+            });
+
+            assertThrows(BaseError.class, () -> {
+                ValidateInput.validateSearchInput(
+                        "q",
+                        Arrays.asList("valid", ""),
+                        Arrays.asList(true, true, true)
+                );
+            });
+        }
+
+        @Test
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        @Tag("level0")
+        void testSettingsNotAllBoolRaises() {
+            /** settings (entity, relation, episode) must all be booleans */
+            List invalidSettings = Arrays.asList(true, 1, true);
+
+            assertThrows(BaseError.class, () -> {
+                ValidateInput.validateSearchInput("q", "user-1", invalidSettings);
             });
         }
     }

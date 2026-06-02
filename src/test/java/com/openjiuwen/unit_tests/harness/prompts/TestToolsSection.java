@@ -1,121 +1,58 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness.prompts;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.harness.prompts.tools.ToolDescriptionRegistry;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for harness prompts tools section.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/harness/prompts/test_tools_section.py}.
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_PROMPT_TESTS", matches = "true")
-public class TestToolsSection {
+class TestToolsSection {
 
-    // ---------------------------------------------------------------------------
-    // Section Format Tests
-    // ---------------------------------------------------------------------------
-
-    @Nested
-    class TestSectionFormat {
-
-        @Test
-        @DisplayName("Test tools section header")
-        @Tag("level0")
-        void testToolsSectionHeader() {
-            String header = "# Available Tools";
-            
-            assertThat(header).contains("Tools");
-        }
-
-        @Test
-        @DisplayName("Test tools section priority")
-        @Tag("level0")
-        void testToolsSectionPriority() {
-            int priority = 10;
-            
-            assertThat(priority).isEqualTo(10);
-        }
+    @Test
+    void testReturnsNoneWhenNoDescriptions() {
+        assertThat(ToolDescriptionRegistry.buildToolsSection(null, "cn")).isNull();
+        assertThat(ToolDescriptionRegistry.buildToolsSection(Map.of(), "cn")).isNull();
     }
 
-    // ---------------------------------------------------------------------------
-    // Section Rendering Tests
-    // ---------------------------------------------------------------------------
+    @Test
+    void testReturnsSectionWithDescriptions() {
+        PromptSection section = ToolDescriptionRegistry.buildToolsSection(
+                Map.of("todo_create", "Create todos", "todo_list", "List todos"),
+                "cn"
+        );
 
-    @Nested
-    class TestSectionRendering {
-
-        @Test
-        @DisplayName("Test render single tool")
-        @Tag("level0")
-        void testRenderSingleTool() {
-            String rendered = """
-                - name: read_file
-                  description: Read file content
-                  parameters:
-                    - path (string, required): File path
-                """;
-            
-            assertThat(rendered).contains("read_file");
-            assertThat(rendered).contains("parameters");
-        }
-
-        @Test
-        @DisplayName("Test render multiple tools")
-        @Tag("level0")
-        void testRenderMultipleTools() {
-            List<String> toolNames = Arrays.asList("read_file", "write_file", "execute_code");
-            
-            assertThat(toolNames).hasSize(3);
-        }
-
-        @Test
-        @DisplayName("Test section localization")
-        @Tag("level0")
-        void testSectionLocalization() {
-            String language = "en";
-            String chineseHeader = "# 可用工具";
-            
-            assertThat(language).isEqualTo("en");
-            assertThat(chineseHeader).contains("工具");
-        }
+        assertThat(section).isNotNull();
+        assertThat(section.getName()).isEqualTo("tools");
+        assertThat(section.getPriority()).isEqualTo(40);
+        String rendered = section.render("cn");
+        assertThat(rendered).contains("todo_create");
+        assertThat(rendered).contains("todo_list");
     }
 
-    // ---------------------------------------------------------------------------
-    // Section Integration Tests
-    // ---------------------------------------------------------------------------
+    @Test
+    void testEnLanguage() {
+        PromptSection section = ToolDescriptionRegistry.buildToolsSection(Map.of("search", "Search the web"), "en");
 
-    @Nested
-    class TestSectionIntegration {
+        assertThat(section).isNotNull();
+        String rendered = section.render("en");
+        assertThat(rendered).contains("Available Tools");
+        assertThat(rendered).contains("search");
+    }
 
-        @Test
-        @DisplayName("Test tools section in full prompt")
-        @Tag("level0")
-        void testToolsSectionInFullPrompt() {
-            List<String> promptSections = Arrays.asList(
-                "role", "instruction", "external_memory", "tools", "constraints"
-            );
-            
-            assertThat(promptSections).contains("tools");
-            assertThat(promptSections.indexOf("tools")).isEqualTo(3);
-        }
+    @Test
+    void testCnLanguageHeader() {
+        PromptSection section = ToolDescriptionRegistry.buildToolsSection(Map.of("tool1", "desc1"), "cn");
 
-        @Test
-        @DisplayName("Test tools section with empty tools")
-        @Tag("level0")
-        void testToolsSectionWithEmptyTools() {
-            List<Object> tools = new ArrayList<>();
-            
-            assertThat(tools).isEmpty();
-        }
+        assertThat(section).isNotNull();
+        assertThat(section.render("cn")).contains("可用工具");
     }
 }
