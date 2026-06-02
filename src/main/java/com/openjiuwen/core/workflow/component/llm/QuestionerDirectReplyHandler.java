@@ -131,9 +131,7 @@ public class QuestionerDirectReplyHandler {
     private Map<String, Object> handleUserInteractState(Object inputs, NodeSessionApi session, ModelContext context) {
         int totalReads = state.getResponseNum() + 1;
         for (int i = 0; i < totalReads; i++) {
-            this.query = (i == 0)
-                    ? session.interact(state.getQuestion())
-                    : session.userLatestInput(state.getQuestion());
+            this.query = session.interact(state.getQuestion());
         }
         state.incrementResponseNum();
 

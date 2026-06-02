@@ -497,7 +497,7 @@ public class TaskScheduler {
     // ==================== Schedule Loop ====================
 
     private void scheduleLoop() {
-        Loggers.CONTROLLER.info("TaskScheduler schedule loop iteration");
+        Loggers.CONTROLLER.debug("TaskScheduler schedule loop iteration");
         if (!running) {
             return;
         }
