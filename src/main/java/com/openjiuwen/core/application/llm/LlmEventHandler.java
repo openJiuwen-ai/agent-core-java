@@ -24,6 +24,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -43,6 +44,7 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -360,7 +362,8 @@ public class LlmEventHandler extends EventHandler {
         task.setStatus(TaskStatus.WORKING);
 
         Object inputs = getTaskArguments(task);
-        Object result = Runner.runWorkflow(workflow, inputs, session, context);
+        ModelContext workflowContext = appContextEngine.createContext(workflowId, session.getInner());
+        Object result = Runner.runWorkflow(workflow, inputs, session, workflowContext);
 
         boolean isInterrupted = isWorkflowInterrupted(result);
         Loggers.CONTROLLER.info("Workflow result: interrupted={}", isInterrupted);
@@ -638,16 +641,55 @@ public class LlmEventHandler extends EventHandler {
 
         try {
             Model model = getModel();
-            AssistantMessage llmOutput = model.invoke(
+            Iterator<AssistantMessageChunk> streamIter = model.stream(
                     context.getMessages(), tools.isEmpty() ? null : tools,
                     null, null, agentConfig.getModel().modelInfo().getModelName(),
                     null, null, null, null, null
             );
 
-            // Parse tool calls into tasks
+            AssistantMessageChunk merged = null;
+            int streamIndex = 0;
+            while (streamIter != null && streamIter.hasNext()) {
+                AssistantMessageChunk chunk = streamIter.next();
+                if (chunk == null) {
+                    continue;
+                }
+                merged = merged == null ? chunk : merged.merge(chunk);
+
+                if (chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
+                    Map<String, Object> reasoningPayload = new HashMap<>();
+                    reasoningPayload.put("output", chunk.getReasoningContent());
+                    reasoningPayload.put("result_type", "answer");
+                    session.writeStream(new OutputSchema("llm_reasoning", streamIndex, reasoningPayload));
+                    streamIndex++;
+                }
+
+                if (chunk.getContent() != null && !chunk.getContent().toString().isEmpty()) {
+                    Map<String, Object> contentPayload = new HashMap<>();
+                    contentPayload.put("output", chunk.getContent());
+                    contentPayload.put("result_type", "answer");
+                    session.writeStream(new OutputSchema(LLM_OUTPUT, streamIndex, contentPayload));
+                    streamIndex++;
+                }
+            }
+
+            if (merged == null) {
+                throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_INVOKE_CALL_FAILED,
+                        "error_msg", "LLM returned empty response");
+            }
+
+            AssistantMessage llmOutput = AssistantMessage.builder()
+                    .role(merged.getRole() != null ? merged.getRole() : "assistant")
+                    .content(merged.getContent() != null ? merged.getContent() : "")
+                    .toolCalls(merged.getToolCalls() != null ? merged.getToolCalls() : List.of())
+                    .usageMetadata(merged.getUsageMetadata())
+                    .finishReason(merged.getFinishReason())
+                    .parserContent(merged.getParserContent())
+                    .reasoningContent(merged.getReasoningContent())
+                    .build();
+
             List<Task> tasks = parseLlmOutputToTasks(llmOutput, session);
 
-            // Add LLM output to context
             context.addMessages(AssistantMessage.builder()
                     .content(llmOutput.getContent())
                     .toolCalls(llmOutput.getToolCalls())
@@ -799,7 +841,6 @@ public class LlmEventHandler extends EventHandler {
     private Map<String, Object> sendFinalStream(String content, AgentSessionApi session) {
         Loggers.CONTROLLER.info("sendFinalStream called with content length={}, content='{}'",
                 content != null ? content.length() : -1, content);
-        writeLlmOutputChunks(content, session);
         Map<String, Object> payload = new HashMap<>();
         payload.put("output", content);
         payload.put("result_type", "answer");

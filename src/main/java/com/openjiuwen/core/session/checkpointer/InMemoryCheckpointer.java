@@ -306,7 +306,6 @@ public class InMemoryCheckpointer extends Checkpointer {
             Map<String, Object> updates = stateUpdatesBlobs.get(workflowId);
             if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
                 workflowState.setUpdates(deepCopyMap(updates));
-                workflowState.commit();
             }
         }
 
@@ -340,6 +339,8 @@ public class InMemoryCheckpointer extends Checkpointer {
             for (Map.Entry<String, Object> entry : inputs.getUserInputs().entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
                 Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
+                Loggers.SESSION.info("DEBUG processInteractiveInputs: nodeId={}, existingInput={}, type={}",
+                        entry.getKey(), interactiveInput, interactiveInput != null ? interactiveInput.getClass().getSimpleName() : "null");
                 List<Object> inputList;
                 if (interactiveInput instanceof List<?> existingInputs) {
                     inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
@@ -348,6 +349,7 @@ public class InMemoryCheckpointer extends Checkpointer {
                 } else {
                     inputList = List.of(entry.getValue());
                 }
+                Loggers.SESSION.info("DEBUG processInteractiveInputs: nodeId={}, newList={}", entry.getKey(), inputList);
                 nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
 

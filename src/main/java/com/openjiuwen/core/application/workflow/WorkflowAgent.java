@@ -7,6 +7,7 @@ package com.openjiuwen.core.application.workflow;
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.common.constants.ControllerType;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
@@ -210,24 +211,33 @@ public class WorkflowAgent extends ControllerAgent {
         for (Workflow workflow : workflows) {
             WorkflowCard card = workflow.getCard();
             getAbilityManager().add(card);
-            agentConfig.getWorkflows().add(WorkflowSchema.builder()
-                    .id(card.getId())
-                    .name(card.getName())
-                    .version(card.getVersion())
-                    .description(card.getDescription())
-                    .inputParams(card.getInputParams() instanceof Map
-                            ? (Map<String, Object>) card.getInputParams() : Map.of())
-                    .build());
-            String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
-            WorkflowCard resourceCard = WorkflowCard.builder()
-                    .id(workflowResourceId)
-                    .name(card.getName())
-                    .version(card.getVersion())
-                    .description(card.getDescription())
-                    .inputParams(card.getInputParams())
-                    .build();
-            if (canRegisterWorkflowResource) {
-                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
+            String workflowKey = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            boolean schemaExists = agentConfig.getWorkflows().stream()
+                    .anyMatch(ws -> WorkflowUtils.generateWorkflowKey(ws.getId(), ws.getVersion()).equals(workflowKey));
+            if (!schemaExists) {
+                agentConfig.getWorkflows().add(WorkflowSchema.builder()
+                        .id(card.getId())
+                        .name(card.getName())
+                        .version(card.getVersion())
+                        .description(card.getDescription())
+                        .inputParams(card.getInputParams() instanceof Map
+                                ? (Map<String, Object>) card.getInputParams() : Map.of())
+                        .build());
+                String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+                WorkflowCard resourceCard = WorkflowCard.builder()
+                        .id(workflowResourceId)
+                        .name(card.getName())
+                        .version(card.getVersion())
+                        .description(card.getDescription())
+                        .inputParams(card.getInputParams())
+                        .build();
+                if (canRegisterWorkflowResource) {
+                    try {
+                        Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
+                    } catch (Exception e) {
+                        Loggers.AGENT.warning("Failed to add workflow to resource manager: {}", e.getMessage());
+                    }
+                }
             }
         }
     }
@@ -288,9 +298,12 @@ public class WorkflowAgent extends ControllerAgent {
                 .map(OutputSchema.class::cast)
                 .filter(os -> "__interaction__".equals(os.getType()))
                 .map(Object.class::cast)
-                .toList();
+                .collect(java.util.stream.Collectors.toList());
         if (!interactionOutputs.isEmpty()) {
-            return new ControllerOutput(result.getType(), interactionOutputs);
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            normalized.put("output", new WorkflowOutput(interactionOutputs, WorkflowExecutionState.INPUT_REQUIRED));
+            normalized.put("result_type", "interrupt");
+            return new ControllerOutput(result.getType(), normalized);
         }
 
         OutputSchema finalAnswer = null;

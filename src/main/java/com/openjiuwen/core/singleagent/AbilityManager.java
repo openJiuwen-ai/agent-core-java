@@ -75,16 +75,28 @@ public class AbilityManager implements ToolRegistry {
 
     private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
-            String key = (toolCard.getName() == null || toolCard.getName().isBlank())
-                    ? toolCard.getId() : toolCard.getName();
+            String originalName = toolCard.getName();
+            String key = (originalName == null || originalName.isBlank())
+                    ? "None" : originalName;
+            if (originalName == null || originalName.isBlank()) {
+                Loggers.AGENT.info("Tool name is None, using 'None' as key, id=" + toolCard.getId());
+            }
             tools.put(key, toolCard);
         } else if (ability instanceof WorkflowCard wfCard) {
-            String key = (wfCard.getName() == null || wfCard.getName().isBlank())
-                    ? wfCard.getId() : wfCard.getName();
+            String originalName = wfCard.getName();
+            String key = (originalName == null || originalName.isBlank())
+                    ? "None" : originalName;
+            if (originalName == null || originalName.isBlank()) {
+                Loggers.AGENT.info("Workflow name is None, using 'None' as key, id=" + wfCard.getId());
+            }
             workflows.put(key, wfCard);
         } else if (ability instanceof AgentCard agentCard) {
-            String key = (agentCard.getName() == null || agentCard.getName().isBlank())
-                    ? agentCard.getId() : agentCard.getName();
+            String originalName = agentCard.getName();
+            String key = (originalName == null || originalName.isBlank())
+                    ? "None" : originalName;
+            if (originalName == null || originalName.isBlank()) {
+                Loggers.AGENT.info("Agent name is None, using 'None' as key, id=" + agentCard.getId());
+            }
             agents.put(key, agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
