@@ -311,7 +311,6 @@ public class ContextEvolutionRail extends EvolutionRail {
         return String.join("\n", transcript);
     }
 
-    @Override
     protected void runEvolution() {
         LOG.debug("[ContextEvolutionRail] Running context evolution");
     }

@@ -4,9 +4,9 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.harness.rails.DeepAgentRail;
+import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,7 +91,7 @@ public class SkillEvolutionRail extends EvolutionRail {
      * - evolutionStore.persistChanges(changes)
      */
     @Override
-    protected void runEvolution() {
+    protected void runEvolution(Trajectory trajectory, AgentCallbackContext ctx, Map<String, Object> snapshot) {
         if (!autoScan) {
             LOG.info("[SkillEvolutionRail] autoScan disabled, skipping evolution");
             return;
@@ -185,6 +185,10 @@ public class SkillEvolutionRail extends EvolutionRail {
         return autoScan;
     }
 
+    public boolean isEvolutionEnabled() {
+        return true;
+    }
+
     /**
      * Set auto-scan mode.
      */
@@ -209,7 +213,8 @@ public class SkillEvolutionRail extends EvolutionRail {
     /**
      * Get evolution timeout budget in seconds.
      */
-    public double getEvolutionTotalTimeoutSecs() {
+    @Override
+    public Double getEvolutionTotalTimeoutSecs() {
         return evolutionTotalTimeoutSecs;
     }
 

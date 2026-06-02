@@ -47,6 +47,7 @@ public class DeepAgentConfig {
     private List<McpServerConfig> mcps = new ArrayList<>();
     private List<String> skills = new ArrayList<>();
     private boolean addGeneralPurposeAgent = false;
+    private boolean autoCreateWorkspace = true;
     private SessionToolkit sessionToolkit;
     private Map<String, Object> permissions = Map.of();
 
@@ -184,6 +185,18 @@ public class DeepAgentConfig {
 
     public void setAddGeneralPurposeAgent(boolean addGeneralPurposeAgent) {
         this.addGeneralPurposeAgent = addGeneralPurposeAgent;
+    }
+
+    public boolean isAutoCreateWorkspace() {
+        return autoCreateWorkspace;
+    }
+
+    public boolean getAutoCreateWorkspace() {
+        return autoCreateWorkspace;
+    }
+
+    public void setAutoCreateWorkspace(boolean autoCreateWorkspace) {
+        this.autoCreateWorkspace = autoCreateWorkspace;
     }
 
     public SessionToolkit getSessionToolkit() {

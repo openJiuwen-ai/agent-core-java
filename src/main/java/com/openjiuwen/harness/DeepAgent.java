@@ -17,6 +17,7 @@ import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.prompts.DeepAgentPromptBuilder;
 import com.openjiuwen.harness.schema.DeepAgentState;
+import com.openjiuwen.harness.workspace.DirectoryBuilder;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.nio.file.Path;
@@ -45,6 +46,7 @@ public class DeepAgent extends BaseAgent {
     private ReActAgentConfig reactConfig;
     private ReActAgent delegate;
     private DeepAgentPromptBuilder systemPromptBuilder;
+    private boolean workspaceInitialized;
 
     public DeepAgent(AgentCard card) {
         super(card);
@@ -53,6 +55,7 @@ public class DeepAgent extends BaseAgent {
         this.reactConfig = new ReActAgentConfig();
         this.delegate = new ReActAgent(card);
         this.systemPromptBuilder = new DeepAgentPromptBuilder("cn", DeepAgentPromptBuilder.PromptMode.FULL);
+        this.workspaceInitialized = false;
     }
 
     @Override
@@ -85,6 +88,7 @@ public class DeepAgent extends BaseAgent {
                 }
             }
         }
+        this.workspaceInitialized = false;
         return this;
     }
 
@@ -95,6 +99,10 @@ public class DeepAgent extends BaseAgent {
 
     public Workspace getWorkspace() {
         return config.getWorkspace();
+    }
+
+    public DeepAgentConfig getDeepConfig() {
+        return config;
     }
 
     public ReActAgent getDelegate() {
@@ -116,12 +124,35 @@ public class DeepAgent extends BaseAgent {
 
     @Override
     public Object invoke(Object inputs, Session session) {
+        ensureInitialized();
         return delegate.invoke(normalizeInputs(inputs), session);
     }
 
     @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        ensureInitialized();
         return delegate.stream(normalizeInputs(inputs), session, streamModes);
+    }
+
+    public void initWorkspace() {
+        if (config == null || config.getWorkspace() == null || config.getSysOperation() == null) {
+            return;
+        }
+        DirectoryBuilder builder = new DirectoryBuilder(
+                config.getSysOperation(),
+                config.getWorkspace().getRootPath());
+        builder.build(config.getWorkspace().getDirectories());
+        workspaceInitialized = true;
+    }
+
+    public void ensureInitialized() {
+        if (workspaceInitialized) {
+            return;
+        }
+        if (config == null || !config.getAutoCreateWorkspace() || config.getSysOperation() == null) {
+            return;
+        }
+        initWorkspace();
     }
 
     private static Object normalizeInputs(Object inputs) {

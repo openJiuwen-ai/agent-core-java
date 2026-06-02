@@ -24,7 +24,9 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.memory.lite.Frontmatter;
 import com.openjiuwen.core.operator.skill_call.SkillCallOperator;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.evolution.EvolutionRail;
+import com.openjiuwen.harness.rails.evolution.EvolutionTriggerPoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -195,7 +198,6 @@ public class TeamSkillRail extends EvolutionRail {
     private volatile boolean evolutionInProgress;
     private String teamId;
     private Path trajectoriesDir;
-    private TrajectoryBuilder builder;
 
     public TeamSkillRail() {
         this(new FileEvolutionStore(defaultSkillsDir()), null, "", "cn", false, true,
@@ -299,7 +301,7 @@ public class TeamSkillRail extends EvolutionRail {
             LlmResilience.LLMInvokePolicy simplifyLlmPolicy,
             double evolutionTotalTimeoutSecs
     ) {
-        super(EvolutionTrigger.MANUAL);
+        super(null, teamTrajectoryStore, true, EvolutionTriggerPoint.NONE, asyncEvolution);
         this.store = store != null ? store : new FileEvolutionStore(defaultSkillsDir());
         String debugDir = this.store.primaryBaseDir().resolveSibling("_debug").toString();
         this.optimizer = new TeamSkillOptimizer(
@@ -337,7 +339,7 @@ public class TeamSkillRail extends EvolutionRail {
             boolean asyncEvolution,
             TrajectoryStore teamTrajectoryStore
     ) {
-        super(EvolutionTrigger.MANUAL);
+        super(null, teamTrajectoryStore, true, EvolutionTriggerPoint.NONE, asyncEvolution);
         this.store = store != null ? store : new FileEvolutionStore(defaultSkillsDir());
         this.optimizer = optimizer;
         this.scorer = scorer;
@@ -417,7 +419,8 @@ public class TeamSkillRail extends EvolutionRail {
         return evolutionTotalTimeoutSecs;
     }
 
-    public double getEvolutionTotalTimeoutSecs() {
+    @Override
+    public Double getEvolutionTotalTimeoutSecs() {
         return evolutionTotalTimeoutSecs;
     }
 
@@ -440,6 +443,7 @@ public class TeamSkillRail extends EvolutionRail {
         this.builder = builder;
     }
 
+    @Override
     public TrajectoryBuilder getBuilder() {
         return builder;
     }
@@ -464,7 +468,9 @@ public class TeamSkillRail extends EvolutionRail {
         return pendingPatchSnapshots;
     }
 
-    public List<Map<String, Object>> drainEvolutionOutcomes() {
+    @Override
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public List drainEvolutionOutcomes() {
         synchronized (pendingEvolutionOutcomes) {
             List<Map<String, Object>> outcomes = new ArrayList<>(pendingEvolutionOutcomes);
             pendingEvolutionOutcomes.clear();
@@ -478,8 +484,11 @@ public class TeamSkillRail extends EvolutionRail {
         }
     }
 
-    public List<OutputSchema> drainPendingApprovalEvents(boolean wait, Double timeout) {
-        double effectiveTimeout = wait && timeout == null ? evolutionTotalTimeoutSecs : (timeout != null ? timeout : 0.0);
+    @Override
+    public List<OutputSchema> drainPendingApprovalEvents(boolean wait, Duration timeout) {
+        double effectiveTimeout = wait && timeout == null
+                ? evolutionTotalTimeoutSecs
+                : (timeout != null ? timeout.toMillis() / 1000.0 : 0.0);
         long deadline = System.nanoTime() + (long) (Math.max(effectiveTimeout, 0.0) * 1_000_000_000L);
         while (wait && pendingApprovalEvents.isEmpty() && System.nanoTime() < deadline) {
             try {
@@ -492,8 +501,15 @@ public class TeamSkillRail extends EvolutionRail {
         return collectPendingApprovalEvents();
     }
 
+    public List<OutputSchema> drainPendingApprovalEvents(boolean wait, Double timeout) {
+        Duration duration = timeout != null
+                ? Duration.ofMillis(Math.max(0L, Math.round(timeout * 1000.0)))
+                : null;
+        return drainPendingApprovalEvents(wait, duration);
+    }
+
     public List<OutputSchema> drainPendingApprovalEvents(boolean wait) {
-        return drainPendingApprovalEvents(wait, null);
+        return drainPendingApprovalEvents(wait, (Duration) null);
     }
 
     public CompletableFuture<List<OutputSchema>> drainPendingApprovalEventsAsync(boolean wait, Double timeout) {
@@ -600,6 +616,13 @@ public class TeamSkillRail extends EvolutionRail {
         }
     }
 
+    @Override
+    public Map<String, Object> snapshotForEvolution(Trajectory trajectory, AgentCallbackContext ctx) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(super.snapshotForEvolution(trajectory, ctx));
+        snapshot.put("skill_name", "team-skill");
+        return snapshot;
+    }
+
     public Map<String, Object> snapshotForEvolution(
             Trajectory trajectory,
             List<Map<String, Object>> parsedMessages
@@ -611,7 +634,8 @@ public class TeamSkillRail extends EvolutionRail {
         return snapshot;
     }
 
-    public void runEvolution(Trajectory trajectory, Object ctx, Map<String, Object> snapshot) {
+    @Override
+    protected void runEvolution(Trajectory trajectory, AgentCallbackContext ctx, Map<String, Object> snapshot) {
         Object snapTrajectory = snapshot != null ? snapshot.get("trajectory") : null;
         if (snapTrajectory instanceof Trajectory trajectoryFromSnapshot) {
             runEvolution(trajectoryFromSnapshot);
@@ -620,11 +644,11 @@ public class TeamSkillRail extends EvolutionRail {
         }
     }
 
-    @Override
-    protected void runEvolution() {
-        if (builder != null) {
-            runEvolution(builder.buildTrajectory());
-        }
+    public void runEvolution(Trajectory trajectory, Object ctx, Map<String, Object> snapshot) {
+        runEvolution(
+                trajectory,
+                ctx instanceof AgentCallbackContext callbackContext ? callbackContext : null,
+                snapshot);
     }
 
     public void onApprovePatch(String requestId) {

@@ -61,7 +61,7 @@ public class TrajectoryRail extends EvolutionRail {
      * @param trajectoryStore Optional trajectory store. If null, uses InMemoryTrajectoryStore.
      */
     public TrajectoryRail(TrajectoryStore trajectoryStore) {
-        super();
+        super(trajectoryStore, null, false, EvolutionTriggerPoint.NONE, true);
         this.trajectoryStore = trajectoryStore != null ? trajectoryStore : new InMemoryTrajectoryStore();
     }
 
@@ -78,15 +78,11 @@ public class TrajectoryRail extends EvolutionRail {
     public void init(Object agent) {
         LOG.info("[TrajectoryRail] Initialized with trajectory store: {}",
                 trajectoryStore.getClass().getSimpleName());
-        // Call parent init for evolution rail setup
-        super.init(agent);
     }
 
     @Override
     public void uninit(Object agent) {
         LOG.info("[TrajectoryRail] Uninitialized");
-        // Call parent uninit for cleanup
-        super.uninit(agent);
     }
 
     @Override

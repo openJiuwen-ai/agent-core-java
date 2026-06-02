@@ -4,6 +4,7 @@
 package com.openjiuwen.agent_evolving.agent_rl;
 
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.evolution.EvolutionRail;
 
 import java.util.LinkedHashMap;
@@ -36,6 +37,7 @@ public class RlRail extends EvolutionRail {
 
     public RlRail(String sessionId, String source, String caseId) {
         super();
+        setPriority(PRIORITY);
         this.sessionId = sessionId != null ? sessionId : "";
         this.source = source != null ? source : "rl_offline";
         this.caseId = caseId;
@@ -43,14 +45,14 @@ public class RlRail extends EvolutionRail {
     }
 
     @Override
-    protected void onBeforeInvoke(Object ctx) {
+    protected void onBeforeInvoke(AgentCallbackContext ctx) {
         llmStepCount = 0;
     }
 
     @Override
-    protected void onAfterModelCall(Object ctx, Object response) {
-        if (response instanceof TrajectoryStep step) {
-            processStep(step);
+    protected void onAfterModelCall(AgentCallbackContext ctx) {
+        if (getBuilder() != null && !getBuilder().getSteps().isEmpty()) {
+            processStep(getBuilder().getSteps().get(getBuilder().getSteps().size() - 1));
         } else {
             llmStepCount += 1;
         }
