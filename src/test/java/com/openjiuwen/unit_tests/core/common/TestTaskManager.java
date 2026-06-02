@@ -164,18 +164,19 @@ class TestTaskManager {
     @Test
     void testCancelGroup() throws Exception {
         TaskManager manager = TaskManager.getInstance();
+        try (TaskGroupContext tg = manager.createTaskGroup()) {
+            manager.createTask(() -> {
+                sleep(10_000);
+                return "done";
+            }, null, null, "cancel_me", null, null, false);
+            manager.createTask(() -> {
+                sleep(10_000);
+                return "done";
+            }, null, null, "cancel_me", null, null, false);
+            awaitRunningCount(manager, 2);
 
-        manager.createTask(() -> {
-            sleep(150);
-            return "done";
-        }, null, null, "cancel_me", null, null, false);
-        manager.createTask(() -> {
-            sleep(150);
-            return "done";
-        }, null, null, "cancel_me", null, null, false);
-        awaitRunningCount(manager, 2);
-
-        assertEquals(2, manager.cancelGroup("cancel_me"));
+            tg.cancel();
+        }
         assertTrue(manager.getRegistry().getByGroup("cancel_me").stream()
                 .allMatch(task -> task.getStatus() == TaskStatus.CANCELLED));
     }
@@ -607,17 +608,20 @@ class TestTaskManager {
     @Test
     void testCancelGroupDirect() throws Exception {
         TaskManager manager = TaskManager.getInstance();
-        manager.createTask(() -> {
-            sleep(150);
-            return null;
-        }, null, null, "g1", null, null, false);
-        manager.createTask(() -> {
-            sleep(150);
-            return null;
-        }, null, null, "g1", null, null, false);
-        awaitRunningCount(manager, 2);
+        try (TaskGroupContext tg = manager.createTaskGroup()) {
+            manager.createTask(() -> {
+                sleep(10_000);
+                return null;
+            }, null, null, "g1", null, null, false);
+            manager.createTask(() -> {
+                sleep(10_000);
+                return null;
+            }, null, null, "g1", null, null, false);
+            awaitRunningCount(manager, 2);
 
-        assertEquals(2, manager.cancelGroup("g1"));
+            assertEquals(2, manager.cancelGroup("g1"));
+            tg.cancel();
+        }
     }
 
     @Test
@@ -701,7 +705,7 @@ class TestTaskManager {
     void testCascadeFalseDoesNotCancelChildren() throws Exception {
         TaskManager manager = TaskManager.getInstance();
         AtomicReference<Task> childRef = new AtomicReference<>();
-        Task parent = parentWithChild(manager, childRef, 80);
+        Task parent = parentWithChild(manager, childRef, 10_000);
         awaitTaskRef(childRef);
         awaitStatus(childRef.get(), TaskStatus.RUNNING);
 
@@ -807,6 +811,7 @@ class TestTaskManager {
         AtomicReference<Task> grandchildRef = new AtomicReference<>();
         Task parent = parentWithChildAndGrandchild(manager, childRef, grandchildRef);
 
+        awaitTaskRef(childRef);
         awaitTaskRef(grandchildRef);
         childRef.get().cancel(true);
         parent.waitForResult();

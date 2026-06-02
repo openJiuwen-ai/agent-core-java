@@ -13,6 +13,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.Set;
@@ -170,7 +171,10 @@ class TestTeam {
         }
 
         @Test
-        void testBaseTeamIsAbstract() {
+        void testBaseTeamIsAbstract() throws NoSuchMethodException {
+            Constructor<BaseTeam> constructor = BaseTeam.class.getDeclaredConstructor(TeamCard.class);
+
+            assertThrows(InstantiationException.class, () -> constructor.newInstance(teamCard("g1")));
             assertTrue(Modifier.isAbstract(BaseTeam.class.getModifiers()));
         }
     }
@@ -230,8 +234,11 @@ class TestTeam {
             addAgent(team, "a1");
             addAgent(team, "a2");
 
-            assertThrows(Exception.class,
+            IllegalStateException exception = assertThrows(
+                    IllegalStateException.class,
                     () -> team.addAgent(agentCard("a3"), () -> (Function<Object, Object>) message -> message));
+
+            assertEquals("Agent count exceeds max_agents (2)", exception.getMessage());
         }
     }
 

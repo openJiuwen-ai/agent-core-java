@@ -17,7 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for NullRolloutStore.
  * <p>
- * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/store/test_null_store.py}.
+ * Mirrors Python's {@code test_null_store.py} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/store} and
+ * {@code test_null_store_e2e.py} in
+ * {@code tests/system_tests/agent_evolving/agent_rl/offline/store}.
  */
 @DisplayName("NullStore Tests")
 class TestNullStore {
@@ -51,6 +54,16 @@ class TestNullStore {
     @DisplayName("query returns empty")
     void testQueryRolloutsReturnsEmptyList() {
         NullRolloutStore store = new NullRolloutStore();
+
+        assertThat(store.queryRollouts(Map.of(), 100)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("close no error")
+    void testCloseNoError() {
+        NullRolloutStore store = new NullRolloutStore();
+
+        store.close();
 
         assertThat(store.queryRollouts(Map.of(), 100)).isEmpty();
     }

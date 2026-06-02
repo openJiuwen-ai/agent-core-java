@@ -52,6 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>
  * Mirrors Python's {@code test_runner.py} in
  * {@code tests/system_tests/runner/test_runner.py}.
+ * Also mirrors Python's {@code test_runner.py} in
+ * {@code tests/unit_tests/core/runner/test_runner.py} for the workflow and tool cases.
  * Python marks the network-backed cases as skipped; the Java port keeps
  * deterministic workflow/agent/group and MCP resource-manager branches executable.
  */

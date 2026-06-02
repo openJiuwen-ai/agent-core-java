@@ -35,8 +35,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for tracer subsystem: {@link Tracer}, {@link SpanManager}, {@link Span},
  * {@link TraceAgentSpan}, {@link TraceWorkflowSpan}.
  * <p>
- * Mirrors Python's tracer test files, including
+ * Mirrors Python's {@code test_agent.py} in
  * {@code tests/unit_tests/core/session/tracer/test_agent.py}.
+ * Also covers adjacent tracer primitives exercised by the same Python tracer suite.
  */
 class TracerTest {
 

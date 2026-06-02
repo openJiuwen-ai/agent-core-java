@@ -15,6 +15,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
  * Full bidirectional memory via OpenViking context database.
@@ -28,6 +30,11 @@ import java.util.concurrent.CompletableFuture;
 public class OpenVikingMemoryProvider extends MemoryProvider {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Executor IO_EXECUTOR = Executors.newCachedThreadPool(r -> {
+        Thread thread = new Thread(r, "openviking-memory-provider-io");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     // Tool schemas
     private static final Map<String, Object> VIKING_SEARCH_SCHEMA = Map.of(
@@ -179,7 +186,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
                 Loggers.MEMORY.warn("OpenViking init failed: {}", e.getMessage());
                 httpClient = null;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -220,7 +227,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
                 Loggers.MEMORY.debug("OpenViking prefetch failed: {}", e.getMessage());
                 return "";
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -239,7 +246,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
             } catch (Exception e) {
                 Loggers.MEMORY.debug("OpenViking sync failed: {}", e.getMessage());
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -270,7 +277,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
             } catch (Exception e) {
                 return "{\"error\": \"" + e.getMessage() + "\"}";
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -284,7 +291,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
             } catch (Exception e) {
                 Loggers.MEMORY.debug("OpenViking session commit failed: {}", e.getMessage());
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

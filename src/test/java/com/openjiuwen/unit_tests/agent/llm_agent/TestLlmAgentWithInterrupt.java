@@ -55,6 +55,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -143,6 +144,41 @@ class TestLlmAgentWithInterrupt {
 
         assertEquals(0, interactionChunks(outputItems(second)).size());
         assertTrue(collectOutputText(outputItems(second)).contains("hangzhou"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("llm agent requires react controller")
+    void testLlmAgentRequiresReactController() {
+        LlmAgentConfig workflowControllerConfig = LlmAgentConfig.builder()
+            .id("invalid_workflow_controller")
+            .version("0.0.1")
+            .description("invalid controller")
+            .model(MODEL_CONFIG)
+            .controllerType(ControllerType.WORKFLOW_CONTROLLER)
+            .build();
+
+        UnsupportedOperationException workflowError = assertThrows(
+            UnsupportedOperationException.class,
+            () -> new LlmAgent(workflowControllerConfig)
+        );
+        assertTrue(workflowError.getMessage().contains("requires REACT_CONTROLLER"));
+        assertTrue(workflowError.getMessage().contains("WORKFLOW_CONTROLLER"));
+
+        LlmAgentConfig nullControllerConfig = LlmAgentConfig.builder()
+            .id("invalid_null_controller")
+            .version("0.0.1")
+            .description("invalid null controller")
+            .model(MODEL_CONFIG)
+            .controllerType(null)
+            .build();
+
+        UnsupportedOperationException nullError = assertThrows(
+            UnsupportedOperationException.class,
+            () -> new LlmAgent(nullControllerConfig)
+        );
+        assertTrue(nullError.getMessage().contains("requires REACT_CONTROLLER"));
+        assertTrue(nullError.getMessage().contains("null"));
     }
 
     @Test

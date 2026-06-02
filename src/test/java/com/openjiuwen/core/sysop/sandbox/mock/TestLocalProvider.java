@@ -44,9 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests for local providers under sandbox_type="local".
  *
- * <p>Mirrors Python's {@code test_local_provider.py}. Java routes the same behaviors
- * through the repository's local operation implementations and validates the
- * {@link SandboxRegistry} registration path explicitly.</p>
+ * <p>Mirrors Python's {@code test_local_provider.py} in
+ * {@code tests/unit_tests/core/sys_operation/sandbox/mock/test_local_provider.py}.
+ * Java routes the same behaviors through the repository's local operation
+ * implementations and validates the {@link SandboxRegistry} registration path explicitly.</p>
  */
 @DisplayName("Local provider sandbox mock tests")
 class TestLocalProvider {

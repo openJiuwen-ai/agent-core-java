@@ -67,14 +67,12 @@ public class LlmAgent extends ControllerAgent {
      * @param agentConfig the LLM agent configuration
      */
     public LlmAgent(LlmAgentConfig agentConfig) {
-        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig),
+        this(validateReactControllerConfig(agentConfig), new Controller());
+    }
+
+    private LlmAgent(LlmAgentConfig agentConfig, Controller controller) {
+        super(buildAgentCard(agentConfig), controller, buildControllerConfig(agentConfig),
                 buildContextEngineConfig(agentConfig));
-        if (agentConfig.getControllerType() != null
-                && agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
-            throw new UnsupportedOperationException(
-                    "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType()
-            );
-        }
         this.agentConfig = agentConfig;
         this.longTermMemoryInstance = LongTermMemory.getInstance();
 
@@ -86,6 +84,16 @@ public class LlmAgent extends ControllerAgent {
         // Set up the LlmEventHandler on the controller
         LlmEventHandler eventHandler = new LlmEventHandler(agentConfig, getContextEngine());
         getController().setEventHandler(eventHandler);
+    }
+
+    private static LlmAgentConfig validateReactControllerConfig(LlmAgentConfig agentConfig) {
+        Objects.requireNonNull(agentConfig, "agentConfig must not be null");
+        if (agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
+            throw new UnsupportedOperationException(
+                    "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType()
+            );
+        }
+        return agentConfig;
     }
 
     @Override

@@ -608,7 +608,14 @@ public class ExpressionCondition extends Condition {
 
     private static int safeLength(Object value) {
         if (value == null) return 0;
-        if (value instanceof String) return ((String) value).length();
+        if (value instanceof String string) {
+            int size = string.length();
+            if (size > Constant.MAX_COLLECTION_SIZE) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
+            }
+            return size;
+        }
         if (value instanceof Collection) {
             int size = ((Collection<?>) value).size();
             if (size > Constant.MAX_COLLECTION_SIZE) {
@@ -617,7 +624,30 @@ public class ExpressionCondition extends Condition {
             }
             return size;
         }
-        if (value instanceof Map) return ((Map<?, ?>) value).size();
+        if (value instanceof Map<?, ?> map) {
+            int size = map.size();
+            if (size > Constant.MAX_COLLECTION_SIZE) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
+            }
+            return size;
+        }
+        if (value instanceof Object[] array) {
+            int size = array.length;
+            if (size > Constant.MAX_COLLECTION_SIZE) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
+            }
+            return size;
+        }
+        if (value.getClass().isArray()) {
+            int size = java.lang.reflect.Array.getLength(value);
+            if (size > Constant.MAX_COLLECTION_SIZE) {
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                        "error_msg", "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
+            }
+            return size;
+        }
         throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                 "error_msg", "object of type '" + typeName(value) + "' has no len()");
     }
@@ -645,9 +675,13 @@ public class ExpressionCondition extends Condition {
             throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                     "error_msg", "cannot check emptiness of " + typeName(value) + " type");
         }
-        if (value instanceof String) return ((String) value).isEmpty();
-        if (value instanceof Collection) return ((Collection<?>) value).isEmpty();
-        if (value instanceof Map) return ((Map<?, ?>) value).isEmpty();
+        if (value instanceof String
+                || value instanceof Collection
+                || value instanceof Map
+                || value instanceof Object[]
+                || value.getClass().isArray()) {
+            return safeLength(value) == 0;
+        }
         return false;
     }
 

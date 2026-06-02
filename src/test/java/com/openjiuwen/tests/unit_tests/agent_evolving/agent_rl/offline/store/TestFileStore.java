@@ -24,7 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for FileRolloutStore.
  * <p>
- * Mirrors Python's {@code tests/unit_tests/agent_evolving/agent_rl/offline/store/test_file_store.py}.
+ * Mirrors Python's {@code test_file_store.py} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/store} and
+ * {@code test_file_store_e2e.py} in
+ * {@code tests/system_tests/agent_evolving/agent_rl/offline/store}.
  */
 @DisplayName("FileStore Tests")
 class TestFileStore {

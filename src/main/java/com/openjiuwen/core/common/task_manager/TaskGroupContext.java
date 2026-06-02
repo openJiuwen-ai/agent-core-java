@@ -23,6 +23,7 @@ public class TaskGroupContext implements AutoCloseable {
 
     private final ExecutorService executor;
     private final List<CompletableFuture<?>> tasks = new ArrayList<>();
+    private final List<Task> trackedTasks = new ArrayList<>();
     private final AtomicBoolean active = new AtomicBoolean(true);
     private final String groupId;
 
@@ -90,6 +91,32 @@ public class TaskGroupContext implements AutoCloseable {
             throw new IllegalStateException("TaskGroup is not active");
         }
         tasks.add(future);
+    }
+
+    public void track(Task task, CompletableFuture<?> future) {
+        if (!active.get()) {
+            throw new IllegalStateException("TaskGroup is not active");
+        }
+        if (task != null) {
+            trackedTasks.add(task);
+        }
+        tasks.add(future);
+    }
+
+    /**
+     * Cancel all tracked tasks in this group.
+     */
+    public void cancel() {
+        for (Task task : trackedTasks) {
+            if (task != null && !task.isTerminal()) {
+                TaskManager.getInstance().cancelTask(task.getTaskId(), "manual_cancel");
+            }
+        }
+        for (CompletableFuture<?> task : tasks) {
+            if (task != null && !task.isDone()) {
+                task.cancel(true);
+            }
+        }
     }
 
     /**

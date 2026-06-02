@@ -18,7 +18,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Unit tests for RewardRegistry.
  * <p>
  * Mirrors Python's {@code test_registry.py} in
- * {@code tests/unit_tests/agent_evolving/agent_rl/reward/}.
+ * {@code tests/unit_tests/agent_evolving/agent_rl/reward/} and
+ * {@code test_registry_e2e.py} in
+ * {@code tests/system_tests/agent_evolving/agent_rl/reward/}.
  */
 @DisplayName("Registry Tests")
 class TestRegistry {

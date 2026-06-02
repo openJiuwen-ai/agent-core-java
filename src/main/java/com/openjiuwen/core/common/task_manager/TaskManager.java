@@ -164,7 +164,7 @@ public class TaskManager {
 
         TaskGroupContext taskGroup = currentTaskGroup.get();
         if (taskGroup != null && taskGroup.isActive()) {
-            taskGroup.track(future);
+            taskGroup.track(task, future);
         }
         
         // Handle timeout
