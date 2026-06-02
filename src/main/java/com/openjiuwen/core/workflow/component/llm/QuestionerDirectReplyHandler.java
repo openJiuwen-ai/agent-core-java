@@ -97,8 +97,6 @@ public class QuestionerDirectReplyHandler {
         OutputCache output = new OutputCache();
         this.query = questionerInput.getQuery() != null ? questionerInput.getQuery() : "";
 
-        writeUserMessageToContext(this.query != null ? this.query.toString() : "", context);
-
         List<BaseMessage> chatHistory = getChatHistory(context);
 
         if (isSetQuestionContent()) {
@@ -106,7 +104,6 @@ public class QuestionerDirectReplyHandler {
             output.setQuestion(QuestionerUtils.formatTemplate(config.getQuestionContent(), userFields));
             state.setQuestion(output.getQuestion());
             state = state.handleEvent(QuestionerEvent.USER_INTERACT_EVENT);
-            writeAssistantMessageToContext(output.getQuestion(), context);
             return QuestionerUtils.formatQuestionerOutput(output);
         }
 
@@ -116,9 +113,6 @@ public class QuestionerDirectReplyHandler {
                     ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
-                writeAssistantMessageToContext(output.getQuestion(), context);
-            } else {
-                writeAssistantMessageToContext(jsonOfFields(output.getKeyFields()), context);
             }
             state = state.handleEvent(event);
         } else {
@@ -129,13 +123,12 @@ public class QuestionerDirectReplyHandler {
     }
 
     private Map<String, Object> handleUserInteractState(Object inputs, NodeSessionApi session, ModelContext context) {
+        // Get latest human feedback via session interaction
         int totalReads = state.getResponseNum() + 1;
         for (int i = 0; i < totalReads; i++) {
             this.query = session.interact(state.getQuestion());
         }
         state.incrementResponseNum();
-
-        writeUserMessageToContext(this.query != null ? this.query.toString() : "", context);
 
         OutputCache output = new OutputCache();
         output.setQuestion(state.getQuestion());
@@ -157,9 +150,6 @@ public class QuestionerDirectReplyHandler {
                     ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
-                writeAssistantMessageToContext(output.getQuestion(), context);
-            } else {
-                writeAssistantMessageToContext(jsonOfFields(output.getKeyFields()), context);
             }
             state = state.handleEvent(event);
         } else {
@@ -182,7 +172,7 @@ public class QuestionerDirectReplyHandler {
         List<BaseMessage> llmInputs = buildLlmInputs(chatHistory);
         Map<String, Object> extractedKeyFields = invokeLlmForExtraction(llmInputs);
         for (Map.Entry<String, Object> entry : extractedKeyFields.entrySet()) {
-            if (QuestionerUtils.isValidValue(entry.getValue())) {
+            if (entry.getValue() != null) {
                 output.getKeyFields().put(entry.getKey(), entry.getValue());
             }
         }
@@ -286,7 +276,10 @@ public class QuestionerDirectReplyHandler {
 
         Map<String, Object> validated = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : extractedResult.entrySet()) {
-            String expectedType = fieldTypeMap.getOrDefault(entry.getKey(), "string");
+            if (!fieldTypeMap.containsKey(entry.getKey())) {
+                continue;
+            }
+            String expectedType = fieldTypeMap.get(entry.getKey());
             Object[] result = QuestionerUtils.validateAndConvertType(entry.getValue(), expectedType);
             if ((boolean) result[1]) {
                 validated.put(entry.getKey(), result[0]);
@@ -299,7 +292,7 @@ public class QuestionerDirectReplyHandler {
 
     private void updateStateKeyFields(Map<String, Object> keyFields) {
         for (Map.Entry<String, Object> entry : keyFields.entrySet()) {
-            if (QuestionerUtils.isValidValue(entry.getValue())) {
+            if (entry.getValue() != null) {
                 state.getExtractedKeyFields().put(entry.getKey(), entry.getValue());
             }
         }
@@ -383,55 +376,5 @@ public class QuestionerDirectReplyHandler {
             result.add(new UserMessage(content));
         }
         return result;
-    }
-
-    private void writeUserMessageToContext(String content, ModelContext context) {
-        if (context == null || !config.isWithChatHistory()) {
-            return;
-        }
-        if (content == null || content.isEmpty()) {
-            return;
-        }
-        context.addMessages(new UserMessage(content));
-    }
-
-    private void writeAssistantMessageToContext(String content, ModelContext context) {
-        if (context == null || !config.isWithChatHistory()) {
-            return;
-        }
-        if (content == null || content.isEmpty()) {
-            return;
-        }
-        context.addMessages(new AssistantMessage(content));
-    }
-
-    private static String jsonOfFields(Map<String, Object> fields) {
-        if (fields == null || fields.isEmpty()) {
-            return "{}";
-        }
-        try {
-            com.fasterxml.jackson.core.util.MinimalPrettyPrinter pp =
-                    new com.fasterxml.jackson.core.util.MinimalPrettyPrinter() {
-                        @Override
-                        public void writeObjectFieldValueSeparator(
-                                com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                            g.writeRaw(": ");
-                        }
-                        @Override
-                        public void writeObjectEntrySeparator(
-                                com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                            g.writeRaw(", ");
-                        }
-                        @Override
-                        public void writeArrayValueSeparator(
-                                com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                            g.writeRaw(", ");
-                        }
-                    };
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .writer(pp).writeValueAsString(fields);
-        } catch (Exception e) {
-            return fields.toString();
-        }
     }
 }

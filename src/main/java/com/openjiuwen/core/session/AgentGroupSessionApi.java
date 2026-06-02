@@ -98,10 +98,11 @@ public class AgentGroupSessionApi extends AgentSessionApi {
     private Object enrichWithTeamMetadata(Object data) {
         if (data instanceof Map) {
             Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) data);
+            boolean p2pPayload = map.containsKey("p2p");
             if (teamId != null && !map.containsKey("source_team_id")) {
                 map.put("source_team_id", teamId);
             }
-            if (currentAgentId != null && !map.containsKey("source_agent_id")) {
+            if (!p2pPayload && currentAgentId != null && !map.containsKey("source_agent_id")) {
                 map.put("source_agent_id", currentAgentId);
             }
             return map;
@@ -110,10 +111,11 @@ public class AgentGroupSessionApi extends AgentSessionApi {
             Object payload = schema.getPayload();
             if (payload instanceof Map) {
                 Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) payload);
+                boolean p2pPayload = map.containsKey("p2p");
                 if (teamId != null && !map.containsKey("source_team_id")) {
                     map.put("source_team_id", teamId);
                 }
-                if (currentAgentId != null && !map.containsKey("source_agent_id")) {
+                if (!p2pPayload && currentAgentId != null && !map.containsKey("source_agent_id")) {
                     map.put("source_agent_id", currentAgentId);
                 }
                 schema.setPayload(map);

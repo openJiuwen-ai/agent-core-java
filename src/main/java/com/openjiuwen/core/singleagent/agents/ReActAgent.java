@@ -300,7 +300,7 @@ public class ReActAgent extends BaseAgent {
                 (Integer) null,
                 (Integer) null
         );
-        logLlmRequest(contextWindow.getMessages(), contextWindow.getToolList());
+        logLlmRequest(contextWindow.getMessages());
 
         ctx.setInputs(ModelCallInputs.builder()
                 .messages(new ArrayList<>(contextWindow.getMessages()))
@@ -325,51 +325,7 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    private void logLlmRequest(List<BaseMessage> messages, List<ToolInfo> tools) {
-        int msgCount = messages != null ? messages.size() : 0;
-        int toolCount = tools != null ? tools.size() : 0;
-        Loggers.AGENT.info("[LLM] >>> request: msg_count=" + msgCount + ", tool_count=" + toolCount);
-
-        if (tools != null && !tools.isEmpty()) {
-            for (ToolInfo tool : tools) {
-                String toolName = tool.getName() != null ? tool.getName() : "";
-                String toolDesc = tool.getDescription() != null ? tool.getDescription() : "";
-                Map<String, Object> params = tool.getParameters();
-                String paramsJson;
-                try {
-                    if (params != null) {
-                        com.fasterxml.jackson.core.util.MinimalPrettyPrinter pp =
-                                new com.fasterxml.jackson.core.util.MinimalPrettyPrinter() {
-                                    @Override
-                                    public void writeObjectFieldValueSeparator(
-                                            com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                                        g.writeRaw(": ");
-                                    }
-                                    @Override
-                                    public void writeObjectEntrySeparator(
-                                            com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                                        g.writeRaw(", ");
-                                    }
-                                    @Override
-                                    public void writeArrayValueSeparator(
-                                            com.fasterxml.jackson.core.JsonGenerator g) throws java.io.IOException {
-                                        g.writeRaw(", ");
-                                    }
-                                };
-                        paramsJson = new com.fasterxml.jackson.databind.ObjectMapper()
-                                .writer(pp).writeValueAsString(params);
-                    } else {
-                        paramsJson = "{}";
-                    }
-                } catch (Exception e) {
-                    paramsJson = params != null ? params.toString() : "{}";
-                }
-                Loggers.AGENT.info("[LLM]   tool: name=" + toolName
-                        + ", description=" + toolDesc
-                        + ", \"parameters\": " + paramsJson);
-            }
-        }
-
+    private void logLlmRequest(List<BaseMessage> messages) {
         if (messages == null) {
             return;
         }
