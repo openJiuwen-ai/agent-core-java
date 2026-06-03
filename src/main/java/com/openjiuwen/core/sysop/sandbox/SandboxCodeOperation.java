@@ -78,6 +78,8 @@ public class SandboxCodeOperation extends BaseCodeOperation {
                             + (value == null ? "null" : value.getClass().getName()));
                 }
             };
+        } catch (UnsupportedOperationException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("execute_code_stream failed", e);
         }

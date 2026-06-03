@@ -103,6 +103,11 @@ public class BrowserService {
             connectionHealthy = true;
             lastHeartbeatOk = true;
         }
+        try {
+            Thread.sleep(25L);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     protected boolean ensureManagedDriverStarted() {
@@ -551,9 +556,15 @@ public class BrowserService {
         if (!rid.isEmpty()) {
             state.setRequestId(rid);
         }
+        String toolSummary = summarizeToolResult(toolName, toolResult);
         state.setRecentToolSteps(pushRecentToolStep(
                 state.getRecentToolSteps(),
-                summarizeToolResult(toolName, toolResult),
+                toolSummary,
+                8
+        ));
+        state.setCompletedSteps(pushRecentToolStep(
+                state.getCompletedSteps(),
+                toolSummary,
                 8
         ));
         PageSnapshot page = extractPageSnapshot(toolResult);

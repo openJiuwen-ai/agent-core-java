@@ -75,7 +75,7 @@ public class ReActAgentEvolve extends BaseAgent {
                 (toolCall, session) -> getAbilityManager().executeAsToolExecutor(toolCall, session),
                 getAbilityManager()
         );
-        this.llmOp = createLlmOp();
+        this.llmOp = createLlmOp(false);
     }
 
     private void initMemoryScope() {
@@ -127,7 +127,7 @@ public class ReActAgentEvolve extends BaseAgent {
         }
 
         if (this.llmOp == null) {
-            this.llmOp = createLlmOp();
+            this.llmOp = createLlmOp(false);
         } else {
             this.llmOp.updateSystemPrompt(newConfig.getPromptTemplate() != null
                     ? newConfig.getPromptTemplate() : List.of());
@@ -193,7 +193,9 @@ public class ReActAgentEvolve extends BaseAgent {
      */
     private LLMCallOperator getLlmOp() {
         if (llmOp == null) {
-            llmOp = createLlmOp();
+            llmOp = createLlmOp(true);
+        } else if (!llmOp.hasModel() && config.getModelClientConfig() != null) {
+            llmOp = createLlmOp(true);
         } else {
             // Sync system prompt from config to operator
             llmOp.updateSystemPrompt(config.getPromptTemplate() != null
@@ -202,8 +204,11 @@ public class ReActAgentEvolve extends BaseAgent {
         return llmOp;
     }
 
-    private LLMCallOperator createLlmOp() {
-        Model model = config.getModelClientConfig() != null ? getLlm() : null;
+    private LLMCallOperator createLlmOp(boolean resolveModel) {
+        Model model = null;
+        if (config.getModelClientConfig() != null) {
+            model = resolveModel ? getLlm() : llm;
+        }
         String modelName = resolveModelName();
         List<Map<String, String>> systemPrompt = config.getPromptTemplate() != null
                 ? config.getPromptTemplate() : List.of();

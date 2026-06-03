@@ -6,6 +6,7 @@ package com.openjiuwen.dev_tools.agent_builder.resource;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +118,7 @@ public final class PluginProcessor {
                 brief.put("output_parameters", convertParams(mapsFrom(tool.get("output_parameters"))));
                 toolsBrief.add(brief);
             }
+            toolsBrief.sort(Comparator.comparing(tool -> asString(tool.get("tool_id"))));
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("plugin_id", plugin.get("plugin_id"));
@@ -125,6 +127,7 @@ public final class PluginProcessor {
             item.put("tools", toolsBrief);
             result.add(item);
         }
+        result.sort(Comparator.comparing(plugin -> asString(plugin.get("plugin_id"))));
         return result;
     }
 

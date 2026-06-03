@@ -50,7 +50,7 @@ class WorkflowVisualizationSystemTest {
         });
 
         assertTrue(mermaid.contains("title: linear-workflow"));
-        assertTrue(mermaid.contains("flowchart TD"));
+        assertTrue(mermaid.contains("flowchart TB"));
         assertTrue(mermaid.contains("\"start\""));
         assertTrue(mermaid.contains("\"process\""));
         assertTrue(mermaid.contains("\"end\""));

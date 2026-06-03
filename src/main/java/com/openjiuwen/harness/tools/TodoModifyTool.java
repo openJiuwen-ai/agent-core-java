@@ -52,7 +52,7 @@ public class TodoModifyTool extends TodoTool {
     }
 
     private String deleteTodos(Session session, List<String> ids, List<TodoItem> todos) {
-        Set<String> deleteIds = new HashSet<>(ids);
+        Set<String> deleteIds = resolveTodoIds(ids, todos);
         List<TodoItem> remaining = new ArrayList<>();
         int deletedCount = 0;
         for (TodoItem todo : todos) {
@@ -70,10 +70,11 @@ public class TodoModifyTool extends TodoTool {
     }
 
     private String cancelTodos(Session session, List<String> ids, List<TodoItem> todos) {
+        Set<String> targetIds = resolveTodoIds(ids, todos);
         int cancelledCount = 0;
         List<String> cancelledIds = new ArrayList<>();
         for (TodoItem todo : todos) {
-            if (ids.contains(todo.getId())) {
+            if (targetIds.contains(todo.getId())) {
                 todo.setStatus(TodoStatus.CANCELLED);
                 cancelledCount++;
                 cancelledIds.add(todo.getId());
@@ -93,7 +94,7 @@ public class TodoModifyTool extends TodoTool {
             if (id.isBlank()) {
                 throw new IllegalArgumentException("Batch update failed: Missing required field: 'id'");
             }
-            TodoItem todo = findById(todos, id);
+            TodoItem todo = findByReference(todos, id);
             if (todo == null) {
                 throw new IllegalArgumentException("Batch update failed: Task with ID '" + id + "' not found");
             }
@@ -217,6 +218,18 @@ public class TodoModifyTool extends TodoTool {
         return todos.stream().filter(todo -> todo.getId().equals(id)).findFirst().orElse(null);
     }
 
+    private TodoItem findByReference(List<TodoItem> todos, String reference) {
+        TodoItem exact = findById(todos, reference);
+        if (exact != null) {
+            return exact;
+        }
+        Integer placeholderIndex = placeholderIndex(reference);
+        if (placeholderIndex == null || placeholderIndex < 0 || placeholderIndex >= todos.size()) {
+            return null;
+        }
+        return todos.get(placeholderIndex);
+    }
+
     private int findIndex(List<TodoItem> todos, String id) {
         for (int i = 0; i < todos.size(); i++) {
             if (todos.get(i).getId().equals(id)) {
@@ -232,6 +245,15 @@ public class TodoModifyTool extends TodoTool {
             ids.add(todo.getId());
         }
         return ids;
+    }
+
+    private Set<String> resolveTodoIds(List<String> ids, List<TodoItem> todos) {
+        Set<String> resolved = new HashSet<>();
+        for (String id : ids) {
+            TodoItem todo = findByReference(todos, id);
+            resolved.add(todo != null ? todo.getId() : id);
+        }
+        return resolved;
     }
 
     @SuppressWarnings("unchecked")
@@ -284,5 +306,21 @@ public class TodoModifyTool extends TodoTool {
 
     private String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private Integer placeholderIndex(String reference) {
+        if (reference == null) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:^task_|^mock_task_id_)(\\d+)$")
+                .matcher(reference.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(matcher.group(1)) - 1;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

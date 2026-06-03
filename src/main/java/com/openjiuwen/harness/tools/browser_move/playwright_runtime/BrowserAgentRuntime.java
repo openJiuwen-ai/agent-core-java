@@ -144,7 +144,11 @@ public class BrowserAgentRuntime {
             if (controller instanceof ActionController actionController) {
                 ActionController.ActionResult actionResult =
                         actionController.executeAction(action, sessionId, requestId, params).join();
-                return actionResultToMap(actionResult);
+                Map<String, Object> result = actionResultToMap(actionResult);
+                if (!result.containsKey("timeout_s") && params != null && params.get("timeout_s") != null) {
+                    result.put("timeout_s", params.get("timeout_s"));
+                }
+                return result;
             }
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -186,6 +190,13 @@ public class BrowserAgentRuntime {
             result.putIfAbsent("session_id", actionResult.getSessionId());
             result.putIfAbsent("request_id", actionResult.getRequestId());
             result.putIfAbsent("error", actionResult.getError());
+            Object inputParams = result.get("params");
+            if (!result.containsKey("timeout_s") && inputParams instanceof Map<?, ?> paramsMap) {
+                Object timeout = paramsMap.get("timeout_s");
+                if (timeout != null) {
+                    result.put("timeout_s", timeout);
+                }
+            }
             return result;
         }
         Map<String, Object> result = new LinkedHashMap<>();

@@ -22,10 +22,7 @@ public class TodoCreateTool extends TodoTool {
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Session session = requireSession(kwargs);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> tasks = inputs.get("tasks") instanceof List<?> list
-                ? (List<Map<String, Object>>) list
-                : null;
+        List<Map<String, Object>> tasks = parseTasks(inputs.get("tasks"));
         if (tasks == null || tasks.isEmpty()) {
             throw new IllegalArgumentException("'tasks' parameter is required and must be a non-empty JSON array");
         }
@@ -63,5 +60,38 @@ public class TodoCreateTool extends TodoTool {
 
     private String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseTasks(Object rawTasks) {
+        if (rawTasks instanceof List<?> list) {
+            List<Map<String, Object>> tasks = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    tasks.add((Map<String, Object>) map);
+                    continue;
+                }
+                String content = stringValue(item).trim();
+                if (!content.isEmpty()) {
+                    tasks.add(taskFromContent(content));
+                }
+            }
+            return tasks;
+        }
+        if (rawTasks instanceof String text) {
+            if (!text.isBlank()) {
+                throw new IllegalArgumentException("'tasks' parameter must be a JSON array of task objects");
+            }
+            return List.of();
+        }
+        return null;
+    }
+
+    private Map<String, Object> taskFromContent(String content) {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("content", content);
+        task.put("activeForm", "Executing " + content);
+        task.put("description", content);
+        return task;
     }
 }

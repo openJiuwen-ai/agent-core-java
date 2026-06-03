@@ -4,6 +4,9 @@
 
 package com.openjiuwen.harness.workspace;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,8 +77,17 @@ public class Workspace {
         supplementMissingDefaults();
     }
 
+    @JsonProperty("directories")
     public List<Map<String, Object>> getDirectories() {
         return directories;
+    }
+
+    @JsonProperty("directories")
+    public void setDirectories(List<Map<String, Object>> directories) {
+        this.directories = directories == null || directories.isEmpty()
+                ? deepCopySchema(getWorkspaceSchema(language))
+                : deepCopySchema(directories);
+        supplementMissingDefaults();
     }
 
     public Path root() {
@@ -97,10 +109,12 @@ public class Workspace {
         return node == null ? null : getDirectory(node.getValue());
     }
 
+    @JsonIgnore
     public void setDirectory(Map<String, Object> node) {
         setDirectory(List.of(node));
     }
 
+    @JsonIgnore
     public void setDirectory(List<Map<String, Object>> nodes) {
         if (nodes == null) {
             return;

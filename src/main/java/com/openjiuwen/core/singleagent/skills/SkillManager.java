@@ -52,8 +52,14 @@ public class SkillManager {
         if (skillPath == null || skillPath.isEmpty()) {
             return;
         }
-
-        registerRoot(Path.of(skillPath), sessionId, overwrite);
+        try {
+            registerRoot(Path.of(skillPath), sessionId, overwrite);
+        } catch (IllegalArgumentException error) {
+            if (isDuplicateSkillError(error) && !overwrite) {
+                return;
+            }
+            throw error;
+        }
     }
 
     public void register(String skillPath) {
@@ -71,7 +77,7 @@ public class SkillManager {
         if (skillPath == null) {
             return;
         }
-        register(skillPath.toString(), sessionId, overwrite);
+        registerRoot(skillPath, sessionId, overwrite);
     }
 
     /**
@@ -109,7 +115,7 @@ public class SkillManager {
             return;
         }
         for (Path p : skillPaths) {
-            register(p, sessionId, overwrite);
+            registerRoot(p, sessionId, overwrite);
         }
     }
 
@@ -127,7 +133,7 @@ public class SkillManager {
         if (Files.isRegularFile(root)) {
             Skill skill = createSkillFromPath(root);
             if (!overwrite && registry.containsKey(skill.getName())) {
-                throw new IllegalStateException("Skill already exists: " + skill.getName());
+                throw new IllegalArgumentException("Skill already exists: " + skill.getName());
             }
             registry.put(skill.getName(), skill);
             return;
@@ -135,7 +141,7 @@ public class SkillManager {
 
         File dir = root.toFile();
         if (!dir.isDirectory()) {
-            throw new IllegalArgumentException("Skill path does not exist or is not readable: " + root);
+            throw new FileNotFoundError("Skill path does not exist or is not readable: " + root);
         }
 
         // Python first treats the provided directory as a skill directory.
@@ -144,7 +150,7 @@ public class SkillManager {
             Skill s = createSkillFromPath(skillMd);
             if (s != null) {
                 if (!overwrite && registry.containsKey(s.getName())) {
-                    throw new IllegalStateException("Skill already exists: " + s.getName());
+                    throw new IllegalArgumentException("Skill already exists: " + s.getName());
                 }
                 registry.put(s.getName(), s);
                 return;
@@ -159,7 +165,7 @@ public class SkillManager {
                 if (childSkillMd != null) {
                     Skill s = createSkillFromPath(childSkillMd);
                     if (!overwrite && registry.containsKey(s.getName())) {
-                        throw new IllegalStateException("Skill already exists: " + s.getName());
+                        throw new IllegalArgumentException("Skill already exists: " + s.getName());
                     }
                     registry.put(s.getName(), s);
                 }
@@ -197,6 +203,9 @@ public class SkillManager {
     private String loadDescription(Path path) {
         try {
             String content = Files.readString(path);
+            if (content == null || content.isBlank()) {
+                throw new FileNotFoundError("Skill file content is empty: " + path);
+            }
             if (content.startsWith("---")) {
                 String[] parts = content.split("---", 3);
                 if (parts.length >= 2) {
@@ -210,9 +219,9 @@ public class SkillManager {
                     }
                 }
             }
-            throw new IllegalArgumentException("description is required in skill front matter: " + path);
+            throw new KeyError("description is required in skill front matter: " + path);
         } catch (IOException e) {
-            throw new IllegalArgumentException("Unable to read skill file: " + path, e);
+            throw new FileNotFoundError("Unable to read skill file: " + path, e);
         }
     }
 
@@ -271,5 +280,27 @@ public class SkillManager {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public static class KeyError extends RuntimeException {
+        public KeyError(String message) {
+            super(message);
+        }
+    }
+
+    public static class FileNotFoundError extends RuntimeException {
+        public FileNotFoundError(String message) {
+            super(message);
+        }
+
+        public FileNotFoundError(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    private static boolean isDuplicateSkillError(IllegalArgumentException error) {
+        return error != null
+                && error.getMessage() != null
+                && error.getMessage().startsWith("Skill already exists: ");
     }
 }

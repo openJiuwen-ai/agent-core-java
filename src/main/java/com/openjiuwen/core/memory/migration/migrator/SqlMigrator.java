@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.migration.migrator;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore.TableInfo;
 import com.openjiuwen.core.memory.manage.mem_model.DbModel;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
 import com.openjiuwen.core.memory.migration.operation.AddColumnOperation;
@@ -357,10 +358,17 @@ public class SqlMigrator {
     }
 
     private void validateTable(String tableName) throws SQLException {
+        if (tableName == null || tableName.isBlank()) {
+            throw new SQLException("Unsupported table name: " + tableName);
+        }
         for (String[] tableConfig : DbModel.MEMORY_TABLES_CONFIG) {
             if (tableConfig[0].equals(tableName)) {
                 return;
             }
+        }
+        TableInfo existingTable = sqlDb.getTable(tableName);
+        if (existingTable != null) {
+            return;
         }
         throw new SQLException("Unsupported table name: " + tableName);
     }

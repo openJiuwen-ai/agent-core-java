@@ -71,6 +71,41 @@ public class CronMetadataProvider implements ToolMetadataProvider {
         return INPUT_PARAMS.getOrDefault(language, INPUT_PARAMS.get("cn"));
     }
 
+    public static List<ToolMetadataProvider> legacyProviders() {
+        return List.of(
+                legacyProvider("cron_list_jobs",
+                        mapOf("列出所有 cron 定时任务。", "List all cron jobs."),
+                        emptyObjectSchema()),
+                legacyProvider("cron_get_job",
+                        mapOf("根据任务 ID 获取单个 cron 定时任务的详细信息。",
+                                "Get a single cron job by its ID."),
+                        requiredStringSchema("job_id",
+                                "要查询的任务 ID",
+                                "The job ID to look up")),
+                legacyProvider("cron_create_job",
+                        mapOf("创建新的 cron 定时任务，使用扁平字段。",
+                                "Create a new cron job using flat fields."),
+                        legacyCreateJobSchema()),
+                legacyProvider("cron_update_job",
+                        mapOf("使用扁平字段更新已有的 cron 定时任务。",
+                                "Update an existing cron job with a flat patch dict."),
+                        legacyUpdateJobSchema()),
+                legacyProvider("cron_delete_job",
+                        mapOf("根据任务 ID 删除 cron 定时任务。",
+                                "Delete a cron job by its ID."),
+                        requiredStringSchema("job_id",
+                                "要删除的任务 ID",
+                                "Job ID to delete")),
+                legacyProvider("cron_toggle_job",
+                        mapOf("启用或禁用指定的 cron 定时任务。",
+                                "Enable or disable a cron job."),
+                        legacyToggleJobSchema()),
+                legacyProvider("cron_preview_job",
+                        mapOf("预览 cron 定时任务的下 N 次计划执行时间。",
+                                "Preview next N scheduled run times for a cron job."),
+                        legacyPreviewJobSchema()));
+    }
+
     private static Map<String, Object> buildCronInputParams(String language) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -199,5 +234,98 @@ public class CronMetadataProvider implements ToolMetadataProvider {
 
     private static String desc(String language, String en, String cn) {
         return "en".equals(language) ? en : cn;
+    }
+
+    private static ToolMetadataProvider legacyProvider(
+            String name,
+            Map<String, String> descriptions,
+            Map<String, Map<String, Object>> schemas) {
+        return new SimpleToolMetadataProvider(name, descriptions, schemas);
+    }
+
+    private static Map<String, String> mapOf(String cn, String en) {
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("cn", cn);
+        result.put("en", en);
+        return result;
+    }
+
+    private static Map<String, Map<String, Object>> emptyObjectSchema() {
+        return objectSchemas(Map.of(), List.of());
+    }
+
+    private static Map<String, Map<String, Object>> requiredStringSchema(
+            String field,
+            String cnDescription,
+            String enDescription) {
+        return objectSchemas(Map.of(field, prop("string", cnDescription, enDescription)), List.of(field));
+    }
+
+    private static Map<String, Map<String, Object>> legacyCreateJobSchema() {
+        Map<String, Map<String, String>> properties = new LinkedHashMap<>();
+        properties.put("name", prop("string", "任务名称", "Job name"));
+        properties.put("cron_expr", prop("string", "Quartz 格式 cron 表达式", "Cron expression in Quartz format"));
+        properties.put("timezone", prop("string", "时区，如 Asia/Shanghai", "Timezone, e.g. Asia/Shanghai"));
+        properties.put("targets", prop("string", "兼容层目标频道字段", "Legacy compatibility target channel"));
+        properties.put("enabled", prop("boolean", "是否启用", "Whether to enable the job"));
+        properties.put("description", prop("string", "到点执行时发给助手的任务内容", "Task content sent to assistant at scheduled time"));
+        properties.put("wake_offset_seconds", prop("integer", "提前多少秒执行，默认 300", "Wake offset in seconds, default 300"));
+        return objectSchemas(properties, List.of("name", "cron_expr", "timezone", "description"));
+    }
+
+    private static Map<String, Map<String, Object>> legacyUpdateJobSchema() {
+        Map<String, Map<String, String>> properties = new LinkedHashMap<>();
+        properties.put("job_id", prop("string", "要更新的任务 ID", "Job ID to update"));
+        properties.put("patch", prop("object", "要更新的字段", "Fields to update"));
+        return objectSchemas(properties, List.of("job_id", "patch"));
+    }
+
+    private static Map<String, Map<String, Object>> legacyToggleJobSchema() {
+        Map<String, Map<String, String>> properties = new LinkedHashMap<>();
+        properties.put("job_id", prop("string", "要启用/禁用的任务 ID", "Job ID"));
+        properties.put("enabled", prop("boolean", "是否启用该任务", "Whether to enable the job"));
+        return objectSchemas(properties, List.of("job_id", "enabled"));
+    }
+
+    private static Map<String, Map<String, Object>> legacyPreviewJobSchema() {
+        Map<String, Map<String, String>> properties = new LinkedHashMap<>();
+        properties.put("job_id", prop("string", "要预览的任务 ID", "Job ID"));
+        properties.put("count", prop("integer", "预览的执行次数", "Number of runs to preview"));
+        return objectSchemas(properties, List.of("job_id"));
+    }
+
+    private static Map<String, Map<String, Object>> objectSchemas(
+            Map<String, Map<String, String>> properties,
+            List<String> required) {
+        Map<String, Map<String, Object>> schemas = new LinkedHashMap<>();
+        schemas.put("cn", objectSchema(properties, required, "cn"));
+        schemas.put("en", objectSchema(properties, required, "en"));
+        return schemas;
+    }
+
+    private static Map<String, Object> objectSchema(
+            Map<String, Map<String, String>> properties,
+            List<String> required,
+            String language) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> schemaProperties = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, String>> entry : properties.entrySet()) {
+            Map<String, Object> property = new LinkedHashMap<>();
+            property.put("type", entry.getValue().get("type"));
+            property.put("description", entry.getValue().get(language));
+            schemaProperties.put(entry.getKey(), property);
+        }
+        schema.put("properties", schemaProperties);
+        schema.put("required", required);
+        return schema;
+    }
+
+    private static Map<String, String> prop(String type, String cnDescription, String enDescription) {
+        Map<String, String> property = new LinkedHashMap<>();
+        property.put("type", type);
+        property.put("cn", cnDescription);
+        property.put("en", enDescription);
+        return property;
     }
 }

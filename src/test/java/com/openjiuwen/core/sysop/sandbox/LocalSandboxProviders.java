@@ -458,6 +458,7 @@ public final class LocalSandboxProviders {
             }
             if ("javascript".equals(language)) {
                 List<String> logs = extractConsoleLogs(code);
+                logs.addAll(extractPrints(code));
                 return logs.isEmpty() ? "" : String.join("\n", logs) + "\n";
             }
 

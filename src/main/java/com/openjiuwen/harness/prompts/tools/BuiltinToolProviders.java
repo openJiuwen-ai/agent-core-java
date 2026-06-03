@@ -31,6 +31,9 @@ public final class BuiltinToolProviders {
         ToolDescriptionRegistry.register(new PowerShellMetadataProvider());
         ToolDescriptionRegistry.register(new CodeMetadataProvider());
         ToolDescriptionRegistry.register(new CronMetadataProvider());
+        for (ToolMetadataProvider provider : CronMetadataProvider.legacyProviders()) {
+            ToolDescriptionRegistry.register(provider);
+        }
 
         ToolDescriptionRegistry.register(schemaProvider(
                 "read_file",

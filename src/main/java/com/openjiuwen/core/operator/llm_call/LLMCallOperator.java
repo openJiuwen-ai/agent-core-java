@@ -170,6 +170,10 @@ public class LLMCallOperator extends Operator {
         return userPrompt;
     }
 
+    public boolean hasModel() {
+        return llm != null;
+    }
+
     public void updateSystemPrompt(Object value) {
         if (!freezeSystemPrompt) {
             this.systemPrompt = PromptTemplate.builder().content(value).build();

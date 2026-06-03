@@ -90,7 +90,7 @@ class SkillRealSystemTest {
         SkillManager manager = new SkillManager("ut_skill_sysop");
 
         manager.register(skillMd);
-        assertThrows(IllegalStateException.class, () -> manager.register(skillMd, null, false));
+        assertThrows(IllegalArgumentException.class, () -> manager.register(skillMd, null, false));
 
         manager.register(skillMd, null, true);
         assertTrue(manager.has("single_skill"));
@@ -121,7 +121,7 @@ class SkillRealSystemTest {
         Files.writeString(badSkill.resolve("skill.md"), "---\nfoo: bar\n---\nbody\n");
 
         SkillManager manager = new SkillManager("ut_skill_sysop");
-        assertThrows(IllegalArgumentException.class, () -> manager.register(badRoot));
+        assertThrows(SkillManager.KeyError.class, () -> manager.register(badRoot));
     }
 
     @Test
@@ -132,13 +132,14 @@ class SkillRealSystemTest {
         Files.writeString(skillMd, "no front matter");
 
         SkillManager manager = new SkillManager("ut_skill_sysop");
-        assertThrows(IllegalArgumentException.class, () -> manager.register(skillMd));
+        assertThrows(SkillManager.KeyError.class, () -> manager.register(skillMd));
     }
 
     @Test
     void testSkillManagerReadFileCodeNonzeroRaises(@TempDir Path tempDir) {
         SkillManager manager = new SkillManager("ut_skill_sysop");
-        assertThrows(IllegalArgumentException.class, () -> manager.register(tempDir.resolve("missing").resolve("skill.md")));
+        assertThrows(SkillManager.FileNotFoundError.class,
+                () -> manager.register(tempDir.resolve("missing").resolve("skill.md")));
     }
 
     @Test
@@ -148,7 +149,7 @@ class SkillRealSystemTest {
         Files.writeString(skillDir.resolve("skill.md"), "");
 
         SkillManager manager = new SkillManager("ut_skill_sysop");
-        assertThrows(IllegalArgumentException.class, () -> manager.register(skillDir.resolve("skill.md")));
+        assertThrows(SkillManager.FileNotFoundError.class, () -> manager.register(skillDir.resolve("skill.md")));
     }
 
     @Test

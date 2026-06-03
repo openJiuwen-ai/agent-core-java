@@ -104,7 +104,7 @@ class SkillSystemMockTest {
         assertThat(agent.getSkillUtil().getSkillPrompt())
                 .contains(mockSkillName)
                 .contains("UT mock skill description")
-                .contains("readFile");
+                .contains("using read_file");
     }
 
     @Test
@@ -150,7 +150,9 @@ class SkillSystemMockTest {
         SkillManager manager = new SkillManager(sysOperationId);
         manager.register(singleSkillMd);
 
-        manager.register(singleSkillMd, null, false);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.register(singleSkillMd, null, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Skill already exists");
         assertThat(manager.count()).isEqualTo(1);
         assertThat(manager.get(singleSkillName).getDescription()).isEqualTo("SINGLE desc");
 
@@ -180,10 +182,9 @@ class SkillSystemMockTest {
     @DisplayName("test_skill_manager_missing_description_raises_keyerror")
     void testSkillManagerMissingDescriptionRaisesKeyerror() {
         SkillManager manager = new SkillManager(sysOperationId);
-        manager.register(skillsRootBad);
-
-        assertThat(manager.count()).isZero();
-        assertThat(manager.has("bad_skill")).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.register(skillsRootBad))
+                .isInstanceOf(SkillManager.KeyError.class)
+                .hasMessageContaining("description is required");
     }
 
     @Test
@@ -191,10 +192,9 @@ class SkillSystemMockTest {
     void testSkillManagerYamlMissingFrontMatterRaisesKeyerror() throws IOException {
         SkillManager manager = new SkillManager(sysOperationId);
         Files.writeString(singleSkillMd, "no front matter");
-        manager.register(singleSkillMd);
-
-        assertThat(manager.count()).isZero();
-        assertThat(manager.has(singleSkillName)).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.register(singleSkillMd))
+                .isInstanceOf(SkillManager.KeyError.class)
+                .hasMessageContaining("description is required");
     }
 
     @Test
@@ -202,10 +202,8 @@ class SkillSystemMockTest {
     void testSkillManagerReadFileCodeNonzeroRaisesFilenotfound() {
         SkillManager manager = new SkillManager(sysOperationId);
         Path missingFile = singleSkillDir.resolve("missing-SKILL.md");
-        manager.register(missingFile);
-
-        assertThat(manager.count()).isZero();
-        assertThat(manager.has(singleSkillName)).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.register(missingFile))
+                .isInstanceOf(SkillManager.FileNotFoundError.class);
     }
 
     @Test
@@ -213,10 +211,9 @@ class SkillSystemMockTest {
     void testSkillManagerReadFileContentNoneRaisesFilenotfound() throws IOException {
         SkillManager manager = new SkillManager(sysOperationId);
         Files.writeString(singleSkillMd, "");
-        manager.register(singleSkillMd);
-
-        assertThat(manager.count()).isZero();
-        assertThat(manager.has(singleSkillName)).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.register(singleSkillMd))
+                .isInstanceOf(SkillManager.FileNotFoundError.class)
+                .hasMessageContaining("content is empty");
     }
 
     @Test
@@ -237,8 +234,8 @@ class SkillSystemMockTest {
                 .contains("Skill name:")
                 .contains(mockSkillName)
                 .contains("UT mock skill description")
-                .contains("readFile")
-                .doesNotContain("view_file");
+                .contains("using read_file")
+                .doesNotContain("using view_file");
     }
 
     private ReActAgent createAgentForLlm() {
