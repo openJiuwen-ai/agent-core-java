@@ -9,6 +9,7 @@ import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
 import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
 import com.openjiuwen.extensions.context_evolver.core.op.SequentialOp;
+import com.openjiuwen.extensions.context_evolver.core.persistence.MemoryPersistenceHelper;
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
 import com.openjiuwen.extensions.context_evolver.retrieve.task.ace.RecallMemoryOp;
@@ -59,6 +60,9 @@ public class TaskMemoryService {
     private final MemoryVectorStore vectorStore;
     private final String retrievalAlgorithm;
     private final String summaryAlgorithm;
+    private final String persistType;
+    private final String persistPath;
+    private final MemoryPersistenceHelper persistenceHelper;
     private final BaseOp retrieveFlow;
     private final BaseOp summaryFlow;
 
@@ -83,6 +87,19 @@ public class TaskMemoryService {
             String retrievalAlgo,
             String summaryAlgo,
             String configPath
+    ) {
+        this(llmModel, embeddingModel, apiKey, retrievalAlgo, summaryAlgo, configPath, null, null);
+    }
+
+    public TaskMemoryService(
+            String llmModel,
+            String embeddingModel,
+            String apiKey,
+            String retrievalAlgo,
+            String summaryAlgo,
+            String configPath,
+            String persistType,
+            String persistPath
     ) {
         if (configPath != null && !configPath.isBlank()) {
             Config.reload(configPath, null);
@@ -114,14 +131,30 @@ public class TaskMemoryService {
         this.summaryAlgorithm = normalizeAlgoName(
             summaryAlgo != null ? summaryAlgo : Config.getString("SUMMARY_ALGO", "ACE")
         );
+        this.persistType = normalizePersistType(
+            persistType != null ? persistType : Config.getString("PERSIST_TYPE", null)
+        );
+        this.persistPath = persistPath != null && !persistPath.isBlank()
+            ? persistPath
+            : Config.getString("PERSIST_PATH", "./memories/{algo_name}/{user_id}.json");
+        this.persistenceHelper = this.persistType != null
+            ? new MemoryPersistenceHelper(
+                this.persistType,
+                this.persistPath,
+                Config.getString("MILVUS_HOST", "localhost"),
+                Config.getInt("MILVUS_PORT", 19530),
+                Config.getString("MILVUS_COLLECTION", "vector_nodes")
+            )
+            : null;
 
         this.retrieveFlow = createRetrieveFlow();
         this.summaryFlow = createSummaryFlow();
 
         log.info(
-            "TaskMemoryService initialized with retrieval={}, summary={}",
+            "TaskMemoryService initialized with retrieval={}, summary={}, persistence={}",
             retrievalAlgorithm,
-            summaryAlgorithm
+            summaryAlgorithm,
+            this.persistType != null ? this.persistType : "disabled"
         );
     }
 
@@ -136,10 +169,26 @@ public class TaskMemoryService {
         if ("REME".equals(upper)) {
             return "ReMe";
         }
+        if ("REFCON".equals(upper)) {
+            return "RefCon";
+        }
+        if ("DIVCON".equals(upper)) {
+            return "DivCon";
+        }
+        if ("OUR".equals(upper)) {
+            return "Our";
+        }
         if ("ACE".equals(upper)) {
             return "ACE";
         }
         return "Our";
+    }
+
+    private String normalizePersistType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
+        }
+        return type.toLowerCase(Locale.ROOT);
     }
 
     private BaseOp createRetrieveFlow() {
@@ -148,7 +197,7 @@ public class TaskMemoryService {
                 new com.openjiuwen.extensions.context_evolver.retrieve.task.reasoning_bank.RecallMemoryOp(
                     Config.getInt("TOPK_QUERY", 1)
                 );
-            case "ReMe", "Our" -> new SequentialOp(
+            case "ReMe", "RefCon", "DivCon", "Our" -> new SequentialOp(
                 new com.openjiuwen.extensions.context_evolver.retrieve.task.reme.RecallMemoryOp(
                     Config.getInt("TOPK_RETRIEVAL", 10)
                 ),
@@ -171,16 +220,17 @@ public class TaskMemoryService {
                 new ReflectOp(useGroundTruth),
                 new CurateOp(),
                 new ApplyDeltaOp(maxPlaybookSize),
-                new UpdateVectorStoreOp(vectorStore)
+                new UpdateVectorStoreOp(vectorStore, persistenceHelper, summaryAlgorithm)
             );
         }
         if ("ReasoningBank".equals(summaryAlgorithm)) {
             return new SequentialOp(
                 new ReasoningBankSummarizeMemoryOp(),
-                new UpdateVectorStoreOp(vectorStore)
+                new UpdateVectorStoreOp(vectorStore, persistenceHelper, summaryAlgorithm)
             );
         }
-        if ("ReMe".equals(summaryAlgorithm) || "Our".equals(summaryAlgorithm)) {
+        if ("ReMe".equals(summaryAlgorithm) || "RefCon".equals(summaryAlgorithm)
+                || "DivCon".equals(summaryAlgorithm) || "Our".equals(summaryAlgorithm)) {
             return new SequentialOp(
                 new ReMeSummarizeMemoryOp(
                     Config.getBoolean("EXTRACT_BEST_TRAJ", true),
@@ -189,10 +239,10 @@ public class TaskMemoryService {
                     Config.getBoolean("MEMORY_VALIDATION", true),
                     Config.getBoolean("MEMORY_DEDUPLICATION", true)
                 ),
-                new UpdateVectorStoreOp(vectorStore)
+                new UpdateVectorStoreOp(vectorStore, persistenceHelper, summaryAlgorithm)
             );
         }
-        return new SequentialOp(new UpdateVectorStoreOp(vectorStore));
+        return new SequentialOp(new UpdateVectorStoreOp(vectorStore, persistenceHelper, summaryAlgorithm));
     }
 
     public String getRetrievalAlgorithm() {
@@ -203,8 +253,44 @@ public class TaskMemoryService {
         return summaryAlgorithm;
     }
 
+    public String getPersistType() {
+        return persistType;
+    }
+
+    public String getPersistPath() {
+        return persistPath;
+    }
+
+    public MemoryPersistenceHelper getPersistenceHelper() {
+        return persistenceHelper;
+    }
+
     public MemoryVectorStore getVectorStore() {
         return vectorStore;
+    }
+
+    public void loadMemories(String userId) {
+        if (persistenceHelper == null || userId == null || userId.isBlank()) {
+            return;
+        }
+
+        String algoName = persistenceAlgoName(summaryAlgorithm);
+        try {
+            Map<String, Map<String, Object>> data = persistenceHelper.load(userId, algoName);
+            if (data == null || data.isEmpty()) {
+                return;
+            }
+            for (Map.Entry<String, Map<String, Object>> entry : data.entrySet()) {
+                VectorNode node = VectorNode.fromDict(entry.getValue());
+                if (node.getEmbedding() == null) {
+                    node.setEmbedding(defaultEmbeddingFor(node.getContent()));
+                }
+                vectorStore.loadNode(entry.getKey(), node);
+            }
+            log.info("Loaded {} persisted {} memories for user={}", data.size(), algoName, userId);
+        } catch (Exception error) {
+            log.warn("Failed to load persisted memories for user={}: {}", userId, error.getMessage());
+        }
     }
 
     public CompletableFuture<RetrieveResponse> retrieveResponse(String userId, String query) {
@@ -221,7 +307,7 @@ public class TaskMemoryService {
         return retrieveFlow.execute(context).thenApply(ignored -> {
             List<Object> normalized = normalizeRetrievedMemories(context.getList("retrieved_memories"));
             String memoryString = switch (retrievalAlgorithm) {
-                case "ReMe", "Our" -> {
+                case "ReMe", "RefCon", "DivCon", "Our" -> {
                     String rewritten = context.getString("memory_string", "");
                     yield rewritten != null && !rewritten.isBlank() ? rewritten : formatMemoryString(normalized);
                 }
@@ -299,6 +385,7 @@ public class TaskMemoryService {
             node.setEmbedding(defaultEmbeddingFor(node.getContent()));
 
             return vectorStore.asyncUpsert(node).thenApply(ignored -> {
+                persistNodes(userId, List.of(node));
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("status", "success");
                 result.put("memory_id", node.getId());
@@ -354,7 +441,7 @@ public class TaskMemoryService {
 
         return switch (summaryAlgorithm) {
             case "ReasoningBank" -> createReasoningBankMemory(userId, request).toVectorNode();
-            case "ReMe", "Our" -> createReMeMemory(userId, request).toVectorNode();
+            case "ReMe", "RefCon", "DivCon", "Our" -> createReMeMemory(userId, request).toVectorNode();
             default -> createAceMemory(userId, request).toVectorNode();
         };
     }
@@ -444,7 +531,7 @@ public class TaskMemoryService {
         for (Object raw : rawMemories) {
             Object converted = switch (retrievalAlgorithm) {
                 case "ReasoningBank" -> toReasoningBankRetrievedMemory(raw);
-                case "ReMe", "Our" -> toReMeRetrievedMemory(raw);
+                case "ReMe", "RefCon", "DivCon", "Our" -> toReMeRetrievedMemory(raw);
                 default -> toAceRetrievedMemory(raw);
             };
             if (converted != null) {
@@ -463,7 +550,7 @@ public class TaskMemoryService {
         for (Object raw : rawMemories) {
             Object converted = switch (summaryAlgorithm) {
                 case "ReasoningBank" -> toReasoningBankMemory(raw, userId);
-                case "ReMe", "Our" -> toReMeMemory(raw, userId);
+                case "ReMe", "RefCon", "DivCon", "Our" -> toReMeMemory(raw, userId);
                 default -> toAceMemory(raw, userId);
             };
             if (converted != null) {
@@ -605,7 +692,7 @@ public class TaskMemoryService {
         for (Object item : memories) {
             String formatted = switch (retrievalAlgorithm) {
                 case "ReasoningBank" -> formatReasoningBankMemory(item);
-                case "ReMe", "Our" -> formatReMeMemory(item);
+                case "ReMe", "RefCon", "DivCon", "Our" -> formatReMeMemory(item);
                 default -> formatAceMemory(item);
             };
             if (formatted == null || formatted.isBlank()) {
@@ -650,6 +737,29 @@ public class TaskMemoryService {
             + "\nContent: " + memory.getContent();
     }
 
+    private void persistNodes(String userId, List<VectorNode> nodes) {
+        if (persistenceHelper == null || nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        Map<String, Map<String, Object>> nodesDict = new LinkedHashMap<>();
+        for (VectorNode node : nodes) {
+            if (node != null) {
+                nodesDict.put(node.getId(), node.toDict());
+            }
+        }
+        if (!nodesDict.isEmpty()) {
+            persistenceHelper.save(userId, persistenceAlgoName(summaryAlgorithm), nodesDict);
+        }
+    }
+
+    static String persistenceAlgoName(String algorithm) {
+        return switch (algorithm) {
+            case "ReasoningBank" -> "rb";
+            case "ReMe", "RefCon", "DivCon", "Our" -> "reme";
+            default -> "ace";
+        };
+    }
+
     static List<Double> defaultEmbeddingFor(String value) {
         int dimensions = 32;
         double[] dense = new double[dimensions];
@@ -684,9 +794,20 @@ public class TaskMemoryService {
 class UpdateVectorStoreOp extends BaseOp {
 
     private final MemoryVectorStore vectorStore;
+    private final MemoryPersistenceHelper persistenceHelper;
+    private final String summaryAlgorithm;
 
     UpdateVectorStoreOp(MemoryVectorStore vectorStore) {
+        this(vectorStore, null, "ACE");
+    }
+
+    UpdateVectorStoreOp(
+            MemoryVectorStore vectorStore,
+            MemoryPersistenceHelper persistenceHelper,
+            String summaryAlgorithm) {
         this.vectorStore = vectorStore;
+        this.persistenceHelper = persistenceHelper;
+        this.summaryAlgorithm = summaryAlgorithm;
     }
 
     @Override
@@ -709,9 +830,21 @@ class UpdateVectorStoreOp extends BaseOp {
             futures.add(vectorStore.asyncUpsert(node));
         }
 
-        return futures.isEmpty()
+        CompletableFuture<Void> upserts = futures.isEmpty()
             ? CompletableFuture.completedFuture(null)
             : CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+        return upserts.thenRun(() -> persistAll(userId));
+    }
+
+    private void persistAll(String userId) {
+        if (persistenceHelper == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        Map<String, Map<String, Object>> nodesDict = new LinkedHashMap<>();
+        for (VectorNode node : vectorStore.getAll()) {
+            nodesDict.put(node.getId(), node.toDict());
+        }
+        persistenceHelper.save(userId, TaskMemoryService.persistenceAlgoName(summaryAlgorithm), nodesDict);
     }
 
     private VectorNode toVectorNode(Object memory, String userId) {

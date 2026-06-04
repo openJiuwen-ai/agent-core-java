@@ -14,7 +14,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
+import java.util.function.Function;
 
 /**
  * Orchestration parameters for HandoffTeam.
@@ -48,7 +48,7 @@ public class HandoffConfig {
     private List<HandoffRoute> routes = new ArrayList<>();
     
     /** Optional termination condition predicate. */
-    private Predicate<Object> terminationCondition;
+    private Function<Object, Object> terminationCondition;
     
     public Optional<AgentCard> getStartAgent() {
         return Optional.ofNullable(startAgent);

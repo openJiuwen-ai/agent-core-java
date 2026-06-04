@@ -4,8 +4,10 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.llm_agent;
 
+import com.openjiuwen.dev_tools.agent_builder.builders.LlmAgentBuilder;
+import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
+import com.openjiuwen.dev_tools.agent_builder.utils.AgentBuilderEnums;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Disabled;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -15,10 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python's {@code test_builder.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/builders/llm_agent/test_builder.py}.
  *
- * <p>Note: Agent builder tests require mock infrastructure.
- * Tests are disabled pending full builder API implementation.
  */
-@Disabled("Agent builder tests require mock infrastructure")
 class TestLlmAgentBuilder {
 
     /**
@@ -29,14 +28,24 @@ class TestLlmAgentBuilder {
 
         @Test
         void testInitSuccess() {
-            /** Test successful initialization. */
-            // Mock model and history manager would be needed
-            // This is a placeholder for actual implementation
+            Object mockModel = new Object();
+            HistoryManager historyManager = new HistoryManager();
+            LlmAgentBuilder builder = new LlmAgentBuilder(mockModel, historyManager);
+
+            assertSame(mockModel, builder.getLlm());
+            assertSame(historyManager, builder.getHistoryManager());
+            assertEquals(AgentBuilderEnums.BuildState.INITIAL, builder.getState());
+            assertTrue(builder.getResource().isEmpty());
+            assertNull(builder.getAgentConfigInfo());
+            assertNull(builder.getFactorOutputInfo());
+            assertNull(builder.getDisplayResourceInfo());
         }
 
         @Test
         void testInitProgressReporterDefaultNone() {
-            /** Test progress reporter defaults to None. */
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
+
+            assertNull(builder.getProgressReporter());
         }
     }
 
@@ -48,7 +57,10 @@ class TestLlmAgentBuilder {
 
         @Test
         void testResourceUniqueKey() {
-            /** Test RESOURCE_UNIQUE_KEY constant. */
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
+
+            assertNotNull(builder);
+            assertEquals("tool_id", LlmAgentBuilder.RESOURCE_UNIQUE_KEY.get("plugins"));
         }
     }
 
@@ -60,7 +72,9 @@ class TestLlmAgentBuilder {
 
         @Test
         void testResourceProperty() {
-            /** Test resource property. */
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
+
+            assertTrue(builder.getResource().isEmpty());
         }
     }
 
@@ -72,7 +86,11 @@ class TestLlmAgentBuilder {
 
         @Test
         void testStateProperty() {
-            /** Test state property. */
+            LlmAgentBuilder builder = new LlmAgentBuilder(new Object(), new HistoryManager());
+
+            assertEquals(AgentBuilderEnums.BuildState.INITIAL, builder.getState());
+            builder.setState(AgentBuilderEnums.BuildState.PROCESSING);
+            assertEquals(AgentBuilderEnums.BuildState.PROCESSING, builder.getState());
         }
     }
 }

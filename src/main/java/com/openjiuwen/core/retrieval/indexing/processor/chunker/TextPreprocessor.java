@@ -10,4 +10,8 @@ package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 public interface TextPreprocessor {
 
     String process(String text);
+
+    default String call(String text) {
+        return process(text);
+    }
 }

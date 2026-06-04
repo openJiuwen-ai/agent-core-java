@@ -172,10 +172,10 @@ Please wrap each piece of feedback with <INS> and </INS>.
 """;
 
     /**
-     * Placeholder restoration template.
+     * Prompt variable restoration template.
      */
-    public static final String PLACEHOLDER_RESTORE_TEMPLATE = """
-As a prompt optimization expert, your task is to complete the placeholders in the prompt based on the given information.
+    public static final String PROMPT_VARIABLE_RESTORE_TEMPLATE = """
+As a prompt optimization expert, your task is to complete the template variables in the prompt based on the given information.
 Original prompt:
 <original_prompt>
 {{original_prompt}}
@@ -186,21 +186,21 @@ Revised prompt:
 {{revised_prompt}}
 </revised_prompt> 
 
-The complete set of placeholders in the original prompt is:
-<all_placeholders>
-{{all_placeholders}}
-</all_placeholders> 
+The complete set of template variables in the original prompt is:
+<all_prompt_variables>
+{{all_prompt_variables}}
+</all_prompt_variables> 
 
-After comparison, the revised prompt is missing the following placeholders compared to the original prompt:
-<missing_placeholders>
-{{missing_placeholders}}
-</missing_placeholders> 
+After comparison, the revised prompt is missing the following template variables compared to the original prompt:
+<missing_prompt_variables>
+{{missing_prompt_variables}}
+</missing_prompt_variables> 
 
 Your goals are:
-1. Restore all missing placeholders to the revised prompt <revised_prompt>,
-   reference the original prompt and add placeholders to appropriate positions.
-2. Placeholders should be added to the prompt in double curly brace format, e.g., "{{placeholder_name}}".
-3. Except for necessary modifications to placeholders, do not modify the prompt content.
-4. Directly return the prompt with placeholders added, without adding thought process or any other additional content.
+1. Restore all missing template variables to the revised prompt <revised_prompt>,
+   reference the original prompt and add variables to appropriate positions.
+2. Template variables should be added to the prompt in double curly brace format, e.g., "{{variable_name}}".
+3. Except for necessary modifications to template variables, do not modify the prompt content.
+4. Directly return the prompt with variables added, without adding thought process or any other additional content.
 """;
 }

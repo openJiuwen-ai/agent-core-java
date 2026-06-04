@@ -4,8 +4,9 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.common.logging.Loggers;
-
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,6 +19,9 @@ import java.util.Map;
  * <p>Maintains a registry of skills and provides methods to register,
  * unregister, and query skills. Skills are loaded from YAML files containing
  * metadata such as name and description.</p>
+ *
+ * <p>Mirrors Python's {@code SkillManager} in
+ * {@code openjiuwen.core.single_agent.skills.skill_manager}.</p>
  */
 public class SkillManager {
 
@@ -48,11 +52,13 @@ public class SkillManager {
         if (skillPath == null || skillPath.isEmpty()) {
             return;
         }
-
         try {
             registerRoot(Path.of(skillPath), sessionId, overwrite);
-        } catch (Exception e) {
-            Loggers.AGENT.warning("Failed to register skill from path: " + skillPath + " - " + e.getMessage());
+        } catch (IllegalArgumentException error) {
+            if (isDuplicateSkillError(error) && !overwrite) {
+                return;
+            }
+            throw error;
         }
     }
 
@@ -71,7 +77,7 @@ public class SkillManager {
         if (skillPath == null) {
             return;
         }
-        register(skillPath.toString(), sessionId, overwrite);
+        registerRoot(skillPath, sessionId, overwrite);
     }
 
     /**
@@ -109,7 +115,7 @@ public class SkillManager {
             return;
         }
         for (Path p : skillPaths) {
-            register(p, sessionId, overwrite);
+            registerRoot(p, sessionId, overwrite);
         }
     }
 
@@ -124,58 +130,71 @@ public class SkillManager {
      * Register skill directory by scanning for Skill.md files.
      */
     private void registerRoot(Path root, String sessionId, boolean overwrite) {
-        // Try to create skill from the file directly
-        Skill skill = createSkillFromPath(root);
-        if (skill != null) {
+        if (Files.isRegularFile(root)) {
+            Skill skill = createSkillFromPath(root);
             if (!overwrite && registry.containsKey(skill.getName())) {
-                throw new IllegalStateException("Skill already exists: " + skill.getName());
+                throw new IllegalArgumentException("Skill already exists: " + skill.getName());
             }
             registry.put(skill.getName(), skill);
             return;
         }
 
+        File dir = root.toFile();
+        if (!dir.isDirectory()) {
+            throw new FileNotFoundError("Skill path does not exist or is not readable: " + root);
+        }
+
+        // Python first treats the provided directory as a skill directory.
+        Path skillMd = findSkillMarkdown(dir);
+        if (skillMd != null) {
+            Skill s = createSkillFromPath(skillMd);
+            if (s != null) {
+                if (!overwrite && registry.containsKey(s.getName())) {
+                    throw new IllegalArgumentException("Skill already exists: " + s.getName());
+                }
+                registry.put(s.getName(), s);
+                return;
+            }
+        }
+
         // Scan subdirectories for Skill.md
-        java.io.File dir = root.toFile();
-        if (dir.isDirectory()) {
-            java.io.File[] subdirs = dir.listFiles(java.io.File::isDirectory);
-            if (subdirs != null) {
-                for (java.io.File subdir : subdirs) {
-                    java.io.File skillMd = new java.io.File(subdir, "Skill.md");
-                    if (!skillMd.exists()) {
-                        skillMd = new java.io.File(subdir, "SKILL.md");
+        File[] subdirs = dir.listFiles(File::isDirectory);
+        if (subdirs != null) {
+            for (File subdir : subdirs) {
+                Path childSkillMd = findSkillMarkdown(subdir);
+                if (childSkillMd != null) {
+                    Skill s = createSkillFromPath(childSkillMd);
+                    if (!overwrite && registry.containsKey(s.getName())) {
+                        throw new IllegalArgumentException("Skill already exists: " + s.getName());
                     }
-                    if (skillMd.exists()) {
-                        Skill s = createSkillFromPath(skillMd.toPath());
-                        if (s != null) {
-                            if (!overwrite && registry.containsKey(s.getName())) {
-                                throw new IllegalStateException("Skill already exists: " + s.getName());
-                            }
-                            registry.put(s.getName(), s);
-                        }
-                    }
+                    registry.put(s.getName(), s);
                 }
             }
         }
+    }
+
+    private Path findSkillMarkdown(File dir) {
+        File[] files = dir.listFiles(file -> file.isFile() && "skill.md".equalsIgnoreCase(file.getName()));
+        if (files == null || files.length == 0) {
+            return null;
+        }
+        return files[0].toPath();
     }
 
     /**
      * Create a Skill object from a Skill.md file path.
      */
     private Skill createSkillFromPath(Path path) {
-        try {
-            String descriptionText = loadDescription(path);
-            if (descriptionText != null) {
-                Path skillDir = path.getParent();
-                return Skill.builder()
-                        .name(skillDir.getFileName().toString())
-                        .description(descriptionText)
-                        .directory(skillDir.toString())
-                        .build();
-            }
-        } catch (Exception e) {
-            Loggers.AGENT.warning("Failed to create skill from path: " + path + " - " + e.getMessage());
+        String descriptionText = loadDescription(path);
+        Path skillDir = path.getParent();
+        if (skillDir == null) {
+            throw new IllegalArgumentException("Skill.md must have a parent directory: " + path);
         }
-        return null;
+        return Skill.builder()
+                .name(skillDir.getFileName().toString())
+                .description(descriptionText)
+                .directory(skillDir.toString())
+                .build();
     }
 
     /**
@@ -183,7 +202,10 @@ public class SkillManager {
      */
     private String loadDescription(Path path) {
         try {
-            String content = java.nio.file.Files.readString(path);
+            String content = Files.readString(path);
+            if (content == null || content.isBlank()) {
+                throw new FileNotFoundError("Skill file content is empty: " + path);
+            }
             if (content.startsWith("---")) {
                 String[] parts = content.split("---", 3);
                 if (parts.length >= 2) {
@@ -197,10 +219,10 @@ public class SkillManager {
                     }
                 }
             }
-        } catch (Exception e) {
-            // File might not exist or not be readable
+            throw new KeyError("description is required in skill front matter: " + path);
+        } catch (IOException e) {
+            throw new FileNotFoundError("Unable to read skill file: " + path, e);
         }
-        return null;
     }
 
     /**
@@ -258,5 +280,27 @@ public class SkillManager {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public static class KeyError extends RuntimeException {
+        public KeyError(String message) {
+            super(message);
+        }
+    }
+
+    public static class FileNotFoundError extends RuntimeException {
+        public FileNotFoundError(String message) {
+            super(message);
+        }
+
+        public FileNotFoundError(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    private static boolean isDuplicateSkillError(IllegalArgumentException error) {
+        return error != null
+                && error.getMessage() != null
+                && error.getMessage().startsWith("Skill already exists: ");
     }
 }

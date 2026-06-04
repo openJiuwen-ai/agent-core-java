@@ -183,13 +183,13 @@ class TestFeedbackPromptBuilder {
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
                                                      String negativePrompt, int n, boolean promptExtend,
                                                      boolean watermark, int seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
                                                       String languageType, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
 
         @Override
@@ -197,7 +197,7 @@ class TestFeedbackPromptBuilder {
                                                      String model, String size, String resolution, int duration,
                                                      boolean promptExtend, boolean watermark, String negativePrompt,
                                                      Integer seed, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException();
+            return null;
         }
     }
 }

@@ -10,6 +10,9 @@ import java.util.Map;
 
 /**
  * Reranker model configuration aligned with the Python implementation.
+ *
+ * <p>Mirrors Python's {@code RerankerConfig} in
+ * {@code openjiuwen.core.foundation.store.base_reranker}.</p>
  */
 public class RerankerConfig {
 
@@ -86,7 +89,19 @@ public class RerankerConfig {
     }
 
     public void setYesNoIds(List<Integer> yesNoIds) {
-        this.yesNoIds = yesNoIds == null ? null : List.copyOf(yesNoIds);
+        if (yesNoIds == null) {
+            this.yesNoIds = null;
+            return;
+        }
+        if (yesNoIds.size() != 2) {
+            throw RetrievalExceptions.validation("RerankerConfig.yesNoIds must contain exactly two token ids");
+        }
+        for (Object id : yesNoIds) {
+            if (!(id instanceof Integer)) {
+                throw RetrievalExceptions.validation("RerankerConfig.yesNoIds must contain integer token ids");
+            }
+        }
+        this.yesNoIds = List.copyOf(yesNoIds);
     }
 
     public Map<String, Object> getExtraBody() {

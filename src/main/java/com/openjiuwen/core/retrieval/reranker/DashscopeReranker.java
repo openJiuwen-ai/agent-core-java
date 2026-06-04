@@ -79,6 +79,10 @@ public class DashscopeReranker extends StandardReranker {
                     processedDocuments.add(standardDoc.getText());
                 } else if (doc instanceof String str) {
                     processedDocuments.add(str);
+                } else {
+                    throw RetrievalExceptions.error(
+                            StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+                            "input to reranker must be either list[str | Document]");
                 }
             }
             if (hasMultimodal) {

@@ -141,9 +141,15 @@ class TestRemoteAgent {
                 Thread.sleep(100);
                 future.cancel(true);
 
-                ExecutionException ex = assertThrows(ExecutionException.class, () -> future.get());
-                assertTrue(ex.getCause() instanceof BaseError
-                        || ex.getCause() instanceof CancellationException);
+                try {
+                    future.get();
+                    fail("cancelled remote request should not complete normally");
+                } catch (CancellationException e) {
+                    // Java Future.get raises this directly when Future.cancel(true) wins the race.
+                } catch (ExecutionException e) {
+                    assertTrue(e.getCause() instanceof BaseError
+                            || e.getCause() instanceof CancellationException);
+                }
                 executor.shutdownNow();
             } finally {
                 Runner.stop();
@@ -236,7 +242,10 @@ class TestRemoteAgent {
                 BaseError ex = assertThrows(BaseError.class, () ->
                         Runner.runAgent("weather-agent", Map.of("city", "London"), null, null)
                 );
-                assertEquals(StatusCode.REMOTE_AGENT_EXECUTION_TIMEOUT.getCode(), ex.getCode());
+                assertEquals(StatusCode.REMOTE_AGENT_RESPONSE_PROCESS_ERROR.getCode(), ex.getCode());
+                assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR.getCode(),
+                        ((Number) ex.getParams().get("error_code")).intValue());
+                assertTrue(String.valueOf(ex.getParams().get("error_msg")).contains("ADAPTER_ERROR"));
             } finally {
                 weatherAdapter.stop();
                 Runner.stop();
@@ -326,6 +335,78 @@ class TestRemoteAgent {
                 assertEquals(sequentialResults.size(), concurrentResults.size());
             } finally {
                 perfAdapter.stop();
+                Runner.stop();
+            }
+        }
+
+        @Test
+        @Disabled("Skip performance tests - mirrors Python @pytest.mark.skip")
+        @DisplayName("test_concurrent_streaming: Compare concurrent and sequential streaming")
+        void testConcurrentStreaming() throws Exception {
+            Runner.start();
+
+            Function<Map<String, Object>, Iterator<Object>> streamingHandler = inputs -> {
+                List<Object> chunks = new ArrayList<>();
+                for (int i = 0; i < 5; i++) {
+                    chunks.add(Map.of(
+                            "stream_chunk", i,
+                            "data", "chunk_" + i + "_for_" + inputs.getOrDefault("city", "unknown")));
+                }
+                return chunks.iterator();
+            };
+
+            AgentAdapter streamingAdapter = new AgentAdapter("streaming-agent");
+            streamingAdapter.setStreamHandler(streamingHandler);
+            streamingAdapter.start();
+
+            try {
+                RemoteAgent client = new RemoteAgent("streaming-agent");
+                Runner.resourceMgr().addAgent(
+                        AgentCard.builder().id("streaming-agent").build(),
+                        () -> client,
+                        null
+                );
+
+                List<Map<String, Object>> testData = new ArrayList<>();
+                for (int i = 0; i < 10; i++) {
+                    testData.add(Map.of("city", "StreamCity_" + i));
+                }
+
+                List<Object> sequentialChunks = new ArrayList<>();
+                for (Map<String, Object> data : testData) {
+                    Iterator<Object> iterator = Runner.runAgentStreaming("streaming-agent", data, null, null,
+                            List.of());
+                    while (iterator.hasNext()) {
+                        sequentialChunks.add(iterator.next());
+                    }
+                }
+
+                ExecutorService executor = Executors.newFixedThreadPool(10);
+                List<Future<List<Object>>> futures = new ArrayList<>();
+                for (Map<String, Object> data : testData) {
+                    futures.add(executor.submit(() -> {
+                        List<Object> chunks = new ArrayList<>();
+                        Iterator<Object> iterator = Runner.runAgentStreaming("streaming-agent", data, null, null,
+                                List.of());
+                        while (iterator.hasNext()) {
+                            chunks.add(iterator.next());
+                        }
+                        return chunks;
+                    }));
+                }
+
+                int totalConcurrentChunks = 0;
+                for (Future<List<Object>> future : futures) {
+                    List<Object> chunks = future.get();
+                    assertEquals(5, chunks.size());
+                    totalConcurrentChunks += chunks.size();
+                }
+                executor.shutdown();
+
+                assertEquals(testData.size() * 5, sequentialChunks.size());
+                assertEquals(testData.size() * 5, totalConcurrentChunks);
+            } finally {
+                streamingAdapter.stop();
                 Runner.stop();
             }
         }

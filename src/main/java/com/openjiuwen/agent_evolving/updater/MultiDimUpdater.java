@@ -8,6 +8,7 @@ import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,17 +49,55 @@ public abstract class MultiDimUpdater implements Updater {
     @Override
     public boolean requiresForwardData() {
         for (Object opt : domainOptimizers.values()) {
-            try {
-                java.lang.reflect.Method method = opt.getClass().getMethod("requiresForwardData");
-                Object result = method.invoke(opt);
-                if (Boolean.TRUE.equals(result)) {
-                    return true;
-                }
-            } catch (Exception e) {
-                // Continue checking
+            Object result = invokeRequiresForwardData(opt);
+            if (pythonTruthy(result)) {
+                return true;
             }
         }
         return false;
+    }
+
+    private Object invokeRequiresForwardData(Object optimizer) {
+        if (optimizer == null) {
+            return null;
+        }
+        for (String methodName : List.of("requires_forward_data", "requiresForwardData")) {
+            try {
+                java.lang.reflect.Method method = optimizer.getClass().getMethod(methodName);
+                return method.invoke(optimizer);
+            } catch (Exception ignored) {
+                try {
+                    java.lang.reflect.Method method = optimizer.getClass().getDeclaredMethod(methodName);
+                    method.setAccessible(true);
+                    return method.invoke(optimizer);
+                } catch (Exception ignoredAgain) {
+                    // Continue checking the next Python/Java method spelling.
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean pythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 
     @Override

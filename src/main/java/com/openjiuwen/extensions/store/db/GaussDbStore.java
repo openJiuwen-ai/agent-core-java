@@ -4,6 +4,8 @@
 
 package com.openjiuwen.extensions.store.db;
 
+import com.openjiuwen.core.foundation.store.BaseDbStore;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
@@ -17,7 +19,7 @@ import javax.sql.DataSource;
  *
  * This class wraps a DataSource for GaussDB database operations.
  */
-public class GaussDbStore {
+public class GaussDbStore extends BaseDbStore {
 
     private final DataSource dataSource;
 
@@ -37,6 +39,9 @@ public class GaussDbStore {
      * @throws SQLException If connection fails.
      */
     public Connection getConnection() throws SQLException {
+        if (dataSource == null) {
+            throw new SQLException("DataSource is null");
+        }
         return dataSource.getConnection();
     }
 
@@ -48,6 +53,9 @@ public class GaussDbStore {
     public CompletableFuture<Connection> getConnectionAsync() {
         return CompletableFuture.supplyAsync(() -> {
             try {
+                if (dataSource == null) {
+                    return null;
+                }
                 return dataSource.getConnection();
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to get GaussDB connection", e);
@@ -55,11 +63,16 @@ public class GaussDbStore {
         });
     }
 
+    public DataSource getAsyncEngine() {
+        return dataSource;
+    }
+
     /**
      * Get the underlying DataSource.
      *
      * @return The DataSource instance.
      */
+    @Override
     public DataSource getDataSource() {
         return dataSource;
     }

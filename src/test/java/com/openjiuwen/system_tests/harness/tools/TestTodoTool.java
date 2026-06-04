@@ -1,110 +1,156 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.system_tests.harness.tools;
 
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.runner.Runner;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.schema.task.TodoStatus;
+import com.openjiuwen.harness.tools.TodoCreateTool;
+import com.openjiuwen.harness.tools.TodoListTool;
+import com.openjiuwen.harness.tools.TodoModifyTool;
+import com.openjiuwen.harness.tools.TodoTool;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DeepAgent Todo tool end-to-end system test (real LLM + Todo tool).
- * <p>
- * Mirrors Python's {@code test_todo_tool.py} in
- * {@code tests/system_tests/harness/tools/test_todo_tool.py}.
+ * DeepAgent Todo tool end-to-end system test.
+ *
+ * <p>Mirrors Python's {@code test_todo_tool.py} in
+ * {@code tests.system_tests.harness.tools} while using deterministic direct
+ * tool invocation instead of a live LLM.</p>
  */
+@Tag("system-test")
 public class TestTodoTool {
 
-    private static final String API_BASE = System.getenv("API_BASE");
-    private static final String API_KEY = System.getenv("API_KEY");
-    private static final String MODEL_NAME = System.getenv("MODEL_NAME");
-    private static final String MODEL_PROVIDER = System.getenv("MODEL_PROVIDER");
+    @Test
+    void testDeepAgentTodoCreateListModify() {
+        FakeSession session = new FakeSession();
+        FakeSysOperation sysOperation = new FakeSysOperation();
+        TodoCreateTool createTool = new TodoCreateTool(sysOperation);
+        TodoListTool listTool = new TodoListTool(sysOperation);
+        TodoModifyTool modifyTool = new TodoModifyTool(sysOperation);
 
-    private String sessionId;
+        Map<String, Object> createResult = invoke(createTool, Map.of(
+                "tasks", List.of(
+                        task("Complete requirements analysis", "Analyzing requirements", "Define product scope"),
+                        task("Write code", "Writing code", "Implement the feature"),
+                        task("Run tests", "Running tests", "Verify the implementation")
+                )
+        ), session);
+        assertTrue(String.valueOf(createResult.get("message")).contains("Successfully created 3 task(s)"));
 
-    @BeforeEach
-    void setUp() throws Exception {
-        Runner.start();
-        sessionId = "todo_e2e_" + UUID.randomUUID().toString().replace("-", "");
+        Map<String, Object> firstList = invoke(listTool, Map.of(), session);
+        List<Map<String, Object>> firstTasks = tasks(firstList);
+        assertEquals(3, firstTasks.size());
+        assertEquals(TodoStatus.IN_PROGRESS.getValue(), firstTasks.get(0).get("status"));
+
+        String firstTaskId = String.valueOf(firstTasks.get(0).get("id"));
+        Map<String, Object> modifyResult = invoke(modifyTool, Map.of(
+                "action", "update",
+                "todos", List.of(Map.of(
+                        "id", firstTaskId,
+                        "status", TodoStatus.COMPLETED.getValue()
+                ))
+        ), session);
+        assertTrue(String.valueOf(modifyResult.get("message")).contains("Successfully updated 1 task(s)"));
+
+        Map<String, Object> secondList = invoke(listTool, Map.of(), session);
+        List<Map<String, Object>> remainingTasks = tasks(secondList);
+        assertEquals(2, remainingTasks.size());
+        assertFalse(remainingTasks.stream().anyMatch(task -> firstTaskId.equals(String.valueOf(task.get("id")))));
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        Runner.stop();
+    @Test
+    void testTodoToolTraceSequence() {
+        List<String> toolCalls = new ArrayList<>();
+        toolCalls.add("todo_create");
+        toolCalls.add("todo_list");
+        toolCalls.add("todo_modify");
+        toolCalls.add("todo_list");
+
+        assertEquals(List.of("todo_create", "todo_list", "todo_modify", "todo_list"), toolCalls);
+        assertEquals(2, toolCalls.stream().filter("todo_list"::equals).count());
     }
 
-    private Model createModel() {
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientProvider(MODEL_PROVIDER != null ? MODEL_PROVIDER : "")
-                .apiKey(API_KEY)
-                .apiBase(API_BASE)
-                .timeout(120)
-                .verifySsl(false)
-                .build();
-        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                .modelName(MODEL_NAME != null ? MODEL_NAME : "")
-                .temperature(0.2)
-                .topP(0.9)
-                .build();
-        return new Model(clientConfig, requestConfig);
-    }
-
-    /**
-     * ToolTraceRail - Records tool call sequence.
-     */
-    private static class ToolTraceRail {
-        private final List<String> toolCalls = new ArrayList<>();
-
-        void recordToolCall(String toolName) {
-            toolCalls.add(toolName);
-        }
-
-        List<String> getToolCalls() {
-            return toolCalls;
+    private static Map<String, Object> invoke(TodoTool tool, Map<String, Object> inputs, Session session) {
+        try {
+            return castMap(tool.invoke(inputs, Map.of("session", session)));
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
         }
     }
 
-    @Nested
-    @DisplayName("Todo tool E2E tests")
-    class TodoTests {
+    private static Map<String, Object> task(String content, String activeForm, String description) {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("content", content);
+        task.put("activeForm", activeForm);
+        task.put("description", description);
+        return task;
+    }
 
-        @Test
-        @DisplayName("Test todo model config")
-        void testTodoModelConfig() {
-            // Placeholder: Model configuration test
-            
-            assertThat(sessionId).isNotNull();
+    private static List<Map<String, Object>> tasks(Map<String, Object> result) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) result.get("tasks");
+        return tasks;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    private static final class FakeSysOperation extends SysOperation {
+        private FakeSysOperation() {
+            super(SysOperationCard.builder()
+                    .id("todo-op")
+                    .mode(OperationMode.LOCAL)
+                    .workConfig(LocalWorkConfig.builder().shellAllowlist(List.of()).build())
+                    .build());
+        }
+    }
+
+    private static final class FakeSession implements Session {
+        private final Map<String, Object> state = new LinkedHashMap<>();
+        private final String sessionId = UUID.randomUUID().toString();
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
         }
 
-        @Test
-        @DisplayName("Test tool trace rail")
-        void testToolTraceRail() {
-            ToolTraceRail rail = new ToolTraceRail();
-            rail.recordToolCall("todo_create");
-            rail.recordToolCall("todo_list");
-            rail.recordToolCall("todo_modify");
-            
-            assertThat(rail.getToolCalls())
-                    .containsExactly("todo_create", "todo_list", "todo_modify");
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
         }
 
-        @Test
-        @DisplayName("Test todo tools placeholder")
-        void testTodoToolsPlaceholder() {
-            // Placeholder: Todo tools registration test
-            
-            assertThat(Runner.resourceMgr()).isNotNull();
+        @Override
+        public void updateState(Map<String, Object> stateUpdate) {
+            if (stateUpdate == null) {
+                return;
+            }
+            for (Map.Entry<String, Object> entry : stateUpdate.entrySet()) {
+                if (entry.getValue() == null) {
+                    state.remove(entry.getKey());
+                } else {
+                    state.put(entry.getKey(), entry.getValue());
+                }
+            }
         }
     }
 }

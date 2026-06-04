@@ -12,7 +12,8 @@ import java.util.*;
  * Replaces sensitive fields (e.g. messages, response_content, query) with
  * {@code <REDACTED>} to prevent sensitive data leakage in logs.
  * <p>
- * Java equivalent of Python's {@code sanitize_event_for_logging}.
+ * Mirrors Python's {@code sanitize_event_for_logging} in
+ * {@code openjiuwen.core.common.logging.events}.
  */
 public final class EventSanitizer {
 

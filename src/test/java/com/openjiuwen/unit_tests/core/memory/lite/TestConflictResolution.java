@@ -88,6 +88,28 @@ class TestConflictResolution {
             assertTrue((Boolean) d.get("conflict_detected"));
             assertEquals(Arrays.asList("old.md"), d.get("conflicting_files"));
         }
+
+        @Test
+        @Tag("level0")
+        void testWriteResultToDictSkip() {
+            WriteResult result = new WriteResult(true, "/test/path.md", WriteMode.SKIP);
+            result.setNote("Content is redundant");
+
+            Map<String, Object> d = result.toDict();
+            assertEquals("skip", d.get("mode"));
+            assertEquals("Content is redundant", d.get("note"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testWriteResultToDictWithError() {
+            WriteResult result = new WriteResult(false, "/test/path.md", WriteMode.CREATE);
+            result.setError("Invalid frontmatter");
+
+            Map<String, Object> d = result.toDict();
+            assertEquals(false, d.get("success"));
+            assertEquals("Invalid frontmatter", d.get("error"));
+        }
     }
 
     // ==================== TestFrontmatterFunctions ====================
@@ -107,6 +129,21 @@ class TestConflictResolution {
             Map<String, String> enriched = Frontmatter.enrichFrontmatter(fm, false);
             assertTrue(enriched.containsKey("created_at"));
             assertTrue(enriched.containsKey("updated_at"));
+            assertEquals(enriched.get("created_at"), enriched.get("updated_at"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testEnrichFrontmatterCreatePreservesExistingCreatedAt() {
+            Map<String, String> fm = new HashMap<>();
+            fm.put("name", "Test");
+            fm.put("description", "Desc");
+            fm.put("type", "user");
+            fm.put("created_at", "2026-01-01");
+
+            Map<String, String> enriched = Frontmatter.enrichFrontmatter(fm, false);
+            assertEquals("2026-01-01", enriched.get("created_at"));
+            assertNotEquals("2026-01-01", enriched.get("updated_at"));
         }
 
         @Test
@@ -154,6 +191,81 @@ class TestConflictResolution {
             String content = "Just body";
             String body = Frontmatter.extractBody(content);
             assertEquals("Just body", body);
+        }
+
+        @Test
+        @Tag("level0")
+        void testExtractBodyEmptyAfterFrontmatter() {
+            String content = "---\nname: Test\n---";
+            assertEquals("", Frontmatter.extractBody(content));
+        }
+
+        @Test
+        @Tag("level0")
+        void testExtractBodyWhitespaceHandling() {
+            String content = "---\nname: Test\n---\n\n  Trimmed content  ";
+            assertEquals("Trimmed content", Frontmatter.extractBody(content).strip());
+        }
+
+        @Test
+        @Tag("level0")
+        void testRebuildContentPreservesBodyFormatting() {
+            String content = "---\nname: Test\n---\n\n# Heading\n\n- List item 1\n- List item 2\n\nParagraph with **bold** text.";
+            Map<String, String> fm = new LinkedHashMap<>();
+            fm.put("name", "Updated");
+            fm.put("updated_at", "2026-04-14");
+
+            String rebuilt = Frontmatter.rebuildContentWithFrontmatter(content, fm);
+            assertTrue(rebuilt.contains("# Heading"));
+            assertTrue(rebuilt.contains("- List item 1"));
+            assertTrue(rebuilt.contains("**bold**"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testRebuildContentEmptyBody() {
+            String content = "---\nname: Test\n---";
+            Map<String, String> fm = new LinkedHashMap<>();
+            fm.put("name", "Updated");
+            fm.put("updated_at", "2026-04-14");
+
+            String rebuilt = Frontmatter.rebuildContentWithFrontmatter(content, fm);
+            assertTrue(rebuilt.contains("name: Updated"));
+            assertTrue(rebuilt.contains("updated_at: 2026-04-14"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testFullWorkflowCreate() {
+            String content = "---\nname: User Preference\ndescription: User likes dark mode\ntype: user\n---\n\nUser prefers dark mode for all applications.";
+            Map<String, String> fm = Frontmatter.parseFrontmatter(content);
+            assertNotNull(fm);
+
+            Frontmatter.ValidationResult validation = Frontmatter.validateFrontmatter(fm);
+            assertTrue(validation.isValid());
+            assertEquals("", validation.getErrorMessage());
+
+            Map<String, String> enriched = Frontmatter.enrichFrontmatter(fm, false);
+            String rebuilt = Frontmatter.rebuildContentWithFrontmatter(content, enriched);
+            assertTrue(rebuilt.contains("created_at:"));
+            assertTrue(rebuilt.contains("updated_at:"));
+            assertTrue(rebuilt.contains("User prefers dark mode"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testFullWorkflowEdit() {
+            String content = "---\nname: User Preference\ndescription: User likes dark mode\ntype: user\ncreated_at: 2026-01-01\nupdated_at: 2026-01-01\n---\n\nUser prefers dark mode for all applications.";
+            Map<String, String> fm = Frontmatter.parseFrontmatter(content);
+            assertNotNull(fm);
+
+            Map<String, String> enriched = Frontmatter.enrichFrontmatter(fm, true);
+            assertEquals("2026-01-01", enriched.get("created_at"));
+            assertNotEquals("2026-01-01", enriched.get("updated_at"));
+
+            String rebuilt = Frontmatter.rebuildContentWithFrontmatter(content, enriched);
+            assertTrue(rebuilt.contains("created_at: 2026-01-01"));
+            assertTrue(rebuilt.contains("updated_at: " + java.time.LocalDate.now()));
         }
     }
 }

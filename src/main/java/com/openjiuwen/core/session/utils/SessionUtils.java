@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -491,7 +492,39 @@ public final class SessionUtils {
     public static final class EndFrame {
         public static final String MESSAGE = "all streaming outputs finish";
 
-        private EndFrame() {
+        private final String source;
+
+        public EndFrame(String source) {
+            this.source = source;
+        }
+
+        public String getSource() {
+            return source;
+        }
+
+        public String source() {
+            return source;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof EndFrame endFrame)) {
+                return false;
+            }
+            return Objects.equals(source, endFrame.source);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(source);
+        }
+
+        @Override
+        public String toString() {
+            return "EndFrame{source='" + source + "'}";
         }
     }
 }

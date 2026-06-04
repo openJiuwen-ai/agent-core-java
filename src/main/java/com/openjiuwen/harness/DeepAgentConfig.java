@@ -7,10 +7,13 @@ package com.openjiuwen.harness;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.util.ArrayList;
@@ -29,15 +32,22 @@ import java.util.Map;
 public class DeepAgentConfig {
 
     private AgentCard card;
+    private Model model;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelRequestConfig;
     private String systemPrompt = "";
     private int maxIterations = 15;
+    private boolean enableTaskLoop = false;
     private String sysOperationId;
+    private SysOperation sysOperation;
     private Workspace workspace;
     private List<ToolCard> tools = new ArrayList<>();
     private List<AgentRail> rails = new ArrayList<>();
     private List<DeepAgent> subagents = new ArrayList<>();
+    private List<McpServerConfig> mcps = new ArrayList<>();
+    private List<String> skills = new ArrayList<>();
+    private boolean addGeneralPurposeAgent = false;
+    private boolean autoCreateWorkspace = true;
     private SessionToolkit sessionToolkit;
     private Map<String, Object> permissions = Map.of();
 
@@ -47,6 +57,14 @@ public class DeepAgentConfig {
 
     public void setCard(AgentCard card) {
         this.card = card;
+    }
+
+    public Model getModel() {
+        return model;
+    }
+
+    public void setModel(Model model) {
+        this.model = model;
     }
 
     public ModelClientConfig getModelClientConfig() {
@@ -81,12 +99,32 @@ public class DeepAgentConfig {
         this.maxIterations = maxIterations;
     }
 
+    public boolean isEnableTaskLoop() {
+        return enableTaskLoop;
+    }
+
+    public boolean getEnableTaskLoop() {
+        return enableTaskLoop;
+    }
+
+    public void setEnableTaskLoop(boolean enableTaskLoop) {
+        this.enableTaskLoop = enableTaskLoop;
+    }
+
     public String getSysOperationId() {
         return sysOperationId;
     }
 
     public void setSysOperationId(String sysOperationId) {
         this.sysOperationId = sysOperationId;
+    }
+
+    public SysOperation getSysOperation() {
+        return sysOperation;
+    }
+
+    public void setSysOperation(SysOperation sysOperation) {
+        this.sysOperation = sysOperation;
     }
 
     public Workspace getWorkspace() {
@@ -119,6 +157,46 @@ public class DeepAgentConfig {
 
     public void setSubagents(List<DeepAgent> subagents) {
         this.subagents = subagents != null ? new ArrayList<>(subagents) : new ArrayList<>();
+    }
+
+    public List<McpServerConfig> getMcps() {
+        return mcps;
+    }
+
+    public void setMcps(List<McpServerConfig> mcps) {
+        this.mcps = mcps != null ? new ArrayList<>(mcps) : new ArrayList<>();
+    }
+
+    public List<String> getSkills() {
+        return skills;
+    }
+
+    public void setSkills(List<String> skills) {
+        this.skills = skills != null ? new ArrayList<>(skills) : new ArrayList<>();
+    }
+
+    public boolean isAddGeneralPurposeAgent() {
+        return addGeneralPurposeAgent;
+    }
+
+    public boolean getAddGeneralPurposeAgent() {
+        return addGeneralPurposeAgent;
+    }
+
+    public void setAddGeneralPurposeAgent(boolean addGeneralPurposeAgent) {
+        this.addGeneralPurposeAgent = addGeneralPurposeAgent;
+    }
+
+    public boolean isAutoCreateWorkspace() {
+        return autoCreateWorkspace;
+    }
+
+    public boolean getAutoCreateWorkspace() {
+        return autoCreateWorkspace;
+    }
+
+    public void setAutoCreateWorkspace(boolean autoCreateWorkspace) {
+        this.autoCreateWorkspace = autoCreateWorkspace;
     }
 
     public SessionToolkit getSessionToolkit() {
@@ -169,14 +247,23 @@ public class DeepAgentConfig {
         }
 
         public synchronized void completeTask(String taskId, String result) {
+            if (hasStatus(taskId, "canceled")) {
+                return;
+            }
             mutateTask(taskId, "completed", "result", result);
         }
 
         public synchronized void failTask(String taskId, String error) {
+            if (hasStatus(taskId, "canceled")) {
+                return;
+            }
             mutateTask(taskId, "error", "error", error);
         }
 
         public synchronized void cancelTask(String taskId) {
+            if (hasStatus(taskId, "completed")) {
+                return;
+            }
             mutateTask(taskId, "canceled", null, null);
         }
 
@@ -202,6 +289,15 @@ public class DeepAgentConfig {
                     return;
                 }
             }
+        }
+
+        private boolean hasStatus(String taskId, String status) {
+            for (Map<String, Object> row : tasks) {
+                if (taskId.equals(row.get("task_id")) && status.equals(row.get("status"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

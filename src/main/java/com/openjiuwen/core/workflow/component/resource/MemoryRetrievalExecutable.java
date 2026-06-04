@@ -45,7 +45,7 @@ public class MemoryRetrievalExecutable extends ComponentExecutable {
         String query = retrievalInput.getQuery();
 
         if (query == null || query.strip().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR,
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR,
                     "error_msg", "Query must be a non-empty string");
         }
 
@@ -93,7 +93,7 @@ public class MemoryRetrievalExecutable extends ComponentExecutable {
                     "MemoryRetrievalComponent",
                     session.getSessionId()
             );
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED,
                     "error_msg", "Memory retrieval call failed: " + e.getMessage());
         }
 
@@ -141,7 +141,7 @@ public class MemoryRetrievalExecutable extends ComponentExecutable {
                     .additionalFields(map)
                     .build();
         }
-        throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR,
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR,
                 "error_msg", "Invalid input type for MemoryRetrieval");
     }
 }

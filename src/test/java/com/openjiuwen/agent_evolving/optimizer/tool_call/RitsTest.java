@@ -4,9 +4,16 @@
 
 package com.openjiuwen.agent_evolving.optimizer.tool_call;
 
+import com.openjiuwen.agent_evolving.optimizer.tool_call.utils.RitsUtils;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,6 +23,138 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.optimizer.tool_call.test_rits}.
  */
 class RitsTest {
+
+    @Test
+    void testRitsResponseWithAndWithoutVerify() throws Exception {
+        String responseBody = """
+                {
+                  "model": "gpt-test",
+                  "choices": [
+                    {
+                      "message": {
+                        "content": "raw-output"
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2
+                  }
+                }
+                """;
+
+        try (MockOpenAiServer server = new MockOpenAiServer(responseBody)) {
+            Object out = RitsUtils.ritsResponse(
+                    "gpt-test",
+                    "hello",
+                    "key",
+                    String::toUpperCase,
+                    false,
+                    Map.of("api_base", server.baseUrl())
+            );
+            Object out2 = RitsUtils.ritsResponse(
+                    "gpt-test",
+                    "hello",
+                    "key",
+                    null,
+                    false,
+                    Map.of("api_base", server.baseUrl())
+            );
+
+            assertEquals("RAW-OUTPUT", out);
+            assertEquals("raw-output", out2);
+            assertTrue(server.lastRequestBody.get().contains("\"role\":\"developer\""));
+        }
+    }
+
+    @Test
+    void testRitsResponsePreservesNullContent() throws Exception {
+        String responseBody = """
+                {
+                  "model": "gpt-test",
+                  "choices": [
+                    {
+                      "message": {
+                        "content": null
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 0,
+                    "total_tokens": 1
+                  }
+                }
+                """;
+
+        try (MockOpenAiServer server = new MockOpenAiServer(responseBody)) {
+            AtomicReference<String> verifiedInput = new AtomicReference<>("not-called");
+            Object raw = RitsUtils.ritsResponse(
+                    "gpt-test",
+                    "hello",
+                    "key",
+                    null,
+                    false,
+                    Map.of("api_base", server.baseUrl())
+            );
+            Object verified = RitsUtils.ritsResponse(
+                    "gpt-test",
+                    "hello",
+                    "key",
+                    text -> {
+                        verifiedInput.set(text);
+                        return text == null ? "was-null" : text;
+                    },
+                    false,
+                    Map.of("api_base", server.baseUrl())
+            );
+
+            assertNull(raw);
+            assertNull(verifiedInput.get());
+            assertEquals("was-null", verified);
+        }
+    }
+
+    @Test
+    void testGetRitsResponseWrapsException() throws Exception {
+        String responseBody = """
+                {
+                  "model": "gpt-test",
+                  "choices": [
+                    {
+                      "message": {
+                        "content": "raw-output"
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2
+                  }
+                }
+                """;
+
+        try (MockOpenAiServer server = new MockOpenAiServer(responseBody)) {
+            Object out = RitsUtils.getRitsResponse(
+                    "gpt-test",
+                    "hello",
+                    "key",
+                    text -> {
+                        throw new RuntimeException("x");
+                    },
+                    false,
+                    Map.of("api_base", server.baseUrl())
+            );
+
+            assertTrue(out instanceof Map<?, ?>);
+            assertTrue(String.valueOf(((Map<?, ?>) out).get("error")).contains("Cannot complete LLM call"));
+        }
+    }
 
     @Test
     void testRitsExtractsReducedSchema() {
@@ -111,9 +250,7 @@ class RitsTest {
         Map<String, Object> reduced = new HashMap<>();
         
         // Always include name
-        if (fullSchema.containsKey("name")) {
-            reduced.put("name", fullSchema.get("name"));
-        }
+        reduced.put("name", fullSchema.getOrDefault("name", ""));
         
         // Truncate description if too long
         if (fullSchema.containsKey("description")) {
@@ -141,5 +278,37 @@ class RitsTest {
         }
         
         return reduced;
+    }
+
+    private static final class MockOpenAiServer implements AutoCloseable {
+        private final HttpServer server;
+        private final String responseBody;
+        private final AtomicReference<String> lastRequestBody = new AtomicReference<>("");
+
+        private MockOpenAiServer(String responseBody) throws IOException {
+            this.responseBody = responseBody;
+            this.server = HttpServer.create(new InetSocketAddress(0), 0);
+            server.createContext("/chat/completions", this::handleExchange);
+            server.start();
+        }
+
+        private void handleExchange(HttpExchange exchange) throws IOException {
+            byte[] requestBody = exchange.getRequestBody().readAllBytes();
+            lastRequestBody.set(new String(requestBody, StandardCharsets.UTF_8));
+            byte[] responseBytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            exchange.getResponseBody().write(responseBytes);
+            exchange.close();
+        }
+
+        private String baseUrl() {
+            return "http://127.0.0.1:" + server.getAddress().getPort();
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
     }
 }

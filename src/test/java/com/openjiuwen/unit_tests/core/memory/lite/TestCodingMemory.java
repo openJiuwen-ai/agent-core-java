@@ -4,10 +4,16 @@
 
 package com.openjiuwen.unit_tests.core.memory.lite;
 
+import com.openjiuwen.core.memory.lite.CodingMemoryToolContext;
+import com.openjiuwen.core.memory.lite.CodingMemoryTools;
 import com.openjiuwen.core.memory.lite.Frontmatter;
 import com.openjiuwen.core.memory.lite.Frontmatter.ValidationResult;
+import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,6 +24,23 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python's {@code tests.unit_tests.core.memory.lite.test_coding_memory}.
  */
 class TestCodingMemory {
+
+    @TempDir
+    Path tempDir;
+
+    private Path codingMemoryDir;
+
+    @BeforeEach
+    void setUpRuntime() throws Exception {
+        codingMemoryDir = tempDir.resolve("coding_memory");
+        Files.createDirectories(codingMemoryDir);
+        CodingMemoryTools.bindCodingMemoryRuntime(new Workspace(tempDir.toString(), "cn"), null, codingMemoryDir.toString());
+    }
+
+    @AfterEach
+    void tearDownRuntime() {
+        CodingMemoryTools.clearCodingMemoryRuntime();
+    }
 
     // ==================== TestFrontmatter ====================
 
@@ -174,13 +197,46 @@ class TestCodingMemory {
         @Test
         @Tag("level0")
         void testValidatePathPlaceholder() {
-            /** Test path validation - valid markdown paths */
-            String validPath = "/valid/memory/file.md";
-            assertTrue(validPath.endsWith(".md"));
-            
-            /** Test path validation - invalid paths */
-            String invalidPath = "/invalid/path.txt";
-            assertFalse(invalidPath.endsWith(".md"));
+            String resolved = CodingMemoryTools.validateCodingMemoryPath("user_role.md");
+            assertTrue(resolved.endsWith("coding_memory/user_role.md")
+                    || resolved.endsWith("coding_memory\\user_role.md"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testValidatePathTraversal() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> CodingMemoryTools.validateCodingMemoryPath("../etc/passwd.md")
+            );
+            assertTrue(error.getMessage().contains("directory traversal"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testValidatePathAbsolute() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> CodingMemoryTools.validateCodingMemoryPath(tempDir.resolve("absolute.md").toString())
+            );
+            assertTrue(error.getMessage().contains("directory traversal"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testValidatePathNotMd() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> CodingMemoryTools.validateCodingMemoryPath("user_role.txt")
+            );
+            assertTrue(error.getMessage().contains(".md"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testSetAndGetCodingMemoryDir() {
+            assertNotNull(CodingMemoryTools.getMemoryIndexManager());
+            assertEquals(codingMemoryDir.toString(), CodingMemoryTools.getMemoryIndexManager().getCodingMemoryDir());
         }
     }
 
@@ -193,11 +249,83 @@ class TestCodingMemory {
         @Test
         @Tag("level0")
         void testMemoryIndexPlaceholder() {
-            /** Test memory index structure - verify index data types */
-            Map<String, List<String>> index = new HashMap<>();
-            index.put("test_key", new ArrayList<>());
-            assertNotNull(index);
-            assertTrue(index.containsKey("test_key"));
+            Map<String, String> frontmatter = Map.of(
+                    "name", "Developer Role",
+                    "description", "Senior Python developer",
+                    "type", "user"
+            );
+
+            CodingMemoryToolContext.upsertMemoryIndex(codingMemoryDir.toString(), "user_role.md", frontmatter);
+
+            String indexContent = readIndexContent();
+            assertTrue(indexContent.contains("Developer Role"));
+            assertTrue(indexContent.contains("user_role.md"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testUpsertUpdateExisting() {
+            CodingMemoryToolContext.upsertMemoryIndex(codingMemoryDir.toString(), "user_role.md", Map.of(
+                    "name", "Old Name",
+                    "description", "Old desc",
+                    "type", "user"
+            ));
+            CodingMemoryToolContext.upsertMemoryIndex(codingMemoryDir.toString(), "user_role.md", Map.of(
+                    "name", "New Name",
+                    "description", "New desc",
+                    "type", "user"
+            ));
+
+            String indexContent = readIndexContent();
+            assertTrue(indexContent.contains("New Name"));
+            assertFalse(indexContent.contains("Old Name"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testRemoveFromIndex() {
+            CodingMemoryToolContext.upsertMemoryIndex(codingMemoryDir.toString(), "to_delete.md", Map.of(
+                    "name", "To Delete",
+                    "description", "Will be deleted",
+                    "type", "user"
+            ));
+
+            CodingMemoryTools.removeFromMemoryIndex("to_delete.md");
+
+            assertFalse(readIndexContent().contains("To Delete"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testCountMemoryFiles() throws Exception {
+            Files.writeString(codingMemoryDir.resolve("file1.md"), "content");
+            Files.writeString(codingMemoryDir.resolve("file2.md"), "content");
+            Files.writeString(codingMemoryDir.resolve("MEMORY.md"), "index");
+
+            assertEquals(2, CodingMemoryTools.countMemoryFiles());
+        }
+
+        @Test
+        @Tag("level0")
+        void testReadFileSafeSuccess() throws Exception {
+            Path file = codingMemoryDir.resolve("test_read.md");
+            Files.writeString(file, "测试内容");
+
+            assertEquals("测试内容", CodingMemoryTools.readFileSafe("test_read.md"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testReadFileSafeNotFound() {
+            assertEquals("", CodingMemoryTools.readFileSafe("missing.md"));
+        }
+    }
+
+    private String readIndexContent() {
+        try {
+            return Files.readString(codingMemoryDir.resolve("MEMORY.md"));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
     }
 }

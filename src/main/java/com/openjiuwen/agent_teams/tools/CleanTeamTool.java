@@ -21,6 +21,9 @@ public class CleanTeamTool extends TeamTool {
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        if (!team.canCleanTeam()) {
+            return new TeamToolOutput(false, null, "Please call shutdown_member for all members before clean_team");
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("team_name", team.getTeamName());
         data.put("removed_paths", team.cleanTeam());

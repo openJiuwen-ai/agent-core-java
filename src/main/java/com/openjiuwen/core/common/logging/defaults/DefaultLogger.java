@@ -7,6 +7,7 @@ package com.openjiuwen.core.common.logging.defaults;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.LoggingUtils;
+import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
 import com.openjiuwen.core.common.logging.events.BaseLogEvent;
 import com.openjiuwen.core.common.logging.events.EventClassRegistry;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -15,6 +16,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -25,6 +30,9 @@ import java.util.logging.LogRecord;
 
 /**
  * Default logger implementation backed by SLF4J + Logback.
+ *
+ * <p>Mirrors Python's {@code DefaultLogger} in
+ * {@code openjiuwen.core.common.logging.default.default_impl}.</p>
  * <p>
  * Implements {@link LoggerProtocol} providing:
  * <ul>
@@ -46,7 +54,8 @@ public class DefaultLogger implements LoggerProtocol {
 
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
-        this.config = config != null ? Map.copyOf(config) : Map.of();
+        this.config = config != null ? new LinkedHashMap<>(config) : Map.of();
+        ensureLogDirectory(this.config);
         this.slf4jLogger = LoggerFactory.getLogger(logType);
         this.julLogger = java.util.logging.Logger.getLogger(logType + ".jul");
         this.julLogger.setUseParentHandlers(false);
@@ -176,7 +185,8 @@ public class DefaultLogger implements LoggerProtocol {
 
     @Override
     public void reconfigure(Map<String, Object> newConfig) {
-        this.config = newConfig != null ? Map.copyOf(newConfig) : Map.of();
+        this.config = newConfig != null ? new LinkedHashMap<>(newConfig) : Map.of();
+        ensureLogDirectory(this.config);
     }
 
     // ==================== Structured Event Logging ====================
@@ -222,11 +232,13 @@ public class DefaultLogger implements LoggerProtocol {
 
     private void setMdc() {
         MDC.put("trace_id", LoggingUtils.getSessionId());
+        MDC.put("member_id", LoggingUtils.getMemberId());
         MDC.put("log_type", logType);
     }
 
     private void clearMdc() {
         MDC.remove("trace_id");
+        MDC.remove("member_id");
         MDC.remove("log_type");
     }
 
@@ -265,14 +277,50 @@ public class DefaultLogger implements LoggerProtocol {
     }
 
     private static String formatMessage(String msg, Object... args) {
-        if (msg == null || args == null || args.length == 0) {
-            return msg;
+        return StructuredLoggerMixin.autoFormatMessage(msg, args);
+    }
+
+    private static void ensureLogDirectory(Map<String, Object> config) {
+        if (!usesFileOutput(config)) {
+            return;
         }
-        String formatted = msg;
-        for (Object arg : args) {
-            formatted = formatted.replaceFirst("\\{}", java.util.regex.Matcher.quoteReplacement(String.valueOf(arg)));
+        Object logFileValue = config.get("log_file");
+        if (logFileValue == null || String.valueOf(logFileValue).isBlank()) {
+            return;
         }
-        return formatted;
+        Path logFile = Path.of(expandUser(String.valueOf(logFileValue))).toAbsolutePath();
+        Path logDir = logFile.getParent();
+        if (logDir == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(logDir);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create log directory `" + logDir + "`", e);
+        }
+    }
+
+    private static boolean usesFileOutput(Map<String, Object> config) {
+        Object output = config.get("output");
+        if (output instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if ("file".equals(String.valueOf(item))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return output == null || "file".equals(String.valueOf(output));
+    }
+
+    private static String expandUser(String path) {
+        if ("~".equals(path)) {
+            return System.getProperty("user.home");
+        }
+        if (path.startsWith("~/") || path.startsWith("~\\")) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
+        return path;
     }
 
     /**

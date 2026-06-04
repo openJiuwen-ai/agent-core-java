@@ -11,6 +11,7 @@ import com.openjiuwen.agent_evolving.agent_rl.storage.RedisTrajectoryStoreBacken
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,7 +42,7 @@ public class GatewayTrajectoryRuntime implements SampleRecordingSink {
         this.defaultUserId = config.isSingleUserDefault() ? SINGLE_USER_DEFAULT_ID : "";
         this.trajectoryStore = new RedisTrajectoryStore(redisBackend);
         this.sampleRecorder = new SampleRecorder(Path.of(config.getRecordDir(), "samples.jsonl"), config.isDumpTokenIds());
-        this.pendingJudgeStore = new InMemoryPendingJudgeStore();
+        this.pendingJudgeStore = new PendingJudgeStore(redisBackend);
         setJudgeScorer(null);
     }
 
@@ -63,7 +64,7 @@ public class GatewayTrajectoryRuntime implements SampleRecordingSink {
 
     public void recordSample(Map<String, Object> sample) {
         Map<String, Object> normalized = new LinkedHashMap<>(sample);
-        String normalizedUserId = String.valueOf(normalized.getOrDefault("user_id", defaultUserId)).trim();
+        String normalizedUserId = pythonStr(firstTruthy(normalized.get("user_id"), defaultUserId, "")).trim();
         if (normalizedUserId.isBlank()) {
             throw new IllegalArgumentException("missing user_id; online training requires a stable user id");
         }
@@ -86,25 +87,44 @@ public class GatewayTrajectoryRuntime implements SampleRecordingSink {
         );
     }
 
-    static final class InMemoryPendingJudgeStore extends PendingJudgeStore {
-        private final Map<String, java.util.List<Map<String, Object>>> bySession = new LinkedHashMap<>();
-
-        public void put(Map<String, Object> sample) {
-            String sessionId = String.valueOf(sample.getOrDefault("session_id", ""));
-            bySession.computeIfAbsent(sessionId, ignored -> new java.util.ArrayList<>()).add(sample);
+    private static Object firstTruthy(Object... values) {
+        if (values == null || values.length == 0) {
+            return "";
         }
-
-        public Map<String, Object> popEarliest(String sessionId) {
-            java.util.List<Map<String, Object>> samples = bySession.get(sessionId);
-            if (samples == null || samples.isEmpty()) {
-                return null;
+        for (Object value : values) {
+            if (isPythonTruthy(value)) {
+                return value;
             }
-            return samples.removeFirst();
         }
+        return values[values.length - 1];
+    }
 
-        public java.util.List<Map<String, Object>> popAll(String sessionId) {
-            java.util.List<Map<String, Object>> samples = bySession.remove(sessionId);
-            return samples != null ? samples : java.util.List.of();
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
         }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof List<?> list) {
+            return !list.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static String pythonStr(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return value == null ? "None" : String.valueOf(value);
     }
 }

@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Tests for the online gateway request forwarder.
+ *
+ * <p>Mirrors Python's
+ * {@code tests.unit_tests.agent_evolving.agent_rl.online.gateway.test_forwarder}.
+ */
 class ForwarderTest {
 
     @Test
@@ -78,7 +84,8 @@ class ForwarderTest {
 
         @Override
         public GatewayHttpResponse request(String method, String url, Map<String, Object> params, Map<String, String> headers, byte[] content) {
-            throw new UnsupportedOperationException();
+            calls.add(new Call(params != null ? params : Map.of(), headers != null ? headers : Map.of()));
+            return response;
         }
     }
 

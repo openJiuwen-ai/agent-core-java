@@ -154,16 +154,16 @@ class ReActAgentEvolveTest {
     @Test
     void testGetOperators() {
         Map<String, ?> operators = agent.getOperators();
-        // toolOp should be present, llmOp may fail (no model config) and be skipped
+        // Both parameter proxies should be present even before a real model is configured.
         assertThat(operators).isNotNull();
         assertThat(operators).containsKey("react_tool");
+        assertThat(operators).containsKey("react_llm");
     }
 
     @Test
-    void testGetOperatorsSkipsLlmOpWhenNotConfigured() {
+    void testGetOperatorsIncludesLlmParameterProxyWhenNotConfigured() {
         Map<String, ?> operators = agent.getOperators();
-        // llmOp should be silently skipped since no model config
-        assertThat(operators).doesNotContainKey("react_llm");
+        assertThat(operators).containsKey("react_llm");
     }
 
     // ========== Invoke ==========

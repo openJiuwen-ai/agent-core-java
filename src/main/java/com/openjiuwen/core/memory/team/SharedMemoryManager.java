@@ -30,6 +30,7 @@ public class SharedMemoryManager {
 
     private final String teamMemoryDir;
     private final Object sysOperation;
+    private final Object writeLock = new Object();
 
     public SharedMemoryManager(String teamMemoryDir, Object sysOperation) {
         this.teamMemoryDir = teamMemoryDir;
@@ -106,18 +107,21 @@ public class SharedMemoryManager {
                 }
             }
 
-            // Atomic local write via temp file + move
-            Path tmpPath = null;
-            try {
-                tmpPath = Files.createTempFile(Paths.get(teamMemoryDir), "team_memory_", ".tmp");
-                Files.writeString(tmpPath, content, StandardCharsets.UTF_8);
-                Files.move(tmpPath, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (Exception e) {
-                Loggers.MEMORY.error("[SharedMemoryManager] Atomic write failed: {}", e.getMessage());
-                throw new RuntimeException("Failed to write team summary", e);
-            } finally {
-                if (tmpPath != null && Files.exists(tmpPath)) {
-                    try { Files.deleteIfExists(tmpPath); } catch (Exception ignored) {}
+            // Python's fallback write has no await between temp-file creation and os.replace,
+            // so concurrent asyncio calls complete this critical section serially.
+            synchronized (writeLock) {
+                Path tmpPath = null;
+                try {
+                    tmpPath = Files.createTempFile(Paths.get(teamMemoryDir), "team_memory_", ".tmp");
+                    Files.writeString(tmpPath, content, StandardCharsets.UTF_8);
+                    Files.move(tmpPath, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (Exception e) {
+                    Loggers.MEMORY.error("[SharedMemoryManager] Atomic write failed: {}", e.getMessage());
+                    throw new RuntimeException("Failed to write team summary", e);
+                } finally {
+                    if (tmpPath != null && Files.exists(tmpPath)) {
+                        try { Files.deleteIfExists(tmpPath); } catch (Exception ignored) {}
+                    }
                 }
             }
         }));

@@ -10,6 +10,7 @@ import com.openjiuwen.dev_tools.agent_builder.builders.BaseAgentBuilder;
 import com.openjiuwen.dev_tools.agent_builder.executor.AgentBuildExecutor;
 import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
 import com.openjiuwen.dev_tools.agent_builder.utils.AgentBuilderEnums;
+import com.openjiuwen.dev_tools.agent_builder.utils.ProgressReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +40,10 @@ public class AgentBuilder {
      */
     public AgentBuilder() {
         this(new HashMap<>(), new HashMap<>(), new HashMap<>());
+    }
+
+    public AgentBuilder(Map<String, Object> modelInfo) {
+        this(modelInfo, new HashMap<>(), new HashMap<>());
     }
 
     /**
@@ -93,7 +98,7 @@ public class AgentBuilder {
 
         Map<String, Object> response = new LinkedHashMap<>();
         AgentBuilderEnums.BuildState state = builder.getState();
-        String stateStr = state != null ? state.name().toLowerCase() : "unknown";
+        String stateStr = state != null ? state.getValue() : "unknown";
         response.put("status", mapStateToStatus(stateStr, agentType));
         response.put("session_id", sessionId);
         response.put("agent_type", agentType);
@@ -107,11 +112,17 @@ public class AgentBuilder {
                     response.put("dsl", dsl);
                     response.put("status", "completed");
                 } catch (Exception e) {
-                    response.put("response", resultData);
-                    response.put("status", "clarifying");
+                    if ("workflow".equals(agentType)
+                            && (resultStr.contains("graph") || resultStr.contains("flowchart"))) {
+                        response.put("mermaid_code", resultData);
+                        response.put("status", "processing");
+                    } else {
+                        response.put("response", resultData);
+                        response.put("status", "llm_agent".equals(agentType) ? "clarifying" : "requesting");
+                    }
                 }
-            } else if (resultData instanceof Map) {
-                response.put("dsl", resultData);
+            } else if (resultData instanceof Map<?, ?> resultMap) {
+                resultMap.forEach((key, value) -> response.put(String.valueOf(key), value));
                 response.put("status", "completed");
             }
             response.putAll(result);
@@ -149,15 +160,53 @@ public class AgentBuilder {
      * @param agentType Agent type
      * @return External status string
      */
-    private static String mapStateToStatus(String state, String agentType) {
-        if ("completed".equals(state)) {
-            return "completed";
-        } else if ("processing".equals(state) || "initial".equals(state)) {
-            return "processing";
-        } else if ("error".equals(state)) {
-            return "error";
+    public static String mapStateToStatus(String state, String agentType) {
+        return switch (state) {
+            case "initial" -> "llm_agent".equals(agentType) ? "clarifying" : "requesting";
+            case "processing" -> "processing";
+            case "completed" -> "completed";
+            default -> "unknown";
+        };
+    }
+
+    public java.util.List<Map<String, Object>> getSessionHistory(String sessionId) {
+        return getSessionHistory(sessionId, null);
+    }
+
+    public java.util.List<Map<String, Object>> getSessionHistory(String sessionId, Integer k) {
+        HistoryManager historyManager = historyManagerMap.get(sessionId);
+        if (historyManager == null) {
+            return java.util.List.of();
         }
-        return "unknown";
+        if (k != null) {
+            return historyManager.getRecent(k);
+        }
+        return historyManager.getHistory();
+    }
+
+    public void clearSession(String sessionId) {
+        HistoryManager historyManager = historyManagerMap.get(sessionId);
+        if (historyManager != null) {
+            historyManager.clear();
+        }
+        BaseAgentBuilder builder = agentBuilderMap.get(sessionId);
+        if (builder != null) {
+            builder.reset();
+        }
+    }
+
+    public Map<String, Object> getBuildStatus(String sessionId) {
+        BaseAgentBuilder builder = agentBuilderMap.get(sessionId);
+        if (builder == null) {
+            return Map.of("session_id", sessionId, "state", "not_found");
+        }
+        Map<String, Object> status = new LinkedHashMap<>(builder.getBuildStatus());
+        status.put("session_id", sessionId);
+        return status;
+    }
+
+    public static Map<String, Object> getProgress(String sessionId) {
+        return ProgressReporter.getProgress(sessionId);
     }
 
     /**

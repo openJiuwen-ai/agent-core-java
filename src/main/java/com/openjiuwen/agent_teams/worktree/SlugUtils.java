@@ -36,7 +36,9 @@ public final class SlugUtils {
      */
     public static void validateSlug(String slug) {
         if (slug == null || slug.isEmpty()) {
-            throw new IllegalArgumentException("Invalid worktree name: slug must not be null or empty");
+            throw new IllegalArgumentException(
+                    "Invalid worktree name: each segment must be non-empty and contain "
+                            + "only letters, digits, dots, underscores, and dashes");
         }
 
         if (slug.length() > MAX_SLUG_LENGTH) {

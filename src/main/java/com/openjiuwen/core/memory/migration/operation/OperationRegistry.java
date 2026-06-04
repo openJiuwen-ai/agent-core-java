@@ -30,7 +30,7 @@ public class OperationRegistry {
             throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_OPERATION_VALIDATION_INVALID,
                     "entity_key", entityKey,
                     "schema_version", String.valueOf(op.getSchemaVersion()),
-                    "error_msg", "schema number must be greater than current maximum");
+                    "error_msg", "the schema number of the new operation must be greater than the current maximum");
         }
         ops.add(op);
     }

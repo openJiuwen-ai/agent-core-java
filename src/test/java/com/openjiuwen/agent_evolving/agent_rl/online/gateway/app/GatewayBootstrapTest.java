@@ -5,20 +5,26 @@
 package com.openjiuwen.agent_evolving.agent_rl.online.gateway.app;
 
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayConfig;
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
+import com.openjiuwen.agent_evolving.agent_rl.storage.RedisTrajectoryStoreBackend;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Unit tests for GatewayBootstrap.
  * 
- * <p>Mirrors Python's openjiuwen.agent_evolving.agent_rl.online.gateway.app.bootstrap
- * Ported from Python: agent-core-0.1.12/openjiuwen/agent_evolving/agent_rl/online/gateway/app/bootstrap.py
+ * <p>Mirrors Python's {@code build_app_from_config} and environment bootstrap in
+ * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.app.bootstrap}.</p>
  */
 class GatewayBootstrapTest {
 
@@ -192,6 +198,126 @@ class GatewayBootstrapTest {
                 () -> GatewayBootstrap.buildAppFromConfig(config, null)
             );
             assertTrue(ex.getMessage().contains("redis"));
+        }
+
+        @Test
+        @DisplayName("Test buildAppFromConfig wires configured LoRA repository")
+        void testBuildAppWiresLoraRepository() throws Exception {
+            Path recordDir = Files.createTempDirectory("gateway-bootstrap-records");
+            Path loraRoot = Files.createTempDirectory("gateway-bootstrap-lora");
+            GatewayConfig config = new GatewayConfig();
+            config.setPort(8080);
+            config.setRecordDir(recordDir.toString());
+            config.setLoraRepoRoot(loraRoot.toString());
+            config.setJudgeUrl("");
+
+            GatewayApplication application = GatewayBootstrap.buildAppFromConfig(
+                    config,
+                    ignored -> new GatewayHttpResponse(200, "{}"),
+                    new FakeRedisBackend()
+            );
+
+            assertNotNull(application.loraRepository());
+            assertEquals(loraRoot, application.loraRepository().getRepoPath());
+        }
+    }
+
+    static final class FakeRedisBackend implements RedisTrajectoryStoreBackend {
+        @Override
+        public RedisTrajectoryStoreFetchScript registerFetchAndMarkScript(String luaSource) {
+            return (keys, args) -> List.of();
+        }
+
+        @Override
+        public List<Object> hmget(String key, List<String> fields) {
+            return List.of();
+        }
+
+        @Override
+        public Object hget(String key, String field) {
+            return null;
+        }
+
+        @Override
+        public long hset(String key, Map<String, Object> mapping) {
+            return mapping.size();
+        }
+
+        @Override
+        public long zadd(String key, Map<String, Double> mapping) {
+            return mapping.size();
+        }
+
+        @Override
+        public long zcard(String key) {
+            return 0;
+        }
+
+        @Override
+        public long zrem(String key, Object... members) {
+            return 0;
+        }
+
+        @Override
+        public long sadd(String key, Object... members) {
+            return members.length;
+        }
+
+        @Override
+        public long srem(String key, Object... members) {
+            return 0;
+        }
+
+        @Override
+        public Set<Object> smembers(String key) {
+            return Set.of();
+        }
+
+        @Override
+        public RedisTrajectoryStorePipeline pipeline() {
+            return new FakePipeline();
+        }
+    }
+
+    static final class FakePipeline implements RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline {
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zrem(String key, Object... members) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hset(String key, Map<String, Object> mapping) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zadd(String key, Map<String, Double> mapping) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline sadd(String key, Object... members) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline zcard(String key) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hget(String key, String field) {
+            return this;
+        }
+
+        @Override
+        public RedisTrajectoryStoreBackend.RedisTrajectoryStorePipeline hmget(String key, List<String> fields) {
+            return this;
+        }
+
+        @Override
+        public List<Object> execute() {
+            return List.of();
         }
     }
 }

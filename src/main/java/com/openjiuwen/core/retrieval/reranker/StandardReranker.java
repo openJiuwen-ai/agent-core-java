@@ -22,6 +22,9 @@ import java.util.Map;
 
 /**
  * Remote reranker implementation aligned with Python's StandardReranker behavior.
+ *
+ * <p>Mirrors Python's {@code StandardReranker} in
+ * {@code openjiuwen.core.retrieval.reranker.standard_reranker}.
  */
 public class StandardReranker implements Reranker {
 

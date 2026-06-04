@@ -62,7 +62,6 @@ public class ReActAgentEvolve extends BaseAgent {
         this.config = createDefaultConfig();
         this.contextEngine = new ContextEngine(config.getContextEngineConfig());
         this.llm = null;
-        this.llmOp = null;
 
         initMemoryScope();
 
@@ -76,6 +75,7 @@ public class ReActAgentEvolve extends BaseAgent {
                 (toolCall, session) -> getAbilityManager().executeAsToolExecutor(toolCall, session),
                 getAbilityManager()
         );
+        this.llmOp = createLlmOp(false);
     }
 
     private void initMemoryScope() {
@@ -104,7 +104,9 @@ public class ReActAgentEvolve extends BaseAgent {
         // Reset LLM if model config changed
         if (!safeEquals(oldConfig.getModelProvider(), newConfig.getModelProvider())
                 || !safeEquals(oldConfig.getApiKey(), newConfig.getApiKey())
-                || !safeEquals(oldConfig.getApiBase(), newConfig.getApiBase())) {
+                || !safeEquals(oldConfig.getApiBase(), newConfig.getApiBase())
+                || !safeEquals(oldConfig.getModelClientConfig(), newConfig.getModelClientConfig())
+                || !safeEquals(oldConfig.getModelConfigObj(), newConfig.getModelConfigObj())) {
             this.llm = null;
             this.llmOp = null;
         }
@@ -122,6 +124,13 @@ public class ReActAgentEvolve extends BaseAgent {
         // Reset skill if sys operation id changed
         if (!safeEquals(oldConfig.getSysOperationId(), newConfig.getSysOperationId())) {
             lazyInitSkill();
+        }
+
+        if (this.llmOp == null) {
+            this.llmOp = createLlmOp(false);
+        } else {
+            this.llmOp.updateSystemPrompt(newConfig.getPromptTemplate() != null
+                    ? newConfig.getPromptTemplate() : List.of());
         }
 
         return this;
@@ -159,9 +168,9 @@ public class ReActAgentEvolve extends BaseAgent {
                 @SuppressWarnings("unchecked")
                 List<Map<String, String>> content = (List<Map<String, String>>) list;
                 config.setPromptTemplate(content);
-            } else {
+            } else if (value instanceof String text) {
                 List<Map<String, String>> content = new ArrayList<>();
-                content.add(Map.of("role", "system", "content", String.valueOf(value)));
+                content.add(Map.of("role", "system", "content", text));
                 config.setPromptTemplate(content);
             }
         }
@@ -184,27 +193,36 @@ public class ReActAgentEvolve extends BaseAgent {
      */
     private LLMCallOperator getLlmOp() {
         if (llmOp == null) {
-            Model model = getLlm();
-            String modelName = resolveModelName();
-            List<Map<String, String>> systemPrompt = config.getPromptTemplate() != null
-                    ? config.getPromptTemplate() : List.of();
-
-            llmOp = new LLMCallOperator(
-                    modelName,
-                    model,
-                    systemPrompt,
-                    "{{query}}",
-                    false,
-                    true,
-                    "react_llm",
-                    this::onLlmParameterUpdated
-            );
+            llmOp = createLlmOp(true);
+        } else if (!llmOp.hasModel() && config.getModelClientConfig() != null) {
+            llmOp = createLlmOp(true);
         } else {
             // Sync system prompt from config to operator
             llmOp.updateSystemPrompt(config.getPromptTemplate() != null
                     ? config.getPromptTemplate() : List.of());
         }
         return llmOp;
+    }
+
+    private LLMCallOperator createLlmOp(boolean resolveModel) {
+        Model model = null;
+        if (config.getModelClientConfig() != null) {
+            model = resolveModel ? getLlm() : llm;
+        }
+        String modelName = resolveModelName();
+        List<Map<String, String>> systemPrompt = config.getPromptTemplate() != null
+                ? config.getPromptTemplate() : List.of();
+
+        return new LLMCallOperator(
+                modelName,
+                model,
+                systemPrompt,
+                "{{query}}",
+                false,
+                true,
+                "react_llm",
+                this::onLlmParameterUpdated
+        );
     }
 
     /**
@@ -225,11 +243,8 @@ public class ReActAgentEvolve extends BaseAgent {
         if (toolOp != null) {
             ops.put(toolOp.getOperatorId(), toolOp);
         }
-        try {
-            LLMCallOperator op = getLlmOp();
-            ops.put(op.getOperatorId(), op);
-        } catch (Exception e) {
-            // Skip LLM operator if model not configured yet
+        if (llmOp != null) {
+            ops.put(llmOp.getOperatorId(), llmOp);
         }
         return ops;
     }
@@ -318,6 +333,9 @@ public class ReActAgentEvolve extends BaseAgent {
         for (var entry : results) {
             if (entry.toolMessage() != null) {
                 context.addMessages(entry.toolMessage());
+            }
+            for (UserMessage multimodalMessage : ReActAgent.buildMultimodalToolResultMessages(entry.result())) {
+                context.addMessages(multimodalMessage);
             }
         }
     }

@@ -10,6 +10,9 @@ import java.util.Set;
 /**
  * Registry for managing KV store key prefixes used by memory modules.
  * Singleton instance accessible via {@link #getInstance()}.
+ *
+ * <p>Mirrors Python's {@code KvPrefixRegistry} in
+ * {@code openjiuwen.core.memory.common.kv_prefix_registry}.
  */
 public final class KvPrefixRegistry {
 

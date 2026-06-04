@@ -12,77 +12,80 @@ import java.util.logging.Logger;
 
 /**
  * Team table data access object.
- * <p>
- * Mirrors Python's {@code TeamDao} in {@code openjiuwen.agent_teams.tools.database.team_dao}.
- * </p>
+ *
+ * <p>Mirrors Python's {@code TeamDao} in
+ * {@code openjiuwen.agent_teams.tools.database.team_dao}.</p>
  */
 public class TeamDao {
 
     private static final Logger teamLogger = Logger.getLogger(TeamDao.class.getName());
 
-    /**
-     * Create a new team.
-     *
-     * @param teamName        the team name
-     * @param displayName     the display name
-     * @param leaderMemberName the leader member name
-     * @param desc            the description (optional)
-     * @param prompt          the prompt (optional)
-     * @return CompletableFuture with true if created successfully
-     */
+    private final TeamDatabaseState state;
+
+    public TeamDao() {
+        this(new TeamDatabaseState(DatabaseConfig.inMemory()));
+        this.state.createCurrentSessionTables();
+    }
+
+    public TeamDao(TeamDatabaseState state) {
+        this.state = state;
+    }
+
     public CompletableFuture<Boolean> createTeam(
             String teamName,
             String displayName,
             String leaderMemberName,
             String desc,
             String prompt) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                long ts = getCurrentTime();
-                Team team = new Team(teamName, displayName, leaderMemberName, desc, prompt, ts, ts);
-                // TODO: Implement database session add/commit
-                teamLogger.info(String.format("Team %s created", teamName));
-                return true;
-            } catch (Exception e) {
-                teamLogger.severe(String.format("Team %s already exists: %s", teamName, e.getMessage()));
-                return false;
-            }
-        });
+        if (state.teams().containsKey(teamName)) {
+            teamLogger.warning(String.format("Team %s already exists", teamName));
+            return CompletableFuture.completedFuture(false);
+        }
+        long ts = getCurrentTime();
+        Team team = new Team(teamName, displayName, leaderMemberName, desc, prompt, ts, ts);
+        Team previous = state.teams().putIfAbsent(teamName, team);
+        boolean created = previous == null;
+        if (created) {
+            teamLogger.info(String.format("Team %s created", teamName));
+        }
+        return CompletableFuture.completedFuture(created);
     }
 
-    /**
-     * Get team information by ID.
-     *
-     * @param teamName the team name
-     * @return CompletableFuture with Optional Team
-     */
     public CompletableFuture<Optional<Team>> getTeam(String teamName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database query
-            return Optional.empty();
-        });
+        return CompletableFuture.completedFuture(Optional.ofNullable(state.teams().get(teamName)));
     }
 
-    /**
-     * Delete a team (cascade delete will remove related records).
-     *
-     * @param teamName the team name
-     * @return CompletableFuture with true if a row was deleted
-     */
     public CompletableFuture<Boolean> deleteTeam(String teamName) {
-        return CompletableFuture.supplyAsync(() -> {
-            // TODO: Implement database delete
-            teamLogger.info(String.format("Team %s deleted", teamName));
-            return true;
-        });
+        Team removed = state.teams().remove(teamName);
+        if (removed == null) {
+            teamLogger.fine(String.format("Team %s not found for deletion", teamName));
+            return CompletableFuture.completedFuture(false);
+        }
+        state.deleteTeamCascade(teamName);
+        teamLogger.info(String.format("Team %s deleted", teamName));
+        return CompletableFuture.completedFuture(true);
     }
 
-    /**
-     * Get current time in milliseconds.
-     *
-     * @return current timestamp in milliseconds
-     */
+    public CompletableFuture<Long> getTeamUpdatedAt(String teamName) {
+        Team team = state.teams().get(teamName);
+        Long updatedAt = team != null ? team.getUpdatedAt() : null;
+        return CompletableFuture.completedFuture(updatedAt != null ? updatedAt : 0L);
+    }
+
+    public CompletableFuture<Boolean> updateTeam(String teamName, String displayName, String desc, String prompt) {
+        Team team = state.teams().get(teamName);
+        if (team == null) {
+            teamLogger.warning(String.format("Team %s not found for update", teamName));
+            return CompletableFuture.completedFuture(false);
+        }
+        team.setDisplayName(displayName);
+        team.setDesc(desc);
+        team.setPrompt(prompt);
+        team.setUpdatedAt(getCurrentTime());
+        return CompletableFuture.completedFuture(true);
+    }
+
     private long getCurrentTime() {
-        return System.currentTimeMillis();
+        return DatabaseEngine.getCurrentTime();
     }
 }

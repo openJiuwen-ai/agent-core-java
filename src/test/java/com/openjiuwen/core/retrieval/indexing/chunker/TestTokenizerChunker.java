@@ -39,20 +39,24 @@ class TestTokenizerChunker {
         @DisplayName("test init with custom values")
         void testInitWithCustomValues() {
             // Test initialization with custom values.
-            TokenizerChunker chunker = new TokenizerChunker(256, 25);
+            TokenizerChunker chunker = new TokenizerChunker(256, 25, text -> java.util.Arrays.asList(text.split("\\s+")));
 
             assertEquals(256, chunker.getChunkSize());
             assertEquals(25, chunker.getChunkOverlap());
+            assertNotNull(chunker.getTokenizer());
         }
 
         @Test
         @DisplayName("test chunk text success")
         void testChunkTextSuccess() {
             // Test chunking text successfully.
-            TokenizerChunker chunker = new TokenizerChunker(100, 10);
-            List<String> chunks = chunker.chunkText("This is a test text.");
+            TokenizerChunker chunker = new TokenizerChunker(
+                    2,
+                    0,
+                    text -> java.util.Arrays.asList(text.split("\\s+")));
+            List<String> chunks = chunker.chunkText("One. Two. Three.");
 
-            assertNotNull(chunks);
+            assertEquals(List.of("One. Two.", "Three."), chunks);
         }
 
         @Test
@@ -62,7 +66,7 @@ class TestTokenizerChunker {
             TokenizerChunker chunker = new TokenizerChunker(512, 50);
             List<String> chunks = chunker.chunkText("");
 
-            assertNotNull(chunks);
+            assertTrue(chunks.isEmpty());
         }
 
         @Test
@@ -72,7 +76,7 @@ class TestTokenizerChunker {
             TokenizerChunker chunker = new TokenizerChunker(512, 50);
             List<String> chunks = chunker.chunkText(null);
 
-            assertNotNull(chunks);
+            assertTrue(chunks.isEmpty());
         }
 
         @Test

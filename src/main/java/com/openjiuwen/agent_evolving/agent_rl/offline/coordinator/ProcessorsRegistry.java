@@ -4,104 +4,57 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.offline.coordinator;
 
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutWithReward;
-
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /**
- * Registry for rollout processors that auto-discovers and manages them.
+ * Registry for rollout processors that manages classifiers, validators, and samplers.
  * <p>
  * Mirrors Python's {@code ProcessorsRegistry} in
  * {@code openjiuwen.agent_evolving.agent_rl.offline.coordinator.processors}.
  */
 public class ProcessorsRegistry {
 
-    private final Map<String, Function<List<RolloutWithReward>, List<RolloutWithReward>[]>> classifiers = new HashMap<>();
-    private final Map<String, BiFunction<List<RolloutWithReward>, List<RolloutWithReward>, Boolean>> validators = new HashMap<>();
-    private final Map<String, TriFunction<List<RolloutWithReward>, List<RolloutWithReward>, Integer, List<RolloutWithReward>>> samplers = new HashMap<>();
+    private final RolloutProcessors.ProcessorsRegistry delegate = new RolloutProcessors.ProcessorsRegistry();
 
-    /**
-     * Initialize registry with default processors.
-     */
-    public ProcessorsRegistry() {
-        // Register default processors
-        classifiers.put("default_classify_rollouts", RolloutProcessors::defaultClassifyRollouts);
-        validators.put("default_validate_stop", RolloutProcessors::defaultValidateStop);
-        validators.put("validate_stop_balanced", 
-            (pos, neg) -> RolloutProcessors.validateStopBalanced(pos, neg, 8));
-        samplers.put("default_sampling", 
-            (pos, neg, max) -> RolloutProcessors.defaultSampling(pos, neg, max));
+    public RolloutProcessors.ClassifierProcessor registerClassifier(
+            String name,
+            RolloutProcessors.ClassifierProcessor classifier) {
+        return delegate.registerClassifier(name, classifier);
     }
 
-    /**
-     * Register a classifier function.
-     * 
-     * @param name Classifier name
-     * @param classifier Classifier function
-     */
-    public void registerClassifier(String name, Function<List<RolloutWithReward>, List<RolloutWithReward>[]> classifier) {
-        classifiers.put(name, classifier);
+    public RolloutProcessors.ValidatorProcessor registerValidator(
+            String name,
+            RolloutProcessors.ValidatorProcessor validator) {
+        return delegate.registerValidator(name, validator);
     }
 
-    /**
-     * Register a validator function.
-     * 
-     * @param name Validator name
-     * @param validator Validator function
-     */
-    public void registerValidator(String name, BiFunction<List<RolloutWithReward>, List<RolloutWithReward>, Boolean> validator) {
-        validators.put(name, validator);
+    public RolloutProcessors.SamplerProcessor registerSampler(
+            String name,
+            RolloutProcessors.SamplerProcessor sampler) {
+        return delegate.registerSampler(name, sampler);
     }
 
-    /**
-     * Register a sampler function.
-     * 
-     * @param name Sampler name
-     * @param sampler Sampler function
-     */
-    public void registerSampler(String name, TriFunction<List<RolloutWithReward>, List<RolloutWithReward>, Integer, List<RolloutWithReward>> sampler) {
-        samplers.put(name, sampler);
+    public RolloutProcessors.ClassifierProcessor getClassifier(String name) {
+        return delegate.getClassifier(name);
     }
 
-    /**
-     * Get classifier by name.
-     * 
-     * @param name Classifier name
-     * @return Classifier function or default if not found
-     */
-    public Function<List<RolloutWithReward>, List<RolloutWithReward>[]> getClassifier(String name) {
-        return classifiers.getOrDefault(name, classifiers.get("default_classify_rollouts"));
+    public RolloutProcessors.ValidatorProcessor getValidator(String name) {
+        return delegate.getValidator(name);
     }
 
-    /**
-     * Get validator by name.
-     * 
-     * @param name Validator name
-     * @return Validator function or default if not found
-     */
-    public BiFunction<List<RolloutWithReward>, List<RolloutWithReward>, Boolean> getValidator(String name) {
-        return validators.getOrDefault(name, validators.get("default_validate_stop"));
+    public RolloutProcessors.SamplerProcessor getSampler(String name) {
+        return delegate.getSampler(name);
     }
 
-    /**
-     * Get sampler by name.
-     * 
-     * @param name Sampler name
-     * @return Sampler function or default if not found
-     */
-    public TriFunction<List<RolloutWithReward>, List<RolloutWithReward>, Integer, List<RolloutWithReward>> getSampler(String name) {
-        return samplers.getOrDefault(name, samplers.get("default_sampling"));
+    public Map<String, RolloutProcessors.ClassifierProcessor> classifiers() {
+        return delegate.classifiers();
     }
 
-    /**
-     * Tri-function interface for sampler.
-     */
-    @FunctionalInterface
-    public interface TriFunction<T, U, V, R> {
-        R apply(T t, U u, V v);
+    public Map<String, RolloutProcessors.ValidatorProcessor> validators() {
+        return delegate.validators();
+    }
+
+    public Map<String, RolloutProcessors.SamplerProcessor> samplers() {
+        return delegate.samplers();
     }
 }

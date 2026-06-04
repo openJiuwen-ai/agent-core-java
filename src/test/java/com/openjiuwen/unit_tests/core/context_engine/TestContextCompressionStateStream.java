@@ -5,6 +5,7 @@
 package com.openjiuwen.unit_tests.core.context_engine;
 
 import com.openjiuwen.core.context.schema.ContextCompressionState;
+import com.openjiuwen.core.context.schema.ContextCompressionMetric;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
@@ -81,10 +82,11 @@ class TestContextCompressionStateStream {
 
         @Override
         public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-            // Replace messages with short content - mirrors Python behavior
-            List<BaseMessage> newMessages = List.of(new UserMessage("short"));
             return ProcessResult.ofMessages(
-                    null,
+                    ContextEvent.builder()
+                            .eventType(processorType())
+                            .messagesToModify(List.of(0, 1))
+                            .build(),
                     List.of()
             );
         }
@@ -285,6 +287,9 @@ class TestContextCompressionStateStream {
         state.setStatus(status);
         state.setProcessor(processor);
         state.setPhase(phase);
+        ContextCompressionMetric before = new ContextCompressionMetric();
+        before.setTime("1000");
+        state.setBefore(before);
         return state;
     }
 }

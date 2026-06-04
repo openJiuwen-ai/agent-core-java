@@ -20,6 +20,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -31,6 +32,7 @@ import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -50,7 +52,8 @@ import java.util.concurrent.CompletableFuture;
  *   <li>Optionally writes conversation messages to long-term memory</li>
  * </ol>
  *
- * <p>Mirrors Python's {@code LLMAgent} in {@code openjiuwen.core.application.llm_agent}.
+ * <p>Mirrors Python's {@code LLMAgent} in
+ * {@code openjiuwen.core.application.llm_agent.llm_agent}.
  */
 public class LlmAgent extends ControllerAgent {
 
@@ -64,14 +67,12 @@ public class LlmAgent extends ControllerAgent {
      * @param agentConfig the LLM agent configuration
      */
     public LlmAgent(LlmAgentConfig agentConfig) {
-        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(agentConfig),
+        this(validateReactControllerConfig(agentConfig), new Controller());
+    }
+
+    private LlmAgent(LlmAgentConfig agentConfig, Controller controller) {
+        super(buildAgentCard(agentConfig), controller, buildControllerConfig(agentConfig),
                 buildContextEngineConfig(agentConfig));
-        if (agentConfig.getControllerType() != null
-                && agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
-            throw new UnsupportedOperationException(
-                    "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType()
-            );
-        }
         this.agentConfig = agentConfig;
         this.longTermMemoryInstance = LongTermMemory.getInstance();
 
@@ -83,6 +84,16 @@ public class LlmAgent extends ControllerAgent {
         // Set up the LlmEventHandler on the controller
         LlmEventHandler eventHandler = new LlmEventHandler(agentConfig, getContextEngine());
         getController().setEventHandler(eventHandler);
+    }
+
+    private static LlmAgentConfig validateReactControllerConfig(LlmAgentConfig agentConfig) {
+        Objects.requireNonNull(agentConfig, "agentConfig must not be null");
+        if (agentConfig.getControllerType() != ControllerType.REACT_CONTROLLER) {
+            throw new UnsupportedOperationException(
+                    "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType()
+            );
+        }
+        return agentConfig;
     }
 
     @Override
@@ -196,6 +207,102 @@ public class LlmAgent extends ControllerAgent {
     }
 
     /**
+     * Add tools to this agent, mirroring Python's {@code BaseAgent.add_tools()} compatibility API.
+     */
+    public void addTools(List<Tool> tools) {
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        List<String> configTools = agentConfig.getTools() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getTools());
+        for (Tool tool : tools) {
+            if (tool == null || tool.getCard() == null) {
+                continue;
+            }
+            String toolName = Objects.requireNonNullElse(tool.getCard().getName(), "");
+            if (!configTools.contains(toolName)) {
+                configTools.add(toolName);
+            }
+            registerPluginSchema(agentConfig, tool.getCard());
+            getAbilityManager().add(tool.getCard());
+            if (Runner.resourceMgr().getTool(tool.getCard().getId()) == null) {
+                Runner.resourceMgr().addTool(tool, tag);
+            }
+        }
+        agentConfig.setTools(configTools);
+    }
+
+    /**
+     * Add workflows to this agent, mirroring Python's {@code BaseAgent.add_workflows()} compatibility API.
+     */
+    public void addWorkflows(List<Workflow> workflows) {
+        if (workflows == null || workflows.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        List<WorkflowSchema> configWorkflows = agentConfig.getWorkflows() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getWorkflows());
+        agentConfig.setWorkflows(configWorkflows);
+        for (Workflow workflow : workflows) {
+            if (workflow == null || workflow.getCard() == null) {
+                continue;
+            }
+            WorkflowCard card = workflow.getCard();
+            boolean exists = configWorkflows.stream()
+                    .anyMatch(schema -> Objects.equals(schema.getId(), card.getId())
+                            && Objects.equals(schema.getVersion(), card.getVersion()));
+            if (!exists) {
+                registerWorkflowSchema(agentConfig, card);
+            }
+            getAbilityManager().add(card);
+            String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            WorkflowCard resourceCard = WorkflowCard.builder()
+                    .id(workflowResourceId)
+                    .name(card.getName())
+                    .version(card.getVersion())
+                    .description(card.getDescription())
+                    .inputParams(card.getInputParams())
+                    .build();
+            if (Runner.resourceMgr().getWorkflow(workflowResourceId) == null) {
+                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
+            }
+        }
+    }
+
+    /**
+     * Remove workflows from this agent by {@code [id, version]}, mirroring Python's compatibility API.
+     */
+    public void removeWorkflows(Collection<String[]> workflowKeys) {
+        if (workflowKeys == null || workflowKeys.isEmpty()) {
+            return;
+        }
+        List<WorkflowSchema> workflows = agentConfig.getWorkflows() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(agentConfig.getWorkflows());
+        for (String[] key : workflowKeys) {
+            if (key == null || key.length < 2) {
+                continue;
+            }
+            String workflowId = key[0];
+            String version = key[1];
+            workflows.removeIf(schema -> {
+                boolean matches = Objects.equals(schema.getId(), workflowId)
+                        && Objects.equals(schema.getVersion(), version);
+                if (matches && schema.getName() != null) {
+                    getAbilityManager().remove(schema.getName());
+                }
+                return matches;
+            });
+            String workflowResourceId = WorkflowUtils.generateWorkflowKey(workflowId, version);
+            Runner.resourceMgr().removeWorkflow(workflowResourceId, null, TagMatchStrategy.ALL, true);
+        }
+        agentConfig.setWorkflows(workflows);
+    }
+
+    /**
      * Backward-compatible factory mirroring Python's {@code create_llm_agent_config(...)}.
      */
     public static LlmAgentConfig createLlmAgentConfig(
@@ -229,39 +336,8 @@ public class LlmAgent extends ControllerAgent {
             List<Tool> tools
     ) {
         LlmAgent agent = new LlmAgent(agentConfig);
-        String tag = agentConfig != null ? agentConfig.getId() : null;
-
-        if (workflows != null) {
-            for (Workflow workflow : workflows) {
-                if (workflow == null || workflow.getCard() == null) {
-                    continue;
-                }
-                registerWorkflowSchema(agentConfig, workflow.getCard());
-                agent.getAbilityManager().add(workflow.getCard());
-                WorkflowCard card = workflow.getCard();
-                String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
-                WorkflowCard resourceCard = WorkflowCard.builder()
-                        .id(workflowResourceId)
-                        .name(card.getName())
-                        .version(card.getVersion())
-                        .description(card.getDescription())
-                        .inputParams(card.getInputParams())
-                        .build();
-                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
-            }
-        }
-
-        if (tools != null) {
-            for (Tool tool : tools) {
-                if (tool == null || tool.getCard() == null) {
-                    continue;
-                }
-                registerPluginSchema(agentConfig, tool.getCard());
-                agent.getAbilityManager().add(tool.getCard());
-                Runner.resourceMgr().addTool(tool, tag);
-            }
-        }
-
+        agent.addWorkflows(workflows);
+        agent.addTools(tools);
         return agent;
     }
 
@@ -388,20 +464,18 @@ public class LlmAgent extends ControllerAgent {
         String sessionId = inputs.containsKey("conversation_id")
                 ? inputs.get("conversation_id").toString() : "default_session";
 
-        List<BaseMessage> messageList = new ArrayList<>();
+        AssistantMessage assistantMessage = convertResponseToMessage(result);
+        if (assistantMessage == null || assistantMessage.getContentAsString() == null
+                || assistantMessage.getContentAsString().isEmpty()) {
+            return;
+        }
 
-        // Add user message
+        List<BaseMessage> messageList = new ArrayList<>();
         Object queryObj = inputs.get("query");
         if (queryObj instanceof String query && !query.isEmpty()) {
             messageList.add(new UserMessage(query));
         }
-
-        // Add AI response message
-        AssistantMessage assistantMessage = convertResponseToMessage(result);
-        if (assistantMessage != null && assistantMessage.getContentAsString() != null
-                && !assistantMessage.getContentAsString().isEmpty()) {
-            messageList.add(assistantMessage);
-        }
+        messageList.add(assistantMessage);
 
         if (!messageList.isEmpty()) {
             longTermMemoryInstance.addMessages(

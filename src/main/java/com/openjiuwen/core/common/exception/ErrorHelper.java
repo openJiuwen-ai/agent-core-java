@@ -12,6 +12,9 @@ import java.util.Map;
  * Java equivalent of Python's {@code build_error}, {@code raise_error}, etc.
  * Since Java cannot directly "return and throw" from a void method the way Python does,
  * the {@code raiseXxx} methods throw immediately; callers should not catch the return.
+ *
+ * <p>Mirrors Python's factory helpers in
+ * {@code openjiuwen.core.common.exception.errors}.</p>
  */
 public final class ErrorHelper {
 

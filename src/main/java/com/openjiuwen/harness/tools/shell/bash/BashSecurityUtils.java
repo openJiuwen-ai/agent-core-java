@@ -25,11 +25,45 @@ public final class BashSecurityUtils {
     private static final Pattern PROC_SUBST_RE = Pattern.compile("[<>]\\(");
 
     private static final List<PatternEntry> INJECTION_PATTERNS = new ArrayList<>();
+    private static final List<PatternEntry> DANGEROUS_COMMAND_PATTERNS = new ArrayList<>();
 
     static {
         INJECTION_PATTERNS.add(new PatternEntry(BACKTICK_RE, "backtick command substitution"));
         INJECTION_PATTERNS.add(new PatternEntry(DOLLAR_PAREN_RE, "$() command substitution"));
         INJECTION_PATTERNS.add(new PatternEntry(PROC_SUBST_RE, "process substitution <() or >()"));
+    }
+
+    static {
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\brm\\s+-rf\\b", Pattern.CASE_INSENSITIVE),
+                "rm -rf"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bdel\\s+/[a-z]*[fsq][a-z]*\\b", Pattern.CASE_INSENSITIVE),
+                "del /f /s /q"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\brd\\s+/s\\s+/q\\b", Pattern.CASE_INSENSITIVE),
+                "rd /s /q"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bformat\\s+[a-z]:", Pattern.CASE_INSENSITIVE),
+                "format drive"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bshutdown\\b", Pattern.CASE_INSENSITIVE),
+                "shutdown"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\breboot\\b", Pattern.CASE_INSENSITIVE),
+                "reboot"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bdiskpart\\b", Pattern.CASE_INSENSITIVE),
+                "diskpart"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bmkfs\\b", Pattern.CASE_INSENSITIVE),
+                "mkfs"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\breg\\s+delete\\b", Pattern.CASE_INSENSITIVE),
+                "reg delete"));
+        DANGEROUS_COMMAND_PATTERNS.add(new PatternEntry(
+                Pattern.compile("\\bremove-item\\b[^\\n\\r]*-recurse[^\\n\\r]*-force", Pattern.CASE_INSENSITIVE),
+                "Remove-Item -Recurse -Force"));
     }
 
     private static final List<PatternEntry> DESTRUCTIVE_PATTERNS = new ArrayList<>();
@@ -86,6 +120,21 @@ public final class BashSecurityUtils {
         for (PatternEntry entry : INJECTION_PATTERNS) {
             if (entry.pattern.matcher(command).find()) {
                 return new SecurityCheck(true, "Shell injection detected: " + entry.label);
+            }
+        }
+        return new SecurityCheck(false);
+    }
+
+    /**
+     * Block commands that Python's local sys_operation refuses for safety.
+     *
+     * @param command Shell command string
+     * @return SecurityCheck with blocked=true if a dangerous pattern is found
+     */
+    public static SecurityCheck checkCommandSafety(String command) {
+        for (PatternEntry entry : DANGEROUS_COMMAND_PATTERNS) {
+            if (entry.pattern.matcher(command).find()) {
+                return new SecurityCheck(true, "command rejected for safety: " + entry.label);
             }
         }
         return new SecurityCheck(false);

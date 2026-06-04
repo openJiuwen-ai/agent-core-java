@@ -27,7 +27,7 @@ class TestCharChunker {
         @DisplayName("test init with defaults")
         void testInitWithDefaults() {
             // Test initialization with default values.
-            CharChunker chunker = new CharChunker(512, 50);
+            CharChunker chunker = new CharChunker();
 
             assertEquals(512, chunker.getChunkSize());
             assertEquals(50, chunker.getChunkOverlap());
@@ -47,11 +47,10 @@ class TestCharChunker {
         @DisplayName("test chunk text success")
         void testChunkTextSuccess() {
             // Test chunking text successfully.
-            CharChunker chunker = new CharChunker(10, 2);
-            List<String> chunks = chunker.chunkText("This is a test text");
+            CharChunker chunker = new CharChunker(4, 1);
+            List<String> chunks = chunker.chunkText("abcdefghij");
 
-            assertNotNull(chunks);
-            assertTrue(chunks.size() > 0);
+            assertEquals(List.of("abcd", "defg", "ghij"), chunks);
         }
 
         @Test
@@ -92,8 +91,7 @@ class TestCharChunker {
             CharChunker chunker = new CharChunker(5, 2);
             List<String> chunks = chunker.chunkText("abcdefghij");
 
-            // Each chunk should overlap with previous
-            assertTrue(chunks.size() > 1);
+            assertEquals(List.of("abcde", "defgh", "ghij"), chunks);
         }
     }
 }

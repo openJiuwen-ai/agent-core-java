@@ -19,7 +19,7 @@ import java.util.Map;
 public class EditFileTool extends AbstractHarnessTool {
 
     public EditFileTool(SysOperation sysOperation) {
-        super(toolCard("harness.edit", "edit", "Edit a text file by replacing an old snippet with a new snippet."),
+        super(toolCard("harness.edit_file", "edit_file", "Edit a text file by replacing an old snippet with a new snippet."),
                 sysOperation);
     }
 

@@ -5,6 +5,8 @@
 package com.openjiuwen.core.multiagent.teamruntime;
 
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -109,6 +111,33 @@ public class SubscriptionManager {
      */
     public Set<String> getAgentTopics(String agentId) {
         return new HashSet<>(agentTopics.getOrDefault(agentId, Set.of()));
+    }
+
+    /**
+     * Get total number of active subscriptions.
+     *
+     * @return total subscription count
+     */
+    public int getSubscriptionCount() {
+        return subscriptions.values().stream().mapToInt(Set::size).sum();
+    }
+
+    /**
+     * List subscriptions, optionally filtered by agent ID.
+     *
+     * @param agentId optional agent ID
+     * @return subscription snapshot
+     */
+    public Map<String, Object> listSubscriptions(String agentId) {
+        if (agentId != null) {
+            return Map.of(
+                    "agent_id", agentId,
+                    "topics", getAgentTopics(agentId).stream().collect(Collectors.toList())
+            );
+        }
+        Map<String, Object> snapshot = new HashMap<>();
+        subscriptions.forEach((topic, agents) -> snapshot.put(topic, agents.stream().collect(Collectors.toList())));
+        return Map.of("subscriptions", snapshot);
     }
     
     /**

@@ -4,11 +4,17 @@
 
 package com.openjiuwen.core.operator.skill_call;
 
+import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
+import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.operator.TunableSpec;
 import com.openjiuwen.core.session.Session;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -131,15 +137,30 @@ public class SkillCallOperator extends Operator {
      * <p>This method is used by approval flows that operate on immutable
      * snapshot batches. It never reads or mutates stagedRecords.</p>
      *
-     * <p>Placeholder implementation - EvolutionStore type may not exist yet.</p>
-     *
      * @param store the evolution store (placeholder: Object)
      * @param records the records to flush
      * @return CompletableFuture with FlushResult
      */
     public CompletableFuture<FlushResult> flushRecordsToStore(Object store, List<Object> records) {
-        // Placeholder implementation - EvolutionStore integration pending
-        return CompletableFuture.completedFuture(new FlushResult(records.size(), Collections.emptyList()));
+        return CompletableFuture.supplyAsync(() -> {
+            List<Object> remainingRecords = new ArrayList<>(records);
+            int flushed = 0;
+            while (!remainingRecords.isEmpty()) {
+                Object record = remainingRecords.get(0);
+                try {
+                    appendRecord(store, record);
+                    remainingRecords.remove(0);
+                    flushedRecords.add(record);
+                    flushed += 1;
+                } catch (Exception e) {
+                    Loggers.OPERATOR.warning(
+                            "[SkillCallOperator] flush failed at record {}: {}; {} record(s) remain in explicit batch",
+                            recordId(record), e.getMessage(), remainingRecords.size());
+                    break;
+                }
+            }
+            return new FlushResult(flushed, remainingRecords);
+        });
     }
 
     /**
@@ -150,8 +171,6 @@ public class SkillCallOperator extends Operator {
      * appended to the now-empty live queue and are preserved for the next
      * flush call. If the snapshotted batch partially fails, its unwritten
      * tail is prepended back ahead of any newer staged records.</p>
-     *
-     * <p>Placeholder implementation - EvolutionStore integration pending.</p>
      *
      * @param store the evolution store (placeholder: Object)
      * @return CompletableFuture with count flushed
@@ -208,14 +227,23 @@ public class SkillCallOperator extends Operator {
     /**
      * Async: load skill content + existing records from store into cachedState.
      *
-     * <p>Placeholder implementation - EvolutionStore integration pending.</p>
-     *
      * @param store the evolution store (placeholder: Object)
      * @return CompletableFuture
      */
     public CompletableFuture<Void> refreshState(Object store) {
-        // Placeholder implementation - EvolutionStore integration pending
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture.runAsync(() -> {
+            Object skillContent = readSkillContent(store);
+            Object descRecords = getPendingRecords(store, EvolutionTarget.DESCRIPTION);
+            Object bodyRecords = getPendingRecords(store, EvolutionTarget.BODY);
+            Object existingMessages = cachedState.getOrDefault("messages", Collections.emptyList());
+
+            Map<String, Object> nextState = new LinkedHashMap<>();
+            nextState.put("skill_content", skillContent);
+            nextState.put("desc_records", descRecords);
+            nextState.put("body_records", bodyRecords);
+            nextState.put("messages", existingMessages);
+            cachedState = nextState;
+        });
     }
 
     @Override
@@ -238,7 +266,6 @@ public class SkillCallOperator extends Operator {
      * @param kwargs additional arguments
      * @return null (not applicable)
      */
-    @Override
     public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) {
         // SkillCallOperator manages parameters only, not execution
         return null;
@@ -260,5 +287,124 @@ public class SkillCallOperator extends Operator {
      */
     public List<Object> getFlushedRecords() {
         return new ArrayList<>(flushedRecords);
+    }
+
+    private void appendRecord(Object store, Object record) throws Exception {
+        if (store == null) {
+            throw new IllegalArgumentException("store is required");
+        }
+        if (store instanceof EvolutionStore evolutionStore && record instanceof EvolutionRecord evolutionRecord) {
+            boolean saved = evolutionStore.saveRecord(skillName, evolutionRecord);
+            if (!saved) {
+                throw new IllegalStateException("saveRecord returned false");
+            }
+            return;
+        }
+
+        Method method = findMethod(store.getClass(), record, "appendRecord", "append_record");
+        Object result = invokeStoreMethod(store, method, record);
+        if (result instanceof Boolean && !((Boolean) result)) {
+            throw new IllegalStateException(method.getName() + " returned false");
+        }
+    }
+
+    private Object readSkillContent(Object store) {
+        if (store instanceof EvolutionStore evolutionStore) {
+            return evolutionStore.readSkillContent(skillName);
+        }
+        try {
+            Method method = findMethod(store.getClass(), null, "readSkillContent", "read_skill_content");
+            return invokeStoreMethod(store, method, null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Object getPendingRecords(Object store, EvolutionTarget target) {
+        if (store instanceof EvolutionStore evolutionStore) {
+            List<EvolutionRecord> records = evolutionStore.loadRecords(skillName);
+            if (records == null) {
+                return Collections.emptyList();
+            }
+            List<EvolutionRecord> pending = new ArrayList<>();
+            for (EvolutionRecord record : records) {
+                if (record != null && record.isPending()
+                        && record.getChange() != null
+                        && target.equals(record.getChange().getTarget())) {
+                    pending.add(record);
+                }
+            }
+            return pending;
+        }
+        try {
+            Method method = findMethod(store.getClass(), target, "getPendingRecords", "get_pending_records");
+            return invokeStoreMethod(store, method, target);
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    private Method findMethod(Class<?> type, Object secondArgument, String... names) throws NoSuchMethodException {
+        for (Method method : type.getDeclaredMethods()) {
+            for (String name : names) {
+                if (name.equals(method.getName()) && accepts(method, secondArgument)) {
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        }
+        Class<?> parent = type.getSuperclass();
+        if (parent != null) {
+            return findMethod(parent, secondArgument, names);
+        }
+        throw new NoSuchMethodException(String.join("/", names));
+    }
+
+    private boolean accepts(Method method, Object secondArgument) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 1) {
+            return parameterTypes[0].isAssignableFrom(String.class);
+        }
+        if (parameterTypes.length != 2 || !parameterTypes[0].isAssignableFrom(String.class)) {
+            return false;
+        }
+        return secondArgument == null || wrap(parameterTypes[1]).isInstance(secondArgument);
+    }
+
+    private Object invokeStoreMethod(Object store, Method method, Object secondArgument) throws Exception {
+        try {
+            if (method.getParameterCount() == 1) {
+                return method.invoke(store, skillName);
+            }
+            return method.invoke(store, skillName, secondArgument);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw e;
+        }
+    }
+
+    private Class<?> wrap(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == boolean.class) return Boolean.class;
+        if (type == int.class) return Integer.class;
+        if (type == long.class) return Long.class;
+        if (type == double.class) return Double.class;
+        if (type == float.class) return Float.class;
+        if (type == short.class) return Short.class;
+        if (type == byte.class) return Byte.class;
+        if (type == char.class) return Character.class;
+        return type;
+    }
+
+    private Object recordId(Object record) {
+        if (record instanceof EvolutionRecord evolutionRecord) {
+            return evolutionRecord.getId();
+        }
+        return String.valueOf(record);
     }
 }

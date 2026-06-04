@@ -125,6 +125,7 @@ public final class TracerWorkflowUtils {
         kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("source_ids", sourceIds);
         kwargs.put("metadata", getComponentMetadata(session));
+        kwargs.put("need_send", true);
         tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_start", kwargs);
     }
 

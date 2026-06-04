@@ -6,6 +6,7 @@ package com.openjiuwen.agent_evolving.agent_rl.online.rail;
 
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
@@ -92,7 +93,7 @@ public class RLOnlineRail extends AgentRail {
                 if (!"llm".equals(step.getKind())) {
                     continue;
                 }
-                Object outputs = step.getOutputs();
+                Object outputs = step.getOutputs() != null ? step.getOutputs() : responseFromDetail(step.getDetail());
                 OnlineRlSample sample = new OnlineRlSample();
                 sample.setResponseText(extractResponseText(outputs));
                 batch.getSamples().add(sample);
@@ -123,6 +124,13 @@ public class RLOnlineRail extends AgentRail {
             }
         }
         return outputs == null ? "" : String.valueOf(outputs);
+    }
+
+    private static Object responseFromDetail(Object detail) {
+        if (detail instanceof LLMCallDetail llmCallDetail) {
+            return llmCallDetail.getResponse();
+        }
+        return null;
     }
 
     private static Object readField(Object target, String fieldName) {

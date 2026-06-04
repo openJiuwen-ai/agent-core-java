@@ -107,85 +107,120 @@ class DeepAgentSubagentTest extends DeepAgentE2ETest {
         @Test
         void testSessionsCancelScenario1ImmediateCancel() {
             String fixedTaskId = "cancel_s1_task_id";
-            AgentCard card = new AgentCard();
-            card.setName("cancel_s1");
-            DeepAgent agent = new DeepAgent(card);
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
-            config.setMaxIterations(10);
-            agent.configure(config);
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s1", toolkit);
 
-            assertNotNull(agent);
-            assertNotNull(fixedTaskId);
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "long task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            Map<String, Object> row = taskRow(toolkit, fixedTaskId);
+            assertNotNull(row);
+            assertEquals("canceled", row.get("status"));
         }
 
         @Test
         void testSessionsCancelScenario2CancelWhenRunning() {
             String fixedTaskId = "cancel_s2_task_id";
-            AgentCard card = new AgentCard();
-            card.setName("cancel_s2");
-            DeepAgent agent = new DeepAgent(card);
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
-            config.setMaxIterations(10);
-            agent.configure(config);
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s2", toolkit);
 
-            assertNotNull(agent);
-            assertNotNull(fixedTaskId);
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "slow analysis", fixedTaskId);
+            Map<String, Object> beforeCancel = taskRow(toolkit, fixedTaskId);
+            assertNotNull(beforeCancel);
+            assertEquals("running", beforeCancel.get("status"));
+
+            agent.cancelTask(fixedTaskId);
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
         }
 
         @Test
         void testSessionsCancelScenario3CancelShouldNotTriggerSteering() {
             String fixedTaskId = "cancel_s3_task_id";
-            AgentCard card = new AgentCard();
-            card.setName("cancel_s3");
-            DeepAgent agent = new DeepAgent(card);
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
-            config.setMaxIterations(10);
-            agent.configure(config);
+            LoopObserveRail observe = new LoopObserveRail("[STEERING]");
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s3", toolkit);
 
-            assertNotNull(agent);
-            assertNotNull(fixedTaskId);
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "slow task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
+            assertFalse(observe.steerSeenInModelMessages);
         }
 
         @Test
         void testSessionsCancelScenario4CancelOneOfMultipleTasks() {
             String fixedTaskId1 = "cancel_s4_task_id_1";
             String fixedTaskId2 = "cancel_s4_task_id_2";
-            AgentCard card = new AgentCard();
-            card.setName("cancel_s4");
-            DeepAgent agent = new DeepAgent(card);
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
-            config.setMaxIterations(10);
-            agent.configure(config);
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s4", toolkit);
 
-            assertNotNull(agent);
-            assertNotEquals(fixedTaskId1, fixedTaskId2);
+            agent.spawnSubagentTask(fixedTaskId1, "general-purpose", "task a", fixedTaskId1);
+            agent.spawnSubagentTask(fixedTaskId2, "general-purpose", "task b", fixedTaskId2);
+            toolkit.completeTask(fixedTaskId2, "b done");
+            agent.cancelTask(fixedTaskId1);
+
+            Map<String, String> statuses = statusMap(toolkit);
+            assertEquals("canceled", statuses.get(fixedTaskId1));
+            assertEquals("completed", statuses.get(fixedTaskId2));
         }
 
         @Test
         void testSessionsCancelScenario5RepeatCancelIdempotent() {
             String fixedTaskId = "cancel_s5_task_id";
-            AgentCard card = new AgentCard();
-            card.setName("cancel_s5");
-            DeepAgent agent = new DeepAgent(card);
-            DeepAgentConfig config = new DeepAgentConfig();
-            config.setCard(card);
-            config.setMaxIterations(10);
-            agent.configure(config);
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s5", toolkit);
 
-            assertNotNull(agent);
-            assertNotNull(fixedTaskId);
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "task", fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+            agent.cancelTask(fixedTaskId);
+
+            assertEquals(1, toolkit.listTasks().size());
+            assertEquals("canceled", taskRow(toolkit, fixedTaskId).get("status"));
         }
 
         @Test
         void testSessionsCancelScenario6CancelCompletedTask() throws Exception {
             String fixedTaskId = "cancel_s6_task_id";
+            DeepAgentConfig.SessionToolkit toolkit = new DeepAgentConfig.SessionToolkit();
+            DeepAgent agent = buildCancelAgent("cancel_s6", toolkit);
             SleepSubAgent fastAgent = new SleepSubAgent(0, "completed quickly");
+
+            agent.spawnSubagentTask(fixedTaskId, "general-purpose", "fast complete", fixedTaskId);
             Map<String, Object> result = fastAgent.invoke(Map.of());
-            assertEquals("completed quickly", result.get("output"));
+            toolkit.completeTask(fixedTaskId, String.valueOf(result.get("output")));
+            agent.cancelTask(fixedTaskId);
+
+            Map<String, Object> row = taskRow(toolkit, fixedTaskId);
+            assertNotNull(row);
+            assertEquals("completed", row.get("status"));
+            assertEquals("completed quickly", row.get("result"));
+        }
+
+        private DeepAgent buildCancelAgent(String name, DeepAgentConfig.SessionToolkit toolkit) {
+            AgentCard card = new AgentCard();
+            card.setName(name);
+            DeepAgent agent = new DeepAgent(card);
+            DeepAgentConfig config = new DeepAgentConfig();
+            config.setCard(card);
+            config.setMaxIterations(10);
+            config.setSessionToolkit(toolkit);
+            agent.configure(config);
+            return agent;
+        }
+
+        private Map<String, Object> taskRow(DeepAgentConfig.SessionToolkit toolkit, String taskId) {
+            return toolkit.listTasks().stream()
+                    .filter(row -> taskId.equals(row.get("task_id")))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        private Map<String, String> statusMap(DeepAgentConfig.SessionToolkit toolkit) {
+            Map<String, String> statuses = new LinkedHashMap<>();
+            for (Map<String, Object> row : toolkit.listTasks()) {
+                statuses.put(String.valueOf(row.get("task_id")), String.valueOf(row.get("status")));
+            }
+            return statuses;
         }
     }
 }

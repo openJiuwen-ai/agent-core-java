@@ -424,8 +424,87 @@ public class SandboxGateway {
      */
     private Object invokeMethod(java.lang.reflect.Method method, Object provider, Map<String, Object> params) 
             throws Exception {
-        // Simplified invocation - just call with no args for now
-        // Real implementation would match params to method parameters
-        return method.invoke(provider);
+        if (method.getParameterCount() == 0) {
+            return method.invoke(provider);
+        }
+        if (method.getParameterCount() == 1
+                && Map.class.isAssignableFrom(method.getParameterTypes()[0])) {
+            return method.invoke(provider, params != null ? params : Map.of());
+        }
+        return method.invoke(provider, buildArguments(method, params != null ? params : Map.of()));
+    }
+
+    private Object[] buildArguments(java.lang.reflect.Method method, Map<String, Object> params) {
+        java.lang.reflect.Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+        for (int i = 0; i < parameters.length; i++) {
+            java.lang.reflect.Parameter parameter = parameters[i];
+            args[i] = convertValue(params.get(parameter.getName()), parameter.getType());
+        }
+        return args;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object convertValue(Object rawValue, Class<?> targetType) {
+        if (rawValue == null) {
+            if (!targetType.isPrimitive()) {
+                return null;
+            }
+            if (targetType == boolean.class) {
+                return false;
+            }
+            if (targetType == int.class) {
+                return 0;
+            }
+            if (targetType == long.class) {
+                return 0L;
+            }
+            if (targetType == double.class) {
+                return 0D;
+            }
+            if (targetType == float.class) {
+                return 0F;
+            }
+            if (targetType == short.class) {
+                return (short) 0;
+            }
+            if (targetType == byte.class) {
+                return (byte) 0;
+            }
+            if (targetType == char.class) {
+                return '\0';
+            }
+            return null;
+        }
+        if (targetType.isInstance(rawValue)) {
+            return rawValue;
+        }
+        if (targetType == String.class) {
+            return String.valueOf(rawValue);
+        }
+        if (targetType == int.class || targetType == Integer.class) {
+            return rawValue instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(rawValue));
+        }
+        if (targetType == long.class || targetType == Long.class) {
+            return rawValue instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(rawValue));
+        }
+        if (targetType == boolean.class || targetType == Boolean.class) {
+            return rawValue instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(rawValue));
+        }
+        if (targetType == int[].class && rawValue instanceof List<?> list) {
+            int[] result = new int[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                Object item = list.get(i);
+                result[i] = item instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(item));
+            }
+            return result;
+        }
+        if (Map.class.isAssignableFrom(targetType) && rawValue instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        if (List.class.isAssignableFrom(targetType) && rawValue instanceof List<?> list) {
+            return list;
+        }
+        return rawValue;
     }
 }

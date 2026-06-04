@@ -2,6 +2,8 @@ package com.openjiuwen.harness.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -9,6 +11,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,9 +46,6 @@ public class WebPaidSearchTool extends AbstractHarnessTool {
         }
         if (!List.of("auto", "bocha", "jina", "serper", "perplexity").contains(provider)) {
             return new ToolOutput(false, null, "[ERROR]: provider must be one of auto|bocha|jina|serper|perplexity.");
-        }
-        if (!WebTools.isPaidSearchEnabled()) {
-            return new ToolOutput(false, null, "[ERROR]: paid search failed: no paid search provider configured");
         }
 
         List<String> order = new ArrayList<>();
@@ -317,6 +317,11 @@ public class WebPaidSearchTool extends AbstractHarnessTool {
         }
         String value = System.getenv(key);
         return value == null ? "" : value.trim();
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", getCard().toString());
     }
 
     private static String stripTrailingPunctuation(String url) {

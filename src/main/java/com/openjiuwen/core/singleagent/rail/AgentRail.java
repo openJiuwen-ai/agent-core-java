@@ -53,6 +53,8 @@ public abstract class AgentRail {
     static {
         EVENT_METHOD_MAP.put(AgentCallbackEvent.BEFORE_INVOKE, "beforeInvoke");
         EVENT_METHOD_MAP.put(AgentCallbackEvent.AFTER_INVOKE, "afterInvoke");
+        EVENT_METHOD_MAP.put(AgentCallbackEvent.BEFORE_TASK_ITERATION, "beforeTaskIteration");
+        EVENT_METHOD_MAP.put(AgentCallbackEvent.AFTER_TASK_ITERATION, "afterTaskIteration");
         EVENT_METHOD_MAP.put(AgentCallbackEvent.BEFORE_MODEL_CALL, "beforeModelCall");
         EVENT_METHOD_MAP.put(AgentCallbackEvent.AFTER_MODEL_CALL, "afterModelCall");
         EVENT_METHOD_MAP.put(AgentCallbackEvent.ON_MODEL_EXCEPTION, "onModelException");
@@ -104,6 +106,10 @@ public abstract class AgentRail {
     public void beforeInvoke(AgentCallbackContext ctx) {}
 
     public void afterInvoke(AgentCallbackContext ctx) {}
+
+    public void beforeTaskIteration(AgentCallbackContext ctx) {}
+
+    public void afterTaskIteration(AgentCallbackContext ctx) {}
 
     public void beforeModelCall(AgentCallbackContext ctx) {}
 

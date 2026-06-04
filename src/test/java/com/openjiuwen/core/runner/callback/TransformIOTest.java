@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,7 +35,215 @@ class TransformIOTest {
         framework = new CallbackFramework(false, false);
     }
 
+    private static Object[] argsFrom(Map<String, Object> kwargs) {
+        Object raw = kwargs.get("_args");
+        return raw instanceof Object[] args ? args : new Object[0];
+    }
+
+    private static List<Integer> collect(Iterator<Object> iterator) {
+        List<Integer> values = new ArrayList<>();
+        while (iterator.hasNext()) {
+            values.add((Integer) iterator.next());
+        }
+        return values;
+    }
+
     // === Transform basics ===
+
+    @Test
+    @DisplayName("triggerTransform returns noop when no transform callbacks")
+    void testTriggerTransformReturnsNoopWhenNoCallbacks() {
+        assertSame(CallbackFramework.TRANSFORM_NOOP, framework.triggerTransform("some_event", "arg1"));
+    }
+
+    @Test
+    @DisplayName("triggerTransform ignores regular callbacks")
+    void testTriggerTransformIgnoresRegularCallbacks() {
+        List<Object> called = new ArrayList<>();
+        framework.on("my_event", kwargs -> {
+            called.add(argsFrom(kwargs)[0]);
+            return "regular";
+        }, "regular_handler");
+
+        Object result = framework.triggerTransform("my_event", 42);
+
+        assertSame(CallbackFramework.TRANSFORM_NOOP, result);
+        assertTrue(called.isEmpty());
+    }
+
+    @Test
+    @DisplayName("triggerTransform runs transform callbacks")
+    void testTriggerTransformRunsTransformCallbacks() {
+        framework.onTransform("my_event", kwargs -> (int) argsFrom(kwargs)[0] * 2, "transform_handler");
+
+        assertEquals(10, framework.triggerTransform("my_event", 5));
+    }
+
+    @Test
+    @DisplayName("triggerTransform returns last transform result")
+    void testTriggerTransformReturnsLastResult() {
+        framework.onTransform("ev", kwargs -> (int) argsFrom(kwargs)[0] + 1, 10, "h1");
+        framework.onTransform("ev", kwargs -> (int) argsFrom(kwargs)[0] * 100, 0, "h2");
+
+        assertEquals(300, framework.triggerTransform("ev", 3));
+    }
+
+    @Test
+    @DisplayName("trigger and triggerTransform keep regular and transform callbacks separate")
+    void testTriggerTransformCoexistsWithRegularTrigger() {
+        List<Integer> regularCalled = new ArrayList<>();
+        List<Integer> transformCalled = new ArrayList<>();
+        framework.on("ev", kwargs -> {
+            regularCalled.add((Integer) argsFrom(kwargs)[0]);
+            return null;
+        }, "regular");
+        framework.onTransform("ev", kwargs -> {
+            transformCalled.add((Integer) argsFrom(kwargs)[0]);
+            return argsFrom(kwargs)[0];
+        }, "transform");
+
+        List<Object> regularResults = framework.trigger("ev", new Object[]{7}, new HashMap<>());
+        assertEquals(1, regularResults.size());
+        assertNull(regularResults.get(0));
+        assertEquals(List.of(7), regularCalled);
+        assertTrue(transformCalled.isEmpty());
+
+        assertEquals(9, framework.triggerTransform("ev", 9));
+        assertEquals(List.of(7), regularCalled);
+        assertEquals(List.of(9), transformCalled);
+    }
+
+    @Test
+    @DisplayName("onTransform registers transform type")
+    void testOnTransformRegistersTransformType() {
+        framework.onTransform("ev", kwargs -> (int) argsFrom(kwargs)[0] + 10, "handler");
+
+        assertEquals(15, framework.triggerTransform("ev", 5));
+        assertTrue(framework.trigger("ev", new Object[]{5}, new HashMap<>()).isEmpty());
+        assertEquals(CallbackFramework.CALLBACK_TYPE_TRANSFORM,
+                framework.listCallbacks("ev").get(0).get("callback_type"));
+    }
+
+    @Test
+    @DisplayName("transformIo by events is identity when no transform callbacks")
+    void testTransformIoIdentityWhenNoTransformCallbacks() {
+        Function<Map<String, Object>, Object> add = kwargs -> (int) argsFrom(kwargs)[0] + (int) argsFrom(kwargs)[1];
+        Function<Map<String, Object>, Object> wrapped =
+                framework.transformIoByEvents(add, "in_ev", "out_ev", "result");
+
+        assertEquals(5, wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{2, 3}))));
+    }
+
+    @Test
+    @DisplayName("transformIo stream is identity when no transform callbacks")
+    void testTransformIoStreamIdentityWhenNoTransformCallbacks() {
+        Function<Map<String, Object>, Iterator<Object>> gen = kwargs -> {
+            int n = (int) argsFrom(kwargs)[0];
+            List<Object> items = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                items.add(i);
+            }
+            return items.iterator();
+        };
+        Function<Map<String, Object>, Iterator<Object>> wrapped =
+                framework.transformIoStreamByEvents(gen, "in_ev", "out_ev", "result");
+
+        assertEquals(List.of(0, 1, 2), collect(wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{3})))));
+    }
+
+    @Test
+    @DisplayName("transformIo modifies input arguments")
+    void testTransformIoModifiesInput() {
+        framework.onTransform("in_ev", kwargs -> {
+            Object[] args = argsFrom(kwargs);
+            return new CallbackFramework.BoundArgs(new Object[]{(int) args[0] * 2, args[1]}, Map.of());
+        }, "double_first");
+        Function<Map<String, Object>, Object> add = kwargs -> (int) argsFrom(kwargs)[0] + (int) argsFrom(kwargs)[1];
+
+        Function<Map<String, Object>, Object> wrapped =
+                framework.transformIoByEvents(add, "in_ev", "out_ev", "result");
+
+        assertEquals(10, wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{3, 4}))));
+    }
+
+    @Test
+    @DisplayName("transformIo modifies output")
+    void testTransformIoModifiesOutput() {
+        framework.onTransform("out_ev", kwargs -> -(int) kwargs.get("result"), "negate");
+        Function<Map<String, Object>, Object> add = kwargs -> (int) argsFrom(kwargs)[0] + (int) argsFrom(kwargs)[1];
+
+        Function<Map<String, Object>, Object> wrapped =
+                framework.transformIoByEvents(add, "in_ev", "out_ev", "result");
+
+        assertEquals(-5, wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{2, 3}))));
+    }
+
+    @Test
+    @DisplayName("transformIo modifies both input and output")
+    void testTransformIoModifiesBothInputAndOutput() {
+        framework.onTransform("in_ev", kwargs -> {
+            Object[] args = argsFrom(kwargs);
+            return new CallbackFramework.BoundArgs(new Object[]{(int) args[0] + 1, args[1]}, Map.of());
+        }, "increment_a");
+        framework.onTransform("out_ev", kwargs -> (int) kwargs.get("result") * 2, "double_result");
+        Function<Map<String, Object>, Object> add = kwargs -> (int) argsFrom(kwargs)[0] + (int) argsFrom(kwargs)[1];
+
+        Function<Map<String, Object>, Object> wrapped =
+                framework.transformIoByEvents(add, "in_ev", "out_ev", "result");
+
+        assertEquals(8, wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{1, 2}))));
+    }
+
+    @Test
+    @DisplayName("transformIo stream output fires per item")
+    void testTransformIoStreamOutputFiresPerItem() {
+        framework.onTransform("out_ev", kwargs -> (int) kwargs.get("result") * (int) kwargs.get("result"), "square");
+        Function<Map<String, Object>, Iterator<Object>> gen = kwargs -> {
+            int n = (int) argsFrom(kwargs)[0];
+            List<Object> items = new ArrayList<>();
+            for (int i = 1; i <= n; i++) {
+                items.add(i);
+            }
+            return items.iterator();
+        };
+
+        Function<Map<String, Object>, Iterator<Object>> wrapped =
+                framework.transformIoStreamByEvents(gen, "in_ev", "out_ev", "result");
+
+        assertEquals(List.of(1, 4, 9, 16), collect(wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{4})))));
+    }
+
+    @Test
+    @DisplayName("transformIo stream input modifies argument once")
+    void testTransformIoStreamInputModifiesArg() {
+        framework.onTransform("in_ev", kwargs -> {
+            Object[] args = argsFrom(kwargs);
+            return new CallbackFramework.BoundArgs(new Object[]{(int) args[0] * 2}, Map.of());
+        }, "double_n");
+        Function<Map<String, Object>, Iterator<Object>> gen = kwargs -> {
+            int n = (int) argsFrom(kwargs)[0];
+            List<Object> items = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                items.add(i);
+            }
+            return items.iterator();
+        };
+
+        Function<Map<String, Object>, Iterator<Object>> wrapped =
+                framework.transformIoStreamByEvents(gen, "in_ev", "out_ev", "result");
+
+        assertEquals(List.of(0, 1, 2, 3, 4, 5),
+                collect(wrapped.apply(new HashMap<>(Map.of("_args", new Object[]{3})))));
+    }
+
+    @Test
+    @DisplayName("Disabled transform callback is skipped")
+    void testDisabledTransformCallbackIsSkipped() {
+        CallbackInfo info = framework.onTransform("ev", kwargs -> (int) argsFrom(kwargs)[0] * 99, "handler");
+        info.setEnabled(false);
+
+        assertSame(CallbackFramework.TRANSFORM_NOOP, framework.triggerTransform("ev", 5));
+    }
 
     @Test
     @DisplayName("Transform callback can modify input arguments")

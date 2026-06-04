@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Performance metric related event. */
+/**
+ * Performance metric related event.
+ *
+ * <p>Mirrors Python's {@code PerformanceEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

@@ -35,6 +35,10 @@ public final class CliPromptBuilder {
     private CliPromptBuilder() {
     }
 
+    public static int maxMemoryChars() {
+        return MAX_MEMORY_CHARS;
+    }
+
     /**
      * Walk up from cwd to find the first directory with a root marker.
      *
@@ -74,10 +78,14 @@ public final class CliPromptBuilder {
      * @return Merged memory text, or empty string when no memory files exist.
      */
     public static String loadOpenjiuwenMd(String cwd) {
+        return loadOpenjiuwenMd(cwd, Paths.get(System.getProperty("user.home")));
+    }
+
+    public static String loadOpenjiuwenMd(String cwd, Path homeDir) {
         List<String> parts = new ArrayList<>();
 
         // User-level
-        Path userFile = Paths.get(System.getProperty("user.home"), ".openjiuwen", "OPENJIUWEN.md");
+        Path userFile = homeDir.resolve(".openjiuwen").resolve("OPENJIUWEN.md");
         if (Files.exists(userFile)) {
             try {
                 String content = Files.readString(userFile);
@@ -102,12 +110,12 @@ public final class CliPromptBuilder {
         }
 
         if (parts.isEmpty()) {
-            return "";
+            return null;
         }
 
         String combined = String.join("\n\n", parts);
         if (combined.length() > MAX_MEMORY_CHARS) {
-            combined = combined.substring(0, MAX_MEMORY_CHARS);
+            combined = combined.substring(0, MAX_MEMORY_CHARS) + "\n[...truncated]";
         }
 
         return combined;
@@ -154,7 +162,7 @@ public final class CliPromptBuilder {
 
         // Memory section
         String memory = loadOpenjiuwenMd(cwd);
-        if (!memory.isEmpty()) {
+        if (memory != null && !memory.isEmpty()) {
             prompt.append("## Project Memory (OPENJIUWEN.md)\n\n");
             prompt.append(memory);
             prompt.append("\n");

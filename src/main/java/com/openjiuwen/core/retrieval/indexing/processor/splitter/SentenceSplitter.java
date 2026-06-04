@@ -44,10 +44,18 @@ public class SentenceSplitter extends Splitter {
         String language = "auto".equalsIgnoreCase(defaultLanguage) ? detectLanguage(normalizedText) : defaultLanguage;
         String separator = "zh".equalsIgnoreCase(language) ? "" : " ";
         List<String> sentences = splitSentences(normalizedText, language);
+        List<String> segments = new ArrayList<>();
+        for (String sentence : sentences) {
+            if (tokenCount(sentence) > chunkSize) {
+                segments.addAll(splitOversizedSentence(sentence, language));
+            } else {
+                segments.add(sentence);
+            }
+        }
         List<String> result = new ArrayList<>();
         List<String> window = new ArrayList<>();
         int tokenCount = 0;
-        for (String sentence : sentences) {
+        for (String sentence : segments) {
             int sentenceTokens = tokenCount(sentence);
             if (!window.isEmpty() && tokenCount + sentenceTokens > chunkSize) {
                 result.add(String.join(separator, window).trim());
@@ -70,6 +78,40 @@ public class SentenceSplitter extends Splitter {
         }
         if (!window.isEmpty()) {
             result.add(String.join(separator, window).trim());
+        }
+        return result;
+    }
+
+    private List<String> splitOversizedSentence(String sentence, String language) {
+        if (sentence == null || sentence.isBlank()) {
+            return List.of();
+        }
+        List<String> tokens;
+        String separator;
+        if (tokenizer != null) {
+            tokens = tokenizer.apply(sentence.trim());
+            separator = "zh".equalsIgnoreCase(language) ? "" : " ";
+        } else if ("zh".equalsIgnoreCase(language)) {
+            tokens = new ArrayList<>(sentence.trim().length());
+            for (int i = 0; i < sentence.trim().length(); i++) {
+                tokens.add(String.valueOf(sentence.trim().charAt(i)));
+            }
+            separator = "";
+        } else {
+            tokens = List.of(sentence.trim().split("\\s+"));
+            separator = " ";
+        }
+        if (tokens == null || tokens.isEmpty()) {
+            return List.of(sentence.trim());
+        }
+        int step = Math.max(1, chunkSize - chunkOverlap);
+        List<String> result = new ArrayList<>();
+        for (int start = 0; start < tokens.size(); start += step) {
+            int end = Math.min(tokens.size(), start + chunkSize);
+            result.add(String.join(separator, tokens.subList(start, end)).trim());
+            if (end >= tokens.size()) {
+                break;
+            }
         }
         return result;
     }

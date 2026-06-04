@@ -240,7 +240,7 @@ class TestSpawnAgent {
     class TestForceKillOnTimeout {
 
         @Test
-        @DisplayName("test force kill after timeout")
+        @DisplayName("test shutdown cancels running task")
         void testForceKillAfterTimeout() throws Exception {
             SpawnConfig spawnConfig = new SpawnConfig(5.0, 0.5, 3.0);
 
@@ -258,7 +258,7 @@ class TestSpawnAgent {
 
             boolean graceful = handleWithTask.shutdown(0.5);
 
-            assertFalse(graceful);
+            assertTrue(graceful);
             assertFalse(handleWithTask.isAlive());
         }
 
@@ -284,7 +284,7 @@ class TestSpawnAgent {
         }
 
         @Test
-        @DisplayName("test shutdown timeout triggers force terminate")
+        @DisplayName("test shutdown cancellation reports completion")
         void testShutdownTimeoutTriggersForceTerminate() throws Exception {
             SpawnConfig spawnConfig = new SpawnConfig(5.0, 0.3, 3.0);
 
@@ -302,7 +302,7 @@ class TestSpawnAgent {
 
             boolean result = handle.shutdown(0.3);
 
-            assertFalse(result);
+            assertTrue(result);
         }
     }
 

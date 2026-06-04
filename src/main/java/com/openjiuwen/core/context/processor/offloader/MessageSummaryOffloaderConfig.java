@@ -49,6 +49,13 @@ public class MessageSummaryOffloaderConfig {
     private List<String> offloadMessageType = List.of("tool");
 
     /**
+     * Tool names or {@code tool_name:glob_pattern} entries that should never be
+     * summarized/offloaded.
+     */
+    @Builder.Default
+    private List<String> protectedToolNames = List.of("reload_original_context_messages");
+
+    /**
      * Guarantee that the newest N messages are never off-loaded.
      */
     private Integer messagesToKeep;
@@ -75,6 +82,30 @@ public class MessageSummaryOffloaderConfig {
     private String customizedSummaryPrompt;
 
     /**
+     * Maximum tokens requested for an adaptive summary.
+     */
+    @Builder.Default
+    private int summaryMaxTokens = 900;
+
+    /**
+     * Whether to use an extra precise-step extraction call before compression.
+     */
+    @Builder.Default
+    private boolean enablePreciseStep = false;
+
+    /**
+     * Maximum recent context messages used for precise step extraction.
+     */
+    @Builder.Default
+    private int stepSummaryMaxContextMessages = 8;
+
+    /**
+     * Maximum original content characters sent to the compression model before fallback truncation.
+     */
+    @Builder.Default
+    private int contentMaxCharsForCompression = 200000;
+
+    /**
      * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
      */
     public void validate() {
@@ -89,6 +120,17 @@ public class MessageSummaryOffloaderConfig {
         }
         if (messagesToKeep != null && messagesToKeep <= 0) {
             throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+        if (summaryMaxTokens <= 0) {
+            throw new IllegalArgumentException("summaryMaxTokens must be > 0, got " + summaryMaxTokens);
+        }
+        if (stepSummaryMaxContextMessages <= 0) {
+            throw new IllegalArgumentException(
+                    "stepSummaryMaxContextMessages must be > 0, got " + stepSummaryMaxContextMessages);
+        }
+        if (contentMaxCharsForCompression <= 0) {
+            throw new IllegalArgumentException(
+                    "contentMaxCharsForCompression must be > 0, got " + contentMaxCharsForCompression);
         }
     }
 }

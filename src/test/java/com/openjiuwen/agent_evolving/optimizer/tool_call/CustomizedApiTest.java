@@ -50,7 +50,8 @@ class CustomizedApiTest {
 
         Map<String, Object> slice = extractApiSlice(toolSpec);
 
-        List<String> required = (List<String>) slice.get("required");
+        Map<String, Object> params = (Map<String, Object>) slice.get("parameters");
+        List<String> required = (List<String>) params.get("required");
         assertEquals(1, required.size());
         assertEquals("query", required.get(0));
     }

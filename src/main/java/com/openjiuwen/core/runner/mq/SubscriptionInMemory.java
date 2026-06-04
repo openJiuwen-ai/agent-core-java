@@ -4,9 +4,14 @@
 
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Iterator;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -95,27 +100,17 @@ public class SubscriptionInMemory extends SubscriptionBase {
                     CompletableFuture<Object> future = handler.handle(message.getPayload());
                     future.whenComplete((response, throwable) -> {
                         if (throwable != null) {
-                            message.setErrorCode(-1);
-                            message.setErrorMsg(throwable.getMessage());
-                            if (message instanceof InvokeQueueMessage iqm && !iqm.getResponse().isDone()) {
-                                iqm.getResponse().completeExceptionally(throwable);
-                            }
-                            if (message instanceof StreamQueueMessage sqm && !sqm.getResponse().isDone()) {
-                                sqm.getResponse().completeExceptionally(throwable);
-                            }
+                            failMessage(message, throwable);
                         } else {
-                            handleResponse(message, response);
+                            try {
+                                handleResponse(message, response);
+                            } catch (RuntimeException e) {
+                                failMessage(message, e);
+                            }
                         }
                     });
                 } catch (Exception e) {
-                    message.setErrorCode(-1);
-                    message.setErrorMsg(e.getMessage());
-                    if (message instanceof InvokeQueueMessage iqm && !iqm.getResponse().isDone()) {
-                        iqm.getResponse().completeExceptionally(e);
-                    }
-                    if (message instanceof StreamQueueMessage sqm && !sqm.getResponse().isDone()) {
-                        sqm.getResponse().completeExceptionally(e);
-                    }
+                    failMessage(message, e);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -126,11 +121,57 @@ public class SubscriptionInMemory extends SubscriptionBase {
 
     private void handleResponse(QueueMessage message, Object response) {
         if (message instanceof InvokeQueueMessage iqm) {
+            if (response == null) {
+                throw new IllegalArgumentException("response is empty");
+            }
+            if (response instanceof Iterator<?>) {
+                throw new IllegalArgumentException("InvokeQueueMessage need not Iterator response");
+            }
             iqm.getResponse().complete(response);
         } else if (message instanceof StreamQueueMessage sqm) {
             @SuppressWarnings("unchecked")
-            var iter = (java.util.Iterator<Object>) response;
+            var iter = (Iterator<Object>) requireIterator(response);
             sqm.getResponse().complete(iter);
         }
+    }
+
+    private Iterator<?> requireIterator(Object response) {
+        if (response == null) {
+            throw new IllegalArgumentException("response is empty");
+        }
+        if (!(response instanceof Iterator<?> iterator)) {
+            throw new IllegalArgumentException("StreamQueueMessage need Iterator response");
+        }
+        return iterator;
+    }
+
+    private void failMessage(QueueMessage message, Throwable throwable) {
+        BaseError baseError = findBaseError(throwable);
+        if (baseError != null) {
+            message.setErrorCode(baseError.getCode());
+            message.setErrorMsg(baseError.getMessage());
+        } else {
+            message.setErrorCode(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode());
+            message.setErrorMsg(ErrorHelper.buildError(
+                    StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR,
+                    "reason", throwable.getMessage() != null ? throwable.getMessage() : "").getMessage());
+        }
+        if (message instanceof InvokeQueueMessage iqm && !iqm.getResponse().isDone()) {
+            iqm.getResponse().completeExceptionally(throwable);
+        }
+        if (message instanceof StreamQueueMessage sqm && !sqm.getResponse().isDone()) {
+            sqm.getResponse().completeExceptionally(throwable);
+        }
+    }
+
+    private BaseError findBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BaseError baseError) {
+                return baseError;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 }

@@ -4,11 +4,15 @@
 
 package com.openjiuwen.agent_evolving.optimizer.tool_call;
 
+import com.openjiuwen.agent_evolving.optimizer.tool_call.utils.SchemaExtractor;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for SchemaExtractor functionality.
@@ -18,102 +22,69 @@ import static org.junit.jupiter.api.Assertions.*;
 class SchemaExtractorTest {
 
     @Test
-    void testExtractSchemaFromPythonFunction() {
-        // Note: Python docstrings use triple quotes which cannot be directly embedded in Java text blocks.
-        // We simulate the Python function signature without the docstring for testing.
-        String pythonCode = """
-            def search(query: str, limit: int = 10) -> List[str]:
-                pass
-            """;
+    void testExtractSchemaWithDictAndNestedValues() {
+        Map<String, Object> src = new LinkedHashMap<>();
+        src.put("name", "tool");
+        src.put("parameters", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "q", Map.of("type", "string"),
+                        "k", List.of(1, 2)
+                ),
+                "required", List.of("q")
+        ));
+        src.put("enabled", true);
 
-        Map<String, Object> schema = extractSchema(pythonCode);
+        Map<String, Object> out = SchemaExtractor.extractSchema(src);
 
-        assertEquals("search", schema.get("name"));
-        assertTrue(schema.containsKey("parameters"));
+        assertEquals("", out.get("name"));
+        assertEquals("", out.get("enabled"));
+        Map<?, ?> parameters = (Map<?, ?>) out.get("parameters");
+        assertEquals(List.of("q"), parameters.get("required"));
+        Map<?, ?> properties = (Map<?, ?>) parameters.get("properties");
+        assertEquals("", ((Map<?, ?>) properties.get("q")).get("type"));
+        assertEquals(List.of(1, 2), properties.get("k"));
     }
 
     @Test
-    void testExtractSchemaPreservesTypes() {
-        String pythonCode = """
-            def process(name: str, count: int, enabled: bool) -> dict:
-                pass
-            """;
+    void testExtractSchemaWithJsonString() {
+        Map<String, Object> out = SchemaExtractor.extractSchema("{\"a\": 1, \"b\": {\"c\": 2}}");
 
-        Map<String, Object> schema = extractSchema(pythonCode);
-        Map<String, Object> props = (Map<String, Object>) ((Map<String, Object>) schema.get("parameters")).get("properties");
-
-        assertEquals("string", ((Map<String, Object>) props.get("name")).get("type"));
-        assertEquals("integer", ((Map<String, Object>) props.get("count")).get("type"));
-        assertEquals("boolean", ((Map<String, Object>) props.get("enabled")).get("type"));
+        assertEquals(Map.of("a", "", "b", Map.of("c", "")), out);
     }
 
     @Test
-    void testExtractSchemaWithOptionalParams() {
-        String pythonCode = """
-            def func(required_param: str, optional_param: int = 5) -> None:
-                pass
-            """;
-
-        Map<String, Object> schema = extractSchema(pythonCode);
-        List<String> required = (List<String>) ((Map<String, Object>) schema.get("parameters")).get("required");
-
-        assertEquals(1, required.size());
-        assertEquals("required_param", required.get(0));
+    void testExtractSchemaWithInvalidJsonString() {
+        assertEquals(Map.of(), SchemaExtractor.extractSchema("not-json"));
     }
 
     @Test
-    void testExtractSchemaFromJavaMethod() {
-        String javaCode = """
-            public String transform(String input, int iterations) {
-                return input.repeat(iterations);
-            }
-            """;
-
-        Map<String, Object> schema = extractSchema(javaCode);
-
-        assertEquals("transform", schema.get("name"));
-        assertTrue(schema.containsKey("parameters"));
+    void testExtractSchemaWithNonDictInput() {
+        assertEquals(Map.of(), SchemaExtractor.extractSchema(List.of("not", "a", "dict")));
     }
 
     @Test
-    void testExtractSchemaWithReturnDescription() {
-        // Note: Python docstrings with triple quotes cannot be embedded in Java text blocks.
-        // We simulate a function signature for testing.
-        String code = """
-            def calculate(x: int, y: int) -> float:
-                pass
-            """;
-
-        Map<String, Object> schema = extractSchema(code);
-
-        assertTrue(schema.containsKey("returns"));
+    void testExtractSchemaWithEmptyDict() {
+        assertTrue(SchemaExtractor.extractSchema(Map.of()).isEmpty());
     }
 
     @Test
-    void testExtractSchemaHandlesEmptyCode() {
-        String emptyCode = "";
+    void testExtractSchemaPreservesLists() {
+        Map<String, Object> out = SchemaExtractor.extractSchema(Map.of("required", List.of("q", "k")));
 
-        Map<String, Object> schema = extractSchema(emptyCode);
-
-        assertTrue(schema.isEmpty() || !schema.containsKey("name"));
+        assertEquals(List.of("q", "k"), out.get("required"));
     }
 
     @Test
-    void testExtractSchemaHandlesMalformedCode() {
-        String malformedCode = "not a valid function";
+    void testExtractSchemaRecursesDeeply() {
+        Map<String, Object> out = SchemaExtractor.extractSchema(Map.of(
+                "outer", Map.of(
+                        "middle", Map.of(
+                                "inner", "value"
+                        )
+                )
+        ));
 
-        Map<String, Object> schema = extractSchema(malformedCode);
-
-        assertTrue(schema.isEmpty() || !schema.containsKey("name"));
-    }
-
-    /**
-     * Placeholder for schema extraction logic.
-     * In actual implementation, this would parse Python or Java code
-     * to extract function/method signatures and types.
-     */
-    private Map<String, Object> extractSchema(String code) {
-        // Placeholder implementation - returns empty schema
-        return new LinkedHashMap<>();
+        assertEquals(Map.of("outer", Map.of("middle", Map.of("inner", ""))), out);
     }
 }

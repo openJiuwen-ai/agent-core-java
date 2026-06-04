@@ -12,30 +12,46 @@ package com.openjiuwen.agent_teams.worktree;
  */
 public final class WorktreeSessionHolder {
 
-    private static final ThreadLocal<WorktreeSession> CURRENT = new ThreadLocal<>();
+    private static final InheritableThreadLocal<SessionState> CURRENT = new InheritableThreadLocal<>() {
+        @Override
+        protected SessionState childValue(SessionState parentValue) {
+            return parentValue;
+        }
+    };
 
     private WorktreeSessionHolder() {
     }
 
     public static WorktreeSession getCurrentSession() {
-        return CURRENT.get();
+        return getState().session;
     }
 
     public static void setCurrentSession(WorktreeSession session) {
-        CURRENT.set(session);
+        getState().session = session;
     }
 
     public static void initSessionState() {
-        if (CURRENT.get() == null) {
-            CURRENT.set(null);
-        }
+        getState();
     }
 
     public static WorktreeSession requireCurrentSession() {
-        WorktreeSession session = CURRENT.get();
+        WorktreeSession session = getState().session;
         if (session == null) {
             throw new IllegalStateException("Not in a worktree session");
         }
         return session;
+    }
+
+    private static SessionState getState() {
+        SessionState state = CURRENT.get();
+        if (state == null) {
+            state = new SessionState();
+            CURRENT.set(state);
+        }
+        return state;
+    }
+
+    private static final class SessionState {
+        private WorktreeSession session;
     }
 }

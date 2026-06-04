@@ -20,10 +20,15 @@ public class TodoGetTool extends TodoTool {
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Session session = requireSession(kwargs);
         String id = inputs.get("id") == null ? "" : String.valueOf(inputs.get("id"));
-        List<TodoItem> todos = loadTodos(session);
         if (id.isBlank()) {
-            return Map.of("tasks", todos.stream().map(TodoItem::toMap).toList());
+            throw new IllegalArgumentException("Task ID is required");
         }
-        return Map.of("tasks", todos.stream().filter(todo -> todo.getId().equals(id)).map(TodoItem::toMap).toList());
+        List<TodoItem> todos = loadTodos(session);
+        for (TodoItem todo : todos) {
+            if (todo.getId().equals(id)) {
+                return Map.of("todo", todo.toMap());
+            }
+        }
+        throw new IllegalArgumentException("Task with id '" + id + "' not found");
     }
 }

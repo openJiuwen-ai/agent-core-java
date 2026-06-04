@@ -49,8 +49,15 @@ public class RealLauncherOrchestrator implements LauncherOrchestrator {
 
     @Override
     public void waitForServiceHealths(LauncherOnlineRlConfig cfg, LaunchRuntime runtime) {
-        // real health polling is intentionally lightweight here; higher-level stack
-        // launchers provide the actual service endpoints.
+        Duration inferenceTimeout = runtime.skipVllm()
+                ? Duration.ofSeconds((long) LauncherServices.EXISTING_SERVICE_HEALTH_TIMEOUT)
+                : Duration.ofMillis((long) (cfg.inference().healthTimeout() * 1000));
+        waitForHealth(runtime.inferenceUrl() + "/health", inferenceTimeout);
+
+        Duration judgeTimeout = runtime.skipJudge()
+                ? Duration.ofSeconds((long) LauncherServices.EXISTING_SERVICE_HEALTH_TIMEOUT)
+                : Duration.ofMillis((long) (cfg.judge().healthTimeout() * 1000));
+        waitForHealth(runtime.judgeUrl() + "/health", judgeTimeout);
     }
 
     @Override
@@ -60,7 +67,7 @@ public class RealLauncherOrchestrator implements LauncherOrchestrator {
 
     @Override
     public void waitForGatewayHealth(LauncherOnlineRlConfig cfg, LaunchRuntime runtime) {
-        // gateway health polling is delegated to the surrounding orchestration layer.
+        waitForHealth(runtime.gatewayBaseUrl() + "/health", Duration.ofMillis((long) (cfg.gateway().healthTimeout() * 1000)));
     }
 
     @Override
@@ -108,6 +115,17 @@ public class RealLauncherOrchestrator implements LauncherOrchestrator {
             return new ProcessLauncherProcess(builder.start());
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to spawn launcher process", exception);
+        }
+    }
+
+    private static void waitForHealth(String url, Duration timeout) {
+        try {
+            LauncherHealthChecks.waitForHealth(url, timeout);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Health check failed for " + url, exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Health check interrupted for " + url, exception);
         }
     }
 }

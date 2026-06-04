@@ -94,6 +94,16 @@ class DbModelTest {
         assertEquals("2", meta.get("scope_user_mapping"));
     }
 
+    @Test
+    void createTablesWithEmptyRegistryDoesNotWriteMeta() throws Exception {
+        TestDbStore dbStore = new TestDbStore(createDataSource());
+
+        DbModel.createTables(dbStore);
+
+        Map<String, String> meta = readMemoryMeta(dbStore.getEngine());
+        assertTrue(meta.isEmpty());
+    }
+
     private static Map<String, String> readMemoryMeta(DataSource dataSource) throws Exception {
         Map<String, String> meta = new LinkedHashMap<>();
         try (Connection connection = dataSource.getConnection();

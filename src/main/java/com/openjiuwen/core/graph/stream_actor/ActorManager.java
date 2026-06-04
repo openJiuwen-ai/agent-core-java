@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
@@ -33,8 +34,12 @@ public class ActorManager {
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Map<String, List<String>> streamEdges;
+    private final Map<String, List<String>> reverseGraph;
     private final Map<String, StreamActor> streams = new LinkedHashMap<>();
     private final StreamTransform streamsTransform = new StreamTransform();
+    private final Map<String, Set<ComponentAbility>> activeProducerIds = new ConcurrentHashMap<>();
+    private final Map<String, Set<ComponentAbility>> producerAbilities = new ConcurrentHashMap<>();
+    private final Set<String> finishedProducerIds = ConcurrentHashMap.newKeySet();
     private final boolean subGraph;
     private final BlockingQueue<Object> subWorkflowStreamQueue;
 
@@ -57,7 +62,7 @@ public class ActorManager {
         this.subWorkflowStreamQueue = subGraph ? new LinkedBlockingQueue<>(10 * 1024) : null;
 
         // Build reverse graph: consumer → [producers]
-        Map<String, List<String>> reverseGraph = buildReverseGraph(this.streamEdges);
+        this.reverseGraph = buildReverseGraph(this.streamEdges);
 
         // Get stream generator timeout from config
         long streamGenTimeout = 1;
@@ -90,6 +95,9 @@ public class ActorManager {
                 if (producerAbilities != null) {
                     for (ComponentAbility a : producerAbilities) {
                         if (a == ComponentAbility.STREAM || a == ComponentAbility.TRANSFORM) {
+                            this.producerAbilities
+                                    .computeIfAbsent(producerId, k -> ConcurrentHashMap.newKeySet())
+                                    .add(a);
                             sources.add(producerId + "-" + a.name());
                         }
                     }
@@ -132,6 +140,7 @@ public class ActorManager {
      */
     public void produce(String producerId, Object messageContent,
                         ComponentAbility ability, boolean firstFrame) {
+        activeProduceAbility(producerId, ability);
         List<String> consumerIds = streamEdges.get(producerId);
         if (consumerIds != null && !consumerIds.isEmpty()) {
             for (String consumerId : consumerIds) {
@@ -157,6 +166,12 @@ public class ActorManager {
         produce(producerId, endContent, ability, false);
     }
 
+    public void markProducerDone(String producerId) {
+        if (producerId != null) {
+            finishedProducerIds.add(producerId);
+        }
+    }
+
     /**
      * Consume stream data for a consumer node.
      *
@@ -168,9 +183,22 @@ public class ActorManager {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> consume(String consumerId, ComponentAbility ability,
-                                        Object schema, Consumer<Object> streamCallback) {
+                                         Object schema, Consumer<Object> streamCallback) {
         StreamActor actor = streams.get(consumerId);
         if (actor != null) {
+            for (String producerId : reverseGraph.getOrDefault(consumerId, List.of())) {
+                if (!finishedProducerIds.contains(producerId)) {
+                    continue;
+                }
+                Set<ComponentAbility> allAbilities = producerAbilities.getOrDefault(producerId, Set.of());
+                Set<ComponentAbility> activeAbilities = activeProducerIds.getOrDefault(producerId, Set.of());
+                if (activeAbilities.isEmpty()) {
+                    for (ComponentAbility producerAbility : allAbilities) {
+                        endMessage(producerId, producerAbility);
+                        activeProduceAbility(producerId, producerAbility);
+                    }
+                }
+            }
             Map<String, Object> schemaMap = (schema instanceof Map) ? (Map<String, Object>) schema : null;
             return actor.generator(ability, schemaMap, streamCallback);
         }
@@ -196,6 +224,12 @@ public class ActorManager {
     }
 
     // ---- Helpers ----
+
+    private void activeProduceAbility(String producerId, ComponentAbility ability) {
+        activeProducerIds
+                .computeIfAbsent(producerId, k -> ConcurrentHashMap.newKeySet())
+                .add(ability);
+    }
 
     private static Map<String, List<String>> buildReverseGraph(Map<String, List<String>> graph) {
         Map<String, List<String>> reverse = new HashMap<>();

@@ -371,7 +371,7 @@ class TestTransformerE2E {
         void outputHandlesUnicode() throws Exception {
             Map<String, Object> agentInfo = new LinkedHashMap<>();
             agentInfo.put("name", "中文助手");
-            agentInfo.put("description", "这是一个中文描述，包含特殊字符：");
+            agentInfo.put("description", "这是一个中文描述，包含特殊字符：😊🎉");
             agentInfo.put("prompt", "你是一个智能助手。");
             agentInfo.put("opening_remarks", "你好！欢迎使用！");
             agentInfo.put("plugin", List.of());
@@ -385,6 +385,7 @@ class TestTransformerE2E {
 
             assertThat(dsl.get("name")).isEqualTo("中文助手");
             assertThat((String) dsl.get("description")).contains("中文描述");
+            assertThat((String) dsl.get("description")).contains("😊");
             assertThat(dsl.get("opening_remarks")).isEqualTo("你好！欢迎使用！");
         }
     }

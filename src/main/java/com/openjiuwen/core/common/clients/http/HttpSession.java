@@ -17,7 +17,7 @@ public class HttpSession implements AutoCloseable {
     private final HttpClient session;
     private final SessionConfig config;
     private volatile boolean closed = false;
-    private int refCount = 0;
+    private int refCount = 1;
 
     public HttpSession(HttpClient session, SessionConfig config) {
         this.session = session;

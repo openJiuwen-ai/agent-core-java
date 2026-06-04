@@ -11,7 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for exception / error infrastructure.
- * Ported from Python: tests/unit_tests/core/common/test_errors.py
+ * <p>
+ * Mirrors Python's {@code test_errors.py} in
+ * {@code tests.unit_tests.core.common.test_errors}.
  */
 class ErrorTest {
 
@@ -67,12 +69,12 @@ class ErrorTest {
     @DisplayName("formatTemplate replaces missing keys with <missing:key>")
     void testFormatTemplateMissingKeySafe() {
         String template = StatusCode.WORKFLOW_EXECUTION_ERROR.getErrmsg();
-        // Pass empty params so all placeholders become <missing:...>
+        // Pass empty params so all missing template variables render as <missing:...>.
         String rendered = BaseError.formatTemplate(template, Map.of());
 
         assertNotNull(rendered);
         assertInstanceOf(String.class, rendered);
-        assertTrue(rendered.contains("<missing:"), "Expected <missing:...> placeholders, got: " + rendered);
+        assertTrue(rendered.contains("<missing:"), "Expected <missing:...> markers, got: " + rendered);
     }
 
     // ==========================================================================
@@ -99,7 +101,7 @@ class ErrorTest {
         }
 
         @Test
-        @DisplayName("BaseError with params renders template placeholders")
+        @DisplayName("BaseError with params renders template variables")
         void testTemplateParams() {
             Map<String, Object> params = Map.of("error_msg", "timeout hit");
             BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, params) {};

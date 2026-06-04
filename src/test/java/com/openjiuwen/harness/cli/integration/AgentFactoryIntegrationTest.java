@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.cli.integration;
 
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
 import com.openjiuwen.harness.cli.agent.CliAgentFactory;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +28,10 @@ class AgentFactoryIntegrationTest {
         config.put("api_key", "test-key");
         config.put("model", "gpt-4o");
         Object result = CliAgentFactory.createFromConfig(config);
-        assertNull(result);
+        assertInstanceOf(CliAgentFactory.AgentAndTracker.class, result);
+        CliAgentFactory.AgentAndTracker pair = (CliAgentFactory.AgentAndTracker) result;
+        assertNotNull(pair.getAgent());
+        assertNotNull(pair.getTracker());
     }
 
     @Test
@@ -36,7 +41,10 @@ class AgentFactoryIntegrationTest {
         config.put("model", "qwen-max");
         config.put("max_iterations", 50);
         Object result = CliAgentFactory.createFromConfig(config);
-        assertNull(result);
+        CliAgentFactory.AgentAndTracker pair = assertInstanceOf(CliAgentFactory.AgentAndTracker.class, result);
+        DeepAgent agent = assertInstanceOf(DeepAgent.class, pair.getAgent());
+        DeepAgentConfig agentConfig = assertInstanceOf(DeepAgentConfig.class, agent.getConfig());
+        assertEquals(50, agentConfig.getMaxIterations());
     }
 
     @Test

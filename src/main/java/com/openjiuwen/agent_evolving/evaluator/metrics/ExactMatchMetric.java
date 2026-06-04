@@ -47,11 +47,11 @@ public class ExactMatchMetric extends Metric {
     @Override
     public Double compute(Object prediction, Object label, Map<String, Object> kwargs) {
         if (normalize) {
-            return normalize(String.valueOf(prediction)).equals(normalize(String.valueOf(label))) 
+            return normalize(prediction).equals(normalize(label))
                     ? 1.0 
                     : 0.0;
         }
-        return String.valueOf(prediction).equals(String.valueOf(label)) ? 1.0 : 0.0;
+        return pythonString(prediction).equals(pythonString(label)) ? 1.0 : 0.0;
     }
 
     /**
@@ -62,5 +62,19 @@ public class ExactMatchMetric extends Metric {
      */
     public static String normalize(String inputData) {
         return String.valueOf(inputData).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    public static String normalize(Object inputData) {
+        return pythonString(inputData).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return String.valueOf(value);
     }
 }

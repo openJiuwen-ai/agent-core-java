@@ -4,95 +4,80 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Assertions;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test DlGenerator functionality.
  * <p>
  * Mirrors Python's {@code test_dl_generator.py} in
- * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/test_dl_generator.py}.
+ * {@code tests.unit_tests.dev_tools.agent_builder.builders.workflow.test_dl_generator}.
  */
 class TestDlGenerator {
 
-    /**
-     * Test DlGenerator initialization.
-     * <p>
-     * Mirrors Python's {@code TestDLGeneratorInit} class.
-     */
-    static class TestInit {
+    @Nested
+    class TestInit {
 
         @Test
         void testInitSuccess() {
             Object mockModel = new Object();
             DlGenerator generator = new DlGenerator(mockModel);
 
-            Assertions.assertEquals(mockModel, generator.getLlm());
+            assertEquals(mockModel, generator.getLlm());
         }
 
         @Test
-        void testInitWithNullLlm() {
+        void testInitWithNoneLlm() {
             DlGenerator generator = new DlGenerator(null);
 
-            Assertions.assertNull(generator.getLlm());
+            assertNull(generator.getLlm());
         }
     }
 
-    /**
-     * Test DlGenerator templates.
-     * <p>
-     * Mirrors Python's {@code TestDLGeneratorTemplates} class.
-     */
-    static class TestTemplates {
+    @Nested
+    class TestTemplates {
 
         @Test
-        void testFormatGenerateSystemTemplate() {
-            String result = DlGenerator.formatGenerateSystemTemplate(
-                "test components",
-                "test schema",
-                "test plugins",
-                "test examples"
-            );
-
-            Assertions.assertNotNull(result);
-            Assertions.assertTrue(result.contains("test components"));
-            Assertions.assertTrue(result.contains("test schema"));
+        void testGenerateSystemTemplateExists() {
+            assertNotNull(DlGenerator.DL_GENERATE_SYSTEM_TEMPLATE);
         }
 
         @Test
-        void testFormatRefineUserTemplate() {
-            String result = DlGenerator.formatRefineUserTemplate(
-                "test input",
-                "test mermaid",
-                "test dl"
-            );
-
-            Assertions.assertNotNull(result);
-            Assertions.assertTrue(result.contains("test input"));
-            Assertions.assertTrue(result.contains("test mermaid"));
+        void testRefineUserTemplateExists() {
+            assertNotNull(DlGenerator.DL_REFINE_USER_TEMPLATE);
         }
 
         @Test
-        void testFormatGenerateSystemTemplateWithNulls() {
-            String result = DlGenerator.formatGenerateSystemTemplate(
-                null,
-                null,
-                null,
-                null
+        void testGenerateSystemTemplateFormat() {
+            String messages = DlGenerator.formatGenerateSystemTemplate(
+                    "test components",
+                    "test schema",
+                    "test plugins",
+                    "test examples"
             );
 
-            Assertions.assertNotNull(result);
+            assertTrue(messages.length() > 0);
+            assertTrue(messages.contains("test components"));
+            assertTrue(messages.contains("test schema"));
         }
 
         @Test
-        void testFormatRefineUserTemplateWithNulls() {
-            String result = DlGenerator.formatRefineUserTemplate(
-                null,
-                null,
-                null
+        void testRefineUserTemplateFormat() {
+            String messages = DlGenerator.formatRefineUserTemplate(
+                    "test input",
+                    "test mermaid",
+                    "test dl"
             );
 
-            Assertions.assertNotNull(result);
+            assertTrue(messages.length() > 0);
+            assertTrue(messages.contains("test input"));
+            assertTrue(messages.contains("test mermaid"));
+            assertTrue(messages.contains("test dl"));
         }
     }
 }

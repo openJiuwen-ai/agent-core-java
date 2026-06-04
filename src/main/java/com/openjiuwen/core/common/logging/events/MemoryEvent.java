@@ -11,7 +11,12 @@ import lombok.experimental.SuperBuilder;
 import java.util.List;
 import java.util.Map;
 
-/** Memory operation related event. */
+/**
+ * Memory operation related event.
+ *
+ * <p>Mirrors Python's {@code MemoryEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

@@ -49,6 +49,10 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
             "Bodega", "Sonrisa", "Alek", "Dolce", "Sohee", "Ono Anna", "Lenn", "Emilien", "Andre",
             "Radio Gol", "Jada", "Dylan", "Li", "Marcus", "Roy", "Peter", "Sunny", "Eric", "Rocky", "Kiki"
     );
+    private static final List<String> DASHSCOPE_LANGUAGE_TYPES = Arrays.asList(
+            "Auto", "Chinese", "English", "German", "Italian", "Portuguese",
+            "Spanish", "Japanese", "Korean", "French", "Russian"
+    );
 
     private final HttpClient multiModalHttpClient;
 
@@ -79,7 +83,12 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                     "error_msg", "Image generation requires exactly one message, but got "
                             + (messages == null ? 0 : messages.size()) + ".");
         }
-        UserMessage msg = messages.get(0);
+        Object firstMessage = messages.get(0);
+        if (!(firstMessage instanceof UserMessage msg)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Image generation requires a UserMessage, but got "
+                            + firstMessage.getClass().getSimpleName() + ".");
+        }
 
         // Build content list
         List<Map<String, Object>> contentList = new ArrayList<>();
@@ -96,15 +105,28 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                     contentList.add(Map.of("text", s));
                     textCount++;
                 } else if (item instanceof Map<?, ?> map) {
-                    if (map.containsKey("text")) {
-                        contentList.add(Map.of("text", map.get("text")));
-                        textCount++;
-                    } else if (map.containsKey("image")) {
-                        contentList.add(Map.of("image", map.get("image")));
-                        imageCount++;
-                    } else {
+                    boolean hasText = map.containsKey("text");
+                    boolean hasImage = map.containsKey("image");
+                    if (map.size() != 1 || hasText == hasImage) {
                         throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                                "error_msg", "Content dict must contain 'text' or 'image' key.");
+                                "error_msg", "Content dict must contain exactly one of 'text' or 'image' key.");
+                    }
+                    if (hasText) {
+                        Object text = map.get("text");
+                        if (text == null) {
+                            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                                    "error_msg", "Content text value must not be null.");
+                        }
+                        contentList.add(Map.of("text", text));
+                        textCount++;
+                    } else if (hasImage) {
+                        Object image = map.get("image");
+                        if (image == null) {
+                            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                                    "error_msg", "Content image value must not be null.");
+                        }
+                        contentList.add(Map.of("image", image));
+                        imageCount++;
                     }
                 } else {
                     throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
@@ -198,7 +220,12 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                     "error_msg", "Speech generation requires exactly one message.");
         }
 
-        UserMessage msg = messages.get(0);
+        Object firstMessage = messages.get(0);
+        if (!(firstMessage instanceof UserMessage msg)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Speech generation requires UserMessage types, but message at index 0 is "
+                            + firstMessage.getClass().getSimpleName() + ".");
+        }
         Object content = msg.getContent();
         if (!(content instanceof String text) || text.isBlank()) {
             throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
@@ -208,6 +235,14 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
         String resolvedModel = model != null ? model : modelConfig.getModelName();
         String resolvedVoice = voice != null ? voice : "Cherry";
         String resolvedLanguage = languageType != null ? languageType : "Auto";
+        if (!DASHSCOPE_VOICES.contains(resolvedVoice)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Speech generation voice is not supported: " + resolvedVoice + ".");
+        }
+        if (!DASHSCOPE_LANGUAGE_TYPES.contains(resolvedLanguage)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Speech generation language_type is not supported: " + resolvedLanguage + ".");
+        }
 
         Map<String, Object> apiParams = new LinkedHashMap<>();
         apiParams.put("model", resolvedModel);
@@ -287,7 +322,12 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                             + (messages == null ? 0 : messages.size()) + ".");
         }
 
-        UserMessage msg = messages.get(0);
+        Object firstMessage = messages.get(0);
+        if (!(firstMessage instanceof UserMessage msg)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Video generation requires UserMessage type, but got "
+                            + firstMessage.getClass().getSimpleName() + ".");
+        }
         Object content = msg.getContent();
         if (!(content instanceof String prompt) || prompt.isBlank()) {
             throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
@@ -295,6 +335,15 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
         }
 
         String resolvedModel = model != null ? model : modelConfig.getModelName();
+        boolean imageToVideo = imgUrl != null && !imgUrl.isBlank();
+        if (!imageToVideo && resolution != null) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Text-to-video generation uses size; resolution is only valid for image-to-video.");
+        }
+        if (imageToVideo && size != null) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg", "Image-to-video generation uses resolution; size is only valid for text-to-video.");
+        }
 
         Map<String, Object> apiParams = new LinkedHashMap<>();
         apiParams.put("model", resolvedModel);
@@ -313,7 +362,7 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
             apiParams.put("audio_url", audioUrl);
         }
 
-        if (imgUrl != null) {
+        if (imageToVideo) {
             apiParams.put("img_url", imgUrl);
             if (resolution != null) {
                 apiParams.put("resolution", resolution);

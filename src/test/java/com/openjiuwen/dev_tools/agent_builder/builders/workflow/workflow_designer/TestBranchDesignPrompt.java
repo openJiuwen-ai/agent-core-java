@@ -5,7 +5,9 @@
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.workflow_designer;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Nested;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test branch design prompt constants.
@@ -13,10 +15,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_branch_design_prompt.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/workflow_designer/test_branch_design_prompt.py}.
  *
- * <p>Note: BranchDesignPrompt source class requires translation before tests can be implemented.
- * Tests are disabled pending BranchDesignPrompt.java implementation.
  */
-@Disabled("BranchDesignPrompt.java source class requires translation before tests can be implemented")
 class TestBranchDesignPrompt {
 
     /**
@@ -24,46 +23,47 @@ class TestBranchDesignPrompt {
      * <p>
      * Mirrors Python's {@code TestBranchDesignSystemPrompt} class.
      */
-    static class TestBranchDesignSystemPrompt {
+    @Nested
+    class TestBranchDesignSystemPrompt {
 
         @Test
         void testIsString() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertFalse(BranchDesignPrompt.SYSTEM_PROMPT.isBlank());
         }
 
         @Test
         void testContainsRole() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.startsWith("#"));
         }
 
         @Test
         void testContainsCoreTask() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.contains("##"));
         }
 
         @Test
         void testContainsBranchDesign() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.contains("###"));
         }
 
         @Test
         void testContainsDecisionPrinciples() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.lines().count() > 10);
         }
 
         @Test
         void testContainsOutputFormat() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.contains("["));
         }
 
         @Test
         void testContainsMustBranch() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.contains("1."));
         }
 
         @Test
         void testContainsForbiddenBranch() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertTrue(BranchDesignPrompt.SYSTEM_PROMPT.contains("2."));
         }
     }
 
@@ -72,21 +72,41 @@ class TestBranchDesignPrompt {
      * <p>
      * Mirrors Python's {@code TestBranchDesignUserPromptTemplate} class.
      */
-    static class TestBranchDesignUserPromptTemplate {
+    @Nested
+    class TestBranchDesignUserPromptTemplate {
 
         @Test
         void testTemplateExists() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertNotNull(BranchDesignPrompt.USER_PROMPT_TEMPLATE);
         }
 
         @Test
         void testTemplateHasContent() {
-            // Placeholder - requires BranchDesignPrompt.java
+            assertFalse(BranchDesignPrompt.USER_PROMPT_TEMPLATE.isBlank());
         }
 
         @Test
         void testTemplateFormat() {
-            // Placeholder - requires BranchDesignPrompt.java
+            String prompt = BranchDesignPrompt.formatUserPrompt("create workflow", "basic design result");
+
+            assertTrue(prompt.contains("create workflow"));
+            assertTrue(prompt.contains("basic design result"));
+            assertFalse(prompt.contains("{{user_query}}"));
+            assertFalse(prompt.contains("{{basic_design}}"));
+        }
+
+        @Test
+        void testTemplateContainsUserQuery() {
+            String prompt = BranchDesignPrompt.formatUserPrompt("test query", "");
+
+            assertTrue(prompt.contains("test query"));
+        }
+
+        @Test
+        void testTemplateContainsBasicDesign() {
+            String prompt = BranchDesignPrompt.formatUserPrompt("", "test design");
+
+            assertTrue(prompt.contains("test design"));
         }
     }
 }

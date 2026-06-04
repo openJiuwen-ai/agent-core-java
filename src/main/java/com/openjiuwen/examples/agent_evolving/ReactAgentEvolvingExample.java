@@ -14,7 +14,9 @@ import com.openjiuwen.agent_evolving.updater.SingleDimUpdater;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.ReActAgentEvolve;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.io.File;
@@ -45,7 +47,7 @@ import java.util.concurrent.ExecutionException;
  *   <li>Configure LLM API credentials via environment variables</li>
  * </ul>
  *
- * <p>Mirrors Python's {@code react_agent_evolving.py} in {@code examples/agent_evolving}.</p>
+ * <p>Mirrors Python's {@code examples.agent_evolving.react_agent_evolving}.</p>
  */
 public class ReactAgentEvolvingExample {
 
@@ -86,9 +88,11 @@ public class ReactAgentEvolvingExample {
 
         ReActAgentEvolve agent = new ReActAgentEvolve(agentCard);
 
-        // Note: In Java, configuration is typically done via ReActAgentConfig builder
-        // The agent.configure() method accepts a config object
-        // This mirrors the Python pattern but adapted to Java builder style
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.configureModelClient(MODEL_PROVIDER, API_KEY, API_BASE, MODEL_NAME, false);
+        config.configurePromptTemplate(promptTemplate);
+        config.configureMaxIterations(TuneConstant.DEFAULT_ITERATION_NUM);
+        agent.configure(config);
 
         return agent;
     }
@@ -142,16 +146,18 @@ public class ReactAgentEvolvingExample {
         Loggers.AGENT.info("\n[test] Testing evolved agent with optimized prompt...");
         for (Map<String, Object> query : testQueries) {
             try {
-                // Note: In Java, invoke is synchronous; use CompletableFuture for async pattern
                 CompletableFuture<Map<String, Object>> future = CompletableFuture.supplyAsync(() -> {
-                    // Agent invoke returns result
-                    // Adapted from Python async pattern
-                    return Map.of("output", "placeholder result");
+                    Object conversationId = query.getOrDefault("conversation_id", "default_session");
+                    Object invokeResult = agent.invoke(query, new AgentSessionApi(String.valueOf(conversationId)));
+                    return normalizeInvokeResult(invokeResult);
                 });
                 Map<String, Object> result = future.get();
                 Loggers.AGENT.info("\n[query] {}", query.get("query"));
                 Loggers.AGENT.info("[answer] {}", result.getOrDefault("output", result));
-            } catch (InterruptedException | ExecutionException e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Loggers.AGENT.error("[error] Failed to invoke agent: {}", e.getMessage());
+            } catch (ExecutionException e) {
                 Loggers.AGENT.error("[error] Failed to invoke agent: {}", e.getMessage());
             }
         }
@@ -253,5 +259,16 @@ public class ReactAgentEvolvingExample {
             return str;
         }
         return str.substring(0, 1).toUpperCase() + str.substring(1);
+    }
+
+    private static Map<String, Object> normalizeInvokeResult(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return normalized;
+        }
+        return Map.of("output", result);
     }
 }

@@ -6,6 +6,7 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.tools.filesystem.FileReadRegistry;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,12 +20,12 @@ import java.util.Map;
 public class ReadFileTool extends AbstractHarnessTool {
 
     public ReadFileTool(SysOperation sysOperation) {
-        super(toolCard("harness.read", "read", "Read a file from the workspace."), sysOperation);
+        super(toolCard("harness.read_file", "read_file", "Read a file from the workspace."), sysOperation);
     }
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String path = stringValue(inputs.get("path"));
+        String path = firstNonBlank(inputs.get("path"), inputs.get("file_path"));
         if (path.isBlank()) {
             return new ToolOutput(false, null, "path cannot be empty");
         }
@@ -35,13 +36,26 @@ public class ReadFileTool extends AbstractHarnessTool {
             return new ToolOutput(false, null, readStringField(result, "message"));
         }
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("path", readStringField(payload, "path"));
+        String resolvedPath = readStringField(payload, "path");
+        data.put("path", resolvedPath);
         Object content = readField(payload, "content");
-        data.put("content", content != null ? String.valueOf(content) : null);
+        String textContent = content != null ? String.valueOf(content) : null;
+        data.put("content", textContent);
+        FileReadRegistry.remember(resolvedPath, textContent);
         return new ToolOutput(true, data, null);
     }
 
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String firstNonBlank(Object... values) {
+        for (Object value : values) {
+            String text = stringValue(value);
+            if (!text.isBlank()) {
+                return text;
+            }
+        }
+        return "";
     }
 }

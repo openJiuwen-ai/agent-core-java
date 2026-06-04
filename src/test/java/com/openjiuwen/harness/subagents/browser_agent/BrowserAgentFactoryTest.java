@@ -53,7 +53,7 @@ class BrowserAgentFactoryTest {
         assertEquals(BrowserAgentFactory.DEFAULT_BROWSER_AGENT_SYSTEM_PROMPT.get("cn"), config.getSystemPrompt());
         assertEquals(5, config.getTools().size());
         assertTrue(config.getTools().stream().map(ToolCard::getName).toList().containsAll(List.of(
-                "browser_cancel",
+                "browser_cancel_run",
                 "browser_clear_cancel",
                 "browser_custom_action",
                 "browser_list_custom_actions",

@@ -80,7 +80,13 @@ public final class ExperienceScorerUtils {
 
         try {
             String timestampStr = record.getTimestamp().replace("Z", "+00:00");
-            Instant recordTime = Instant.parse(timestampStr);
+            Instant recordTime;
+            try {
+                recordTime = OffsetDateTime.parse(timestampStr).toInstant();
+            } catch (DateTimeParseException ignored) {
+                recordTime = LocalDateTime.parse(timestampStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                        .toInstant(ZoneOffset.UTC);
+            }
             Instant now = Instant.now();
             long daysOld = Duration.between(recordTime, now).toDays();
 

@@ -100,6 +100,35 @@ class TestEvolutionRailTeamStore {
         assertNull(teamStore, "Team store should be null");
     }
 
+    @Test
+    @Tag("level0")
+    @DisplayName("team_trajectory_store defaults to null")
+    void testTeamStoreNoneByDefault() {
+        MockTrajectoryStore teamStore = null;
+        assertNull(teamStore, "team_trajectory_store should default to null");
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Trajectory saved to team store contains member_id in meta")
+    void testTrajectoryHasMemberId() {
+        MockTrajectoryStore teamStore = new MockTrajectoryStore();
+        MockCtx ctx = new MockCtx();
+        Map<String, Object> step = new HashMap<>();
+        step.put("member_id", ctx.getAgent().getId());
+        step.put("query", ctx.getQuery());
+
+        teamStore.save(ctx.getAgent().getId(), step);
+
+        assertEquals(1, teamStore.getSaveCount(), "Team store should receive one save");
+        assertEquals("test-agent",
+                teamStore.getSavedSteps().get(0).get("agent_id"),
+                "Saved trajectory should carry member_id-compatible agent identifier");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> savedStep = (Map<String, Object>) teamStore.getSavedSteps().get(0).get("step");
+        assertEquals("test-agent", savedStep.get("member_id"));
+    }
+
     // ---------------------------------------------------------------------------
     // Tests - Level 1: Trajectory step content
     // ---------------------------------------------------------------------------

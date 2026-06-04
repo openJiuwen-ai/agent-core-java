@@ -1,22 +1,49 @@
 /* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.common.logging.events;
 
+import com.openjiuwen.core.common.logging.LoggingUtils;
+import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for structured logging events and EventClassRegistry.
- * Ported from Python: tests/unit_tests/core/common/log/test_structured_log.py
+ * <p>
+ * Mirrors Python's {@code test_structured_log.py} in
+ * {@code tests.unit_tests.core.common.log.test_structured_log}.
  */
 class StructuredLogEventTest {
+
+    static class RecordingHandler extends Handler {
+        final List<LogRecord> records = new ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            records.add(record);
+        }
+
+        @Override public void flush() { }
+
+        @Override public void close() { }
+    }
+
+    @AfterEach
+    void cleanupTopLevel() {
+        LoggingUtils.clearSessionId();
+        EventClassRegistry.unregister("my_custom_agent_event");
+        EventClassRegistry.unregister("custom_create_event");
+    }
 
     // ==========================================================================
     // test_create_agent_event
@@ -130,6 +157,91 @@ class StructuredLogEventTest {
         assertInstanceOf(String.class, eventMap.get("module_id"));
         assertInstanceOf(String.class, eventMap.get("message"));
         assertInstanceOf(String.class, eventMap.get("event_type"));
+    }
+
+    @Test
+    @DisplayName("Structured event logging uses JSON by default")
+    void testStructuredEventLoggingUsesJsonByDefault() {
+        DefaultLogger logger = new DefaultLogger("structured-json-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.logEvent("agent started", LogEventType.AGENT_START, null);
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                record.getMessage().contains("\"event_type\":\"agent_start\"")
+                        && record.getMessage().contains("\"message\":\"agent started\"")));
+    }
+
+    @Test
+    @DisplayName("Plain string logging is not affected by structured output setting")
+    void testPlainStringLoggingIsNotAffectedByTextOutput() {
+        DefaultLogger logger = new DefaultLogger("plain-string-test",
+                Map.of("output", "console", "structured_output_format", "text"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("plain {} message", "text");
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                "plain text message".equals(record.getMessage())));
+    }
+
+    @Test
+    @DisplayName("log string message")
+    void testLogStringMessage() {
+        DefaultLogger logger = new DefaultLogger("string-message-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("hello structured logger");
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                record.getMessage().contains("hello structured logger")));
+    }
+
+    @Test
+    @DisplayName("log with event type")
+    void testLogWithEventType() {
+        DefaultLogger logger = new DefaultLogger("event-type-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.logEvent("agent event", LogEventType.AGENT_START, null);
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                record.getMessage().contains("\"event_type\":\"agent_start\"")));
+    }
+
+    @Test
+    @DisplayName("log with event object")
+    void testLogWithEventObject() {
+        DefaultLogger logger = new DefaultLogger("event-object-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+        BaseLogEvent event = EventClassRegistry.createEvent(LogEventType.LLM_CALL_ERROR);
+        event.setMessage("llm failed");
+        event.setErrorMessage("timeout");
+
+        logger.logEvent("ignored when event object is present", null, event);
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                record.getMessage().contains("\"event_type\":\"llm_call_error\"")
+                        && record.getMessage().contains("\"error_message\":\"timeout\"")));
+    }
+
+    @Test
+    @DisplayName("log with trace id")
+    void testLogWithTraceId() {
+        LoggingUtils.setSessionId("trace-123");
+        DefaultLogger logger = new DefaultLogger("trace-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.logEvent("with trace", LogEventType.AGENT_START, null);
+
+        assertTrue(handler.records.stream().anyMatch(record ->
+                record.getMessage().contains("\"trace_id\":\"trace-123\"")));
     }
 
     // ==========================================================================
@@ -334,6 +446,20 @@ class StructuredLogEventTest {
             assertTrue(EventClassRegistry.unregister("custom_test_event"));
         }
 
+        @Test
+        @DisplayName("Register with custom string identifier")
+        void testRegisterWithCustomStringIdentifier() {
+            EventClassRegistry.register("my_custom_agent_event", AgentEvent::new);
+
+            BaseLogEvent event = EventClassRegistry.createEvent("my_custom_agent_event",
+                    Map.of("module_id", "agent-42", "message", "custom"));
+
+            assertInstanceOf(AgentEvent.class, event);
+            assertEquals("my_custom_agent_event", event.getEventTypeKey());
+            assertEquals("agent-42", event.getModuleId());
+            assertEquals("custom", event.getMessage());
+        }
+
         // ==========================================================================
         // test_unregister_event_class
         // ==========================================================================
@@ -406,6 +532,30 @@ class StructuredLogEventTest {
                     EventClassRegistry.register("agent_start", BaseLogEvent::new));
 
             assertTrue(ex.getMessage().contains("conflicts with predefined enum value"));
+        }
+
+        @Test
+        @DisplayName("Invalid custom event factory output is not valid event")
+        void testRegisterInvalidClassRaisesError() {
+            EventClassRegistry.register("custom_test_event", () -> null);
+
+            BaseLogEvent event = EventClassRegistry.getFactory("custom_test_event").get();
+
+            assertFalse(EventClassRegistry.validateEvent(event));
+        }
+
+        @Test
+        @DisplayName("Custom event with create log event")
+        void testCustomEventWithCreateLogEvent() {
+            EventClassRegistry.register("custom_create_event", AgentEvent::new);
+
+            BaseLogEvent event = EventClassRegistry.createEvent("custom_create_event",
+                    Map.of("module_id", "agent-custom", "agent_type", "ReActAgent"));
+
+            assertInstanceOf(AgentEvent.class, event);
+            assertEquals("custom_create_event", event.getEventTypeKey());
+            assertEquals("agent-custom", event.getModuleId());
+            assertEquals("ReActAgent", ((AgentEvent) event).getAgentType());
         }
 
         // ==========================================================================

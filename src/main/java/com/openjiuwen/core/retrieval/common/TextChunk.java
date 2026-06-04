@@ -14,6 +14,9 @@ import java.util.UUID;
 
 /**
  * Text chunk model.
+ *
+ * <p>Mirrors Python's {@code TextChunk} in
+ * {@code openjiuwen.core.retrieval.common.document}.</p>
  */
 @Getter
 @Setter

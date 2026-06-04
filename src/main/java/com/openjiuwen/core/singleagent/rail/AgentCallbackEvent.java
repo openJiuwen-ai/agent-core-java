@@ -11,6 +11,8 @@ package com.openjiuwen.core.singleagent.rail;
  * <ul>
  *   <li>BEFORE_INVOKE: Before agent.invoke() starts</li>
  *   <li>AFTER_INVOKE: After agent.invoke() completes</li>
+ *   <li>BEFORE_TASK_ITERATION: Before one outer task-loop iteration starts</li>
+ *   <li>AFTER_TASK_ITERATION: After one outer task-loop iteration completes</li>
  * </ul>
  *
  * <p>Model Interaction Callbacks:
@@ -30,6 +32,8 @@ package com.openjiuwen.core.singleagent.rail;
 public enum AgentCallbackEvent {
     BEFORE_INVOKE("before_invoke"),
     AFTER_INVOKE("after_invoke"),
+    BEFORE_TASK_ITERATION("before_task_iteration"),
+    AFTER_TASK_ITERATION("after_task_iteration"),
     BEFORE_MODEL_CALL("before_model_call"),
     AFTER_MODEL_CALL("after_model_call"),
     ON_MODEL_EXCEPTION("on_model_exception"),

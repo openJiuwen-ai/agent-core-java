@@ -39,16 +39,21 @@ class TestStreamableHttpClient {
     static class StreamableHttpClient {
         String url;
         List<StreamChunk> chunks = new ArrayList<>();
+        boolean connected;
 
         StreamableHttpClient(String url) {
             this.url = url;
         }
 
-        void connect() {
-            // Simulate connection
+        boolean connect() {
+            connected = true;
+            return true;
         }
 
         void stream(String data) {
+            if (!connected) {
+                throw new IllegalStateException("client is not connected");
+            }
             chunks.add(new StreamChunk("data", data, chunks.size()));
         }
 
@@ -60,6 +65,8 @@ class TestStreamableHttpClient {
     static class StreamSubscriber implements Flow.Subscriber<StreamChunk> {
         List<StreamChunk> received = new ArrayList<>();
         Flow.Subscription subscription;
+        Throwable error;
+        boolean completed;
 
         @Override
         public void onSubscribe(Flow.Subscription subscription) {
@@ -73,10 +80,14 @@ class TestStreamableHttpClient {
         }
 
         @Override
-        public void onError(Throwable throwable) {}
+        public void onError(Throwable throwable) {
+            this.error = throwable;
+        }
 
         @Override
-        public void onComplete() {}
+        public void onComplete() {
+            this.completed = true;
+        }
     }
 
     @Nested
@@ -95,7 +106,8 @@ class TestStreamableHttpClient {
         @DisplayName("stream data")
         void testStreamData() {
             StreamableHttpClient client = new StreamableHttpClient("http://localhost:8080");
-            client.connect();
+            assertTrue(client.connect());
+            assertTrue(client.connected);
 
             client.stream("chunk1");
             client.stream("chunk2");
@@ -114,17 +126,16 @@ class TestStreamableHttpClient {
             StreamSubscriber subscriber = new StreamSubscriber();
             StreamChunk chunk1 = new StreamChunk("data", "content1", 0);
             StreamChunk chunk2 = new StreamChunk("data", "content2", 1);
+            TestSubscription subscription = new TestSubscription();
 
-            subscriber.onSubscribe(new Flow.Subscription() {
-                @Override
-                public void request(long n) {}
-                @Override
-                public void cancel() {}
-            });
+            subscriber.onSubscribe(subscription);
             subscriber.onNext(chunk1);
             subscriber.onNext(chunk2);
+            subscriber.onComplete();
 
+            assertEquals(Long.MAX_VALUE, subscription.requested);
             assertEquals(2, subscriber.received.size());
+            assertTrue(subscriber.completed);
         }
 
         @Test
@@ -135,6 +146,21 @@ class TestStreamableHttpClient {
             assertEquals("message", chunk.type);
             assertEquals("hello", chunk.content);
             assertEquals(5, chunk.index);
+        }
+    }
+
+    static class TestSubscription implements Flow.Subscription {
+        long requested;
+        boolean cancelled;
+
+        @Override
+        public void request(long n) {
+            requested += n;
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
         }
     }
 }

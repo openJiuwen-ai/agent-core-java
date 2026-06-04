@@ -28,6 +28,9 @@ import java.util.UUID;
 
 /**
  * Abstract knowledge base.
+ *
+ * <p>Mirrors Python's {@code KnowledgeBase} in
+ * {@code openjiuwen.core.retrieval.knowledge_base}.
  */
 public abstract class KnowledgeBase implements AutoCloseable {
 

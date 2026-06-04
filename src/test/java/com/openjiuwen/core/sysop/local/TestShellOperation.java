@@ -228,7 +228,7 @@ class TestShellOperation {
         BaseShellOperation shell = sysOp.shell();
         var tools = shell.listTools();
 
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
 
         List<String> toolNames = new ArrayList<>();
         for (var tool : tools) {
@@ -236,6 +236,7 @@ class TestShellOperation {
         }
         assertTrue(toolNames.contains("executeCmd"));
         assertTrue(toolNames.contains("executeCmdStream"));
+        assertTrue(toolNames.contains("executeCmdBackground"));
 
         var execTool = tools.stream()
                 .filter(t -> "executeCmd".equals(t.getName()))
@@ -344,6 +345,49 @@ class TestShellOperation {
 
     @Test
     @Order(13)
+    void testExecuteCmdStreamAllowlist() {
+        String cardId = "test_stream_allowlist";
+        SysOperationCard allowlistCard = SysOperationCard.builder()
+                .id(cardId)
+                .mode(OperationMode.LOCAL)
+                .workConfig(LocalWorkConfig.builder()
+                        .shellAllowlist(List.of("echo"))
+                        .workDir(tempDir.toString())
+                        .build())
+                .build();
+
+        try {
+            var addRes = rm.addSysOperation(allowlistCard, null);
+            assertTrue(addRes.isOk());
+            SysOperation op = extractSysOperation(rm.getSysOperation(cardId, null, TagMatchStrategy.ALL));
+            assertNotNull(op);
+
+            List<ExecuteCmdStreamResult> allowed = new ArrayList<>();
+            Iterator<ExecuteCmdStreamResult> allowedIter =
+                    op.shell().executeCmdStream("echo allowed", null, 300, null, null);
+            while (allowedIter.hasNext()) {
+                allowed.add(allowedIter.next());
+            }
+            assertTrue(allowed.stream()
+                    .filter(result -> result.getData() != null && result.getData().getText() != null)
+                    .anyMatch(result -> result.getData().getText().contains("allowed")));
+
+            List<ExecuteCmdStreamResult> denied = new ArrayList<>();
+            Iterator<ExecuteCmdStreamResult> deniedIter =
+                    op.shell().executeCmdStream("dir", null, 300, null, null);
+            while (deniedIter.hasNext()) {
+                denied.add(deniedIter.next());
+            }
+            assertEquals(1, denied.size());
+            assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), denied.get(0).getCode());
+            assertTrue(denied.get(0).getMessage().toLowerCase().contains("not allowed"));
+        } finally {
+            rm.removeSysOperation(cardId, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    @Order(14)
     void testExecuteCmdStreamContinuousOutput() {
         BaseShellOperation shell = sysOp.shell();
 

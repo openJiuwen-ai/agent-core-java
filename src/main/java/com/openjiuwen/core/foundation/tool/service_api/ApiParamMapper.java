@@ -21,6 +21,8 @@ public class ApiParamMapper {
 
     private static final String LOCATION_KEY = "location";
     private static final String PROPERTIES_KEY = "properties";
+    private static final String FORM_HANDLER_TYPE_KEY = "form_handler_type";
+    private static final String DEFAULT_FORM_HANDLER_TYPE = "default";
 
     private final Map<String, Object> schema;
     private final Map<ApiParamLocation, Map<String, Object>> defaults;
@@ -57,13 +59,10 @@ public class ApiParamMapper {
         Map<ApiParamLocation, Map<String, Object>> result;
 
         if (schema == null) {
-            result = new EnumMap<>(ApiParamLocation.class);
-            result.put(defaultLocation, inputs != null ? inputs : Map.of());
+            result = emptyResult();
+            result.put(defaultLocation, new LinkedHashMap<>(inputs != null ? inputs : Map.of()));
         } else {
-            result = new EnumMap<>(ApiParamLocation.class);
-            for (ApiParamLocation loc : ApiParamLocation.values()) {
-                result.put(loc, new LinkedHashMap<>());
-            }
+            result = emptyResult();
 
             Map<String, Object> properties = (Map<String, Object>) schema.get(PROPERTIES_KEY);
             if (properties != null && inputs != null) {
@@ -82,8 +81,19 @@ public class ApiParamMapper {
                     } else {
                         location = defaultLocation;
                     }
-                    result.computeIfAbsent(location, k -> new LinkedHashMap<>())
-                            .put(paramName, inputs.get(paramName));
+                    Object value = inputs.get(paramName);
+                    if (shouldSkipValue(value)) {
+                        continue;
+                    }
+                    if (location == ApiParamLocation.FORM) {
+                        String handlerType = String.valueOf(
+                                paramSchema.getOrDefault(FORM_HANDLER_TYPE_KEY, DEFAULT_FORM_HANDLER_TYPE));
+                        result.get(ApiParamLocation.FORM).put(paramName, Map.of(
+                                FORM_HANDLER_TYPE_KEY, handlerType,
+                                "value", value));
+                    } else {
+                        result.computeIfAbsent(location, k -> new LinkedHashMap<>()).put(paramName, value);
+                    }
                 }
             }
         }
@@ -97,5 +107,17 @@ public class ApiParamMapper {
         }
 
         return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<ApiParamLocation, Map<String, Object>> emptyResult() {
+        Map<ApiParamLocation, Map<String, Object>> result = new EnumMap<>(ApiParamLocation.class);
+        for (ApiParamLocation loc : ApiParamLocation.values()) {
+            result.put(loc, new LinkedHashMap<>());
+        }
+        return result;
+    }
+
+    private static boolean shouldSkipValue(Object value) {
+        return value == null || (value instanceof String str && str.isEmpty());
     }
 }

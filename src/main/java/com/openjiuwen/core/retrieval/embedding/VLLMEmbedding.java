@@ -17,6 +17,9 @@ import java.util.Map;
 
 /**
  * vLLM-compatible multimodal embedding client.
+ *
+ * <p>Mirrors Python's {@code VLLMEmbedding} in
+ * {@code openjiuwen.core.retrieval.embedding.vllm_embedding}.</p>
  */
 public class VLLMEmbedding extends OpenAIEmbedding {
 
@@ -36,18 +39,27 @@ public class VLLMEmbedding extends OpenAIEmbedding {
     }
 
     public static Map<String, Object> parseMultimodalInput(MultimodalDocument document, Map<String, Object> options) {
-        boolean hasInstruction = options != null && options.containsKey("instruction");
-        Map<String, Object> kwargs = options == null ? new LinkedHashMap<>() : new LinkedHashMap<>(options);
-        Object instruction = kwargs.remove("instruction");
-        if (!hasInstruction) {
-            instruction = "Represent the user's input.";
+        Map<String, Object> kwargs = options == null ? new LinkedHashMap<>() : options;
+        Object instruction = "Represent the user's input.";
+        if (kwargs.containsKey("instruction")) {
+            try {
+                instruction = kwargs.remove("instruction");
+            } catch (UnsupportedOperationException ex) {
+                kwargs = new LinkedHashMap<>(kwargs);
+                instruction = kwargs.remove("instruction");
+            }
         }
         List<Map<String, Object>> messages = new ArrayList<>();
         if (instruction instanceof String text && !text.isBlank()) {
             messages.add(Map.of("role", "system", "content", List.of(Map.of("type", "text", "text", text))));
         }
         messages.add(Map.of("role", "user", "content", document.getContent()));
-        kwargs.put("extra_body", Map.of("messages", messages));
+        try {
+            kwargs.put("extra_body", Map.of("messages", messages));
+        } catch (UnsupportedOperationException ex) {
+            kwargs = new LinkedHashMap<>(kwargs);
+            kwargs.put("extra_body", Map.of("messages", messages));
+        }
         return kwargs;
     }
 

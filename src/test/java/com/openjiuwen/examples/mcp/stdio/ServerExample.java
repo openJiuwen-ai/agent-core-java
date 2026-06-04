@@ -4,12 +4,14 @@
 
 package com.openjiuwen.examples.mcp.stdio;
 
+import java.util.Locale;
+
 /**
- * Stdio MCP Server Example - Documentation placeholder.
+ * Stdio MCP Server Example.
  * <p>
- * This class documents the Python Stdio MCP server implementation.
- * The MCP server in Python uses FastMCP framework, which is Python-specific.
- * Java MCP implementation currently provides client-side only.
+ * This class mirrors the Python Stdio MCP server's text processing tools as
+ * Java static methods. The Python file still owns FastMCP stdio transport
+ * startup; these methods preserve the observable tool behavior.
  * <p>
  * Mirrors Python's {@code server} in
  * {@code examples.mcp.stdio.server}.
@@ -65,4 +67,69 @@ public final class ServerExample {
     public static final String TOOL_REVERSE_TEXT = "reverse_text";
     public static final String TOOL_TO_UPPERCASE = "to_uppercase";
     public static final String TOOL_TO_LOWERCASE = "to_lowercase";
+    public static final String TOOL_COUNT_LINES = "count_lines";
+
+    /**
+     * Count words using Python {@code str.split()}-style whitespace handling.
+     *
+     * @param text text to inspect
+     * @return number of whitespace-separated words
+     */
+    public static int wordCount(String text) {
+        String stripped = text.strip();
+        if (stripped.isEmpty()) {
+            return 0;
+        }
+        return stripped.split("\\s+").length;
+    }
+
+    /**
+     * Count Unicode code points in the text.
+     *
+     * @param text text to inspect
+     * @return character count
+     */
+    public static int charCount(String text) {
+        return text.codePointCount(0, text.length());
+    }
+
+    /**
+     * Reverse the characters of the given text.
+     *
+     * @param text text to reverse
+     * @return reversed text
+     */
+    public static String reverseText(String text) {
+        return new StringBuilder(text).reverse().toString();
+    }
+
+    /**
+     * Convert text to uppercase.
+     *
+     * @param text text to convert
+     * @return uppercase text
+     */
+    public static String toUppercase(String text) {
+        return text.toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Convert text to lowercase.
+     *
+     * @param text text to convert
+     * @return lowercase text
+     */
+    public static String toLowercase(String text) {
+        return text.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Count lines using Java's closest equivalent to Python {@code splitlines()}.
+     *
+     * @param text text to inspect
+     * @return line count
+     */
+    public static int countLines(String text) {
+        return (int) text.lines().count();
+    }
 }

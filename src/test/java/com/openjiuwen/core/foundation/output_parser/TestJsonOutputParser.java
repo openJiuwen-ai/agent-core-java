@@ -278,7 +278,10 @@ class TestJsonOutputParser {
         @DisplayName("test stream parse empty chunks returns empty")
         @SuppressWarnings("unchecked")
         void testStreamParseEmptyChunks() {
-            List<String> chunks = List.of("", null, "");
+            List<String> chunks = new ArrayList<>();
+            chunks.add("");
+            chunks.add(null);
+            chunks.add("");
 
             List<Object> parsedObjects = new ArrayList<>();
             parser.streamParse(chunks.iterator()).forEachRemaining(parsedObjects::add);

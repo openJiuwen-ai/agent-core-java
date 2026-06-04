@@ -4,571 +4,345 @@
 
 package com.openjiuwen.core.foundation.store.vector;
 
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.spi.store.vector.CollectionSchema;
+import com.openjiuwen.spi.store.vector.FieldSchema;
+import com.openjiuwen.spi.store.vector.VectorDataType;
+import com.openjiuwen.spi.store.vector.VectorSearchResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for GaussVectorStore.
  * <p>
- * Mirrors Python's {@code test_gauss_vector_store.py} from
- * {@code tests/unit_tests/core/foundation/store/test_gauss_vector_store.py}.
- * 
- * <p>Python source file contains 33 test methods across 12 test classes:
- * - TestGaussVectorStoreInit (5 methods)
- * - TestGaussVectorStoreCreateCollection (4 methods)
- * - TestGaussVectorStoreDeleteCollection (2 methods)
- * - TestGaussVectorStoreCollectionExists (2 methods)
- * - TestGaussVectorStoreGetSchema (3 methods)
- * - TestGaussVectorStoreAddDocs (4 methods)
- * - TestGaussVectorStoreSearch (8 methods)
- * - TestGaussVectorStoreDeleteDocsByIds (2 methods)
- * - TestGaussVectorStoreDeleteDocsByFilters (2 methods)
- * - TestGaussVectorStoreListCollectionNames (1 method)
- * - TestGaussVectorStoreGetCollectionMetadata (1 method)
- * - TestGaussVectorStoreClose (1 method)
- * 
- * <p>Note: Python tests mock psycopg2 connection directly. In Java,
- * GaussVectorStore delegates to retrieval layer via VectorStoreFactory.
- * Tests are adapted to validate the adapter behavior.
+ * Mirrors Python's {@code test_gauss_vector_store.py}. Database calls are
+ * represented with an injected in-memory delegate, matching the Python tests'
+ * mocked psycopg2 boundary.
  */
 @DisplayName("GaussVectorStore Tests")
 class TestGaussVectorStore {
 
-    /*
-     * Python tests use extensive mocking of psycopg2 for database operations.
-     * Java's GaussVectorStore is an adapter that wraps the retrieval layer.
-     * Tests focus on:
-     * 1. Configuration and initialization
-     * 2. Schema handling
-     * 3. Document operations
-     * 4. Search operations
-     */
-
     @Nested
-    @DisplayName("Initialization Tests")
     class TestGaussVectorStoreInit {
-
         @Test
-        @DisplayName("init with default params")
         void testInitWithDefaultParams() {
-            // Python: test_init_with_default_params
-            // Tests initialization with default parameters
-            
-            // Create options map with defaults
-            Map<String, Object> options = new HashMap<>();
-            // Default values: localhost, port 5432, database "postgres"
-            
-            // Verify defaults can be inferred
-            assertNotNull(options);
+            assertNotNull(newStore("cosine"));
         }
 
         @Test
-        @DisplayName("init with custom params")
         void testInitWithCustomParams() {
-            // Python: test_init_with_custom_params
-            // Tests initialization with custom parameters
-            
-            Map<String, Object> options = new HashMap<>();
-            options.put("host", "testhost");
-            options.put("port", 5433);
-            options.put("database_name", "testdb");
-            options.put("user", "testuser");
-            options.put("password", "testpass");
-            
-            assertEquals("testhost", options.get("host"));
-            assertEquals(5433, options.get("port"));
-            assertEquals("testdb", options.get("database_name"));
-            assertEquals("testuser", options.get("user"));
-            assertEquals("testpass", options.get("password"));
+            GaussVectorStore store = newStore("dot");
+            assertNotNull(store);
         }
 
         @Test
-        @DisplayName("lazy init no connection on init")
         void testLazyInitNoConnectionOnInit() {
-            // Python: test_lazy_init_no_connection_on_init
-            // Tests that connection is NOT created during initialization
-            
-            Map<String, Object> options = new HashMap<>();
-            options.put("host", "testhost");
-            
-            // In Java, connection is created lazily when operations are performed
-            assertNotNull(options);
+            assertDoesNotThrow(() -> newStore("cosine"));
         }
 
         @Test
-        @DisplayName("connection reuse")
-        void testConnectionReuse() {
-            // Python: test_connection_reuse
-            // Tests that the same connection instance is reused
-            
-            // In Java adapter pattern, connection pooling handles reuse
-            assertTrue(true); // Connection reuse is handled by underlying implementation
+        void testConnectionReuse() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", docs(), null);
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("close and reconnect")
         void testCloseAndReconnect() {
-            // Python: test_close_and_reconnect
-            // Tests that close() releases connection and can be recreated
-            
-            // Verify close/reconnect pattern exists
-            assertTrue(true); // Connection lifecycle is managed by adapter
+            GaussVectorStore store = newStore("cosine");
+            assertDoesNotThrow(store::close);
+            assertDoesNotThrow(store::close);
         }
     }
 
     @Nested
-    @DisplayName("Create Collection Tests")
     class TestGaussVectorStoreCreateCollection {
+        @Test
+        void testCreateCollectionWithSchemaObject() throws Exception {
+            GaussVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+            assertTrue(store.collectionExists("test_collection", null));
+        }
 
         @Test
-        @DisplayName("create collection with schema object")
-        void testCreateCollectionWithSchemaObject() {
-            // Python: test_create_collection_with_schema_object
-            // Tests creating a collection with CollectionSchema
-            
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
+        void testCreateCollectionWithDictSchema() throws Exception {
+            GaussVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema().toDict(), null);
+            assertEquals(3, store.getSchema("test_collection", null).getFields().size());
+        }
+
+        @Test
+        void testCreateCollectionWithCustomMetric() throws Exception {
+            GaussVectorStore store = newStore("euclidean");
+            store.createCollection("test_collection", schema(), Map.of("distance_metric", "L2"));
+            assertEquals("l2", store.getCollectionMetadata("test_collection").get("distance_metric"));
+        }
+
+        @Test
+        void testCreateCollectionAlreadyExists() throws Exception {
+            GaussVectorStore store = newStore("cosine");
+            store.createCollection("test_collection", schema(), null);
+            store.createCollection("test_collection", schema(), null);
+            assertTrue(store.collectionExists("test_collection", null));
+        }
+
+        @Test
+        void testCreateCollectionMissingVectorDim() {
+            assertThrows(RuntimeException.class, () -> FieldSchema.builder()
                     .name("embedding")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.FLOAT_VECTOR)
-                    .dim(768)
-                    .build()
-            );
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("text")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(65535)
-                    .build()
-            );
-            
-            assertEquals(3, schema.getFields().size());
-            assertEquals("id", schema.getFields().get(0).getName());
-            assertTrue(schema.getFields().get(0).isPrimary());
+                    .dtype(VectorDataType.FLOAT_VECTOR)
+                    .build());
         }
 
         @Test
-        @DisplayName("create collection with dict schema")
-        void testCreateCollectionWithDictSchema() {
-            // Python: test_create_collection_with_dict_schema
-            // Tests creating a collection with schema dictionary
-            
-            Map<String, Object> schemaDict = new HashMap<>();
-            List<Map<String, Object>> fields = new ArrayList<>();
-            
-            Map<String, Object> idField = new HashMap<>();
-            idField.put("name", "id");
-            idField.put("type", "VARCHAR");
-            idField.put("max_length", 256);
-            idField.put("is_primary", true);
-            fields.add(idField);
-            
-            Map<String, Object> embeddingField = new HashMap<>();
-            embeddingField.put("name", "embedding");
-            embeddingField.put("type", "FLOAT_VECTOR");
-            embeddingField.put("dim", 768);
-            fields.add(embeddingField);
-            
-            schemaDict.put("fields", fields);
-            
-            assertNotNull(schemaDict.get("fields"));
-            assertEquals(2, ((List<?>) schemaDict.get("fields")).size());
+        void testCreateCollectionMissingVectorField() {
+            GaussVectorStore store = newStore("cosine");
+            CollectionSchema noVector = new CollectionSchema().addField(idField());
+            assertThrows(IllegalArgumentException.class,
+                    () -> store.createCollection("test_collection", noVector, null));
         }
 
         @Test
-        @DisplayName("create collection with custom metric")
-        void testCreateCollectionWithCustomMetric() {
-            // Python: test_create_collection_with_custom_metric
-            // Tests creating collection with L2 metric
-            
-            Map<String, Object> options = new HashMap<>();
-            options.put("distance_metric", "l2");
-            
-            assertEquals("l2", options.get("distance_metric"));
-        }
-
-        @Test
-        @DisplayName("create collection handles error")
-        void testCreateCollectionHandlesError() {
-            // Python: test_create_collection_handles_error (if exists)
-            // Tests error handling during collection creation
-            
-            Exception expectedError = new RuntimeException("Create failed");
-            assertNotNull(expectedError);
+        void testCreateCollectionWithAutoId() throws Exception {
+            GaussVectorStore store = newStore("cosine");
+            CollectionSchema schema = new CollectionSchema()
+                    .addField(FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR)
+                            .maxLength(256).isPrimary(true).autoId(true).build())
+                    .addField(vectorField());
+            store.createCollection("test_collection", schema, null);
+            assertTrue(store.getSchema("test_collection", null).getPrimaryKeyField().orElseThrow().isAutoId());
         }
     }
 
     @Nested
-    @DisplayName("Delete Collection Tests")
     class TestGaussVectorStoreDeleteCollection {
-
         @Test
-        @DisplayName("delete collection successfully")
-        void testDeleteCollectionSuccessfully() {
-            // Python: test_delete_collection_successfully
-            // Tests successful collection deletion
-            
-            String collectionName = "test_collection";
-            assertNotNull(collectionName);
+        void testDeleteCollectionSuccess() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            store.deleteCollection("test_collection", null);
+            assertFalse(store.collectionExists("test_collection", null));
         }
 
         @Test
-        @DisplayName("delete collection handles error")
-        void testDeleteCollectionHandlesError() {
-            // Python: test_delete_collection_handles_error
-            // Tests error handling during deletion
-            
-            RuntimeException expectedError = new RuntimeException("Delete failed");
-            assertNotNull(expectedError);
+        void testDeleteCollectionNotExists() {
+            GaussVectorStore store = newStore("cosine");
+            assertDoesNotThrow(() -> store.deleteCollection("test_collection", null));
         }
     }
 
     @Nested
-    @DisplayName("Collection Exists Tests")
     class TestGaussVectorStoreCollectionExists {
-
         @Test
-        @DisplayName("collection exists returns true")
-        void testCollectionExistsTrue() {
-            // Python: test_collection_exists_true
-            // Tests collection_exists returns True
-            
-            boolean exists = true;
-            assertTrue(exists);
+        void testCollectionExistsTrue() throws Exception {
+            assertTrue(preparedStore("cosine").collectionExists("test_collection", null));
         }
 
         @Test
-        @DisplayName("collection exists returns false")
-        void testCollectionExistsFalse() {
-            // Python: test_collection_exists_false
-            // Tests collection_exists returns False
-            
-            boolean exists = false;
-            assertFalse(exists);
+        void testCollectionExistsFalse() throws Exception {
+            assertFalse(newStore("cosine").collectionExists("test_collection", null));
         }
     }
 
     @Nested
-    @DisplayName("Get Schema Tests")
     class TestGaussVectorStoreGetSchema {
-
         @Test
-        @DisplayName("get schema success")
-        void testGetSchemaSuccess() {
-            // Python: test_get_schema_success
-            // Tests getting schema from collection
-            
-            var schema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            schema.addField(
-                new com.openjiuwen.spi.store.vector.FieldSchema.Builder()
-                    .name("id")
-                    .dtype(com.openjiuwen.spi.store.vector.VectorDataType.VARCHAR)
-                    .maxLength(256)
-                    .isPrimary(true)
-                    .build()
-            );
-            
-            assertEquals(1, schema.getFields().size());
+        void testGetSchemaSuccess() throws Exception {
+            CollectionSchema result = preparedStore("cosine").getSchema("test_collection", null);
+            assertEquals(3, result.getFields().size());
         }
 
         @Test
-        @DisplayName("get schema collection not exists")
         void testGetSchemaCollectionNotExists() {
-            // Python: test_get_schema_collection_not_exists
-            // Tests getting schema for non-existent collection
-            
-            Exception expectedError = new Exception("Collection not found");
-            assertNotNull(expectedError);
-        }
-
-        @Test
-        @DisplayName("get schema default fallback")
-        void testGetSchemaDefaultFallback() {
-            // Python: test_get_schema_default_fallback (if exists)
-            // Tests default schema when metadata unavailable
-            
-            var defaultSchema = new com.openjiuwen.spi.store.vector.CollectionSchema();
-            assertTrue(defaultSchema.getFields().isEmpty());
+            assertThrows(IllegalArgumentException.class, () -> newStore("cosine").getSchema("missing", null));
         }
     }
 
     @Nested
-    @DisplayName("Add Docs Tests")
     class TestGaussVectorStoreAddDocs {
-
         @Test
-        @DisplayName("add docs basic")
-        void testAddDocsBasic() {
-            // Python: test_add_docs_basic
-            // Tests adding documents
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            Map<String, Object> doc = new HashMap<>();
-            doc.put("id", "doc1");
-            doc.put("embedding", List.of(0.1f, 0.2f, 0.3f));
-            doc.put("text", "Test document");
-            docs.add(doc);
-            
-            assertEquals(1, docs.size());
+        void testAddDocsSuccess() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", docs(), null);
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("add docs with batch size")
-        void testAddDocsWithBatchSize() {
-            // Python: test_add_docs_with_batch_size
-            // Tests adding documents with batch size
-            
-            List<Map<String, Object>> docs = new ArrayList<>();
-            for (int i = 0; i < 10; i++) {
-                Map<String, Object> doc = new HashMap<>();
-                doc.put("id", "doc" + i);
-                docs.add(doc);
-            }
-            
-            int batchSize = 5;
-            assertEquals(10, docs.size());
-            assertTrue(batchSize > 0);
+        void testAddDocsWithBatchSize() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", docs(), Map.of("batch_size", 1));
+            assertEquals(2, store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("add docs with metadata")
-        void testAddDocsWithMetadata() {
-            // Python: test_add_docs_with_metadata
-            // Tests adding documents with metadata
-            
-            Map<String, Object> doc = new HashMap<>();
-            doc.put("id", "doc1");
-            doc.put("metadata", Map.of("source", "test"));
-            
-            assertNotNull(doc.get("metadata"));
-        }
-
-        @Test
-        @DisplayName("add docs handles error")
-        void testAddDocsHandlesError() {
-            // Python: test_add_docs_handles_error (if exists)
-            // Tests error handling
-            
-            Exception expectedError = new RuntimeException("Add failed");
-            assertNotNull(expectedError);
+        void testAddDocsWithJsonMetadata() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            store.addDocs("test_collection", List.of(doc("doc1", "Text", vector(0.1f, 0.2f, 0.3f),
+                    Map.of("source", "test", "page", 1))), null);
+            VectorSearchResult result = store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 1, null, null).get(0);
+            assertEquals("test", result.getFields().get("source"));
+            assertEquals(1, result.getFields().get("page"));
         }
     }
 
     @Nested
-    @DisplayName("Search Tests")
     class TestGaussVectorStoreSearch {
-
         @Test
-        @DisplayName("search success")
-        void testSearchSuccess() {
-            // Python: test_search_success
-            // Tests successful vector search
-            
-            List<Float> queryVector = List.of(0.1f, 0.2f, 0.3f);
-            int topK = 5;
-            
-            assertNotNull(queryVector);
-            assertTrue(topK > 0);
+        void testSearchSuccess() throws Exception {
+            List<VectorSearchResult> results = populatedStore("cosine").search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null);
+            assertEquals("doc1", results.get(0).getFields().get("id"));
+            assertEquals("Text 1", results.get(0).getFields().get("text"));
         }
 
         @Test
-        @DisplayName("search with filters")
-        void testSearchWithFilters() {
-            // Python: test_search_with_filters
-            // Tests search with metadata filters
-            
-            Map<String, Object> filters = Map.of("category", "tech");
-            assertNotNull(filters);
+        void testSearchWithFilters() throws Exception {
+            List<VectorSearchResult> results = populatedStore("cosine").search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, Map.of("category", "tech"), null);
+            assertEquals(1, results.size());
+            assertEquals("doc1", results.get(0).getFields().get("id"));
         }
 
         @Test
-        @DisplayName("search cosine metric")
-        void testSearchCosineMetric() {
-            // Python: test_search_cosine_metric
-            // Tests search with COSINE metric
-            
-            String metric = "cosine";
-            assertNotNull(metric);
-            
-            // Cosine similarity: higher score = more similar
-            double distance = 0.3;
-            double similarity = 1.0 - distance;
-            assertTrue(similarity >= 0.0 && similarity <= 1.0);
+        void testSearchCosineMetric() throws Exception {
+            List<VectorSearchResult> results = populatedStore("cosine").search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null);
+            assertTrue(results.get(0).getScore() >= results.get(1).getScore());
         }
 
         @Test
-        @DisplayName("search l2 metric")
-        void testSearchL2Metric() {
-            // Python: test_search_l2_metric
-            // Tests search with L2 metric
-            
-            String metric = "l2";
-            assertNotNull(metric);
-            
-            // L2 distance: lower = more similar
-            double distance = 0.5;
-            assertTrue(distance >= 0.0);
-        }
-
-        @Test
-        @DisplayName("search empty results")
-        void testSearchEmptyResults() {
-            // Python: test_search_empty_results
-            // Tests search with no results
-            
-            List<Map<String, Object>> emptyResults = new ArrayList<>();
-            assertTrue(emptyResults.isEmpty());
-        }
-
-        @Test
-        @DisplayName("search with text query")
-        void testSearchWithTextQuery() {
-            // Python: test_search_with_text_query (if exists)
-            // Tests hybrid search
-            
-            String textQuery = "test document";
-            assertNotNull(textQuery);
-        }
-
-        @Test
-        @DisplayName("search distance conversion")
-        void testSearchDistanceConversion() {
-            // Python: test_search_distance_conversion
-            // Tests distance to similarity conversion
-            
-            // For COSINE: similarity = 1 - distance
-            double cosineDistance = 0.3;
-            double cosineSimilarity = 1.0 - cosineDistance;
-            assertEquals(0.7, cosineSimilarity, 0.001);
-            
-            // For L2: similarity needs normalization based on max distance
-            double l2Distance = 0.5;
-            assertTrue(l2Distance >= 0.0);
-        }
-
-        @Test
-        @DisplayName("search handles error")
-        void testSearchHandlesError() {
-            // Python: test_search_handles_error (if exists)
-            // Tests error handling
-            
-            Exception expectedError = new RuntimeException("Search failed");
-            assertNotNull(expectedError);
+        void testSearchL2Metric() throws Exception {
+            List<VectorSearchResult> results = populatedStore("euclidean").search("test_collection",
+                    vector(0.1f, 0.2f, 0.3f), "embedding", 5, null, null);
+            assertTrue(results.get(0).getScore() >= results.get(1).getScore());
         }
     }
 
     @Nested
-    @DisplayName("Delete Docs By IDs Tests")
     class TestGaussVectorStoreDeleteDocsByIds {
-
         @Test
-        @DisplayName("delete docs by ids successfully")
-        void testDeleteDocsByIdsSuccessfully() {
-            // Python: test_delete_docs_by_ids_successfully
-            // Tests deleting documents by IDs
-            
-            List<String> idsToDelete = List.of("doc1", "doc2");
-            assertEquals(2, idsToDelete.size());
+        void testDeleteDocsByIdsSuccess() throws Exception {
+            GaussVectorStore store = populatedStore("cosine");
+            store.deleteDocsByIds("test_collection", List.of("doc1"), null);
+            assertEquals(1, store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null).size());
         }
 
         @Test
-        @DisplayName("delete docs by ids handles error")
-        void testDeleteDocsByIdsHandlesError() {
-            // Python: test_delete_docs_by_ids_handles_error
-            // Tests error handling
-            
-            Exception expectedError = new RuntimeException("Delete by IDs failed");
-            assertNotNull(expectedError);
+        void testDeleteDocsByIdsEmptyList() {
+            assertDoesNotThrow(() -> preparedStore("cosine").deleteDocsByIds("test_collection", List.of(), null));
         }
     }
 
     @Nested
-    @DisplayName("Delete Docs By Filters Tests")
     class TestGaussVectorStoreDeleteDocsByFilters {
-
         @Test
-        @DisplayName("delete docs by filters successfully")
-        void testDeleteDocsByFiltersSuccessfully() {
-            // Python: test_delete_docs_by_filters_successfully
-            // Tests deleting documents by filters
-            
-            Map<String, Object> filters = Map.of("category", "tech");
-            assertNotNull(filters);
+        void testDeleteDocsByFiltersSuccess() throws Exception {
+            GaussVectorStore store = populatedStore("cosine");
+            store.deleteDocsByFilters("test_collection", Map.of("category", "tech"), null);
+            List<VectorSearchResult> results = store.search("test_collection", vector(0.1f, 0.2f, 0.3f),
+                    "embedding", 5, null, null);
+            assertEquals(1, results.size());
+            assertEquals("doc2", results.get(0).getFields().get("id"));
         }
 
         @Test
-        @DisplayName("delete docs by filters handles error")
-        void testDeleteDocsByFiltersHandlesError() {
-            // Python: test_delete_docs_by_filters_handles_error
-            // Tests error handling
-            
-            Exception expectedError = new RuntimeException("Delete by filters failed");
-            assertNotNull(expectedError);
+        void testDeleteDocsByFiltersEmpty() {
+            assertDoesNotThrow(() -> preparedStore("cosine").deleteDocsByFilters("test_collection", Map.of(), null));
         }
     }
 
     @Nested
-    @DisplayName("List Collection Names Tests")
     class TestGaussVectorStoreListCollectionNames {
-
         @Test
-        @DisplayName("list collection names success")
-        void testListCollectionNamesSuccess() {
-            // Python: test_list_collection_names_success
-            // Tests listing collection names
-            
-            List<String> collectionNames = List.of("collection1", "collection2");
-            assertEquals(2, collectionNames.size());
+        void testListCollectionNamesSuccess() throws Exception {
+            GaussVectorStore store = preparedStore("cosine");
+            assertTrue(store.listCollectionNames().contains("test_collection"));
         }
     }
 
     @Nested
-    @DisplayName("Get Collection Metadata Tests")
     class TestGaussVectorStoreGetCollectionMetadata {
+        @Test
+        void testGetCollectionMetadataFromCache() throws Exception {
+            Map<String, Object> metadata = preparedStore("cosine").getCollectionMetadata("test_collection");
+            assertEquals("cosine", metadata.get("distance_metric"));
+            assertEquals("embedding", metadata.get("vector_field"));
+            assertEquals(0, metadata.get("schema_version"));
+        }
 
         @Test
-        @DisplayName("get collection metadata success")
-        void testGetCollectionMetadataSuccess() {
-            // Python: test_get_collection_metadata_success
-            // Tests getting collection metadata
-            
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("primary_key", "id");
-            metadata.put("vector_field", "embedding");
-            
-            assertNotNull(metadata);
-            assertEquals("id", metadata.get("primary_key"));
+        void testGetCollectionMetadataNotExists() throws Exception {
+            Map<String, Object> metadata = newStore("cosine").getCollectionMetadata("missing");
+            assertEquals("cosine", metadata.get("distance_metric"));
+            assertEquals(0, metadata.get("schema_version"));
         }
     }
 
     @Nested
-    @DisplayName("Close Tests")
     class TestGaussVectorStoreClose {
-
         @Test
-        @DisplayName("close connection successfully")
-        void testCloseConnectionSuccessfully() {
-            // Python: test_close_successfully
-            // Tests closing connection
-            
-            // Connection close is handled by underlying implementation
-            assertTrue(true);
+        void testCloseConnection() {
+            assertDoesNotThrow(() -> newStore("cosine").close());
         }
+    }
+
+    private static GaussVectorStore newStore(String metric) {
+        var delegate = new com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore(
+                new VectorStoreConfig("chroma", UUID.randomUUID().toString().replace("-", ""),
+                        "default_collection", metric), "hybrid");
+        return new GaussVectorStore(delegate);
+    }
+
+    private static GaussVectorStore preparedStore(String metric) throws Exception {
+        GaussVectorStore store = newStore(metric);
+        store.createCollection("test_collection", schema(), null);
+        return store;
+    }
+
+    private static GaussVectorStore populatedStore(String metric) throws Exception {
+        GaussVectorStore store = preparedStore(metric);
+        store.addDocs("test_collection", docs(), null);
+        return store;
+    }
+
+    private static List<Map<String, Object>> docs() {
+        return List.of(
+                doc("doc1", "Text 1", vector(0.1f, 0.2f, 0.3f), Map.of("category", "tech")),
+                doc("doc2", "Text 2", vector(0.4f, 0.5f, 0.6f), Map.of("category", "biz")));
+    }
+
+    private static Map<String, Object> doc(String id, String text, List<Float> embedding, Map<String, Object> metadata) {
+        return Map.of("id", id, "embedding", embedding, "text", text, "metadata", metadata);
+    }
+
+    private static CollectionSchema schema() {
+        return new CollectionSchema()
+                .addField(idField())
+                .addField(vectorField())
+                .addField(FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build());
+    }
+
+    private static FieldSchema idField() {
+        return FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR)
+                .maxLength(256).isPrimary(true).build();
+    }
+
+    private static FieldSchema vectorField() {
+        return FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(3).build();
+    }
+
+    private static List<Float> vector(float a, float b, float c) {
+        return List.of(a, b, c);
     }
 }

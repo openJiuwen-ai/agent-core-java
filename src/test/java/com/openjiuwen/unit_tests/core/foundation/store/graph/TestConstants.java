@@ -1,105 +1,48 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.unit_tests.core.foundation.store.graph;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.foundation.store.graph.GraphConfig;
+import com.openjiuwen.core.foundation.store.graph.milvus.GenerateMilvusSchema;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-/**
- * Tests for graph constants.
- * <p>
- * Mirrors Python's {@code test_constants.py} from
- * {@code tests/unit_tests/core/foundation/store/graph/test_constants.py}.
- * Tests graph store constants and configuration values.
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
 class TestConstants {
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 0 (Constant validation)
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
-    void testStringConstantsExist() {
-        String defaultHost = "localhost";
-        assertNotNull(defaultHost);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 1 (Default values)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level1")
-    void testDefaultMilvusPort() {
-        int milvusPort = 19530;
-        assertEquals(19530, milvusPort);
+    void testEntityCollectionValue() {
+        assertEquals("entity", GenerateMilvusSchema.ENTITY_COLLECTION);
     }
 
     @Test
-    @Tag("level1")
-    void testDefaultNeo4jPort() {
-        int neo4jPort = 7687;
-        assertEquals(7687, neo4jPort);
+    void testRelationCollectionValue() {
+        assertEquals("relation", GenerateMilvusSchema.RELATION_COLLECTION);
     }
 
     @Test
-    @Tag("level1")
-    void testDefaultVectorDimension() {
-        int defaultDimension = 128;
-        assertTrue(defaultDimension > 0);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 2 (Metric types)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level2")
-    void testL2Metric() {
-        String metric = "L2";
-        assertEquals("L2", metric);
+    void testEpisodeCollectionValue() {
+        assertEquals("episode", GenerateMilvusSchema.EPISODE_COLLECTION);
     }
 
     @Test
-    @Tag("level2")
-    void testIPMetric() {
-        String metric = "IP";
-        assertEquals("IP", metric);
+    void testCollectionConstantsAreDistinct() {
+        assertNotEquals(GenerateMilvusSchema.ENTITY_COLLECTION, GenerateMilvusSchema.RELATION_COLLECTION);
     }
 
     @Test
-    @Tag("level2")
-    void testCosineMetric() {
-        String metric = "COSINE";
-        assertEquals("COSINE", metric);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 3 (Index types)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level3")
-    void testIvfFlatIndex() {
-        String indexType = "IVF_FLAT";
-        assertNotNull(indexType);
+    void testDefaultWorkerNumValue() throws Exception {
+        Path tempDir = Files.createTempDirectory("graph-constants-");
+        GraphConfig config = GraphConfig.builder().uri(tempDir.resolve("graph.db").toString()).build();
+        assertEquals(10, config.getWorkerThreads());
     }
 
     @Test
-    @Tag("level3")
-    void testHnswIndex() {
-        String indexType = "HNSW";
-        assertNotNull(indexType);
-    }
-
-    @Test
-    @Tag("level3")
-    void testFlatIndex() {
-        String indexType = "FLAT";
-        assertNotNull(indexType);
+    void testDefaultEmbedBatchSizeValue() throws Exception {
+        Path tempDir = Files.createTempDirectory("graph-constants-batch-");
+        GraphConfig config = GraphConfig.builder().uri(tempDir.resolve("graph.db").toString()).build();
+        assertEquals(10, config.getEmbedBatchSize());
     }
 }

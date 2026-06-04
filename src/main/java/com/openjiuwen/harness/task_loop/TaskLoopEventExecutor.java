@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +55,13 @@ public class TaskLoopEventExecutor {
                 Object result = invokeInnerAgent(invokeInput);
 
                 // Build output chunk
+                if (result instanceof Map<?, ?> rawMap
+                        && "error".equals(String.valueOf(rawMap.get("result_type")))) {
+                    @SuppressWarnings("unchecked")
+                    Map<Object, Object> map = (Map<Object, Object>) rawMap;
+                    Object errorValue = map.containsKey("error") ? map.get("error") : "";
+                    return buildErrorChunk(taskId, String.valueOf(errorValue));
+                }
                 return buildSuccessChunk(taskId, result);
             } catch (Exception e) {
                 LOG.error("[TaskLoopEventExecutor] task_id={} execution failed", taskId, e);
@@ -63,9 +71,64 @@ public class TaskLoopEventExecutor {
     }
 
     /**
+     * Cancellation is always supported for the task-loop executor.
+     *
+     * <p>Mirrors Python's {@code cancel()} behaviour by aborting the owning
+     * coordinator when a DeepAgent is attached.</p>
+     */
+    public boolean cancel(String taskId, Object session) {
+        LOG.info("[TaskLoopEventExecutor] cancel task_id={}", taskId);
+        if (deepAgent instanceof com.openjiuwen.harness.DeepAgent agent) {
+            Object state = session instanceof com.openjiuwen.core.session.Session typedSession
+                    ? agent.loadState(typedSession)
+                    : null;
+            if (state instanceof com.openjiuwen.harness.schema.DeepAgentState deepState
+                    && deepState.getTaskPlan() != null) {
+                deepState.getTaskPlan().markCancelled(taskId, "cancelled");
+            }
+        }
+        if (deepAgent instanceof com.openjiuwen.harness.DeepAgent agent) {
+            Object coordinator = lookupField(agent, "loopCoordinator");
+            if (coordinator == null) {
+                coordinator = lookupField(agent, "_loopCoordinator");
+            }
+            if (coordinator instanceof LoopCoordinator loopCoordinator) {
+                loopCoordinator.requestAbort();
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Builder factory used by task-loop registry code.
+     */
+    public static Function<Object, TaskLoopEventExecutor> buildDeepExecutor(Object deepAgent) {
+        return deps -> new TaskLoopEventExecutor(deps, deepAgent);
+    }
+
+    private static Object lookupField(Object target, String fieldName) {
+        if (target == null) {
+            return null;
+        }
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                java.lang.reflect.Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (IllegalAccessException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Build invoke input for inner agent.
      */
-    private Map<String, Object> buildInvokeInput(String taskId) {
+    protected Map<String, Object> buildInvokeInput(String taskId) {
         Map<String, Object> input = new HashMap<>();
         input.put("task_id", taskId);
         return input;
@@ -77,7 +140,7 @@ public class TaskLoopEventExecutor {
      * Mirrors Python's ReAct loop execution logic:
      * {@code result = await agent.react_agent.invoke(effective, session, _streaming=True)}
      */
-    private Object invokeInnerAgent(Map<String, Object> input) {
+    protected Object invokeInnerAgent(Map<String, Object> input) {
         LOG.debug("[TaskLoopEventExecutor] invoke_inner_agent input={}", input);
         
         if (deepAgent instanceof com.openjiuwen.harness.DeepAgent da) {

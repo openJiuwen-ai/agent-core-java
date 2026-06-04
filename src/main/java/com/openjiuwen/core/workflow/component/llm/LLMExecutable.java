@@ -329,10 +329,6 @@ public class LLMExecutable extends ComponentExecutable {
                         "error_msg", "system message must be before user message");
             }
         }
-        if (!containsUserMessage) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR,
-                    "error_msg", "user message is required");
-        }
     }
 
     private void validateResponseFormat(Map<String, Object> responseFormat, Map<String, Object> outputConfig) {

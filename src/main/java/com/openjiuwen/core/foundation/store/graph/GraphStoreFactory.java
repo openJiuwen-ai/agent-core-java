@@ -76,6 +76,10 @@ public final class GraphStoreFactory {
         try {
             String name = (backendName != null && !backendName.isBlank()) ? backendName : config.getBackend();
             Class<? extends GraphStore> backendCls = CLASS_MAP.get(name);
+            if (backendCls == null && "milvus".equals(name)) {
+                com.openjiuwen.core.foundation.store.graph.milvus.MilvusGraphStore.registerMilvusSupport();
+                backendCls = CLASS_MAP.get(name);
+            }
             if (backendCls == null) {
                 throw new IllegalArgumentException("Backend type [" + name + "] does not exist.");
             }

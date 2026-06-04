@@ -18,6 +18,12 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests for DefaultEvaluator and BaseEvaluator.
+ *
+ * <p>Mirrors Python's {@code test_evaluator.py} and {@code test_default_evaluator.py}
+ * in {@code tests/unit_tests/agent_evolving/evaluator}.
+ */
 class BaseAndDefaultEvaluatorTest {
 
     @Test
@@ -29,11 +35,25 @@ class BaseAndDefaultEvaluatorTest {
     }
 
     @Test
-    void batchEvaluateRejectsInvalidParallelism() {
+    void batchEvaluateRejectsLengthMismatchReversed() {
+        RecordingEvaluator evaluator = new RecordingEvaluator();
+
+        assertThrows(BaseError.class, () ->
+                evaluator.batchEvaluate(List.of(), List.of(Map.of("output", "x")), 1));
+    }
+
+    @Test
+    void batchEvaluateRejectsInvalidParallelismZero() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
         assertThrows(ValidationError.class, () ->
                 evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 0));
+    }
+
+    @Test
+    void batchEvaluateRejectsInvalidParallelismTooHigh() {
+        RecordingEvaluator evaluator = new RecordingEvaluator();
+
         assertThrows(ValidationError.class, () ->
                 evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 100));
     }
@@ -66,19 +86,136 @@ class BaseAndDefaultEvaluatorTest {
     }
 
     @Test
-    void defaultEvaluatorReturnsPassAndFailFromParsedJson() {
+    void batchEvaluateSingleCase() {
+        RecordingEvaluator evaluator = new RecordingEvaluator(0.8);
+
+        List<EvaluatedCase> result = evaluator.batchEvaluate(
+                List.of(makeCase()),
+                List.of(Map.of("output", "pred")),
+                1
+        );
+
+        assertEquals(1, result.size());
+        assertEquals(0.8, result.get(0).getScore(), 1e-9);
+    }
+
+    @Test
+    void defaultEvaluatorHandlesLlmTimeout() {
         StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
-                assistant("```json\n{\"result\": true, \"reason\": \"good\"}\n```"),
-                assistant("```json\n{\"result\": false, \"reason\": \"bad\"}\n```")
+                new java.util.concurrent.TimeoutException("Request timeout")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertTrue(result.getReason().contains("model error"));
+    }
+
+    @Test
+    void defaultEvaluatorHandlesConnectionError() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                new java.net.ConnectException("Connection refused")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertTrue(result.getReason().contains("model error"));
+    }
+
+    @Test
+    void defaultEvaluatorReturnsParsingErrorWhenResponseCannotBeParsed() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("invalid json"),
+                assistant("still invalid")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
+
+        assertEquals(0.0, result.getScore());
+        assertTrue(result.getReason().contains("parsing error"));
+    }
+
+    @Test
+    void defaultEvaluatorHandlesEmptyResponse() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(assistant(""));
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertTrue(result.getReason().contains("parsing error"));
+    }
+
+    @Test
+    void defaultEvaluatorHandlesResultStringTrue() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json{\"result\": \"true\", \"reason\": \"Correct answer\"}```")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(1.0, result.getScore(), 1e-9);
+        assertEquals("Correct answer", result.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorHandlesResultStringFalse() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json{\"result\": \"false\", \"reason\": \"Wrong answer\"}```")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertEquals("Wrong answer", result.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorHandlesResultStringYesAsFalse() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json{\"result\": \"yes\", \"reason\": \"Looks good\"}```")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertEquals("Looks good", result.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorReturnsPassFromParsedJson() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json\n{\"result\": true, \"reason\": \"good\"}\n```")
         );
 
         EvaluatedCase pass = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
-        EvaluatedCase fail = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
 
         assertEquals(1.0, pass.getScore());
         assertEquals("good", pass.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorReturnsFailFromParsedJson() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json\n{\"result\": false, \"reason\": \"bad\"}\n```")
+        );
+
+        EvaluatedCase fail = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
+
         assertEquals(0.0, fail.getScore());
         assertEquals("bad", fail.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorHandlesMalformedBooleanFalseResponse() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json{\"result\": false\", \"reason\": \"Incorrect\"}```")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "model prediction"));
+
+        assertEquals(0.0, result.getScore(), 1e-9);
+        assertTrue(result.getReason().contains("parsing error"));
     }
 
     @Test
@@ -92,6 +229,19 @@ class BaseAndDefaultEvaluatorTest {
 
         assertEquals(1.0, result.getScore());
         assertEquals("retry success", result.getReason());
+    }
+
+    @Test
+    void defaultEvaluatorReturnsZeroWhenRetryAlsoFails() {
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("invalid json"),
+                new RuntimeException("retry failed")
+        );
+
+        EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
+
+        assertEquals(0.0, result.getScore());
+        assertTrue(result.getReason().contains("parsing error"));
     }
 
     @Test
@@ -118,11 +268,20 @@ class BaseAndDefaultEvaluatorTest {
 
     private static final class RecordingEvaluator extends BaseEvaluator {
         private final List<String> seenCaseIds = Collections.synchronizedList(new ArrayList<>());
+        private final double score;
+
+        private RecordingEvaluator() {
+            this(1.0);
+        }
+
+        private RecordingEvaluator(double score) {
+            this.score = score;
+        }
 
         @Override
         public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
             seenCaseIds.add(caseData.getCaseId());
-            return EvaluatedCase.builder().caseData(caseData).answer(predict).score(1.0).build();
+            return EvaluatedCase.builder().caseData(caseData).answer(predict).score(score).build();
         }
     }
 
@@ -142,10 +301,10 @@ class BaseAndDefaultEvaluatorTest {
         }
 
         @Override
-        protected AssistantMessage invokeModel(List<?> messages) {
+        protected AssistantMessage invokeModel(List<?> messages) throws Exception {
             Object next = scriptedResponses.removeFirst();
-            if (next instanceof RuntimeException runtimeException) {
-                throw runtimeException;
+            if (next instanceof Exception exception) {
+                throw exception;
             }
             return (AssistantMessage) next;
         }

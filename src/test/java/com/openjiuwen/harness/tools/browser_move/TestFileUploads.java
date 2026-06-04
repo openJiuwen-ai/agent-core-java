@@ -15,7 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -26,22 +29,8 @@ import static org.mockito.Mockito.*;
  * Mirrors Python's {@code test_file_uploads.py} from
  * {@code tests/unit_tests/harness/tools/browser_move/test_file_uploads.py}.
  *
- * <p><b>IMPORTANT DIFFERENCES:</b>
- * <ul>
- *   <li>Python's {@code _list_dir_files} helper is not implemented in Java ActionController.
- *       This function lists files in a directory with metadata.</li>
- *   <li>Python's {@code _build_set_input_files_script} helper is not implemented in Java.
- *       This function builds JavaScript for setting file inputs.</li>
- *   <li>Python's {@code list_upload_files} builtin action is NOT registered in Java's
- *       ActionController.registerBuiltinActions(). Only ping, echo, browser_task are registered.</li>
- *   <li>Python's {@code browser_set_input_files} builtin action is NOT registered in Java.</li>
- * </ul>
- *
- * <p>The tests below focus on what IS implemented in Java:
- * <ul>
- *   <li>EnvUtils.resolveUploadRoot() - equivalent to Python's resolve_upload_root</li>
- *   <li>ActionController basic functionality</li>
- * </ul>
+ * <p>The tests keep Python's file-upload helper behavior while adapting async
+ * Python actions to Java's {@link CompletableFuture}-based dispatcher.
  */
 @DisplayName("FileUploads Tests")
 class TestFileUploads {
@@ -90,15 +79,13 @@ class TestFileUploads {
     }
 
     @Nested
-    @DisplayName("ListDirFiles Tests - NOT IMPLEMENTED IN JAVA")
+    @DisplayName("ListDirFiles Tests")
     class ListDirFilesTests {
 
         @Test
-        @DisplayName("test list dir files returns file entries with metadata - SKIPPED")
+        @DisplayName("test list dir files returns file entries with metadata")
         void testListDirFilesReturnsFileEntriesWithMetadata(@TempDir Path tempDir) {
             // Python: test_list_dir_files_returns_file_entries_with_metadata
-            // NOTE: Java ActionController does NOT implement _list_dir_files helper.
-            // This test is documented for parity tracking but skipped in implementation.
             
             // Create test files
             Path docPdf = tempDir.resolve("doc.pdf");
@@ -107,108 +94,106 @@ class TestFileUploads {
                 Files.writeString(docPdf, "hello");
                 Files.writeString(imgPng, "xx");
                 
-                // In Python, _list_dir_files(root) would return entries with name, path, size_bytes
-                // In Java, this helper is NOT implemented
-                // We can verify file existence as a minimal check
-                assertTrue(Files.exists(docPdf));
-                assertTrue(Files.exists(imgPng));
-                
-                // Expected behavior would be:
-                // List<Map<String, Object>> result = ActionController.listDirFiles(tempDir);
-                // Set<String> names = result.stream().map(e -> (String)e.get("name")).collect(Collectors.toSet());
-                // assertEquals(Set.of("doc.pdf", "img.png"), names);
+                List<Map<String, Object>> result = ActionController.listDirFiles(tempDir);
+                Set<String> names = result.stream()
+                    .map(e -> (String) e.get("name"))
+                    .collect(Collectors.toSet());
+                assertEquals(Set.of("doc.pdf", "img.png"), names);
+                for (Map<String, Object> entry : result) {
+                    assertTrue(entry.containsKey("path"));
+                    assertTrue(((Number) entry.get("size_bytes")).longValue() >= 0);
+                }
                 
             } catch (Exception e) {
                 fail("Failed to create test files: " + e.getMessage());
             }
-            
-            // Mark this test as documenting Python parity gap
-            assertTrue(true, "Java implementation lacks _list_dir_files helper - test documented for parity");
         }
 
         @Test
-        @DisplayName("test list dir files handles missing directory - SKIPPED")
+        @DisplayName("test list dir files handles missing directory")
         void testListDirFilesHandlesMissingDirectory() {
             // Python: test_list_dir_files_handles_missing_directory
-            // NOTE: Java ActionController does NOT implement _list_dir_files helper.
             
             Path nonexistent = Path.of("/nonexistent/path/that/does/not/exist");
-            assertFalse(Files.exists(nonexistent));
-            
-            // Expected Python behavior: _list_dir_files(nonexistent) returns []
-            // Java does not have this helper
-            
-            assertTrue(true, "Java implementation lacks _list_dir_files helper - test documented for parity");
+            assertEquals(List.of(), ActionController.listDirFiles(nonexistent));
         }
     }
 
     @Nested
-    @DisplayName("BuildSetInputFilesScript Tests - NOT IMPLEMENTED IN JAVA")
+    @DisplayName("BuildSetInputFilesScript Tests")
     class BuildSetInputFilesScriptTests {
 
         @Test
-        @DisplayName("test build set input files script embeds selector and paths - SKIPPED")
+        @DisplayName("test build set input files script embeds selector and paths")
         void testBuildSetInputFilesScriptEmbedsSelectorAndPaths() {
             // Python: test_build_set_input_files_script_embeds_selector_and_paths
-            // NOTE: Java does NOT implement _build_set_input_files_script helper.
             
             String selector = "#upload";
             List<String> paths = List.of("/data/a.pdf", "/data/b.csv");
             
-            // Expected Python behavior:
-            // String script = ActionController.buildSetInputFilesScript(selector, paths);
-            // assertTrue(script.contains(selector));
-            // assertTrue(script.contains(paths.get(0)));
-            // assertTrue(script.contains(paths.get(1)));
-            
-            assertTrue(true, "Java implementation lacks _build_set_input_files_script helper - test documented for parity");
+            String script = ActionController.buildSetInputFilesScript(selector, paths);
+            assertTrue(script.contains(selector));
+            assertTrue(script.contains(paths.get(0)));
+            assertTrue(script.contains(paths.get(1)));
         }
     }
 
     @Nested
-    @DisplayName("ListUploadFiles Action Tests - NOT REGISTERED IN JAVA")
+    @DisplayName("ListUploadFiles Action Tests")
     class ListUploadFilesActionTests {
 
         @Test
-        @DisplayName("test list upload files returns error when env not set - NOT REGISTERED")
+        @DisplayName("test list upload files returns error when env not set")
         void testListUploadFilesReturnsErrorWhenEnvNotSet() {
             // Python: test_list_upload_files_returns_error_when_env_not_set
-            // NOTE: Java's ActionController.registerBuiltinActions() does NOT register list_upload_files.
-            // Only ping, echo, browser_task are registered.
             
             ActionController ctl = makeControllerWithBuiltins();
-            
-            // Verify list_upload_files is NOT registered
-            assertFalse(ctl.listActions().contains("list_upload_files"));
-            
-            // Expected Python behavior:
-            // result = ctl.run_action("list_upload_files")
-            // assertFalse(result.get("ok"))
-            // assertTrue(result.get("error").contains("BROWSER_UPLOAD_ROOT"))
-            
-            assertTrue(true, "Java ActionController does not register list_upload_files - test documented for parity");
+            String previous = System.getProperty("BROWSER_UPLOAD_ROOT");
+            try {
+                System.clearProperty("BROWSER_UPLOAD_ROOT");
+                ActionController.ActionResult result = ctl.executeAction("list_upload_files", Map.of()).join();
+                assertFalse(result.isOk());
+                assertTrue(result.getError().contains("BROWSER_UPLOAD_ROOT"));
+                Map<String, Object> response = (Map<String, Object>) result.getData();
+                assertEquals(List.of(), response.get("files"));
+            } finally {
+                if (previous == null) {
+                    System.clearProperty("BROWSER_UPLOAD_ROOT");
+                } else {
+                    System.setProperty("BROWSER_UPLOAD_ROOT", previous);
+                }
+            }
         }
 
         @Test
-        @DisplayName("test list upload files returns error when dir missing - NOT REGISTERED")
+        @DisplayName("test list upload files returns error when dir missing")
         void testListUploadFilesReturnsErrorWhenDirMissing() {
             // Python: test_list_upload_files_returns_error_when_dir_missing
-            // NOTE: Java's ActionController does NOT register list_upload_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("list_upload_files"));
-            
-            assertTrue(true, "Java ActionController does not register list_upload_files - test documented for parity");
+            Path missing = Path.of("/tmp/does_not_exist_xyz_99");
+            String previous = System.getProperty("BROWSER_UPLOAD_ROOT");
+            try {
+                System.setProperty("BROWSER_UPLOAD_ROOT", missing.toString());
+                ActionController.ActionResult result = ctl.executeAction("list_upload_files", Map.of()).join();
+                assertFalse(result.isOk());
+                Map<String, Object> response = (Map<String, Object>) result.getData();
+                assertEquals(List.of(), response.get("files"));
+            } finally {
+                if (previous == null) {
+                    System.clearProperty("BROWSER_UPLOAD_ROOT");
+                } else {
+                    System.setProperty("BROWSER_UPLOAD_ROOT", previous);
+                }
+            }
         }
 
         @Test
-        @DisplayName("test list upload files returns file list when dir exists - NOT REGISTERED")
+        @DisplayName("test list upload files returns file list when dir exists")
         void testListUploadFilesReturnsFileListWhenDirExists(@TempDir Path tempDir) {
             // Python: test_list_upload_files_returns_file_list_when_dir_exists
-            // NOTE: Java's ActionController does NOT register list_upload_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("list_upload_files"));
             
             // Create test file
             Path reportXlsx = tempDir.resolve("report.xlsx");
@@ -218,60 +203,91 @@ class TestFileUploads {
                 fail("Failed to create test file");
             }
             
-            assertTrue(true, "Java ActionController does not register list_upload_files - test documented for parity");
+            String previous = System.getProperty("BROWSER_UPLOAD_ROOT");
+            try {
+                System.setProperty("BROWSER_UPLOAD_ROOT", tempDir.toString());
+                ActionController.ActionResult result = ctl.executeAction("list_upload_files", Map.of()).join();
+                assertTrue(result.isOk());
+                Map<String, Object> response = (Map<String, Object>) result.getData();
+                List<Map<String, Object>> files = (List<Map<String, Object>>) response.get("files");
+                assertTrue(files.stream().anyMatch(f -> "report.xlsx".equals(f.get("name"))));
+            } finally {
+                if (previous == null) {
+                    System.clearProperty("BROWSER_UPLOAD_ROOT");
+                } else {
+                    System.setProperty("BROWSER_UPLOAD_ROOT", previous);
+                }
+            }
         }
     }
 
     @Nested
-    @DisplayName("BrowserSetInputFiles Action Tests - NOT REGISTERED IN JAVA")
+    @DisplayName("BrowserSetInputFiles Action Tests")
     class BrowserSetInputFilesActionTests {
 
         @Test
-        @DisplayName("test set input files returns error when paths empty - NOT REGISTERED")
+        @DisplayName("test set input files returns error when paths empty")
         void testSetInputFilesReturnsErrorWhenPathsEmpty() {
             // Python: test_set_input_files_returns_error_when_paths_empty
-            // NOTE: Java's ActionController does NOT register browser_set_input_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("browser_set_input_files"));
-            
-            assertTrue(true, "Java ActionController does not register browser_set_input_files - test documented for parity");
+            ActionController.ActionResult result = ctl.executeAction("browser_set_input_files", Map.of("paths", List.of())).join();
+            assertFalse(result.isOk());
+            assertTrue(result.getError().toLowerCase().contains("paths"));
         }
 
         @Test
-        @DisplayName("test set input files uses code executor when bound - NOT REGISTERED")
+        @DisplayName("test set input files uses code executor when bound")
         void testSetInputFilesUsesCodeExecutorWhenBound() {
             // Python: test_set_input_files_uses_code_executor_when_bound
-            // NOTE: Java's ActionController does NOT register browser_set_input_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("browser_set_input_files"));
-            
-            assertTrue(true, "Java ActionController does not register browser_set_input_files - test documented for parity");
+            Function<String, Object> fakeExecutor = jsCode -> Map.of(
+                "ok", true,
+                "selector", "input[type=\"file\"]",
+                "paths", List.of("/tmp/x.pdf")
+            );
+            ctl.bindCodeExecutor(fakeExecutor);
+
+            ActionController.ActionResult result = ctl.executeAction(
+                "browser_set_input_files", Map.of("paths", List.of("/tmp/x.pdf"))
+            ).join();
+            assertTrue(result.isOk());
         }
 
         @Test
-        @DisplayName("test set input files defaults selector to file input - NOT REGISTERED")
+        @DisplayName("test set input files defaults selector to file input")
         void testSetInputFilesDefaultsSelectorToFileInput() {
             // Python: test_set_input_files_defaults_selector_to_file_input
-            // NOTE: Java's ActionController does NOT register browser_set_input_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("browser_set_input_files"));
-            
-            assertTrue(true, "Java ActionController does not register browser_set_input_files - test documented for parity");
+            List<String> captured = new java.util.ArrayList<>();
+            Function<String, Object> captureExecutor = jsCode -> {
+                captured.add(jsCode);
+                return Map.of(
+                    "ok", true,
+                    "selector", "input[type=\"file\"]",
+                    "paths", List.of("/tmp/f.txt")
+                );
+            };
+            ctl.bindCodeExecutor(captureExecutor);
+
+            ctl.executeAction("browser_set_input_files", Map.of("paths", List.of("/tmp/f.txt"))).join();
+            assertFalse(captured.isEmpty());
+            assertTrue(captured.get(0).contains("input[type=\"file\"]"));
         }
 
         @Test
-        @DisplayName("test set input files returns error when no executor and no runner - NOT REGISTERED")
+        @DisplayName("test set input files returns error when no executor and no runner")
         void testSetInputFilesReturnsErrorWhenNoExecutorAndNoRunner() {
             // Python: test_set_input_files_returns_error_when_no_executor_and_no_runner
-            // NOTE: Java's ActionController does NOT register browser_set_input_files action.
             
             ActionController ctl = makeControllerWithBuiltins();
-            assertFalse(ctl.listActions().contains("browser_set_input_files"));
-            
-            assertTrue(true, "Java ActionController does not register browser_set_input_files - test documented for parity");
+            ActionController.ActionResult result = ctl.executeAction(
+                "browser_set_input_files", Map.of("paths", List.of("/tmp/f.txt"))
+            ).join();
+            assertFalse(result.isOk());
+            assertTrue(result.getError().contains("runtime_not_bound") || result.getError().contains("bind_runtime"));
         }
     }
 
@@ -343,7 +359,8 @@ class TestFileUploads {
         @DisplayName("test browser_task action returns error when task is empty")
         void testBrowserTaskActionReturnsErrorWhenTaskIsEmpty() {
             ActionController ctl = makeControllerWithBuiltins();
-            ctl.bindRuntime(mock(Object.class)); // Bind mock runtime
+            Function<Map<String, Object>, Map<String, Object>> runner = args -> Map.of("ok", true);
+            ctl.bindRuntimeRunner(runner);
             
             CompletableFuture<ActionController.ActionResult> future = ctl.executeAction("browser_task", Map.of("task", ""));
             ActionController.ActionResult result = future.join();

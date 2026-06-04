@@ -45,7 +45,7 @@ public class SessionManager {
 
     public void registerCurrentSession(Session session) {
         bindSession(session);
-        if (isPersistentLeader()) {
+        if (isLeaderSessionOwner()) {
             recoveryManager.persistLeaderConfig(session);
         }
     }
@@ -53,7 +53,7 @@ public class SessionManager {
     public void resumeForNewSession(Session session) {
         List<RecoveryManager.RecoverableMember> recoverableMembers = recoveryManager.collectLiveTeammatesForSessionSwitch();
         registerCurrentSession(session);
-        if (!isPersistentLeader()) {
+        if (!isLeaderSessionOwner()) {
             return;
         }
         recoveryManager.restartForSessionSwitch(recoverableMembers, true);
@@ -62,7 +62,7 @@ public class SessionManager {
 
     public void recoverForExistingSession(Session session) {
         bindSession(session);
-        if (!isPersistentLeader()) {
+        if (!isLeaderSessionOwner()) {
             return;
         }
         recoveryManager.restoreLeaderConfig(session);
@@ -89,12 +89,11 @@ public class SessionManager {
         ));
     }
 
-    private boolean isPersistentLeader() {
-        if (specAccessor == null || specAccessor.getLifecycle() != TeamLifecycle.PERSISTENT) {
-            return false;
-        }
+    private boolean isLeaderSessionOwner() {
         TeamBackend backend = backendAccessor != null ? backendAccessor.getTeamBackend() : null;
-        return backend == null || backend.isLeader();
+        return specAccessor != null
+                && specAccessor.getLifecycle() != null
+                && (backend == null || backend.isLeader());
     }
 
     @FunctionalInterface

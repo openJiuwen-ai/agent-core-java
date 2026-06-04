@@ -4,123 +4,213 @@
 
 package com.openjiuwen.core.memory.graph.graph_memory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Episode;
-import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.core.foundation.store.graph.GraphStore;
+import com.openjiuwen.core.foundation.store.graph.Relation;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
 /**
  * Validation and processing of graph entities, episodes, and relations.
- * <p>
- * Mirrors Python's {@code postprocess_graph_objects.py} module from
- * <code>openjiuwen/core/memory/graph/graph_memory/postprocess_graph_objects.py</code>.
+ *
+ * <p>Mirrors Python's {@code postprocess_graph_objects.py} module from
+ * {@code openjiuwen.core.memory.graph.graph_memory.postprocess_graph_objects}.</p>
  */
-public class PostprocessGraphObjects {
+public final class PostprocessGraphObjects {
 
     private static final Logger LOGGER = Logger.getLogger(PostprocessGraphObjects.class.getName());
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * Validate entity-episode connections are in sync.
-     *
-     * @param entities list of entities
-     * @param currentEpisode current episode
-     * @param state graph memory state
-     */
-    public static void validateEntitiesEpisodes(
-            List<Entity> entities,
-            Episode currentEpisode,
-            GraphMemState state) {
+    private PostprocessGraphObjects() {
+    }
 
-        // Update episode entities
-        List<String> episodeEntities = currentEpisode.getEntities();
-        for (Entity e : entities) {
-            if (!episodeEntities.contains(e.getUuid())) {
-                episodeEntities.add(e.getUuid());
+    public static void validateEntitiesEpisodes(List<Entity> entities,
+                                                Episode currentEpisode,
+                                                GraphMemoryStates.GraphMemState state) {
+        Set<String> episodeEntities = new LinkedHashSet<>(currentEpisode.getEntities());
+        for (Entity entity : entities) {
+            episodeEntities.add(entity.getUuid());
+        }
+        currentEpisode.setEntities(new ArrayList<>(episodeEntities));
+
+        state.getMemUpdateSkipEmbed().getUpdatedEntity()
+                .removeIf(entity -> state.getMemUpdate().getUpdatedEntity().contains(entity));
+
+        for (Map.Entry<String, GraphMemoryStates.EntityMerge> entry : state.getMergeInfos().entrySet()) {
+            String targetUuid = entry.getKey();
+            GraphMemoryStates.EntityMerge mergeInfo = entry.getValue();
+            for (Map.Entry<String, Entity> sourceEntry : mergeInfo.getSource().entrySet()) {
+                String sourceUuid = sourceEntry.getKey();
+                Entity source = sourceEntry.getValue();
+                for (String episodeUuid : source.getEpisodes()) {
+                    Episode episode = state.getLookupTables().getEpisodes().get(episodeUuid);
+                    if (episode == null) {
+                        continue;
+                    }
+                    boolean updated = episode.getEntities().remove(sourceUuid);
+                    if (updated) {
+                        episode.getEntities().add(targetUuid);
+                        if (!state.getMemUpdateSkipEmbed().getUpdatedEpisode().contains(episode)) {
+                            state.getMemUpdateSkipEmbed().getUpdatedEpisode().add(episode);
+                        }
+                    }
+                }
             }
         }
 
-        LOGGER.info("Validated " + entities.size() + " entities with episode");
+        List<Episode> episodesToSync = new ArrayList<>(state.getMemUpdateSkipEmbed().getUpdatedEpisode());
+        episodesToSync.add(currentEpisode);
+        List<Entity> entitiesToSync = new ArrayList<>(state.getMemUpdate().getUpdatedEntity());
+        entitiesToSync.addAll(state.getMemUpdateSkipEmbed().getUpdatedEntity());
+
+        for (Episode episode : episodesToSync) {
+            for (Entity entity : entitiesToSync) {
+                boolean ep2e = episode.getEntities().contains(entity.getUuid());
+                boolean e2ep = entity.getEpisodes().contains(episode.getUuid());
+                if (ep2e && !e2ep) {
+                    episode.getEntities().remove(entity.getUuid());
+                } else if (e2ep && !ep2e) {
+                    episode.getEntities().add(entity.getUuid());
+                }
+            }
+            episode.setEntities(new ArrayList<>(new LinkedHashSet<>(episode.getEntities())));
+        }
     }
 
-    /**
-     * Create a new episode from entities and relations.
-     *
-     * @param entities list of entities
-     * @param relations list of relations
-     * @param state graph memory state
-     * @return created episode
-     */
-    public static Episode createEpisode(
-            List<Entity> entities,
-            List<Relation> relations,
-            GraphMemState state) {
+    public static Episode createEpisode(GraphStore database,
+                                        String userId,
+                                        String content,
+                                        GraphMemoryStates.GraphMemState state) {
+        Episode currentEpisode = new Episode();
+        currentEpisode.setCreatedAt(state.getCurrentTimestamp());
+        currentEpisode.setValidSince(state.getReferenceTimestamp());
+        currentEpisode.setUserId(userId);
+        currentEpisode.setEpisodeType(state.getEpisodeType().name());
+        currentEpisode.setLanguage(state.getPrompting().getLanguage());
+        currentEpisode.setContent(content);
 
-        // TODO: Implement episode creation logic
-        LOGGER.info("Creating episode from " + entities.size() + " entities");
-        return null;
+        state.getMemUpdate().getAddedEpisode().add(currentEpisode);
+        return currentEpisode;
     }
 
-    /**
-     * Process and validate relations.
-     *
-     * @param relations list of relations
-     * @param entities list of entities
-     * @param state graph memory state
-     */
-    public static void processRelations(
-            List<Relation> relations,
-            List<Entity> entities,
-            GraphMemState state) {
-
-        // TODO: Implement relation processing logic
-        LOGGER.info("Processing " + relations.size() + " relations");
+    public static void processRelations(GraphStore database,
+                                        List<Entity> entities,
+                                        List<Relation> relations,
+                                        GraphMemoryStates.GraphMemState state) {
+        state.getTmpBuffer().clear();
+        for (String relationUuid : state.getMemUpdate().getRemovedRelation()) {
+            for (Entity entity : concatEntities(entities, state.getMemUpdateSkipEmbed().getUpdatedEntity())) {
+                entity.getRelations().remove(relationUuid);
+            }
+        }
+        for (Relation relation : relations) {
+            Entity lhs = findEntity(entities, relation.getLhs());
+            Entity rhs = findEntity(entities, relation.getRhs());
+            relation.updateConnectedEntities(lhs, rhs);
+            state.getMemUpdate().getAddedRelation().add(relation);
+            state.getTmpBuffer().add(relation.getUuid());
+        }
     }
 
-    /**
-     * Process and validate entities.
-     *
-     * @param entities list of entities
-     * @param state graph memory state
-     * @return processed entities
-     */
-    public static List<Entity> processEntities(
-            List<Entity> entities,
-            GraphMemState state) {
+    public static List<Entity> processEntities(GraphStore database,
+                                               List<Entity> entities,
+                                               Episode currentEpisode,
+                                               GraphMemoryStates.GraphMemState state) {
+        state.getTmpBuffer().clear();
 
-        // TODO: Implement entity processing logic
-        LOGGER.info("Processing " + entities.size() + " entities");
+        for (CompletableFuture<GraphMemory.LlmResponse> future : new ArrayList<>(state.getMergingTasks())) {
+            GraphMemory.LlmResponse response = future.join();
+            Entity entity = state.getMergingTasksEntities().get(future);
+            if (entity != null) {
+                entity.setContent(response.content());
+                if (!entities.contains(entity)) {
+                    entities.add(entity);
+                }
+            }
+        }
+
+        for (Entity entity : entities) {
+            if (entity.getContent() != null && entity.getContent().startsWith("\n")) {
+                entity.setContent(entity.getContent().substring(1));
+            }
+            state.getToRemove().clear();
+            for (String relationUuid : entity.getRelations()) {
+                if (state.getMemUpdate().getRemovedRelation().contains(relationUuid)) {
+                    state.getToRemove().add(relationUuid);
+                }
+            }
+            for (Object relationUuid : state.getToRemove()) {
+                entity.getRelations().remove(String.valueOf(relationUuid));
+            }
+            if (!entity.getEpisodes().contains(currentEpisode.getUuid())) {
+                entity.getEpisodes().add(currentEpisode.getUuid());
+            }
+            entity.setLanguage(state.getPrompting().getLanguage());
+            if (state.getRetrievedEntities().containsKey(entity.getUuid())) {
+                state.getMemUpdate().getUpdatedEntity().add(entity);
+            } else {
+                state.getMemUpdate().getAddedEntity().add(entity);
+                state.getTmpBuffer().add(entity.getUuid());
+            }
+        }
         return entities;
     }
 
-    /**
-     * Parse UUIDs to remove from relations.
-     *
-     * @param response LLM response
-     * @return list of UUIDs to remove
-     */
-    public static List<String> parseRelationUuidsToRemove(Map<String, Object> response) {
-        // TODO: Implement UUID parsing
-        return new ArrayList<>();
+    public static void parseRelationUuidsToRemove(List<RelationDedupeTask> dedupeRelationTasks,
+                                                  GraphMemoryStates.GraphMemState state) {
+        for (RelationDedupeTask task : dedupeRelationTasks) {
+            try {
+                GraphMemory.LlmResponse result = task.future().join();
+                Map<String, Object> response = MAPPER.readValue(result.content(), new TypeReference<>() {});
+                state.getToRemove().addAll(ParseLlmResponse.parseRelationMerging(
+                        response, task.relation(), task.currentRelations().stream().map(PostprocessGraphObjects::relationMap).toList()));
+            } catch (Exception e) {
+                LOGGER.info("Graph Memory: Failed to parse relation uuids to remove: " + e.getMessage());
+            }
+        }
     }
-}
 
-/**
- * Graph memory state holder.
- * TODO: Move to separate file if needed.
- */
-class GraphMemState {
-    private Map<String, Entity> updatedEntity;
-    private Map<String, Episode> updatedEpisode;
-    private Map<String, Relation> updatedRelation;
+    public static List<String> parseRelationUuidsToRemove(Map<String, Object> response) {
+        List<String> result = new ArrayList<>();
+        Object ids = response == null ? null : response.get("duplicate_ids");
+        if (ids instanceof Iterable<?> iterable) {
+            for (Object id : iterable) {
+                result.add(String.valueOf(id));
+            }
+        }
+        return result;
+    }
 
-    public GraphMemState() {
-        this.updatedEntity = new java.util.HashMap<>();
-        this.updatedEpisode = new java.util.HashMap<>();
-        this.updatedRelation = new java.util.HashMap<>();
+    private static Map<String, Object> relationMap(Relation relation) {
+        return Map.of("uuid", relation.getUuid());
+    }
+
+    private static List<Entity> concatEntities(List<Entity> first, List<Entity> second) {
+        List<Entity> result = new ArrayList<>(first);
+        result.addAll(second);
+        return result;
+    }
+
+    private static Entity findEntity(List<Entity> entities, String uuid) {
+        for (Entity entity : entities) {
+            if (entity.getUuid().equals(uuid)) {
+                return entity;
+            }
+        }
+        return null;
+    }
+
+    public record RelationDedupeTask(Relation relation,
+                                     List<Relation> currentRelations,
+                                     CompletableFuture<GraphMemory.LlmResponse> future) {
     }
 }

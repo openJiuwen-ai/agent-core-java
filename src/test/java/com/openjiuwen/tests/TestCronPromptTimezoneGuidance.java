@@ -4,15 +4,20 @@
 
 package com.openjiuwen.tests;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.harness.prompts.tools.BuiltinToolProviders;
+import com.openjiuwen.harness.prompts.tools.ToolDescriptionRegistry;
+import com.openjiuwen.harness.tools.CronTool;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Cron prompt timezone guidance tests.
@@ -20,70 +25,138 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Mirrors Python's {@code test_cron_prompt_timezone_guidance.py} in
  * {@code tests/test_cron_prompt_timezone_guidance.py}.
  */
-public class TestCronPromptTimezoneGuidance {
+class TestCronPromptTimezoneGuidance {
 
-    @Nested
-    @DisplayName("Timezone guidance tests")
-    class TimezoneTests {
+    @BeforeAll
+    static void registerProviders() {
+        BuiltinToolProviders.registerAll();
+    }
 
-        @Test
-        @DisplayName("Test timezone parsing")
-        void testTimezoneParsing() {
-            ZoneId zone = ZoneId.of("Asia/Shanghai");
-            ZonedDateTime now = ZonedDateTime.now(zone);
-            
-            assertThat(zone).isNotNull();
-            assertThat(now).isNotNull();
+    @Test
+    void testCronToolDescriptionWarnsAgainstRewritingToUtc() {
+        String description = ToolDescriptionRegistry.getToolDescription("cron", "cn");
+
+        assertTrue(description.contains("schedule.at"));
+        assertTrue(description.contains("不要改写成 Z 或 UTC"));
+        assertTrue(description.contains("sessionTarget=current"));
+        assertFalse(description.contains("OpenClaw"));
+        assertFalse(description.toLowerCase().contains("openclaw"));
+    }
+
+    @Test
+    void testCronPromptMetadataHasNoOpenclawWording() {
+        StringBuilder allText = new StringBuilder();
+        String[] cronNames = {"cron", "cron_list_jobs", "cron_get_job", "cron_create_job",
+                "cron_update_job", "cron_delete_job", "cron_toggle_job", "cron_preview_job"};
+        for (String name : cronNames) {
+            allText.append('\n').append(ToolDescriptionRegistry.getToolDescription(name, "cn"));
+            allText.append('\n').append(ToolDescriptionRegistry.getToolDescription(name, "en"));
+            allText.append('\n').append(ToolDescriptionRegistry.getToolInputParams(name, "cn"));
+            allText.append('\n').append(ToolDescriptionRegistry.getToolInputParams(name, "en"));
         }
 
-        @Test
-        @DisplayName("Test timezone format")
-        void testTimezoneFormat() {
-            ZoneId zone = ZoneId.of("UTC");
-            ZonedDateTime time = ZonedDateTime.of(2026, 5, 16, 10, 30, 0, 0, zone);
-            
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
-            String formatted = time.format(formatter);
-            
-            assertThat(formatted).contains("2026-05-16");
-            assertThat(formatted).contains("UTC");
+        assertFalse(allText.toString().contains("OpenClaw"));
+        assertFalse(allText.toString().toLowerCase().contains("openclaw"));
+    }
+
+    @Test
+    void testBuildToolCardExposesTimezoneGuidance() {
+        Map<String, Object> card = ToolDescriptionRegistry.buildToolCard("cron", "cron_test", "cn", null);
+
+        assertEquals("cron", card.get("name"));
+        assertTrue(((String) card.get("description")).contains("schedule.at"));
+        assertTrue(((String) card.get("description")).contains("sessionTarget=current"));
+        assertNotNull(card.get("input_params"));
+    }
+
+    @Test
+    void testCreateCronToolsSupportsUnifiedEntryOnly() {
+        List<Tool> tools = CronTool.createCronTools(
+                new DummyCronBackend(),
+                new CronTool.CronToolContext("web", "sess-1"),
+                "cn",
+                null,
+                null,
+                false,
+                null);
+
+        assertEquals(List.of("cron"), tools.stream().map(tool -> tool.getCard().getName()).toList());
+        assertTrue(tools.get(0).getCard().getId().contains("web_sess-1"));
+    }
+
+    @Test
+    void testCreateCronToolsCanKeepLegacyCompatEntries() {
+        List<Tool> tools = CronTool.createCronTools(
+                new DummyCronBackend(),
+                new CronTool.CronToolContext("web", "sess-1"),
+                "cn",
+                null,
+                null,
+                true,
+                null);
+
+        List<String> names = tools.stream().map(tool -> tool.getCard().getName()).toList();
+        assertTrue(names.contains("cron"));
+        assertTrue(names.contains("cron_list_jobs"));
+        assertTrue(names.contains("cron_create_job"));
+        assertTrue(names.contains("cron_preview_job"));
+    }
+
+    static class DummyCronBackend implements CronTool.CronToolBackend {
+        @Override
+        public List<Map<String, Object>> listJobs(boolean includeDisabled) {
+            return List.of();
         }
 
-        @Test
-        @DisplayName("Test cron expression parsing")
-        void testCronExpression() {
-            // Test cron expression parsing
-            String cronExpression = "0 30 10 * * ?";
-            
-            assertThat(cronExpression).isNotNull();
-            assertThat(cronExpression).isNotEmpty();
-            
-            // Parse cron parts
-            String[] parts = cronExpression.split(" ");
-            assertThat(parts).hasSize(6);
-            assertThat(parts[0]).isEqualTo("0");  // seconds
-            assertThat(parts[1]).isEqualTo("30"); // minutes
-            assertThat(parts[2]).isEqualTo("10"); // hours
+        @Override
+        public Map<String, Object> getJob(String jobId) {
+            return null;
         }
 
-        @Test
-        @DisplayName("Test timezone guidance generation")
-        void testTimezoneGuidanceGeneration() {
-            // Test timezone guidance generation
-            ZoneId zone = ZoneId.of("Asia/Shanghai");
-            ZonedDateTime now = ZonedDateTime.now(zone);
-            
-            String guidance = generateTimezoneGuidance(zone, now);
-            
-            assertThat(guidance).isNotNull();
-            assertThat(guidance).contains("Asia/Shanghai");
+        @Override
+        public Map<String, Object> createJob(Map<String, Object> params, CronTool.CronToolContext context) {
+            return Map.of("params", params, "context", context);
         }
-        
-        private String generateTimezoneGuidance(ZoneId zone, ZonedDateTime time) {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
-            return String.format("当前时区: %s, 当前时间: %s", 
-                zone.getId(), 
-                time.format(formatter));
+
+        @Override
+        public Map<String, Object> updateJob(String jobId, Map<String, Object> patch,
+                                             CronTool.CronToolContext context) {
+            return Map.of("job_id", jobId, "patch", patch, "context", context);
+        }
+
+        @Override
+        public boolean deleteJob(String jobId) {
+            return true;
+        }
+
+        @Override
+        public Map<String, Object> toggleJob(String jobId, boolean enabled) {
+            return Map.of("job_id", jobId, "enabled", enabled);
+        }
+
+        @Override
+        public List<Map<String, Object>> previewJob(String jobId, int count) {
+            return List.of();
+        }
+
+        @Override
+        public String runNow(String jobId) {
+            return "run-1";
+        }
+
+        @Override
+        public Map<String, Object> status() {
+            return Map.of("ok", true);
+        }
+
+        @Override
+        public List<Map<String, Object>> getRuns(String jobId, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public Map<String, Object> wake(String text, CronTool.CronToolContext context, String mode) {
+            return Map.of("text", text, "context", context, "mode", mode);
         }
     }
 }

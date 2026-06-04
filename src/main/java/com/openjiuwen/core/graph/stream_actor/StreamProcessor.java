@@ -76,6 +76,8 @@ public class StreamProcessor {
             if (isEndMessage(message)) {
                 String sourceId = getProducerId(message);
                 handleMap.add(sourceKey);
+                List<BlockingQueue<Object>> allQueues = new ArrayList<>();
+                boolean isAllFinish = handleMap.equals(sources);
                 for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
                     String path = SessionUtils.extractOriginKey(entry.getKey());
                     boolean isHandled = false;
@@ -83,11 +85,16 @@ public class StreamProcessor {
                     if (paths != null) {
                         isHandled = paths.contains(path);
                     }
-                    boolean isAllFinish = handleMap.equals(sources);
+                    allQueues.addAll(entry.getValue());
                     if ((isHandled || isAllFinish) && isValueFromSource(path, sourceId)) {
                         for (BlockingQueue<Object> q : entry.getValue()) {
                             q.offer(END_SENTINEL);
                         }
+                    }
+                }
+                if (isAllFinish) {
+                    for (BlockingQueue<Object> q : allQueues) {
+                        q.offer(END_SENTINEL);
                     }
                 }
             } else {

@@ -1,208 +1,218 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.unit_tests.extensions.runner.pulsar_mq;
 
+import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.application.schema.WorkflowSchema;
+import com.openjiuwen.core.application.workflow.WorkflowAgent;
+import com.openjiuwen.core.common.constants.ControllerType;
+import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
+import com.openjiuwen.core.runner.DistributedConfig;
+import com.openjiuwen.core.runner.MessageQueueConfig;
+import com.openjiuwen.core.runner.MessageQueueType;
+import com.openjiuwen.core.runner.PulsarConfig;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.*;
+import com.openjiuwen.core.runner.RunnerConfig;
+import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.singleagent.legacy.LegacyApi;
+import com.openjiuwen.core.singleagent.legacy.LegacyReActAgent;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for PulsarAgentAdapter.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/extensions/runner/pulsar_mq/test_pulsar_agent_adapter.py}.
- * <p>
- * Note: These tests require real Pulsar setup and LLM configuration.
- * Tests are skipped when Pulsar is not available.
  */
+@Tag("integration-test")
 @Disabled("Requires real uv sync --extra pulsar and llm")
-public class TestPulsarAgentAdapter {
+class TestPulsarAgentAdapter {
 
     private static final String API_BASE = System.getenv("API_BASE");
     private static final String API_KEY = System.getenv("API_KEY");
     private static final String MODEL_NAME = System.getenv("MODEL_NAME");
-    private static final String MODEL_PROVIDER = System.getenv("MODEL_PROVIDER") != null ? System.getenv("MODEL_PROVIDER") : "openai";
+    private static final String MODEL_PROVIDER = System.getenv().getOrDefault("MODEL_PROVIDER", "openai");
 
-    @BeforeEach
+    private String workflowResourceId;
+
+    @org.junit.jupiter.api.BeforeEach
     void setUp() {
         System.setProperty("LLM_SSL_VERIFY", "false");
         System.setProperty("RESTFUL_SSL_VERIFY", "false");
-
-        // Configure Pulsar MQ
-        PulsarConfig pulsarConfig = PulsarConfig.builder()
-            .maxWorkers(8)
-            .url("pulsar://localhost:6650")
-            .build();
-
-        MessageQueueConfig mqConfig = MessageQueueConfig.builder()
-            .type("pulsar")
-            .pulsarConfig(pulsarConfig)
-            .build();
-
-        DistributedConfig distributedConfig = DistributedConfig.builder()
-            .requestTimeout(15.0)
-            .messageQueueConfig(mqConfig)
-            .build();
-
-        RunnerConfig pulsarMq = RunnerConfig.builder()
-            .distributedMode(true)
-            .distributedConfig(distributedConfig)
-            .build();
-
-        Runner.setConfig(pulsarMq);
+        Runner.setConfig(RunnerConfig.builder()
+                .distributedMode(true)
+                .distributedConfig(DistributedConfig.builder()
+                        .requestTimeout(15.0)
+                        .messageQueueConfig(MessageQueueConfig.builder()
+                                .type(MessageQueueType.PULSAR.getValue())
+                                .pulsarConfig(PulsarConfig.builder()
+                                        .maxWorkers(8)
+                                        .url("pulsar://localhost:6650")
+                                        .build())
+                                .build())
+                        .build())
+                .build());
     }
 
     @AfterEach
     void tearDown() {
-        // Reset Runner configuration
+        Runner.stop();
         Runner.setConfig(RunnerConfig.DEFAULT);
     }
 
-    // ---------------------------------------------------------------------------
-    // Agent Lifecycle Tests
-    // ---------------------------------------------------------------------------
+    private LegacyReActAgent createAndRegisterAgent(String agentId) {
+        LegacyReActAgentConfig reactAgentConfig = LegacyApi.createReActAgentConfig(
+                agentId,
+                "0.0.1",
+                "AI助手",
+                createModel(),
+                List.of()
+        );
+        LegacyReActAgent reactAgent = new LegacyReActAgent(reactAgentConfig);
+        Runner.resourceMgr().addAgent(AgentCard.builder().id(agentId).build(), () -> reactAgent, null);
+        return reactAgent;
+    }
 
-    @Test
-    @DisplayName("Test agent creation and registration")
-    @Tag("level0")
-    void testAgentCreationAndRegistration() {
-        String agentId = "test_agent_001";
-        String agentVersion = "0.0.1";
+    private static ModelConfig createModel() {
+        return new ModelConfig(
+                MODEL_PROVIDER,
+                BaseModelInfo.builder()
+                        .modelName(MODEL_NAME)
+                        .apiBase(API_BASE)
+                        .apiKey(API_KEY)
+                        .temperature(0.7)
+                        .topP(0.9)
+                        .timeout(30)
+                        .build()
+        );
+    }
 
-        // Placeholder for agent creation test
-        // In real test:
-        // 1. Create ReactAgent configuration
-        // 2. Register agent with adapter
-        // 3. Verify registration successful
-
-        assertThat(agentId).startsWith("test_agent");
-        assertThat(agentVersion).isEqualTo("0.0.1");
+    private Workflow buildWorkflow(String name, String workflowId, String version) {
+        WorkflowCard workflowCard = WorkflowCard.builder()
+                .id(workflowId)
+                .version(version)
+                .name(name)
+                .build();
+        Workflow flow = new Workflow(workflowCard);
+        flow.setStartComp("start", new MockNodes.MockStartNode("start"), Map.of("query", "${query}"));
+        flow.addWorkflowComp("node_a", new MockNodes.Node1("node_a"), Map.of("output", "${start.query}"));
+        flow.setEndComp("end", new MockNodes.MockEndNode("end"), Map.of("result", "${node_a.output}"));
+        flow.addConnection("start", "node_a");
+        flow.addConnection("node_a", "end");
+        return flow;
     }
 
     @Test
-    @DisplayName("Test agent invocation via adapter")
-    @Tag("level0")
-    void testAgentInvocationViaAdapter() {
-        Map<String, Object> inputs = new LinkedHashMap<>();
-        inputs.put("query", "What is the weather today?");
-
-        // Placeholder for invocation test
-        // In real test:
-        // 1. Create and register agent
-        // 2. Invoke via adapter
-        // 3. Verify response received
-
-        assertThat(inputs.containsKey("query")).isTrue();
+    @DisplayName("adapter invoke returns output from real remote agent")
+    void testAdapterInvoke() throws Exception {
+        Runner.start();
+        try {
+            createAndRegisterAgent("weather-single_agent");
+            RemoteAgent client = new RemoteAgent("weather-single_agent");
+            Object result = client.invoke(Map.of("query", "你好"));
+            assertTrue(result instanceof Map);
+            assertNotNull(((Map<?, ?>) result).get("output"));
+        } finally {
+            Runner.stop();
+        }
     }
 
     @Test
-    @DisplayName("Test agent streaming via adapter")
-    @Tag("level0")
-    void testAgentStreamingViaAdapter() {
-        // Placeholder for streaming test
-        // In real test:
-        // 1. Create and register agent
-        // 2. Stream via adapter
-        // 3. Verify chunks received
-
-        List<String> expectedChunks = Arrays.asList("chunk_0", "chunk_1", "chunk_2");
-        assertThat(expectedChunks).hasSize(3);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Workflow Agent Tests
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @DisplayName("Test workflow agent registration")
-    @Tag("level0")
-    void testWorkflowAgentRegistration() {
-        String workflowId = "test_workflow_001";
-
-        // Placeholder for workflow agent test
-        // In real test:
-        // 1. Create workflow configuration
-        // 2. Register workflow agent
-        // 3. Verify workflow execution
-
-        assertThat(workflowId).startsWith("test_workflow");
+    @DisplayName("adapter stream yields output and trace chunks")
+    void testAdapterStream() throws Exception {
+        Runner.start();
+        try {
+            createAndRegisterAgent("weather-single_agent-stream");
+            RemoteAgent client = new RemoteAgent("weather-single_agent-stream");
+            List<Object> chunks = new ArrayList<>();
+            Iterator<Object> iterator = client.stream(Map.of("query", "你好"));
+            while (iterator.hasNext()) {
+                Object chunk = iterator.next();
+                chunks.add(chunk);
+                assertTrue(chunk instanceof OutputSchema || chunk instanceof TraceSchema,
+                        "Chunk must be OutputSchema or TraceSchema, got " + chunk.getClass());
+            }
+            assertFalse(chunks.isEmpty());
+        } finally {
+            Runner.stop();
+        }
     }
 
     @Test
-    @DisplayName("Test workflow execution via adapter")
-    @Tag("level0")
-    void testWorkflowExecutionViaAdapter() {
-        List<String> workflowSteps = Arrays.asList("start", "process", "end");
+    @DisplayName("workflow agent invoke with adapter returns completed answer")
+    void testReactAgentInvokeWithAdapter() {
+        try {
+            Runner.start();
+            String workflowId = "test_workflow";
+            workflowResourceId = workflowId + "_1";
+            String name = "test_workflow";
+            String version = "1";
+            Workflow workflow = buildWorkflow(name, workflowId, version);
 
-        assertThat(workflowSteps).hasSize(3);
-    }
+            WorkflowSchema workflowSchema = WorkflowSchema.builder()
+                    .id(workflowId)
+                    .version(version)
+                    .name(name)
+                    .description("test_workflow")
+                    .inputParams(Map.of("query", Map.of("type", "string")))
+                    .build();
+            WorkflowAgentConfig workflowConfig = WorkflowAgentConfig.builder()
+                    .workflows(List.of(workflowSchema))
+                    .controllerType(ControllerType.WORKFLOW_CONTROLLER)
+                    .build();
 
-    // ---------------------------------------------------------------------------
-    // Agent Card Tests
-    // ---------------------------------------------------------------------------
+            WorkflowAgent agent = new WorkflowAgent(workflowConfig);
+            agent.addWorkflows(List.of(workflow));
+            Runner.resourceMgr().addWorkflow(
+                    WorkflowCard.builder().id(workflowResourceId).name(name).build(),
+                    () -> workflow,
+                    null
+            );
+            Runner.resourceMgr().addAgent(AgentCard.builder().id("workflow-single_agent").build(), () -> agent, null);
 
-    @Test
-    @DisplayName("Test agent card configuration")
-    @Tag("level0")
-    void testAgentCardConfiguration() {
-        // Placeholder for AgentCard test
-        // In real test:
-        // 1. Create AgentCard
-        // 2. Verify all fields set correctly
+            RemoteAgent client = new RemoteAgent("workflow-single_agent");
+            Runner.resourceMgr().addAgent(
+                    AgentCard.builder().id("remote-workflow-single_agent").build(),
+                    () -> client,
+                    null
+            );
 
-        String agentId = "weather_agent";
-        String description = "Weather forecast agent";
-        List<String> tools = Arrays.asList("get_weather", "get_temperature");
+            Object response = Runner.runAgent("remote-workflow-single_agent", Map.of("query", "London"), null, null);
+            assertTrue(response instanceof Map);
+            Map<?, ?> resultMap = (Map<?, ?>) response;
+            assertEquals("answer", resultMap.get("result_type"));
 
-        assertThat(agentId).isEqualTo("weather_agent");
-        assertThat(description).contains("Weather");
-        assertThat(tools).hasSize(2);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Distributed Mode Tests
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @DisplayName("Test distributed mode configuration")
-    @Tag("level0")
-    void testDistributedModeConfiguration() {
-        // Verify distributed configuration
-        boolean distributedMode = true;
-        double requestTimeout = 15.0;
-        int maxWorkers = 8;
-
-        assertThat(distributedMode).isTrue();
-        assertThat(requestTimeout).isEqualTo(15.0);
-        assertThat(maxWorkers).isEqualTo(8);
-    }
-
-    @Test
-    @DisplayName("Test Pulsar connection configuration")
-    @Tag("level0")
-    void testPulsarConnectionConfiguration() {
-        String pulsarUrl = "pulsar://localhost:6650";
-
-        assertThat(pulsarUrl).contains("localhost");
-        assertThat(pulsarUrl).contains("6650");
-    }
-
-    // ---------------------------------------------------------------------------
-    // Helper Methods
-    // ---------------------------------------------------------------------------
-
-    private AgentCard createAgentCard(String agentId) {
-        return AgentCard.builder()
-            .id(agentId)
-            .description("Test agent")
-            .build();
+            Object output = resultMap.get("output");
+            assertNotNull(output);
+            assertTrue(String.valueOf(output).contains("London"));
+            assertTrue(String.valueOf(output).contains("COMPLETED"));
+        } finally {
+            Runner.resourceMgr().removeAgent("remote-workflow-single_agent", null, null, true);
+            Runner.resourceMgr().removeAgent("workflow-single_agent", null, null, true);
+            if (workflowResourceId != null) {
+                Runner.resourceMgr().removeWorkflow(workflowResourceId, null, null, true);
+            }
+            Runner.stop();
+        }
     }
 }

@@ -16,6 +16,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -250,6 +251,44 @@ class RestfulApiTest {
             }
         }
 
+        @Test
+        @DisplayName("Invoke PUT sends JSON body and replaces path parameters")
+        void testInvokePutWithBodyAndPathParams() throws Exception {
+            AtomicReference<String> requestMethod = new AtomicReference<>();
+            AtomicReference<String> requestPath = new AtomicReference<>();
+            AtomicReference<String> requestBody = new AtomicReference<>();
+            HttpServer server = createServer(exchange -> {
+                requestMethod.set(exchange.getRequestMethod());
+                requestPath.set(exchange.getRequestURI().getPath());
+                requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                writeJson(exchange, 200, "{\"updated\":true}");
+            });
+            try {
+                RestfulApi api = new RestfulApi(RestfulApiCard.builder()
+                        .name("update_activity")
+                        .description("update activity")
+                        .url("http://127.0.0.1:" + server.getAddress().getPort() + "/Activities/{id}")
+                        .method("PUT")
+                        .inputParams(Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "id", Map.of("type", "integer", "location", "path"),
+                                        "name", Map.of("type", "string", "location", "body"))))
+                        .timeout(5.0)
+                        .build());
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> result = (Map<String, Object>) api.invoke(Map.of("id", 7, "name", "demo"));
+
+                assertEquals("PUT", requestMethod.get());
+                assertEquals("/Activities/7", requestPath.get());
+                assertTrue(requestBody.get().contains("\"name\":\"demo\""));
+                assertEquals(200, result.get("code"));
+            } finally {
+                server.stop(0);
+            }
+        }
+
         private HttpServer createServer(com.sun.net.httpserver.HttpHandler handler) throws IOException {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", handler);
@@ -280,6 +319,117 @@ class RestfulApiTest {
                 result.put(key, value);
             }
             return result;
+        }
+    }
+
+    @Nested
+    @DisplayName("RestfulApi path parameter validation tests")
+    class RestfulApiPathParameterValidationTests {
+
+        @Test
+        @DisplayName("URL with path param but no inputParams raises error")
+        void testUrlWithPathParamButNoSchemaRaisesError() {
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .name("test")
+                    .description("test")
+                    .url("http://example.com/api/v1/Activities/{id}")
+                    .method("GET")
+                    .build();
+
+            Throwable error = assertThrows(Throwable.class, () -> new RestfulApi(card));
+            assertTrue(error.getMessage().toLowerCase().contains("path"));
+            assertTrue(error.getMessage().toLowerCase().contains("input_params")
+                    || error.getMessage().toLowerCase().contains("input"));
+        }
+
+        @Test
+        @DisplayName("URL path param must be marked location=path")
+        void testUrlWithPathParamButNotMarkedInSchemaRaisesError() {
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .name("test")
+                    .description("test")
+                    .url("http://example.com/api/v1/Activities/{id}")
+                    .method("GET")
+                    .inputParams(Map.of(
+                            "type", "object",
+                            "properties", Map.of("id", Map.of("type", "integer"))))
+                    .build();
+
+            Throwable error = assertThrows(Throwable.class, () -> new RestfulApi(card));
+            assertTrue(error.getMessage().toLowerCase().contains("location")
+                    || error.getMessage().toLowerCase().contains("path"));
+        }
+
+        @Test
+        @DisplayName("URL with multiple path params requires all definitions")
+        void testUrlWithMultiplePathParamsAllMustBeDefined() {
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .name("test")
+                    .description("test")
+                    .url("http://example.com/api/{version}/users/{userId}")
+                    .method("GET")
+                    .inputParams(Map.of(
+                            "type", "object",
+                            "properties", Map.of("version", Map.of("type", "string", "location", "path"))))
+                    .build();
+
+            Throwable error = assertThrows(Throwable.class, () -> new RestfulApi(card));
+            assertTrue(error.getMessage().contains("userId") || error.getMessage().toLowerCase().contains("path"));
+        }
+
+        @Test
+        @DisplayName("URL with correct path param schema succeeds")
+        void testUrlWithCorrectPathParamSchemaSucceeds() {
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .name("test")
+                    .description("test")
+                    .url("http://example.com/api/v1/Activities/{id}")
+                    .method("GET")
+                    .inputParams(Map.of(
+                            "type", "object",
+                            "properties", Map.of("id", Map.of(
+                                    "type", "integer",
+                                    "description", "Activity ID",
+                                    "location", "path")),
+                            "required", List.of("id")))
+                    .build();
+
+            assertDoesNotThrow(() -> new RestfulApi(card));
+        }
+
+        @Test
+        @DisplayName("getParametersByLocation groups GUI metadata")
+        void testGetParametersByLocationHelper() {
+            RestfulApiCard card = RestfulApiCard.builder()
+                    .name("update_activity")
+                    .description("update")
+                    .url("http://example.com/api/v1/Activities/{id}")
+                    .method("PUT")
+                    .inputParams(Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                    "id", Map.of("type", "integer", "description", "Activity ID",
+                                            "location", "path"),
+                                    "name", Map.of("type", "string", "description", "Activity name",
+                                            "location", "body"),
+                                    "notify", Map.of("type", "boolean", "description", "Send notification",
+                                            "location", "query"),
+                                    "api_key", Map.of("type", "string", "description", "API Key",
+                                            "location", "header")),
+                            "required", List.of("id", "name")))
+                    .build();
+
+            Map<String, List<Map<String, Object>>> params = RestfulApi.getParametersByLocation(card);
+
+            assertEquals(1, params.get("path").size());
+            assertEquals("id", params.get("path").get(0).get("name"));
+            assertEquals("integer", params.get("path").get(0).get("type"));
+            assertEquals(true, params.get("path").get(0).get("required"));
+            assertEquals("name", params.get("body").get(0).get("name"));
+            assertEquals(true, params.get("body").get(0).get("required"));
+            assertEquals("notify", params.get("query").get(0).get("name"));
+            assertEquals(false, params.get("query").get(0).get("required"));
+            assertEquals("api_key", params.get("header").get(0).get("name"));
         }
     }
 }

@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PpoRayRuntimeEnvHelperTest {
@@ -45,5 +46,29 @@ class PpoRayRuntimeEnvHelperTest {
 
         assertFalse(envVars.containsKey("NCCL_DEBUG"));
         assertTrue(envVars.containsKey("PYTHONPATH"));
+    }
+
+    @Test
+    void buildRuntimeEnvDerivesNonEmptyAgentCoreDirWhenInputMissing() {
+        Map<String, Object> runtimeEnv = PpoRayRuntimeEnvHelper.buildRuntimeEnv(null, "", Map.of());
+        @SuppressWarnings("unchecked")
+        Map<String, String> envVars = (Map<String, String>) runtimeEnv.get("env_vars");
+
+        String pythonpath = envVars.get("PYTHONPATH");
+        assertFalse(pythonpath.isBlank());
+        assertFalse(pythonpath.startsWith(":"));
+        assertNull(runtimeEnv.get("working_dir"));
+    }
+
+    @Test
+    void buildRuntimeEnvOmitsWorkingDirWhenRayJobConfigProvidesOne() {
+        Map<String, String> processEnv = Map.of(
+                PpoRayRuntimeEnvHelper.RAY_JOB_CONFIG_JSON_ENV_VAR,
+                "{\"runtime_env\":{\"working_dir\":\"/tmp/job\"}}"
+        );
+
+        Map<String, Object> runtimeEnv = PpoRayRuntimeEnvHelper.buildRuntimeEnv("/repo/agent-core", "", processEnv);
+
+        assertFalse(runtimeEnv.containsKey("working_dir"));
     }
 }

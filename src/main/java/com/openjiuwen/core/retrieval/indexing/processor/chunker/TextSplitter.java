@@ -19,4 +19,8 @@ public abstract class TextSplitter {
      * Split a document or text chunk into smaller text chunks.
      */
     public abstract List<TextChunk> split(Document doc);
+
+    public List<TextChunk> split(TextChunk chunk) {
+        return split(new Document(chunk.getDocId(), chunk.getText(), chunk.getMetadata()));
+    }
 }

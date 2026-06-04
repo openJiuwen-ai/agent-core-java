@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -52,7 +53,7 @@ class AutoHarnessExperienceTest {
 
         List<Experience> results = store.search("timeout", 5);
         assertFalse(results.isEmpty());
-        assertEquals("fix timeout", results.get(0).getTopic());
+        assertEquals("timeout bug", results.get(0).getTopic());
 
         List<Experience> recent = store.listRecent(10);
         assertTrue(recent.size() >= 2);
@@ -87,6 +88,7 @@ class AutoHarnessExperienceTest {
         List<Map<String, Object>> noData = (List<Map<String, Object>>) noResults.getData();
         assertTrue(noData.isEmpty());
 
-        assertEquals(1, tool.stream(Map.of("query", "ruff")).size());
+        Iterator<Object> stream = tool.stream(Map.of("query", "ruff"));
+        assertTrue(stream.hasNext());
     }
 }

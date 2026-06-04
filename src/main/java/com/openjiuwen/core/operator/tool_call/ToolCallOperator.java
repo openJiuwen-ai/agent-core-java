@@ -15,9 +15,17 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
- * Tool invocation operator; tunables cover tool descriptions only.
+ * Tool description parameter handle for self-evolution.
+ *
+ * <p>Mirrors Python's {@code ToolCallOperator} in
+ * {@code openjiuwen.core.operator.tool_call.base}.</p>
+ *
+ * <p>The Java class keeps the earlier invoke/stream compatibility path used by
+ * ReActAgentEvolve, while the tunable/state surface mirrors Python: it manages
+ * only {@code tool_description} values.</p>
  */
 public class ToolCallOperator extends Operator {
 
@@ -25,14 +33,28 @@ public class ToolCallOperator extends Operator {
     private final String toolCallId;
     private final ToolExecutor toolExecutor;
     private final ToolRegistry toolRegistry;
-    private boolean enabled = true;
+    private final BiConsumer<String, Object> onParameterUpdated;
+    private final Map<String, String> descriptions;
     private int maxRetries;
 
     public ToolCallOperator(Tool tool, String toolCallId, ToolExecutor toolExecutor, ToolRegistry toolRegistry) {
+        this(tool, toolCallId, toolExecutor, toolRegistry, null, null);
+    }
+
+    private ToolCallOperator(Tool tool, String toolCallId, ToolExecutor toolExecutor, ToolRegistry toolRegistry,
+                             Map<String, String> descriptions,
+                             BiConsumer<String, Object> onParameterUpdated) {
         this.tool = tool;
         this.toolCallId = toolCallId != null ? toolCallId : "tool_call";
         this.toolExecutor = toolExecutor;
         this.toolRegistry = toolRegistry;
+        this.onParameterUpdated = onParameterUpdated;
+        this.descriptions = new LinkedHashMap<>();
+        if (descriptions != null) {
+            this.descriptions.putAll(descriptions);
+        } else {
+            this.descriptions.putAll(descriptionsFromRegistry(toolRegistry));
+        }
     }
 
     public ToolCallOperator(Tool tool) {
@@ -51,6 +73,19 @@ public class ToolCallOperator extends Operator {
         this(null, "tool_call", null, null);
     }
 
+    public ToolCallOperator(String operatorId) {
+        this(null, operatorId, null, null, null, null);
+    }
+
+    public ToolCallOperator(String operatorId, Map<String, String> descriptions) {
+        this(null, operatorId, null, null, descriptions, null);
+    }
+
+    public ToolCallOperator(String operatorId, Map<String, String> descriptions,
+                            BiConsumer<String, Object> onParameterUpdated) {
+        this(null, operatorId, null, null, descriptions, onParameterUpdated);
+    }
+
     @Override
     public String getOperatorId() {
         return toolCallId;
@@ -58,7 +93,7 @@ public class ToolCallOperator extends Operator {
 
     @Override
     public Map<String, TunableSpec> getTunables() {
-        if (toolRegistry == null) {
+        if (descriptions.isEmpty() && toolRegistry == null) {
             return Collections.emptyMap();
         }
         return Map.of("tool_description",
@@ -67,21 +102,36 @@ public class ToolCallOperator extends Operator {
 
     @Override
     public void setParameter(String target, Object value) {
-        if (!"tool_description".equals(target) || toolRegistry == null || !(value instanceof Map<?, ?> descriptions)) {
+        if (!"tool_description".equals(target) || !(value instanceof Map<?, ?> newDescriptions)) {
             return;
         }
-        for (Map.Entry<?, ?> entry : descriptions.entrySet()) {
-            if (entry.getKey() != null) {
-                toolRegistry.setToolDescription(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+        Map<String, String> copied = toDescriptionMap(newDescriptions);
+        descriptions.clear();
+        descriptions.putAll(copied);
+        if (toolRegistry != null) {
+            for (Map.Entry<String, String> entry : copied.entrySet()) {
+                toolRegistry.setToolDescription(entry.getKey(), entry.getValue());
             }
         }
+        if (onParameterUpdated != null) {
+            onParameterUpdated.accept("tool_description", new LinkedHashMap<>(descriptions));
+        }
+    }
+
+    private static Map<String, String> toDescriptionMap(Map<?, ?> rawDescriptions) {
+        Map<String, String> copied = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawDescriptions.entrySet()) {
+            if (entry.getKey() != null) {
+                copied.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        return copied;
     }
 
     @Override
     public Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
-        state.put("enabled", enabled);
-        state.put("max_retries", maxRetries);
+        state.put("tool_description", new LinkedHashMap<>(descriptions));
         return state;
     }
 
@@ -90,22 +140,15 @@ public class ToolCallOperator extends Operator {
         if (state == null) {
             return;
         }
-        if (state.containsKey("enabled")) {
-            enabled = state.get("enabled") instanceof Boolean b
-                    ? b : Boolean.parseBoolean(String.valueOf(state.get("enabled")));
-        }
-        if (state.containsKey("max_retries")) {
-            maxRetries = clampRetries(state.get("max_retries"));
+        Object value = state.get("tool_description");
+        if (value instanceof Map<?, ?> descriptionState) {
+            setParameter("tool_description", descriptionState);
         }
     }
 
-    @Override
     public Object invoke(Map<String, Object> inputs,
                          Session session,
                          Map<String, Object> kwargs) throws Exception {
-        if (!enabled) {
-            throw new IllegalStateException("ToolCallOperator disabled: " + toolCallId);
-        }
         Map<String, Object> safeKwargs = kwargs != null ? kwargs : Collections.emptyMap();
         setOperatorContext(session, toolCallId);
         try {
@@ -148,7 +191,10 @@ public class ToolCallOperator extends Operator {
         }
     }
 
-    @Override
+    public Object invoke(Map<String, Object> inputs, Session session) throws Exception {
+        return invoke(inputs, session, Collections.emptyMap());
+    }
+
     public OperatorStream<Object> stream(Map<String, Object> inputs,
                                          Session session,
                                          Map<String, Object> kwargs) throws Exception {
@@ -165,9 +211,34 @@ public class ToolCallOperator extends Operator {
         }
     }
 
+    public OperatorStream<Object> stream(Map<String, Object> inputs, Session session) throws Exception {
+        return stream(inputs, session, Collections.emptyMap());
+    }
+
     private static int clampRetries(Object value) {
         int retries = Integer.parseInt(String.valueOf(value));
         return Math.max(0, Math.min(5, retries));
     }
 
+    private static Map<String, String> descriptionsFromRegistry(ToolRegistry toolRegistry) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (toolRegistry == null) {
+            return result;
+        }
+        try {
+            for (Map<String, Object> toolDef : toolRegistry.getToolDefs()) {
+                if (toolDef == null) {
+                    continue;
+                }
+                Object name = toolDef.getOrDefault("name", toolDef.get("id"));
+                Object description = toolDef.get("description");
+                if (name != null && description != null) {
+                    result.put(String.valueOf(name), String.valueOf(description));
+                }
+            }
+        } catch (Exception ignored) {
+            return new LinkedHashMap<>();
+        }
+        return result;
+    }
 }

@@ -7,6 +7,9 @@ package com.openjiuwen.core.common.exception;
 /**
  * A fully-specified status code entry generated from a {@link StatusCodeTemplate}.
  *
+ * <p>Mirrors Python's {@code StatusCodeSpec} in
+ * {@code openjiuwen.core.common.exception.code_template}.</p>
+ *
  * @param name    the enum member name
  * @param code    the integer status code
  * @param message the error message template

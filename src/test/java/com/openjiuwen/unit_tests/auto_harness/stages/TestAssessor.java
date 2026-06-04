@@ -4,76 +4,34 @@
 
 package com.openjiuwen.unit_tests.auto_harness.stages;
 
+import com.openjiuwen.auto_harness.experience.ExperienceStore;
+import com.openjiuwen.auto_harness.schema.AutoHarnessConfig;
+import com.openjiuwen.auto_harness.schema.Experience;
+import com.openjiuwen.auto_harness.schema.ExperienceType;
+import com.openjiuwen.auto_harness.stages.AssessStage;
+import com.openjiuwen.core.session.stream.OutputSchema;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.util.HashMap;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for Assessor stage.
  * <p>
- * Mirrors Python's test_assessor.py from
- * <code>tests/unit_tests/auto_harness/stages/test_assessor.py</code>.
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.stages.test_assessor}.
  */
 @DisplayName("Assessor Stage Tests")
 class TestAssessor {
-
-    // Stub classes
-    static class AutoHarnessConfigStub {
-        String dataDir;
-        String workspace;
-
-        AutoHarnessConfigStub(String dataDir, String workspace) {
-            this.dataDir = dataDir;
-            this.workspace = workspace;
-        }
-    }
-
-    static class ExperienceStub {
-        String type;
-        String topic;
-        String summary;
-
-        ExperienceStub(String type, String topic, String summary) {
-            this.type = type;
-            this.topic = topic;
-            this.summary = summary;
-        }
-    }
-
-    static class ExperienceStoreStub {
-        java.util.List<ExperienceStub> experiences;
-
-        ExperienceStoreStub(java.util.List<ExperienceStub> experiences) {
-            this.experiences = experiences;
-        }
-
-        java.util.List<ExperienceStub> listRecent(int limit) {
-            if (experiences == null) return new java.util.ArrayList<>();
-            return experiences.subList(0, Math.min(limit, experiences.size()));
-        }
-    }
-
-    // Simulates _run_assess_with_fallback behavior
-    static String runAssessWithFallback(AutoHarnessConfigStub config, ExperienceStoreStub store) {
-        StringBuilder report = new StringBuilder();
-        report.append("评估报告\n");
-        report.append("==================\n");
-
-        if (store.experiences != null && !store.experiences.isEmpty()) {
-            for (ExperienceStub exp : store.experiences) {
-                report.append("- ").append(exp.topic).append(": ").append(exp.summary).append("\n");
-            }
-        }
-
-        report.append("\n总结: 无关键问题\n");
-        return report.toString();
-    }
 
     @Nested
     @DisplayName("Assess Fallback Tests")
@@ -81,55 +39,167 @@ class TestAssessor {
 
         @Test
         @DisplayName("fallback returns report when agent fails")
-        void testFallbackReturnsReport() {
-            AutoHarnessConfigStub config = new AutoHarnessConfigStub("/tmp/data", "/tmp/workspace");
-            ExperienceStoreStub store = new ExperienceStoreStub(null);
+        void testFallbackReturnsReport(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
 
-            String report = runAssessWithFallback(config, store);
+            String report = AssessStage.runAssessWithFallback(config, store, failingFactory());
 
-            assertTrue(report.contains("评估报告"));
+            assertTrue(report.contains("\u8bc4\u4f30\u62a5\u544a"));
             assertTrue(report.length() > 50);
         }
 
         @Test
         @DisplayName("fallback includes experiences")
-        void testFallbackWithExperiences() {
-            AutoHarnessConfigStub config = new AutoHarnessConfigStub("/tmp/data", "/tmp/workspace");
-            java.util.List<ExperienceStub> experiences = new java.util.ArrayList<>();
-            experiences.add(new ExperienceStub("failure", "lint-fix", "ruff failed"));
+        void testFallbackWithExperiences(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
+            Experience experience = new Experience();
+            experience.setType(ExperienceType.FAILURE);
+            experience.setTopic("lint-fix");
+            experience.setSummary("ruff failed");
+            store.record(experience);
 
-            ExperienceStoreStub store = new ExperienceStoreStub(experiences);
-            String report = runAssessWithFallback(config, store);
+            String report = AssessStage.runAssessWithFallback(config, store, failingFactory());
 
             assertTrue(report.contains("lint-fix"));
         }
     }
 
     @Nested
-    @DisplayName("Experience Store Tests")
-    class TestExperienceStore {
+    @DisplayName("Assess With Agent Tests")
+    class TestAssessWithAgent {
 
         @Test
-        @DisplayName("list recent returns limited experiences")
-        void testListRecentReturnsLimited() {
-            java.util.List<ExperienceStub> experiences = new java.util.ArrayList<>();
-            for (int i = 0; i < 20; i++) {
-                experiences.add(new ExperienceStub("type", "topic" + i, "summary"));
-            }
+        @DisplayName("build query includes Python check strategy")
+        void testBuildQueryIncludesPythonCheckStrategy(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
 
-            ExperienceStoreStub store = new ExperienceStoreStub(experiences);
-            java.util.List<ExperienceStub> recent = store.listRecent(10);
+            String query = AssessStage.buildQuery(
+                    config,
+                    store,
+                    "\u4f7f\u7528 staged files \u8fd0\u884c make check"
+            );
 
-            assertEquals(10, recent.size());
+            assertTrue(query.contains("Python \u68c0\u67e5\u7b56\u7565\u5efa\u8bae"));
+            assertTrue(query.contains("\u4f7f\u7528 staged files \u8fd0\u884c make check"));
+            assertTrue(query.contains("`openjiuwen/harness/**`"));
+            assertTrue(query.contains("`openjiuwen/core/**`"));
+            assertTrue(query.contains("`openjiuwen/harness/cli/README.md`"));
+            assertTrue(query.contains("`tests/**`"));
+            assertTrue(query.contains("`examples/**`"));
+            assertTrue(query.contains("`docs/en/`"));
+            assertTrue(query.contains("`docs/zh/`"));
+            assertTrue(query.contains("`openjiuwen/auto_harness/**`"));
         }
 
         @Test
-        @DisplayName("list recent handles empty store")
-        void testListRecentHandlesEmpty() {
-            ExperienceStoreStub store = new ExperienceStoreStub(null);
-            java.util.List<ExperienceStub> recent = store.listRecent(10);
+        @DisplayName("agent report is returned when long enough")
+        void testAssessWithAgent(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
+            String longReport = ("# \u8bc4\u4f30\u62a5\u544a\n## \u6784\u5efa\u72b6\u6001\nOK\n").repeat(10);
 
-            assertTrue(recent.isEmpty());
+            String report = AssessStage.runAssessWithFallback(config, store, chunksFactory(List.of(chunk(longReport))));
+
+            assertTrue(report.contains("\u8bc4\u4f30\u62a5\u544a"));
+            assertEquals(longReport, report);
         }
+
+        @Test
+        @DisplayName("short agent report triggers fallback")
+        void testShortReportTriggersFallback(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
+
+            String report = AssessStage.runAssessWithFallback(config, store, chunksFactory(List.of(chunk("too short"))));
+
+            assertTrue(report.contains("\u8bc4\u4f30\u62a5\u544a"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Assess Stream Tests")
+    class TestAssessStream {
+
+        @Test
+        @DisplayName("run assess stream yields chunks")
+        void testAssessStreamYieldsChunks(@TempDir Path tempDir) {
+            AutoHarnessConfig config = config(tempDir);
+            ExperienceStore store = new ExperienceStore(tempDir.resolve("experience").toString());
+            List<Object> chunks = List.of(chunk("part1"), chunk("part2"));
+
+            Iterator<Object> iterator = AssessStage.runAssessStream(config, store, chunksFactory(chunks));
+            List<Object> collected = new ArrayList<>();
+            iterator.forEachRemaining(collected::add);
+
+            assertEquals(2, collected.size());
+            OutputSchema first = (OutputSchema) collected.get(0);
+            assertEquals("part1", ((Map<?, ?>) first.getPayload()).get("content"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Assess Check Strategy Tests")
+    class TestAssessCheckStrategy {
+
+        @Test
+        @DisplayName("format strategy prefers staged make targets")
+        void testFormatStrategyPrefersStagedMakeTargets() {
+            String strategy = AssessStage.formatPythonCheckStrategy(
+                    List.of("openjiuwen/auto_harness/agent.py"),
+                    List.of(),
+                    List.of()
+            );
+
+            assertTrue(strategy.contains("`make check`"));
+            assertTrue(strategy.contains("`make type-check`"));
+            assertTrue(strategy.contains("staged"));
+        }
+
+        @Test
+        @DisplayName("format strategy uses explicit tools for worktree delta")
+        void testFormatStrategyUsesExplicitToolsForWorktreeDelta() {
+            String strategy = AssessStage.formatPythonCheckStrategy(
+                    List.of(),
+                    List.of("openjiuwen/auto_harness/agent.py"),
+                    List.of("tests/unit_tests/auto_harness/test_agent.py")
+            );
+
+            assertTrue(strategy.contains("\u4e0d\u8981\u8fd0\u884c `make check COMMITS=1`"));
+            assertTrue(strategy.contains("`uv run ruff check <files>`"));
+            assertTrue(strategy.contains("`uv run mypy <files>`"));
+        }
+
+        @Test
+        @DisplayName("format strategy marks empty snapshot as not applicable")
+        void testFormatStrategyMarksEmptySnapshotAsNotApplicable() {
+            String strategy = AssessStage.formatPythonCheckStrategy(List.of(), List.of(), List.of());
+
+            assertTrue(strategy.contains("No Python files selected"));
+            assertTrue(strategy.contains("\u672a\u6267\u884c"));
+        }
+    }
+
+    private static AutoHarnessConfig config(Path tempDir) {
+        AutoHarnessConfig config = new AutoHarnessConfig();
+        config.setDataDir(tempDir.toString());
+        config.setWorkspace(tempDir.toString());
+        return config;
+    }
+
+    private static AssessStage.AssessAgentFactory failingFactory() {
+        return ignored -> inputs -> {
+            throw new RuntimeException("no model");
+        };
+    }
+
+    private static AssessStage.AssessAgentFactory chunksFactory(List<Object> chunks) {
+        return ignored -> inputs -> chunks.iterator();
+    }
+
+    private static OutputSchema chunk(String content) {
+        return new OutputSchema("llm_output", 0, Map.of("content", content));
     }
 }

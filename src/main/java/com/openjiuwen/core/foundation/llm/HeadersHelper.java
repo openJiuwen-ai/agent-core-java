@@ -27,13 +27,13 @@ public class HeadersHelper {
      * @param headers the headers to sanitize
      * @return sanitized headers
      */
-    public static Map<String, String> sanitizeHeaders(Map<String, Object> headers) {
+    public static Map<String, String> sanitizeHeaders(Map<String, ?> headers) {
         if (headers == null || headers.isEmpty()) {
             return new HashMap<>();
         }
 
         Map<String, String> sanitized = new HashMap<>();
-        for (Map.Entry<String, Object> entry : headers.entrySet()) {
+        for (Map.Entry<String, ?> entry : headers.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
 
@@ -70,7 +70,7 @@ public class HeadersHelper {
      */
     public static Map<String, String> mergeHeadersCaseInsensitive(
             Map<String, String> baseHeaders,
-            Map<String, Object> newHeaders) {
+            Map<String, ?> newHeaders) {
         if (newHeaders == null || newHeaders.isEmpty()) {
             return baseHeaders;
         }
@@ -103,7 +103,7 @@ public class HeadersHelper {
      * @param customHeaders optional custom headers
      * @return sanitized headers
      */
-    public static Map<String, String> buildBaseHeaders(Map<String, Object> customHeaders) {
+    public static Map<String, String> buildBaseHeaders(Map<String, ?> customHeaders) {
         return sanitizeHeaders(customHeaders);
     }
 
@@ -115,8 +115,8 @@ public class HeadersHelper {
      * @return merged headers
      */
     public static Map<String, String> mergeRequestHeaders(
-            Map<String, Object> baseHeaders,
-            Map<String, Object> requestCustomHeaders) {
+            Map<String, ?> baseHeaders,
+            Map<String, ?> requestCustomHeaders) {
         Map<String, String> effectiveHeaders = new HashMap<>();
         if (baseHeaders != null) {
             effectiveHeaders.putAll(sanitizeHeaders(baseHeaders));

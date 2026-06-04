@@ -1,115 +1,94 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.agent_evolving.trajectory;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.util.*;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for TrajectoryStore.
- * 
- * <p>Mirrors Python's tests/unit_tests/agent_evolving/trajectory/test_store.py
- * Ported from Python: agent-core-0.1.12/tests/unit_tests/agent_evolving/trajectory/test_store.py
- * 
- * <p>NOTE: Java implementation of TrajectoryStore interface is provided as 
- * InMemoryTrajectoryStoreImpl for testing purposes.
+ * Unit tests for trajectory stores.
+ *
+ * <p>Mirrors Python's {@code tests/unit_tests/agent_evolving/trajectory/test_store.py}.
  */
-@ExtendWith(MockitoExtension.class)
 class TrajectoryStoreTest {
 
-    /**
-     * In-memory implementation of TrajectoryStore for testing.
-     * Mirrors Python's InMemoryTrajectoryStore.
-     */
-    private static class InMemoryTrajectoryStoreImpl implements TrajectoryStore {
-        private final Map<String, Map<String, Trajectory>> data = new LinkedHashMap<>();
+    private static final ObjectMapper JSON = new ObjectMapper();
 
-        @Override
-        public void save(Trajectory trajectory, String version) {
-            String ver = version != null ? version : "default";
-            data.computeIfAbsent(ver, k -> new LinkedHashMap<>())
-                .put(trajectory.getExecutionId(), trajectory);
-        }
-
-        @Override
-        public Trajectory load(String executionId, String version) {
-            String ver = version != null ? version : "default";
-            Map<String, Trajectory> versionData = data.get(ver);
-            if (versionData == null) {
-                return null;
-            }
-            return versionData.get(executionId);
-        }
-
-        @Override
-        public List<Trajectory> queryBySessionId(String sessionId) {
-            List<Trajectory> results = new ArrayList<>();
-            for (Map<String, Trajectory> versionData : data.values()) {
-                for (Trajectory traj : versionData.values()) {
-                    if (sessionId != null && sessionId.equals(traj.getSessionId())) {
-                        results.add(traj);
-                    }
-                }
-            }
-            return results;
-        }
-
-        @Override
-        public List<Trajectory> query(String sessionId, String executionId, String version) {
-            String ver = version != null ? version : "default";
-            Map<String, Trajectory> versionData = data.getOrDefault(ver, Map.of());
-            
-            return versionData.values().stream()
-                .filter(traj -> sessionId == null || sessionId.equals(traj.getSessionId()))
-                .filter(traj -> executionId == null || executionId.equals(traj.getExecutionId()))
-                .collect(Collectors.toList());
-        }
+    private record Payload(String value) {
     }
 
-    /**
-     * Factory for creating Trajectory (mirrors Python's make_trajectory).
-     */
-    private Trajectory makeTrajectory(String execId, String sessionId, String source, String caseId) {
-        Trajectory traj = new Trajectory();
-        traj.setExecutionId(execId);
-        traj.setSessionId(sessionId != null ? sessionId : "session1");
-        traj.setSource(source != null ? source : "offline");
-        traj.setCaseId(caseId);
-        traj.setSteps(new ArrayList<>());
-        return traj;
+    private static TrajectoryStep makeStep(String kind, Object detail, Object error, Map<String, Object> meta) {
+        return TrajectoryStep.builder()
+                .kind(kind)
+                .error(error)
+                .detail(detail)
+                .meta(meta != null ? meta : Map.of())
+                .build();
     }
 
-    private Trajectory makeTrajectory(String execId) {
-        return makeTrajectory(execId, "session1", "offline", null);
+    private static TrajectoryStep makeLlmStep(String operatorId, List<Map<String, Object>> messages) {
+        LLMCallDetail detail = LLMCallDetail.builder()
+                .model("gpt-4")
+                .messages(messages != null ? messages : List.of(Map.of("role", "user", "content", "hello")))
+                .build();
+        return makeStep("llm", detail, null, Map.of("operator_id", operatorId));
     }
 
-    private Trajectory makeTrajectory(String execId, String caseId) {
-        return makeTrajectory(execId, "session1", "offline", caseId);
+    private static TrajectoryStep makeToolStep(String toolName, Object callArgs, Object callResult) {
+        ToolCallDetail detail = ToolCallDetail.builder()
+                .toolName(toolName)
+                .callArgs(callArgs)
+                .callResult(callResult)
+                .build();
+        return makeStep("tool", detail, null, Map.of("operator_id", toolName));
     }
 
-    // ========== TestInMemoryTrajectoryStore tests ==========
+    private static Trajectory makeTrajectory(String execId) {
+        return makeTrajectory(execId, "session1", "offline", null, null);
+    }
+
+    private static Trajectory makeTrajectory(String execId, String caseId) {
+        return makeTrajectory(execId, "session1", "offline", caseId, null);
+    }
+
+    private static Trajectory makeTrajectory(
+            String execId,
+            String sessionId,
+            String source,
+            String caseId,
+            List<TrajectoryStep> steps) {
+        return Trajectory.builder()
+                .executionId(execId)
+                .sessionId(sessionId != null ? sessionId : "session1")
+                .source(source != null ? source : "offline")
+                .caseId(caseId)
+                .steps(steps != null ? steps : List.of(makeStep("llm", null, null, null)))
+                .build();
+    }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test save and load")
-    void testSaveAndLoad() {
-        // Python: test_save_and_load
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
-        Trajectory traj = makeTrajectory("exec1", "case1");
+    void inMemorySaveAndLoad() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+        Trajectory trajectory = makeTrajectory("exec1", "case1");
 
-        store.save(traj, null);
+        store.save(trajectory, null);
         Trajectory loaded = store.load("exec1", null);
 
         assertNotNull(loaded);
@@ -118,127 +97,255 @@ class TrajectoryStoreTest {
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test load nonexistent returns null")
-    void testLoadNonexistent() {
-        // Python: test_load_nonexistent
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
+    void inMemoryLoadNonexistent() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
 
-        Trajectory result = store.load("nonexistent", null);
-
-        assertNull(result);
+        assertNull(store.load("nonexistent", null));
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test query all returns all trajectories")
-    void testQueryAll() {
-        // Python: test_query_all
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
+    void inMemoryQueryAll() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
         store.save(makeTrajectory("exec1"), null);
         store.save(makeTrajectory("exec2"), null);
 
-        List<Trajectory> results = store.query(null, null, null);
-
-        assertEquals(2, results.size());
+        assertEquals(2, store.query(null, Map.of()).size());
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test query with filters")
-    void testQueryWithFilters() {
-        // Python: test_query_with_filters
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
+    void inMemoryQueryWithCaseFilter() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
         store.save(makeTrajectory("exec1", "case1"), null);
         store.save(makeTrajectory("exec2", "case2"), null);
 
-        // Query by executionId
-        List<Trajectory> results = store.query(null, "exec1", null);
+        List<Trajectory> results = store.query(null, Map.of("case_id", "case1"));
 
         assertEquals(1, results.size());
-        assertEquals("case1", results.get(0).getCaseId());
+        assertEquals("case1", results.getFirst().getCaseId());
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test query filtering by source")
-    void testQueryWithSourceFilter() {
-        // Python: test_query_with_source_filter
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
-        store.save(makeTrajectory("exec1", "session1", "online", null), null);
-        store.save(makeTrajectory("exec2", "session1", "offline", null), null);
+    void inMemoryQueryWithSourceFilter() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+        store.save(makeTrajectory("exec1", "session1", "online", null, null), null);
+        store.save(makeTrajectory("exec2", "session1", "offline", null, null), null);
 
-        // Query all - filter by source would need additional implementation
-        List<Trajectory> results = store.query(null, null, null);
+        List<Trajectory> results = store.query(null, Map.of("source", "online"));
 
-        assertEquals(2, results.size());
-        // Verify sources are set correctly
-        assertEquals("online", results.stream().filter(t -> t.getExecutionId().equals("exec1")).findFirst().get().getSource());
-        assertEquals("offline", results.stream().filter(t -> t.getExecutionId().equals("exec2")).findFirst().get().getSource());
+        assertEquals(1, results.size());
+        assertEquals("online", results.getFirst().getSource());
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test version isolation")
-    void testVersionIsolation() {
-        // Python: test_version_isolation
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
-        Trajectory traj1 = makeTrajectory("exec1");
-        Trajectory traj2 = makeTrajectory("exec1");
+    void inMemoryVersionIsolation() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+        store.save(makeTrajectory("exec1"), "v1");
+        store.save(makeTrajectory("exec1"), "v2");
 
-        store.save(traj1, "v1");
-        store.save(traj2, "v2");
-
-        Trajectory v1Result = store.load("exec1", "v1");
-        Trajectory v2Result = store.load("exec1", "v2");
-
-        // Both should exist independently
-        assertNotNull(v1Result);
-        assertNotNull(v2Result);
+        assertNotNull(store.load("exec1", "v1"));
+        assertNotNull(store.load("exec1", "v2"));
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test query empty store returns empty list")
-    void testQueryEmptyStore() {
-        // Python: test_query_empty_store
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
+    void inMemoryQueryEmptyStore() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
 
-        List<Trajectory> results = store.query(null, null, null);
-
-        assertTrue(results.isEmpty());
+        assertEquals(List.of(), store.query(null, Map.of()));
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test overwrite existing")
-    void testOverwriteExisting() {
-        // Python: test_overwrite_existing
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
-        Trajectory traj1 = makeTrajectory("exec1", "case1");
-        Trajectory traj2 = makeTrajectory("exec1", "case2");
+    void inMemoryOverwriteExisting() {
+        InMemoryTrajectoryStore store = new InMemoryTrajectoryStore();
+        store.save(makeTrajectory("exec1", "case1"), null);
+        store.save(makeTrajectory("exec1", "case2"), null);
 
-        store.save(traj1, null);
-        store.save(traj2, null);
+        assertEquals("case2", store.load("exec1", null).getCaseId());
+    }
+
+    @Test
+    void fileSaveAndLoad(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        Trajectory trajectory = makeTrajectory("exec1", "case1");
+
+        store.save(trajectory, null);
+        Trajectory loaded = store.load("exec1", null);
+
+        assertNotNull(loaded);
+        assertEquals("exec1", loaded.getExecutionId());
+        assertEquals("case1", loaded.getCaseId());
+    }
+
+    @Test
+    void fileLoadNonexistent(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+
+        assertNull(store.load("nonexistent", null));
+    }
+
+    @Test
+    void fileQueryAll(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        store.save(makeTrajectory("exec1"), null);
+        store.save(makeTrajectory("exec2"), null);
+
+        assertEquals(2, store.query(null, Map.of()).size());
+    }
+
+    @Test
+    void fileQueryWithCaseFilter(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        store.save(makeTrajectory("exec1", "case1"), null);
+        store.save(makeTrajectory("exec2", "case2"), null);
+
+        List<Trajectory> results = store.query(null, Map.of("case_id", "case1"));
+
+        assertEquals(1, results.size());
+        assertEquals("case1", results.getFirst().getCaseId());
+    }
+
+    @Test
+    void fileVersionCreatesDifferentFiles(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        Trajectory trajectory = makeTrajectory("exec1");
+
+        store.save(trajectory, "v1");
+        store.save(trajectory, "v2");
+
+        assertTrue(Files.exists(tempDir.resolve("trajectories_v1.jsonl")));
+        assertTrue(Files.exists(tempDir.resolve("trajectories_v2.jsonl")));
+    }
+
+    @Test
+    void fileFormatIsJsonlWithSnakeCase(@TempDir Path tempDir) throws IOException {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        store.save(makeTrajectory("exec1", "case1"), null);
+
+        List<String> lines = Files.readAllLines(tempDir.resolve("trajectories_default.jsonl"));
+        Map<String, Object> data = JSON.readValue(lines.getFirst(), new TypeReference<>() {
+        });
+
+        assertEquals(1, lines.size());
+        assertEquals("exec1", data.get("execution_id"));
+        assertEquals("case1", data.get("case_id"));
+    }
+
+    @Test
+    void fileQueryEmptyFile(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+
+        assertEquals(List.of(), store.query(null, Map.of()));
+    }
+
+    @Test
+    void fileQueryNonexistentVersion(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+
+        assertEquals(List.of(), store.query("nonexistent", Map.of()));
+    }
+
+    @Test
+    void fileAppendToExistingFile(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        store.save(makeTrajectory("exec1"), null);
+        store.save(makeTrajectory("exec2"), null);
+
+        assertEquals(2, store.query(null, Map.of()).size());
+    }
+
+    @Test
+    void fileLoadReturnsFirstDuplicateId(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        store.save(makeTrajectory("exec1", "case1"), null);
+        store.save(makeTrajectory("exec1", "case2"), null);
 
         Trajectory loaded = store.load("exec1", null);
-        assertEquals("case2", loaded.getCaseId());
+
+        assertNotNull(loaded);
+        assertEquals("case1", loaded.getCaseId());
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Test query by session ID")
-    void testQueryBySessionId() {
-        InMemoryTrajectoryStoreImpl store = new InMemoryTrajectoryStoreImpl();
-        Trajectory traj1 = makeTrajectory("exec1", "session1", "offline", null);
-        Trajectory traj2 = makeTrajectory("exec2", "session2", "offline", null);
+    void fileHandlesCorruptedJson(@TempDir Path tempDir) throws IOException {
+        Path filePath = tempDir.resolve("trajectories_default.jsonl");
+        Files.writeString(
+                filePath,
+                "{\"valid\":\"json\"}\n"
+                        + "invalid json line\n"
+                        + "{\"execution_id\":\"exec1\",\"session_id\":\"s1\",\"source\":\"offline\",\"steps\":[]}\n",
+                StandardCharsets.UTF_8);
 
-        store.save(traj1, null);
-        store.save(traj2, null);
-
-        List<Trajectory> results = store.queryBySessionId("session1");
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        List<Trajectory> results = store.query(null, Map.of());
 
         assertEquals(1, results.size());
-        assertEquals("exec1", results.get(0).getExecutionId());
+        assertEquals("exec1", results.getFirst().getExecutionId());
+    }
+
+    @Test
+    void fileRoundtripWithLlmStep(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("llm")
+                .detail(LLMCallDetail.builder()
+                        .model("gpt-4")
+                        .messages(List.of(Map.of("role", "user", "content", "hello")))
+                        .response(Map.of("role", "assistant", "content", "hi"))
+                        .usage(Map.of("prompt_tokens", 10, "completion_tokens", 5))
+                        .build())
+                .meta(Map.of("operator_id", "op1", "span_name", "test_span"))
+                .build();
+        store.save(makeTrajectory("exec1", "session1", "offline", null, List.of(step)), null);
+
+        Trajectory loaded = store.load("exec1", null);
+
+        assertNotNull(loaded);
+        TrajectoryStep loadedStep = loaded.getSteps().getFirst();
+        assertEquals("llm", loadedStep.getKind());
+        LLMCallDetail detail = assertInstanceOf(LLMCallDetail.class, loadedStep.getDetail());
+        assertEquals("gpt-4", detail.getModel());
+        assertEquals("op1", loadedStep.getMeta().get("operator_id"));
+    }
+
+    @Test
+    void fileRoundtripWithToolStep(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        TrajectoryStep step = makeToolStep("test_tool", Map.of("arg", "value"), Map.of("result", "success"));
+        ((ToolCallDetail) step.getDetail()).setToolDescription("A test tool");
+        store.save(makeTrajectory("exec1", "session1", "offline", null, List.of(step)), null);
+
+        Trajectory loaded = store.load("exec1", null);
+
+        assertNotNull(loaded);
+        ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, loaded.getSteps().getFirst().getDetail());
+        assertEquals("test_tool", detail.getToolName());
+        assertEquals(Map.of("arg", "value"), detail.getCallArgs());
+        assertEquals(Map.of("result", "success"), detail.getCallResult());
+    }
+
+    @Test
+    void fileSaveSerializesPojoToolPayloads(@TempDir Path tempDir) {
+        FileTrajectoryStore store = new FileTrajectoryStore(tempDir);
+        TrajectoryStep step = TrajectoryStep.builder()
+                .kind("tool")
+                .detail(ToolCallDetail.builder()
+                        .toolName("test_tool")
+                        .callArgs(new Payload("arg"))
+                        .callResult(new Payload("result"))
+                        .build())
+                .meta(Map.of("operator_id", "test_tool", "payload", new Payload("meta")))
+                .build();
+        Trajectory trajectory = makeTrajectory("exec-payload", "session1", "offline", null, List.of(step));
+        trajectory.setMeta(Map.of("summary", new Payload("trajectory")));
+
+        store.save(trajectory, null);
+        Trajectory loaded = store.load("exec-payload", null);
+
+        assertNotNull(loaded);
+        TrajectoryStep loadedStep = loaded.getSteps().getFirst();
+        ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, loadedStep.getDetail());
+        assertEquals(Map.of("value", "arg"), detail.getCallArgs());
+        assertEquals(Map.of("value", "result"), detail.getCallResult());
+        assertEquals(Map.of("value", "meta"), loadedStep.getMeta().get("payload"));
+        assertEquals(Map.of("value", "trajectory"), loaded.getMeta().get("summary"));
     }
 }

@@ -1,285 +1,169 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.tests.unit_tests.core.component;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.workflow.ComponentExecutable;
+import com.openjiuwen.core.workflow.component.tool.http.HTTPRequestComponent;
+import com.openjiuwen.core.workflow.component.tool.http.HTTPRequestExecutable;
+import com.openjiuwen.core.workflow.component.tool.http.HttpAdvancedOptionsConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpAuthConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpAuthType;
+import com.openjiuwen.core.workflow.component.tool.http.HttpComponentConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpContentType;
+import com.openjiuwen.core.workflow.component.tool.http.HttpRequestBodyConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpRequestParamConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpResponseFormat;
+import com.openjiuwen.core.workflow.component.tool.http.HttpResponseHandlingConfig;
+import com.openjiuwen.core.workflow.component.tool.http.HttpRetryConfig;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's {@code test_http_component_comprehensive.py} in 
+ * Mirrors Python's {@code test_http_component_comprehensive.py} in
  * {@code tests.unit_tests.core.component}.
- * 
- * Comprehensive test for the HTTP Request component.
  */
 @Tag("unit-test")
-@Disabled("Requires HTTP client configuration")
 class TestHttpComponentComprehensive {
 
-    // -----------------------------------------------------------------------
-    // Mock classes
-    // -----------------------------------------------------------------------
-
-    enum HttpAuthType {
-        BASIC, BEARER, API_KEY, NONE
-    }
-
-    enum HttpContentType {
-        JSON, FORM_DATA, XML, TEXT, BINARY
-    }
-
-    static class HttpRequestParamConfig {
-        String url;
-        String method = "GET";
-        Map<String, String> headers = new HashMap<>();
-        HttpRequestBodyConfig body;
-        HttpAuthConfig authentication;
-
-        HttpRequestParamConfig url(String url) {
-            this.url = url;
-            return this;
-        }
-
-        HttpRequestParamConfig method(String method) {
-            this.method = method;
-            return this;
-        }
-
-        HttpRequestParamConfig headers(Map<String, String> headers) {
-            this.headers = headers;
-            return this;
-        }
-
-        HttpRequestParamConfig body(HttpRequestBodyConfig body) {
-            this.body = body;
-            return this;
-        }
-
-        HttpRequestParamConfig authentication(HttpAuthConfig auth) {
-            this.authentication = auth;
-            return this;
-        }
-    }
-
-    static class HttpRequestBodyConfig {
-        HttpContentType contentType;
-        Map<String, Object> jsonData;
-        String rawData;
-
-        HttpRequestBodyConfig contentType(HttpContentType type) {
-            this.contentType = type;
-            return this;
-        }
-
-        HttpRequestBodyConfig jsonData(Map<String, Object> data) {
-            this.jsonData = data;
-            return this;
-        }
-    }
-
-    static class HttpAuthConfig {
-        HttpAuthType type = HttpAuthType.NONE;
-        String username;
-        String password;
-        String token;
-        String apiKey;
-
-        HttpAuthConfig type(HttpAuthType type) {
-            this.type = type;
-            return this;
-        }
-
-        HttpAuthConfig username(String username) {
-            this.username = username;
-            return this;
-        }
-
-        HttpAuthConfig password(String password) {
-            this.password = password;
-            return this;
-        }
-
-        HttpAuthConfig token(String token) {
-            this.token = token;
-            return this;
-        }
-
-        HttpAuthConfig apiKey(String apiKey) {
-            this.apiKey = apiKey;
-            return this;
-        }
-    }
-
-    static class HttpComponentConfig {
-        HttpRequestParamConfig requestParams;
-        HttpRetryConfig retryConfig;
-
-        HttpComponentConfig requestParams(HttpRequestParamConfig params) {
-            this.requestParams = params;
-            return this;
-        }
-    }
-
-    static class HttpRetryConfig {
-        int maxRetries = 3;
-        long retryDelayMs = 1000;
-        List<Integer> retryOnStatusCodes = Arrays.asList(429, 500, 502, 503);
-    }
-
-    static class HTTPRequestComponent {
-        HttpComponentConfig config;
-
-        HTTPRequestComponent(HttpComponentConfig config) {
-            this.config = config;
-        }
-
-        Map<String, Object> execute() {
-            // Mock execution
-            Map<String, Object> result = new HashMap<>();
-            result.put("status", 200);
-            result.put("body", Map.of("success", true));
-            return result;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Tests
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("Test basic GET request configuration")
+    @DisplayName("basic GET request configuration")
     void testBasicGetRequest() {
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://httpbin.org/get")
-                .method("GET")
-                .headers(Map.of("User-Agent", "openJiuwen HTTP Component"))
-            );
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/get")
+                        .method("GET")
+                        .headers(Map.of("User-Agent", "openJiuwen HTTP Component"))
+                        .build()));
 
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-
-        assertEquals("https://httpbin.org/get", component.config.requestParams.url);
-        assertEquals("GET", component.config.requestParams.method);
-        assertEquals("openJiuwen HTTP Component", 
-            component.config.requestParams.headers.get("User-Agent"));
+        HttpRequestParamConfig params = component.getConfig().getRequestParams();
+        assertEquals("https://httpbin.org/get", params.getUrl());
+        assertEquals("GET", params.getMethod());
+        assertEquals("openJiuwen HTTP Component", ((Map<?, ?>) params.getHeaders()).get("User-Agent"));
     }
 
     @Test
-    @DisplayName("Test POST request with JSON body")
+    @DisplayName("POST request with JSON body")
     void testPostRequestWithBody() {
-        HttpRequestBodyConfig bodyConfig = new HttpRequestBodyConfig()
-            .contentType(HttpContentType.JSON)
-            .jsonData(Map.of("key", "value", "test", true));
+        HttpRequestBodyConfig bodyConfig = HttpRequestBodyConfig.builder()
+                .contentType(HttpContentType.JSON)
+                .jsonData(Map.of("key", "value", "test", true))
+                .build();
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/post")
+                        .method("POST")
+                        .body(bodyConfig)
+                        .headers(Map.of("Content-Type", "application/json"))
+                        .build()));
 
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://httpbin.org/post")
-                .method("POST")
-                .body(bodyConfig)
-                .headers(Map.of("Content-Type", "application/json"))
-            );
-
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-
-        assertEquals("POST", component.config.requestParams.method);
-        assertEquals(HttpContentType.JSON, component.config.requestParams.body.contentType);
-        assertEquals("value", component.config.requestParams.body.jsonData.get("key"));
+        HttpRequestParamConfig params = component.getConfig().getRequestParams();
+        assertEquals("POST", params.getMethod());
+        assertEquals(HttpContentType.JSON, params.getBody().getContentType());
+        assertEquals("value", ((Map<?, ?>) params.getBody().getJsonData()).get("key"));
     }
 
     @Test
-    @DisplayName("Test authentication configuration")
+    @DisplayName("authentication configuration")
     void testAuthenticationConfig() {
-        HttpAuthConfig authConfig = new HttpAuthConfig()
-            .type(HttpAuthType.BASIC)
-            .username("testuser")
-            .password("testpass");
+        HttpAuthConfig authConfig = HttpAuthConfig.builder()
+                .type(HttpAuthType.BASIC)
+                .username("testuser")
+                .password("testpass")
+                .build();
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/get")
+                        .method("GET")
+                        .authentication(authConfig)
+                        .build()));
 
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://httpbin.org/get")
-                .method("GET")
-                .authentication(authConfig)
-            );
-
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-
-        assertEquals(HttpAuthType.BASIC, component.config.requestParams.authentication.type);
-        assertEquals("testuser", component.config.requestParams.authentication.username);
-        assertEquals("testpass", component.config.requestParams.authentication.password);
+        HttpAuthConfig auth = component.getConfig().getRequestParams().getAuthentication();
+        assertEquals(HttpAuthType.BASIC, auth.getType());
+        assertEquals("testuser", auth.getUsername());
+        assertEquals("testpass", auth.getPassword());
     }
 
     @Test
-    @DisplayName("Test bearer token authentication")
-    void testBearerTokenAuthentication() {
-        HttpAuthConfig authConfig = new HttpAuthConfig()
-            .type(HttpAuthType.BEARER)
-            .token("test-bearer-token");
+    @DisplayName("advanced options configuration")
+    void testAdvancedOptions() {
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/get")
+                        .method("GET")
+                        .advancedOptions(HttpAdvancedOptionsConfig.builder()
+                                .followRedirect(true)
+                                .timeout(15000)
+                                .ignoreSslIssues(false)
+                                .build())
+                        .retryConfig(HttpRetryConfig.builder()
+                                .enabled(true)
+                                .maxRetries(3)
+                                .retryDelay(1000)
+                                .build())
+                        .build()));
 
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://api.example.com/data")
-                .authentication(authConfig)
-            );
-
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-
-        assertEquals(HttpAuthType.BEARER, component.config.requestParams.authentication.type);
-        assertEquals("test-bearer-token", component.config.requestParams.authentication.token);
+        HttpRequestParamConfig params = component.getConfig().getRequestParams();
+        assertTrue(params.getAdvancedOptions().isFollowRedirect());
+        assertEquals(15000, params.getAdvancedOptions().getTimeout());
+        assertTrue(params.getRetryConfig().isEnabled());
+        assertEquals(3, params.getRetryConfig().getMaxRetries());
     }
 
     @Test
-    @DisplayName("Test API key authentication")
-    void testApiKeyAuthentication() {
-        HttpAuthConfig authConfig = new HttpAuthConfig()
-            .type(HttpAuthType.API_KEY)
-            .apiKey("test-api-key-123");
+    @DisplayName("response handling configuration")
+    void testResponseHandling() {
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/json")
+                        .method("GET")
+                        .responseHandling(HttpResponseHandlingConfig.builder()
+                                .responseFormat(HttpResponseFormat.JSON)
+                                .responseCodeSuccessCodes(List.of(200, 201))
+                                .responseMode("full")
+                                .build())
+                        .build()));
 
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://api.example.com/data")
-                .authentication(authConfig)
-            );
-
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-
-        assertEquals(HttpAuthType.API_KEY, component.config.requestParams.authentication.type);
-        assertEquals("test-api-key-123", component.config.requestParams.authentication.apiKey);
+        HttpResponseHandlingConfig responseHandling = component.getConfig().getRequestParams().getResponseHandling();
+        assertEquals(HttpResponseFormat.JSON, responseHandling.getResponseFormat());
+        assertTrue(responseHandling.getResponseCodeSuccessCodes().contains(200));
+        assertEquals("full", responseHandling.getResponseMode());
     }
 
     @Test
-    @DisplayName("Test default retry configuration")
-    void testDefaultRetryConfiguration() {
-        HttpRetryConfig retryConfig = new HttpRetryConfig();
+    @DisplayName("executable exposes invoke stream collect and transform methods")
+    void testExecutableMethods() throws NoSuchMethodException {
+        HTTPRequestComponent component = new HTTPRequestComponent(new HttpComponentConfig(
+                HttpRequestParamConfig.builder()
+                        .url("https://httpbin.org/get")
+                        .method("GET")
+                        .build()));
 
-        assertEquals(3, retryConfig.maxRetries);
-        assertEquals(1000, retryConfig.retryDelayMs);
-        assertTrue(retryConfig.retryOnStatusCodes.contains(429));
-        assertTrue(retryConfig.retryOnStatusCodes.contains(500));
+        HTTPRequestExecutable executable = component.getExecutable();
+
+        assertInstanceOf(ComponentExecutable.class, executable);
+        assertMethodExists(executable, "invoke");
+        assertMethodExists(executable, "stream");
+        assertMethodExists(executable, "collect");
+        assertMethodExists(executable, "transform");
     }
 
-    @Test
-    @DisplayName("Test mock execute")
-    void testMockExecute() {
-        HttpComponentConfig config = new HttpComponentConfig()
-            .requestParams(new HttpRequestParamConfig()
-                .url("https://httpbin.org/get")
-                .method("GET")
-            );
-
-        HTTPRequestComponent component = new HTTPRequestComponent(config);
-        Map<String, Object> result = component.execute();
-
-        assertEquals(200, result.get("status"));
-        assertNotNull(result.get("body"));
-    }
-
-    @Test
-    @Tag("level0")
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+    private static void assertMethodExists(Object executable, String methodName) throws NoSuchMethodException {
+        Method method = executable.getClass().getMethod(
+                methodName,
+                Object.class,
+                com.openjiuwen.core.session.NodeSessionApi.class,
+                com.openjiuwen.core.context.ModelContext.class);
+        assertEquals(methodName, method.getName());
     }
 }

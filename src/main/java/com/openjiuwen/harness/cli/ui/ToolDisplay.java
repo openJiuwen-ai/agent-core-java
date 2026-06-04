@@ -6,8 +6,6 @@ package com.openjiuwen.harness.cli.ui;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +30,6 @@ public final class ToolDisplay {
     );
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final Pattern PATH_PATTERN = Pattern.compile("[^/]+$");
 
     static {
         TOOL_DISPLAY_NAMES.put("read_file", "Read");
@@ -120,52 +117,49 @@ public final class ToolDisplay {
         Map<String, Object> args = parseArgs(toolArgs);
 
         return switch (toolName) {
-            case "read_file", "write_file", "edit_file" -> {
-                String path = (String) args.getOrDefault("file_path", args.getOrDefault("path", ""));
-                String baseName = extractBaseName(path);
+            case "read_file" -> {
+                String path = stringValue(args.get("file_path"));
+                if (path.isBlank()) {
+                    yield "";
+                }
+                String shortPath = shortPath(path);
                 if (args.containsKey("limit")) {
-                    yield baseName + " limit=" + args.get("limit");
+                    yield shortPath + ", limit=" + args.get("limit");
                 }
-                if (args.containsKey("offset")) {
-                    yield baseName + " offset=" + args.get("offset");
-                }
-                yield baseName;
+                yield shortPath;
+            }
+            case "write_file", "edit_file" -> {
+                String path = stringValue(args.get("file_path"));
+                yield path.isBlank() ? "" : shortPath(path);
             }
             case "grep" -> {
-                String pattern = (String) args.getOrDefault("pattern", args.getOrDefault("query", ""));
-                String include = (String) args.get("include");
-                if (include != null) {
-                    yield pattern + " in " + include;
-                }
-                yield pattern;
+                String pattern = stringValue(args.get("pattern"));
+                String path = stringValue(args.get("path"));
+                yield ("\"" + pattern + "\" " + path).strip();
             }
             case "glob" -> {
-                String pattern = (String) args.getOrDefault("pattern", args.getOrDefault("glob", ""));
-                yield pattern;
+                yield stringValue(args.get("pattern"));
             }
             case "bash" -> {
-                String cmd = (String) args.getOrDefault("command", args.getOrDefault("cmd", ""));
-                if (cmd.length() > 50) {
-                    yield cmd.substring(0, 50) + "...";
+                String cmd = stringValue(args.get("command"));
+                if (cmd.length() > 60) {
+                    yield cmd.substring(0, 57) + "...";
                 }
                 yield cmd;
             }
-            case "todo_create", "todo_modify" -> {
-                Object todos = args.get("todos");
-                if (todos instanceof java.util.List) {
-                    yield ((java.util.List<?>) todos).size() + " items";
-                }
-                yield "update";
-            }
+            case "ls", "list_dir" -> stringValue(args.getOrDefault("path", "."));
+            case "todo_create", "todo_modify", "todo_list" -> "";
+            case "web_search", "web_free_search" -> stringValue(args.get("query"));
+            case "web_fetch", "web_fetch_webpage" -> stringValue(args.get("url"));
             default -> {
-                if (args.containsKey("query")) {
-                    String query = (String) args.get("query");
-                    if (query.length() > 30) {
-                        yield query.substring(0, 30) + "...";
-                    }
-                    yield query;
+                if (args.isEmpty()) {
+                    yield "";
                 }
-                yield "";
+                String firstValue = stringValue(args.values().iterator().next());
+                if (firstValue.length() > 60) {
+                    yield firstValue.substring(0, 57) + "...";
+                }
+                yield firstValue;
             }
         };
     }
@@ -178,7 +172,23 @@ public final class ToolDisplay {
      * @return Formatted result summary string.
      */
     public static String formatToolResult(String toolName, Object result) {
-        if (result == null) {
+        if (result == null || (result instanceof String text && text.isEmpty())) {
+            return "Done";
+        }
+        return formatToolResult(toolName, result, null, null);
+    }
+
+    /**
+     * Format tool result with optional args and metadata.
+     *
+     * @param toolName Internal tool name.
+     * @param result   Raw tool result.
+     * @param toolArgs Raw tool arguments.
+     * @param toolMeta Optional metadata such as structured line counts.
+     * @return Formatted result summary string.
+     */
+    public static String formatToolResult(String toolName, Object result, Object toolArgs, Map<String, Object> toolMeta) {
+        if (result == null || (result instanceof String text && text.isEmpty())) {
             return "Done";
         }
 
@@ -186,44 +196,113 @@ public final class ToolDisplay {
             case "read_file" -> {
                 if (result instanceof String) {
                     String content = (String) result;
-                    int lines = content.split("\n").length;
-                    yield "Read " + lines + " lines";
+                    yield "Read " + extractToolResultLineCount(content, toolMeta) + " lines";
                 }
                 yield "Read";
             }
             case "write_file", "edit_file" -> {
-                yield "Written";
+                if ("write_file".equals(toolName) && result instanceof String text) {
+                    Map<String, Object> args = parseArgs(toolArgs);
+                    String path = shortPath(stringValue(args.get("file_path")));
+                    long lines = text.chars().filter(ch -> ch == '\n').count();
+                    if (lines > 0) {
+                        yield "Wrote " + lines + " lines to " + path;
+                    }
+                    yield "Wrote to " + path;
+                }
+                if (result instanceof String text) {
+                    String firstLine = firstLine(text);
+                    if (!firstLine.isBlank() && firstLine.length() <= 80) {
+                        yield firstLine;
+                    }
+                }
+                yield "Edited file";
             }
             case "bash" -> {
                 if (result instanceof String) {
-                    String output = (String) result;
-                    if (output.isEmpty()) {
-                        yield "Done (no output)";
+                    String output = ((String) result).strip();
+                    String[] lines = output.split("\\R", -1);
+                    if (lines.length == 1 && lines[0].length() <= 80) {
+                        yield lines[0];
                     }
-                    int lines = output.split("\n").length;
-                    yield "Output: " + lines + " lines";
+                    String first = lines.length > 0 ? lines[0] : "";
+                    if (first.length() > 60) {
+                        first = first.substring(0, 60);
+                    }
+                    yield first + "... (+" + (lines.length - 1) + " lines)";
                 }
                 yield "Done";
             }
             case "grep" -> {
-                if (result instanceof java.util.List) {
-                    yield ((java.util.List<?>) result).size() + " matches";
-                }
                 if (result instanceof String) {
-                    String content = (String) result;
-                    int lines = content.split("\n").length;
-                    yield lines + " matches";
+                    long count = countNonBlankLines((String) result);
+                    if (count == 0) {
+                        yield "No matches found";
+                    }
+                    yield "Found " + count + " matches";
+                }
+                if (result instanceof java.util.List) {
+                    yield "Found " + ((java.util.List<?>) result).size() + " matches";
                 }
                 yield "Done";
             }
             case "glob" -> {
+                if (result instanceof String) {
+                    long count = countNonBlankLines((String) result);
+                    if (count == 0) {
+                        yield "No files found";
+                    }
+                    yield "Found " + count + " files";
+                }
                 if (result instanceof java.util.List) {
-                    yield ((java.util.List<?>) result).size() + " files";
+                    yield "Found " + ((java.util.List<?>) result).size() + " files";
                 }
                 yield "Done";
             }
-            default -> "Done";
+            case "ls", "list_dir" -> {
+                if (result instanceof String) {
+                    yield "Listed " + countNonBlankLines((String) result) + " items";
+                }
+                yield "Done";
+            }
+            case "todo_create", "todo_modify", "todo_list" -> "";
+            default -> {
+                if (result instanceof String text) {
+                    String firstLine = firstLine(text);
+                    if (firstLine.length() > 80) {
+                        yield firstLine.substring(0, 77) + "...";
+                    }
+                    yield firstLine;
+                }
+                yield "Done";
+            }
         };
+    }
+
+    /**
+     * Format write/edit result as a numbered content preview.
+     */
+    public static String formatWritePreview(String toolResult) {
+        String[] lines = toolResult != null ? toolResult.split("\n", -1) : new String[] {""};
+        StringBuilder preview = new StringBuilder();
+        int visibleLines = Math.min(lines.length, 5);
+        for (int i = 0; i < visibleLines; i++) {
+            String line = lines[i];
+            if (line.length() > 80) {
+                line = line.substring(0, 77) + "...";
+            }
+            if (preview.length() > 0) {
+                preview.append("\n");
+            }
+            preview.append("     ").append(i + 1).append(" ").append(line);
+        }
+        if (lines.length > 5) {
+            if (preview.length() > 0) {
+                preview.append("\n");
+            }
+            preview.append("     \u2026+").append(lines.length - 5).append(" lines");
+        }
+        return preview.toString();
     }
 
     /**
@@ -255,14 +334,46 @@ public final class ToolDisplay {
         return "⎿  " + displayName + " " + resultSummary;
     }
 
-    private static String extractBaseName(String path) {
+    private static String shortPath(String path) {
         if (path == null || path.isEmpty()) {
             return "";
         }
-        Matcher matcher = PATH_PATTERN.matcher(path);
-        if (matcher.find()) {
-            return matcher.group();
+        String cwd = System.getProperty("user.dir", "");
+        if (!cwd.isBlank() && path.startsWith(cwd)) {
+            try {
+                return java.nio.file.Path.of(cwd).relativize(java.nio.file.Path.of(path)).toString();
+            } catch (RuntimeException ignored) {
+                return path;
+            }
         }
         return path;
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? value.toString() : "";
+    }
+
+    private static long extractToolResultLineCount(String toolResult, Map<String, Object> toolMeta) {
+        if (toolMeta != null && toolMeta.get("line_count") != null) {
+            try {
+                return Long.parseLong(String.valueOf(toolMeta.get("line_count")));
+            } catch (NumberFormatException ignored) {
+                // Fall through to rendered text counting.
+            }
+        }
+        return toolResult.lines().count();
+    }
+
+    private static long countNonBlankLines(String text) {
+        String stripped = text.strip();
+        if (stripped.isEmpty()) {
+            return 0;
+        }
+        return stripped.lines().filter(line -> !line.isBlank()).count();
+    }
+
+    private static String firstLine(String text) {
+        int newline = text.indexOf('\n');
+        return newline >= 0 ? text.substring(0, newline) : text;
     }
 }

@@ -8,6 +8,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -26,42 +28,18 @@ class TestLocalStorage {
         @Test
         @DisplayName("default is directory")
         void testDefaultIsDirectory() {
-            // Validates storage configuration exists
-            String defaultDir = System.getProperty("user.home", "/tmp");
+            String defaultDir = LocalStorage.DEFAULT_GRAPH_STORAGE_DIR;
             assertNotNull(defaultDir);
             assertTrue(defaultDir.length() > 0);
+            assertTrue(Path.of(defaultDir).isAbsolute());
         }
 
         @Test
         @DisplayName("default resolves to valid path")
         void testDefaultResolvesToValidPath() {
-            String homeDir = System.getProperty("user.home");
-            assertNotNull(homeDir);
-        }
-    }
-
-    @Nested
-    @DisplayName("GraphMemory Storage Tests")
-    class TestGraphMemoryStorage {
-
-        @Test
-        @DisplayName("graph memory can use storage")
-        void testGraphMemoryCanUseStorage() {
-            GraphMemory graphMemory = new GraphMemory();
-            assertNotNull(graphMemory);
-        }
-    }
-
-    @Nested
-    @DisplayName("Storage Path Tests")
-    class TestStoragePath {
-
-        @Test
-        @DisplayName("storage path is configurable")
-        void testStoragePathIsConfigurable() {
-            // Validates that storage paths can be configured
-            String tempDir = System.getProperty("java.io.tmpdir");
-            assertNotNull(tempDir);
+            String expected = Path.of("src", "main", "java", "com", "openjiuwen", "core", "memory",
+                    "graph", "graph_memory").toAbsolutePath().normalize().toString();
+            assertEquals(expected, Path.of(LocalStorage.DEFAULT_GRAPH_STORAGE_DIR).normalize().toString());
         }
     }
 }

@@ -4,72 +4,91 @@
 
 package com.openjiuwen.unit_tests.agent.llm_agent;
 
+import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
+import com.openjiuwen.core.application.workflow.WorkflowAgent;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.tests.unit_tests.core.workflow.MockNodes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Workflow agent tests.
+ * Workflow agent basic tests.
  * <p>
- * Mirrors Python's {@code test_workflow_agent.py} in
- * {@code tests/unit_tests/agent/llm_agent/test_workflow_agent.py}.
+ * Mirrors Python's {@code tests.unit_tests.agent.workflow_agent.test_workflow_agent}.
  */
-public class TestWorkflowAgent {
+@DisplayName("TestWorkflowAgent")
+class TestWorkflowAgent {
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         Runner.start();
     }
 
     @AfterEach
-    void tearDown() throws Exception {
+    void tearDown() {
         Runner.stop();
     }
 
-    @Nested
-    @DisplayName("Workflow agent tests")
-    class WorkflowAgentTests {
+    @Test
+    @Tag("level0")
+    @DisplayName("invoke single workflow")
+    void testInvokeSingle() {
+        Workflow workflow = buildWorkflow("test_workflow", "test_workflow", "1");
+        WorkflowAgentConfig workflowConfig = WorkflowAgentConfig.builder()
+            .id("test_workflow_agent")
+            .version("0.1.0")
+            .description("test_workflow")
+            .workflows(List.of())
+            .build();
+        WorkflowAgent agent = new WorkflowAgent(workflowConfig);
+        agent.addWorkflows(List.of(workflow));
 
-        @Test
-        @DisplayName("Test workflow agent creation")
-        void testWorkflowAgentCreation() {
-            AgentCard card = AgentCard.builder()
-                    .name("workflow_agent")
-                    .description("Workflow agent for testing")
-                    .build();
-            
-            assertThat(card).isNotNull();
-            assertThat(card.getName()).isEqualTo("workflow_agent");
-        }
+        ControllerOutput result = agent.invoke(Map.of("query", "hi"), null);
+        Map<String, Object> data = result.getDataAsMap();
+        WorkflowOutput output = (WorkflowOutput) data.get("output");
 
-        @Test
-        @DisplayName("Test workflow execution placeholder")
-        void testWorkflowExecution() {
-            // Placeholder: Workflow execution test
-            
-            assertThat(Runner.resourceMgr()).isNotNull();
-        }
+        assertEquals("answer", data.get("result_type"));
+        assertEquals(Map.of("result", "hi"), output.getResult());
+        assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
+    }
 
-        @Test
-        @DisplayName("Test workflow state management placeholder")
-        void testWorkflowStateManagement() {
-            // Placeholder: Workflow state management test
-            
-            assertThat(true).isTrue();
-        }
-
-        @Test
-        @DisplayName("Test workflow completion placeholder")
-        void testWorkflowCompletion() {
-            // Placeholder: Workflow completion test
-            
-            assertThat(true).isTrue();
-        }
+    private static Workflow buildWorkflow(String name, String workflowId, String version) {
+        WorkflowCard workflowCard = WorkflowCard.builder()
+            .id(workflowId)
+            .version(version)
+            .name(name)
+            .build();
+        Workflow flow = new Workflow(workflowCard);
+        flow.setStartComp(
+            "start",
+            new MockNodes.MockStartNode("start"),
+            Map.of("query", "${query}")
+        );
+        flow.addWorkflowComp(
+            "node_a",
+            new MockNodes.Node1("node_a"),
+            Map.of("output", "${start.query}")
+        );
+        flow.setEndComp(
+            "end",
+            new MockNodes.MockEndNode("end"),
+            Map.of("result", "${node_a.output}")
+        );
+        flow.addConnection("start", "node_a");
+        flow.addConnection("node_a", "end");
+        return flow;
     }
 }

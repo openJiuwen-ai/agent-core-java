@@ -10,6 +10,9 @@ import java.util.Set;
 /**
  * Generates human-readable error message templates from structured inputs.
  *
+ * <p>Mirrors Python's {@code ErrorMessageTemplate} in
+ * {@code openjiuwen.core.common.exception.code_template}.</p>
+ *
  * @param template the message template with {placeholders}
  * @param params   the placeholder names used in the template
  */

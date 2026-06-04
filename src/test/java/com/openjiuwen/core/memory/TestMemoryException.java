@@ -5,7 +5,7 @@ package com.openjiuwen.core.memory;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.memory.support.LongTermMemoryTestSupport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,15 +65,10 @@ class TestMemoryException {
         }
 
         @Test
-        @DisplayName("test register store with valid kv store")
-        void testRegisterStoreWithValidKvStore() {
-            // Test that register_store succeeds with valid kv_store.
-            LongTermMemory mem = LongTermMemory.getInstance();
-            InMemoryKVStore kvStore = new InMemoryKVStore();
-
-            // Should succeed - kv_store is provided
-            // Note: Other stores can be null
-            mem.registerStore(kvStore, null, null, null);
+        @DisplayName("test register store with valid stores")
+        void testRegisterStoreWithValidStores() {
+            // Test that register_store succeeds when the configured stores satisfy setConfig.
+            LongTermMemoryTestSupport.registeredMemory();
 
             // No exception thrown means success
         }

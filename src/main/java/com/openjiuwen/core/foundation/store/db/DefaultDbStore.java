@@ -16,6 +16,9 @@ import java.util.logging.Logger;
 
 /**
  * Lightweight JDBC-backed default DB store.
+ *
+ * <p>Mirrors Python's {@code DefaultDbStore} in
+ * {@code openjiuwen.core.foundation.store.db.default_db_store}.
  */
 public class DefaultDbStore extends BaseDbStore<DataSource> {
 

@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for TeamWorkspaceManager.
  * 
- * <p>Mirrors Python's openjiuwen.agent_teams.team_workspace.manager
+ * <p>Mirrors Python's {@code TeamWorkspaceManager} in
+ * {@code openjiuwen.agent_teams.team_workspace.manager}.
  * Ported from Python: agent-core-0.1.12/openjiuwen/agent_teams/team_workspace/manager.py
  * 
  * <p>NOTE: Python has no dedicated test file for TeamWorkspaceManager.
@@ -34,6 +35,11 @@ class TeamWorkspaceManagerTest {
 
     private WorkspaceFileLock createLock(String filePath, String holderId, int timeoutSeconds) {
         String acquiredAt = Instant.now().toString();
+        return new WorkspaceFileLock(filePath, holderId, holderId + "-name", acquiredAt, timeoutSeconds);
+    }
+
+    private WorkspaceFileLock createExpiredLock(String filePath, String holderId, int timeoutSeconds) {
+        String acquiredAt = Instant.now().minusSeconds(timeoutSeconds + 1L).toString();
         return new WorkspaceFileLock(filePath, holderId, holderId + "-name", acquiredAt, timeoutSeconds);
     }
 
@@ -78,6 +84,24 @@ class TeamWorkspaceManagerTest {
         assertEquals(WorkspaceMode.LOCAL, manager.getMode());
     }
 
+    @Test
+    @DisplayName("Test initialize without version control creates artifacts and skips git")
+    void testInitializeWithoutVersionControlSkipsGit() throws IOException {
+        Path workspace = Files.createTempDirectory("team-workspace-init");
+        TeamWorkspaceConfig config = new TeamWorkspaceConfig();
+        config.setVersionControl(false);
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(config, workspace.toString(), "test-team");
+
+        manager.initialize();
+
+        assertFalse(Files.exists(workspace.resolve(".git")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("code")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("docs")));
+        assertTrue(Files.isDirectory(workspace.resolve("artifacts").resolve("reports")));
+        assertTrue(Files.isDirectory(workspace.resolve("trajectories")));
+        assertTrue(Files.isDirectory(workspace.resolve("skills")));
+    }
+
     // ========== Lock tests ==========
 
     @Test
@@ -92,14 +116,11 @@ class TeamWorkspaceManagerTest {
 
     @Test
     @DisplayName("Test acquireLock replaces expired lock")
-    void testAcquireLockExpired() throws InterruptedException {
+    void testAcquireLockExpired() {
         TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
-        // Create a lock with very short TTL
-        WorkspaceFileLock expiredLock = createLock("/tmp/workspace/file.txt", "holder1", 1);
+        WorkspaceFileLock expiredLock = createExpiredLock("/tmp/workspace/file.txt", "holder1", 1);
         manager.acquireLock(expiredLock);
-        
-        Thread.sleep(50); // Let lock expire
-        
+
         WorkspaceFileLock newLock = createLock("/tmp/workspace/file.txt", "holder2", 3600);
         assertTrue(manager.acquireLock(newLock));
         assertEquals("holder2", manager.getLock("/tmp/workspace/file.txt").getHolderId());
@@ -115,6 +136,51 @@ class TeamWorkspaceManagerTest {
         WorkspaceFileLock newLock = createLock("/tmp/workspace/file.txt", "holder2", 3600);
         assertFalse(manager.acquireLock(newLock));
         assertEquals("holder1", manager.getLock("/tmp/workspace/file.txt").getHolderId());
+    }
+
+    @Test
+    @DisplayName("Test acquireLock refreshes lock for same holder")
+    void testAcquireLockSameHolderRefreshes() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock lock = createLock("/tmp/workspace/file.txt", "holder1", 3600);
+        manager.acquireLock(lock);
+
+        WorkspaceFileLock refreshed = new WorkspaceFileLock(
+            "/tmp/workspace/file.txt",
+            "holder1",
+            "holder1-name",
+            Instant.now().plusMillis(1).toString(),
+            3600
+        );
+
+        assertTrue(manager.acquireLock(refreshed));
+        assertEquals(refreshed.getAcquiredAt(), manager.getLock("/tmp/workspace/file.txt").getAcquiredAt());
+    }
+
+    @Test
+    @DisplayName("Test acquireLock overload creates Python shaped lock")
+    void testAcquireLockOverloadCreatesPythonShapedLock() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+
+        assertTrue(manager.acquireLock("src/main.py", "m1", "Alice", 600));
+
+        WorkspaceFileLock lock = manager.getLock("src/main.py");
+        assertNotNull(lock);
+        assertEquals("src/main.py", lock.getFilePath());
+        assertEquals("m1", lock.getHolderId());
+        assertEquals("Alice", lock.getHolderName());
+        assertEquals(600, lock.getTimeoutSeconds());
+    }
+
+    @Test
+    @DisplayName("Test getLock drops expired locks")
+    void testGetLockDropsExpired() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock expiredLock = createExpiredLock("/tmp/workspace/file.txt", "holder1", 1);
+        manager.acquireLock(expiredLock);
+
+        assertNull(manager.getLock("/tmp/workspace/file.txt"));
+        assertTrue(manager.listLocks().isEmpty());
     }
 
     @Test
@@ -147,6 +213,17 @@ class TeamWorkspaceManagerTest {
     }
 
     @Test
+    @DisplayName("Test releaseLock rejects null holder")
+    void testReleaseLockRejectsNullHolder() {
+        TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
+        WorkspaceFileLock lock = createLock("/tmp/workspace/file.txt", "holder1", 3600);
+        manager.acquireLock(lock);
+
+        assertFalse(manager.releaseLock("/tmp/workspace/file.txt", null));
+        assertNotNull(manager.getLock("/tmp/workspace/file.txt"));
+    }
+
+    @Test
     @DisplayName("Test getLock returns null for non-existent file")
     void testGetLockNonExistent() {
         TeamWorkspaceManager manager = createManager("/tmp/workspace", "test-team");
@@ -170,5 +247,36 @@ class TeamWorkspaceManagerTest {
             Files.deleteIfExists(tempDir.resolve(".team"));
             Files.deleteIfExists(tempDir);
         }
+    }
+
+    @Test
+    @DisplayName("Test mountIntoWorktree creates .team mount and gitignore entries")
+    void testMountIntoWorktreeCreatesMountAndGitignore() throws IOException {
+        Path shared = Files.createTempDirectory("shared-workspace");
+        Path worktree = Files.createTempDirectory("agent-worktree");
+        TeamWorkspaceManager manager = createManager(shared.toString(), "test-team");
+
+        manager.mountIntoWorktree(worktree.toString());
+
+        assertTrue(Files.exists(worktree.resolve(".team")));
+        String gitignore = Files.readString(worktree.resolve(".gitignore"));
+        assertTrue(gitignore.contains(".agent/"));
+        assertTrue(gitignore.contains(".team/"));
+    }
+
+    @Test
+    @DisplayName("Test version-control methods no-op when disabled")
+    void testVersionControlDisabledNoOps() throws IOException {
+        Path workspace = Files.createTempDirectory("workspace-vc-disabled");
+        TeamWorkspaceConfig config = new TeamWorkspaceConfig();
+        config.setVersionControl(false);
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(
+            config, workspace.toString(), "test-team", WorkspaceMode.DISTRIBUTED
+        );
+
+        assertFalse(manager.pull());
+        assertTrue(manager.push());
+        assertNull(manager.autoCommit("artifacts/code/a.py", "alice"));
+        assertTrue(manager.getHistory("artifacts/code/a.py").isEmpty());
     }
 }

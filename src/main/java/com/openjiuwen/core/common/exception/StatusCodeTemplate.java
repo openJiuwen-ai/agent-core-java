@@ -10,6 +10,9 @@ import java.util.Set;
  * Template for generating new StatusCode entries.
  * Used by tooling / code generation rather than at runtime.
  *
+ * <p>Mirrors Python's {@code StatusCodeTemplate} in
+ * {@code openjiuwen.core.common.exception.code_template}.</p>
+ *
  * @param name            suggested enum member name, e.g. "WORKFLOW_EXECUTE_TIMEOUT"
  * @param codeSuggestion  human-readable code range, e.g. "100000–100999"
  * @param messageTemplate message template with {placeholders}

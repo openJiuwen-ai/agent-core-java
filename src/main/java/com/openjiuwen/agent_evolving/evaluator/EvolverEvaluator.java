@@ -3,7 +3,8 @@
 
 package com.openjiuwen.agent_evolving.evaluator;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Evaluator for evolution quality assessment.
@@ -16,14 +17,20 @@ public class EvolverEvaluator {
     private final List<Metric> metrics;
     
     public EvolverEvaluator(List<Metric> metrics) {
-        this.metrics = metrics != null ? metrics : new ArrayList<>();
+        this.metrics = metrics != null ? new ArrayList<>(metrics) : new ArrayList<>();
     }
     
     /**
      * Evaluate trajectory.
-     * PLACEHOLDER: Requires Trajectory Java class.
+     *
+     * <p>Mirrors the mean aggregation used by Python's {@code _agg_score} for
+     * {@code MetricEvaluator}: no metric outputs produce {@code 0.0}; otherwise
+     * scores are averaged in input order.
      */
     public double evaluate(Object trajectory) {
+        if (metrics.isEmpty()) {
+            return 0.0;
+        }
         double totalScore = 0.0;
         
         for (Metric metric : metrics) {

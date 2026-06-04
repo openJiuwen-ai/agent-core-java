@@ -4,9 +4,25 @@
 
 package com.openjiuwen.harness.cli.agent;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
+import com.openjiuwen.harness.HarnessFactory;
+import com.openjiuwen.harness.rails.SysOperationRail;
+import com.openjiuwen.harness.rails.interrupt.AskUserRail;
+import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
+import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.workspace.Workspace;
+
 import java.util.*;
 import java.nio.file.*;
 import java.io.*;
+import java.lang.reflect.Method;
+import java.util.concurrent.CompletionStage;
 
 /**
  * CLI agent factory — creates agents from CLI config.
@@ -46,37 +62,34 @@ public final class CliAgentFactory {
         String model = (String) config.getOrDefault("model", "gpt-4");
         String apiKey = (String) config.get("api_key");
         String apiBase = (String) config.get("api_base");
-        Integer maxTokens = (Integer) config.getOrDefault("max_tokens", 4096);
+        Integer maxTokens = intValue(config.get("max_tokens"), 4096);
         String cwd = (String) config.getOrDefault("cwd", System.getProperty("user.dir"));
         String workspace = (String) config.getOrDefault("workspace", cwd);
-        Integer maxIterations = (Integer) config.getOrDefault("max_iterations", 100);
+        Integer maxIterations = intValue(config.get("max_iterations"), 100);
 
         // Build system prompt
         String systemPrompt = buildSystemPrompt(cwd, model, provider);
 
         // Create rails list
-        List<Object> rails = new ArrayList<>();
+        List<AgentRail> rails = new ArrayList<>();
         
         // Add token tracking rail
-        rails.add(new TokenTrackingRailPlaceholder());
-        
-        // Add tool tracking rail
-        rails.add(new ToolTrackingRailPlaceholder());
+        TokenTrackingRailPlaceholder tracker = new TokenTrackingRailPlaceholder();
         
         // Add filesystem operation rail
-        rails.add(new SysOperationRailPlaceholder());
+        rails.add(new SysOperationRail());
         
         // Add ask user rail
-        rails.add(new AskUserRailPlaceholder());
+        rails.add(new AskUserRail());
         
         // Add confirm interrupt rail for dangerous operations
-        rails.add(new ConfirmInterruptRailPlaceholder(Arrays.asList("bash", "write_file", "edit_file")));
+        rails.add(new ConfirmInterruptRail(Arrays.asList("bash", "write_file", "edit_file")));
         
         // Add skill rail with default skill directories
-        rails.add(new SkillUseRailPlaceholder(DEFAULT_SKILL_DIRS));
+        rails.add(new SkillUseRail(DEFAULT_SKILL_DIRS, SkillUseRail.SKILL_MODE_ALL, true, false, null, null));
 
         // Build workspace
-        WorkspacePlaceholder workspaceObj = buildCliWorkspace(workspace, "en");
+        Workspace workspaceObj = buildCliWorkspace(workspace, "en");
 
         // Create subagents list
         List<Object> subagents = buildSubagents(model);
@@ -91,7 +104,7 @@ public final class CliAgentFactory {
         }
 
         // Create deep agent - delegate to DeepAgentFactory
-        Object agent = createDeepAgent(
+        DeepAgent agent = createDeepAgent(
             model,
             provider,
             apiKey,
@@ -105,14 +118,14 @@ public final class CliAgentFactory {
             extraKwargs
         );
 
-        return new AgentAndTracker(agent, new TokenTrackingRailPlaceholder());
+        return new AgentAndTracker(agent, tracker);
     }
 
     /**
      * Build CLI-specific workspace with overridden IDENTITY.md.
      */
-    private static WorkspacePlaceholder buildCliWorkspace(String workspacePath, String language) {
-        return new WorkspacePlaceholder(workspacePath, language);
+    private static Workspace buildCliWorkspace(String workspacePath, String language) {
+        return new Workspace(workspacePath, language);
     }
 
     /**
@@ -175,22 +188,44 @@ public final class CliAgentFactory {
     /**
      * Create deep agent - delegate to DeepAgentFactory.
      */
-    private static Object createDeepAgent(
+    private static DeepAgent createDeepAgent(
         String model,
         String provider,
         String apiKey,
         String apiBase,
         Integer maxTokens,
         String systemPrompt,
-        List<Object> rails,
+        List<AgentRail> rails,
         List<Object> subagents,
         Integer maxIterations,
-        WorkspacePlaceholder workspace,
+        Workspace workspace,
         Map<String, Object> extraKwargs
     ) {
-        // Placeholder - actual implementation delegates to DeepAgentFactory
-        return new DeepAgentPlaceholder(model, provider, apiKey, apiBase, maxTokens, 
-            systemPrompt, rails, subagents, maxIterations, workspace, extraKwargs);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setModelClientConfig(ModelClientConfig.builder()
+                .clientProvider(provider)
+                .apiKey(apiKey != null ? apiKey : "")
+                .apiBase(apiBase != null ? apiBase : "")
+                .build());
+        config.setModelRequestConfig(ModelRequestConfig.builder()
+                .modelName(model)
+                .maxTokens(maxTokens)
+                .build());
+        config.setSystemPrompt(systemPrompt);
+        config.setMaxIterations(maxIterations != null ? maxIterations : 100);
+        config.setWorkspace(workspace);
+        config.setRails(rails);
+        return HarnessFactory.createDeepAgent(config);
+    }
+
+    private static Integer intValue(Object value, Integer defaultValue) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return Integer.parseInt(text);
+        }
+        return defaultValue;
     }
 
     /**
@@ -216,29 +251,6 @@ public final class CliAgentFactory {
     }
 
     static class TokenTrackingRailPlaceholder { }
-    static class ToolTrackingRailPlaceholder { }
-    static class SysOperationRailPlaceholder { }
-    static class AskUserRailPlaceholder { }
-    static class ConfirmInterruptRailPlaceholder {
-        private final List<String> toolNames;
-        ConfirmInterruptRailPlaceholder(List<String> toolNames) {
-            this.toolNames = toolNames;
-        }
-    }
-    static class SkillUseRailPlaceholder {
-        private final List<String> skillsDir;
-        SkillUseRailPlaceholder(List<String> skillsDir) {
-            this.skillsDir = skillsDir;
-        }
-    }
-    static class WorkspacePlaceholder {
-        private final String rootPath;
-        private final String language;
-        WorkspacePlaceholder(String rootPath, String language) {
-            this.rootPath = rootPath;
-            this.language = language;
-        }
-    }
     static class SubAgentConfigPlaceholder {
         private final String name;
         private final String description;
@@ -249,48 +261,57 @@ public final class CliAgentFactory {
             this.model = model;
         }
     }
-    static class DeepAgentPlaceholder {
-        private final String model;
-        private final String provider;
-        private final String apiKey;
-        private final String apiBase;
-        private final Integer maxTokens;
-        private final String systemPrompt;
-        private final List<Object> rails;
-        private final List<Object> subagents;
-        private final Integer maxIterations;
-        private final WorkspacePlaceholder workspace;
-        private final Map<String, Object> extraKwargs;
-        
-        DeepAgentPlaceholder(String model, String provider, String apiKey, String apiBase,
-            Integer maxTokens, String systemPrompt, List<Object> rails, List<Object> subagents,
-            Integer maxIterations, WorkspacePlaceholder workspace, Map<String, Object> extraKwargs) {
-            this.model = model;
-            this.provider = provider;
-            this.apiKey = apiKey;
-            this.apiBase = apiBase;
-            this.maxTokens = maxTokens;
-            this.systemPrompt = systemPrompt;
-            this.rails = rails;
-            this.subagents = subagents;
-            this.maxIterations = maxIterations;
-            this.workspace = workspace;
-            this.extraKwargs = extraKwargs;
-        }
-    }
 
     /**
      * LocalBackend — direct SDK Runner backend (MVP).
      * Mirrors Python's LocalBackend class.
      */
     public static class LocalBackend {
+        @FunctionalInterface
+        public interface AgentProvider {
+            AgentAndTracker create(Map<String, Object> config);
+        }
+
+        @FunctionalInterface
+        public interface StreamingRunner {
+            Iterator<Object> run(Object agent, Object inputs, Object session);
+        }
+
         private final Map<String, Object> cfg;
+        private final AgentProvider agentProvider;
+        private final Runnable runnerStart;
+        private final Runnable runnerStop;
+        private final StreamingRunner streamingRunner;
         private Object agent;
         private Object tracker;
         private String sessionId;
 
         public LocalBackend(Map<String, Object> config) {
+            this(
+                    config,
+                    CliAgentFactory::createFromConfig,
+                    Runner::start,
+                    Runner::stop,
+                    (agent, inputs, session) -> Runner.runAgentStreaming(
+                            agent,
+                            inputs,
+                            session,
+                            null,
+                            List.of(StreamMode.OUTPUT))
+            );
+        }
+
+        public LocalBackend(
+                Map<String, Object> config,
+                AgentProvider agentProvider,
+                Runnable runnerStart,
+                Runnable runnerStop,
+                StreamingRunner streamingRunner) {
             this.cfg = config;
+            this.agentProvider = agentProvider;
+            this.runnerStart = runnerStart;
+            this.runnerStop = runnerStop;
+            this.streamingRunner = streamingRunner;
             this.sessionId = "cli-" + UUID.randomUUID().toString().substring(0, 8);
         }
 
@@ -298,32 +319,51 @@ public final class CliAgentFactory {
          * Create the agent and start the Runner.
          */
         public void start() {
-            AgentAndTracker result = createFromConfig(cfg);
+            AgentAndTracker result = agentProvider.create(cfg);
             this.agent = result.getAgent();
             this.tracker = result.getTracker();
-            // Runner.start() placeholder
+            runnerStart.run();
         }
 
         /**
          * Stop the Runner.
          */
         public void stop() {
-            // Runner.stop() placeholder
+            runnerStop.run();
         }
 
         /**
          * Execute query and stream OutputSchema chunks.
          */
         public Iterator<Object> runStreaming(Object query, String sessionId) {
-            // Placeholder - actual implementation would stream agent output
-            return Collections.emptyIterator();
+            String sid = sessionId != null ? sessionId : this.sessionId;
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("query", query);
+            return streamingRunner.run(agent, inputs, sid);
+        }
+
+        public Iterator<Object> runStreaming(Object query) {
+            return runStreaming(query, null);
         }
 
         /**
          * Abort the currently running query.
          */
         public void abort() {
-            // Placeholder - abort current execution
+            if (agent == null) {
+                return;
+            }
+            try {
+                Method abortMethod = agent.getClass().getMethod("abort");
+                Object result = abortMethod.invoke(agent);
+                if (result instanceof CompletionStage<?> stage) {
+                    stage.toCompletableFuture().join();
+                }
+            } catch (NoSuchMethodException ignored) {
+                // Some local agent implementations do not expose an abort hook.
+            } catch (Exception ignored) {
+                // Keep CLI abort best-effort, matching Python's suppressed abort errors.
+            }
         }
 
         public Object getAgent() { return agent; }

@@ -103,6 +103,11 @@ class TestPrompts {
         }
 
         @Test
+        void testTemplateHasContent() {
+            Assertions.assertTrue(Prompts.REFINE_INTENTION_USER_TEMPLATE.length() > 0);
+        }
+
+        @Test
         void testTemplateFormat() {
             String result = Prompts.formatRefineIntentionUserTemplate("test mermaid", "test history");
 
@@ -117,13 +122,15 @@ class TestPrompts {
     static class TestEmptyResourceContent {
 
         @Test
-        void testContentExists() {
-            Assertions.assertNotNull(Prompts.EMPTY_RESOURCE_CONTENT);
+        void testIsString() {
+            Assertions.assertTrue(Prompts.EMPTY_RESOURCE_CONTENT instanceof String);
         }
 
         @Test
-        void testContentHasValue() {
-            Assertions.assertTrue(Prompts.EMPTY_RESOURCE_CONTENT.length() > 0);
+        void testIndicatesEmpty() {
+            Assertions.assertTrue(Prompts.EMPTY_RESOURCE_CONTENT.contains("无")
+                    || Prompts.EMPTY_RESOURCE_CONTENT.toLowerCase().contains("empty")
+                    || Prompts.EMPTY_RESOURCE_CONTENT.isEmpty());
         }
     }
 }

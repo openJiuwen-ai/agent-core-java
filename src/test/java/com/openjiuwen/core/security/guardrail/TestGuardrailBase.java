@@ -16,12 +16,14 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for GuardrailBase.
- * Mirrors Python's tests/unit_tests/core/security/guardrail/test_guardrail_base.py
+ * Mirrors Python's {@code tests/unit_tests/core/security/guardrail/test_guardrail_base.py}.
  */
 class TestGuardrailBase {
 
@@ -334,6 +336,29 @@ class TestGuardrailBase {
     class TestGuardrailBackendTests {
 
         @Test
+        @DisplayName("test backend is abstract")
+        void testBackendIsAbstract() throws Exception {
+            assertTrue(GuardrailBackend.class.isInterface());
+            assertTrue(Modifier.isAbstract(GuardrailBackend.class.getModifiers()));
+            assertEquals(0, GuardrailBackend.class.getConstructors().length);
+
+            Method analyze = GuardrailBackend.class.getMethod("analyze", Map.class);
+            assertTrue(Modifier.isAbstract(analyze.getModifiers()));
+        }
+
+        @Test
+        @DisplayName("test backend subclass must implement analyze")
+        void testBackendSubclassMustImplementAnalyze() {
+            Method[] abstractMethods = Arrays.stream(GuardrailBackend.class.getMethods())
+                    .filter(method -> Modifier.isAbstract(method.getModifiers()))
+                    .toArray(Method[]::new);
+
+            assertEquals(1, abstractMethods.length);
+            assertEquals("analyze", abstractMethods[0].getName());
+            assertThrows(NoSuchMethodException.class, () -> GuardrailBackend.class.getDeclaredConstructor());
+        }
+
+        @Test
         @DisplayName("test backend is functional interface")
         void testBackendIsFunctionalInterface() {
             assertTrue(GuardrailBackend.class.isAnnotationPresent(FunctionalInterface.class));
@@ -390,7 +415,7 @@ class TestGuardrailBase {
         void testDetectCallbackSafeNoException() throws Exception {
             guardrail = new CustomTestGuardrail(mockBackend, null);
             Object result = guardrail.callDetectCallback("test_event", createKwargs("test", "value"));
-            assertNotNull(result);
+            assertNull(result);
         }
 
         @Test
@@ -540,9 +565,6 @@ class TestGuardrailBase {
     }
 
     private static class CustomTestGuardrail extends BaseGuardrail {
-        private CallbackFramework testFramework;
-        private final List<String> testRegisteredEvents = new ArrayList<>();
-
         CustomTestGuardrail(GuardrailBackend backend, List<String> events) {
             super(backend, events, true);
         }
@@ -553,31 +575,24 @@ class TestGuardrailBase {
         }
 
         public void setFramework(CallbackFramework framework) {
-            this.testFramework = framework;
+            this.framework = framework;
         }
 
         public void addRegisteredEvent(String event) {
-            this.testRegisteredEvents.add(event);
+            super.addRegisteredEvent(event);
         }
 
         public List<String> getRegisteredEvents() {
-            return new ArrayList<>(testRegisteredEvents);
+            return super.getRegisteredEvents();
         }
 
         public boolean isEventRegistered(String event) {
-            return testRegisteredEvents.contains(event);
+            return super.isEventRegistered(event);
         }
 
         public Object callDetectCallback(String eventName, Map<String, Object> kwargs) {
             Object[] args = new Object[0];
-            try {
-                return detect(eventName, args, kwargs);
-            } catch (Exception e) {
-                if (e instanceof RuntimeException) {
-                    throw (RuntimeException) e;
-                }
-                throw new RuntimeException(e);
-            }
+            return detectCallback(eventName, args, kwargs);
         }
 
         @Override

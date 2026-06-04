@@ -121,7 +121,7 @@ public class OnlineTrainingScheduler {
             trainer.trainBatch(userId, samples, trainingCount, tmpRoot);
         } catch (RuntimeException error) {
             trajectoryStore.markFailed(sampleIds);
-            throw error;
+            return;
         }
         trajectoryStore.markTrained(sampleIds);
     }

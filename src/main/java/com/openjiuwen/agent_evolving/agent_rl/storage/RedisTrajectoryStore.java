@@ -68,12 +68,12 @@ public class RedisTrajectoryStore implements TrajectorySampleStore {
         }
 
         Map<String, Object> normalized = deepCopy(sample);
-        String normalizedUserId = normalizeUserId(normalized.get("user_id"), userId);
+        String normalizedUserId = pythonOrString(normalized.get("user_id"), userId, DEFAULT_USER_ID);
         normalized.put("user_id", normalizedUserId);
         normalized.put("_store_status", "pending");
 
-        String createdAt = String.valueOf(normalized.getOrDefault("created_at", OffsetDateTime.now(ZoneOffset.UTC).toString()));
-        String sessionId = String.valueOf(normalized.getOrDefault("session_id", "default"));
+        String createdAt = pythonOrString(normalized.get("created_at"), OffsetDateTime.now(ZoneOffset.UTC).toString());
+        String sessionId = pythonOrString(normalized.get("session_id"), "default");
         String payload = writeJson(normalized);
         double score = epoch(createdAt);
 
@@ -100,7 +100,7 @@ public class RedisTrajectoryStore implements TrajectorySampleStore {
 
     @Override
     public int getPendingCount(String userId) {
-        return (int) backend.zcard(idxKey(normalizeUserId(null, userId), "pending"));
+        return (int) backend.zcard(idxKey(userId, "pending"));
     }
 
     @Override
@@ -280,14 +280,42 @@ public class RedisTrajectoryStore implements TrajectorySampleStore {
         return IDX_PREFIX + ":" + userId + ":" + status;
     }
 
-    private static String normalizeUserId(Object explicitUserId, String fallback) {
-        String resolved = explicitUserId != null ? String.valueOf(explicitUserId) : String.valueOf(fallback != null ? fallback : DEFAULT_USER_ID);
-        String trimmed = resolved.trim();
-        return trimmed.isEmpty() ? DEFAULT_USER_ID : trimmed;
-    }
-
     private static String decode(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String pythonOrString(Object first, Object... fallbacks) {
+        if (pythonTruthy(first)) {
+            return String.valueOf(first);
+        }
+        for (Object fallback : fallbacks) {
+            if (pythonTruthy(fallback)) {
+                return String.valueOf(fallback);
+            }
+        }
+        return "";
+    }
+
+    private static boolean pythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence chars) {
+            return !chars.isEmpty();
+        }
+        if (value instanceof java.util.Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 
     private static int toInt(Object value) {

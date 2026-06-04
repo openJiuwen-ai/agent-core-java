@@ -5,11 +5,12 @@
 package com.openjiuwen.examples.mcp.sse;
 
 /**
- * SSE (Server-Sent Events) MCP Server Example - Documentation placeholder.
+ * SSE (Server-Sent Events) MCP Server Example.
  * <p>
- * This class documents the Python SSE MCP server implementation.
- * The MCP server in Python uses FastMCP framework, which is Python-specific.
- * Java MCP implementation currently provides client-side only.
+ * This class mirrors the Python SSE MCP server's calculator tools as Java
+ * static methods. The Python file still owns the FastMCP transport startup;
+ * these methods preserve the observable tool behavior for Java tests and
+ * examples.
  * <p>
  * Mirrors Python's {@code server} in
  * {@code examples.mcp.sse.server}.
@@ -66,9 +67,6 @@ package com.openjiuwen.examples.mcp.sse;
  */
 public final class ServerExample {
 
-    // This class is a documentation placeholder.
-    // The Python MCP server is the reference implementation for SSE transport.
-    
     private ServerExample() {
         // Prevent instantiation
     }
@@ -86,4 +84,62 @@ public final class ServerExample {
     public static final String TOOL_MULTIPLY = "multiply";
     public static final String TOOL_DIVIDE = "divide";
     public static final String TOOL_POWER = "power";
+
+    /**
+     * Add two numbers together.
+     *
+     * @param a first addend
+     * @param b second addend
+     * @return sum of {@code a} and {@code b}
+     */
+    public static double add(double a, double b) {
+        return a + b;
+    }
+
+    /**
+     * Subtract {@code b} from {@code a}.
+     *
+     * @param a minuend
+     * @param b subtrahend
+     * @return difference
+     */
+    public static double subtract(double a, double b) {
+        return a - b;
+    }
+
+    /**
+     * Multiply two numbers together.
+     *
+     * @param a first factor
+     * @param b second factor
+     * @return product
+     */
+    public static double multiply(double a, double b) {
+        return a * b;
+    }
+
+    /**
+     * Divide {@code a} by {@code b}.
+     *
+     * @param a dividend
+     * @param b divisor
+     * @return quotient, or the same error string returned by Python for zero division
+     */
+    public static Object divide(double a, double b) {
+        if (b == 0.0d) {
+            return "Error: division by zero";
+        }
+        return a / b;
+    }
+
+    /**
+     * Raise {@code base} to the power of {@code exponent}.
+     *
+     * @param base base value
+     * @param exponent exponent value
+     * @return power result
+     */
+    public static double power(double base, double exponent) {
+        return Math.pow(base, exponent);
+    }
 }

@@ -50,10 +50,13 @@ abstract class SystemTestSupport {
     private final Set<String> groupIds = new LinkedHashSet<>();
 
     protected void assumeRemoteModelAvailable() {
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiBase()), "API_BASE is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiKey()), "API_KEY is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelProvider()), "MODEL_PROVIDER is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelName()), "MODEL_NAME is required");
+        assumeTrue(ApiConfigLoader.hasUsableModelConfig(),
+                "Requires real API_BASE/API_KEY/MODEL_PROVIDER/MODEL_NAME instead of placeholder config");
+    }
+
+    protected void assumeRemoteEmbeddingAvailable() {
+        assumeTrue(ApiConfigLoader.hasUsableEmbeddingConfig(),
+                "Requires real embedding API config instead of placeholder config");
     }
 
     protected String trackSessionId(String prefix) {

@@ -4,11 +4,13 @@
 
 package com.openjiuwen.agent_evolving.trajectory;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.TrajectoryStep.
+ * Mirrors Python's {@code TrajectoryStep} in {@code openjiuwen.agent_evolving.trajectory.types}.
  */
 public class TrajectoryStep {
 
@@ -21,6 +23,10 @@ public class TrajectoryStep {
     private Object outputs;
     private Object error;
     private Object detail;
+    private Double reward;
+    private List<Integer> promptTokenIds;
+    private List<Integer> completionTokenIds;
+    private Object logprobs;
     private Long startTimeMs;
     private Long endTimeMs;
     private Map<String, Object> meta;
@@ -89,6 +95,18 @@ public class TrajectoryStep {
     public void setError(Object error) { this.error = error; }
     public Object getDetail() { return detail; }
     public void setDetail(Object detail) { this.detail = detail; }
+    public Double getReward() { return reward; }
+    public void setReward(Double reward) { this.reward = reward; }
+    public List<Integer> getPromptTokenIds() { return promptTokenIds; }
+    public void setPromptTokenIds(List<Integer> promptTokenIds) {
+        this.promptTokenIds = promptTokenIds != null ? new ArrayList<>(promptTokenIds) : null;
+    }
+    public List<Integer> getCompletionTokenIds() { return completionTokenIds; }
+    public void setCompletionTokenIds(List<Integer> completionTokenIds) {
+        this.completionTokenIds = completionTokenIds != null ? new ArrayList<>(completionTokenIds) : null;
+    }
+    public Object getLogprobs() { return logprobs; }
+    public void setLogprobs(Object logprobs) { this.logprobs = logprobs; }
     public Long getStartTimeMs() { return startTimeMs; }
     public void setStartTimeMs(Long startTimeMs) { this.startTimeMs = startTimeMs; }
     public Long getEndTimeMs() { return endTimeMs; }
@@ -106,6 +124,10 @@ public class TrajectoryStep {
         private Object outputs;
         private Object error;
         private Object detail;
+        private Double reward;
+        private List<Integer> promptTokenIds;
+        private List<Integer> completionTokenIds;
+        private Object logprobs;
         private Long startTimeMs;
         private Long endTimeMs;
         private Map<String, Object> meta;
@@ -123,12 +145,39 @@ public class TrajectoryStep {
         public Builder outputs(Object outputs) { this.outputs = outputs; return this; }
         public Builder error(Object error) { this.error = error; return this; }
         public Builder detail(Object detail) { this.detail = detail; return this; }
+        public Builder reward(Double reward) { this.reward = reward; return this; }
+        public Builder promptTokenIds(List<Integer> promptTokenIds) {
+            this.promptTokenIds = promptTokenIds != null ? new ArrayList<>(promptTokenIds) : null;
+            return this;
+        }
+        public Builder completionTokenIds(List<Integer> completionTokenIds) {
+            this.completionTokenIds = completionTokenIds != null ? new ArrayList<>(completionTokenIds) : null;
+            return this;
+        }
+        public Builder logprobs(Object logprobs) { this.logprobs = logprobs; return this; }
         public Builder startTimeMs(Long startTimeMs) { this.startTimeMs = startTimeMs; return this; }
         public Builder endTimeMs(Long endTimeMs) { this.endTimeMs = endTimeMs; return this; }
         public Builder meta(Map<String, Object> meta) { this.meta = meta; return this; }
 
         public TrajectoryStep build() {
-            return new TrajectoryStep(kind, operatorId, agentId, role, nodeId, inputs, outputs, error, startTimeMs, endTimeMs, meta);
+            TrajectoryStep step = new TrajectoryStep(
+                    kind,
+                    operatorId,
+                    agentId,
+                    role,
+                    nodeId,
+                    inputs,
+                    outputs,
+                    error,
+                    startTimeMs,
+                    endTimeMs,
+                    meta);
+            step.setDetail(detail);
+            step.setReward(reward);
+            step.setPromptTokenIds(promptTokenIds);
+            step.setCompletionTokenIds(completionTokenIds);
+            step.setLogprobs(logprobs);
+            return step;
         }
     }
 }

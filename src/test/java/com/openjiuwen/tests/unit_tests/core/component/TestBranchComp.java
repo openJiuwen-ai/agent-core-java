@@ -4,256 +4,198 @@
 
 package com.openjiuwen.tests.unit_tests.core.component;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.workflow.BranchRouter;
+import com.openjiuwen.core.workflow.MockNodes;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.WorkflowSessions;
+import com.openjiuwen.core.workflow.component.BranchComponent;
+import com.openjiuwen.core.workflow.component.End;
+import com.openjiuwen.core.workflow.condition.ExpressionCondition;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's {@code test_branch_comp.py} in 
+ * Mirrors Python's {@code test_branch_comp.py} in
  * {@code tests.unit_tests.core.component}.
  */
 @Tag("unit-test")
-@Disabled("Requires workflow configuration and async support")
 class TestBranchComp {
 
-    // -----------------------------------------------------------------------
-    // Mock classes
-    // -----------------------------------------------------------------------
-
-    static class Input {
-        Map<String, Object> data;
-
-        Input(Map<String, Object> data) {
-            this.data = data;
-        }
-
-        Object get(String key) {
-            return data.get(key);
-        }
-
-        String getConfigKey() {
-            return "config";
-        }
-    }
-
-    static class Output {
-        Map<String, Object> data;
-
-        Output(Map<String, Object> data) {
-            this.data = data;
-        }
-
-        Object get(String key) {
-            return data.get(key);
-        }
-    }
-
-    static class BranchRouter {
-        List<BranchRule> branches = new ArrayList<>();
-
-        void addBranch(String condition, String target) {
-            branches.add(new BranchRule(condition, target));
-        }
-
-        String evaluate(Map<String, Object> context) {
-            for (BranchRule rule : branches) {
-                if (evaluateCondition(rule.condition, context)) {
-                    return rule.target;
-                }
-            }
-            return null;
-        }
-
-        private boolean evaluateCondition(String condition, Map<String, Object> context) {
-            // Simple condition evaluation
-            if (condition.contains("len(")) {
-                // Extract variable and check length
-                return true; // Simplified
-            }
-            return false;
-        }
-    }
-
-    static class BranchRule {
-        String condition;
-        String target;
-
-        BranchRule(String condition, String target) {
-            this.condition = condition;
-            this.target = target;
-        }
-    }
-
-    static class WorkflowComponent {
-        String name;
-
-        WorkflowComponent(String name) {
-            this.name = name;
-        }
-
-        Output invoke(Input inputs, Map<String, Object> session, Map<String, Object> context) {
-            return new Output(new HashMap<>());
-        }
-
-        String componentType() {
-            return "component";
-        }
-    }
-
-    static class BranchComponent extends WorkflowComponent {
-        BranchRouter router;
-
-        BranchComponent(String name) {
-            super(name);
-            this.router = new BranchRouter();
-        }
-
-        void addBranch(String condition, String target) {
-            router.addBranch(condition, target);
-        }
-    }
-
-    static class MockStartNode extends WorkflowComponent {
-        MockStartNode(String name) {
-            super(name);
-        }
-
-        @Override
-        Output invoke(Input inputs, Map<String, Object> session, Map<String, Object> context) {
-            Map<String, Object> output = new HashMap<>();
-            output.put("a", inputs.get("a"));
-            output.put("b", inputs.get("b"));
-            output.put("c", 1);
-            output.put("d", Arrays.asList(1, 2, 3));
-            return new Output(output);
-        }
-    }
-
-    static class Node1 extends WorkflowComponent {
-        Node1(String name) {
-            super(name);
-        }
-
-        @Override
-        Output invoke(Input inputs, Map<String, Object> session, Map<String, Object> context) {
-            Map<String, Object> output = new HashMap<>();
-            output.put(name, inputs.get("a"));
-            return new Output(output);
-        }
-    }
-
-    static class Workflow {
-        Map<String, WorkflowComponent> components = new LinkedHashMap<>();
-        Map<String, List<String>> connections = new HashMap<>();
-        String startComp;
-        String endComp;
-
-        void setStartComp(String name, WorkflowComponent comp) {
-            startComp = name;
-            components.put(name, comp);
-        }
-
-        void addWorkflowComp(String name, WorkflowComponent comp) {
-            components.put(name, comp);
-        }
-
-        void setEndComp(String name, WorkflowComponent comp) {
-            endComp = name;
-            components.put(name, comp);
-        }
-
-        void addConnection(String from, String to) {
-            connections.computeIfAbsent(from, k -> new ArrayList<>()).add(to);
-        }
-
-        void addConditionalConnection(String from, BranchRouter router) {
-            // Add conditional routing
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Tests
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("Test branch router creation")
-    void testBranchRouterCreation() {
-        BranchRouter router = new BranchRouter();
-        router.addBranch("len(${start.d}) > 2", "a");
-        router.addBranch("len(${start.d}) < 2", "b");
-
-        assertEquals(2, router.branches.size());
-    }
-
-    @Test
-    @DisplayName("Test branch component creation")
-    void testBranchComponentCreation() {
-        BranchComponent branch = new BranchComponent("branch_test");
-        branch.addBranch("condition1", "target_a");
-        branch.addBranch("condition2", "target_b");
-
-        assertEquals("branch_test", branch.name);
-        assertEquals(2, branch.router.branches.size());
-    }
-
-    @Test
-    @DisplayName("Test workflow setup with branch")
-    void testWorkflowSetupWithBranch() {
+    @DisplayName("sub workflow branch router chooses the matching target")
+    void testSubWorkflowWithBranch() {
         Workflow workflow = new Workflow();
-        workflow.setStartComp("start", new MockStartNode("start"));
-        workflow.addWorkflowComp("a", new Node1("a"));
-        workflow.addWorkflowComp("b", new Node1("b"));
-        workflow.setEndComp("end", new WorkflowComponent("end"));
-        workflow.addConnection("a", "end");
-        workflow.addConnection("b", "end");
+        workflow.setStartComp("s", new com.openjiuwen.core.workflow.component.Start(),
+                Map.of("input", "${data}"), null);
+        workflow.addWorkflowComp("sub_workflow", new MockSubWorkflowComponent());
+        workflow.setEndComp("e", new End(), Map.of("end_out", "${print_inputs}"), null);
+        workflow.addConnection("s", "sub_workflow");
+        workflow.addConnection("sub_workflow", "e");
 
-        assertNotNull(workflow.startComp);
-        assertNotNull(workflow.endComp);
-        assertEquals(4, workflow.components.size());
-        assertTrue(workflow.connections.containsKey("a"));
-        assertTrue(workflow.connections.containsKey("b"));
+        WorkflowOutput result = workflow.invoke(
+                Map.of("data", "aaa"),
+                WorkflowSessions.createWorkflowSession(),
+                null);
+
+        assertNotNull(result);
+        assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
+    }
+
+    private static final class MockSubWorkflowComponent extends WorkflowComponent {
+        @Override
+        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
+            List<Object> results = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                results.add(subWorkflow().invoke(
+                        Map.of("a", "1", "b", 2),
+                        session,
+                        context,
+                        true).getResult());
+            }
+            return Map.of("results", results);
+        }
+
+        @Override
+        public boolean graphInvoker() {
+            return true;
+        }
+
+        @Override
+        public String componentType() {
+            return "sub_workflow";
+        }
+
+        private Workflow subWorkflow() {
+            Workflow flow = new Workflow();
+            flow.setStartComp("start", new MockNodes.MockStartNode("start"),
+                    Map.of("a", "${a}", "b", "${b}", "c", 1, "d", List.of(1, 2, 3)), null);
+
+            BranchRouter router = new BranchRouter();
+            router.addBranch("len(${start.d}) > 2", "a", null);
+            router.addBranch("len(${start.d}) < 2", "b", null);
+
+            flow.addConditionalConnection("start", router);
+            flow.addWorkflowComp("a", new MockNodes.Node1("a"), Map.of("a", "${start.a}"), null);
+            flow.addWorkflowComp("b", new MockNodes.Node1("b"), Map.of("b", "${start.b}"), null);
+            flow.setEndComp("end", new End(), Map.of("result1", "${a.a}", "result2", "${b.b}"), null);
+            flow.addConnection("a", "end");
+            flow.addConnection("b", "end");
+            return flow;
+        }
     }
 
     @Test
-    @DisplayName("Test mock start node invoke")
-    void testMockStartNodeInvoke() {
-        MockStartNode start = new MockStartNode("start");
-        Input input = new Input(Map.of("a", "1", "b", 2));
-        
-        Output output = start.invoke(input, new HashMap<>(), new HashMap<>());
+    @DisplayName("addBranch rejects invalid condition and target values")
+    void testAddBranchError() {
+        BranchComponent branch = new BranchComponent();
 
-        assertNotNull(output);
-        assertEquals("1", output.get("a"));
-        assertEquals(2, output.get("b"));
-        assertEquals(1, output.get("c"));
-        assertNotNull(output.get("d"));
+        assertThrows(BaseError.class, () -> branch.addBranch(null, "a", ""));
+        assertThrows(BaseError.class, () -> branch.addBranch("sss", "", ""));
+        assertThrows(BaseError.class, () -> branch.addBranch("sss", null, ""));
+        assertThrows(BaseError.class, () -> branch.addBranch("sss", new ArrayList<>(List.of("", "xxx")), ""));
+
+        List<String> targetWithNull = new ArrayList<>();
+        targetWithNull.add("xxx");
+        targetWithNull.add(null);
+        assertThrows(BaseError.class, () -> branch.addBranch("sss", targetWithNull, ""));
     }
 
     @Test
-    @DisplayName("Test node1 invoke")
-    void testNode1Invoke() {
-        Node1 node = new Node1("a");
-        Input input = new Input(Map.of("a", "test_value"));
-        
-        Output output = node.invoke(input, new HashMap<>(), new HashMap<>());
+    @DisplayName("is_empty expression matches Python edge cases")
+    void testExpressionIsEmpty() throws Exception {
+        assertTrue(evaluate("is_empty(${start.input})", null));
+        assertTrue(evaluate("is_empty(${start.input})", List.of()));
+        assertTrue(evaluate("is_empty(${start.input})", ""));
+        assertTrue(evaluate("is_empty(${start.input})", Map.of()));
 
-        assertNotNull(output);
-        assertEquals("test_value", output.get("a"));
+        BaseError numberError = assertThrows(BaseError.class,
+                () -> evaluate("is_empty(${start.input})", 0));
+        assertEquals(StatusCode.EXPRESSION_EVAL_ERROR.getCode(), numberError.getCode());
+
+        BaseError decimalError = assertThrows(BaseError.class,
+                () -> evaluate("is_not_empty(${start.input})", 1.2));
+        assertEquals(StatusCode.EXPRESSION_EVAL_ERROR.getCode(), decimalError.getCode());
+
+        List<Object> listWithNull = new ArrayList<>();
+        listWithNull.add(null);
+        listWithNull.add("y");
+        assertTrue(evaluate("is_empty(${start.input}[0])", listWithNull));
+
+        Map<String, Object> mapWithNull = new LinkedHashMap<>();
+        mapWithNull.put("x", null);
+        assertTrue(evaluate("is_empty(${start.input}['x'])", mapWithNull));
+
+        List<Object> nestedListWithNull = new ArrayList<>();
+        nestedListWithNull.add(null);
+        Map<String, Object> nestedMapWithNull = new LinkedHashMap<>();
+        nestedMapWithNull.put("x", nestedListWithNull);
+        assertTrue(evaluate("is_empty(${start.input}['x'][0])", nestedMapWithNull));
     }
 
     @Test
-    @DisplayName("Test workflow component type")
-    void testWorkflowComponentType() {
-        WorkflowComponent comp = new WorkflowComponent("test");
-        assertEquals("component", comp.componentType());
+    @DisplayName("is_not_empty expression matches Python edge cases")
+    void testExpressionIsNotEmpty() throws Exception {
+        assertTrue(evaluate("is_not_empty(${start.input})", "x"));
+        assertTrue(evaluate("is_not_empty(${start.input})", Map.of("a", "a")));
+        assertTrue(evaluate("is_not_empty(${start.input})", List.of("a")));
+        assertFalse(evaluate("is_not_empty(${start.input})", null));
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> evaluate("is_not_empty(${start.input})", 1.2));
+        assertEquals(StatusCode.EXPRESSION_EVAL_ERROR.getCode(), error.getCode());
+
+        assertTrue(evaluate("is_not_empty(${start.input}[0])", List.of("x", "y")));
+        assertTrue(evaluate("is_not_empty(${start.input}['x'])", Map.of("x", "x")));
+        assertTrue(evaluate("is_not_empty(${start.input}['x'][0])", Map.of("x", List.of("x"))));
     }
 
     @Test
-    @Tag("level0")
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
+    @DisplayName("length expression handles containers and rejects scalar numbers")
+    void testExpressionLength() throws Exception {
+        BaseError error = assertThrows(BaseError.class,
+                () -> evaluate("length(${start.input}) == 0", 0));
+        assertEquals(StatusCode.EXPRESSION_EVAL_ERROR.getCode(), error.getCode());
+
+        assertTrue(evaluate("length(${start.input}) == 0", Map.of()));
+        assertTrue(evaluate("length(${start.input}) == 0", List.of()));
+        assertTrue(evaluate("length(${start.input}) == 0", ""));
+    }
+
+    private static boolean evaluate(String expression, Object value) throws Exception {
+        ExpressionCondition condition = new ExpressionCondition(expression);
+        Method method = ExpressionCondition.class.getDeclaredMethod(
+                "evaluateExpression", String.class, Map.class);
+        method.setAccessible(true);
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("${start.input}", value);
+        try {
+            return (Boolean) method.invoke(condition, expression, inputs);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw e;
+        }
     }
 }

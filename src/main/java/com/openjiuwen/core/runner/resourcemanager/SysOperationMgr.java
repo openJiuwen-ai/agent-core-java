@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.SysOperation;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SysOperationMgr {
 
     private final ConcurrentHashMap<String, SysOperation> sysOperations = new ConcurrentHashMap<>();
+    private final Map<String, String> sandboxKeyOwnerMap = new ConcurrentHashMap<>();
 
     public void addSysOperation(String sysOperationId, SysOperation sysOperationInstance) {
         if (sysOperationId == null) {
@@ -29,6 +31,17 @@ public class SysOperationMgr {
             throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
                     "process", "add", "error_msg", "already exists sys_operation_card " + sysOperationId);
         }
+        String isolationKeyTemplate = sysOperationInstance.getIsolationKeyTemplate();
+        if (isolationKeyTemplate != null && !isolationKeyTemplate.isBlank()) {
+            String existingOpId = sandboxKeyOwnerMap.get(isolationKeyTemplate);
+            if (existingOpId != null && !existingOpId.equals(sysOperationId)) {
+                throw new IllegalArgumentException(
+                        "Isolation key template '" + isolationKeyTemplate + "' is already registered "
+                                + "by operation '" + existingOpId + "'. Cannot register operation '"
+                                + sysOperationId + "' with the same sandbox configuration.");
+            }
+            sandboxKeyOwnerMap.put(isolationKeyTemplate, sysOperationId);
+        }
         sysOperations.put(sysOperationId, sysOperationInstance);
     }
 
@@ -37,7 +50,14 @@ public class SysOperationMgr {
             throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
                     "process", "remove", "error_msg", "sys_operation_id can not be none");
         }
-        return sysOperations.remove(sysOperationId);
+        SysOperation sysOperation = sysOperations.remove(sysOperationId);
+        if (sysOperation != null) {
+            String isolationKeyTemplate = sysOperation.getIsolationKeyTemplate();
+            if (isolationKeyTemplate != null && !isolationKeyTemplate.isBlank()) {
+                sandboxKeyOwnerMap.remove(isolationKeyTemplate);
+            }
+        }
+        return sysOperation;
     }
 
     /**
@@ -45,6 +65,7 @@ public class SysOperationMgr {
      */
     public void clear() {
         sysOperations.clear();
+        sandboxKeyOwnerMap.clear();
     }
 
     public SysOperation getSysOperation(String sysOperationId) {

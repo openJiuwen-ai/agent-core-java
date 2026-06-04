@@ -37,7 +37,8 @@ class TestAgent {
             assertEquals("", config.getDataDir());
             assertEquals("", config.getLocalRepo());
             assertEquals(3600.0, config.getSessionBudgetSecs());
-            assertEquals(1200.0, config.getModelTimeoutSecs());
+            assertEquals(1200.0, config.getTaskTimeoutSecs());
+            assertEquals(300.0, config.getModelTimeoutSecs());
             assertEquals(3, config.getMaxTasksPerSession());
         }
 

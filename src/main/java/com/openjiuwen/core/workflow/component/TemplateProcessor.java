@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component;
 
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.utils.SessionUtils;
 
@@ -32,6 +33,7 @@ public class TemplateProcessor {
     private int chunkIndex;
     private int dataSourceCount;
     private int count;
+    private final Object lock = new Object();
 
     public TemplateProcessor(String template) {
         this.template = template;
@@ -52,8 +54,10 @@ public class TemplateProcessor {
     }
 
     public void setDataSourceCount(int dataSourceCount) {
-        this.dataSourceCount = dataSourceCount;
-        this.count = 0;
+        synchronized (lock) {
+            this.dataSourceCount = dataSourceCount;
+            this.count = 0;
+        }
     }
 
     public int currentPosition() {
@@ -91,11 +95,9 @@ public class TemplateProcessor {
      * Reset position and counters.
      */
     public void reset() {
-        if (currentPosition != 0) {
-            currentPosition = 0;
+        synchronized (lock) {
+            resetLocked();
         }
-        chunkIndex = 0;
-        count = 0;
     }
 
     public boolean isFinished() {
@@ -110,48 +112,100 @@ public class TemplateProcessor {
      * In Java the iteration is synchronous via an {@link Iterator}.
      */
     public Iterator<Map<String, Object>> renderStream(Map<String, Object> inputs, NodeSessionApi session) {
-        List<Map<String, Object>> frames = new ArrayList<>();
-        boolean hasAnyValue = needRender(inputs);
+        Map<String, Object> safeInputs = inputs != null ? inputs : Map.of();
+        long waitTimeoutMs = resolveTimeoutMillis(session);
+        boolean hasAnyValue = needRender(safeInputs);
 
-        while (!isFinished()) {
-            String segment = getCurrentSegment();
-            if (!shouldRender()) {
-                Map<String, Object> frame = new HashMap<>();
-                frame.put("data", segment);
-                frame.put("index", chunkIndex++);
-                frames.add(frame);
-                advancePosition();
-                continue;
-            }
+        return new Iterator<>() {
+            private Iterator<?> currentIterator;
+            private Map<String, Object> nextFrame;
+            private boolean finished;
 
-            Object value = SessionUtils.getValueByNestedPath(segment, inputs);
-            if (value == null) {
-                advancePosition();
-                continue;
-            }
-
-            if (value instanceof Iterator<?> iter) {
-                while (iter.hasNext()) {
-                    Map<String, Object> frame = new HashMap<>();
-                    frame.put("data", iter.next());
-                    frame.put("index", chunkIndex++);
-                    frames.add(frame);
+            @Override
+            public boolean hasNext() {
+                if (finished) {
+                    return false;
                 }
-            } else {
-                Map<String, Object> frame = new HashMap<>();
-                frame.put("data", value);
-                frame.put("index", chunkIndex++);
-                frames.add(frame);
+                if (nextFrame != null) {
+                    return true;
+                }
+                nextFrame = prepareNext();
+                if (nextFrame == null) {
+                    finished = true;
+                    finish(safeInputs);
+                    return false;
+                }
+                return true;
             }
-            advancePosition();
-        }
 
-        count++;
-        if (count == dataSourceCount) {
-            reset();
-        }
+            @Override
+            public Map<String, Object> next() {
+                if (!hasNext()) {
+                    throw new java.util.NoSuchElementException();
+                }
+                Map<String, Object> current = nextFrame;
+                nextFrame = null;
+                return current;
+            }
 
-        return frames.iterator();
+            private Map<String, Object> prepareNext() {
+                while (true) {
+                    if (currentIterator != null) {
+                        if (currentIterator.hasNext()) {
+                            return frame(currentIterator.next());
+                        }
+                        currentIterator = null;
+                        synchronized (lock) {
+                            advancePosition();
+                            lock.notifyAll();
+                        }
+                        continue;
+                    }
+
+                    synchronized (lock) {
+                        if (currentPosition >= segments.size()) {
+                            return null;
+                        }
+
+                        String segment = getSegment(currentPosition);
+                        if (!variablePositions.contains(currentPosition)) {
+                            Map<String, Object> frame = frameLocked(segment);
+                            advancePosition();
+                            lock.notifyAll();
+                            return frame;
+                        }
+
+                        Object value = SessionUtils.getValueByNestedPath(segment, safeInputs);
+                        if (value == null) {
+                            if (shouldWaitForAnotherSource() || hasAnyValue) {
+                                long waitedMs = waitForTemplatePosition(waitTimeoutMs);
+                                if (waitTimeoutMs > 0
+                                        && waitedMs >= waitTimeoutMs
+                                        && currentPosition < segments.size()
+                                        && segment.equals(getSegment(currentPosition))
+                                        && SessionUtils.getValueByNestedPath(segment, safeInputs) == null) {
+                                    advancePosition();
+                                    lock.notifyAll();
+                                }
+                                continue;
+                            }
+                            advancePosition();
+                            lock.notifyAll();
+                            continue;
+                        }
+
+                        if (value instanceof Iterator<?> iterator) {
+                            currentIterator = iterator;
+                            continue;
+                        }
+                        Map<String, Object> frame = frameLocked(value);
+                        advancePosition();
+                        lock.notifyAll();
+                        return frame;
+                    }
+                }
+            }
+        };
     }
 
     private boolean needRender(Object inputs) {
@@ -168,5 +222,90 @@ public class TemplateProcessor {
             }
         }
         return false;
+    }
+
+    private boolean shouldWaitForAnotherSource() {
+        return dataSourceCount > 1 && count < dataSourceCount;
+    }
+
+    private long waitForTemplatePosition(long waitTimeoutMs) {
+        long start = System.nanoTime();
+        try {
+            if (waitTimeoutMs > 0) {
+                lock.wait(waitTimeoutMs);
+            } else {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return (System.nanoTime() - start) / 1_000_000L;
+    }
+
+    private Map<String, Object> frame(Object data) {
+        synchronized (lock) {
+            return frameLocked(data);
+        }
+    }
+
+    private Map<String, Object> frameLocked(Object data) {
+        Map<String, Object> frame = new HashMap<>();
+        frame.put("data", data);
+        frame.put("index", chunkIndex++);
+        return frame;
+    }
+
+    private void finish(Map<String, Object> inputs) {
+        consumeAllIterators(inputs);
+        synchronized (lock) {
+            count++;
+            if (count == dataSourceCount) {
+                resetLocked();
+            }
+            lock.notifyAll();
+        }
+    }
+
+    private void resetLocked() {
+        currentPosition = 0;
+        chunkIndex = 0;
+        count = 0;
+    }
+
+    private static void consumeAllIterators(Object value) {
+        if (value instanceof Iterator<?> iterator) {
+            while (iterator.hasNext()) {
+                iterator.next();
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Object child : map.values()) {
+                consumeAllIterators(child);
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object child : iterable) {
+                consumeAllIterators(child);
+            }
+        }
+    }
+
+    private static long resolveTimeoutMillis(NodeSessionApi session) {
+        Object raw = session != null
+                ? session.getEnv(SessionConstants.END_COMP_TEMPLATE_RENDER_POSITION_TIMEOUT_KEY)
+                : null;
+        if (raw instanceof Number number) {
+            return Math.max(0L, Math.round(number.doubleValue() * 1000));
+        }
+        if (raw != null) {
+            try {
+                return Math.max(0L, Math.round(Double.parseDouble(String.valueOf(raw)) * 1000));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 }

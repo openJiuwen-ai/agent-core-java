@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 
 /**
  * Coroutine task data model.
@@ -37,6 +38,7 @@ public class Task {
     private String cancelReason;
 
     private final CompletableFuture<Object> doneFuture = new CompletableFuture<>();
+    private volatile CompletableFuture<?> executionFuture;
 
     public Task(String taskId) {
         this.taskId = taskId;
@@ -75,6 +77,9 @@ public class Task {
     }
 
     public void complete(Object result) {
+        if (isTerminal()) {
+            return;
+        }
         this.result = result;
         this.status = TaskStatus.COMPLETED;
         this.finishedAt = Instant.now();
@@ -82,6 +87,9 @@ public class Task {
     }
 
     public void fail(Exception exception) {
+        if (isTerminal()) {
+            return;
+        }
         this.exception = exception;
         this.status = TaskStatus.FAILED;
         this.finishedAt = Instant.now();
@@ -89,11 +97,52 @@ public class Task {
     }
 
     public void cancel(String cancelledBy, String reason) {
+        if (isTerminal()) {
+            return;
+        }
         this.status = TaskStatus.CANCELLED;
         this.cancelledBy = cancelledBy;
-        this.cancelReason = reason;
+        this.cancelReason = reason != null ? reason : "manual_cancel";
         this.finishedAt = Instant.now();
         doneFuture.cancel(false);
+    }
+
+    public boolean cancel() {
+        return cancel(false);
+    }
+
+    public boolean cancel(boolean cascade) {
+        return cancel(cascade, null, null);
+    }
+
+    public boolean cancel(boolean cascade, String reason) {
+        return cancel(cascade, reason, null);
+    }
+
+    public boolean cancel(boolean cascade, String reason, String cancelledBy) {
+        if (isTerminal()) {
+            return false;
+        }
+        TaskManager.getInstance().cancelTask(taskId, reason != null ? reason : "manual_cancel");
+        if (cancelledBy != null) {
+            this.cancelledBy = cancelledBy;
+        }
+        if (cascade) {
+            TaskManager.getInstance().cascadeCancel(taskId, "parent_cancelled");
+        }
+        return true;
+    }
+
+    public Object waitForResult() throws Exception {
+        try {
+            return doneFuture.get();
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 
     public CompletableFuture<Object> getDoneFuture() {
@@ -104,15 +153,35 @@ public class Task {
      * Alias for getDoneFuture() for compatibility.
      */
     public CompletableFuture<?> getFuture() {
-        return doneFuture;
+        CompletableFuture<?> future = executionFuture;
+        return future != null ? future : doneFuture;
     }
     
     /**
      * Set future - for compatibility with older code.
      */
     public void setFuture(CompletableFuture<?> future) {
-        // Note: This is a no-op since doneFuture is final and pre-initialized
-        // The method exists for API compatibility only
+        this.executionFuture = future;
+        if (future == null) {
+            return;
+        }
+        future.whenComplete((value, throwable) -> {
+            if (throwable == null) {
+                doneFuture.complete(value);
+            } else if (throwable instanceof CancellationException || future.isCancelled()) {
+                doneFuture.cancel(false);
+            } else {
+                doneFuture.completeExceptionally(unwrapCompletionException(throwable));
+            }
+        });
+    }
+
+    private static Throwable unwrapCompletionException(Throwable throwable) {
+        if (throwable instanceof java.util.concurrent.CompletionException completionException
+                && completionException.getCause() != null) {
+            return completionException.getCause();
+        }
+        return throwable;
     }
     
     /**
@@ -120,6 +189,10 @@ public class Task {
      */
     public void setCancelledBy(String cancelledBy) {
         this.cancelledBy = cancelledBy;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
     }
 
     // Getters and setters
@@ -138,9 +211,11 @@ public class Task {
     public Instant getStartedAt() { return startedAt; }
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public Instant getFinishedAt() { return finishedAt; }
+    public void setFinishedAt(Instant finishedAt) { this.finishedAt = finishedAt; }
     public Object getResult() { return result; }
     public void setResult(Object result) { this.result = result; }
     public Exception getException() { return exception; }
+    public void setException(Exception exception) { this.exception = exception; }
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
     public String getCancelledBy() { return cancelledBy; }

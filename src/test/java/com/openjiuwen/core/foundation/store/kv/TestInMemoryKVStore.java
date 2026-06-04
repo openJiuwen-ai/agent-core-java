@@ -10,6 +10,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -206,6 +211,30 @@ class TestInMemoryKVStore {
             assertFalse(store.exists("user:1:email"));
             assertTrue(store.exists("user:2:name"));
         }
+
+        @Test
+        @DisplayName("delete by prefix with batch size")
+        void testDeleteByPrefixWithBatchSize() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            for (int i = 0; i < 10; i++) {
+                store.set("prefix:key" + i, "value" + i);
+            }
+
+            store.deleteByPrefix("prefix:", 3);
+
+            assertTrue(store.getByPrefix("prefix:").isEmpty());
+        }
+
+        @Test
+        @DisplayName("delete by prefix no matches")
+        void testDeleteByPrefixNoMatches() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("key1", "value1");
+
+            store.deleteByPrefix("nonexistent:", null);
+
+            assertTrue(store.exists("key1"));
+        }
     }
 
     @Nested
@@ -226,6 +255,27 @@ class TestInMemoryKVStore {
             assertEquals("value1", result.get(0));
             assertEquals("value2", result.get(1));
             assertEquals("value3", result.get(2));
+        }
+
+        @Test
+        @DisplayName("mget")
+        void testMget() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("key1", "value1");
+            store.set("key2", "value2");
+            store.set("key3", "value3");
+
+            List<Object> result = store.mget(List.of("key1", "key2", "key4"));
+
+            assertEquals(Arrays.asList("value1", "value2", null), result);
+        }
+
+        @Test
+        @DisplayName("mget empty list")
+        void testMgetEmptyList() {
+            InMemoryKVStore store = new InMemoryKVStore();
+
+            assertTrue(store.mget(List.of()).isEmpty());
         }
 
         @Test
@@ -255,6 +305,95 @@ class TestInMemoryKVStore {
             assertFalse(store.exists("key1"));
             assertFalse(store.exists("key2"));
             assertTrue(store.exists("key3"));
+        }
+
+        @Test
+        @DisplayName("batch delete empty list")
+        void testBatchDeleteEmptyList() {
+            InMemoryKVStore store = new InMemoryKVStore();
+
+            assertEquals(0, store.batchDelete(List.of(), null));
+        }
+
+        @Test
+        @DisplayName("batch delete with batch size")
+        void testBatchDeleteWithBatchSize() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            List<String> keys = new ArrayList<>();
+            for (int i = 0; i < 10; i++) {
+                String key = "key" + i;
+                keys.add(key);
+                store.set(key, "value" + i);
+            }
+
+            assertEquals(10, store.batchDelete(keys, 3));
+        }
+    }
+
+    @Nested
+    @DisplayName("Pipeline Operations")
+    class TestInMemoryKVStorePipeline {
+
+        @Test
+        @DisplayName("pipeline set and get")
+        void testPipelineSetAndGet() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            List<Object> results = store.pipeline()
+                    .set("key1", "value1")
+                    .set("key2", "value2")
+                    .get("key1")
+                    .get("key2")
+                    .execute();
+
+            assertEquals(Arrays.asList(null, null, "value1", "value2"), results);
+        }
+
+        @Test
+        @DisplayName("pipeline set get exists")
+        void testPipelineSetGetExists() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            List<Object> results = store.pipeline()
+                    .set("key1", "value1")
+                    .get("key1")
+                    .exists("key1")
+                    .get("nonexistent")
+                    .exists("nonexistent")
+                    .execute();
+
+            assertEquals(Arrays.asList(null, "value1", true, null, false), results);
+        }
+
+        @Test
+        @DisplayName("pipeline multiple executes")
+        void testPipelineMultipleExecutes() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            var pipeline = store.pipeline();
+
+            List<Object> results1 = pipeline.set("key1", "value1").get("key1").execute();
+            List<Object> results2 = pipeline.set("key2", "value2").get("key2").execute();
+
+            assertEquals(Arrays.asList(null, "value1"), results1);
+            assertEquals(Arrays.asList(null, "value2"), results2);
+        }
+
+        @Test
+        @DisplayName("pipeline empty operations")
+        void testPipelineEmptyOperations() {
+            InMemoryKVStore store = new InMemoryKVStore();
+
+            assertTrue(store.pipeline().execute().isEmpty());
+        }
+
+        @Test
+        @DisplayName("pipeline with bytes")
+        void testPipelineWithBytes() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            byte[] bytesValue = "bytes_value".getBytes();
+
+            List<Object> results = store.pipeline().set("key1", bytesValue).get("key1").execute();
+
+            assertNull(results.get(0));
+            assertArrayEquals(bytesValue, (byte[]) results.get(1));
         }
     }
 
@@ -296,8 +435,177 @@ class TestInMemoryKVStore {
             Thread.sleep(1100);
             Map<String, Object> result = store.getByPrefix("prefix:");
 
-            assertEquals(1, result.size());
-            assertTrue(result.containsKey("prefix:key1"));
+            assertEquals(2, result.size());
+            assertEquals("value1", result.get("prefix:key1"));
+            assertTrue(result.containsKey("prefix:key2"));
+            assertNull(result.get("prefix:key2"));
+        }
+
+        @Test
+        @DisplayName("key expiry")
+        void testKeyExpiry() throws InterruptedException {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.exclusiveSet("key1", "value1", 1);
+
+            assertTrue(store.exists("key1"));
+            Thread.sleep(1100);
+            assertFalse(store.exists("key1"));
+        }
+
+        @Test
+        @DisplayName("expired key returns none")
+        void testExpiredKeyReturnsNone() throws InterruptedException {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.exclusiveSet("key1", "value1", 1);
+
+            Thread.sleep(1100);
+
+            assertNull(store.get("key1"));
+        }
+
+        @Test
+        @DisplayName("expired key in get by prefix returns none")
+        void testExpiredKeyInGetByPrefixReturnsNone() throws InterruptedException {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("prefix:key1", "value1");
+            store.exclusiveSet("prefix:key2", "value2", 1);
+
+            Thread.sleep(1100);
+            Map<String, Object> result = store.getByPrefix("prefix:");
+
+            assertEquals("value1", result.get("prefix:key1"));
+            assertTrue(result.containsKey("prefix:key2"));
+            assertNull(result.get("prefix:key2"));
+        }
+
+        @Test
+        @DisplayName("can set after key expires")
+        void testCanSetAfterKeyExpires() throws InterruptedException {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.exclusiveSet("key1", "value1", 1);
+
+            Thread.sleep(1100);
+            store.set("key1", "value2");
+
+            assertEquals("value2", store.get("key1"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Concurrency")
+    class TestInMemoryKVStoreConcurrency {
+
+        @Test
+        @DisplayName("concurrent sets")
+        void testConcurrentSets() throws InterruptedException {
+            InMemoryKVStore store = new InMemoryKVStore();
+            ExecutorService executor = Executors.newFixedThreadPool(8);
+            for (int i = 0; i < 100; i++) {
+                final int index = i;
+                executor.submit(() -> store.set("key" + index, "value" + index));
+            }
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+
+            for (int i = 0; i < 100; i++) {
+                assertEquals("value" + i, store.get("key" + i));
+            }
+        }
+
+        @Test
+        @DisplayName("consecutive pipeline operations")
+        void testConsecutivePipelineOperations() {
+            InMemoryKVStore store = new InMemoryKVStore();
+
+            for (int i = 0; i < 10; i++) {
+                List<Object> results = store.pipeline()
+                        .set("key" + i, "value" + i)
+                        .get("key" + i)
+                        .execute();
+                assertEquals(Arrays.asList(null, "value" + i), results);
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("Edge Cases")
+    class TestInMemoryKVStoreEdgeCases {
+
+        @Test
+        @DisplayName("empty string key")
+        void testEmptyStringKey() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("", "value");
+
+            assertEquals("value", store.get(""));
+        }
+
+        @Test
+        @DisplayName("empty string value")
+        void testEmptyStringValue() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("key1", "");
+
+            assertEquals("", store.get("key1"));
+        }
+
+        @Test
+        @DisplayName("special characters in key")
+        void testSpecialCharactersInKey() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            List<String> specialKeys = List.of(
+                    "key:with:colons",
+                    "key/with/slashes",
+                    "key-with-dashes",
+                    "key_with_underscores",
+                    "key.with.dots",
+                    "key with spaces");
+
+            for (String key : specialKeys) {
+                store.set(key, "value_" + key);
+            }
+
+            for (String key : specialKeys) {
+                assertEquals("value_" + key, store.get(key));
+            }
+        }
+
+        @Test
+        @DisplayName("large value")
+        void testLargeValue() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            String largeValue = "x".repeat(100000);
+
+            store.set("key1", largeValue);
+
+            assertEquals(largeValue, store.get("key1"));
+        }
+
+        @Test
+        @DisplayName("get by prefix empty prefix")
+        void testGetByPrefixEmptyPrefix() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("key1", "value1");
+            store.set("key2", "value2");
+
+            Map<String, Object> result = store.getByPrefix("");
+
+            assertEquals(2, result.size());
+            assertEquals("value1", result.get("key1"));
+            assertEquals("value2", result.get("key2"));
+        }
+
+        @Test
+        @DisplayName("delete by prefix empty prefix")
+        void testDeleteByPrefixEmptyPrefix() {
+            InMemoryKVStore store = new InMemoryKVStore();
+            store.set("key1", "value1");
+            store.set("key2", "value2");
+
+            store.deleteByPrefix("", null);
+
+            assertFalse(store.exists("key1"));
+            assertFalse(store.exists("key2"));
         }
     }
 }

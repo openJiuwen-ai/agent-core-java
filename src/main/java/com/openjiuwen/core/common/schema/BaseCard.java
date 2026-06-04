@@ -15,7 +15,7 @@ import java.util.UUID;
 /**
  * Base digital card — the root class for all card-like entities.
  * <p>
- * Java equivalent of Python's Pydantic {@code BaseCard}.
+ * Mirrors Python's {@code BaseCard} in {@code openjiuwen.core.common.schema.card}.
  */
 @Data
 @SuperBuilder

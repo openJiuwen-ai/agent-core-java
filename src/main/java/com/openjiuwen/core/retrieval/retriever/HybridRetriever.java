@@ -16,6 +16,9 @@ import java.util.Map;
 
 /**
  * Hybrid retriever combining sparse and dense retrieval.
+ *
+ * <p>Mirrors Python's {@code HybridRetriever} in
+ * {@code openjiuwen.core.retrieval.retriever.hybrid_retriever}.
  */
 public class HybridRetriever extends AbstractStoreBackedRetriever {
 

@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.RunnerTermination;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
 
@@ -24,6 +27,9 @@ import java.util.concurrent.TimeoutException;
 /**
  * Collects responses for one distributed request.
  * Supports cancellation, expiration, and queue-full detection.
+ *
+ * <p>Mirrors Python's {@code ResponseCollector} in
+ * {@code openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.response_collector}.</p>
  */
 public class ResponseCollector {
 
@@ -195,12 +201,22 @@ public class ResponseCollector {
             } else if (reason == CancelReason.QUEUE_FULL) {
                 throw new CancellationException("Collector(" + messageId + ") queue full");
             } else {
-                throw new CancellationException("Collector(" + messageId + ") was cancelled");
+                throw new RunnerTermination(
+                        "Collector(" + messageId + ") was cancelled",
+                        StatusCode.RUNNER_TERMINATION_ERROR);
             }
         }
         if (message.getResultType() == ResultType.ERROR) {
-            throw new IllegalStateException(
-                    "Remote error " + message.getErrorCode() + ": " + message.getErrorMsg());
+            throw ErrorHelper.buildError(
+                    StatusCode.REMOTE_AGENT_RESPONSE_PROCESS_ERROR,
+                    null,
+                    null,
+                    null,
+                    java.util.Map.of(
+                            "message_id", messageId,
+                            "process_id", receiverId,
+                            "error_code", message.getErrorCode(),
+                            "error_msg", message.getErrorMsg() != null ? message.getErrorMsg() : ""));
         }
     }
 

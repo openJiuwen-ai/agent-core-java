@@ -14,6 +14,7 @@ import com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer;
 import com.openjiuwen.core.retrieval.reranker.LexicalReranker;
 import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -33,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Corresponds to Python's retrieval showcase examples.
  */
 @Tag("system-test")
-class RetrievalSystemTest {
+class RetrievalSystemTest extends SystemTestSupport {
 
     @Nested
     @DisplayName("HashEmbedding Tests")
@@ -86,6 +87,11 @@ class RetrievalSystemTest {
     @Nested
     @DisplayName("API Embedding Tests (Remote)")
     class APIEmbeddingTests {
+
+        @BeforeEach
+        void setUp() {
+            assumeRemoteEmbeddingAvailable();
+        }
 
         @Test
         @DisplayName("APIEmbedding embeds single query via remote API")

@@ -12,6 +12,7 @@ import com.openjiuwen.auto_harness.infra.FixLoopController;
 import com.openjiuwen.auto_harness.infra.GitOperations;
 import com.openjiuwen.auto_harness.infra.SessionBudgetController;
 import com.openjiuwen.auto_harness.infra.WorktreeManager;
+import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.pipelines.BasePipeline;
 import com.openjiuwen.auto_harness.registry.BuiltinRegistries;
 import com.openjiuwen.auto_harness.registry.PipelineRegistry;
@@ -22,11 +23,19 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessRuntimeState;
 import com.openjiuwen.auto_harness.schema.CycleResult;
 import com.openjiuwen.auto_harness.schema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.PipelineSelectionArtifact;
+import com.openjiuwen.auto_harness.schema.PipelineSpec;
 import com.openjiuwen.auto_harness.schema.ProjectProfile;
 import com.openjiuwen.core.session.stream.OutputSchema;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -39,7 +48,7 @@ import java.util.logging.Logger;
 public class AutoHarnessOrchestrator {
 
     private static final Logger logger = Logger.getLogger(AutoHarnessOrchestrator.class.getName());
-    private static final String META_EVOLVE_PIPELINE = "meta_evolve";
+    private static final String META_EVOLVE_PIPELINE = AutoHarnessPipelineNames.META_EVOLVE_PIPELINE;
 
     private final AutoHarnessConfig config;
     private final Object agent;
@@ -308,6 +317,22 @@ public class AutoHarnessOrchestrator {
         return taskContexts;
     }
 
+    public void setExperienceStore(ExperienceStore experienceStore) {
+        this.experienceStore = experienceStore;
+    }
+
+    public void setWorktreeMgr(WorktreeManager worktreeMgr) {
+        this.worktreeMgr = worktreeMgr;
+    }
+
+    public void setGit(GitOperations git) {
+        this.git = git;
+    }
+
+    public void setCiGate(CIGateRunner ciGate) {
+        this.ciGate = ciGate;
+    }
+
     /**
      * Persist one task cycle result on the orchestrator.
      *
@@ -346,6 +371,59 @@ public class AutoHarnessOrchestrator {
     }
 
     /**
+     * Stream session execution as OutputSchema chunks.
+     *
+     * <p>Mirrors Python's {@code run_session_stream}.</p>
+     *
+     * @param tasks optional direct task list; null means run assess and plan first
+     * @return an iterator over streamed events and results
+     */
+    public Iterator<Object> runSessionStream(List<OptimizationTask> tasks) {
+        List<Object> chunks = new ArrayList<>();
+        resetSessionState();
+        budget.start();
+        chunks.add(msg("会话启动"));
+        logger.info("Session started");
+
+        if (tasks != null) {
+            artifacts.put("input_tasks", new ArrayList<>(tasks));
+        }
+
+        PipelineSelectionArtifact selectedPipeline = selectSessionPipeline(tasks);
+        runtime.setSelectedPipeline(selectedPipeline.getPipelineName());
+        artifacts.put("pipeline_selection", selectedPipeline);
+        chunks.add(msg("Session pipeline: " + selectedPipeline.getPipelineName()));
+
+        Iterator<Object> pipelineStream = runPipelineStream(selectedPipeline.getPipelineName());
+        pipelineStream.forEachRemaining(chunks::add);
+        logger.info("Session finished: " + results.size() + " tasks executed");
+        return chunks.iterator();
+    }
+
+    /**
+     * Execute a registered top-level pipeline.
+     *
+     * <p>Mirrors Python's {@code _run_pipeline_stream}.</p>
+     *
+     * @param pipelineName the registered pipeline name
+     * @return an iterator over pipeline events
+     */
+    public Iterator<Object> runPipelineStream(String pipelineName) {
+        List<Object> chunks = new ArrayList<>();
+        PipelineSpec spec = pipelineRegistry.require(pipelineName);
+        try {
+            Object instance = spec.getPipelineClass().getDeclaredConstructor().newInstance();
+            if (!(instance instanceof BasePipeline pipeline)) {
+                throw new IllegalStateException("Registered pipeline is not a BasePipeline: " + pipelineName);
+            }
+            pipeline.execute(new SessionContext(this), chunks::add);
+            return chunks.iterator();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to create pipeline: " + pipelineName, e);
+        }
+    }
+
+    /**
      * Select the session pipeline before any concrete pipeline runs.
      *
      * @param tasks the optional list of optimization tasks
@@ -363,7 +441,7 @@ public class AutoHarnessOrchestrator {
             for (OptimizationTask task : tasks) {
                 String pipelineName = task.getPipelineName();
                 if (pipelineName != null && !pipelineName.isEmpty()) {
-                    String normalized = normalizePipelineName(pipelineName);
+                    String normalized = AutoHarnessPipelineNames.normalizePipelineName(pipelineName);
                     if (!explicit.contains(normalized)) {
                         explicit.add(normalized);
                     }
@@ -430,13 +508,6 @@ public class AutoHarnessOrchestrator {
      * @param name the pipeline name
      * @return the normalized name
      */
-    private String normalizePipelineName(String name) {
-        if (name == null) {
-            return "";
-        }
-        return name.toLowerCase().replace("-", "_").replace(" ", "_");
-    }
-
     /**
      * Write debug artifact to runs directory.
      *
@@ -447,13 +518,15 @@ public class AutoHarnessOrchestrator {
      */
     public static String writeDebugArtifact(String runsDir, String filename, String content) {
         try {
-            java.nio.file.Path path = java.nio.file.Paths.get(runsDir, filename);
-            java.nio.file.Files.createDirectories(path.getParent());
-            java.nio.file.Files.writeString(path, content, java.nio.charset.StandardCharsets.UTF_8);
+            Path path = Paths.get(runsDir, filename);
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(path, content, StandardCharsets.UTF_8);
             return path.toString();
-        } catch (Exception e) {
-            logger.warning("Failed to write debug artifact: " + e.getMessage());
-            return "";
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write debug artifact", e);
         }
     }
 }

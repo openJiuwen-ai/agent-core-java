@@ -41,6 +41,17 @@ public abstract class ConnectorPool extends RefCountedResource {
     public abstract Object getConn();
 
     /**
+     * Python-compatible alias for {@link #getConn()}.
+     *
+     * <p>Mirrors Python's {@code ConnectorPool.conn()}.</p>
+     *
+     * @return the connector instance
+     */
+    public Object conn() {
+        return getConn();
+    }
+
+    /**
      * Check if the connector pool has expired.
      *
      * @return true if the pool has exceeded its TTL or max idle time
@@ -76,5 +87,16 @@ public abstract class ConnectorPool extends RefCountedResource {
         stat.put("ref_detail", getStats());
         stat.put("config_key", config.generateKey());
         return stat;
+    }
+
+    /**
+     * Python-compatible alias for {@link #getStat()}.
+     *
+     * <p>Mirrors Python's {@code ConnectorPool.stat()}.</p>
+     *
+     * @return a map containing pool statistics
+     */
+    public Map<String, Object> stat() {
+        return getStat();
     }
 }

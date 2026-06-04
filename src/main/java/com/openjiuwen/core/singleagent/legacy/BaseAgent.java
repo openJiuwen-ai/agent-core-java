@@ -280,6 +280,23 @@ public abstract class BaseAgent {
         }
     }
 
+    /**
+     * Clear the default session.
+     *
+     * <p>Mirrors Python's {@code BaseAgent.clear_session()} default
+     * {@code session_id="default_session"} behavior.</p>
+     */
+    public void clearSession() {
+        clearSession("default_session");
+    }
+
+    /**
+     * Clear a session through the global runner.
+     *
+     * <p>Mirrors Python's {@code BaseAgent.clear_session(session_id)}.</p>
+     *
+     * @param sessionId session ID to release
+     */
     public void clearSession(String sessionId) {
         Runner.release(sessionId);
     }

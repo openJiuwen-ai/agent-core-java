@@ -8,7 +8,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
- * Minimal managed browser driver mirroring the highest-value Python tests.
+ * Minimal managed browser driver.
+ *
+ * <p>Mirrors Python's {@code ManagedBrowserDriver} in
+ * {@code openjiuwen.harness.tools.browser_move.drivers.managed_browser}.</p>
  */
 public class ManagedBrowserDriver {
 
@@ -16,14 +19,18 @@ public class ManagedBrowserDriver {
 
     private final BrowserProfile profile;
     private Process process;
-    private boolean ownsProcess = true;
+    private boolean ownsProcess = false;
 
     public ManagedBrowserDriver(BrowserProfile profile) {
         this.profile = profile;
     }
 
     public String start() {
+        if (process != null && process.isAlive() && isEndpointReady()) {
+            return profile.getCdpUrl();
+        }
         if (isEndpointReady()) {
+            process = null;
             ownsProcess = false;
             return profile.getCdpUrl();
         }
@@ -32,12 +39,16 @@ public class ManagedBrowserDriver {
     }
 
     public void stop() {
-        if (process != null && ownsProcess) {
-            process.destroy();
+        Process current = process;
+        boolean owned = ownsProcess;
+        process = null;
+        ownsProcess = false;
+        if (current != null && owned && current.isAlive()) {
+            current.destroy();
         }
     }
 
-    protected boolean isEndpointReady() {
+    public boolean isEndpointReady() {
         String endpoint = profile.getCdpUrl();
         if (endpoint == null || endpoint.isBlank()) {
             return false;

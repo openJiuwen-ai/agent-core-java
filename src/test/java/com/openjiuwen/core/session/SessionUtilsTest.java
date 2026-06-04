@@ -300,4 +300,20 @@ class SessionUtilsTest {
             assertNull(SessionUtils.extractOriginKey(null));
         }
     }
+
+    @Nested
+    @DisplayName("EndFrame")
+    class EndFrameTests {
+
+        @Test
+        @DisplayName("EndFrame carries source id like Python dataclass")
+        void testEndFrameCarriesSource() {
+            SessionUtils.EndFrame frame = new SessionUtils.EndFrame("node-a");
+
+            assertEquals("node-a", frame.source());
+            assertEquals("node-a", frame.getSource());
+            assertEquals(new SessionUtils.EndFrame("node-a"), frame);
+            assertEquals("all streaming outputs finish", SessionUtils.EndFrame.MESSAGE);
+        }
+    }
 }

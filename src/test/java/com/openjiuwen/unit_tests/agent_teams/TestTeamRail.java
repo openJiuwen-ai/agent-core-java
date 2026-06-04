@@ -48,6 +48,7 @@ class TestTeamRail {
             assertTrue(content.contains("# 团队角色"));
             // Check full member_name line as in Python
             assertTrue(content.contains("你的 member_name: leader1"));
+            assertTrue(content.contains("build_mode"));
             // Check leader policy content
             assertTrue(content.contains("create_task"));
         }
@@ -64,6 +65,7 @@ class TestTeamRail {
             assertNotNull(section);
             String content = section.render("cn");
             assertTrue(content.contains("# 团队角色"));
+            assertTrue(content.contains("build_mode"));
             // Check teammate policy content
             assertTrue(content.contains("view_task"));
         }
@@ -286,6 +288,7 @@ class TestTeamRail {
             String content = section.render("cn");
             assertTrue(content.contains("团队共享工作空间"));
             assertTrue(content.contains(".team/alpha/"));
+            assertTrue(content.contains("系统自动管理版本"));
             assertTrue(content.contains("/abs/team-workspace"));
         }
 
@@ -303,6 +306,68 @@ class TestTeamRail {
             String content = section.render("en");
             assertTrue(content.contains("Team Shared Workspace"));
             assertTrue(content.contains(".team/solo/"));
+            assertTrue(content.contains("Versioning and file locks"));
+        }
+    }
+
+    @Nested
+    class TestTeamHittSection {
+
+        @Test
+        @Tag("level0")
+        void testNoneWhenNoHumanMembers() {
+            assertNull(TeamRail.buildTeamHittSection(
+                    TeamRole.LEADER,
+                    Collections.emptyList(),
+                    "cn",
+                    null
+            ));
+        }
+
+        @Test
+        @Tag("level0")
+        void testLeaderMentionsLockRules() {
+            PromptSection section = TeamRail.buildTeamHittSection(
+                    TeamRole.LEADER,
+                    List.of("human_agent"),
+                    "cn",
+                    null
+            );
+            assertNotNull(section);
+            String body = section.render("cn");
+            assertTrue(body.contains("human_agent"));
+            assertTrue(body.contains("send_message"));
+            assertTrue(body.contains("不能") || body.contains("禁止"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testHumanAgentDescribesConstrainedTools() {
+            PromptSection section = TeamRail.buildTeamHittSection(
+                    TeamRole.HUMAN_AGENT,
+                    List.of("human_agent"),
+                    "en",
+                    "human_agent"
+            );
+            assertNotNull(section);
+            String body = section.render("en");
+            assertTrue(body.contains("send_message"));
+            assertTrue(body.contains("claim_task") || body.toLowerCase(Locale.ROOT).contains("do not"));
+        }
+
+        @Test
+        @Tag("level0")
+        void testLeaderListsEveryHumanMember() {
+            PromptSection section = TeamRail.buildTeamHittSection(
+                    TeamRole.LEADER,
+                    List.of("human_designer", "human_pm"),
+                    "cn",
+                    null
+            );
+            assertNotNull(section);
+            String body = section.render("cn");
+            assertTrue(body.contains("human_designer"));
+            assertTrue(body.contains("human_pm"));
         }
     }
 
@@ -508,6 +573,7 @@ class TestTeamRail {
                     null
             );
             rail.init(agent);
+            rail.beforeModelCall(null);
 
             Map<String, PromptSection> sections = builder.getAllSections();
             assertTrue(sections.containsKey(TeamSectionName.ROLE));
@@ -541,6 +607,7 @@ class TestTeamRail {
                     null
             );
             rail.init(agent);
+            rail.beforeModelCall(null);
 
             Map<String, PromptSection> sections = builder.getAllSections();
             assertFalse(sections.containsKey(TeamSectionName.WORKFLOW));

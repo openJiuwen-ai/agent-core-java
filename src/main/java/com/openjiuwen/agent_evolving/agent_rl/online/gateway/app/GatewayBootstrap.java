@@ -16,6 +16,7 @@ import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGa
 import com.openjiuwen.agent_evolving.agent_rl.online.judge.JudgeEvaluator;
 import com.openjiuwen.agent_evolving.agent_rl.online.judge.JudgeEvaluatorConfig;
 import com.openjiuwen.agent_evolving.agent_rl.online.judge.ScoreResponse;
+import com.openjiuwen.agent_evolving.agent_rl.storage.LoRARepository;
 import com.openjiuwen.agent_evolving.agent_rl.storage.RedisTrajectoryStoreBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,18 +89,36 @@ public final class GatewayBootstrap {
         GatewayTrajectoryRuntime trajectoryRuntime = new GatewayTrajectoryRuntime(config, redisBackend);
         trajectoryRuntime.setJudgeScorer(buildJudgeScorer(config, retryPolicy, httpTransport));
 
-        if (!config.getLoraRepoRoot().isBlank()) {
-            LOG.warn("LoRA repo bootstrap is not translated in R6-03: {}", config.getLoraRepoRoot());
-        }
+        LoRARepository loraRepository = buildLoraRepository(config);
 
         return new GatewayApplication(
                 config,
                 forwarder,
                 upstreamClient,
                 trajectoryRuntime,
-                () -> {
-                }
+                loraRepository,
+                closeHook(httpTransport)
         );
+    }
+
+    private static LoRARepository buildLoraRepository(GatewayConfig config) {
+        if (config.getLoraRepoRoot() == null || config.getLoraRepoRoot().isBlank()) {
+            return null;
+        }
+        try {
+            return new LoRARepository(config.getLoraRepoRoot());
+        } catch (RuntimeException exception) {
+            LOG.warn("LoRA repo not available at {}", config.getLoraRepoRoot());
+            return null;
+        }
+    }
+
+    private static AutoCloseable closeHook(GatewayHttpTransport httpTransport) {
+        return () -> {
+            if (httpTransport instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        };
     }
 
     private static JudgeScorer buildJudgeScorer(GatewayConfig config,

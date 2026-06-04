@@ -35,6 +35,10 @@ public class S3ObjectStorageClient extends BaseObjectStorageClient {
 
     private final S3Client s3Client;
 
+    public S3ObjectStorageClient(S3Client s3Client) {
+        this.s3Client = s3Client;
+    }
+
     /**
      * Construct S3 client with configuration from environment or explicit parameters.
      *

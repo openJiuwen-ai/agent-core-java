@@ -9,6 +9,7 @@ import com.openjiuwen.agent_evolving.evaluator.BaseEvaluator;
 import com.openjiuwen.agent_evolving.trajectory.ExecutionSpec;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.TracerTrajectoryExtractor;
+import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
 import com.openjiuwen.agent_evolving.updater.Updater;
 import com.openjiuwen.core.session.Session;
@@ -18,11 +19,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -30,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/trainer/test_trainer.py}.
+ */
 class TrainerTest {
 
     @Test
@@ -222,11 +228,546 @@ class TrainerTest {
         assertEquals(1.0, callbacks.observedBestScore);
     }
 
+    @Test
+    void trainAppliesDirectUpdatesReturnedAsUpdates() {
+        RecordingUpdater updater = new RecordingUpdater();
+        updater.scriptedUpdates.add(Updates.of("op_1", "system_prompt", "updated"));
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("updated"), loader("updated"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("updated", operator.parameterValue);
+    }
+
+    @Test
+    void trainAppliesDirectUpdatesReturnedAsPlainMap() {
+        RecordingUpdater updater = new RecordingUpdater();
+        Map<UpdateKey, Object> rawUpdates = new LinkedHashMap<>();
+        rawUpdates.put(UpdateKey.of("op_1", "system_prompt"), "updated");
+        updater.scriptedUpdates.add(rawUpdates);
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("updated"), loader("updated"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("updated", operator.parameterValue);
+    }
+
+    @Test
+    void trainTreatsNullUpdaterResultAsEmptyUpdates() {
+        RecordingUpdater updater = new RecordingUpdater();
+        updater.scriptedUpdates.add(RecordingUpdater.NULL_UPDATE);
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, new MatchingEvaluator()).build()
+                .train(agent, loader("mismatch"), loader("mismatch"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("base", operator.parameterValue);
+    }
+
+    @Test
+    void trainAcceptsCandidateReturnedAsPlainMap() {
+        RecordingUpdater updater = new RecordingUpdater();
+        Map<UpdateKey, Object> rawCandidate = new LinkedHashMap<>();
+        rawCandidate.put(UpdateKey.of("op_1", "system_prompt"), "good");
+        updater.scriptedUpdates.add(List.of(rawCandidate));
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("good"), loader("good"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("good", operator.parameterValue);
+    }
+
+    @Test
+    void trainFallsBackToValidationWhenCandidateListIsEmpty() {
+        RecordingUpdater updater = new RecordingUpdater();
+        updater.scriptedUpdates.add(List.of());
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        FakeAgent agent = new FakeAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("base"), loader("base"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals("base", operator.parameterValue);
+        assertTrue(evaluator.evaluateCalls > 0);
+    }
+
+    @Test
+    void trainUsesSnakeCaseOperatorGetterFallback() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeOperator operator = new FakeOperator("op_1", "expected");
+        SnakeCaseAgent agent = new SnakeCaseAgent(Map.of("op_1", operator));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("expected"), loader("expected"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals(List.of("op_1"), new ArrayList<>(updater.lastBoundOperators.keySet()));
+    }
+
+    @Test
+    void trainBindsEmptyRegistryWhenOperatorGetterIsMissing() {
+        RecordingUpdater updater = new RecordingUpdater();
+        updater.bindCount = 0;
+        GetterlessAgent agent = new GetterlessAgent();
+
+        Object trained = builder(updater, new MatchingEvaluator()).build()
+                .train(agent, loader("expected"), loader("expected"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertTrue(updater.lastBoundOperators.isEmpty());
+    }
+
+    @Test
+    void trainBindsEmptyRegistryWhenOperatorGetterThrows() {
+        RecordingUpdater updater = new RecordingUpdater();
+        updater.bindCount = 0;
+        ThrowingGetterAgent agent = new ThrowingGetterAgent();
+
+        Object trained = builder(updater, new MatchingEvaluator()).build()
+                .train(agent, loader("expected"), loader("expected"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertTrue(updater.lastBoundOperators.isEmpty());
+    }
+
+    @Test
+    void trainRunsConfiguredNumberOfIterationsWithoutEarlyStop() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeAgent agent = new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "base")));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("mismatch"), loader("mismatch"), 3, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals(3, updater.updateCalls);
+    }
+
+    @Test
+    void trainUsesTrainCasesAsValidationWhenValCasesIsNull() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeAgent agent = new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "base")));
+
+        Object trained = builder(updater, evaluator).build()
+                .train(agent, loader("base", "base"), null, 1, Map.of());
+
+        assertSame(agent, trained);
+        assertTrue(evaluator.evaluatedCaseIds.contains("case_0"));
+        assertTrue(evaluator.evaluatedCaseIds.contains("case_1"));
+    }
+
+    @Test
+    void builderRequiresUpdater() {
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> new Trainer.Builder().evaluator(new MatchingEvaluator()).build()
+        );
+
+        assertEquals("updater is required", error.getMessage());
+    }
+
+    @Test
+    void builderRequiresEvaluator() {
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> new Trainer.Builder().updater(new RecordingUpdater()).build()
+        );
+
+        assertEquals("evaluator is required", error.getMessage());
+    }
+
+    @Test
+    void predictWithNullCasesReturnsEmptyResult() {
+        PredictionResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predict(new GetterlessAgent(), null);
+
+        assertEquals(List.of(), result.predictions());
+        assertEquals(List.of(), result.sessions());
+    }
+
+    @Test
+    void forwardWithNullCasesReturnsEmptyResult() {
+        ForwardResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .forward(new GetterlessAgent(), null);
+
+        assertEquals(0.0, result.score());
+        assertEquals(List.of(), result.evaluatedCases());
+        assertEquals(List.of(), result.trajectories());
+        assertEquals(List.of(), result.sessions());
+    }
+
+    @Test
+    void evaluateWithNullCasesReturnsEmptyResult() {
+        EvaluationResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .evaluate(new GetterlessAgent(), null);
+
+        assertEquals(0.0, result.score());
+        assertEquals(List.of(), result.evaluatedCases());
+    }
+
+    @Test
+    void predictOnlyWithNullCasesReturnsEmptyList() {
+        List<Map<String, Object>> predictions = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predictOnly(new GetterlessAgent(), null);
+
+        assertEquals(List.of(), predictions);
+    }
+
+    @Test
+    void predictWithEmptyCasesReturnsEmptyResult() {
+        PredictionResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predict(new GetterlessAgent(), new CaseLoader(List.of()));
+
+        assertEquals(List.of(), result.predictions());
+        assertEquals(List.of(), result.sessions());
+    }
+
+    @Test
+    void applyUpdatesSkipsNullInputs() {
+        Trainer.applyUpdates(null, Updates.of("op_1", "system_prompt", "ignored"));
+        Trainer.applyUpdates(Map.of("op_1", new FakeOperator("op_1", "base")), null);
+    }
+
+    @Test
+    void applyUpdatesSkipsMissingOperatorAndNullValue() {
+        FakeOperator operator = new FakeOperator("op_1", "base");
+        Updates updates = new Updates();
+        updates.put("missing", "system_prompt", "ignored");
+        updates.put("op_1", "system_prompt", null);
+
+        Trainer.applyUpdates(Map.of("op_1", operator), updates);
+
+        assertEquals("base", operator.parameterValue);
+    }
+
+    @Test
+    void applyUpdatesAppliesMultipleOperators() {
+        FakeOperator first = new FakeOperator("op_1", "base1");
+        FakeOperator second = new FakeOperator("op_2", "base2");
+        Updates updates = new Updates();
+        updates.put("op_1", "system_prompt", "v1");
+        updates.put("op_2", "system_prompt", "v2");
+
+        Trainer.applyUpdates(Map.of("op_1", first, "op_2", second), updates);
+
+        assertEquals("v1", first.parameterValue);
+        assertEquals("v2", second.parameterValue);
+    }
+
+    @Test
+    void predictWrapsNonMapResultAsOutput() {
+        RawAgent agent = new RawAgent("raw-output");
+
+        PredictionResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predict(agent, loader("raw-output"));
+
+        assertEquals("raw-output", result.predictions().getFirst().get("output"));
+    }
+
+    @Test
+    void predictNullAgentProducesErrorPrediction() {
+        PredictionResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predict(null, loader("expected"));
+
+        assertTrue(String.valueOf(result.predictions().getFirst().get("error")).contains("Get wrong result due to"));
+    }
+
+    @Test
+    void initWithRequiredArgsUsesUpdaterAndEvaluatorThroughTraining() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+
+        Object trained = builder(updater, evaluator).build()
+                .train(new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "base"))),
+                        loader("mismatch"), loader("mismatch"), 1, Map.of());
+
+        assertNotNull(trained);
+        assertEquals(1, updater.updateCalls);
+        assertTrue(evaluator.evaluateCalls > 0);
+    }
+
+    @Test
+    void initDefaultsProduceUsableTrainingBehavior() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        FakeAgent agent = new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "base")));
+
+        Object trained = new Trainer.Builder()
+                .updater(updater)
+                .evaluator(evaluator)
+                .build()
+                .train(agent, loader("mismatch"), loader("mismatch"), 1, Map.of());
+
+        assertSame(agent, trained);
+        assertEquals(1, updater.updateCalls);
+    }
+
+    @Test
+    void applyUpdatesWithEmptyUpdatesDoesNothing() {
+        FakeOperator operator = new FakeOperator("op_1", "base");
+
+        Trainer.applyUpdates(Map.of("op_1", operator), new Updates());
+
+        assertEquals("base", operator.parameterValue);
+    }
+
+    @Test
+    void applyUpdatesAppliesSingleOperator() {
+        FakeOperator operator = new FakeOperator("op_1", "base");
+
+        Trainer.applyUpdates(Map.of("op_1", operator), Updates.of("op_1", "system_prompt", "updated"));
+
+        assertEquals("updated", operator.parameterValue);
+    }
+
+    @Test
+    void evaluateReturnsMeanScoreAndEvaluatedCases() {
+        EvaluationResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .evaluate(new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "expected"))),
+                        loader("expected", "mismatch"));
+
+        assertEquals(0.5, result.score());
+        assertEquals(2, result.evaluatedCases().size());
+    }
+
+    @Test
+    void predictOnlyReturnsOnlyPredictionsForCases() {
+        List<Map<String, Object>> predictions = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predictOnly(new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "expected"))),
+                        loader("expected", "expected", "expected"));
+
+        assertEquals(3, predictions.size());
+    }
+
+    @Test
+    void forwardWithEmptyCasesReturnsEmptyResult() {
+        ForwardResult result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .forward(new GetterlessAgent(), new CaseLoader(List.of()));
+
+        assertEquals(0.0, result.score());
+        assertEquals(List.of(), result.evaluatedCases());
+        assertEquals(List.of(), result.trajectories());
+        assertEquals(List.of(), result.sessions());
+    }
+
+    @Test
+    void predictOnlyWithEmptyCasesReturnsEmptyList() {
+        List<Map<String, Object>> result = builder(new RecordingUpdater(), new MatchingEvaluator()).build()
+                .predictOnly(new GetterlessAgent(), new CaseLoader(List.of()));
+
+        assertEquals(List.of(), result);
+    }
+
+    @Test
+    void progressDefaultsMatchPythonEdgeCase() {
+        Progress progress = new Progress();
+
+        assertEquals(0, progress.getStartEpoch());
+        assertEquals(0, progress.getCurrentEpoch());
+        assertEquals(3, progress.getMaxEpoch());
+        assertEquals(0.0, progress.getBestScore());
+        assertEquals(0.0, progress.getCurrentEpochScore());
+    }
+
+    @Test
+    void progressRunEpochCountOne() {
+        Progress progress = new Progress(1);
+
+        assertEquals(List.of(1), toList(progress.runEpoch()));
+    }
+
+    @Test
+    void progressRunEpochCountFive() {
+        Progress progress = new Progress(5);
+
+        assertEquals(List.of(1, 2, 3, 4, 5), toList(progress.runEpoch()));
+    }
+
+    @Test
+    void progressRunEpochWithStartEpochMatchesPython() {
+        Progress progress = new Progress(5);
+        progress.setStartEpoch(3);
+
+        assertEquals(List.of(4, 5), toList(progress.runEpoch()));
+    }
+
+    @Test
+    void progressRunEpochUpdatesCurrentAfterLoop() {
+        Progress progress = new Progress(3);
+
+        toList(progress.runEpoch());
+
+        assertEquals(3, progress.getCurrentEpoch());
+    }
+
+    @Test
+    void progressPartialIterationUpdatesCurrentEachYield() {
+        Progress progress = new Progress(5);
+        Iterator<Integer> iterator = progress.runEpoch().iterator();
+
+        assertEquals(1, iterator.next());
+        assertEquals(1, progress.getCurrentEpoch());
+        assertEquals(2, iterator.next());
+        assertEquals(2, progress.getCurrentEpoch());
+    }
+
+    @Test
+    void progressRunBatchYieldsIterationsAndResetsBest() {
+        Progress progress = new Progress();
+        progress.setMaxBatchIter(3);
+        progress.setBestBatchScore(0.99);
+
+        assertEquals(List.of(0, 1, 2), toList(progress.runBatch()));
+        assertEquals(0.0, progress.getBestBatchScore());
+    }
+
+    @Test
+    void progressScoreBoundaryValuesAreAccepted() {
+        Progress progress = new Progress();
+        progress.setBestScore(0.0);
+        progress.setCurrentEpochScore(1.0);
+
+        assertEquals(0.0, progress.getBestScore());
+        assertEquals(1.0, progress.getCurrentEpochScore());
+    }
+
+    @Test
+    void callbacksDefaultImplementationsDoNothing() {
+        Callbacks callbacks = new Callbacks();
+        Progress progress = new Progress();
+        List<EvaluatedCase> evalResults = List.of(evaluatedCase(0.8));
+
+        assertDoesNotThrow(() -> callbacks.onTrainBegin(new Object(), progress, evalResults));
+        assertDoesNotThrow(() -> callbacks.onTrainEnd(new Object(), progress, evalResults));
+        assertDoesNotThrow(() -> callbacks.onTrainEpochBegin(new Object(), progress));
+        assertDoesNotThrow(() -> callbacks.onTrainEpochEnd(new Object(), progress, evalResults));
+    }
+
+    @Test
+    void callbacksCustomBeginAndEndOverride() {
+        Map<String, Boolean> callTracker = new LinkedHashMap<>();
+        callTracker.put("begin", false);
+        callTracker.put("end", false);
+        Callbacks callbacks = new Callbacks() {
+            @Override
+            public void onTrainBegin(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
+                callTracker.put("begin", true);
+            }
+
+            @Override
+            public void onTrainEnd(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
+                callTracker.put("end", true);
+            }
+        };
+
+        callbacks.onTrainBegin(new Object(), new Progress(), List.of());
+        callbacks.onTrainEnd(new Object(), new Progress(), List.of());
+
+        assertEquals(Boolean.TRUE, callTracker.get("begin"));
+        assertEquals(Boolean.TRUE, callTracker.get("end"));
+    }
+
+    @Test
+    void caseLoaderHandlesEmptyAndSingleCases() {
+        CaseLoader empty = new CaseLoader(List.of());
+        Case single = new Case(Map.of("q", "test"), Map.of("ans", "expected"), "single");
+        CaseLoader one = new CaseLoader(List.of(single));
+
+        assertEquals(0, empty.getCases().size());
+        assertEquals(1, one.getCases().size());
+        assertEquals("single", one.getCases().getFirst().getCaseId());
+    }
+
+    @Test
+    void caseLoaderSplitEmptyReturnsTwoEmptyLoaders() {
+        CaseLoader[] split = new CaseLoader(List.of()).split(0.8, 0);
+
+        assertEquals(0, split[0].getCases().size());
+        assertEquals(0, split[1].getCases().size());
+    }
+
+    @Test
+    void evaluatedCaseClampsScoreBounds() {
+        Case caseData = new Case(Map.of("q", "test"), Map.of("ans", "expected"));
+
+        assertEquals(0.0, new EvaluatedCase(caseData, Map.of("output", "pred"), -0.5, "").getScore());
+        assertEquals(1.0, new EvaluatedCase(caseData, Map.of("output", "pred"), 1.5, "").getScore());
+    }
+
+    @Test
+    void evaluatedCaseDefaultsAndConveniencePropertiesMatchPython() {
+        Case caseData = new Case(Map.of("q", "test"), Map.of("ans", "expected"), "case-id");
+        EvaluatedCase defaults = new EvaluatedCase(caseData, Map.of("output", "pred"));
+        EvaluatedCase evaluated = new EvaluatedCase(caseData, Map.of("output", "pred"), 0.8, "Good answer");
+
+        assertEquals(0.0, defaults.getScore());
+        assertEquals("", defaults.getReason());
+        assertEquals(caseData.getInputs(), evaluated.getInputs());
+        assertEquals(caseData.getLabel(), evaluated.getLabel());
+        assertEquals("case-id", evaluated.getCaseId());
+    }
+
+    @Test
+    void epochCallbackReceivesProgressWithScoreFields() {
+        RecordingUpdater updater = new RecordingUpdater();
+        MatchingEvaluator evaluator = new MatchingEvaluator();
+        CapturingCallbacks callbacks = new CapturingCallbacks();
+        Trainer trainer = builder(updater, evaluator)
+                .callbacks(callbacks)
+                .build();
+
+        trainer.train(
+                new FakeAgent(Map.of("op_1", new FakeOperator("op_1", "base"))),
+                loader("mismatch"),
+                loader("mismatch"),
+                1,
+                Map.of());
+
+        assertNotNull(callbacks.lastEpochEndProgress);
+        assertTrue(callbacks.lastEpochEndProgress.getCurrentEpochScore() >= 0.0);
+        assertTrue(callbacks.lastEpochEndProgress.getBestScore() >= 0.0);
+    }
+
     private static Trainer.Builder builder(Updater updater, BaseEvaluator evaluator) {
         return new Trainer.Builder()
                 .updater(updater)
                 .evaluator(evaluator)
                 .numParallel(2);
+    }
+
+    private static List<Integer> toList(Iterable<Integer> iterable) {
+        List<Integer> values = new ArrayList<>();
+        for (int value : iterable) {
+            values.add(value);
+        }
+        return values;
+    }
+
+    private static EvaluatedCase evaluatedCase(double score) {
+        return EvaluatedCase.builder()
+                .caseData(new Case(Map.of("q", "test"), Map.of("ans", "expected"), "case"))
+                .answer(Map.of("output", "pred"))
+                .score(score)
+                .reason("reason")
+                .build();
     }
 
     private static CaseLoader loader(String... answers) {
@@ -271,6 +812,51 @@ class TrainerTest {
         }
     }
 
+    private static final class SnakeCaseAgent {
+        private final Map<String, Object> operators;
+
+        private SnakeCaseAgent(Map<String, Object> operators) {
+            this.operators = new LinkedHashMap<>(operators);
+        }
+
+        public Map<String, Object> get_operators() {
+            return operators;
+        }
+
+        public Map<String, Object> invoke(Object input, Session session) {
+            FakeOperator operator = (FakeOperator) operators.get("op_1");
+            return Map.of("output", operator.parameterValue);
+        }
+    }
+
+    private static final class GetterlessAgent {
+        public Map<String, Object> invoke(Object input, Session session) {
+            return Map.of("output", "unused");
+        }
+    }
+
+    private static final class ThrowingGetterAgent {
+        public Map<String, Object> getOperators() {
+            throw new IllegalStateException("getter boom");
+        }
+
+        public Map<String, Object> invoke(Object input, Session session) {
+            return Map.of("output", "unused");
+        }
+    }
+
+    private static final class RawAgent {
+        private final Object result;
+
+        private RawAgent(Object result) {
+            this.result = result;
+        }
+
+        public Object invoke(Object input, Session session) {
+            return result;
+        }
+    }
+
     private static final class FakeOperator {
         private final String operatorId;
         private String parameterValue;
@@ -301,6 +887,8 @@ class TrainerTest {
     }
 
     private static final class RecordingUpdater implements Updater {
+        private static final Object NULL_UPDATE = new Object();
+
         private final Deque<Object> scriptedUpdates = new ArrayDeque<>();
         private int bindCount = 1;
         private boolean requiresForward = true;
@@ -308,9 +896,11 @@ class TrainerTest {
         private int lastTrajectoryCount;
         private int lastEvaluatedCount;
         private Map<String, Object> loadedState = Map.of();
+        private Map<String, Object> lastBoundOperators = Map.of();
 
         @Override
         public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
+            lastBoundOperators = operators != null ? new LinkedHashMap<>(operators) : Map.of();
             return bindCount;
         }
 
@@ -326,7 +916,8 @@ class TrainerTest {
             updateCalls++;
             lastTrajectoryCount = trajectories != null ? trajectories.size() : -1;
             lastEvaluatedCount = evaluatedCases != null ? evaluatedCases.size() : -1;
-            return scriptedUpdates.isEmpty() ? new Updates() : scriptedUpdates.removeFirst();
+            Object next = scriptedUpdates.isEmpty() ? new Updates() : scriptedUpdates.removeFirst();
+            return next == NULL_UPDATE ? null : next;
         }
 
         @Override
@@ -341,8 +932,13 @@ class TrainerTest {
     }
 
     private static final class MatchingEvaluator extends BaseEvaluator {
+        private int evaluateCalls;
+        private final List<String> evaluatedCaseIds = new ArrayList<>();
+
         @Override
         public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
+            evaluateCalls++;
+            evaluatedCaseIds.add(caseData.getCaseId());
             boolean matched = String.valueOf(caseData.getLabel().get("answer"))
                     .equals(String.valueOf(predict.get("output")));
             return EvaluatedCase.builder()
@@ -398,6 +994,15 @@ class TrainerTest {
             observedStartEpoch = progress.getStartEpoch();
             observedCurrentEpoch = progress.getCurrentEpoch();
             observedBestScore = progress.getBestScore();
+        }
+    }
+
+    private static final class CapturingCallbacks extends Callbacks {
+        private Progress lastEpochEndProgress;
+
+        @Override
+        public void onTrainEpochEnd(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
+            lastEpochEndProgress = progress;
         }
     }
 }

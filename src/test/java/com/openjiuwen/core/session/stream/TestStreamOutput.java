@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for StreamOutput.
- * Mirrors Python's tests/unit_tests/core/session/stream/test_stream_output.py
+ * Mirrors Python's {@code tests/unit_tests/core/session/stream/test_stream_output.py}.
  */
 class TestStreamOutput {
 

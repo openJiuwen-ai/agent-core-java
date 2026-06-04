@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient;
 import com.openjiuwen.core.foundation.tool.mcp.client.PlaywrightClient;
+import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 import com.openjiuwen.core.foundation.tool.mcp.sdk.OfficialMcpClientFactory;
 
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * Manager for Tool instances, MCP servers, and SysOperation-related tools.
@@ -38,6 +40,11 @@ public class ToolMgr {
     private final Map<String, List<String>> mcpServerNameToIds = new HashMap<>();
     private final Map<String, McpServerResource> mcpServerResources = new HashMap<>();
     private final Map<String, SysOpToolResource> sysOpResources = new HashMap<>();
+    private static volatile Function<McpServerConfig, McpClient> clientFactoryOverride;
+
+    public static void setClientFactoryOverrideForTesting(Function<McpServerConfig, McpClient> override) {
+        clientFactoryOverride = override;
+    }
 
     public void addTool(String toolId, Tool tool) {
         if (tools.containsKey(toolId)) {
@@ -118,12 +125,19 @@ public class ToolMgr {
     }
 
     private McpClient createClient(McpServerConfig config) {
+        Function<McpServerConfig, McpClient> override = clientFactoryOverride;
+        if (override != null) {
+            McpClient client = override.apply(config);
+            if (client != null) {
+                return client;
+            }
+        }
         String clientType = config.getClientType() == null ? "sse" : config.getClientType().toLowerCase();
         return switch (clientType) {
             case "sse" -> OfficialMcpClientFactory.create(config);
             case "stdio" -> OfficialMcpClientFactory.create(config);
             case "openapi" -> new OpenApiClient(config);
-            case "streamable_http", "streamable-http", "http" -> OfficialMcpClientFactory.create(config);
+            case "streamable_http", "streamable-http", "http" -> new StreamableHttpClient(config);
             case "playwright" -> new PlaywrightClient(config);
             default -> throw new UnsupportedOperationException("Unsupported MCP client type: " + config.getClientType());
         };

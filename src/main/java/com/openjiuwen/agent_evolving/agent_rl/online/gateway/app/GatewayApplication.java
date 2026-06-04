@@ -8,6 +8,7 @@ import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayConfig;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.GatewayTrajectoryRuntime;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.Forwarder;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+import com.openjiuwen.agent_evolving.agent_rl.storage.LoRARepository;
 
 /**
  * Minimal gateway bootstrap composition result.
@@ -21,6 +22,7 @@ public record GatewayApplication(
         Forwarder forwarder,
         UpstreamGatewayClient upstreamClient,
         GatewayTrajectoryRuntime trajectoryRuntime,
+        LoRARepository loraRepository,
         AutoCloseable closeResources
 ) implements AutoCloseable {
 

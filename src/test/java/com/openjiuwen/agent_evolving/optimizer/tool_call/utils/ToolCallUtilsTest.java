@@ -127,6 +127,7 @@ class ToolCallUtilsTest {
         TreeNode node = new TreeNode("x", 2.0, Map.of());
         assertTrue(timeoutSearch.checkEarlyStop(List.of(node), 1.0, 1));
         assertFalse(timeoutSearch.checkEarlyStop(List.of(), 1.0, 1));
+        assertFalse(timeoutSearch.checkEarlyStop(List.of(node), 3.0, 1));
     }
 
     @Test

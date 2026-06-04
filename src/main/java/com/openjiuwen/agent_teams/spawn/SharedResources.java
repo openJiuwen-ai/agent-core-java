@@ -4,6 +4,12 @@
 
 package com.openjiuwen.agent_teams.spawn;
 
+import com.openjiuwen.agent_teams.messager.InProcessMessager;
+import com.openjiuwen.agent_teams.tools.TeamDatabase;
+import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
+import com.openjiuwen.agent_teams.tools.database.DatabaseType;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,13 +27,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SharedResources {
     
     /** Process-global TeamRuntime singleton */
-    private static Object runtime = null;
+    private static TeamRuntime runtime = null;
     
-    /** Process-global InMemoryTeamDatabase singleton */
-    private static Object memoryDb = null;
+    /** Process-global in-memory TeamDatabase singleton (for ":memory:" mode) */
+    private static TeamDatabase memoryDb = null;
     
     /** Database instances keyed by normalized db_type + connection_string */
-    private static final Map<String, Object> dbInstances = new ConcurrentHashMap<>();
+    private static final Map<String, TeamDatabase> dbInstances = new ConcurrentHashMap<>();
     
     private SharedResources() {
         // Utility class
@@ -40,10 +46,8 @@ public final class SharedResources {
      *
      * @return TeamRuntime instance
      */
-    public static Object getSharedRuntime() {
+    public static TeamRuntime getSharedRuntime() {
         if (runtime == null) {
-            // Create TeamRuntime on first call
-            // Placeholder - actual implementation would create TeamRuntime
             runtime = createRuntime();
         }
         return runtime;
@@ -52,23 +56,41 @@ public final class SharedResources {
     /**
      * Return a process-global database instance matching config.
      * <p>
-     * - db_type == "memory" → single global InMemoryTeamDatabase.
-     * - db_type != "memory" → one TeamDatabase per db_type+connection_string.
+     * - db_type == "memory" or connection_string == ":memory:" → single global in-memory TeamDatabase.
+     * - otherwise → one TeamDatabase per db_type+connection_string.
      * <p>
      * Mirrors Python: get_shared_db(config)
      *
-     * @param config Database configuration
-     * @return Database instance
+     * @param config Database configuration (DatabaseConfig)
+     * @return TeamDatabase instance
      */
-    public static Object getSharedDb(Object config) {
-        // Placeholder - actual implementation would check config.db_type
-        String dbType = extractDbType(config);
+    public static TeamDatabase getSharedDb(DatabaseConfig config) {
+        if (config == null) {
+            return getSharedMemoryDb();
+        }
         
-        if ("memory".equals(dbType)) {
+        String connectionString = config.getConnectionString();
+        // Check for in-memory mode
+        if (":memory:".equals(connectionString) || 
+            (config.getDbType() == DatabaseType.SQLITE && connectionString.isEmpty())) {
             return getSharedMemoryDb();
         }
         
         return getSharedDbInstance(config);
+    }
+    
+    /**
+     * Legacy method accepting Object config for backward compatibility.
+     *
+     * @param config Database configuration (can be DatabaseConfig or Object)
+     * @return TeamDatabase instance
+     */
+    public static Object getSharedDb(Object config) {
+        if (config instanceof DatabaseConfig) {
+            return getSharedDb((DatabaseConfig) config);
+        }
+        // Fallback for unknown config types
+        return getSharedMemoryDb();
     }
     
     /**
@@ -87,44 +109,57 @@ public final class SharedResources {
     
     // -- Internal methods --
     
-    private static Object getSharedMemoryDb() {
+    private static TeamDatabase getSharedMemoryDb() {
         if (memoryDb == null) {
             memoryDb = createMemoryDb();
         }
         return memoryDb;
     }
     
-    private static Object getSharedDbInstance(Object config) {
+    private static TeamDatabase getSharedDbInstance(DatabaseConfig config) {
         String key = buildDbKey(config);
         return dbInstances.computeIfAbsent(key, k -> createDb(config));
     }
     
+    private static String buildDbKey(DatabaseConfig config) {
+        // Build key from db_type + connection_string, matching Python logic:
+        // key = f"{db_type}::{conn_str}"
+        String dbType = config.getDbType() != null ? config.getDbType().getValue() : "sqlite";
+        String connStr = config.getConnectionString() != null ? config.getConnectionString() : "";
+        return dbType + "::" + connStr;
+    }
+    
     private static String buildDbKey(Object config) {
-        // Placeholder - build key from db_type + connection_string
+        if (config instanceof DatabaseConfig) {
+            return buildDbKey((DatabaseConfig) config);
+        }
         return config.toString();
     }
     
-    private static String extractDbType(Object config) {
-        // Placeholder - extract db_type from config
-        return "memory";
+    private static TeamRuntime createRuntime() {
+        // Create TeamRuntime with default config
+        return new TeamRuntime();
     }
     
-    private static Object createRuntime() {
-        // Placeholder - create TeamRuntime
-        return null;
+    private static TeamDatabase createMemoryDb() {
+        // Create in-memory TeamDatabase (using ":memory:" connection string)
+        return new TeamDatabase(DatabaseConfig.inMemory());
     }
     
-    private static Object createMemoryDb() {
-        // Placeholder - create InMemoryTeamDatabase
-        return null;
+    private static TeamDatabase createDb(DatabaseConfig config) {
+        // Create TeamDatabase with specified config
+        return new TeamDatabase(config);
     }
     
-    private static Object createDb(Object config) {
-        // Placeholder - create TeamDatabase
-        return null;
+    private static TeamDatabase createDb(Object config) {
+        if (config instanceof DatabaseConfig) {
+            return createDb((DatabaseConfig) config);
+        }
+        return createMemoryDb();
     }
     
     private static void cleanupInprocessBus() {
-        // Placeholder - cleanup inprocess message bus
+        // Cleanup inprocess message bus by calling InProcessMessager.cleanupBus()
+        InProcessMessager.cleanupBus();
     }
 }

@@ -17,6 +17,12 @@ import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
+import com.openjiuwen.core.session.stream.CustomSchema;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -81,6 +87,7 @@ public final class MessageSerializer {
         });
         mapper.registerModule(module);
         MAPPER = mapper;
+        registerBuiltinTypes();
     }
 
     private MessageSerializer() {
@@ -112,6 +119,25 @@ public final class MessageSerializer {
      */
     public static Map<String, Function<Map<String, Object>, Object>> getTypeRegistry() {
         return Map.copyOf(TYPE_REGISTRY);
+    }
+
+    private static void registerBuiltinTypes() {
+        TYPE_REGISTRY.putIfAbsent("OutputSchema", OutputSchema::fromMap);
+        TYPE_REGISTRY.putIfAbsent("InteractionOutput", fields -> new InteractionOutput(
+                (String) fields.get("id"),
+                fields.get("value")));
+        TYPE_REGISTRY.putIfAbsent("WorkflowOutput", fields -> {
+            Object stateObj = fields.get("state");
+            WorkflowExecutionState state = null;
+            if (stateObj instanceof WorkflowExecutionState workflowState) {
+                state = workflowState;
+            } else if (stateObj != null) {
+                state = WorkflowExecutionState.valueOf(String.valueOf(stateObj));
+            }
+            return new WorkflowOutput(fields.get("result"), state);
+        });
+        TYPE_REGISTRY.putIfAbsent("CustomSchema", CustomSchema::fromMap);
+        TYPE_REGISTRY.putIfAbsent("TraceSchema", TraceSchema::fromMap);
     }
 
     // ========== Serialization ==========
@@ -182,6 +208,40 @@ public final class MessageSerializer {
         if (payload == null) {
             return null;
         }
+        // Python serializes pydantic models as dicts with a __class__ marker so
+        // recursive deserialization can recover domain objects instead of maps.
+        if (payload instanceof OutputSchema outputSchema) {
+            Map<String, Object> result = classPayload("OutputSchema");
+            result.put("type", serializePayload(outputSchema.getType(), depth + 1));
+            result.put("index", serializePayload(outputSchema.getIndex(), depth + 1));
+            result.put("payload", serializePayload(outputSchema.getPayload(), depth + 1));
+            return result;
+        }
+        if (payload instanceof InteractionOutput interactionOutput) {
+            Map<String, Object> result = classPayload("InteractionOutput");
+            result.put("id", serializePayload(interactionOutput.getId(), depth + 1));
+            result.put("value", serializePayload(interactionOutput.getValue(), depth + 1));
+            return result;
+        }
+        if (payload instanceof WorkflowOutput workflowOutput) {
+            Map<String, Object> result = classPayload("WorkflowOutput");
+            result.put("result", serializePayload(workflowOutput.getResult(), depth + 1));
+            result.put("state", serializePayload(workflowOutput.getState(), depth + 1));
+            return result;
+        }
+        if (payload instanceof CustomSchema customSchema) {
+            Map<String, Object> result = classPayload("CustomSchema");
+            for (Map.Entry<String, Object> entry : customSchema.getProperties().entrySet()) {
+                result.put(entry.getKey(), serializePayload(entry.getValue(), depth + 1));
+            }
+            return result;
+        }
+        if (payload instanceof TraceSchema traceSchema) {
+            Map<String, Object> result = classPayload("TraceSchema");
+            result.put("type", serializePayload(traceSchema.getType(), depth + 1));
+            result.put("payload", serializePayload(traceSchema.getPayload(), depth + 1));
+            return result;
+        }
         // Enum -> value
         if (payload instanceof Enum<?> e) {
             return e.name();
@@ -231,6 +291,12 @@ public final class MessageSerializer {
         }
         // Primitives (String, Number, Boolean)
         return payload;
+    }
+
+    private static Map<String, Object> classPayload(String className) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("__class__", className);
+        return result;
     }
 
     /**

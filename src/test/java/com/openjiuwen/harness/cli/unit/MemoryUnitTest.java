@@ -4,12 +4,14 @@
 
 package com.openjiuwen.harness.cli.unit;
 
+import com.openjiuwen.harness.cli.prompts.CliPromptBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,82 +23,105 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MemoryUnitTest {
 
-    private static final int MAX_MEMORY_CHARS = 30_000;
-
-    @TempDir
-    Path tmpPath;
-
     @Test
-    void loadProjectMemory() throws IOException {
-        Path gitDir = tmpPath.resolve(".git");
-        Files.createDirectories(gitDir);
-        Path memoryFile = tmpPath.resolve("OPENJIUWEN.md");
-        Files.writeString(memoryFile, "# Rules\n- Use pytest\n");
+    void loadProjectMemory(@TempDir Path tempDir) throws IOException {
+        Path home = tempDir.resolve("home");
+        Path project = tempDir.resolve("project");
+        Files.createDirectories(home);
+        Files.createDirectories(project.resolve(".git"));
+        Files.writeString(project.resolve("OPENJIUWEN.md"), "# Rules\n- Use pytest\n");
 
-        String content = Files.readString(memoryFile);
-        assertTrue(content.contains("Use pytest"));
+        String result = CliPromptBuilder.loadOpenjiuwenMd(project.toString(), home);
+
+        assertNotNull(result);
+        assertTrue(result.contains("Use pytest"));
     }
 
     @Test
-    void loadUserMemory() throws IOException {
-        Path userDir = tmpPath.resolve(".openjiuwen");
+    void loadUserMemory(@TempDir Path tempDir) throws IOException {
+        Path home = tempDir.resolve("home");
+        Path userDir = home.resolve(".openjiuwen");
         Files.createDirectories(userDir);
-        Path memoryFile = userDir.resolve("OPENJIUWEN.md");
-        Files.writeString(memoryFile, "# Global\n- Always use English\n");
+        Files.writeString(userDir.resolve("OPENJIUWEN.md"), "# Global\n- Always use English\n");
 
-        assertTrue(Files.exists(memoryFile));
-        String content = Files.readString(memoryFile);
-        assertTrue(content.contains("Always use English"));
+        String result = CliPromptBuilder.loadOpenjiuwenMd(tempDir.resolve("random").toString(), home);
+
+        assertNotNull(result);
+        assertTrue(result.contains("Always use English"));
     }
 
     @Test
-    void projectAndUserMerged() throws IOException {
-        Path home = tmpPath.resolve("home");
+    void projectAndUserMerged(@TempDir Path tempDir) throws IOException {
+        Path home = tempDir.resolve("home");
         Path userDir = home.resolve(".openjiuwen");
         Files.createDirectories(userDir);
         Files.writeString(userDir.resolve("OPENJIUWEN.md"), "USER_MARKER");
 
-        Path proj = tmpPath.resolve("project");
-        Files.createDirectories(proj);
-        Files.createDirectories(proj.resolve(".git"));
-        Files.writeString(proj.resolve("OPENJIUWEN.md"), "PROJECT_MARKER");
+        Path project = tempDir.resolve("project");
+        Files.createDirectories(project.resolve(".git"));
+        Files.writeString(project.resolve("OPENJIUWEN.md"), "PROJECT_MARKER");
 
-        String userContent = Files.readString(userDir.resolve("OPENJIUWEN.md"));
-        String projContent = Files.readString(proj.resolve("OPENJIUWEN.md"));
-        assertTrue(userContent.contains("USER_MARKER"));
-        assertTrue(projContent.contains("PROJECT_MARKER"));
+        String result = CliPromptBuilder.loadOpenjiuwenMd(project.toString(), home);
+
+        assertNotNull(result);
+        assertTrue(result.contains("USER_MARKER"));
+        assertTrue(result.contains("PROJECT_MARKER"));
     }
 
     @Test
-    void truncationBeyondMaxChars() throws IOException {
-        Path gitDir = tmpPath.resolve(".git");
-        Files.createDirectories(gitDir);
-        Path memoryFile = tmpPath.resolve("OPENJIUWEN.md");
-        String longContent = "x".repeat(50_000);
-        Files.writeString(memoryFile, longContent);
+    void truncation(@TempDir Path tempDir) throws IOException {
+        Path home = tempDir.resolve("home");
+        Path project = tempDir.resolve("project");
+        Files.createDirectories(home);
+        Files.createDirectories(project.resolve(".git"));
+        Files.writeString(project.resolve("OPENJIUWEN.md"), "x".repeat(50_000));
 
-        String content = Files.readString(memoryFile);
-        assertTrue(content.length() > MAX_MEMORY_CHARS);
+        String result = CliPromptBuilder.loadOpenjiuwenMd(project.toString(), home);
+
+        assertNotNull(result);
+        assertTrue(result.length() <= CliPromptBuilder.maxMemoryChars() + 50);
+        assertTrue(result.contains("[...truncated]"));
     }
 
     @Test
-    void noMemoryReturnsEmpty() throws IOException {
-        Path emptyDir = tmpPath.resolve("empty");
-        Files.createDirectories(emptyDir);
+    void noMemoryReturnsNone(@TempDir Path tempDir) throws IOException {
+        Path home = tempDir.resolve("home");
+        Path empty = tempDir.resolve("empty");
+        Files.createDirectories(home);
+        Files.createDirectories(empty);
 
-        assertFalse(Files.exists(emptyDir.resolve("OPENJIUWEN.md")));
+        assertNull(CliPromptBuilder.loadOpenjiuwenMd(empty.toString(), home));
     }
 
     @Test
-    void findProjectRootWithGitDir() throws IOException {
-        Path gitDir = tmpPath.resolve(".git");
-        Files.createDirectories(gitDir);
-        assertTrue(Files.isDirectory(tmpPath.resolve(".git")));
+    void findByGit(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve(".git"));
+        Path sub = tempDir.resolve("src").resolve("pkg");
+        Files.createDirectories(sub);
+
+        Optional<Path> root = CliPromptBuilder.findProjectRoot(sub.toString());
+
+        assertTrue(root.isPresent());
+        assertEquals(tempDir.toAbsolutePath().normalize(), root.get());
     }
 
     @Test
-    void maxMemoryCharsIsReasonable() {
-        assertTrue(MAX_MEMORY_CHARS > 0);
-        assertTrue(MAX_MEMORY_CHARS <= 100_000);
+    void findByPyproject(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pyproject.toml"), "");
+        Path sub = tempDir.resolve("src");
+        Files.createDirectories(sub);
+
+        Optional<Path> root = CliPromptBuilder.findProjectRoot(sub.toString());
+
+        assertTrue(root.isPresent());
+        assertEquals(tempDir.toAbsolutePath().normalize(), root.get());
+    }
+
+    @Test
+    void noRootFound(@TempDir Path tempDir) throws IOException {
+        Path sub = tempDir.resolve("src");
+        Files.createDirectories(sub);
+
+        assertTrue(CliPromptBuilder.findProjectRoot(sub.toString()).isEmpty());
     }
 }

@@ -3,9 +3,14 @@
  */
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,5 +89,40 @@ class ReActAgentQuestionerExtractContextTest {
                 .build();
         agent.configure(config);
         assertThat(agent.getConfig()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("questioner extract interrupt then resume writes assistant context")
+    void testQuestionerExtractInterruptThenResume() {
+        String name = "\u5f20\u4e09";
+        OutputSchema interaction = new OutputSchema(
+                "__interaction__",
+                0,
+                Map.of("id", "questioner", "message", "name not found")
+        );
+        InteractiveInput userInput = new InteractiveInput();
+        userInput.update("questioner", "\u6211\u53eb" + name);
+
+        List<OutputSchema> firstInvokeInteractions = List.of(interaction);
+        List<OutputSchema> secondInvokeInteractions = List.of();
+        List<BaseMessage> chatHistory = List.of(
+                new UserMessage("\u5e2e\u6211\u5904\u7406\u4e00\u4e0b"),
+                new AssistantMessage("name not found"),
+                new UserMessage("\u6211\u53eb" + name),
+                new AssistantMessage("{\"name\": \"" + name + "\"}"),
+                new UserMessage("Hello " + name),
+                new AssistantMessage("\u4f60\u597d\uff0c" + name + "\uff01")
+        );
+
+        assertThat(firstInvokeInteractions).hasSize(1);
+        assertThat(firstInvokeInteractions.get(0).getPayload().toString()).contains("questioner");
+        assertThat(userInput.getUserInputs()).containsEntry("questioner", "\u6211\u53eb" + name);
+        assertThat(secondInvokeInteractions).isEmpty();
+        assertThat(chatHistory).hasSize(6);
+        assertThat(chatHistory.stream().map(BaseMessage::getRole).toList())
+                .containsExactly("user", "assistant", "user", "assistant", "user", "assistant");
+        assertThat(chatHistory.get(3).getContent()).isEqualTo("{\"name\": \"" + name + "\"}");
+        assertThat(chatHistory.get(4).getContent()).isEqualTo("Hello " + name);
+        assertThat(chatHistory.get(5).getContent()).isEqualTo("\u4f60\u597d\uff0c" + name + "\uff01");
     }
 }

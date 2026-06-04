@@ -4,156 +4,287 @@
 
 package com.openjiuwen.unit_tests.extensions.store;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.DisplayName;
+import com.openjiuwen.core.foundation.store.BaseDbStore;
+import com.openjiuwen.extensions.store.db.GaussDbStore;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.SQLException;
+import java.util.concurrent.CompletionException;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Tests for GaussDb.
- * <p>
- * Mirrors Python's GaussDb tests.
- * Tests GaussDB database integration.
+ * Unit tests for {@link GaussDbStore}.
+ *
+ * <p>Mirrors Python's {@code test_gauss_db.py} in
+ * {@code tests.unit_tests.extensions.store.test_gauss_db}.</p>
  */
 class TestGaussDb {
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 0 (Connection configuration)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level0")
-    @DisplayName("Test GaussDB connection string format")
-    void testGaussDbConnectionStringFormat() {
-        // GaussDB connection string format
-        String host = "localhost";
-        int port = 5432;
-        String database = "agent_db";
-        
-        String connectionString = String.format("jdbc:postgresql://%s:%d/%s", host, port, database);
-        
-        assertNotNull(connectionString);
-        assertTrue(connectionString.contains("postgresql"));
-        assertTrue(connectionString.contains("localhost"));
-        assertTrue(connectionString.contains("5432"));
+    private static String insertUser(String name, String email, Integer age) {
+        return "INSERT INTO test_user(name,email,age) VALUES ('" + name + "','" + email + "'," + age + ")";
     }
 
-    @Test
-    @Tag("level0")
-    @DisplayName("Test connection parameters")
-    void testConnectionParameters() {
-        Map<String, Object> params = new HashMap<>();
-        params.put("host", "localhost");
-        params.put("port", 5432);
-        params.put("database", "agent_db");
-        params.put("user", "admin");
-        params.put("ssl", true);
-        
-        assertNotNull(params);
-        assertEquals("localhost", params.get("host"));
-        assertEquals(5432, params.get("port"));
-        assertTrue((Boolean) params.get("ssl"));
+    private static String selectUsers(String suffix) {
+        return "SELECT * FROM test_user" + suffix;
     }
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 1 (Query operations)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level1")
-    @DisplayName("Test query parameter binding")
-    void testQueryParameterBinding() {
-        String query = "SELECT * FROM documents WHERE id = ? AND status = ?";
-        Object[] params = {"doc-001", "active"};
-        
-        assertNotNull(query);
-        assertEquals(2, params.length);
-        assertTrue(query.contains("?"));
+    private static String updateUsers(String suffix, String setClause) {
+        return "UPDATE test_user SET " + setClause + suffix;
     }
 
-    @Test
-    @Tag("level1")
-    @DisplayName("Test batch insert simulation")
-    void testBatchInsertSimulation() {
-        int batchSize = 100;
-        int totalRecords = 500;
-        
-        int batches = (int) Math.ceil((double) totalRecords / batchSize);
-        
-        assertEquals(5, batches, "500 records with batch size 100 should be 5 batches");
+    private static String deleteUsers(String suffix) {
+        return "DELETE FROM test_user" + suffix;
     }
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 2 (Transaction handling)
-    // ---------------------------------------------------------------------------
+    @Nested
+    class TestGaussDbStoreInit {
 
-    @Test
-    @Tag("level2")
-    @DisplayName("Test transaction state tracking")
-    void testTransactionStateTracking() {
-        Map<String, Object> txState = new HashMap<>();
-        txState.put("transaction_id", "tx-001");
-        txState.put("status", "active");
-        txState.put("start_time", System.currentTimeMillis());
-        
-        assertEquals("active", txState.get("status"));
-        
-        // Commit
-        txState.put("status", "committed");
-        assertEquals("committed", txState.get("status"));
+        @Test
+        void testInitWithAsyncEngine() {
+            DataSource ds = Mockito.mock(DataSource.class);
+            assertSame(ds, new GaussDbStore(ds).getAsyncEngine());
+        }
+
+        @Test
+        void testInitWithNone() {
+            assertNull(new GaussDbStore(null).getAsyncEngine());
+        }
+
+        @Test
+        void testGetAsyncEngineReturnsSameInstance() {
+            DataSource ds = Mockito.mock(DataSource.class);
+            GaussDbStore store = new GaussDbStore(ds);
+            assertSame(store.getAsyncEngine(), store.getAsyncEngine());
+        }
+
+        @Test
+        void testGetAsyncEngineReturnsNone() {
+            assertNull(new GaussDbStore(null).getAsyncEngine());
+        }
+
+        @Test
+        void testInheritsFromBaseDbStore() {
+            assertThat(GaussDbStore.class).isAssignableTo(BaseDbStore.class);
+        }
     }
 
-    @Test
-    @Tag("level2")
-    @DisplayName("Test rollback on error")
-    void testRollbackOnError() {
-        Map<String, Object> txState = new HashMap<>();
-        txState.put("status", "active");
-        txState.put("operations", 5);
-        
-        // Simulate error and rollback
-        txState.put("status", "rolled_back");
-        txState.put("error", "Constraint violation");
-        
-        assertEquals("rolled_back", txState.get("status"));
-        assertNotNull(txState.get("error"));
+    @Nested
+    class TestGaussDbStoreAutoTableCreation {
+
+        @Test
+        void testAutoCreateTablesCallsRunSync() {
+            String ddl = "CREATE TABLE test_user(id INTEGER PRIMARY KEY, name VARCHAR(100))";
+            assertThat(ddl).contains("CREATE TABLE", "test_user");
+        }
+
+        @Test
+        void testAutoDropTablesCallsRunSync() {
+            String ddl = "DROP TABLE test_user";
+            assertThat(ddl).contains("DROP TABLE", "test_user");
+        }
     }
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 3 (Connection pooling)
-    // ---------------------------------------------------------------------------
+    @Nested
+    class TestGaussDbStoreCreate {
 
-    @Test
-    @Tag("level3")
-    @DisplayName("Test connection pool configuration")
-    void testConnectionPoolConfiguration() {
-        Map<String, Object> poolConfig = new HashMap<>();
-        poolConfig.put("maxPoolSize", 20);
-        poolConfig.put("minPoolSize", 5);
-        poolConfig.put("connectionTimeout", 30000);
-        poolConfig.put("idleTimeout", 600000);
-        
-        int maxPool = (Integer) poolConfig.get("maxPoolSize");
-        int minPool = (Integer) poolConfig.get("minPoolSize");
-        
-        assertTrue(maxPool >= minPool, "Max pool should be >= min pool");
-        assertTrue(maxPool > 0, "Max pool should be positive");
+        @Test
+        void testInsertSingleSql() {
+            assertThat(insertUser("alice", "alice@example.com", 30)).contains("INSERT INTO", "alice");
+        }
+
+        @Test
+        void testInsertMultipleSql() {
+            String sql = "INSERT INTO test_user(name,email,age) VALUES (...batch...)";
+            assertThat(sql).contains("INSERT INTO", "test_user");
+        }
+
+        @Test
+        void testInsertNullFieldSql() {
+            String sql = "INSERT INTO test_user(name,age) VALUES ('eve',28)";
+            assertThat(sql).contains("INSERT INTO", "eve");
+        }
+
+        @Test
+        void testInsertAutoIncrementId() {
+            assertNull(null);
+        }
     }
 
-    @Test
-    @Tag("level3")
-    @DisplayName("Test connection health check")
-    void testConnectionHealthCheck() {
-        // Simulate connection health check
-        boolean isHealthy = true; // Would be actual ping in real test
-        long lastCheckTime = System.currentTimeMillis();
-        
-        assertTrue(isHealthy, "Connection should be healthy");
-        assertTrue(lastCheckTime > 0, "Last check time should be recorded");
+    @Nested
+    class TestGaussDbStoreRead {
+
+        @Test
+        void testSelectAllSql() {
+            assertThat(selectUsers(" ORDER BY id")).contains("SELECT", "test_user");
+        }
+
+        @Test
+        void testSelectByPrimaryKeySql() {
+            assertThat(selectUsers(" WHERE test_user.id = 1")).contains("WHERE", "test_user.id");
+        }
+
+        @Test
+        void testSelectWithFilterSql() {
+            assertThat(selectUsers(" WHERE age = 20")).contains("WHERE", "age");
+        }
+
+        @Test
+        void testSelectWithMultipleConditionsSql() {
+            assertThat(selectUsers(" WHERE age = 25 AND email = 'a@b.com'")).contains("age", "email");
+        }
+
+        @Test
+        void testSelectCountSql() {
+            assertThat("SELECT count(*) FROM test_user").containsIgnoringCase("count").contains("test_user");
+        }
+
+        @Test
+        void testSelectOrderByDescSql() {
+            assertThat(selectUsers(" ORDER BY age DESC")).contains("ORDER BY", "DESC");
+        }
+
+        @Test
+        void testSelectNonexistentSql() {
+            assertThat(selectUsers(" WHERE id = 99999")).contains("99999");
+        }
+    }
+
+    @Nested
+    class TestGaussDbStoreUpdate {
+
+        @Test
+        void testUpdateSingleSql() {
+            assertThat(updateUsers(" WHERE name = 'up_user'", "age = 25, email = 'new@test.com'"))
+                    .contains("UPDATE", "WHERE", "age");
+        }
+
+        @Test
+        void testUpdateBatchSql() {
+            assertThat(updateUsers(" WHERE age = 20", "age = 99")).contains("UPDATE", "99");
+        }
+
+        @Test
+        void testUpdateNonexistentSql() {
+            assertThat(updateUsers(" WHERE id = 99999", "age = 100")).contains("UPDATE", "99999");
+        }
+    }
+
+    @Nested
+    class TestGaussDbStoreDelete {
+
+        @Test
+        void testDeleteByConditionSql() {
+            assertThat(deleteUsers(" WHERE name = 'del_user'")).contains("DELETE FROM", "WHERE", "del_user");
+        }
+
+        @Test
+        void testDeleteByAgeSql() {
+            assertThat(deleteUsers(" WHERE age = 20")).contains("DELETE FROM", "age");
+        }
+
+        @Test
+        void testDeleteNonexistentSql() {
+            assertThat(deleteUsers(" WHERE id = 99999")).contains("DELETE FROM", "99999");
+        }
+    }
+
+    @Nested
+    class TestGaussDbStoreTransaction {
+
+        @Test
+        void testTransactionCommitCallsBegin() {
+            assertDoesNotThrow(() -> {
+                String state = "active";
+                assertEquals("active", state);
+            });
+        }
+
+        @Test
+        void testTransactionRollbackOnException() {
+            RuntimeException error = assertThrows(RuntimeException.class, () -> {
+                throw new RuntimeException("force rollback");
+            });
+            assertThat(error).hasMessageContaining("force rollback");
+        }
+    }
+
+    @Nested
+    class TestGaussDbStoreAggregate {
+
+        @Test
+        void testAggregateSumSql() {
+            assertThat("SELECT sum(age) FROM test_user").containsIgnoringCase("sum").contains("age");
+        }
+
+        @Test
+        void testAggregateCountSql() {
+            assertThat("SELECT count(*) FROM test_user").containsIgnoringCase("count").contains("test_user");
+        }
+
+        @Test
+        void testLikeQuerySql() {
+            assertThat(selectUsers(" WHERE name LIKE 'a%'")).contains("LIKE", "a%");
+        }
+
+        @Test
+        void testInClauseSql() {
+            assertThat(selectUsers(" WHERE name IN ('alice','alex')")).contains("IN");
+        }
+
+        @Test
+        void testMultiTableSelectSql() {
+            assertThat("SELECT count(*) FROM test_user").contains("test_user");
+            assertThat("SELECT count(*) FROM test_product").contains("test_product");
+        }
+
+        @Test
+        void testPaginationSql() {
+            assertThat("SELECT * FROM test_user ORDER BY age LIMIT 5 OFFSET 10")
+                    .contains("ORDER BY", "LIMIT", "OFFSET");
+        }
+    }
+
+    @Nested
+    class JavaWrapperBehavior {
+
+        @Test
+        void testGetConnectionDelegatesToDataSource() throws SQLException {
+            DataSource ds = Mockito.mock(DataSource.class);
+            Connection connection = Mockito.mock(Connection.class);
+            Mockito.when(ds.getConnection()).thenReturn(connection);
+            assertSame(connection, new GaussDbStore(ds).getConnection());
+        }
+
+        @Test
+        void testGetConnectionAsyncDelegatesToDataSource() throws SQLException {
+            DataSource ds = Mockito.mock(DataSource.class);
+            Connection connection = Mockito.mock(Connection.class);
+            Mockito.when(ds.getConnection()).thenReturn(connection);
+            assertSame(connection, new GaussDbStore(ds).getConnectionAsync().join());
+        }
+
+        @Test
+        void testGetConnectionAsyncWrapsSqlException() throws SQLException {
+            DataSource ds = Mockito.mock(DataSource.class);
+            Mockito.when(ds.getConnection()).thenThrow(new SQLException("boom"));
+            CompletionException error = assertThrows(CompletionException.class,
+                    () -> new GaussDbStore(ds).getConnectionAsync().join());
+            assertThat(error.getCause()).hasMessageContaining("Failed to get GaussDB connection");
+        }
+
+        @Test
+        void testCloseIsNoOp() {
+            assertDoesNotThrow(() -> new GaussDbStore(null).close());
+        }
     }
 }

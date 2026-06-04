@@ -55,10 +55,21 @@ public class BranchRouter implements Router {
         }
         List<String> targetList;
         if (target instanceof String) {
+            if (((String) target).isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                        "reason", "target is None or empty");
+            }
             targetList = List.of((String) target);
         } else if (target instanceof List) {
             @SuppressWarnings("unchecked")
             List<String> list = (List<String>) target;
+            for (int i = 0; i < list.size(); i++) {
+                String targetItem = list.get(i);
+                if (targetItem == null || targetItem.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                            "reason", "empty item at index " + i + " in target list");
+                }
+            }
             targetList = list;
         } else {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,

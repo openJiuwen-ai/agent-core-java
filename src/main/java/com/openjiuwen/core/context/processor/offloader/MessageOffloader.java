@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -15,12 +17,16 @@ import com.openjiuwen.core.context.schema.OffloadMixin;
 import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Offloads large messages by trimming their content and storing the originals
@@ -32,6 +38,7 @@ import java.util.Map;
 public class MessageOffloader extends ContextProcessor {
 
     private static final String OMIT_STRING = "...";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public MessageOffloader(MessageOffloaderConfig config) {
         super(config);
@@ -41,7 +48,9 @@ public class MessageOffloader extends ContextProcessor {
     @Override
     public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         MessageOffloaderConfig config = getConfig();
-        int messageSize = context.size() + messagesToAdd.size();
+        List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
+        allMessages.addAll(messagesToAdd);
+        int messageSize = allMessages.size();
 
         // Skip if total length is below the keep-floor
         if (config.getMessagesToKeep() != null && messageSize <= config.getMessagesToKeep()) {
@@ -50,6 +59,9 @@ public class MessageOffloader extends ContextProcessor {
 
         // Trigger when message count exceeds hard ceiling
         if (config.getMessagesThreshold() != null && messageSize > config.getMessagesThreshold()) {
+            if (!hasOffloadCandidate(allMessages)) {
+                return false;
+            }
             Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num "
                     + messageSize + " exceeds threshold of " + config.getMessagesThreshold());
             return true;
@@ -64,6 +76,9 @@ public class MessageOffloader extends ContextProcessor {
             tokens = contextToken + addToken;
         }
         if (tokens > config.getTokensThreshold()) {
+            if (!hasOffloadCandidate(allMessages)) {
+                return false;
+            }
             Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens "
                     + tokens + " exceeds threshold of " + config.getTokensThreshold());
             return true;
@@ -167,34 +182,14 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     private OffloadResult offloadLargeMessages(List<BaseMessage> messages, ModelContext context) {
-        MessageOffloaderConfig config = getConfig();
         List<BaseMessage> processedMessages = new ArrayList<>(messages);
-
-        Integer lastAiMsgIndex = null;
-        if (config.isKeepLastRound()) {
-            lastAiMsgIndex = ContextUtils.findLastAiMessageWithoutToolCall(messages).orElse(null);
-        }
-        int keepIndex = config.getMessagesToKeep() == null
-                ? messages.size()
-                : messages.size() - config.getMessagesToKeep();
-        int offloadRange = lastAiMsgIndex == null
-                ? keepIndex
-                : Math.min(lastAiMsgIndex, keepIndex);
+        int offloadRange = getOffloadRange(messages);
 
         ContextEvent event = ContextEvent.builder().eventType(processorType()).build();
 
         for (int idx = offloadRange - 1; idx >= 0; idx--) {
             BaseMessage msg = processedMessages.get(idx);
-
-            // Skip if not eligible
-            if (!config.getOffloadMessageType().contains(msg.getRole())) {
-                continue;
-            }
-            String content = msg.getContentAsString();
-            if (content == null || content.length() <= config.getLargeMessageThreshold()) {
-                continue;
-            }
-            if (msg instanceof OffloadMixin) {
+            if (!shouldOffloadMessage(msg, processedMessages)) {
                 continue;
             }
 
@@ -207,5 +202,219 @@ public class MessageOffloader extends ContextProcessor {
         }
 
         return new OffloadResult(event, processedMessages);
+    }
+
+    private int getOffloadRange(List<BaseMessage> messages) {
+        MessageOffloaderConfig config = getConfig();
+        Integer lastAiMsgIndex = null;
+        if (config.isKeepLastRound()) {
+            lastAiMsgIndex = ContextUtils.findLastAiMessageWithoutToolCall(messages).orElse(null);
+        }
+        int keepIndex = config.getMessagesToKeep() == null
+                ? messages.size()
+                : messages.size() - config.getMessagesToKeep();
+        return lastAiMsgIndex == null ? keepIndex : Math.min(lastAiMsgIndex, keepIndex);
+    }
+
+    private boolean hasOffloadCandidate(List<BaseMessage> messages) {
+        int offloadRange = getOffloadRange(messages);
+        for (int idx = offloadRange - 1; idx >= 0; idx--) {
+            if (shouldOffloadMessage(messages.get(idx), messages)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected boolean shouldOffloadMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+        MessageOffloaderConfig config = getConfig();
+        if (!config.getOffloadMessageType().contains(message.getRole())) {
+            return false;
+        }
+        if (!(message.getContent() instanceof String content)) {
+            return false;
+        }
+        if (content.length() <= config.getLargeMessageThreshold()) {
+            return false;
+        }
+        if (message instanceof OffloadMixin) {
+            return false;
+        }
+        return !isProtectedToolMessage(message, contextMessages);
+    }
+
+    protected boolean isProtectedToolMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+        if (!(message instanceof ToolMessage)) {
+            return false;
+        }
+        Object toolCall = resolveToolCallFromMessage(message, contextMessages);
+        if (toolCall == null) {
+            return false;
+        }
+
+        String toolName = extractToolName(toolCall);
+        if (toolName == null) {
+            return false;
+        }
+        Map<String, Object> toolArgs = extractToolArgs(toolCall);
+        MessageOffloaderConfig config = getConfig();
+        for (String protectedTool : config.getProtectedToolNames()) {
+            if (protectedTool == null || protectedTool.isEmpty()) {
+                continue;
+            }
+            int separator = protectedTool.indexOf(':');
+            if (separator >= 0) {
+                String protectedName = protectedTool.substring(0, separator);
+                String protectedPattern = protectedTool.substring(separator + 1);
+                if (toolName.equals(protectedName) && matchPattern(toolArgs, protectedPattern)) {
+                    return true;
+                }
+            } else if (toolName.equals(protectedTool)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected Object resolveToolCallFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+        if (!(message instanceof ToolMessage toolMessage)) {
+            return null;
+        }
+        String toolCallId = toolMessage.getToolCallId();
+        if (toolCallId == null || toolCallId.isEmpty()) {
+            return null;
+        }
+        for (int i = contextMessages.size() - 1; i >= 0; i--) {
+            BaseMessage contextMessage = contextMessages.get(i);
+            if (!(contextMessage instanceof AssistantMessage assistant)
+                    || assistant.getToolCalls() == null) {
+                continue;
+            }
+            for (Object toolCall : assistant.getToolCalls()) {
+                if (toolCallMatchesId(toolCall, toolCallId)) {
+                    return toolCall;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean toolCallMatchesId(Object toolCall, String toolCallId) {
+        if (toolCall instanceof ToolCall typedToolCall) {
+            return toolCallId.equals(typedToolCall.getId());
+        }
+        if (toolCall instanceof Map<?, ?> map) {
+            return toolCallId.equals(map.get("id"));
+        }
+        Object id = readValue(toolCall, "id");
+        return toolCallId.equals(id);
+    }
+
+    private static String extractToolName(Object toolCall) {
+        if (toolCall instanceof ToolCall typedToolCall) {
+            return blankToNull(typedToolCall.getName());
+        }
+        Object function = readValue(toolCall, "function");
+        if (function != null) {
+            Object nestedName = readValue(function, "name");
+            if (nestedName instanceof String s && !s.isEmpty()) {
+                return s;
+            }
+        }
+        Object name = readValue(toolCall, "name");
+        return name instanceof String s && !s.isEmpty() ? s : null;
+    }
+
+    private static Map<String, Object> extractToolArgs(Object toolCall) {
+        if (toolCall instanceof ToolCall typedToolCall) {
+            return normalizeToolArgs(typedToolCall.getArguments());
+        }
+        Object function = readValue(toolCall, "function");
+        if (function != null) {
+            Object nestedArgs = readValue(function, "arguments");
+            if (nestedArgs != null) {
+                return normalizeToolArgs(nestedArgs);
+            }
+        }
+        return normalizeToolArgs(readValue(toolCall, "arguments"));
+    }
+
+    private static Map<String, Object> normalizeToolArgs(Object rawArgs) {
+        if (rawArgs instanceof Map<?, ?> rawMap) {
+            Map<String, Object> args = new HashMap<>();
+            rawMap.forEach((key, value) -> args.put(String.valueOf(key), value));
+            return args;
+        }
+        if (rawArgs instanceof String argsString && !argsString.isBlank()) {
+            try {
+                return OBJECT_MAPPER.readValue(argsString, new TypeReference<>() {
+                });
+            } catch (Exception ignored) {
+                return Map.of();
+            }
+        }
+        return Map.of();
+    }
+
+    private static Object readValue(Object target, String fieldName) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            return map.get(fieldName);
+        }
+        String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+        try {
+            Method getter = target.getClass().getMethod(getterName);
+            return getter.invoke(target);
+        } catch (Exception ignored) {
+        }
+        try {
+            Field field = target.getClass().getField(fieldName);
+            return field.get(target);
+        } catch (Exception ignored) {
+        }
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static boolean matchPattern(Map<String, Object> args, String pattern) {
+        for (Object value : args.values()) {
+            if (value instanceof String s && globMatches(s, pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean globMatches(String value, String pattern) {
+        return Pattern.compile(toRegex(pattern)).matcher(value).matches();
+    }
+
+    private static String toRegex(String pattern) {
+        StringBuilder regex = new StringBuilder();
+        for (int i = 0; i < pattern.length(); i++) {
+            char ch = pattern.charAt(i);
+            switch (ch) {
+                case '*' -> regex.append(".*");
+                case '?' -> regex.append('.');
+                default -> {
+                    if ("\\.[]{}()+-^$|".indexOf(ch) >= 0) {
+                        regex.append('\\');
+                    }
+                    regex.append(ch);
+                }
+            }
+        }
+        return regex.toString();
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isEmpty() ? null : value;
     }
 }

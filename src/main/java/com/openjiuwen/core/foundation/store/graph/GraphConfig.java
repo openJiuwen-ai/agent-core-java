@@ -54,15 +54,21 @@ public class GraphConfig {
         if (builder.timeout <= 0) {
             throw new IllegalArgumentException("timeout must be > 0, got " + builder.timeout);
         }
+        if (builder.workerThreads < 0) {
+            throw new IllegalArgumentException("workerThreads must be >= 0, got " + builder.workerThreads);
+        }
         if (builder.embedDim < 32) {
             throw new IllegalArgumentException("embedDim must be >= 32, got " + builder.embedDim);
         }
         if (builder.embedBatchSize < 1) {
             throw new IllegalArgumentException("embedBatchSize must be >= 1, got " + builder.embedBatchSize);
         }
-        // Validate extras keys are all strings (mirrors Python check_extras)
-        if (builder.extras != null) {
-            for (Object key : builder.extras.keySet()) {
+        // Validate extras shape and keys (mirrors Python check_extras).
+        if (builder.extras != null && !(builder.extras instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("Extras must be a dictionary with string keys.");
+        }
+        if (builder.extras instanceof Map<?, ?> extrasMap) {
+            for (Object key : extrasMap.keySet()) {
                 if (!(key instanceof String)) {
                     throw new IllegalArgumentException("Extras must be a dictionary with string keys.");
                 }
@@ -75,7 +81,9 @@ public class GraphConfig {
         this.token = builder.token;
         this.backend = builder.backend;
         this.timeout = builder.timeout;
-        this.extras = builder.extras != null ? Map.copyOf(builder.extras) : Map.of();
+        this.extras = builder.extras instanceof Map<?, ?> extrasMap
+                ? copyStringObjectMap(extrasMap)
+                : Map.of();
         this.workerThreads = builder.workerThreads;
         this.embedDim = builder.embedDim;
         this.embedBatchSize = builder.embedBatchSize;
@@ -129,6 +137,7 @@ public class GraphConfig {
     public double getTimeout() { return timeout; }
     public Map<String, Object> getExtras() { return extras; }
     public int getWorkerThreads() { return workerThreads; }
+    public int getMaxConcurrent() { return workerThreads; }
     public int getEmbedDim() { return embedDim; }
     public int getEmbedBatchSize() { return embedBatchSize; }
     public Class<? extends Embedding> getEmbeddingCls() { return embeddingCls; }
@@ -151,8 +160,8 @@ public class GraphConfig {
         private String token = "";
         private String backend = "milvus";
         private double timeout = 15.0;
-        private Map<String, Object> extras;
-        private int workerThreads = 30;
+        private Object extras;
+        private int workerThreads = 10;
         private int embedDim = 512;
         private int embedBatchSize = 10;
         private Class<? extends Embedding> embeddingCls;
@@ -171,7 +180,9 @@ public class GraphConfig {
         public Builder backend(String backend) { this.backend = backend; return this; }
         public Builder timeout(double timeout) { this.timeout = timeout; return this; }
         public Builder extras(Map<String, Object> extras) { this.extras = extras; return this; }
+        public Builder extras(Object extras) { this.extras = extras; return this; }
         public Builder workerThreads(int workerThreads) { this.workerThreads = workerThreads; return this; }
+        public Builder maxConcurrent(int maxConcurrent) { this.workerThreads = maxConcurrent; return this; }
         public Builder embedDim(int embedDim) { this.embedDim = embedDim; return this; }
         public Builder embedBatchSize(int embedBatchSize) { this.embedBatchSize = embedBatchSize; return this; }
         public Builder embeddingCls(Class<? extends Embedding> embeddingCls) { this.embeddingCls = embeddingCls; return this; }
@@ -182,5 +193,13 @@ public class GraphConfig {
         public Builder requestMaxRetries(int requestMaxRetries) { this.requestMaxRetries = requestMaxRetries; return this; }
         public Builder requestRetryWait(double requestRetryWait) { this.requestRetryWait = requestRetryWait; return this; }
         public GraphConfig build() { return new GraphConfig(this); }
+    }
+
+    private static Map<String, Object> copyStringObjectMap(Map<?, ?> source) {
+        java.util.LinkedHashMap<String, Object> copy = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            copy.put((String) entry.getKey(), entry.getValue());
+        }
+        return Map.copyOf(copy);
     }
 }

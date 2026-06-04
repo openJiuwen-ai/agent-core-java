@@ -34,7 +34,7 @@ public class Clarifier {
     private static final Logger LOG = LoggerFactory.getLogger(Clarifier.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Map<String, Map<String, String>> RESOURCE_CONFIG = new LinkedHashMap<>();
+    public static final Map<String, Map<String, String>> RESOURCE_CONFIG = new LinkedHashMap<>();
 
     static {
         Map<String, String> pluginConfig = new LinkedHashMap<>();
@@ -63,6 +63,10 @@ public class Clarifier {
 
     public Clarifier(Model llm) {
         this.llm = llm;
+    }
+
+    public Model getLlm() {
+        return llm;
     }
 
     /**

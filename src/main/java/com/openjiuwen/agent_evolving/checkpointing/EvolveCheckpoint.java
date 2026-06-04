@@ -11,7 +11,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.Map;
 
 /**
- * Mirrors Python's openjiuwen.agent_evolving.checkpointing.types.EvolveCheckpoint.
+ * Mirrors Python's {@code EvolveCheckpoint} in
+ * {@code openjiuwen.agent_evolving.checkpointing.types}.
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class EvolveCheckpoint {

@@ -5,7 +5,9 @@
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.workflow_designer;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Nested;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test reflection evaluate prompt constants.
@@ -13,10 +15,7 @@ import org.junit.jupiter.api.Disabled;
  * Mirrors Python's {@code test_reflection_evaluate_prompt.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/workflow_designer/test_reflection_evaluate_prompt.py}.
  *
- * <p>Note: ReflectionEvaluatePrompt source class requires translation before tests can be implemented.
- * Tests are disabled pending ReflectionEvaluatePrompt.java implementation.
  */
-@Disabled("ReflectionEvaluatePrompt.java source class requires translation before tests can be implemented")
 class TestReflectionEvaluatePrompt {
 
     /**
@@ -24,46 +23,47 @@ class TestReflectionEvaluatePrompt {
      * <p>
      * Mirrors Python's {@code TestReflectionEvaluateSystemPrompt} class.
      */
-    static class TestReflectionEvaluateSystemPrompt {
+    @Nested
+    class TestReflectionEvaluateSystemPrompt {
 
         @Test
         void testIsString() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertFalse(ReflectionEvaluatePrompt.SYSTEM_PROMPT.isBlank());
         }
 
         @Test
         void testContainsRole() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.startsWith("#"));
         }
 
         @Test
         void testContainsCoreTask() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.contains("##"));
         }
 
         @Test
         void testContainsEvaluationRules() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.lines().count() > 10);
         }
 
         @Test
         void testContainsInputEvaluation() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.contains("1."));
         }
 
         @Test
         void testContainsModuleEvaluation() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.contains("2."));
         }
 
         @Test
         void testContainsBranchEvaluation() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.contains("3."));
         }
 
         @Test
         void testContainsOutputFormat() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertTrue(ReflectionEvaluatePrompt.SYSTEM_PROMPT.contains("["));
         }
     }
 
@@ -72,21 +72,51 @@ class TestReflectionEvaluatePrompt {
      * <p>
      * Mirrors Python's {@code TestReflectionEvaluateUserPromptTemplate} class.
      */
-    static class TestReflectionEvaluateUserPromptTemplate {
+    @Nested
+    class TestReflectionEvaluateUserPromptTemplate {
 
         @Test
         void testTemplateExists() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertNotNull(ReflectionEvaluatePrompt.USER_PROMPT_TEMPLATE);
         }
 
         @Test
         void testTemplateHasContent() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            assertFalse(ReflectionEvaluatePrompt.USER_PROMPT_TEMPLATE.isBlank());
         }
 
         @Test
         void testTemplateFormat() {
-            // Placeholder - requires ReflectionEvaluatePrompt.java
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt(
+                    "create workflow", "basic design result", "branch design result");
+
+            assertTrue(prompt.contains("create workflow"));
+            assertTrue(prompt.contains("basic design result"));
+            assertTrue(prompt.contains("branch design result"));
+            assertFalse(prompt.contains("{{user_query}}"));
+            assertFalse(prompt.contains("{{basic_design}}"));
+            assertFalse(prompt.contains("{{branch_design}}"));
+        }
+
+        @Test
+        void testTemplateContainsUserQuery() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("test query", "", "");
+
+            assertTrue(prompt.contains("test query"));
+        }
+
+        @Test
+        void testTemplateContainsBasicDesign() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("", "test basic", "");
+
+            assertTrue(prompt.contains("test basic"));
+        }
+
+        @Test
+        void testTemplateContainsBranchDesign() {
+            String prompt = ReflectionEvaluatePrompt.formatUserPrompt("", "", "test branch");
+
+            assertTrue(prompt.contains("test branch"));
         }
     }
 }

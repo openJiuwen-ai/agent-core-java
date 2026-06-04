@@ -17,8 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for commit scope helpers.
  * <p>
- * Mirrors Python's test_commit_scope.py from
- * <code>tests/unit_tests/auto_harness/infra/test_commit_scope.py</code>.
+ * Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_commit_scope}.
  */
 @DisplayName("Commit Scope Tests")
 class TestCommitScope {

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.store.graph;
 
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -17,18 +18,25 @@ import java.util.Map;
 public class Entity extends NamedGraphObject {
 
     private String entityType;
+    private float[] nameEmbedding;
     private List<String> factIds;
+    private List<String> relations;
+    private List<String> episodes;
     private Map<String, Object> attributes;
 
     public Entity() {
         super();
-        this.entityType = "";
+        this.entityType = "Entity";
+        this.relations = new ArrayList<>();
+        this.episodes = new ArrayList<>();
         this.attributes = new HashMap<>();
     }
 
     public Entity(String name, String entityType) {
         super(name);
         this.entityType = entityType;
+        this.relations = new ArrayList<>();
+        this.episodes = new ArrayList<>();
         this.attributes = new HashMap<>();
     }
 
@@ -39,6 +47,8 @@ public class Entity extends NamedGraphObject {
     public Entity(String name, String entityType, String content) {
         super(name);
         this.entityType = entityType;
+        this.relations = new ArrayList<>();
+        this.episodes = new ArrayList<>();
         this.attributes = new HashMap<>();
         setContent(content);
     }
@@ -49,6 +59,8 @@ public class Entity extends NamedGraphObject {
     public Entity(String name, String entityType, String content, Map<String, Object> attributes) {
         super(name);
         this.entityType = entityType;
+        this.relations = new ArrayList<>();
+        this.episodes = new ArrayList<>();
         this.attributes = attributes != null ? attributes : new HashMap<>();
         setContent(content);
     }
@@ -56,8 +68,21 @@ public class Entity extends NamedGraphObject {
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
 
+    public float[] getNameEmbedding() { return nameEmbedding; }
+    public void setNameEmbedding(float[] nameEmbedding) { this.nameEmbedding = nameEmbedding; }
+
     public List<String> getFactIds() { return factIds; }
     public void setFactIds(List<String> factIds) { this.factIds = factIds; }
+
+    public List<String> getRelations() { return relations; }
+    public void setRelations(List<String> relations) {
+        this.relations = relations != null ? new ArrayList<>(relations) : new ArrayList<>();
+    }
+
+    public List<String> getEpisodes() { return episodes; }
+    public void setEpisodes(List<String> episodes) {
+        this.episodes = episodes != null ? new ArrayList<>(episodes) : new ArrayList<>();
+    }
 
     public Map<String, Object> getAttributes() { return attributes; }
     public void setAttributes(Map<String, Object> attributes) {
@@ -65,5 +90,19 @@ public class Entity extends NamedGraphObject {
     }
 
     @Override
-    public String getObjType() { return "entity"; }
+    public String getObjType() {
+        return entityType == null || entityType.isBlank() ? "Entity" : entityType;
+    }
+
+    @Override
+    public List<EmbedTask> fetchEmbedTask() {
+        List<EmbedTask> tasks = new ArrayList<>();
+        if (getContentEmbedding() == null && getContent() != null) {
+            tasks.add(new EmbedTask(this, "content_embedding", getContent()));
+        }
+        if (nameEmbedding == null && getName() != null) {
+            tasks.add(new EmbedTask(this, "name_embedding", getName()));
+        }
+        return tasks;
+    }
 }

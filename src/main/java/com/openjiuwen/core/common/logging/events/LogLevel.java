@@ -4,7 +4,12 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-/** Log level enumeration. */
+/**
+ * Log level enumeration.
+ *
+ * <p>Mirrors Python's {@code LogLevel} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 public enum LogLevel {
     DEBUG("DEBUG"),
     INFO("INFO"),

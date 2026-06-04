@@ -4,6 +4,10 @@
 
 package com.openjiuwen.unit_tests.harness;
 
+import com.openjiuwen.core.session.internal.AgentTeamSession;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.DeepAgentConfig;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -119,5 +123,27 @@ class TestCodeAgentExecutionMode {
         trace.beforeToolCall("write_file");
         
         assertEquals(2, trace.getToolCalls().size(), "Should have 2 tool calls recorded");
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Manual switch mode updates persisted plan mode state")
+    void testManualSwitchModeShowsSwitchingScene() {
+        AgentCard card = AgentCard.builder()
+                .id("code-agent")
+                .name("code_agent")
+                .description("code agent")
+                .build();
+        DeepAgent agent = new DeepAgent(card);
+        DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(card);
+        agent.configure(config);
+
+        AgentTeamSession session = new AgentTeamSession("code-agent-mode", "code-agent");
+        assertEquals("normal", agent.loadState(session).getPlanMode().getMode());
+
+        agent.switchMode(session, "plan");
+
+        assertEquals("plan", agent.loadState(session).getPlanMode().getMode());
     }
 }

@@ -169,6 +169,10 @@ public class FileRolloutStore implements RolloutPersistence {
         }
     }
 
+    public void saveRollout(int step, String taskId, Object rollout) {
+        saveRollout(step, taskId, rollout, "train");
+    }
+
     /**
      * Persist per-step training metrics to step_summaries JSONL file.
      *

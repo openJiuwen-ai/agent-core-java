@@ -16,13 +16,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -46,12 +47,12 @@ class TestVectorRetriever {
         mockEmbedModel = mock(Embedding.class);
         when(mockEmbedModel.embedQuery(anyString())).thenReturn(List.of(0.1f, 0.2f, 0.3f));
 
-        when(mockVectorStore.search(anyList(), anyInt(), anyMap(), anyMap()))
+        when(mockVectorStore.search(anyList(), anyInt(), nullable(Map.class), nullable(Map.class)))
                 .thenReturn(List.of(
                         new SearchResult("1", "Result 1", 0.95, null),
                         new SearchResult("2", "Result 2", 0.85, null)
                 ));
-        when(mockVectorStore.sparseSearch(anyString(), anyInt(), anyMap(), anyMap()))
+        when(mockVectorStore.sparseSearch(anyString(), anyInt(), nullable(Map.class), nullable(Map.class)))
                 .thenReturn(List.of());
     }
 
@@ -83,9 +84,9 @@ class TestVectorRetriever {
         @Test
         @DisplayName("test_retrieve_fallback_to_sparse - fallback to sparse when vector returns empty")
         void testRetrieveFallbackToSparse() {
-            when(mockVectorStore.search(anyList(), anyInt(), anyMap(), anyMap()))
+            when(mockVectorStore.search(anyList(), anyInt(), nullable(Map.class), nullable(Map.class)))
                     .thenReturn(List.of());
-            when(mockVectorStore.sparseSearch(anyString(), anyInt(), anyMap(), anyMap()))
+            when(mockVectorStore.sparseSearch(anyString(), anyInt(), nullable(Map.class), nullable(Map.class)))
                     .thenReturn(List.of(new SearchResult("1", "Sparse result", 0.8, null)));
 
             VectorRetriever retriever = new VectorRetriever(mockVectorStore, mockEmbedModel);
@@ -103,6 +104,16 @@ class TestVectorRetriever {
             assertThatThrownBy(() -> retriever.retrieve("test query", 5, null, "vector", null))
                     .isInstanceOf(BaseError.class)
                     .hasMessageContaining("embed_model is required");
+        }
+
+        @Test
+        @DisplayName("test_retrieve_invalid_mode - invalid mode throws error")
+        void testRetrieveInvalidMode() {
+            VectorRetriever retriever = new VectorRetriever(mockVectorStore, mockEmbedModel);
+
+            assertThatThrownBy(() -> retriever.retrieve("test query", 5, null, "sparse", null))
+                    .isInstanceOf(BaseError.class)
+                    .hasMessageContaining("only supports 'vector' mode");
         }
     }
 

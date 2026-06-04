@@ -10,6 +10,9 @@ import java.net.InetSocketAddress;
 
 /**
  * IP utility — discovers the local (non-loopback) IPv4 address.
+ *
+ * <p>Mirrors Python's {@code IpUtils} in
+ * {@code openjiuwen.core.common.utils.ip_utils}.
  */
 public final class IpUtils {
 

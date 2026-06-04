@@ -1,6 +1,7 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.common.exception.StatusCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -93,9 +94,9 @@ class MessageQueueInMemoryTest {
         message.setPayload("上海温度多少");
         mq.produceMessage("topic_stream", message);
 
-        // The InvokeQueueMessage should get response (Iterator cast to Object works)
-        Object response = message.getResponse().get(5, TimeUnit.SECONDS);
-        assertNotNull(response);
+        assertThrows(Exception.class, () -> message.getResponse().get(5, TimeUnit.SECONDS));
+        assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode(), message.getErrorCode());
+        assertTrue(message.getErrorMsg().contains("InvokeQueueMessage need not Iterator response"));
 
         mq.unsubscribe("topic_stream");
     }
@@ -250,8 +251,8 @@ class MessageQueueInMemoryTest {
         mq.produceMessage("topic_error", message);
 
         assertThrows(Exception.class, () -> message.getResponse().get(5, TimeUnit.SECONDS));
-        assertEquals(-1, message.getErrorCode());
-        assertEquals("Handler error", message.getErrorMsg());
+        assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode(), message.getErrorCode());
+        assertTrue(message.getErrorMsg().contains("Handler error"));
 
         mq.unsubscribe("topic_error");
     }
@@ -272,8 +273,8 @@ class MessageQueueInMemoryTest {
         mq.produceMessage("topic_error", message);
 
         assertThrows(Exception.class, () -> message.getResponse().get(5, TimeUnit.SECONDS));
-        assertEquals(-1, message.getErrorCode());
-        assertEquals("Stream handler error", message.getErrorMsg());
+        assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode(), message.getErrorCode());
+        assertTrue(message.getErrorMsg().contains("Stream handler error"));
 
         mq.unsubscribe("topic_error");
     }

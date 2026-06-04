@@ -5,6 +5,8 @@ package com.openjiuwen.agent_teams;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Process-global i18n for agent team runtime strings.
@@ -13,7 +15,7 @@ import java.util.Map;
  * (dispatcher nudges, backend message content, default persona) so they can
  * be switched between Chinese and English without source edits.
  * 
- * Mirrors Python's agent_teams.i18n
+ * Mirrors Python's {@code i18n.py} module in {@code openjiuwen.agent_teams.i18n}.
  * 
  * Usage:
  *     I18n.setLanguage("en");
@@ -22,6 +24,7 @@ import java.util.Map;
  * @since 0.1.12
  */
 public final class I18n {
+    private static final Pattern FORMAT_FIELD = Pattern.compile("\\{([^{}]+)}");
     
     /**
      * Supported language codes.
@@ -46,7 +49,7 @@ public final class I18n {
                     return lang;
                 }
             }
-            return null;
+            throw new IllegalArgumentException("Unsupported language '" + code + "'");
         }
     }
     
@@ -184,12 +187,23 @@ public final class I18n {
         if (params == null || params.isEmpty()) {
             return raw;
         }
-        // Simple string replacement for placeholders like {target_id}
-        String result = raw;
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            result = result.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+        return formatMap(raw, params);
+    }
+
+    private static String formatMap(String raw, Map<String, Object> params) {
+        Matcher matcher = FORMAT_FIELD.matcher(raw);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String name = matcher.group(1);
+            if (!params.containsKey(name)) {
+                throw new IllegalArgumentException("Missing i18n format key '" + name + "'");
+            }
+            Object value = params.get(name);
+            String replacement = value == null ? "None" : String.valueOf(value);
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
-        return result;
+        matcher.appendTail(result);
+        return result.toString();
     }
     
     /**

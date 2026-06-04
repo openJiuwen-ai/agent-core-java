@@ -4,13 +4,15 @@
 
 package com.openjiuwen.unit_tests.agent_teams.worktree;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.agent_teams.worktree.SlugUtils;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for worktree slug module.
- * <p>
  * Mirrors Python's {@code tests.unit_tests.agent_teams.worktree.test_slug}.
  */
 class TestSlug {
@@ -19,105 +21,156 @@ class TestSlug {
 
     @Nested
     class TestValidateSlug {
-
         @Test
-        @Tag("level0")
         void testValidSimple() {
-            validateSlug("feature-auth");
+            assertDoesNotThrow(() -> SlugUtils.validateSlug("feature-auth"));
         }
 
         @Test
-        @Tag("level0")
         void testValidWithDotsUnderscores() {
-            validateSlug("my_feature.v2");
+            assertDoesNotThrow(() -> SlugUtils.validateSlug("my_feature.v2"));
         }
 
         @Test
-        @Tag("level0")
         void testValidWithSlash() {
-            validateSlug("user/feature-login");
+            assertDoesNotThrow(() -> SlugUtils.validateSlug("user/feature-login"));
         }
 
         @Test
-        @Tag("level0")
         void testValidAlphanumeric() {
-            validateSlug("abc123");
+            assertDoesNotThrow(() -> SlugUtils.validateSlug("abc123"));
         }
 
         @Test
-        @Tag("level0")
         void testPathTraversalDotdot() {
-            assertThrows(IllegalArgumentException.class, () -> validateSlug("../evil"));
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("../evil")
+            );
+            assertTrue(error.getMessage().contains("must not contain"));
         }
 
         @Test
-        @Tag("level0")
         void testPathTraversalDot() {
-            assertThrows(IllegalArgumentException.class, () -> validateSlug("./hidden"));
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("./hidden")
+            );
+            assertTrue(error.getMessage().contains("must not contain"));
         }
 
         @Test
-        @Tag("level0")
         void testPathTraversalNested() {
-            assertThrows(IllegalArgumentException.class, () -> validateSlug("a/../../etc/passwd"));
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("a/../../etc/passwd")
+            );
+            assertTrue(error.getMessage().contains("must not contain"));
         }
 
         @Test
-        @Tag("level0")
-        void testEmptySlug() {
-            assertThrows(IllegalArgumentException.class, () -> validateSlug(""));
+        void testAbsolutePathRejected() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("/etc/passwd")
+            );
+            assertTrue(error.getMessage().contains("non-empty"));
         }
 
         @Test
-        @Tag("level0")
-        void testTooLongSlug() {
-            String longSlug = "a".repeat(MAX_SLUG_LENGTH + 1);
-            assertThrows(IllegalArgumentException.class, () -> validateSlug(longSlug));
+        void testShellMetacharactersRejected() {
+            for (String character : new String[] {";", "&", "|", "$", "`", "(", ")", "{", "}", "<", ">", "!", " "}) {
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> SlugUtils.validateSlug("bad" + character + "slug")
+                );
+            }
+        }
+
+        @Test
+        void testTooLong() {
+            String slug = "a".repeat(MAX_SLUG_LENGTH + 1);
+
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug(slug)
+            );
+            assertTrue(error.getMessage().contains("characters or fewer"));
+        }
+
+        @Test
+        void testMaxLengthOk() {
+            String slug = "a".repeat(MAX_SLUG_LENGTH);
+
+            assertDoesNotThrow(() -> SlugUtils.validateSlug(slug));
+        }
+
+        @Test
+        void testEmptySegmentDoubleSlash() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("a//b")
+            );
+            assertTrue(error.getMessage().contains("non-empty"));
+        }
+
+        @Test
+        void testEmptyString() {
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> SlugUtils.validateSlug("")
+            );
+            assertTrue(error.getMessage().contains("non-empty"));
         }
     }
 
     @Nested
     class TestWorktreeBranchName {
+        @Test
+        void testSimple() {
+            assertEquals("worktree-feature-auth", SlugUtils.worktreeBranchName("feature-auth"));
+        }
 
         @Test
-        @Tag("level0")
-        void testBranchNameFormat() {
-            String branch = worktreeBranchName("feature-auth");
-            assertEquals("worktree-feature-auth", branch);
+        void testWithSlash() {
+            assertEquals("worktree-user+feature-login", SlugUtils.worktreeBranchName("user/feature-login"));
+        }
+
+        @Test
+        void testNoSlash() {
+            assertEquals("worktree-fix", SlugUtils.worktreeBranchName("fix"));
+        }
+
+        @Test
+        void testMultipleSlashes() {
+            assertEquals("worktree-a+b+c", SlugUtils.worktreeBranchName("a/b/c"));
         }
     }
 
     @Nested
     class TestWorktreePathFor {
+        @Test
+        void testGeneratesCorrectPath() {
+            String result = SlugUtils.worktreePathFor("/home/user/workspace", "my-feature");
+
+            assertEquals(Path.of("/home/user/workspace", ".worktrees", "my-feature").toString(), result);
+        }
 
         @Test
-        @Tag("level0")
-        void testPathFormat() {
-            String path = worktreePathFor("/workspace", "test-slug");
-            assertTrue(path.contains(".worktrees"));
-            assertTrue(path.contains("test-slug"));
+        void testWithSlashSlug() {
+            String result = SlugUtils.worktreePathFor("/ws", "user/feat");
+
+            assertEquals(Path.of("/ws", ".worktrees", "user", "feat").toString(), result);
         }
     }
 
-    // Helper methods
+    @Nested
+    class TestWorktreesDir {
+        @Test
+        void testGeneratesCorrectPath() {
+            String result = SlugUtils.worktreesDir("/home/user/workspace");
 
-    private static void validateSlug(String slug) {
-        if (slug == null || slug.isEmpty()) {
-            throw new IllegalArgumentException("Slug must not be empty");
+            assertEquals(Path.of("/home/user/workspace", ".worktrees").toString(), result);
         }
-        if (slug.contains("..") || slug.startsWith("./") || slug.contains("/..")) {
-            throw new IllegalArgumentException("Slug must not contain path traversal");
-        }
-        if (slug.length() > MAX_SLUG_LENGTH) {
-            throw new IllegalArgumentException("Slug too long");
-        }
-    }
-
-    private static String worktreeBranchName(String slug) {
-        return "worktree-" + slug;
-    }
-
-    private static String worktreePathFor(String workspace, String slug) {
-        return workspace + "/.worktrees/" + slug;
     }
 }

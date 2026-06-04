@@ -21,7 +21,8 @@ import java.util.Map;
  *   <li>Message rendering is template-based and lazy-safe</li>
  * </ul>
  *
- * <p>Mirrors Python's {@code BaseError} class.</p>
+ * <p>Mirrors Python's {@code BaseError} in
+ * {@code openjiuwen.core.common.exception.errors}.</p>
  */
 public class BaseError extends RuntimeException {
 
@@ -107,7 +108,11 @@ public class BaseError extends RuntimeException {
         }
         String template = status.getErrmsg();
         if (params == null || params.isEmpty()) {
-            return template;
+            try {
+                return formatTemplate(template, Map.of());
+            } catch (Exception e) {
+                return template;
+            }
         }
         try {
             return formatTemplate(template, params);

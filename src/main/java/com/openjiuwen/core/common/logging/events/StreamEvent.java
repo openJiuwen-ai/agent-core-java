@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Stream related event — base class for all streaming events. */
+/**
+ * Stream related event - base class for all streaming events.
+ *
+ * <p>Mirrors Python's {@code StreamEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

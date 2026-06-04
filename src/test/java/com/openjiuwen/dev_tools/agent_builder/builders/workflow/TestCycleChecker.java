@@ -4,126 +4,121 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Assertions;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test CycleChecker functionality.
  * <p>
  * Mirrors Python's {@code test_cycle_checker.py} in
- * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/test_cycle_checker.py}.
+ * {@code tests.unit_tests.dev_tools.agent_builder.builders.workflow.test_cycle_checker}.
  */
 class TestCycleChecker {
 
-    /**
-     * Test parseCycleResultJson method.
-     * <p>
-     * Mirrors Python's {@code TestCycleChecker} class tests.
-     */
-    static class TestParseCycleResultJson {
+    @Nested
+    class TestCycleCheckerCases {
+
+        private CycleChecker checker(MockLlm llm) {
+            return new CycleChecker(llm);
+        }
 
         @Test
         void testParseCycleResultJsonWithCycle() {
             String jsonInput = "```json\n{\"need_refined\": true, \"loop_desc\": \"A->B->A\"}\n```";
 
-            // Note: CycleChecker.java has different API than Python's parse_cycle_result_json
-            // This test documents expected behavior for cycle detection
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("B"));
-            graph.put("B", Arrays.asList("A"));
+            CycleChecker.CycleResult result = CycleChecker.parseCycleResultJson(jsonInput);
 
-            boolean hasCycle = CycleChecker.hasCycle(graph);
-
-            Assertions.assertTrue(hasCycle);
+            assertTrue(result.needRefined());
+            assertEquals("A->B->A", result.loopDesc());
         }
 
         @Test
         void testParseCycleResultJsonNoCycle() {
-            // Linear graph has no cycle
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("B"));
-            graph.put("B", Arrays.asList("C"));
-            graph.put("C", new ArrayList<>());
+            String jsonInput = "```json\n{\"need_refined\": false, \"loop_desc\": \"\"}\n```";
 
-            boolean hasCycle = CycleChecker.hasCycle(graph);
+            CycleChecker.CycleResult result = CycleChecker.parseCycleResultJson(jsonInput);
 
-            Assertions.assertFalse(hasCycle);
+            assertFalse(result.needRefined());
+            assertEquals("", result.loopDesc());
         }
 
         @Test
         void testParseCycleResultJsonWithoutCodeBlock() {
-            // Simpler linear graph test
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("node1", Arrays.asList("node2"));
+            String jsonInput = "{\"need_refined\": true, \"loop_desc\": \"cycle detected\"}";
 
-            boolean hasCycle = CycleChecker.hasCycle(graph);
+            CycleChecker.CycleResult result = CycleChecker.parseCycleResultJson(jsonInput);
 
-            Assertions.assertFalse(hasCycle);
+            assertTrue(result.needRefined());
+            assertEquals("cycle detected", result.loopDesc());
         }
 
         @Test
-        void testParseCycleResultJsonEmptyGraph() {
-            Map<String, List<String>> graph = new HashMap<>();
+        void testParseCycleResultJsonMissingKeys() {
+            String jsonInput = "{\"other_key\": \"value\"}";
 
-            boolean hasCycle = CycleChecker.hasCycle(graph);
+            CycleChecker.CycleResult result = CycleChecker.parseCycleResultJson(jsonInput);
 
-            Assertions.assertFalse(hasCycle);
+            assertFalse(result.needRefined());
+            assertEquals("", result.loopDesc());
+        }
+
+        @Test
+        void testCheckMermaidCycle() {
+            MockLlm llm = new MockLlm("{\"need_refined\": false}");
+            CycleChecker checker = checker(llm);
+
+            String result = checker.checkMermaidCycle("graph TD; A-->B");
+
+            assertEquals("{\"need_refined\": false}", result);
+            assertTrue(llm.called);
+        }
+
+        @Test
+        void testCheckAndParse() {
+            MockLlm llm = new MockLlm("```json\n{\"need_refined\": true, \"loop_desc\": \"A->B->C->A\"}\n```");
+            CycleChecker checker = checker(llm);
+
+            CycleChecker.CycleResult result = checker.checkAndParse("graph TD; A-->B-->C-->A");
+
+            assertTrue(result.needRefined());
+            assertEquals("A->B->C->A", result.loopDesc());
+        }
+
+        @Test
+        void testCheckMermaidCycleGraphUtility() {
+            Map<String, List<String>> graph = new LinkedHashMap<>();
+            graph.put("A", List.of("B"));
+            graph.put("B", List.of("A"));
+
+            assertTrue(CycleChecker.hasCycle(graph));
         }
     }
 
-    /**
-     * Test hasCycle method.
-     * <p>
-     * Mirrors Python's {@code test_check_mermaid_cycle} and related tests.
-     */
-    static class TestHasCycle {
+    static final class MockLlm {
+        private final String content;
+        private boolean called;
 
-        @Test
-        void testHasCycleSimpleCycle() {
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("B"));
-            graph.put("B", Arrays.asList("A"));
-
-            Assertions.assertTrue(CycleChecker.hasCycle(graph));
+        MockLlm(String content) {
+            this.content = content;
         }
 
-        @Test
-        void testHasCycleComplexCycle() {
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("B"));
-            graph.put("B", Arrays.asList("C"));
-            graph.put("C", Arrays.asList("A"));
-
-            Assertions.assertTrue(CycleChecker.hasCycle(graph));
+        public MockResponse invoke(Object ignored) {
+            called = true;
+            return new MockResponse(content);
         }
+    }
 
-        @Test
-        void testHasCycleNoCycle() {
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("B", "C"));
-            graph.put("B", Arrays.asList("D"));
-            graph.put("C", Arrays.asList("D"));
-            graph.put("D", new ArrayList<>());
-
-            Assertions.assertFalse(CycleChecker.hasCycle(graph));
-        }
-
-        @Test
-        void testHasCycleSingleNode() {
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", new ArrayList<>());
-
-            Assertions.assertFalse(CycleChecker.hasCycle(graph));
-        }
-
-        @Test
-        void testHasCycleSelfLoop() {
-            Map<String, List<String>> graph = new HashMap<>();
-            graph.put("A", Arrays.asList("A"));
-
-            Assertions.assertTrue(CycleChecker.hasCycle(graph));
+    record MockResponse(String content) {
+        public String getContent() {
+            return content;
         }
     }
 }

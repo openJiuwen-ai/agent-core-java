@@ -1,22 +1,23 @@
 /* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
 package com.openjiuwen.core.operator;
 
-import com.openjiuwen.core.session.Session;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Collections;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Port of Python operator base tests.
+ * Unit tests for operator base models.
+ *
+ * <p>Mirrors Python's {@code test_base.py} in
+ * {@code tests.unit_tests.core.operator}.</p>
  */
 class OperatorBaseTest {
 
@@ -47,59 +48,70 @@ class OperatorBaseTest {
     }
 
     @Test
-    @DisplayName("Operator remains abstract and stream defaults to unsupported")
-    void testOperatorAbstractContract() throws Exception {
-        assertTrue(Modifier.isAbstract(Operator.class.getModifiers()));
-
-        Method getOperatorId = Operator.class.getDeclaredMethod("getOperatorId");
-        Method getTunables = Operator.class.getDeclaredMethod("getTunables");
-        Method setParameter = Operator.class.getDeclaredMethod("setParameter", String.class, Object.class);
-        Method getState = Operator.class.getDeclaredMethod("getState");
-        Method loadState = Operator.class.getDeclaredMethod("loadState", Map.class);
-        Method invoke = Operator.class.getDeclaredMethod("invoke", Map.class, Session.class, Map.class);
-
-        assertTrue(Modifier.isAbstract(getOperatorId.getModifiers()));
-        assertTrue(Modifier.isAbstract(getTunables.getModifiers()));
-        assertTrue(Modifier.isAbstract(setParameter.getModifiers()));
-        assertTrue(Modifier.isAbstract(getState.getModifiers()));
-        assertTrue(Modifier.isAbstract(loadState.getModifiers()));
-        assertTrue(Modifier.isAbstract(invoke.getModifiers()));
-
-        ConcreteOperator operator = new ConcreteOperator();
-        UnsupportedOperationException error = assertThrows(
-                UnsupportedOperationException.class,
-                () -> operator.stream(Collections.emptyMap(), new OperatorTestSupport.TrackingSession(), Collections.emptyMap()));
-        assertEquals("stream not implemented", error.getMessage());
+    @DisplayName("TunableSpec record rejects new fields")
+    void testTunableSpecSlotsRestriction() {
+        assertEquals(4, TunableSpec.class.getRecordComponents().length);
+        assertFalse(hasField(TunableSpec.class, "new_attr"));
     }
 
-    private static final class ConcreteOperator extends Operator {
+    @Test
+    @DisplayName("operator_id property is abstract")
+    void testOperatorIdPropertyIsAbstract() throws Exception {
+        Method getOperatorId = Operator.class.getDeclaredMethod("getOperatorId");
+        assertTrue(Modifier.isAbstract(Operator.class.getModifiers()));
+        assertTrue(Modifier.isAbstract(getOperatorId.getModifiers()));
+    }
 
-        @Override
-        public String getOperatorId() {
-            return "test_operator";
-        }
+    @Test
+    @DisplayName("get_tunables is abstract")
+    void testGetTunablesIsAbstract() throws Exception {
+        Method getTunables = Operator.class.getDeclaredMethod("getTunables");
+        assertTrue(Modifier.isAbstract(getTunables.getModifiers()));
+    }
 
-        @Override
-        public Map<String, TunableSpec> getTunables() {
-            return Collections.emptyMap();
-        }
+    @Test
+    @DisplayName("set_parameter is abstract")
+    void testSetParameterIsAbstract() throws Exception {
+        Method setParameter = Operator.class.getDeclaredMethod("setParameter", String.class, Object.class);
+        assertTrue(Modifier.isAbstract(setParameter.getModifiers()));
+    }
 
-        @Override
-        public void setParameter(String target, Object value) {
-        }
+    @Test
+    @DisplayName("get_state is abstract")
+    void testGetStateIsAbstract() throws Exception {
+        Method getState = Operator.class.getDeclaredMethod("getState");
+        assertTrue(Modifier.isAbstract(getState.getModifiers()));
+    }
 
-        @Override
-        public Map<String, Object> getState() {
-            return Collections.emptyMap();
-        }
+    @Test
+    @DisplayName("load_state is abstract")
+    void testLoadStateIsAbstract() throws Exception {
+        Method loadState = Operator.class.getDeclaredMethod("loadState", Map.class);
+        assertTrue(Modifier.isAbstract(loadState.getModifiers()));
+    }
 
-        @Override
-        public void loadState(Map<String, Object> state) {
-        }
+    @Test
+    @DisplayName("Operator is not executable")
+    void testOperatorIsNotExecutable() {
+        assertFalse(hasMethod(Operator.class, "invoke"));
+        assertFalse(hasMethod(Operator.class, "stream"));
+    }
 
-        @Override
-        public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) {
-            return "result";
+    private static boolean hasMethod(Class<?> type, String name) {
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name)) {
+                return true;
+            }
         }
+        return false;
+    }
+
+    private static boolean hasField(Class<?> type, String name) {
+        for (java.lang.reflect.Field field : type.getDeclaredFields()) {
+            if (field.getName().equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

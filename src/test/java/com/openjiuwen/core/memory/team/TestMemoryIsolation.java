@@ -3,73 +3,70 @@
  */
 package com.openjiuwen.core.memory.team;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for MemoryIsolation.
- * <p>
+ * Isolation of per-member memory directories and index managers.
  * Mirrors Python's tests/unit_tests/core/memory/team/test_memory_isolation.py.
  */
-@DisplayName("Memory Isolation Tests")
+@DisplayName("Memory isolation tests")
 class TestMemoryIsolation {
 
-    @Nested
-    @DisplayName("Isolation Tests")
-    class TestIsolation {
+    @TempDir
+    Path tempDir;
 
-        @Test
-        @Tag("level0")
-        @DisplayName("memory isolation")
-        void testMemoryIsolation() {
-            // Each member has isolated memory
-            Map<String, Object> member1Memory = new HashMap<>();
-            member1Memory.put("id", "member1");
-            member1Memory.put("data", "private_data_1");
-            
-            Map<String, Object> member2Memory = new HashMap<>();
-            member2Memory.put("id", "member2");
-            member2Memory.put("data", "private_data_2");
-            
-            // Memories should be separate
-            assertNotEquals(member1Memory, member2Memory);
+    @Test
+    void testTwoMembersDistinctManagersAndDiskPaths() throws Exception {
+        Path rootA = tempDir.resolve("ws_a");
+        Path rootB = tempDir.resolve("ws_b");
+        Files.createDirectories(rootA);
+        Files.createDirectories(rootB);
+
+        MemberMemoryToolkit toolkitA =
+                new MemberMemoryToolkit("m1", "same_team", new MockWorkspace(rootA), "general");
+        MemberMemoryToolkit toolkitB =
+                new MemberMemoryToolkit("m2", "same_team", new MockWorkspace(rootB), "general");
+
+        assertTrue(toolkitA.initialize().get());
+        assertTrue(toolkitB.initialize().get());
+
+        assertNotNull(toolkitA.getManager());
+        assertNotNull(toolkitB.getManager());
+        assertNotSame(toolkitA.getManager(), toolkitB.getManager());
+
+        Path marker = rootA.resolve("memory").resolve("m1_exclusive.txt");
+        Files.createDirectories(marker.getParent());
+        Files.writeString(marker, "only-a");
+
+        Path otherPath = rootB.resolve("memory").resolve("m1_exclusive.txt");
+        assertFalse(Files.isRegularFile(otherPath));
+
+        toolkitA.close().get();
+        toolkitB.close().get();
+    }
+
+    private static final class MockWorkspace {
+        private final Path root;
+
+        private MockWorkspace(Path root) {
+            this.root = root;
         }
 
-        @Test
-        @Tag("level0")
-        @DisplayName("shared memory")
-        void testSharedMemory() {
-            // Team has shared memory
-            Map<String, Object> sharedMemory = new HashMap<>();
-            sharedMemory.put("team_id", "team_1");
-            sharedMemory.put("shared_data", "common_context");
-            
-            assertNotNull(sharedMemory);
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("memory access control")
-        void testMemoryAccessControl() {
-            // Member can only access own memory
-            String memberId = "member1";
-            String accessingMember = "member1";
-            
-            assertEquals(memberId, accessingMember);
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("memory boundary")
-        void testMemoryBoundary() {
-            // Memory boundary between members
-            String boundary = "member1:private";
-            assertTrue(boundary.startsWith("member1"));
+        public Path getNodePath(String nodeName) throws IOException {
+            Path nodePath = root.resolve(nodeName);
+            Files.createDirectories(nodePath);
+            return nodePath;
         }
     }
 }

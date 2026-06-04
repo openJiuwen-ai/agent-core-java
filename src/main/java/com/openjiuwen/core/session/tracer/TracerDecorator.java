@@ -12,6 +12,8 @@ import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Tracer decorator utilities for wrapping model, tool, and workflow invocations with trace spans.
@@ -339,7 +341,12 @@ public final class TracerDecorator {
                     tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
                             "on_" + invokeType.getValue() + "_start", startKwargs);
 
-                    Object result = method.invoke(target, args);
+                    Object[] invocationArgs = args;
+                    if (invokeType == InvokeType.LLM) {
+                        invocationArgs = injectTracerRecordData(args, method, tracer, span);
+                    }
+
+                    Object result = method.invoke(target, invocationArgs);
 
                     Map<String, Object> endKwargs = new HashMap<>();
                     endKwargs.put("span", span);
@@ -361,6 +368,61 @@ public final class TracerDecorator {
 
             // All other methods delegate directly
             return method.invoke(target, args);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object[] injectTracerRecordData(Object[] args, Method method, Tracer tracer, TraceAgentSpan span) {
+        if (args == null || args.length == 0 || method.getParameterCount() == 0) {
+            return args;
+        }
+        int kwargsIndex = args.length - 1;
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (kwargsIndex >= parameterTypes.length || !Map.class.isAssignableFrom(parameterTypes[kwargsIndex])) {
+            return args;
+        }
+
+        Map<String, Object> kwargs = new HashMap<>();
+        if (args[kwargsIndex] instanceof Map<?, ?> existingMap) {
+            for (Map.Entry<?, ?> entry : existingMap.entrySet()) {
+                kwargs.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+
+        Object existingTracerRecordData = kwargs.get("tracer_record_data");
+        if (existingTracerRecordData == null) {
+            existingTracerRecordData = kwargs.get("tracerRecordData");
+        }
+        Object existingCallback = existingTracerRecordData;
+
+        Consumer<Map<String, Object>> tracerRecordData = payload -> {
+            if (payload == null) {
+                return;
+            }
+            Map<String, Object> requestKwargs = new HashMap<>(payload);
+            Map<String, Object> triggerKwargs = new HashMap<>();
+            triggerKwargs.put("span", span);
+            triggerKwargs.put("kwargs", requestKwargs);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_request", triggerKwargs);
+            invokeExistingTracerRecordData(existingCallback, payload);
+        };
+
+        kwargs.put("tracer_record_data", tracerRecordData);
+        Object[] invocationArgs = args.clone();
+        invocationArgs[kwargsIndex] = kwargs;
+        return invocationArgs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void invokeExistingTracerRecordData(Object callback, Map<String, Object> payload) {
+        try {
+            if (callback instanceof Consumer<?> consumer) {
+                ((Consumer<Map<String, Object>>) consumer).accept(payload);
+            } else if (callback instanceof Function<?, ?> function) {
+                ((Function<Map<String, Object>, Object>) function).apply(payload);
+            }
+        } catch (Exception ignored) {
+            // Tracing should not change model invocation behavior.
         }
     }
 }

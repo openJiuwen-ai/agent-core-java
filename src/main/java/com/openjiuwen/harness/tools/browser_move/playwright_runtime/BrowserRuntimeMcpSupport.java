@@ -55,7 +55,9 @@ public final class BrowserRuntimeMcpSupport {
 
         Map<String, Object> params = new HashMap<>();
         params.put("command", envFirst("java", "PLAYWRIGHT_RUNTIME_MCP_COMMAND", "BROWSER_RUNTIME_MCP_COMMAND"));
-        params.put("cwd", envFirst(Path.of("").toAbsolutePath().toString(), "PLAYWRIGHT_RUNTIME_MCP_CWD", "BROWSER_RUNTIME_MCP_CWD"));
+        String cwd = envFirst(Path.of("").toAbsolutePath().toString(),
+                "PLAYWRIGHT_RUNTIME_MCP_CWD", "BROWSER_RUNTIME_MCP_CWD");
+        params.put("cwd", Path.of(cwd).toAbsolutePath().normalize().toString());
         params.put("args", List.of(
                 "-m",
                 "openjiuwen.harness.tools.browser_move.playwright_runtime_mcp_server",
@@ -150,6 +152,9 @@ public final class BrowserRuntimeMcpSupport {
         String path = "sse".equals(transport)
                 ? envFirst("/sse", "PLAYWRIGHT_RUNTIME_MCP_PATH", "BROWSER_RUNTIME_MCP_PATH")
                 : envFirst("/mcp", "PLAYWRIGHT_RUNTIME_MCP_PATH", "BROWSER_RUNTIME_MCP_PATH");
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
         return "http://" + host + ":" + port + path;
     }
 
@@ -181,7 +186,11 @@ public final class BrowserRuntimeMcpSupport {
         if (!apiBase.isBlank() && !env.containsKey("OPENAI_BASE_URL") && !openRouterBase) {
             env.put("OPENAI_BASE_URL", apiBase);
         }
-        if (env.containsKey("OPENROUTER_API_KEY") || env.containsKey("OPENROUTER_BASE_URL")) {
+        if ("openrouter".equals(modelProvider)) {
+            env.put("MODEL_PROVIDER", "openrouter");
+        } else if ("openai".equals(modelProvider) || "siliconflow".equals(modelProvider)) {
+            env.put("MODEL_PROVIDER", modelProvider);
+        } else if (env.containsKey("OPENROUTER_API_KEY") || env.containsKey("OPENROUTER_BASE_URL")) {
             env.put("MODEL_PROVIDER", "openrouter");
         } else if (!modelProvider.isBlank()) {
             env.put("MODEL_PROVIDER", modelProvider);

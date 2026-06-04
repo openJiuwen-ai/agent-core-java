@@ -15,6 +15,9 @@ import java.util.Optional;
 
 /**
  * Reflection-based extractor that turns Java method signatures into JSON Schema.
+ *
+ * <p>Mirrors Python's {@code CallableSchemaExtractor} in
+ * {@code openjiuwen.core.foundation.tool.utils.callable_schema_extractor}.
  */
 public final class CallableSchemaExtractor {
 

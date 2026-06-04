@@ -23,6 +23,15 @@ public class GraphStoreStorageConfig {
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     private GraphStoreStorageConfig(Builder builder) {
+        validateVarchar("uuid", builder.uuid);
+        validateVarchar("name", builder.name);
+        validateVarchar("content", builder.content);
+        validateVarchar("language", builder.language);
+        validateVarchar("userId", builder.userId);
+        validateArray("entities", builder.entities);
+        validateArray("relations", builder.relations);
+        validateArray("episodes", builder.episodes);
+        validateVarchar("objType", builder.objType);
         this.uuid = builder.uuid;
         this.name = builder.name;
         this.content = builder.content;
@@ -73,5 +82,17 @@ public class GraphStoreStorageConfig {
         public Builder episodes(int episodes) { this.episodes = episodes; return this; }
         public Builder objType(int objType) { this.objType = objType; return this; }
         public GraphStoreStorageConfig build() { return new GraphStoreStorageConfig(this); }
+    }
+
+    private static void validateVarchar(String field, int value) {
+        if (value <= 1 || value > 65535) {
+            throw new IllegalArgumentException(field + " must be in (1, 65535], got " + value);
+        }
+    }
+
+    private static void validateArray(String field, int value) {
+        if (value <= 1 || value > 4096) {
+            throw new IllegalArgumentException(field + " must be in (1, 4096], got " + value);
+        }
     }
 }

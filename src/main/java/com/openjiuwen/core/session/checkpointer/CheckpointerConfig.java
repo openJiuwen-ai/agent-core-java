@@ -73,7 +73,7 @@ public class CheckpointerConfig {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object redactUrlsInValue(Object value) {
+    public static Object redactUrlsInValue(Object value) {
         if (value == null) {
             return null;
         }

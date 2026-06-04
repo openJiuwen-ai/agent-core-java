@@ -20,6 +20,9 @@ public enum ApiParamLocation {
     /** Request body parameters. */
     BODY("body"),
 
+    /** Multipart form parameters. */
+    FORM("form"),
+
     /** HTTP header parameters. */
     HEADER("header");
 

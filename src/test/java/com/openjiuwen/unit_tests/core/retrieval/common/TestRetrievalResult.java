@@ -6,6 +6,7 @@ package com.openjiuwen.unit_tests.core.retrieval.common;
 
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
+import com.openjiuwen.core.common.exception.BaseError;
 
 import org.junit.jupiter.api.Test;
 
@@ -40,26 +41,19 @@ class TestSearchResult {
     @Test
     void testMissingRequiredFieldsId() {
         // Test missing required fields - id
-        assertThrows(IllegalArgumentException.class, () -> new SearchResult());
+        assertThrows(BaseError.class, () -> new SearchResult(null, "Test result", 0.95));
     }
 
     @Test
-    void testMissingRequiredFieldsIdOnly() {
-        // Test missing required fields - id provided but not text
-        assertThrows(IllegalArgumentException.class, () -> {
-            SearchResult result = new SearchResult();
-            result.setId("result_1");
-        });
+    void testMissingRequiredFieldsText() {
+        // Test missing required fields - text
+        assertThrows(BaseError.class, () -> new SearchResult("result_1", null, 0.95));
     }
 
     @Test
-    void testMissingRequiredFieldsIdAndText() {
-        // Test missing required fields - id and text provided but not score
-        SearchResult result = new SearchResult();
-        result.setId("result_1");
-        result.setText("Test result");
-        // score defaults to 0.0, which is valid
-        assertEquals(0.0, result.getScore());
+    void testMissingRequiredFieldsScore() {
+        // Test missing required fields - score
+        assertThrows(BaseError.class, () -> new SearchResult("result_1", "Test result", null));
     }
 }
 
@@ -97,15 +91,12 @@ class TestRetrievalResult {
     @Test
     void testMissingRequiredFieldsText() {
         // Test missing required fields - text
-        assertThrows(IllegalArgumentException.class, () -> new RetrievalResult());
+        assertThrows(BaseError.class, () -> new RetrievalResult(null, 0.95));
     }
 
     @Test
-    void testMissingRequiredFieldsTextOnly() {
-        // Test missing required fields - text provided but not score
-        RetrievalResult result = new RetrievalResult();
-        result.setText("Test result");
-        // score defaults to 0.0, which is valid
-        assertEquals(0.0, result.getScore());
+    void testMissingRequiredFieldsScore() {
+        // Test missing required fields - score
+        assertThrows(BaseError.class, () -> new RetrievalResult("Test result", null));
     }
 }

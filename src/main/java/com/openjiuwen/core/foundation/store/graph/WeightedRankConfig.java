@@ -36,13 +36,14 @@ public class WeightedRankConfig extends BaseRankConfig {
 
     @Override
     public RankerArgs getArgs() {
-        double total = nameDense + contentDense + contentSparse;
+        List<Double> weights = List.of(nameDense, contentDense, contentSparse).stream()
+                .filter(weight -> weight > 0)
+                .toList();
+        double total = weights.stream().mapToDouble(Double::doubleValue).sum();
         List<Object> positional = new ArrayList<>();
         Map<String, Object> keyword = new HashMap<>();
         if (total > 0) {
-            keyword.put("name_dense", nameDense / total);
-            keyword.put("content_dense", contentDense / total);
-            keyword.put("content_sparse", contentSparse / total);
+            weights.forEach(weight -> positional.add(weight / total));
         }
         return new RankerArgs(positional, keyword);
     }

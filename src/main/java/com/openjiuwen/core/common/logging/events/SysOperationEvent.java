@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** SysOperation event. */
+/**
+ * SysOperation event.
+ *
+ * <p>Mirrors Python's {@code SysOperationEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

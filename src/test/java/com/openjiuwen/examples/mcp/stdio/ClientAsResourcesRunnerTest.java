@@ -5,8 +5,11 @@
 package com.openjiuwen.examples.mcp.stdio;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
 import com.openjiuwen.core.workflow.component.tool.ToolComponentConfig;
 import com.openjiuwen.core.workflow.components.flow.StartComponent;
@@ -38,6 +41,24 @@ class ClientAsResourcesRunnerTest {
     private static final String SERVER_ID = "stdio-text-server-01";
     private static final String WORKFLOW_ID = "stdio_text_workflow";
 
+    private static LocalFunction wordCountTool() {
+        ToolCard card = ToolCard.builder()
+                .id("word_count")
+                .name("word_count")
+                .description("Count the number of words in the given text.")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of("text", Map.of("type", "string")),
+                        "required", java.util.List.of("text")
+                ))
+                .build();
+        return new LocalFunction(card, inputs -> String.valueOf(inputs.getOrDefault("text", ""))
+                .trim()
+                .isEmpty()
+                ? 0
+                : String.valueOf(inputs.get("text")).trim().split("\\s+").length);
+    }
+
     /**
      * Demonstrates workflow construction for Runner integration.
      * <p>
@@ -60,10 +81,14 @@ class ClientAsResourcesRunnerTest {
         Start start = new StartComponent();
         workflow.setStartComp("start", start, Map.of("text", "${text}"));
 
-        // ToolComponent would be bound to word_count tool from ResourceMgr
+        // ToolComponent is bound to the word_count tool discovered from ResourceMgr in full integration.
         ToolComponent toolComp = new ToolComponent(new ToolComponentConfig());
-        // In full integration: toolComp.bindTool(runner.resourceMgr.getMcpTool(SERVER_ID, "word_count"));
+        toolComp.bindTool(wordCountTool());
         workflow.addWorkflowComp("tool", toolComp, Map.of("text", "${start.text}"));
+        End end = new End(Map.of("response_template", "word_count = {{result}}"));
+        workflow.setEndComp("end", end, Map.of("result", "${tool.data}"));
+        workflow.addConnection("start", "tool");
+        workflow.addConnection("tool", "end");
 
         assertNotNull(workflow);
         assertEquals(WORKFLOW_ID, workflow.getCard().getId());

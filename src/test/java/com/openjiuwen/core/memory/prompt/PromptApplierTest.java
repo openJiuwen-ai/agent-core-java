@@ -12,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Focused PromptApplier smoke tests.
+ * Mirrors Python's tests/unit_tests/core/memory/prompt/test_prompt_applier.py.
+ */
 class PromptApplierTest {
 
     @AfterEach

@@ -4,17 +4,27 @@
 
 package com.openjiuwen.unit_tests.harness.rails;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.harness.rails.interrupt.AskUserRail;
+import com.openjiuwen.harness.rails.interrupt.AskUserRail.AskUserPayload;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
-import com.openjiuwen.harness.rails.interrupt.InterruptDecision.*;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision.InterruptResult;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision.RejectResult;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for AskUserRail structured payload handling.
@@ -24,238 +34,280 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(MockitoExtension.class)
 class TestAskUserRailStructuredPayload {
 
-    // ---------------------------------------------------------------------------
-    // Helper methods
-    // ---------------------------------------------------------------------------
+    private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Build a mock tool call with given arguments. */
-    private Map<String, Object> buildToolCall(Map<String, Object> arguments, String toolCallId) {
-        Map<String, Object> toolCall = new HashMap<>();
-        toolCall.put("id", toolCallId);
-        toolCall.put("type", "function");
-        toolCall.put("name", "ask_user");
-        toolCall.put("arguments", arguments);
-        return toolCall;
+    private ToolCall buildToolCall(Map<String, Object> arguments) {
+        return buildToolCall(arguments, "tool_ask_1");
     }
 
-    /** Single question args. */
+    private ToolCall buildToolCall(Map<String, Object> arguments, String toolCallId) {
+        try {
+            return ToolCall.builder()
+                    .id(toolCallId)
+                    .type("function")
+                    .name("ask_user")
+                    .arguments(JSON.writeValueAsString(arguments))
+                    .index(0)
+                    .build();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize tool-call arguments", e);
+        }
+    }
+
     private Map<String, Object> singleQuestionArgs() {
-        Map<String, Object> option1 = new HashMap<>();
-        option1.put("label", "Dark Mode");
-        option1.put("description", "Enable dark theme.");
-
-        Map<String, Object> option2 = new HashMap<>();
-        option2.put("label", "Auto Save");
-        option2.put("description", "Save changes automatically.");
-
-        Map<String, Object> question = new HashMap<>();
-        question.put("header", "Feature");
-        question.put("question", "Which feature should be enabled?");
-        question.put("options", Arrays.asList(option1, option2));
-        question.put("multi_select", false);
-
-        Map<String, Object> args = new HashMap<>();
-        args.put("questions", Arrays.asList(question));
-        return args;
+        return Map.of("questions", List.of(Map.of(
+                "header", "Feature",
+                "question", "Which feature should be enabled?",
+                "options", List.of(
+                        Map.of("label", "Dark Mode", "description", "Enable dark theme."),
+                        Map.of("label", "Auto Save", "description", "Save changes automatically.")),
+                "multi_select", false)));
     }
 
-    /** Single question with preview args. */
     private Map<String, Object> singleQuestionWithPreviewArgs() {
-        Map<String, Object> option1 = new HashMap<>();
-        option1.put("label", "Option A");
-        option1.put("description", "Simple layout with sidebar.");
-        option1.put("preview", """
-            ┌──────┬──────────┐
-            │ nav  │ content  │
-            │ bar  │ area     │
-            └──────┴──────────┘
-            """);
-
-        Map<String, Object> option2 = new HashMap<>();
-        option2.put("label", "Option B");
-        option2.put("description", "Full-width layout.");
-        option2.put("preview", """
-            ┌────────────────────┐
-            │     content area   │
-            └────────────────────┘
-            """);
-
-        Map<String, Object> question = new HashMap<>();
-        question.put("header", "Design");
-        question.put("question", "Which design do you prefer?");
-        question.put("options", Arrays.asList(option1, option2));
-        question.put("multi_select", false);
-
-        Map<String, Object> args = new HashMap<>();
-        args.put("questions", Arrays.asList(question));
-        return args;
+        return Map.of("questions", List.of(Map.of(
+                "header", "Design",
+                "question", "Which design do you prefer?",
+                "options", List.of(
+                        Map.of(
+                                "label", "Option A",
+                                "description", "Simple layout with sidebar.",
+                                "preview", "+------+---------+\n| nav  | content |\n+------+---------+"),
+                        Map.of(
+                                "label", "Option B",
+                                "description", "Full-width layout.",
+                                "preview", "+----------------+\n|  content area  |\n+----------------+")),
+                "multi_select", false)));
     }
 
-    /** Multi-question args. */
     private Map<String, Object> multiQuestionArgs() {
-        Map<String, Object> frameworkOpt1 = new HashMap<>();
-        frameworkOpt1.put("label", "React");
-        frameworkOpt1.put("description", "React ecosystem.");
-
-        Map<String, Object> frameworkOpt2 = new HashMap<>();
-        frameworkOpt2.put("label", "Vue");
-        frameworkOpt2.put("description", "Vue ecosystem.");
-
-        Map<String, Object> frameworkQuestion = new HashMap<>();
-        frameworkQuestion.put("header", "Framework");
-        frameworkQuestion.put("question", "Which framework?");
-        frameworkQuestion.put("options", Arrays.asList(frameworkOpt1, frameworkOpt2));
-        frameworkQuestion.put("multi_select", false);
-
-        Map<String, Object> authOpt1 = new HashMap<>();
-        authOpt1.put("label", "JWT");
-        authOpt1.put("description", "Token auth.");
-
-        Map<String, Object> authOpt2 = new HashMap<>();
-        authOpt2.put("label", "Session");
-        authOpt2.put("description", "Session-based auth.");
-
-        Map<String, Object> authQuestion = new HashMap<>();
-        authQuestion.put("header", "Auth");
-        authQuestion.put("question", "How to authenticate?");
-        authQuestion.put("options", Arrays.asList(authOpt1, authOpt2));
-        authQuestion.put("multi_select", false);
-
-        Map<String, Object> args = new HashMap<>();
-        args.put("questions", Arrays.asList(frameworkQuestion, authQuestion));
-        return args;
+        return Map.of("questions", List.of(
+                Map.of(
+                        "header", "Framework",
+                        "question", "Which framework?",
+                        "options", List.of(
+                                Map.of("label", "React", "description", "React ecosystem."),
+                                Map.of("label", "Vue", "description", "Vue ecosystem.")),
+                        "multi_select", false),
+                Map.of(
+                        "header", "Auth",
+                        "question", "How to authenticate?",
+                        "options", List.of(
+                                Map.of("label", "JWT", "description", "Token auth."),
+                                Map.of("label", "Session", "description", "Session-based auth.")),
+                        "multi_select", false)));
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: first call interrupt
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("First call with questions should return InterruptResult with questions field")
     void testFirstCallInterruptContainsQuestionsField() {
-        // Python: test_first_call_interrupt_contains_questions_field
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(singleQuestionArgs(), "tool_ask_1");
+        ToolCall toolCall = buildToolCall(singleQuestionArgs());
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, null, null);
 
         assertTrue(decision.isInterrupted());
-        InterruptResult interruptResult = (InterruptResult) decision;
-        Object request = interruptResult.getRequest();
-        
-        assertNotNull(request);
-        if (request instanceof Map) {
-            Map<String, Object> requestMap = (Map<String, Object>) request;
-            assertTrue(requestMap.containsKey("payload_schema") || requestMap.containsKey("message"));
-        }
+        Map<String, Object> request = requestMap(decision);
+        List<?> questions = (List<?>) request.get("questions");
+        assertNotNull(questions);
+        assertEquals(1, questions.size());
+        Map<?, ?> question = (Map<?, ?>) questions.get(0);
+        assertEquals("Which feature should be enabled?", question.get("question"));
+        assertEquals("Feature", question.get("header"));
+        assertEquals("", request.get("message"));
+        Map<?, ?> payloadSchema = (Map<?, ?>) request.get("payload_schema");
+        assertTrue(((Map<?, ?>) payloadSchema.get("properties")).containsKey("answers"));
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: resume with answer string
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("Resume with answer string returns formatted result")
     void testResumeWithAnswerStringReturnsFormattedResult() {
-        // Python: test_resume_with_answer_string_returns_formatted_result
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(singleQuestionArgs(), "tool_ask_1");
-        
-        Map<String, Object> userInput = new HashMap<>();
-        userInput.put("answers", Map.of("Which feature should be enabled?", "Dark Mode"));
+        ToolCall toolCall = buildToolCall(singleQuestionArgs());
+        Map<String, Object> userInput = Map.of(
+                "answers", Map.of("Which feature should be enabled?", "Dark Mode"));
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, userInput, null);
 
         assertTrue(decision.isRejected());
-        RejectResult rejectResult = (RejectResult) decision;
-        assertTrue(rejectResult.getToolResult().isPresent());
-        String result = rejectResult.getToolResult().get().toString();
-        assertTrue(result.contains("User has answered") || result.contains("answer"));
+        String result = rejectResult(decision);
+        assertTrue(result.contains("User has answered your questions:"));
+        assertTrue(result.contains("\"Which feature should be enabled?\"=\"Dark Mode\""));
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: resume with structured answers
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
-    @DisplayName("Resume with structured answers returns formatted result")
-    void testResumeWithStructuredAnswersReturnsFormattedResult() {
-        // Python: test_resume_with_structured_answers_returns_formatted_result
+    @DisplayName("Resume with AskUserPayload returns formatted result")
+    void testResumeWithAskUserPayloadReturnsFormattedResult() {
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(multiQuestionArgs(), "tool_ask_1");
-
-        Map<String, Object> answers = new HashMap<>();
-        answers.put("Which framework?", "React");
-        answers.put("How to authenticate?", "JWT");
-        
-        Map<String, Object> userInput = new HashMap<>();
-        userInput.put("answers", answers);
+        ToolCall toolCall = buildToolCall(singleQuestionArgs());
+        AskUserPayload userInput = new AskUserPayload(Map.of(
+                "Which feature should be enabled?", "Auto Save"));
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, userInput, null);
 
         assertTrue(decision.isRejected());
-        RejectResult rejectResult = (RejectResult) decision;
-        assertTrue(rejectResult.getToolResult().isPresent());
+        String result = rejectResult(decision);
+        assertTrue(result.contains("User has answered your questions:"));
+        assertTrue(result.contains("\"Which feature should be enabled?\"=\"Auto Save\""));
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: resume with string for multi-question
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
     @DisplayName("Resume with string for multi-question only answers first")
     void testResumeWithStringForMultiQuestionOnlyAnswersFirst() {
-        // Python: test_resume_with_string_for_multi_question_only_answers_first
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(multiQuestionArgs(), "tool_ask_1");
+        ToolCall toolCall = buildToolCall(multiQuestionArgs());
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, "React", null);
 
         assertTrue(decision.isRejected());
-        RejectResult rejectResult = (RejectResult) decision;
-        assertTrue(rejectResult.getToolResult().isPresent());
-        String result = rejectResult.getToolResult().get().toString();
-        assertTrue(result.contains("React") || result.contains("framework"));
+        String result = rejectResult(decision);
+        assertTrue(result.contains("User has answered your questions:"));
+        assertTrue(result.contains("\"Which framework?\"=\"React\""));
+        assertTrue(result.contains("\"How to authenticate?\"=\"\""));
     }
 
-    // ---------------------------------------------------------------------------
-    // Tests: multi-question interrupt contains all questions
-    // ---------------------------------------------------------------------------
+    @Test
+    @Tag("level0")
+    @DisplayName("Resume with structured answers returns formatted result")
+    void testResumeWithStructuredAnswersReturnsFormattedResult() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall toolCall = buildToolCall(multiQuestionArgs());
+        Map<String, Object> userInput = Map.of(
+                "answers", Map.of(
+                        "Which framework?", "React",
+                        "How to authenticate?", "JWT"));
+
+        InterruptDecision decision = rail.resolveInterrupt(null, toolCall, userInput, null);
+
+        assertTrue(decision.isRejected());
+        String result = rejectResult(decision);
+        assertTrue(result.contains("User has answered your questions:"));
+        assertTrue(result.contains("\"Which framework?\"=\"React\""));
+        assertTrue(result.contains("\"How to authenticate?\"=\"JWT\""));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Resume with string directly returns formatted result")
+    void testResumeWithStringDirectlyReturnsFormattedResult() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall toolCall = buildToolCall(singleQuestionArgs());
+
+        InterruptDecision decision = rail.resolveInterrupt(null, toolCall, "Dark Mode", null);
+
+        assertTrue(decision.isRejected());
+        String result = rejectResult(decision);
+        assertTrue(result.contains("User has answered your questions:"));
+        assertTrue(result.contains("\"Which feature should be enabled?\"=\"Dark Mode\""));
+    }
 
     @Test
     @Tag("level0")
     @DisplayName("Multi-question interrupt contains all questions in questions field")
     void testMultiQuestionInterruptContainsAllQuestions() {
-        // Python: test_multi_question_interrupt_contains_all_questions
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(multiQuestionArgs(), "tool_ask_1");
+        ToolCall toolCall = buildToolCall(multiQuestionArgs());
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, null, null);
 
         assertTrue(decision.isInterrupted());
-        InterruptResult interruptResult = (InterruptResult) decision;
-        assertNotNull(interruptResult.getRequest());
+        Map<String, Object> request = requestMap(decision);
+        List<?> questions = (List<?>) request.get("questions");
+        assertNotNull(questions);
+        assertEquals(2, questions.size());
+        assertEquals("Framework", ((Map<?, ?>) questions.get(0)).get("header"));
+        assertEquals("Auth", ((Map<?, ?>) questions.get(1)).get("header"));
     }
-
-    // ---------------------------------------------------------------------------
-    // Tests: preview field in options
-    // ---------------------------------------------------------------------------
 
     @Test
     @Tag("level0")
-    @DisplayName("Question options can include preview field")
-    void testQuestionOptionsCanIncludePreviewField() {
-        // Python: test_question_options_can_include_preview_field
+    @DisplayName("Invalid user input returns interrupt")
+    void testInvalidUserInputReturnsInterrupt() {
         AskUserRail rail = new AskUserRail();
-        Map<String, Object> toolCall = buildToolCall(singleQuestionWithPreviewArgs(), "tool_ask_1");
+        ToolCall toolCall = buildToolCall(singleQuestionArgs());
+
+        InterruptDecision decision = rail.resolveInterrupt(null, toolCall, Map.of("invalid_field", "value"), null);
+
+        assertTrue(decision.isInterrupted());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Empty questions returns interrupt")
+    void testEmptyQuestionsReturnsInterrupt() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall toolCall = buildToolCall(Map.of("questions", List.of()));
 
         InterruptDecision decision = rail.resolveInterrupt(null, toolCall, null, null);
 
         assertTrue(decision.isInterrupted());
-        assertNotNull(((InterruptResult) decision).getRequest());
+        Map<String, Object> request = requestMap(decision);
+        assertEquals(List.of(), request.get("questions"));
+        assertEquals("", request.get("message"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("No tool call returns interrupt")
+    void testNoToolCallReturnsInterrupt() {
+        AskUserRail rail = new AskUserRail();
+
+        InterruptDecision decision = rail.resolveInterrupt(null, null, null, null);
+
+        assertTrue(decision.isInterrupted());
+        Map<String, Object> request = requestMap(decision);
+        assertEquals(List.of(), request.get("questions"));
+        assertEquals("", request.get("message"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Preview field on options is passed through")
+    void testPreviewFieldPassedThroughInQuestions() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall toolCall = buildToolCall(singleQuestionWithPreviewArgs());
+
+        InterruptDecision decision = rail.resolveInterrupt(null, toolCall, null, null);
+
+        assertTrue(decision.isInterrupted());
+        Map<String, Object> request = requestMap(decision);
+        List<?> questions = (List<?>) request.get("questions");
+        assertEquals(1, questions.size());
+        List<?> options = (List<?>) ((Map<?, ?>) questions.get(0)).get("options");
+        assertEquals(2, options.size());
+        assertTrue(((Map<?, ?>) options.get(0)).containsKey("preview"));
+        assertTrue(((String) ((Map<?, ?>) options.get(0)).get("preview")).startsWith("+"));
+        assertTrue(((Map<?, ?>) options.get(1)).containsKey("preview"));
+        assertTrue(((String) ((Map<?, ?>) options.get(1)).get("preview")).startsWith("+"));
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("No questions returns simple answer")
+    void testNoQuestionsReturnsSimpleAnswer() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall toolCall = buildToolCall(Map.of("questions", List.of()));
+        Map<String, Object> userInput = Map.of("answers", Map.of("", "simple answer"));
+
+        InterruptDecision decision = rail.resolveInterrupt(null, toolCall, userInput, null);
+
+        assertTrue(decision.isRejected());
+        assertEquals("{'': 'simple answer'}", rejectResult(decision));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> requestMap(InterruptDecision decision) {
+        InterruptResult interruptResult = assertInstanceOf(InterruptResult.class, decision);
+        return (Map<String, Object>) interruptResult.getRequest();
+    }
+
+    private String rejectResult(InterruptDecision decision) {
+        RejectResult rejectResult = assertInstanceOf(RejectResult.class, decision);
+        assertTrue(rejectResult.getToolResult().isPresent());
+        return rejectResult.getToolResult().get().toString();
     }
 }

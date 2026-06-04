@@ -146,6 +146,7 @@ class HarnessModernToolsTest {
         String firstId = String.valueOf(activeTasks.get(0).get("id"));
         @SuppressWarnings("unchecked")
         Map<String, Object> modifyResult = (Map<String, Object>) modifyTool.invoke(Map.of(
+                "action", "update",
                 "todos", List.of(Map.of("id", firstId, "status", "completed"))
         ), Map.of("session", session));
         assertTrue(String.valueOf(modifyResult.get("message")).contains("Successfully updated 1 task(s)"));
@@ -156,10 +157,13 @@ class HarnessModernToolsTest {
         assertEquals("Task 2", afterModify.get(0).get("content"));
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> allTasks = (List<Map<String, Object>>) ((Map<String, Object>) getTool.invoke(Map.of(), Map.of("session", session))).get("tasks");
-        assertEquals(2, allTasks.size());
-        assertNotNull(allTasks.get(0).get("id"));
-        assertFalse(String.valueOf(allTasks.get(0).get("id")).isBlank());
+        Map<String, Object> fetchedTodo = (Map<String, Object>) ((Map<String, Object>) getTool.invoke(
+                Map.of("id", firstId),
+                Map.of("session", session)
+        )).get("todo");
+        assertNotNull(fetchedTodo.get("id"));
+        assertFalse(String.valueOf(fetchedTodo.get("id")).isBlank());
+        assertEquals(TodoStatus.COMPLETED.getValue(), fetchedTodo.get("status"));
     }
 
     private static final class InMemorySession implements Session {

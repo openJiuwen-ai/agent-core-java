@@ -55,4 +55,9 @@ public class InteractionOutput {
     public int hashCode() {
         return Objects.hash(id, value);
     }
+
+    @Override
+    public String toString() {
+        return "InteractionOutput{id='" + id + "', value=" + value + '}';
+    }
 }

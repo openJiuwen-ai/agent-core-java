@@ -4,7 +4,12 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-/** Module type enumeration. */
+/**
+ * Module type enumeration.
+ *
+ * <p>Mirrors Python's {@code ModuleType} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 public enum ModuleType {
     AGENT("agent"),
     WORKFLOW("workflow"),

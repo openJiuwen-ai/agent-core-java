@@ -15,7 +15,9 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.memory.LongTermMemory;
@@ -24,6 +26,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -36,16 +39,28 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ReAct paradigm Agent implementation.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.single_agent.agents.react_agent.ReActAgent}.</p>
  *
  * <p>ReAct loop: Reasoning → Acting → Observation → Repeat
  *
@@ -57,18 +72,28 @@ import java.util.Optional;
  *
  * <p>Output format:
  * <ul>
- *   <li>invoke: {"output": "response content", "result_type": "answer|error"}</li>
- *   <li>stream: yields OutputSchema objects</li>
+ *   <li>invoke: {"output": "response content", "result_type": "answer|error|interrupt"}</li>
+ *   <li>stream: yields OutputSchema objects, including "__interaction__" chunks for workflow interrupts</li>
  * </ul>
  */
 public class ReActAgent extends BaseAgent {
 
+    private static final String IDENTITY_SECTION = "identity";
+    private static final String SKILLS_SECTION = "skills";
+    private static final int IDENTITY_SECTION_PRIORITY = 10;
+    private static final int SKILLS_SECTION_PRIORITY = 90;
     private static final String REACT_INTERRUPT_STATE_KEY = "react_interrupt_state";
+    private static final String REACT_WORKFLOW_INTERRUPT_STATE_KEY = "react_workflow_interrupt_state";
+    private static final String INTERRUPTED_TOOL_PLACEHOLDER = "[INTERRUPTED - Waiting for user input]";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
     private Model llm;
+    private SystemPromptBuilder systemPromptBuilder;
+    private String warnedKvCacheReleaseProvider;
+    private final Queue<String> steeringQueue = new ConcurrentLinkedQueue<>();
+    private final Map<String, Queue<String>> steeringQueuesBySession = new ConcurrentHashMap<>();
 
     /**
      * Create a ReAct agent with the given card metadata.
@@ -80,6 +105,8 @@ public class ReActAgent extends BaseAgent {
         this.config = createDefaultConfig();
         this.contextEngine = new ContextEngine(config.getContextEngineConfig());
         this.llm = null;
+        this.systemPromptBuilder = new SystemPromptBuilder();
+        rebuildPromptBuilderSections(null, null);
         initMemoryScope();
     }
 
@@ -144,6 +171,9 @@ public class ReActAgent extends BaseAgent {
             lazyInitSkill();
         }
 
+        this.systemPromptBuilder = new SystemPromptBuilder();
+        rebuildPromptBuilderSections(null, null);
+
         return this;
     }
 
@@ -181,39 +211,127 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * Inject a pre-built model instance for callers that already own the
+     * runtime model, including deterministic tests.
+     */
+    public void setLlm(Model model) {
+        this.llm = model;
+    }
+
+    public SystemPromptBuilder getSystemPromptBuilder() {
+        return systemPromptBuilder;
+    }
+
+    /**
+     * Add or replace one prompt-builder section. Blank content removes the section.
+     */
+    public void addPromptBuilderSection(String name, String content, int priority) {
+        if (systemPromptBuilder == null) {
+            systemPromptBuilder = new SystemPromptBuilder();
+        }
+
+        String text = content != null ? content.trim() : "";
+        if (text.isEmpty()) {
+            systemPromptBuilder.removeSection(name);
+            return;
+        }
+
+        systemPromptBuilder.addSection(new PromptSection(
+                name,
+                Map.of("cn", text, "en", text),
+                priority
+        ));
+    }
+
+    /**
+     * Queue a steering instruction for the next model call in an active invoke.
+     */
+    public void pushSteering(String msg) {
+        pushSteering(null, msg);
+    }
+
+    /**
+     * Queue a steering instruction for the next model call in a specific session.
+     */
+    public void pushSteering(String sessionId, String msg) {
+        if (msg != null && !msg.isBlank()) {
+            if (sessionId == null || sessionId.isBlank()) {
+                steeringQueue.offer(msg);
+            } else {
+                steeringQueuesBySession
+                        .computeIfAbsent(sessionId, key -> new ConcurrentLinkedQueue<>())
+                        .offer(msg);
+            }
+        }
+    }
+
+    private Map<String, Object> buildContextWindowKwargs(Model model) {
+        if (!isKvCacheReleaseEnabled()) {
+            return Map.of();
+        }
+        if (model != null && model.supportsKvCacheRelease()) {
+            return Map.of("model", model);
+        }
+        warnKvCacheReleaseUnsupportedOnce();
+        return Map.of();
+    }
+
+    private Map<String, Object> buildModelCallKwargs(Session session, Model model) {
+        if (!isKvCacheReleaseEnabled() || model == null || !model.supportsKvCacheRelease()) {
+            return null;
+        }
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        if (session != null && session.getSessionId() != null) {
+            kwargs.put("session_id", session.getSessionId());
+        }
+        kwargs.put("enable_cache_sharing", true);
+        return kwargs;
+    }
+
+    private boolean isKvCacheReleaseEnabled() {
+        return config != null
+                && config.getContextEngineConfig() != null
+                && config.getContextEngineConfig().isEnableKvCacheRelease();
+    }
+
+    private void warnKvCacheReleaseUnsupportedOnce() {
+        String provider = config != null ? config.getModelProvider() : null;
+        String warningKey = provider != null && !provider.isBlank() ? provider : "<unknown>";
+        if (warningKey.equals(warnedKvCacheReleaseProvider)) {
+            return;
+        }
+        warnedKvCacheReleaseProvider = warningKey;
+        Loggers.AGENT.warning("ContextEngineConfig.enable_kv_cache_release is True but model provider "
+                + warningKey + " does not support KV cache release. KV cache release will not take effect.");
+    }
+
+    /**
      * Prepare context and call model with rail lifecycle events.
      */
     private AssistantMessage callModel(
             AgentCallbackContext ctx,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools
     ) {
-        var contextWindow = context.getContextWindow(
-                systemMessages,
-                tools != null ? tools : null,
-                (Integer) null,
-                (Integer) null
-        );
-
         ctx.setInputs(ModelCallInputs.builder()
-                .messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList())
+                .messages(buildPreviewMessages(context))
+                .tools(tools != null ? new ArrayList<>(tools) : null)
                 .build());
 
-        return railedModelCall(ctx);
+        return railedModelCall(ctx, context);
     }
 
     /**
      * Execute LLM call with rail before/after/on_exception hooks.
      */
-    private AssistantMessage railedModelCall(AgentCallbackContext ctx) {
+    private AssistantMessage railedModelCall(AgentCallbackContext ctx, ModelContext context) {
         return RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
+                    finalizeModelCallInputs(ctx, context);
                     Model model = getLlm();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
@@ -223,7 +341,8 @@ public class ReActAgent extends BaseAgent {
                                     ? inputs.getTools() : null,
                             null, null,
                             config.getModelName(),
-                            null, null, null, null, null
+                            null, null, null, null,
+                            buildModelCallKwargs(ctx.getSession(), model)
                     );
 
                     inputs.setResponse(aiMessage);
@@ -262,6 +381,17 @@ public class ReActAgent extends BaseAgent {
             List<AbilityManager.ToolExecutionEntry> toolFacts,
             ModelContext context
     ) {
+        return interpretToolExecutionFacts(toolFacts, context, null, null, 0, "");
+    }
+
+    private Optional<TerminalOutcome> interpretToolExecutionFacts(
+            List<AbilityManager.ToolExecutionEntry> toolFacts,
+            ModelContext context,
+            AgentSessionApi stateSession,
+            AssistantMessage aiMessage,
+            int iteration,
+            String originalQuery
+    ) {
         if (toolFacts == null || toolFacts.isEmpty()) {
             return Optional.empty();
         }
@@ -271,13 +401,34 @@ public class ReActAgent extends BaseAgent {
                 context.addMessages(entry.toolMessage());
             }
 
+            for (UserMessage multimodalMessage : buildMultimodalToolResultMessages(entry.result())) {
+                context.addMessages(multimodalMessage);
+            }
+
             if (entry.classification() == AbilityManager.ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE) {
-                return Optional.of(buildInterruptPendingOutcome("Execution interrupted"));
+                TerminalOutcome outcome = buildInterruptPendingOutcome("Execution interrupted");
+                persistInterruptState(stateSession, iteration, List.of(entry.toolCall()), outcome);
+                return Optional.of(buildInterruptPendingOutcome(
+                        resolveInterruptMessage(outcome),
+                        resolveConversationId(stateSession).orElse(null),
+                        resolveInteractionId(List.of(entry.toolCall())).orElse(null)
+                ));
             }
 
             if (entry.classification() == AbilityManager.ToolExecutionClassification.ERROR) {
-                return Optional.of(buildFailureOutcome("Tool execution failed"));
+                continue;
             }
+        }
+
+        Optional<WorkflowInterruptState> workflowState = buildWorkflowInterruptState(
+                toolFacts,
+                aiMessage,
+                iteration,
+                originalQuery,
+                resolveConversationId(stateSession).orElse(null)
+        );
+        if (workflowState.isPresent()) {
+            return Optional.of(commitWorkflowInterrupt(workflowState.get(), context, stateSession));
         }
 
         return Optional.empty();
@@ -372,13 +523,15 @@ public class ReActAgent extends BaseAgent {
                 .inputs(invokeInputs)
                 .session(runtimeSession)
                 .build();
+        ctx.bindSteeringQueue(resolveSteeringQueue(runtimeSession));
+        populateInvocationExtra(ctx, inputs, false);
         Object invokeLifecycleInputs = ctx.getInputs();
 
         // Fire BEFORE_INVOKE
         fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         try {
-            PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
+            PreparedExecution prepared = prepareExecution(ctx, runtimeSession, inputs);
             TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, null, inputs);
             restoreInterrupt = captureAndClearInterrupt();
             if (terminalOutcome.failureCause() != null) {
@@ -418,11 +571,13 @@ public class ReActAgent extends BaseAgent {
                         .inputs(invokeInputs)
                         .session(runtimeSession)
                         .build();
+                ctx.bindSteeringQueue(resolveSteeringQueue(runtimeSession));
+                populateInvocationExtra(ctx, inputs, true);
                 invokeLifecycleInputs = ctx.getInputs();
 
                 fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
-                PreparedExecution prepared = prepareExecution(ctx, runtimeSession);
+                PreparedExecution prepared = prepareExecution(ctx, runtimeSession, inputs);
                 TerminalOutcome terminalOutcome = runSharedLoop(ctx, prepared, runtimeSession, agentSession, inputs);
                 restoreInterruptState[0] = captureAndClearInterrupt();
                 invokeInputs.setResult(terminalOutcome.invokeResult());
@@ -524,7 +679,6 @@ public class ReActAgent extends BaseAgent {
     private record PreparedExecution(
             InvokeInputs invokeInputs,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools
     ) {
     }
@@ -550,6 +704,28 @@ public class ReActAgent extends BaseAgent {
             String interactionId,
             String interruptMessage,
             boolean resumeProducedTerminal
+    ) {
+    }
+
+    private record WorkflowInterruptEntry(
+            ToolCall toolCall,
+            List<String> componentIds,
+            WorkflowOutput workflowExecutionState,
+            InteractiveInput collectedInput
+    ) {
+        WorkflowInterruptEntry withCollectedInput(InteractiveInput input) {
+            return new WorkflowInterruptEntry(toolCall, componentIds, workflowExecutionState, input);
+        }
+    }
+
+    private record WorkflowInterruptState(
+            int iteration,
+            String conversationId,
+            AssistantMessage aiMessage,
+            Map<String, WorkflowInterruptEntry> interruptedWorkflows,
+            String pendingWorkflowId,
+            String pendingComponentId,
+            String originalQuery
     ) {
     }
 
@@ -593,6 +769,86 @@ public class ReActAgent extends BaseAgent {
         }
         clearInterruptState(stateSession);
         return new ResumeContinuation(interruptState.iteration(), toolOutcome.get());
+    }
+
+    private ResumeContinuation continueInterruptedWorkflow(
+            ModelContext context,
+            Session session,
+            AgentSessionApi stateSession,
+            WorkflowInterruptState interruptState,
+            InteractiveInput resumeInput
+    ) {
+        Map<String, WorkflowInterruptEntry> workflows = new LinkedHashMap<>(interruptState.interruptedWorkflows());
+        WorkflowInterruptEntry pendingEntry = workflows.get(interruptState.pendingWorkflowId());
+        if (pendingEntry == null) {
+            clearWorkflowInterruptState(stateSession);
+            return new ResumeContinuation(0, buildFailureOutcome("missing interrupt state for resume"));
+        }
+
+        InteractiveInput collectedInput = buildInteractiveInput(resumeInput, List.of(interruptState.pendingComponentId()));
+        workflows.put(interruptState.pendingWorkflowId(), pendingEntry.withCollectedInput(collectedInput));
+
+        for (Map.Entry<String, WorkflowInterruptEntry> entry : workflows.entrySet()) {
+            if (entry.getValue().collectedInput() == null) {
+                WorkflowInterruptState nextState = new WorkflowInterruptState(
+                        interruptState.iteration(),
+                        interruptState.conversationId(),
+                        interruptState.aiMessage(),
+                        workflows,
+                        entry.getKey(),
+                        firstComponentId(entry.getValue().componentIds()).orElse(""),
+                        interruptState.originalQuery()
+                );
+                return new ResumeContinuation(
+                        interruptState.iteration(),
+                        commitWorkflowInterrupt(nextState, context, stateSession)
+                );
+            }
+        }
+
+        context.addMessages(copyAssistantMessage(interruptState.aiMessage()));
+
+        List<AbilityManager.ToolExecutionEntry> toolFacts = new ArrayList<>();
+        for (WorkflowInterruptEntry entry : workflows.values()) {
+            ToolCall resumedToolCall = copyToolCall(entry.toolCall());
+            toolFacts.add(getAbilityManager().executeWorkflowCall(
+                    resumedToolCall,
+                    entry.collectedInput(),
+                    session,
+                    null
+            ));
+        }
+
+        Optional<TerminalOutcome> terminalOutcome = interpretToolExecutionFacts(
+                toolFacts,
+                context,
+                stateSession,
+                interruptState.aiMessage(),
+                interruptState.iteration(),
+                interruptState.originalQuery()
+        );
+        if (terminalOutcome.isPresent()) {
+            return new ResumeContinuation(interruptState.iteration(), terminalOutcome.get());
+        }
+
+        clearWorkflowInterruptState(stateSession);
+        return new ResumeContinuation(interruptState.iteration() + 1, null);
+    }
+
+    private TerminalOutcome commitWorkflowInterrupt(
+            WorkflowInterruptState interruptState,
+            ModelContext context,
+            AgentSessionApi stateSession
+    ) {
+        WorkflowInterruptEntry pendingEntry = interruptState.interruptedWorkflows().get(interruptState.pendingWorkflowId());
+        if (pendingEntry != null && pendingEntry.toolCall() != null) {
+            context.addMessages(ToolMessage.builder()
+                    .toolCallId(pendingEntry.toolCall().getId())
+                    .content(INTERRUPTED_TOOL_PLACEHOLDER)
+                    .build());
+        }
+        persistWorkflowInterruptState(stateSession, interruptState);
+        return buildWorkflowInterruptOutcome(interruptState);
     }
 
     private void persistInterruptState(
@@ -653,6 +909,34 @@ public class ReActAgent extends BaseAgent {
         }
         Map<String, Object> clearedState = new HashMap<>();
         clearedState.put("react_interrupt_state", null);
+        stateSession.updateState(clearedState);
+    }
+
+    private void persistWorkflowInterruptState(AgentSessionApi stateSession, WorkflowInterruptState interruptState) {
+        if (stateSession == null || interruptState == null) {
+            return;
+        }
+        Map<String, Object> state = new HashMap<>();
+        state.put(REACT_WORKFLOW_INTERRUPT_STATE_KEY, interruptState);
+        stateSession.updateState(state);
+    }
+
+    private Optional<WorkflowInterruptState> readWorkflowInterruptState(AgentSessionApi stateSession) {
+        if (stateSession == null) {
+            return Optional.empty();
+        }
+        Object rawState = stateSession.getState(REACT_WORKFLOW_INTERRUPT_STATE_KEY);
+        return rawState instanceof WorkflowInterruptState workflowInterruptState
+                ? Optional.of(workflowInterruptState)
+                : Optional.empty();
+    }
+
+    private void clearWorkflowInterruptState(AgentSessionApi stateSession) {
+        if (stateSession == null) {
+            return;
+        }
+        Map<String, Object> clearedState = new HashMap<>();
+        clearedState.put(REACT_WORKFLOW_INTERRUPT_STATE_KEY, null);
         stateSession.updateState(clearedState);
     }
 
@@ -762,6 +1046,223 @@ public class ReActAgent extends BaseAgent {
         return stringValue.isBlank() ? Optional.empty() : Optional.of(stringValue);
     }
 
+    private Optional<WorkflowInterruptState> buildWorkflowInterruptState(
+            List<AbilityManager.ToolExecutionEntry> toolFacts,
+            AssistantMessage aiMessage,
+            int iteration,
+            String originalQuery,
+            String conversationId
+    ) {
+        if (aiMessage == null || toolFacts == null || toolFacts.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<String, WorkflowInterruptEntry> interrupted = new LinkedHashMap<>();
+        String firstWorkflowId = null;
+        String firstComponentId = null;
+        for (AbilityManager.ToolExecutionEntry entry : toolFacts) {
+            if (!isInterruptedWorkflowResult(entry.result())) {
+                continue;
+            }
+
+            String workflowId = resolveWorkflowId(entry.toolCall());
+            List<String> componentIds = extractComponentIds((WorkflowOutput) entry.result());
+            interrupted.put(workflowId, new WorkflowInterruptEntry(
+                    copyToolCall(entry.toolCall()),
+                    componentIds,
+                    (WorkflowOutput) entry.result(),
+                    null
+            ));
+            if (firstWorkflowId == null) {
+                firstWorkflowId = workflowId;
+                firstComponentId = firstComponentId(componentIds).orElse("");
+            }
+        }
+
+        if (interrupted.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new WorkflowInterruptState(
+                iteration,
+                safeString(conversationId),
+                copyAssistantMessage(aiMessage),
+                interrupted,
+                firstWorkflowId,
+                safeString(firstComponentId),
+                safeString(originalQuery)
+        ));
+    }
+
+    private boolean isInterruptedWorkflowResult(Object result) {
+        return result instanceof WorkflowOutput workflowOutput
+                && workflowOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED;
+    }
+
+    private List<String> extractComponentIds(WorkflowOutput workflowOutput) {
+        List<String> ids = new ArrayList<>();
+        if (workflowOutput == null || !(workflowOutput.getResult() instanceof List<?> schemas)) {
+            return ids;
+        }
+        for (Object item : schemas) {
+            if (item instanceof OutputSchema schema) {
+                schemaInteractionId(schema).ifPresent(ids::add);
+            }
+        }
+        ids.sort(String::compareTo);
+        return ids;
+    }
+
+    private Optional<String> schemaInteractionId(OutputSchema schema) {
+        if (schema == null || !"__interaction__".equals(schema.getType())) {
+            return Optional.empty();
+        }
+        Object payload = schema.getPayload();
+        if (payload instanceof InteractionOutput interactionOutput) {
+            return stringValue(interactionOutput.getId());
+        }
+        if (payload instanceof Map<?, ?> payloadMap) {
+            Object id = payloadMap.get("id");
+            if (id == null) {
+                id = payloadMap.get("component_id");
+            }
+            return stringValue(id);
+        }
+        return Optional.empty();
+    }
+
+    private String resolveWorkflowId(ToolCall toolCall) {
+        if (toolCall == null || toolCall.getName() == null) {
+            return "";
+        }
+        Object ability = getAbilityManager().get(toolCall.getName());
+        if (ability instanceof WorkflowCard workflowCard) {
+            String id = workflowCard.getId();
+            if (id != null && !id.isBlank()) {
+                return id;
+            }
+            String name = workflowCard.getName();
+            if (name != null && !name.isBlank()) {
+                return name;
+            }
+        }
+        return toolCall.getName();
+    }
+
+    private Optional<String> firstComponentId(List<String> componentIds) {
+        return componentIds == null || componentIds.isEmpty()
+                ? Optional.empty()
+                : Optional.ofNullable(componentIds.get(0));
+    }
+
+    private TerminalOutcome buildWorkflowInterruptOutcome(WorkflowInterruptState interruptState) {
+        WorkflowInterruptEntry pendingEntry = interruptState.interruptedWorkflows().get(interruptState.pendingWorkflowId());
+        OutputSchema streamSchema = selectInteractionSchema(pendingEntry, interruptState.pendingComponentId())
+                .orElseGet(() -> new OutputSchema(
+                        "__interaction__",
+                        0,
+                        new InteractionOutput(interruptState.pendingComponentId(), "Execution interrupted")
+                ));
+
+        Map<String, Object> invokePayload = new HashMap<>();
+        invokePayload.put("result_type", "interrupt");
+        invokePayload.put("workflow_execution_state", pendingEntry != null ? pendingEntry.workflowExecutionState() : null);
+        invokePayload.put("component_ids", List.of(safeString(interruptState.pendingComponentId())));
+        return new TerminalOutcome(TerminalBranch.INTERRUPT_PENDING, invokePayload, streamSchema, null);
+    }
+
+    private Optional<OutputSchema> selectInteractionSchema(WorkflowInterruptEntry entry, String componentId) {
+        if (entry == null || entry.workflowExecutionState() == null
+                || !(entry.workflowExecutionState().getResult() instanceof List<?> schemas)) {
+            return Optional.empty();
+        }
+        OutputSchema fallback = null;
+        for (Object item : schemas) {
+            if (!(item instanceof OutputSchema schema) || !"__interaction__".equals(schema.getType())) {
+                continue;
+            }
+            if (fallback == null) {
+                fallback = schema;
+            }
+            if (schemaInteractionId(schema).filter(id -> id.equals(componentId)).isPresent()) {
+                return Optional.of(schema);
+            }
+        }
+        return Optional.ofNullable(fallback);
+    }
+
+    private InteractiveInput buildInteractiveInput(InteractiveInput userInput, List<String> componentIds) {
+        String fallback = extractUserText(userInput);
+        InteractiveInput interactiveInput = new InteractiveInput();
+        if (componentIds != null && !componentIds.isEmpty()) {
+            for (String componentId : componentIds) {
+                if (componentId == null || componentId.isBlank()) {
+                    continue;
+                }
+                Object value = null;
+                if (userInput != null && userInput.getUserInputs() != null) {
+                    value = userInput.getUserInputs().get(componentId);
+                    if (value == null && userInput.getUserInputs().size() == 1) {
+                        value = userInput.getUserInputs().values().iterator().next();
+                    }
+                }
+                interactiveInput.update(componentId, value != null ? value : fallback);
+            }
+            return interactiveInput;
+        }
+        return new InteractiveInput(fallback);
+    }
+
+    private String extractUserText(InteractiveInput userInput) {
+        if (userInput == null) {
+            return "";
+        }
+        if (userInput.getUserInputs() != null && !userInput.getUserInputs().isEmpty()) {
+            Object first = userInput.getUserInputs().values().iterator().next();
+            return first != null ? String.valueOf(first) : "";
+        }
+        Object rawInputs = userInput.getRawInputs();
+        return rawInputs != null ? String.valueOf(rawInputs) : "";
+    }
+
+    private AssistantMessage copyAssistantMessage(AssistantMessage source) {
+        if (source == null) {
+            return AssistantMessage.builder().content("").build();
+        }
+        return AssistantMessage.builder()
+                .content(source.getContent())
+                .toolCalls(copyToolCalls(source.getToolCalls()))
+                .usageMetadata(source.getUsageMetadata())
+                .finishReason(source.getFinishReason())
+                .parserContent(source.getParserContent())
+                .reasoningContent(source.getReasoningContent())
+                .build();
+    }
+
+    private List<ToolCall> copyToolCalls(List<ToolCall> source) {
+        if (source == null) {
+            return null;
+        }
+        List<ToolCall> copies = new ArrayList<>(source.size());
+        for (ToolCall toolCall : source) {
+            copies.add(copyToolCall(toolCall));
+        }
+        return copies;
+    }
+
+    private ToolCall copyToolCall(ToolCall source) {
+        if (source == null) {
+            return null;
+        }
+        return ToolCall.builder()
+                .id(source.getId())
+                .type(source.getType())
+                .name(source.getName())
+                .arguments(source.getArguments())
+                .index(source.getIndex())
+                .build();
+    }
+
     private static boolean safeEquals(Object a, Object b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
@@ -773,6 +1274,7 @@ public class ReActAgent extends BaseAgent {
      */
     private AssistantMessage railedModelStreamCall(
             AgentCallbackContext ctx,
+            ModelContext context,
             AgentSessionApi agentSession,
             int[] chunkIndexRef,
             StringBuilder visibleOutput
@@ -783,6 +1285,7 @@ public class ReActAgent extends BaseAgent {
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
+                    finalizeModelCallInputs(ctx, context);
                     Model model = getLlm();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
@@ -792,7 +1295,8 @@ public class ReActAgent extends BaseAgent {
                                     ? inputs.getTools() : null,
                             null, null,
                             config.getModelName(),
-                            null, null, null, null, null
+                            null, null, null, null,
+                            buildModelCallKwargs(ctx.getSession(), model)
                     );
 
                     AssistantMessageChunk mergedChunk = null;
@@ -828,25 +1332,17 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModelStream(
             AgentCallbackContext ctx,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools,
             AgentSessionApi agentSession,
             int[] chunkIndexRef,
             StringBuilder visibleOutput
     ) {
-        var contextWindow = context.getContextWindow(
-                systemMessages,
-                tools != null ? tools : null,
-                (Integer) null,
-                (Integer) null
-        );
-
         ctx.setInputs(ModelCallInputs.builder()
-                .messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList())
+                .messages(buildPreviewMessages(context))
+                .tools(tools != null ? new ArrayList<>(tools) : null)
                 .build());
 
-        return railedModelStreamCall(ctx, agentSession, chunkIndexRef, visibleOutput);
+        return railedModelStreamCall(ctx, context, agentSession, chunkIndexRef, visibleOutput);
     }
 
     private InvokeInputs buildInvokeInputs(Object inputs) {
@@ -855,7 +1351,7 @@ public class ReActAgent extends BaseAgent {
         }
 
         if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
-            throw new IllegalArgumentException("Input must be Map with 'query', String, or InteractiveInput");
+            throw new IllegalArgumentException("Input must be dict with 'query', str, or InteractiveInput");
         }
 
         String query;
@@ -883,7 +1379,7 @@ public class ReActAgent extends BaseAgent {
                 .build();
     }
 
-    private PreparedExecution prepareExecution(AgentCallbackContext ctx, Session session) {
+    private PreparedExecution prepareExecution(AgentCallbackContext ctx, Session session, Object rawInputs) {
         String userInput = ((InvokeInputs) ctx.getInputs()).getQuery();
         ModelContext context = initContext(session);
         ctx.setContext(context);
@@ -891,28 +1387,181 @@ public class ReActAgent extends BaseAgent {
             context.addMessages(new UserMessage(userInput));
         }
 
-        List<BaseMessage> systemMessages = buildSystemMessages();
+        Object memoryVariables = ctx.getExtra() != null ? ctx.getExtra().get("memory_variables") : null;
+        rebuildPromptBuilderSections(rawInputs, memoryVariables);
         List<ToolInfo> tools = getAbilityManager().listToolInfo();
-        return new PreparedExecution((InvokeInputs) ctx.getInputs(), context, systemMessages, tools);
+        return new PreparedExecution((InvokeInputs) ctx.getInputs(), context, tools);
     }
 
-    private List<BaseMessage> buildSystemMessages() {
-        List<BaseMessage> systemMessages = new ArrayList<>();
+    private String buildRenderedSystemPrompt(Object rawInputs, Object extraRenderFields) {
+        Map<String, Object> renderFields = buildRenderFields(rawInputs, extraRenderFields);
+        List<String> systemContents = new ArrayList<>();
         if (config.getPromptTemplate() != null) {
             for (Map<String, String> msg : config.getPromptTemplate()) {
                 if ("system".equals(msg.get("role"))) {
-                    systemMessages.add(new SystemMessage(msg.get("content")));
+                    String rendered = renderSystemContent(msg.get("content"), renderFields);
+                    if (rendered != null && !rendered.isBlank()) {
+                        systemContents.add(rendered);
+                    }
                 }
             }
         }
+        return String.join("\n\n", systemContents);
+    }
 
-        if (!systemMessages.isEmpty() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
-            warnMissingSkillReadFileTool();
-            String skillPrompt = getSkillUtil().getSkillPrompt();
-            BaseMessage lastMsg = systemMessages.get(systemMessages.size() - 1);
-            lastMsg.setContent((lastMsg.getContent() != null ? lastMsg.getContent() : "") + "\n" + skillPrompt);
+    private void rebuildPromptBuilderSections(Object rawInputs, Object extraRenderFields) {
+        if (systemPromptBuilder == null) {
+            systemPromptBuilder = new SystemPromptBuilder();
+        } else {
+            systemPromptBuilder.removeSection(IDENTITY_SECTION);
+            systemPromptBuilder.removeSection(SKILLS_SECTION);
         }
-        return systemMessages;
+
+        String renderedSystemPrompt = buildRenderedSystemPrompt(rawInputs, extraRenderFields);
+        addPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
+
+        if (!renderedSystemPrompt.isBlank() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
+            warnMissingSkillReadFileTool();
+            addPromptBuilderSection(SKILLS_SECTION, getSkillUtil().getSkillPrompt(), SKILLS_SECTION_PRIORITY);
+        } else if (systemPromptBuilder != null) {
+            systemPromptBuilder.removeSection(SKILLS_SECTION);
+        }
+    }
+
+    private List<Object> buildPreviewMessages(ModelContext context) {
+        List<Object> previewMessages = new ArrayList<>();
+        String previewSystemPrompt = systemPromptBuilder != null ? systemPromptBuilder.build() : "";
+        if (!previewSystemPrompt.isBlank()) {
+            previewMessages.add(new SystemMessage(previewSystemPrompt));
+        }
+        for (BaseMessage message : context.getMessages()) {
+            previewMessages.add(copyMessage(message));
+        }
+        return previewMessages;
+    }
+
+    private void finalizeModelCallInputs(AgentCallbackContext ctx, ModelContext context) {
+        Model model = getLlm();
+        ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
+        List<BaseMessage> finalSystemMessages = new ArrayList<>();
+        String finalSystemPrompt = systemPromptBuilder != null ? systemPromptBuilder.build() : "";
+        if (!finalSystemPrompt.isBlank()) {
+            finalSystemMessages.add(new SystemMessage(finalSystemPrompt));
+        }
+
+        var contextWindow = context.getContextWindow(
+                finalSystemMessages,
+                inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null,
+                (Integer) null,
+                (Integer) null,
+                buildContextWindowKwargs(model)
+        );
+
+        inputs.setMessages(new ArrayList<>(contextWindow.getMessages()));
+        inputs.setTools(contextWindow.getToolList());
+    }
+
+    private BaseMessage copyMessage(BaseMessage message) {
+        if (message == null) {
+            return null;
+        }
+        if (message instanceof AssistantMessage assistantMessage) {
+            return copyAssistantMessage(assistantMessage);
+        }
+        if (message instanceof ToolMessage toolMessage) {
+            ToolMessage copy = new ToolMessage();
+            copy.setRole(toolMessage.getRole());
+            copy.setContent(copyContent(toolMessage.getContent()));
+            copy.setName(toolMessage.getName());
+            copy.setToolCallId(toolMessage.getToolCallId());
+            return copy;
+        }
+        if (message instanceof SystemMessage systemMessage) {
+            SystemMessage copy = new SystemMessage();
+            copy.setRole(systemMessage.getRole());
+            copy.setContent(copyContent(systemMessage.getContent()));
+            copy.setName(systemMessage.getName());
+            return copy;
+        }
+        if (message instanceof UserMessage userMessage) {
+            UserMessage copy = new UserMessage();
+            copy.setRole(userMessage.getRole());
+            copy.setContent(copyContent(userMessage.getContent()));
+            copy.setName(userMessage.getName());
+            return copy;
+        }
+        BaseMessage copy = new BaseMessage();
+        copy.setRole(message.getRole());
+        copy.setContent(copyContent(message.getContent()));
+        copy.setName(message.getName());
+        return copy;
+    }
+
+    private Object copyContent(Object content) {
+        if (content instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        if (content instanceof Map<?, ?> map) {
+            return new LinkedHashMap<>(map);
+        }
+        return content;
+    }
+
+    private void populateInvocationExtra(AgentCallbackContext ctx, Object inputs, boolean streaming) {
+        Map<String, Object> extra = ctx.getExtra();
+        if (extra == null) {
+            extra = new HashMap<>();
+            ctx.setExtra(extra);
+        }
+        extra.put("_streaming", streaming);
+        if (inputs instanceof Map<?, ?> inputMap) {
+            extra.put("user_id", stringOrEmpty(inputMap.get("user_id")));
+            extra.put("run_kind", stringOrEmpty(inputMap.get("run_kind")));
+            extra.put("run_context", stringOrEmpty(inputMap.get("run_context")));
+        }
+    }
+
+    private static Map<String, Object> buildRenderFields(Object rawInputs, Object extraRenderFields) {
+        Map<String, Object> renderFields = new LinkedHashMap<>();
+        if (rawInputs instanceof Map<?, ?> inputMap) {
+            for (Map.Entry<?, ?> entry : inputMap.entrySet()) {
+                if (entry.getValue() instanceof String value) {
+                    renderFields.put(String.valueOf(entry.getKey()), value);
+                }
+            }
+        } else if (rawInputs != null && !(rawInputs instanceof InteractiveInput)) {
+            renderFields.put("query", String.valueOf(rawInputs));
+        }
+
+        if (extraRenderFields instanceof Map<?, ?> extraMap) {
+            for (Map.Entry<?, ?> entry : extraMap.entrySet()) {
+                if (entry.getValue() instanceof String value) {
+                    renderFields.put(String.valueOf(entry.getKey()), value);
+                }
+            }
+        }
+        return renderFields;
+    }
+
+    private static String renderSystemContent(String content, Map<String, Object> renderFields) {
+        if (content == null || renderFields == null || renderFields.isEmpty()) {
+            return content;
+        }
+        try {
+            Object rendered = PromptTemplate.builder()
+                    .content(content)
+                    .build()
+                    .format(renderFields)
+                    .getContent();
+            return rendered instanceof String text ? text : content;
+        } catch (RuntimeException e) {
+            Loggers.AGENT.warning("Failed to render system message placeholder: {}", e.getMessage());
+            return content;
+        }
+    }
+
+    private static String stringOrEmpty(Object value) {
+        return value != null ? String.valueOf(value) : "";
     }
 
     private TerminalOutcome runSharedLoop(
@@ -926,13 +1575,43 @@ public class ReActAgent extends BaseAgent {
         StringBuilder visibleOutput = new StringBuilder();
         AgentSessionApi stateSession = session instanceof AgentSessionApi agentStateSession ? agentStateSession : null;
         try {
-            Optional<InterruptState> interruptState = readInterruptState(stateSession);
-            if (interruptState.isEmpty() && rawInputs instanceof InteractiveInput) {
+            Optional<WorkflowInterruptState> workflowInterruptState = readWorkflowInterruptState(stateSession);
+            Optional<InterruptState> interruptState = workflowInterruptState.isEmpty()
+                    ? readInterruptState(stateSession)
+                    : Optional.empty();
+            if (workflowInterruptState.isEmpty() && interruptState.isEmpty() && rawInputs instanceof InteractiveInput) {
                 return buildFailureOutcome("missing interrupt state for resume");
             }
 
             int startIteration = 0;
-            if (interruptState.isPresent()) {
+            if (workflowInterruptState.isPresent()) {
+                WorkflowInterruptState savedWorkflowState = workflowInterruptState.get();
+                Optional<InteractiveInput> resumeInput = normalizeResumeInput(rawInputs);
+                if (resumeInput.isEmpty()) {
+                    return buildWorkflowInterruptOutcome(savedWorkflowState);
+                }
+                if (!matchesConversation(stateSession, savedWorkflowState.conversationId())) {
+                    clearWorkflowInterruptState(stateSession);
+                    return buildFailureOutcome("missing interrupt state for resume");
+                }
+
+                String resumeText = extractUserText(resumeInput.get());
+                if (!resumeText.isBlank()) {
+                    prepared.context().addMessages(new UserMessage(resumeText));
+                }
+
+                ResumeContinuation continuation = continueInterruptedWorkflow(
+                        prepared.context(),
+                        session,
+                        stateSession,
+                        savedWorkflowState,
+                        resumeInput.get()
+                );
+                if (continuation.terminalOutcome() != null) {
+                    return continuation.terminalOutcome();
+                }
+                startIteration = continuation.nextIteration();
+            } else if (interruptState.isPresent()) {
                 InterruptState savedInterruptState = interruptState.get();
                 Optional<InteractiveInput> resumeInput = normalizeResumeInput(rawInputs);
                 if (resumeInput.isEmpty()) {
@@ -963,13 +1642,13 @@ public class ReActAgent extends BaseAgent {
 
             for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
                 Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+                injectPendingSteering(ctx, prepared.context());
 
                 AssistantMessage aiMessage = agentSession == null
-                        ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
+                        ? callModel(ctx, prepared.context(), prepared.tools())
                         : callModelStream(
                                 ctx,
                                 prepared.context(),
-                                prepared.systemMessages(),
                                 prepared.tools(),
                                 agentSession,
                                 chunkIndexRef,
@@ -992,15 +1671,17 @@ public class ReActAgent extends BaseAgent {
                             session,
                             prepared.context()
                     );
-                    Optional<TerminalOutcome> toolOutcome = interpretToolExecutionFacts(toolFacts, prepared.context());
+                    Optional<TerminalOutcome> toolOutcome = interpretToolExecutionFacts(
+                            toolFacts,
+                            prepared.context(),
+                            stateSession,
+                            aiMessage,
+                            iteration,
+                            prepared.invokeInputs().getQuery()
+                    );
                     if (toolOutcome.isPresent()) {
                         if (toolOutcome.get().branch() == TerminalBranch.INTERRUPT_PENDING) {
-                            persistInterruptState(stateSession, iteration, aiMessage.getToolCalls(), toolOutcome.get());
-                            return buildInterruptPendingOutcome(
-                                    resolveInterruptMessage(toolOutcome.get()),
-                                    resolveConversationId(session).orElse(null),
-                                    resolveInteractionId(aiMessage.getToolCalls()).orElse(null)
-                            );
+                            return toolOutcome.get();
                         }
                         return toolOutcome.get();
                     }
@@ -1024,6 +1705,22 @@ public class ReActAgent extends BaseAgent {
             Loggers.AGENT.error("ReActAgent shared loop error: " + errorMsg);
             return buildFailureOutcome(errorMsg, e);
         }
+    }
+
+    private void injectPendingSteering(AgentCallbackContext ctx, ModelContext context) {
+        List<String> messages = ctx != null ? ctx.drainSteering() : List.of();
+        for (String message : messages) {
+            if (message != null && !message.isBlank()) {
+                context.addMessages(new UserMessage("[STEERING] " + message));
+            }
+        }
+    }
+
+    private Queue<String> resolveSteeringQueue(Session session) {
+        if (session == null || session.getSessionId() == null || session.getSessionId().isBlank()) {
+            return steeringQueue;
+        }
+        return steeringQueuesBySession.computeIfAbsent(session.getSessionId(), key -> new ConcurrentLinkedQueue<>());
     }
 
     private void rethrowInvokeException(Throwable throwable) {
@@ -1064,6 +1761,66 @@ public class ReActAgent extends BaseAgent {
 
     private String normalizeChunkText(Object content) {
         return content == null ? "" : String.valueOf(content);
+    }
+
+    /**
+     * Build extra user messages for multimodal tool outputs.
+     *
+     * <p>Mirrors Python's {@code ReActAgent._build_multimodal_tool_result_messages}.</p>
+     *
+     * @param toolResult raw tool execution result
+     * @return user messages containing image parts
+     */
+    static List<UserMessage> buildMultimodalToolResultMessages(Object toolResult) {
+        Object data = readBeanValue(toolResult, "getData");
+        if (!(data instanceof Map<?, ?> dataMap)) {
+            return List.of();
+        }
+
+        Object multimodalItems = dataMap.get("multimodal");
+        if (!(multimodalItems instanceof List<?> items)) {
+            return List.of();
+        }
+
+        List<UserMessage> messages = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> itemMap) || !"image".equals(itemMap.get("type"))) {
+                continue;
+            }
+            Object dataUrl = itemMap.get("data_url");
+            if (!(dataUrl instanceof String url) || !url.startsWith("data:image/")) {
+                continue;
+            }
+
+            Object sourcePathValue = itemMap.get("source_path");
+            String sourcePath = sourcePathValue != null ? String.valueOf(sourcePathValue) : "unknown image";
+            Map<String, Object> textPart = new LinkedHashMap<>();
+            textPart.put("type", "text");
+            textPart.put("text", "Image loaded from read_file: " + sourcePath);
+
+            Map<String, Object> imageUrl = new LinkedHashMap<>();
+            imageUrl.put("url", url);
+            Map<String, Object> imagePart = new LinkedHashMap<>();
+            imagePart.put("type", "image_url");
+            imagePart.put("image_url", imageUrl);
+
+            messages.add(UserMessage.builder()
+                    .content(List.of(textPart, imagePart))
+                    .build());
+        }
+        return messages;
+    }
+
+    private static Object readBeanValue(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException | SecurityException ignored) {
+            return null;
+        }
     }
 
     private boolean hasToolCalls(AssistantMessage aiMessage) {

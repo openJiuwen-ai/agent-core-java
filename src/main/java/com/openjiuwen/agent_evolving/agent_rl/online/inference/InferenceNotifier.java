@@ -108,7 +108,9 @@ public class InferenceNotifier {
      * Close HTTP client if owned.
      */
     public void close() {
-        // HttpClient doesn't need explicit close in Java
+        if (ownedClient && httpClient != null) {
+            httpClient.close();
+        }
     }
 
     private String toJson(Map<String, Object> map) {

@@ -11,7 +11,8 @@ import lombok.AllArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+
+import com.openjiuwen.core.session.Session;
 
 /**
  * Drive message published to container topics by HandoffTeam.
@@ -36,9 +37,34 @@ public class HandoffRequest {
     
     /** Accumulated handoff history across hops. */
     private List<Map<String, Object>> history = new ArrayList<>();
+
+    /** Team session for stream I/O. */
+    private Session session;
     
-    /** Session ID for stream I/O. */
+    /** Explicit session ID for lightweight Java call paths. */
     private String sessionId;
+
+    public HandoffRequest(Object inputMessage) {
+        this(inputMessage, new ArrayList<>(), (String) null);
+    }
+
+    public HandoffRequest(Object inputMessage, List<Map<String, Object>> history) {
+        this(inputMessage, history, (String) null);
+    }
+
+    public HandoffRequest(Object inputMessage, List<Map<String, Object>> history, String sessionId) {
+        this.inputMessage = inputMessage;
+        this.history = history != null ? history : new ArrayList<>();
+        this.sessionId = sessionId;
+        this.session = null;
+    }
+
+    public HandoffRequest(Object inputMessage, List<Map<String, Object>> history, Session session) {
+        this.inputMessage = inputMessage;
+        this.history = history != null ? history : new ArrayList<>();
+        this.session = session;
+        this.sessionId = null;
+    }
     
     /**
      * Get session ID, returning empty string if not attached.
@@ -46,6 +72,9 @@ public class HandoffRequest {
      * @return session ID or empty string
      */
     public String getSessionId() {
+        if (session != null) {
+            return session.getSessionId();
+        }
         return sessionId != null ? sessionId : "";
     }
 }

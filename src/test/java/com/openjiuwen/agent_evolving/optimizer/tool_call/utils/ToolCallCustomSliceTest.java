@@ -156,6 +156,28 @@ class ToolCallCustomSliceTest {
     }
 
     @Test
+    void simpleEvalArgumentTruthinessMatchesPython() {
+        StubSimpleEval evaluator = new StubSimpleEval(null, Map.of("eval_model_id", "gpt-test"), 0.4d, 0.6d);
+
+        Map<String, Object> generatedEmpty = new LinkedHashMap<>();
+        generatedEmpty.put("name", "ok_fn");
+        generatedEmpty.put("arguments", "");
+        Map<String, Object> expectedEmpty = new LinkedHashMap<>();
+        expectedEmpty.put("name", "ok_fn");
+        expectedEmpty.put("arguments", "");
+
+        Map<String, Object> generatedBlank = new LinkedHashMap<>();
+        generatedBlank.put("name", "ok_fn");
+        generatedBlank.put("arguments", "   ");
+        Map<String, Object> expectedBlank = new LinkedHashMap<>();
+        expectedBlank.put("name", "ok_fn");
+        expectedBlank.put("arguments", "   ");
+
+        assertEquals(1.0d, evaluator.evaluateFunctionCallAccuracy(generatedEmpty, expectedEmpty), 1e-9d);
+        assertEquals(0.0d, evaluator.evaluateFunctionCallAccuracy(generatedBlank, expectedBlank), 1e-9d);
+    }
+
+    @Test
     void customizedPipelineRejectsUnsupportedInputs() {
         assertThrows(
                 UnsupportedOperationException.class,
@@ -179,6 +201,29 @@ class ToolCallCustomSliceTest {
                         Map.of("name", "tool"),
                         Map.of(),
                         (Function<Map<String, Object>, Object>) params -> params
+                )
+        );
+    }
+
+    @Test
+    void legacyCustomizedPipelineFacadeDelegatesToCanonicalPackage() {
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> com.openjiuwen.agent_evolving.optimizer.toolcall.utils.CustomizedPipeline.runPipeline(
+                        "example",
+                        Map.of("name", "tool"),
+                        Map.of("fn_call_path", "x"),
+                        (Function<Map<String, Object>, Object>) params -> params
+                )
+        );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> com.openjiuwen.agent_evolving.optimizer.toolcall.utils.CustomizedPipeline.runPipeline(
+                        "example",
+                        Map.of("name", "tool"),
+                        Map.of(),
+                        null
                 )
         );
     }

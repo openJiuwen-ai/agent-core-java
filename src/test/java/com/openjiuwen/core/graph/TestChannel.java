@@ -3,34 +3,32 @@
  */
 package com.openjiuwen.core.graph;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.graph.pregel.BarrierChannel;
+import com.openjiuwen.core.graph.pregel.BarrierMessage;
+import com.openjiuwen.core.graph.pregel.ChannelManager;
+import com.openjiuwen.core.graph.pregel.TriggerChannel;
+import com.openjiuwen.core.graph.pregel.TriggerMessage;
 
-import java.util.ArrayList;
-import java.util.HashSet;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for Channel.
+ * Unit tests for ChannelManager.
  * <p>
  * Mirrors Python's {@code test_channel.py} from
  * {@code tests/unit_tests/core/graph/test_channel.py}.
- * 
- * <p>Python source file tests ChannelManager with TriggerChannel and BarrierChannel:
- * - test_trigger_channel_reset
- * - test_barrier_lifecycle
  */
 @DisplayName("Channel Tests")
 class TestChannel {
-
-    /*
-     * Python tests verify TriggerChannel and BarrierChannel behavior:
-     * - TriggerChannel: resets Ready state after consume
-     * - BarrierChannel: Waiting -> Partial -> All arrived -> Consumed -> Reset
-     */
 
     @Nested
     @DisplayName("ChannelManager Tests")
@@ -40,97 +38,94 @@ class TestChannel {
         @Tag("level0")
         @DisplayName("trigger channel reset")
         void testTriggerChannelReset() {
-            // Python: test_trigger_channel_reset
-            // Tests TriggerChannel correctly resets Ready state after consume
-            
-            // Simulate channel state
-            String channelStart = "start";
-            String channelA = "a";
-            
-            Set<String> readyNodes = new HashSet<>();
-            
-            // Initially empty
-            assertTrue(readyNodes.isEmpty());
-            
-            // Activate start
-            readyNodes.add(channelStart);
-            assertTrue(readyNodes.contains(channelStart));
-            
-            // Consume start
-            readyNodes.remove(channelStart);
-            assertFalse(readyNodes.contains(channelStart));
-            
-            // start produces message to a
-            readyNodes.add(channelA);
-            assertTrue(readyNodes.contains(channelA));
-            assertFalse(readyNodes.contains(channelStart)); // No infinite loop
-            
-            // Consume a
-            readyNodes.remove(channelA);
-            assertFalse(readyNodes.contains(channelA));
-            
-            // Flush - no more ready nodes
-            assertTrue(readyNodes.isEmpty());
+            TriggerChannel chStart = new TriggerChannel("start");
+            TriggerChannel chA = new TriggerChannel("a");
+            ChannelManager manager = new ChannelManager(List.of(chStart, chA));
+
+            assertEquals(List.of(), manager.getReadyNodes());
+
+            manager.bufferMessage(new TriggerMessage("__start__", "start"));
+            manager.flush();
+
+            assertTrue(manager.getReadyNodes().contains("start"));
+            assertTrue(chStart.isReady());
+
+            manager.consume("start");
+
+            assertFalse(manager.getReadyNodes().contains("start"));
+            assertFalse(chStart.isReady());
+
+            manager.bufferMessage(new TriggerMessage("start", "a"));
+            manager.flush();
+
+            List<String> readyStep1 = manager.getReadyNodes();
+            assertTrue(readyStep1.contains("a"));
+            assertFalse(readyStep1.contains("start"));
+
+            manager.consume("a");
+            assertFalse(manager.getReadyNodes().contains("a"));
+
+            manager.flush();
+
+            List<String> readyStep2 = manager.getReadyNodes();
+            assertFalse(readyStep2.contains("a"));
+            assertFalse(readyStep2.contains("start"));
+            assertEquals(0, readyStep2.size());
         }
 
         @Test
         @Tag("level0")
         @DisplayName("barrier lifecycle")
         void testBarrierLifecycle() {
-            // Python: test_barrier_lifecycle
-            // Tests BarrierChannel complete lifecycle
-            
             String barrierTargetNode = "collect";
-            Set<String> expectedSenders = new HashSet<>();
-            expectedSenders.add("A");
-            expectedSenders.add("B");
-            
-            Set<String> receivedSenders = new HashSet<>();
-            
-            // Initially waiting
-            assertFalse(receivedSenders.containsAll(expectedSenders));
-            
-            // Partial arrival - A arrives
-            receivedSenders.add("A");
-            assertFalse(receivedSenders.containsAll(expectedSenders)); // Not ready
-            
-            // All arrived - B arrives
-            receivedSenders.add("B");
-            assertTrue(receivedSenders.containsAll(expectedSenders)); // Ready
-            
-            // Consumed - Reset
-            receivedSenders.clear();
-            assertFalse(receivedSenders.containsAll(expectedSenders)); // Waiting again
+            BarrierChannel barrierCh = new BarrierChannel(barrierTargetNode, Set.of("A", "B"));
+            String barrierKey = barrierCh.getKey();
+            ChannelManager manager = new ChannelManager(List.of(barrierCh));
+
+            assertEquals(List.of(), manager.getReadyNodes());
+            assertFalse(barrierCh.isReady());
+
+            BarrierMessage msgA = new BarrierMessage("A", barrierKey);
+            manager.bufferMessage(msgA);
+            manager.flush();
+
+            assertFalse(barrierCh.isReady());
+            assertFalse(manager.getReadyNodes().contains(barrierTargetNode));
+
+            manager.bufferMessage(new BarrierMessage("B", barrierKey));
+            manager.flush();
+
+            assertTrue(barrierCh.isReady());
+            assertTrue(manager.getReadyNodes().contains(barrierTargetNode));
+
+            manager.consume(barrierTargetNode);
+
+            assertFalse(manager.getReadyNodes().contains(barrierTargetNode));
+            assertFalse(barrierCh.isReady());
+            assertEquals(List.of(), barrierCh.snapshot());
+
+            manager.bufferMessage(msgA);
+            manager.flush();
+
+            assertFalse(barrierCh.isReady());
+            assertFalse(manager.getReadyNodes().contains(barrierTargetNode));
         }
 
         @Test
         @Tag("level0")
-        @DisplayName("trigger message buffering")
-        void testTriggerMessageBuffering() {
-            // Tests message buffering in channel
-            
-            List<String> messageBuffer = new ArrayList<>();
-            messageBuffer.add("message1");
-            messageBuffer.add("message2");
-            
-            assertEquals(2, messageBuffer.size());
-            
-            // Flush - messages transferred
-            Set<String> flushedMessages = new HashSet<>(messageBuffer);
-            assertEquals(2, flushedMessages.size());
-        }
+        @DisplayName("barrier duplicate signals")
+        void testBarrierDuplicateSignals() {
+            BarrierChannel barrierCh = new BarrierChannel("collect", Set.of("A", "B"));
+            ChannelManager manager = new ChannelManager(List.of(barrierCh));
+            String key = barrierCh.getKey();
 
-        @Test
-        @Tag("level0")
-        @DisplayName("channel key format")
-        void testChannelKeyFormat() {
-            // Tests channel key format
-            
-            String triggerKey = "trigger:start";
-            String barrierKey = "barrier:collect:A,B";
-            
-            assertTrue(triggerKey.startsWith("trigger:"));
-            assertTrue(barrierKey.startsWith("barrier:"));
+            manager.bufferMessage(new BarrierMessage("A", key));
+            manager.bufferMessage(new BarrierMessage("A", key));
+            manager.flush();
+
+            assertEquals(1, ((List<?>) barrierCh.snapshot()).size());
+            assertFalse(barrierCh.isReady());
+            assertFalse(manager.getReadyNodes().contains("collect"));
         }
     }
 }

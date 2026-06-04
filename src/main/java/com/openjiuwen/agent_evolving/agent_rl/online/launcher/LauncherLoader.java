@@ -4,10 +4,22 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.launcher;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.openjiuwen.agent_evolving.agent_rl.config.OnlineRLConfig;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.HashMap;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Configuration loader for online RL runtime.
@@ -17,7 +29,20 @@ import java.util.Map;
  */
 public class LauncherLoader {
 
-    private static final String DEFAULT_CONFIG_FILENAME = "online_rl_config.yaml";
+    private static final ObjectMapper CONFIG_MAPPER = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final String DEFAULT_CONFIG_FILENAME = "online_config.py (built-in)";
+    private static final String BUILTIN_ONLINE_CONFIG_PATH =
+            "openjiuwen/agent_evolving/agent_rl/config/online_config.py";
+
+    public record RuntimeConfigResult(Map<String, Object> config, Path resolvedPath, OnlineRLConfig validatedConfig) {
+        public RuntimeConfigResult {
+            config = deepCopyMap(Objects.requireNonNull(config, "config"));
+            resolvedPath = Objects.requireNonNull(resolvedPath, "resolvedPath");
+            validatedConfig = Objects.requireNonNull(validatedConfig, "validatedConfig");
+        }
+    }
 
     /**
      * Load configuration from YAML file with CLI overrides.
@@ -29,96 +54,46 @@ public class LauncherLoader {
      * @return Loaded configuration map
      */
     public static Map<String, Object> loadConfig(String configFile, Map<String, Object> cliOverrides) {
-        // Start with default config (mirrors Python: base_layer = OmegaConf.create(BUILTIN_ONLINE_RL_CONFIG))
+        try {
+            return loadRuntimeConfig(configFile, cliOverrides).config();
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    public static RuntimeConfigResult loadRuntimeConfig(String configFile, Map<String, Object> cliOverrides) throws IOException {
         Map<String, Object> config = getDefaultConfig();
-        
-        // Load YAML config file if provided
-        // Mirrors Python: layered_cfgs.append(OmegaConf.load(resolved_path))
-        if (configFile != null && !configFile.isEmpty()) {
-            try {
-                java.nio.file.Path configPath = java.nio.file.Paths.get(configFile);
-                if (java.nio.file.Files.exists(configPath)) {
-                    Map<String, Object> yamlConfig = loadYamlConfig(configPath);
-                    deepMerge(config, yamlConfig);
-                }
-            } catch (Exception e) {
-                // Log warning but continue with defaults
-                System.err.println("Warning: Failed to load config file: " + e.getMessage());
+        Path resolvedPath;
+        if (configFile != null && !configFile.isBlank()) {
+            resolvedPath = expandUser(configFile).toAbsolutePath().normalize();
+            if (!Files.exists(resolvedPath)) {
+                throw new FileNotFoundException("Config file not found: " + resolvedPath);
             }
+            deepMerge(config, loadYamlConfig(resolvedPath));
+        } else {
+            resolvedPath = resolveBuiltinOnlineConfigPath();
         }
-        
-        // Apply CLI overrides (mirrors Python: layered_cfgs.append(OmegaConf.create(cli_overrides)))
-        if (cliOverrides != null) {
-            deepMerge(config, cliOverrides);
-        }
-        
-        return config;
+        deepMerge(config, cliOverrides != null ? cliOverrides : Map.of());
+        OnlineRLConfig validatedConfig = toOnlineRLConfig(config);
+        validatedConfig.validate();
+        return new RuntimeConfigResult(config, resolvedPath, validatedConfig);
     }
     
     /**
      * Load YAML configuration file.
-     * <p>
-     * Simple YAML loader using basic parsing.
-     * For production, consider using Jackson YAML or SnakeYAML.
      */
-    private static Map<String, Object> loadYamlConfig(java.nio.file.Path configPath) throws IOException {
-        // Simple YAML loading - in production, use Jackson or SnakeYAML
-        // This is a placeholder that reads the file as properties for basic key-value pairs
-        // Full YAML parsing would require a proper YAML library
-        
-        Map<String, Object> result = new HashMap<>();
-        List<String> lines = java.nio.file.Files.readAllLines(configPath);
-        
-        for (String line : lines) {
-            line = line.trim();
-            // Skip comments and empty lines
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
+    private static Map<String, Object> loadYamlConfig(Path configPath) throws IOException {
+        Yaml yaml = new Yaml();
+        try (InputStream inputStream = Files.newInputStream(configPath)) {
+            Object loaded = yaml.load(inputStream);
+            if (loaded == null) {
+                return new LinkedHashMap<>();
             }
-            // Parse simple key: value pairs
-            int colonIndex = line.indexOf(':');
-            if (colonIndex > 0) {
-                String key = line.substring(0, colonIndex).trim();
-                String value = line.substring(colonIndex + 1).trim();
-                // Remove quotes if present
-                if ((value.startsWith("\"") && value.endsWith("\"")) ||
-                    (value.startsWith("'") && value.endsWith("'"))) {
-                    value = value.substring(1, value.length() - 1);
-                }
-                // Try to parse as number or boolean
-                Object parsedValue = parseValue(value);
-                result.put(key, parsedValue);
+            if (!(loaded instanceof Map<?, ?> map)) {
+                throw new IllegalArgumentException("Config file root must be a mapping: " + configPath);
             }
+            return normalizeMap(map);
         }
-        
-        return result;
-    }
-    
-    /**
-     * Parse a string value to appropriate type (Integer, Double, Boolean, or String).
-     */
-    private static Object parseValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        // Try boolean
-        if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
-            return Boolean.parseBoolean(value);
-        }
-        // Try integer
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            // Not an integer
-        }
-        // Try double
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            // Not a number
-        }
-        // Return as string
-        return value;
     }
 
     /**
@@ -127,48 +102,97 @@ public class LauncherLoader {
      * @return Default config map
      */
     public static Map<String, Object> getDefaultConfig() {
-        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> config = new LinkedHashMap<>();
         
         // Inference defaults
-        Map<String, Object> inference = new HashMap<>();
+        Map<String, Object> inference = new LinkedHashMap<>();
         inference.put("model_path", "/path/to/your/model");
         inference.put("model_name", "Qwen3-4B-Thinking-2507");
         inference.put("host", "127.0.0.1");
+        inference.put("port", null);
         inference.put("gpu_ids", "0,1");
         inference.put("tp", 2);
+        inference.put("existing_url", null);
+        inference.put("health_timeout", 300.0);
+        inference.put("env", new LinkedHashMap<>(Map.of("VLLM_ALLOW_RUNTIME_LORA_UPDATING", "1")));
+        inference.put("extra_args", List.of(
+                "--enable-lora",
+                "--max-loras",
+                "4",
+                "--max-lora-rank",
+                "32",
+                "--enable-auto-tool-choice",
+                "--tool-call-parser",
+                "hermes",
+                "--max-model-len",
+                "32768",
+                "--gpu-memory-utilization",
+                "0.85"
+        ));
         config.put("inference", inference);
+
+        Map<String, Object> judge = new LinkedHashMap<>();
+        judge.put("model_path", "/path/to/your/model");
+        judge.put("model_name", "Qwen3-4B-Thinking-2507");
+        judge.put("host", "127.0.0.1");
+        judge.put("port", null);
+        judge.put("gpu_ids", "2,3");
+        judge.put("tp", 2);
+        judge.put("existing_url", null);
+        judge.put("health_timeout", 600.0);
+        judge.put("reuse_inference_if_same_model", true);
+        judge.put("env", new LinkedHashMap<>());
+        judge.put("extra_args", List.of(
+                "--max-model-len",
+                "8192",
+                "--gpu-memory-utilization",
+                "0.85",
+                "--max-num-seqs",
+                "16"
+        ));
+        config.put("judge", judge);
         
         // Gateway defaults
-        Map<String, Object> gateway = new HashMap<>();
+        Map<String, Object> gateway = new LinkedHashMap<>();
         gateway.put("host", "127.0.0.1");
+        gateway.put("port", null);
+        gateway.put("redis_url", null);
         gateway.put("record_dir", "records");
         gateway.put("log_level", "info");
+        gateway.put("health_timeout", 30.0);
         gateway.put("disable_trajectory_collection", true);
+        gateway.put("env", new LinkedHashMap<>());
         config.put("gateway", gateway);
         
         // Training defaults
-        Map<String, Object> training = new HashMap<>();
+        Map<String, Object> training = new LinkedHashMap<>();
         training.put("gpu_ids", "4,5");
         training.put("threshold", 4);
         training.put("scan_interval", 30);
+        training.put("ppo_config", null);
+        training.put("lora_repo", null);
         config.put("training", training);
         
         // Trajectory defaults
-        Map<String, Object> trajectory = new HashMap<>();
+        Map<String, Object> trajectory = new LinkedHashMap<>();
         trajectory.put("batch_size", 4);
         trajectory.put("mode", "feedback_level");
         config.put("trajectory", trajectory);
         
         // Jiuwen defaults
-        Map<String, Object> jiuwen = new HashMap<>();
+        Map<String, Object> jiuwen = new LinkedHashMap<>();
         jiuwen.put("enabled", true);
+        jiuwen.put("agent_server_port", null);
         jiuwen.put("app_host", "127.0.0.1");
+        jiuwen.put("ws_port", null);
         jiuwen.put("web_host", "127.0.0.1");
+        jiuwen.put("web_port", null);
         config.put("jiwen", jiuwen);
+        config.put("jiuwen", jiuwen);
         
         config.put("demo", false);
         
-        return config;
+        return deepCopyMap(config);
     }
 
     /**
@@ -182,15 +206,59 @@ public class LauncherLoader {
             String key = entry.getKey();
             Object value = entry.getValue();
             
-            if (value instanceof Map && base.get(key) instanceof Map) {
-                deepMerge((Map<String, Object>) base.get(key), (Map<String, Object>) value);
+            if (value instanceof Map<?, ?> overlayMap && base.get(key) instanceof Map<?, ?> baseMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typedBase = (Map<String, Object>) baseMap;
+                deepMerge(typedBase, normalizeMap(overlayMap));
             } else {
-                base.put(key, value);
+                base.put(key, normalizeValue(value));
             }
         }
     }
 
     public static String getDefaultConfigFilename() {
         return DEFAULT_CONFIG_FILENAME;
+    }
+
+    public static Path resolveBuiltinOnlineConfigPath() {
+        return Path.of(BUILTIN_ONLINE_CONFIG_PATH).toAbsolutePath().normalize();
+    }
+
+    public static OnlineRLConfig toOnlineRLConfig(Map<String, Object> config) {
+        OnlineRLConfig onlineRLConfig = CONFIG_MAPPER.convertValue(config, OnlineRLConfig.class);
+        onlineRLConfig.validate();
+        return onlineRLConfig;
+    }
+
+    private static Path expandUser(String configFile) {
+        if (configFile.equals("~")) {
+            return Path.of(System.getProperty("user.home"));
+        }
+        if (configFile.startsWith("~/") || configFile.startsWith("~\\")) {
+            return Path.of(System.getProperty("user.home"), configFile.substring(2));
+        }
+        return Path.of(configFile);
+    }
+
+    private static Map<String, Object> normalizeMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), normalizeValue(entry.getValue()));
+        }
+        return result;
+    }
+
+    private static Object normalizeValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return normalizeMap(map);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(LauncherLoader::normalizeValue).toList();
+        }
+        return value;
+    }
+
+    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        return normalizeMap(source);
     }
 }

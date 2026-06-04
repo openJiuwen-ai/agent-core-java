@@ -26,7 +26,8 @@ public final class OfficialMcpClientFactory {
             List<String> args,
             Map<String, String> env,
             String cwd,
-            Map<String, String> authHeaders
+            Map<String, String> authHeaders,
+            Map<String, String> authQueryParams
     ) {
     }
 
@@ -101,7 +102,8 @@ public final class OfficialMcpClientFactory {
                 normalizeArgs(params.get("args")),
                 normalizeStringMap(params.get("env")),
                 params.get("cwd") == null ? null : String.valueOf(params.get("cwd")),
-                copyMap(config.getAuthHeaders())
+                copyMap(config.getAuthHeaders()),
+                copyMap(config.getAuthQueryParams())
         );
     }
 
@@ -116,7 +118,8 @@ public final class OfficialMcpClientFactory {
                 List.of(),
                 Map.of(),
                 null,
-                copyMap(config.getAuthHeaders())
+                copyMap(config.getAuthHeaders()),
+                copyMap(config.getAuthQueryParams())
         );
     }
 

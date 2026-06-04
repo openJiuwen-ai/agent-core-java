@@ -5,17 +5,29 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.agent_teams.RuntimeManager;
+import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.core.multiagent.BaseTeam;
+import com.openjiuwen.core.multiagent.teamruntime.TeamRuntime;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.internal.AgentTeamSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.function.Supplier;
 
 /**
  * Runner singleton class that proxies all calls to the global runner instance.
@@ -34,6 +46,7 @@ public final class Runner {
 
     /** The global runner instance. */
     private static final RunnerImpl GLOBAL_RUNNER = new RunnerImpl("global", RunnerConfig.DEFAULT);
+    private static final RuntimeManager TEAM_RUNTIME_MANAGER = new RuntimeManager();
 
     private Runner() {
         // Utility class
@@ -202,6 +215,104 @@ public final class Runner {
         return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs);
     }
 
+    /**
+     * Execute a Runner-owned {@code TeamAgentSpec} runtime with streaming output.
+     *
+     * <p>Mirrors Python's {@code Runner.run_agent_team_streaming} enough for the
+     * Java agent-team E2E examples: activate or resume the team runtime, emit a
+     * {@code team.runtime_ready} acknowledgement, then stream the active
+     * {@link TeamAgent}.</p>
+     */
+    public static Iterator<Object> runAgentTeamStreaming(Object agentTeam, Object inputs, Object session) {
+        if (agentTeam instanceof BaseTeam baseTeam) {
+            AgentTeamSession teamSession = createBaseTeamSession(baseTeam, session);
+            Object preRunInputs = inputs instanceof Map<?, ?> ? inputs : null;
+            teamSession.preRun(preRunInputs);
+            TeamRuntime runtime = baseTeam.getRuntime();
+            if (runtime != null) {
+                runtime.bindTeamSession(teamSession);
+            }
+            Iterator<Object> raw = baseTeam.stream(inputs, teamSession).iterator();
+            return closeBaseTeamSessionWhenExhausted(raw, runtime, teamSession);
+        }
+        RuntimeManager.TeamRuntimeActivation activation =
+                TEAM_RUNTIME_MANAGER.activate(agentTeam, session, inputs).join();
+        if ("same_session".equals(activation.getActivationKind())
+                || "invalid_session".equals(activation.getActivationKind())) {
+            return Collections.emptyIterator();
+        }
+        Map<String, Object> readyPayload = new LinkedHashMap<>();
+        readyPayload.put("event_type", "team.runtime_ready");
+        readyPayload.put("team_name", TEAM_RUNTIME_MANAGER.getActiveTeamName().orElse(null));
+        readyPayload.put("session_id", TEAM_RUNTIME_MANAGER.getActiveSessionId().orElse(null));
+        readyPayload.put("activation_kind", activation.getActivationKind());
+        List<Object> prefix = new ArrayList<>();
+        prefix.add(new OutputSchema("message", 0, readyPayload));
+
+        Supplier<Iterator<?>> body = () -> streamActivatedAgent(activation.getAgent(), inputs, activation.getSession());
+        return concat(prefix.iterator(), body);
+    }
+
+    /**
+     * Execute a Runner-owned {@code TeamAgentSpec} runtime and return the
+     * active team's invoke result.
+     *
+     * <p>Mirrors Python's {@code Runner.run_agent_team}.</p>
+     */
+    public static Object runAgentTeam(Object agentTeam, Object inputs, Object session) {
+        if (agentTeam instanceof BaseTeam baseTeam) {
+            AgentTeamSession teamSession = createBaseTeamSession(baseTeam, session);
+            Object preRunInputs = inputs instanceof Map<?, ?> ? inputs : null;
+            teamSession.preRun(preRunInputs);
+            TeamRuntime runtime = baseTeam.getRuntime();
+            if (runtime != null) {
+                runtime.bindTeamSession(teamSession);
+            }
+            try {
+                return baseTeam.invoke(inputs, teamSession).join();
+            } finally {
+                if (runtime != null) {
+                    runtime.unbindTeamSession(teamSession.getSessionId());
+                }
+                teamSession.postRun();
+            }
+        }
+        RuntimeManager.TeamRuntimeActivation activation =
+                TEAM_RUNTIME_MANAGER.activate(agentTeam, session, inputs).join();
+        if ("same_session".equals(activation.getActivationKind())
+                || "invalid_session".equals(activation.getActivationKind())) {
+            return null;
+        }
+        return invokeActivatedAgent(activation.getAgent(), inputs, activation.getSession());
+    }
+
+    /**
+     * Deliver same-session user input to the active Runner-owned team runtime.
+     *
+     * <p>Mirrors Python's {@code Runner.interact_agent_team}.</p>
+     */
+    public static boolean interactAgentTeam(String userInput, String teamName, String sessionId) {
+        return TEAM_RUNTIME_MANAGER.interact(userInput, teamName, sessionId).join();
+    }
+
+    /**
+     * Pause the active Runner-owned team runtime.
+     *
+     * <p>Mirrors Python's {@code Runner.pause_agent_team}.</p>
+     */
+    public static boolean pauseAgentTeam(String teamName, String sessionId) {
+        return TEAM_RUNTIME_MANAGER.pause(teamName, sessionId).join();
+    }
+
+    /**
+     * Delete a team runtime and release all listed sessions.
+     *
+     * <p>Mirrors Python's {@code Runner.delete_agent_team}.</p>
+     */
+    public static boolean deleteAgentTeam(String teamName, List<String> sessionIds) {
+        return TEAM_RUNTIME_MANAGER.deleteTeam(teamName, sessionIds).join();
+    }
+
     // ========== Agent Group ==========
 
     /**
@@ -258,5 +369,196 @@ public final class Runner {
      */
     public static void release(String sessionId) {
         GLOBAL_RUNNER.release(sessionId);
+    }
+
+    private static Iterator<Object> concat(Iterator<?> first, Supplier<Iterator<?>> secondSupplier) {
+        return new Iterator<>() {
+            private Iterator<?> current = first;
+            private boolean usingFirst = true;
+
+            @Override
+            public boolean hasNext() {
+                if (current.hasNext()) {
+                    return true;
+                }
+                if (usingFirst) {
+                    usingFirst = false;
+                    current = secondSupplier.get();
+                    return current.hasNext();
+                }
+                return false;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return current.next();
+            }
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Iterator<Object> streamActivatedAgent(Object active, Object inputs, Object activeSession) {
+        Iterator<Object> raw = Collections.emptyIterator();
+        if (active instanceof TeamAgent teamAgent && activeSession instanceof Session typedSession) {
+            raw = teamAgent.stream(inputs, typedSession, List.of(StreamMode.OUTPUT));
+        } else {
+            Object result = invokeFirstCompatible(
+                    active,
+                    "stream",
+                    List.of(
+                            new Object[] {inputs, activeSession},
+                            new Object[] {inputs}
+                    )
+            );
+            if (result instanceof Iterator<?> iterator) {
+                raw = (Iterator<Object>) iterator;
+            } else if (result instanceof Iterable<?> iterable) {
+                raw = (Iterator<Object>) iterable.iterator();
+            }
+        }
+        return closeSessionWhenExhausted(raw, activeSession);
+    }
+
+    private static Object invokeActivatedAgent(Object active, Object inputs, Object activeSession) {
+        Object result;
+        if (active instanceof TeamAgent teamAgent && activeSession instanceof Session typedSession) {
+            result = teamAgent.invoke(inputs, typedSession);
+        } else {
+            result = invokeFirstCompatible(
+                    active,
+                    "invoke",
+                    List.of(
+                            new Object[] {inputs, activeSession},
+                            new Object[] {inputs}
+                    )
+            );
+        }
+        postRun(activeSession);
+        return result;
+    }
+
+    private static Iterator<Object> closeSessionWhenExhausted(Iterator<Object> delegate, Object session) {
+        return new Iterator<>() {
+            private boolean closed;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    closeOnce();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return delegate.next();
+            }
+
+            private void closeOnce() {
+                if (closed) {
+                    return;
+                }
+                postRun(session);
+                closed = true;
+            }
+        };
+    }
+
+    private static Object invokeFirstCompatible(Object target, String methodName, List<Object[]> attempts) {
+        if (target == null) {
+            return null;
+        }
+        for (Object[] args : attempts) {
+            for (var method : target.getClass().getMethods()) {
+                if (!method.getName().equals(methodName) || method.getParameterCount() != args.length) {
+                    continue;
+                }
+                try {
+                    return method.invoke(target, args);
+                } catch (ReflectiveOperationException e) {
+                    throw new IllegalStateException(
+                            "Failed to call " + methodName + " on " + target.getClass().getName(), e);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void postRun(Object session) {
+        if (session == null) {
+            return;
+        }
+        try {
+            var method = session.getClass().getMethod("postRun");
+            method.invoke(session);
+        } catch (NoSuchMethodException ignored) {
+            // Session types without a post-run hook do not need checkpoint finalization.
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to finalize team session", e);
+        }
+    }
+
+    private static AgentTeamSession createBaseTeamSession(BaseTeam team, Object session) {
+        if (session instanceof AgentTeamSession agentTeamSession) {
+            return agentTeamSession;
+        }
+        String sessionId = null;
+        if (session instanceof Session typedSession) {
+            sessionId = typedSession.getSessionId();
+        } else if (session instanceof String rawSessionId && !rawSessionId.isBlank()) {
+            sessionId = rawSessionId;
+        }
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = java.util.UUID.randomUUID().toString();
+        }
+        String teamId = team.getCard() != null && team.getCard().getId() != null
+                ? team.getCard().getId()
+                : "agent_team";
+        return new AgentTeamSession(sessionId, teamId);
+    }
+
+    private static Iterator<Object> closeBaseTeamSessionWhenExhausted(
+            Iterator<Object> delegate,
+            TeamRuntime runtime,
+            AgentTeamSession session
+    ) {
+        return new Iterator<>() {
+            private boolean closed;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    closeOnce();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return delegate.next();
+            }
+
+            private void closeOnce() {
+                if (closed) {
+                    return;
+                }
+                if (runtime != null) {
+                    runtime.unbindTeamSession(session.getSessionId());
+                }
+                session.postRun();
+                closed = true;
+            }
+        };
     }
 }

@@ -26,6 +26,7 @@ public class MemoryTools {
         tools.add(new MemoryGetTool(language, agentId, memoryContext));
         tools.add(new WriteMemoryTool(language, agentId, memoryContext));
         tools.add(new EditMemoryTool(language, agentId, memoryContext));
+        tools.add(new com.openjiuwen.harness.tools.ReadMemoryTool(language, agentId, memoryContext, null));
         return tools;
     }
 
@@ -48,6 +49,14 @@ public class MemoryTools {
      */
     public static MemoryGetTool createReadMemoryTool(Object memoryContext, String language, String agentId) {
         return new MemoryGetTool(language, agentId, memoryContext);
+    }
+
+    /**
+     * Create direct file read memory tool.
+     */
+    public static com.openjiuwen.harness.tools.ReadMemoryTool createReadMemoryFileTool(
+            Object memoryContext, String language, String agentId) {
+        return new com.openjiuwen.harness.tools.ReadMemoryTool(language, agentId, memoryContext, null);
     }
 
     /**

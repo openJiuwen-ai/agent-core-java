@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.llm_call.LLMCallOperator;
 import com.openjiuwen.core.operator.tool_call.ToolCallOperator;
@@ -23,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * Unit tests for ReActAgentEvolve operator initialization and parameter sync.
  *
  * <p>Mirrors Python's {@code test_react_agent_evolve_mock.py} in
- * {@code tests/unit_tests/agent/react_agent/}.
+ * {@code tests/unit_tests/agent/react_agent/}.</p>
  */
 class ReActAgentEvolveMockTest {
 
@@ -43,22 +44,25 @@ class ReActAgentEvolveMockTest {
 
         @Test
         @DisplayName("agent creation with card initializes operators")
-        void testAgentCreationWithCard() {
+        void testAgentCreationWithCard() throws Exception {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
 
             assertThat(agent.getCard().getName()).isEqualTo("test_agent_evolve");
             assertThat(agent.getCard().getDescription()).isEqualTo("Test ReActAgentEvolve");
+            assertThat(readField(agent, "llmOp")).isInstanceOf(LLMCallOperator.class);
+            assertThat(readField(agent, "toolOp")).isInstanceOf(ToolCallOperator.class);
         }
 
         @Test
-        @DisplayName("tool operator initialized on creation")
-        void testToolOperatorInitializedOnCreation() throws Exception {
+        @DisplayName("operators initialized on creation")
+        void testOperatorsInitializedOnCreation() throws Exception {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
 
-            Field toolOpField = ReActAgentEvolve.class.getDeclaredField("toolOp");
-            toolOpField.setAccessible(true);
-            ToolCallOperator toolOp = (ToolCallOperator) toolOpField.get(agent);
+            LLMCallOperator llmOp = (LLMCallOperator) readField(agent, "llmOp");
+            ToolCallOperator toolOp = (ToolCallOperator) readField(agent, "toolOp");
 
+            assertThat(llmOp).isNotNull();
+            assertThat(llmOp.getOperatorId()).isEqualTo("react_llm");
             assertThat(toolOp).isNotNull();
             assertThat(toolOp.getOperatorId()).isEqualTo("react_tool");
         }
@@ -69,22 +73,24 @@ class ReActAgentEvolveMockTest {
     class Operators {
 
         @Test
-        @DisplayName("getOperators returns tool operator")
-        void testGetOperatorsReturnsToolOperator() {
+        @DisplayName("getOperators returns both operators")
+        void testGetOperatorsReturnsOperators() {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
             Map<String, Operator> operators = agent.getOperators();
 
-            assertThat(operators).containsKey("react_tool");
+            assertThat(operators).containsKeys("react_llm", "react_tool");
+            assertThat(operators.get("react_llm")).isInstanceOf(LLMCallOperator.class);
             assertThat(operators.get("react_tool")).isInstanceOf(ToolCallOperator.class);
         }
 
         @Test
-        @DisplayName("getOperators handles no LLM operator gracefully")
-        void testGetOperatorsHandlesNoLlmOperator() {
+        @DisplayName("getOperators returns empty when operator fields are null")
+        void testGetOperatorsReturnsEmptyWhenOperatorsNone() throws Exception {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
-            Map<String, Operator> operators = agent.getOperators();
+            writeField(agent, "llmOp", null);
+            writeField(agent, "toolOp", null);
 
-            assertThat(operators).containsKey("react_tool");
+            assertThat(agent.getOperators()).isEmpty();
         }
     }
 
@@ -93,29 +99,57 @@ class ReActAgentEvolveMockTest {
     class ParameterSync {
 
         @Test
-        @DisplayName("LLM parameter updated syncs to config prompt template")
-        void testLlmParameterUpdatedSyncsToConfig() throws Exception {
+        @DisplayName("LLM parameter updated syncs list prompt to config")
+        void testLlmParameterUpdatedSyncsToConfig() {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
-            ReActAgentConfig config = ReActAgentConfig.builder().build();
-            config.configurePromptTemplate(List.of(Map.of("role", "system", "content", "Original prompt")));
-            agent.configure(config);
-
             List<Map<String, String>> newPrompt = List.of(Map.of("role", "system", "content", "Updated prompt"));
 
-            Field llmOpField = ReActAgentEvolve.class.getDeclaredField("llmOp");
-            llmOpField.setAccessible(true);
+            agent.getOperators().get("react_llm").setParameter("system_prompt", newPrompt);
 
-            Field configField = ReActAgentEvolve.class.getDeclaredField("config");
-            configField.setAccessible(true);
-
-            llmOpField.set(agent, null);
-
-            agent.configure(ReActAgentConfig.builder()
-                    .promptTemplate(newPrompt)
-                    .build());
-
-            ReActAgentConfig currentConfig = (ReActAgentConfig) configField.get(agent);
+            ReActAgentConfig currentConfig = (ReActAgentConfig) agent.getConfig();
             assertThat(currentConfig.getPromptTemplate()).isEqualTo(newPrompt);
+        }
+
+        @Test
+        @DisplayName("LLM parameter updated converts string prompt to message list")
+        void testLlmParameterUpdatedWithString() {
+            ReActAgentEvolve agent = new ReActAgentEvolve(card);
+
+            agent.getOperators().get("react_llm").setParameter("system_prompt", "String prompt");
+
+            ReActAgentConfig currentConfig = (ReActAgentConfig) agent.getConfig();
+            assertThat(currentConfig.getPromptTemplate())
+                    .isEqualTo(List.of(Map.of("role", "system", "content", "String prompt")));
+        }
+
+        @Test
+        @DisplayName("LLM parameter updated ignores non-system prompt params")
+        void testLlmParameterUpdatedIgnoresOtherParams() {
+            ReActAgentEvolve agent = new ReActAgentEvolve(card);
+            List<Map<String, String>> originalPrompt = List.of(Map.of("role", "system", "content", "Original"));
+            ((ReActAgentConfig) agent.getConfig()).setPromptTemplate(originalPrompt);
+
+            agent.getOperators().get("react_llm").setParameter("user_prompt", "Some value");
+
+            assertThat(((ReActAgentConfig) agent.getConfig()).getPromptTemplate()).isEqualTo(originalPrompt);
+        }
+
+        @Test
+        @DisplayName("tool parameter updated syncs to ability manager")
+        void testToolParameterUpdatedSyncsToAbilityManager() {
+            ReActAgentEvolve agent = new ReActAgentEvolve(card);
+            ToolCard toolCard = ToolCard.builder()
+                    .id("tool1")
+                    .name("tool1")
+                    .description("Original desc")
+                    .build();
+            agent.getAbilityManager().add(toolCard);
+
+            agent.getOperators().get("react_tool")
+                    .setParameter("tool_description", Map.of("tool1", "Updated desc"));
+
+            ToolCard updated = (ToolCard) agent.getAbilityManager().get("tool1");
+            assertThat(updated.getDescription()).isEqualTo("Updated desc");
         }
 
         @Test
@@ -124,8 +158,21 @@ class ReActAgentEvolveMockTest {
             ReActAgentEvolve agent = new ReActAgentEvolve(card);
 
             assertThatNoException().isThrownBy(() -> {
-                agent.configure(ReActAgentConfig.builder().build());
+                agent.getOperators().get("react_tool").setParameter("wrong_param", Map.of("tool1", "desc"));
+                agent.getOperators().get("react_tool").setParameter("tool_description", "not a dict");
             });
         }
+    }
+
+    private static Object readField(Object target, String fieldName) throws Exception {
+        Field field = ReActAgentEvolve.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    private static void writeField(Object target, String fieldName, Object value) throws Exception {
+        Field field = ReActAgentEvolve.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }

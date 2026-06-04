@@ -44,6 +44,10 @@ public class BranchComponent extends WorkflowComponent {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
                     "reason", "target is None or empty");
         }
+        if (target instanceof String && ((String) target).isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "target is None or empty");
+        }
         if (target instanceof List) {
             List<?> targetList = (List<?>) target;
             for (int i = 0; i < targetList.size(); i++) {

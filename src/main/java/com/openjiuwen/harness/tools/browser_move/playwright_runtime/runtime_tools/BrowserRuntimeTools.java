@@ -9,6 +9,10 @@ public final class BrowserRuntimeTools {
     private BrowserRuntimeTools() {}
 
     public static List<Tool> buildBrowserRuntimeTools(BrowserAgentRuntime runtime) {
+        return buildBrowserRuntimeTools(runtime, "cn");
+    }
+
+    public static List<Tool> buildBrowserRuntimeTools(BrowserAgentRuntime runtime, String language) {
         return List.of(
                 new BrowserCancelTool(runtime),
                 new BrowserClearCancelTool(runtime),

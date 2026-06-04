@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Session management related event. */
+/**
+ * Session management related event.
+ *
+ * <p>Mirrors Python's {@code SessionEvent} in
+ * {@code openjiuwen.core.common.logging.events}.</p>
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)

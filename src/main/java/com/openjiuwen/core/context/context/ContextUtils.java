@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import java.util.ArrayList;
@@ -219,6 +220,9 @@ public final class ContextUtils {
      * Check if a tool_call object matches a given tool_call_id.
      */
     public static boolean toolCallMatchesId(Object toolCall, String toolCallId) {
+        if (toolCall instanceof ToolCall call) {
+            return toolCallId.equals(call.getId());
+        }
         if (toolCall instanceof Map<?, ?> map) {
             Object id = map.get("id");
             return toolCallId.equals(id);
@@ -236,6 +240,9 @@ public final class ContextUtils {
      * Extract the tool name from a tool_call object.
      */
     public static String extractToolName(Object toolCall) {
+        if (toolCall instanceof ToolCall call) {
+            return call.getName() != null && !call.getName().isEmpty() ? call.getName() : null;
+        }
         if (toolCall instanceof Map<?, ?> map) {
             Object function = map.get("function");
             if (function instanceof Map<?, ?> funcMap) {

@@ -9,9 +9,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_evolving.TuneUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Judge prompt/scoring helpers.
@@ -23,6 +26,7 @@ public final class JudgeScoring {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final Pattern CODE_BLOCK = Pattern.compile("```(?:json)?\\s*(.*?)```", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     static final String JUDGE_PROMPT_TEMPLATE = """
             你是一个专业的 AI Agent 质量评估器。请对以下 Agent 对话轮次打分。
@@ -59,9 +63,23 @@ public final class JudgeScoring {
 
     public static Map<String, Object> parseJudgeScores(String content, boolean raiseOnError) {
         String safeContent = content != null ? content.trim() : "";
-        List<String> candidates = List.of(safeContent, extractJsonCandidate(safeContent));
+        List<String> candidates = new ArrayList<>();
+        if (!safeContent.isBlank()) {
+            candidates.add(safeContent);
+        }
+        Matcher blockMatcher = CODE_BLOCK.matcher(safeContent);
+        while (blockMatcher.find()) {
+            String block = blockMatcher.group(1).trim();
+            if (!block.isBlank()) {
+                candidates.add(block);
+            }
+        }
+        String extracted = extractJsonCandidate(safeContent);
+        if (extracted != null && !extracted.isBlank()) {
+            candidates.add(extracted);
+        }
         for (String candidate : candidates) {
-            if (candidate == null || candidate.isBlank()) {
+            if (candidate.isBlank()) {
                 continue;
             }
             Map<String, Object> parsed = parseJsonMap(candidate);
@@ -100,20 +118,23 @@ public final class JudgeScoring {
         if (parsed.containsKey("overall") && parsed.get("overall") != null) {
             return;
         }
-        double taskCompletion = doubleValue(parsed, "task_completion", "task_completion_score");
-        double responseQuality = doubleValue(parsed, "response_quality", "response_quality_score");
-        double toolUsage = doubleValue(parsed, "tool_usage", "tool_usage_score");
-        double coherence = doubleValue(parsed, "coherence", "coherence_score");
-        double overall = (taskCompletion + responseQuality + toolUsage + coherence) / 4.0;
+        List<Double> values = new ArrayList<>();
+        addDimensionValue(values, parsed, "task_completion", "task_completion_score");
+        addDimensionValue(values, parsed, "response_quality", "response_quality_score");
+        addDimensionValue(values, parsed, "tool_usage", "tool_usage_score");
+        addDimensionValue(values, parsed, "coherence", "coherence_score");
+        double overall = values.isEmpty() ? 5.0 : values.stream().mapToDouble(Double::doubleValue).average().orElse(5.0);
         parsed.put("overall", overall);
     }
 
-    private static double doubleValue(Map<String, Object> parsed, String primaryKey, String aliasKey) {
-        Object value = parsed.containsKey(primaryKey) ? parsed.get(primaryKey) : parsed.get(aliasKey);
-        if (value instanceof Number number) {
-            return number.doubleValue();
+    private static void addDimensionValue(List<Double> values, Map<String, Object> parsed, String primaryKey, String aliasKey) {
+        Object value = parsed.get(primaryKey);
+        if (!(value instanceof Number)) {
+            value = parsed.get(aliasKey);
         }
-        return value != null ? Double.parseDouble(String.valueOf(value)) : 5.0;
+        if (value instanceof Number number) {
+            values.add(number.doubleValue());
+        }
     }
 
     private static String extractJsonCandidate(String content) {

@@ -7,6 +7,7 @@ package com.openjiuwen.core.context.context;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.InferenceAffinityModel;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
@@ -69,6 +70,19 @@ public class KVCacheManager {
             if (model instanceof InferenceAffinityModel inferenceAffinityModel) {
                 try {
                     inferenceAffinityModel.release(
+                            sessionId,
+                            lastContextWindow.getMessages(),
+                            result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,
+                            lastContextWindow.getToolList(),
+                            result.toolsReleasedIndex,
+                            null
+                    );
+                } catch (Exception e) {
+                    Loggers.CONTEXT_ENGINE.warning("Failed to release inference-affinity KV cache: " + e.getMessage());
+                }
+            } else if (model instanceof Model modelWrapper && modelWrapper.supportsKvCacheRelease()) {
+                try {
+                    modelWrapper.release(
                             sessionId,
                             lastContextWindow.getMessages(),
                             result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,

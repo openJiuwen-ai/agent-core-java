@@ -39,12 +39,18 @@ public class HttpSessionManager {
 
     public HttpSession acquire(SessionConfig config) {
         String key = getResourceKey(config);
-        HttpSession session = sessions.computeIfAbsent(key, k -> {
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder().build();
-            return new HttpSession(client, config);
-        });
-        session.acquire();
-        return session;
+        HttpSession existing = sessions.get(key);
+        if (existing != null && !existing.isClosed()) {
+            existing.acquire();
+            return existing;
+        }
+        if (existing != null) {
+            sessions.remove(key);
+        }
+        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder().build();
+        HttpSession created = new HttpSession(client, config);
+        sessions.put(key, created);
+        return created;
     }
 
     public HttpSession acquire() {

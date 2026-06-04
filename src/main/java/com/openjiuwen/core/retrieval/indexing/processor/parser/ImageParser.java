@@ -12,6 +12,9 @@ import java.util.Map;
 
 /**
  * Parser for image files using LLM captions.
+ *
+ * <p>Mirrors Python's {@code ImageParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.image_parser}.
  */
 public class ImageParser extends Parser {
 
@@ -31,7 +34,7 @@ public class ImageParser extends Parser {
     @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         try {
-            ImageCaptioner imageCaptioner = new ImageCaptioner(llmClient);
+            ImageCaptioner imageCaptioner = createImageCaptioner(llmClient);
             imageCaptioner.cpImage(doc);
             List<String> captions = imageCaptioner.captionImages(List.of(doc));
             String content = captions.stream().filter(caption -> caption != null && !caption.isBlank()).reduce((a, b) -> a + "\n" + b).orElse("");
@@ -39,6 +42,10 @@ public class ImageParser extends Parser {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    protected ImageCaptioner createImageCaptioner(BaseModelClient llmClient) {
+        return new ImageCaptioner(llmClient);
     }
 
     @Override

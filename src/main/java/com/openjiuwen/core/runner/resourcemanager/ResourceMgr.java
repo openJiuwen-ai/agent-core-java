@@ -21,6 +21,7 @@ import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.base.TagUpdateStrategy;
+import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
@@ -45,7 +46,8 @@ import java.util.function.Supplier;
 /**
  * Resource Manager facade for Model, Workflow, Prompt, Tool, Agent, AgentGroup, SysOperation.
  * <p>
- * Mirrors Python's {@code ResourceMgr} in {@code resources_manager/resource_manager.py}.
+ * Mirrors Python's {@code ResourceMgr} in
+ * {@code openjiuwen.core.runner.resources_manager.resource_manager}.
  */
 public class ResourceMgr {
 
@@ -84,29 +86,35 @@ public class ResourceMgr {
     // ========== Agent ==========
 
     public Result<AgentCard> addAgent(AgentCard card,
-                                      Supplier<Object> agent,
+                                      Supplier<?> agent,
+                                      Object tag) {
+        return addAgent((Object) card, (Object) agent, tag);
+    }
+
+    public Result<AgentCard> addAgent(Object card,
+                                      Object agent,
                                       Object tag) {
         validateResourceCard(card, "agent", AgentCard.class);
-        validateResourceId(card.getId(), "agent");
+        AgentCard agentCard = (AgentCard) card;
+        validateResourceId(agentCard.getId(), "agent");
         validateProvider(agent, "agent");
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(card.getId(), agent, card, tag, "agent");
+        return innerAddResource(agentCard.getId(), normalizeAgentProvider(agent), agentCard, tag, "agent");
     }
 
-    public List<Result<AgentCard>> addAgents(List<AgentEntry> agents, Object tag) {
-        if (agents == null || agents.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
-                    "resource_type", "agent", "reason", "cannot be empty");
-        }
+    public List<Result<AgentCard>> addAgents(List<?> agents, Object tag) {
+        validateProviders(agents, "agent", AgentCard.class);
         if (tag != null) {
             validateTag(tag);
         }
         List<Result<AgentCard>> results = new ArrayList<>();
-        for (AgentEntry entry : agents) {
-            results.add(innerAddResource(entry.card().getId(), entry.provider(),
-                    entry.card(), tag, "agent"));
+        for (Object item : agents) {
+            AgentEntry entry = (AgentEntry) item;
+            AgentCard card = (AgentCard) entry.card();
+            results.add(innerAddResource(card.getId(), normalizeAgentProvider(entry.provider()),
+                    card, tag, "agent"));
         }
         return results;
     }
@@ -181,24 +189,23 @@ public class ResourceMgr {
 
     // ========== Tool ==========
 
-    public Result<ToolCard> addTool(Tool tool, Object tag) {
+    public Result<ToolCard> addTool(Object tool, Object tag) {
         validateResource(tool, "tool", Tool.class);
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool");
+        Tool typedTool = (Tool) tool;
+        return innerAddResource(typedTool.getCard().getId(), typedTool, typedTool.getCard(), tag, "tool");
     }
 
-    public List<Result<ToolCard>> addTools(List<Tool> tools, Object tag) {
-        if (tools == null || tools.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
-                    "resource_type", "tool", "reason", "tool list cannot be empty");
-        }
+    public List<Result<ToolCard>> addTools(List<?> tools, Object tag) {
+        validateResource(tools, "tool", Tool.class);
         if (tag != null) {
             validateTag(tag);
         }
         List<Result<ToolCard>> results = new ArrayList<>();
-        for (Tool tool : tools) {
+        for (Object item : tools) {
+            Tool tool = (Tool) item;
             results.add(innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool"));
         }
         return results;
@@ -385,6 +392,13 @@ public class ResourceMgr {
                 for (String tName : toolNames) {
                     String toolId = SysOperationCard.generateToolId(sysOperationId, opName, tName);
                     BaseCard card = idToCard.get(toolId);
+                    if (card == null) {
+                        String javaName = snakeToCamel(tName);
+                        if (!javaName.equals(tName)) {
+                            toolId = SysOperationCard.generateToolId(sysOperationId, opName, javaName);
+                            card = idToCard.get(toolId);
+                        }
+                    }
                     if (card != null) {
                         result.add(card);
                     }
@@ -928,7 +942,7 @@ public class ResourceMgr {
         }
     }
 
-    private static void validateResourceCard(BaseCard card, String resourceType, Class<?> cardClassType) {
+    private static void validateResourceCard(Object card, String resourceType, Class<?> cardClassType) {
         if (card == null || !cardClassType.isInstance(card)) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_CARD_VALUE_INVALID,
                     "resource_type", resourceType,
@@ -958,22 +972,183 @@ public class ResourceMgr {
                     "resource_type", resourceType,
                     "reason", "provider cannot be None, must be a callable function");
         }
+        if (!(resourceType.equals("agent") && isRemoteAgent(provider)) && !(provider instanceof Supplier<?>)) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                    "resource_type", resourceType,
+                    "reason", "invalid provider type, expected callable, got " + typeName(provider));
+        }
     }
 
     private static void validateResource(Object instance, String resourceType, Class<?> resourceClassType) {
         if (instance == null) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
                     "resource_type", resourceType,
-                    "reason", resourceType + " cannot be None: expected an instance of "
+                    "reason", resourceType + " cannot be None: expected an instance or list of "
                             + resourceClassType.getSimpleName());
+        }
+        if (instance instanceof List<?> list) {
+            if (list.isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
+                        "resource_type", resourceType,
+                        "reason", resourceType + " list cannot be empty: expected a non-empty list of "
+                                + resourceClassType.getSimpleName());
+            }
+            for (int idx = 0; idx < list.size(); idx++) {
+                Object item = list.get(idx);
+                if (item == null) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
+                            "resource_type", resourceType,
+                            "reason", resourceType + " at index " + idx
+                                    + " cannot be None: expected an instance of "
+                                    + resourceClassType.getSimpleName());
+                }
+                if (!resourceClassType.isInstance(item)) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
+                            "resource_type", resourceType,
+                            "reason", "invalid " + resourceType + " type at index " + idx
+                                    + ": expected " + resourceClassType.getSimpleName()
+                                    + ", got " + typeName(item));
+                }
+                if (resourceType.equals("tool")) {
+                    validateToolCardIfNeeded((Tool) item, idx);
+                }
+            }
+            return;
         }
         if (!resourceClassType.isInstance(instance)) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
                     "resource_type", resourceType,
                     "reason", "invalid " + resourceType + " type: expected "
                             + resourceClassType.getSimpleName() + ", got "
-                            + instance.getClass().getSimpleName());
+                            + typeName(instance));
         }
+        if (resourceType.equals("tool")) {
+            validateToolCardIfNeeded((Tool) instance, null);
+        }
+    }
+
+    private static void validateProviders(List<?> providers, String resourceType, Class<?> cardClassType) {
+        if (providers == null || providers.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                    "resource_type", resourceType,
+                    "reason", " cannot be empty: expected a non-empty list of (card, callable) pairs");
+        }
+        for (int idx = 0; idx < providers.size(); idx++) {
+            Object item = providers.get(idx);
+            if (!(item instanceof AgentEntry entry)) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid provider format at idx " + idx + ": expected tuple["
+                                + cardClassType.getSimpleName() + ", Callable], got " + typeName(item)
+                                + " (length=N/A)");
+            }
+            Object resourceItem = entry.card();
+            Object provider = entry.provider();
+            if (resourceItem == null) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid card at idx " + idx
+                                + ": card cannot be None, must be an instance of "
+                                + cardClassType.getSimpleName());
+            }
+            try {
+                String resourceId = resourceItem instanceof String s
+                        ? s
+                        : cardClassType.isInstance(resourceItem) ? ((BaseCard) resourceItem).getId() : null;
+                validateResourceId(resourceId, resourceType);
+            } catch (com.openjiuwen.core.common.exception.ValidationError e) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid " + resourceType + " id at idx " + idx + ": " + e.getMessage());
+            }
+            if (provider == null) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid provider at idx " + idx
+                                + ": provider cannot be None, must be a callable function");
+            }
+            if (!cardClassType.isInstance(resourceItem)) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid " + resourceType + " card type at idx " + idx
+                                + ": expected " + cardClassType.getSimpleName()
+                                + ", got " + typeName(resourceItem));
+            }
+            if (!(resourceType.equals("agent") && isRemoteAgent(provider)) && !(provider instanceof Supplier<?>)) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID,
+                        "resource_type", resourceType,
+                        "reason", "invalid " + resourceType + " provider type at idx " + idx
+                                + ": expected callable, got " + typeName(provider));
+            }
+        }
+    }
+
+    private static void validateToolCardIfNeeded(Tool tool, Integer idx) {
+        try {
+            validateResourceCard(tool.getCard(), "tool", ToolCard.class);
+            validateResourceId(tool.getCard().getId(), "tool");
+        } catch (com.openjiuwen.core.common.exception.ValidationError e) {
+            String location = idx == null ? "tool" : "tool at index " + idx;
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID,
+                    "resource_type", "tool",
+                    "reason", location + " has invalid card: " + e.getMessage());
+        }
+    }
+
+    private static Object normalizeAgentProvider(Object provider) {
+        if (isRemoteAgent(provider)) {
+            return (Supplier<Object>) () -> provider;
+        }
+        return provider;
+    }
+
+    private static boolean isRemoteAgent(Object provider) {
+        return provider instanceof RemoteAgent;
+    }
+
+    private static String typeName(Object value) {
+        if (value == null) {
+            return "NoneType";
+        }
+        if (value instanceof String) {
+            return "str";
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return "int";
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return "float";
+        }
+        if (value instanceof Boolean) {
+            return "bool";
+        }
+        if (value instanceof List<?>) {
+            return "list";
+        }
+        if (value instanceof Map<?, ?>) {
+            return "dict";
+        }
+        return value.getClass().getSimpleName();
+    }
+
+    private static String snakeToCamel(String value) {
+        if (value == null || value.indexOf('_') < 0) {
+            return value;
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        boolean uppercaseNext = false;
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == '_') {
+                uppercaseNext = true;
+            } else if (uppercaseNext) {
+                builder.append(Character.toUpperCase(ch));
+                uppercaseNext = false;
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.toString();
     }
 
     private static String getCardType(BaseCard card) {
@@ -1066,7 +1241,7 @@ public class ResourceMgr {
 
     // ========== Record Types ==========
 
-    public record AgentEntry(AgentCard card, Supplier<Object> provider) {
+    public record AgentEntry(Object card, Object provider) {
     }
 
     public record WorkflowEntry(WorkflowCard card, Supplier<Workflow> provider) {

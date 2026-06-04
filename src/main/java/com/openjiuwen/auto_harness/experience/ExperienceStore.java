@@ -3,6 +3,7 @@ package com.openjiuwen.auto_harness.experience;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.auto_harness.schema.Experience;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,13 +52,14 @@ public class ExperienceStore {
         if (keywords.isEmpty()) {
             return List.of();
         }
+        double now = System.currentTimeMillis() / 1000.0;
         List<ScoredExperience> scored = new ArrayList<>();
         for (Experience experience : loadAll()) {
             int hits = countHits(keywords, experience);
             if (hits == 0) {
                 continue;
             }
-            scored.add(new ScoredExperience(hits, experience));
+            scored.add(new ScoredExperience(hits + recencyScore(experience.getTimestamp(), now), experience));
         }
         scored.sort(Comparator.comparingDouble(ScoredExperience::score).reversed());
         return scored.stream().limit(topK).map(ScoredExperience::experience).toList();
@@ -78,11 +80,11 @@ public class ExperienceStore {
         return null;
     }
 
-    static List<String> tokenize(String text) {
+    public static List<String> tokenize(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        String[] raw = text.toLowerCase(Locale.ROOT).split("[^a-z0-9_\\-]+");
+        String[] raw = text.toLowerCase(Locale.ROOT).split("\\s+");
         List<String> tokens = new ArrayList<>();
         for (String token : raw) {
             if (token.length() >= 2) {
@@ -92,7 +94,7 @@ public class ExperienceStore {
         return tokens;
     }
 
-    static int countHits(List<String> keywords, Experience experience) {
+    public static int countHits(List<String> keywords, Experience experience) {
         String haystack = String.join(" ",
                 nullSafe(experience.getTopic()),
                 nullSafe(experience.getSummary()),
@@ -107,11 +109,21 @@ public class ExperienceStore {
         return hits;
     }
 
+    public static double recencyScore(double timestamp, double now) {
+        double age = Math.max(now - timestamp, 0.0);
+        double maxAge = 30 * 86400.0;
+        if (age >= maxAge) {
+            return 0.0;
+        }
+        return 1.0 - (age / maxAge);
+    }
+
     private boolean isDuplicate(Experience candidate) {
+        double cutoff = System.currentTimeMillis() / 1000.0 - DEDUP_WINDOW_SECS;
         for (Experience existing : loadAll()) {
             if (existing.getType() == candidate.getType()
                     && nullSafe(existing.getTopic()).equals(nullSafe(candidate.getTopic()))
-                    && Math.abs(existing.getTimestamp() - candidate.getTimestamp()) <= DEDUP_WINDOW_SECS) {
+                    && existing.getTimestamp() >= cutoff) {
                 return true;
             }
         }
@@ -138,7 +150,13 @@ public class ExperienceStore {
                 if (line.isBlank()) {
                     continue;
                 }
-                experiences.add(OBJECT_MAPPER.readValue(line, Experience.class));
+                try {
+                    experiences.add(OBJECT_MAPPER.readValue(line, Experience.class));
+                } catch (JsonProcessingException ignored) {
+                    // Python skips malformed JSONL rows and continues loading.
+                } catch (IllegalArgumentException ignored) {
+                    // Python also skips rows with invalid enum values or shape.
+                }
             }
             return experiences;
         } catch (IOException e) {
@@ -150,5 +168,5 @@ public class ExperienceStore {
         return text != null ? text : "";
     }
 
-    private record ScoredExperience(int score, Experience experience) {}
+    private record ScoredExperience(double score, Experience experience) {}
 }

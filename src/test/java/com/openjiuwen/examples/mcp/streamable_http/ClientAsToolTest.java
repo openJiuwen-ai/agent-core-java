@@ -10,7 +10,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +37,10 @@ class ClientAsToolTest {
     private static final String SERVER_NAME = "notes-streamable-http-server";
 
     @Test
-    @DisabledIfEnvironmentVariable(named = "MCP_SERVER_RUNNING", matches = "false", disabledReason = "Requires running MCP server")
+    @EnabledIfEnvironmentVariable(
+            named = "MCP_SERVER_RUNNING",
+            matches = "true",
+            disabledReason = "Requires running streamable HTTP MCP server")
     void demonstrateMcpToolUsage() throws Exception {
         McpServerConfig config = McpServerConfig.builder()
                 .serverName(SERVER_NAME)
@@ -81,6 +84,18 @@ class ClientAsToolTest {
 
         result = (Map<String, Object>) tools.get("get_note").invoke(Map.of("note_id", 1));
         logger.info("get_note(1)                 → {}", result);
+
+        result = (Map<String, Object>) tools.get("delete_note").invoke(Map.of("note_id", 0));
+        logger.info("delete_note(0)              → {}", result);
+
+        result = (Map<String, Object>) tools.get("list_notes").invoke(Map.of());
+        logger.info("list_notes after delete     → {}", result);
+
+        result = (Map<String, Object>) tools.get("clear_notes").invoke(Map.of());
+        logger.info("clear_notes                 → {}", result);
+
+        result = (Map<String, Object>) tools.get("list_notes").invoke(Map.of());
+        logger.info("list_notes (cleared)        → {}", result);
 
         client.disconnect();
         logger.info("Disconnected.");

@@ -27,8 +27,8 @@ public class RecursiveCharacterTextSplitter extends TextSplitter {
     }
 
     public RecursiveCharacterTextSplitter(int chunkSize, int chunkOverlap, List<String> separators) {
-        this.chunkSize = chunkSize;
-        this.chunkOverlap = chunkOverlap;
+        this.chunkSize = Math.max(1, chunkSize);
+        this.chunkOverlap = Math.max(0, Math.min(chunkOverlap, this.chunkSize - 1));
         this.separators = separators;
     }
 
@@ -49,8 +49,7 @@ public class RecursiveCharacterTextSplitter extends TextSplitter {
             return chunks;
         }
 
-        // Simple recursive splitting implementation
-        splitTextRecursive(text, chunks, 0);
+        splitTextRecursive(doc, text, chunks, 0);
         return chunks;
     }
 
@@ -64,20 +63,22 @@ public class RecursiveCharacterTextSplitter extends TextSplitter {
         }
 
         int start = 0;
+        int step = chunkSize - chunkOverlap;
         while (start < text.length()) {
             int end = Math.min(start + chunkSize, text.length());
             result.add(text.substring(start, end));
-            start = end - chunkOverlap;
-            if (start < 0) start = 0;
-            if (start >= end) start = end;
+            if (end == text.length()) {
+                break;
+            }
+            start += step;
         }
         return result;
     }
 
-    private void splitTextRecursive(String text, List<TextChunk> chunks, int separatorIndex) {
+    private void splitTextRecursive(Document doc, String text, List<TextChunk> chunks, int separatorIndex) {
         if (text.length() <= chunkSize) {
             if (!text.isEmpty()) {
-                chunks.add(new TextChunk(UUID.randomUUID().toString(), text, "split_chunk"));
+                chunks.add(TextChunk.fromDocument(doc, text, UUID.randomUUID().toString()));
             }
             return;
         }
@@ -85,18 +86,21 @@ public class RecursiveCharacterTextSplitter extends TextSplitter {
         if (separatorIndex >= separators.size()) {
             // Split by characters when no separators work
             int start = 0;
+            int step = chunkSize - chunkOverlap;
             while (start < text.length()) {
                 int end = Math.min(start + chunkSize, text.length());
-                chunks.add(new TextChunk(UUID.randomUUID().toString(), text.substring(start, end), "split_chunk"));
-                start = end - chunkOverlap;
-                if (start <= 0) start = end;
+                chunks.add(TextChunk.fromDocument(doc, text.substring(start, end), UUID.randomUUID().toString()));
+                if (end == text.length()) {
+                    break;
+                }
+                start += step;
             }
             return;
         }
 
         String separator = separators.get(separatorIndex);
         if (separator.isEmpty() || !text.contains(separator)) {
-            splitTextRecursive(text, chunks, separatorIndex + 1);
+            splitTextRecursive(doc, text, chunks, separatorIndex + 1);
             return;
         }
 
@@ -104,10 +108,10 @@ public class RecursiveCharacterTextSplitter extends TextSplitter {
         for (String part : parts) {
             if (part.length() <= chunkSize) {
                 if (!part.isEmpty()) {
-                    chunks.add(new TextChunk(UUID.randomUUID().toString(), part, "split_chunk"));
+                    chunks.add(TextChunk.fromDocument(doc, part, UUID.randomUUID().toString()));
                 }
             } else {
-                splitTextRecursive(part, chunks, separatorIndex + 1);
+                splitTextRecursive(doc, part, chunks, separatorIndex + 1);
             }
         }
     }

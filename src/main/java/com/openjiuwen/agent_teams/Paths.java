@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * keeps creation (TeamAgent, Blueprint) and cleanup (TeamBackend.clean_team)
  * in sync: a future move of the root only needs to update this module.
  * 
- * Mirrors Python's agent_teams.paths
+ * Mirrors Python's {@code paths.py} module in {@code openjiuwen.agent_teams.paths}.
  * 
  * @since 0.1.12
  */
@@ -32,6 +32,7 @@ public final class Paths {
      */
     public static void configureOpenjiuwenHome(String path) {
         configuredOpenjiuwenHome.set(java.nio.file.Paths.get(path));
+        refreshConstants();
     }
     
     /**
@@ -41,6 +42,7 @@ public final class Paths {
      */
     public static void configureOpenjiuwenHome(Path path) {
         configuredOpenjiuwenHome.set(path);
+        refreshConstants();
     }
     
     /**
@@ -48,6 +50,7 @@ public final class Paths {
      */
     public static void resetOpenjiuwenHome() {
         configuredOpenjiuwenHome.set(null);
+        refreshConstants();
     }
     
     /**
@@ -120,13 +123,18 @@ public final class Paths {
      * Backward-compatible constant for OPENJIUWEN_HOME.
      * Equivalent to calling getOpenjiuwenHome().
      */
-    public static final Path OPENJIUWEN_HOME = getOpenjiuwenHome();
+    public static Path OPENJIUWEN_HOME = getOpenjiuwenHome();
     
     /**
      * Backward-compatible constant for AGENT_TEAMS_HOME.
      * Equivalent to calling getAgentTeamsHome().
      */
-    public static final Path AGENT_TEAMS_HOME = getAgentTeamsHome();
+    public static Path AGENT_TEAMS_HOME = getAgentTeamsHome();
+
+    private static void refreshConstants() {
+        OPENJIUWEN_HOME = getOpenjiuwenHome();
+        AGENT_TEAMS_HOME = getAgentTeamsHome();
+    }
     
     // Private constructor to prevent instantiation
     private Paths() {

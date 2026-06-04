@@ -27,6 +27,9 @@ import java.util.function.Consumer;
  *   <li>Config is optional (defines how the Agent runs)</li>
  *   <li>All configuration methods support chaining</li>
  * </ul>
+ *
+ * <p>Mirrors Python's {@code BaseAgent} in
+ * {@code openjiuwen.core.single_agent.base}.</p>
  */
 public abstract class BaseAgent implements AgentCallbackFirer {
 
@@ -117,9 +120,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      */
     public void registerSkill(Object skillPath) {
         lazyInitSkill();
-        if (skillUtil != null) {
-            skillUtil.registerSkills(skillPath, this);
+        if (skillUtil == null) {
+            throw new IllegalStateException("sys_operation_id is required before registering skills");
         }
+        skillUtil.registerSkills(skillPath, this);
     }
 
     /**
@@ -131,9 +135,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      */
     public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
         lazyInitSkill();
-        if (skillUtil != null) {
-            skillUtil.registerRemoteSkills(skillsDir, githubTree, token);
+        if (skillUtil == null) {
+            throw new IllegalStateException("sys_operation_id is required before registering remote skills");
         }
+        skillUtil.registerRemoteSkills(skillsDir, githubTree, token);
     }
 
     /**

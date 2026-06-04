@@ -1,115 +1,134 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness.prompts;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.harness.prompts.tools.ToolDescriptionRegistry;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Tests for harness prompts tool input params.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/harness/prompts/test_tool_input_params.py}.
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_PROMPT_TESTS", matches = "true")
-public class TestToolInputParams {
+class TestToolInputParams {
 
-    // ---------------------------------------------------------------------------
-    // Parameter Schema Tests
-    // ---------------------------------------------------------------------------
-
-    @Nested
-    class TestParameterSchema {
-
-        @Test
-        @DisplayName("Test required parameter definition")
-        @Tag("level0")
-        void testRequiredParameterDefinition() {
-            Map<String, Object> param = new LinkedHashMap<>();
-            param.put("name", "query");
-            param.put("type", "string");
-            param.put("required", true);
-            param.put("description", "Search query string");
-            
-            assertThat(param.get("required")).isEqualTo(true);
-            assertThat(param.get("type")).isEqualTo("string");
-        }
-
-        @Test
-        @DisplayName("Test optional parameter definition")
-        @Tag("level0")
-        void testOptionalParameterDefinition() {
-            Map<String, Object> param = new LinkedHashMap<>();
-            param.put("name", "limit");
-            param.put("type", "integer");
-            param.put("required", false);
-            param.put("default", 10);
-            
-            assertThat(param.get("required")).isEqualTo(false);
-            assertThat(param.get("default")).isEqualTo(10);
-        }
-
-        @Test
-        @DisplayName("Test nested parameter schema")
-        @Tag("level0")
-        void testNestedParameterSchema() {
-            Map<String, Object> nestedParam = new LinkedHashMap<>();
-            nestedParam.put("type", "object");
-            nestedParam.put("properties", new LinkedHashMap<>());
-            
-            assertThat(nestedParam.get("type")).isEqualTo("object");
-            assertThat(nestedParam.containsKey("properties")).isTrue();
+    @Test
+    void testCoreBuilders() {
+        for (String name : coreToolNames()) {
+            assertBilingualSchema(name);
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Parameter Types Tests
-    // ---------------------------------------------------------------------------
+    @Test
+    void testExpectedRequiredFields() {
+        assertThat(required("bash", "cn")).containsExactly("command");
+        assertThat(required("powershell", "cn")).containsExactly("command");
+        assertThat(required("code", "cn")).containsExactly("code");
+        assertThat(required("read_file", "cn")).containsExactly("file_path");
+        assertThat(required("write_file", "cn")).containsExactlyInAnyOrder("file_path", "content");
+        assertThat(required("todo_create", "cn")).containsExactly("tasks");
+        assertThat(required("image_ocr", "cn")).containsExactly("image_path_or_url");
+        assertThat(required("visual_question_answering", "cn"))
+                .containsExactly("image_path_or_url", "question");
+        assertThat(required("audio_transcription", "cn")).containsExactly("audio_path_or_url");
+        assertThat(required("audio_question_answering", "cn"))
+                .containsExactly("audio_path_or_url", "question");
+        assertThat(required("audio_metadata", "cn")).containsExactly("audio_path_or_url");
+    }
 
-    @Nested
-    class TestParameterTypes {
-
-        @Test
-        @DisplayName("Test string parameter type")
-        @Tag("level0")
-        void testStringParameterType() {
-            String type = "string";
-            
-            assertThat(type).isEqualTo("string");
+    @Test
+    void testAllRegisteredTools() {
+        for (String name : coreToolNames()) {
+            assertThat(ToolDescriptionRegistry.getToolInputParams(name, "cn").get("type")).isEqualTo("object");
         }
+    }
 
-        @Test
-        @DisplayName("Test integer parameter type")
-        @Tag("level0")
-        void testIntegerParameterType() {
-            String type = "integer";
-            
-            assertThat(type).isEqualTo("integer");
-        }
+    @Test
+    void testUnknownToolRaises() {
+        assertThrows(
+                ToolDescriptionRegistry.KeyError.class,
+                () -> ToolDescriptionRegistry.getToolInputParams("nonexistent", "cn")
+        );
+    }
 
-        @Test
-        @DisplayName("Test array parameter type")
-        @Tag("level0")
-        void testArrayParameterType() {
-            String type = "array";
-            
-            assertThat(type).isEqualTo("array");
-        }
+    @Test
+    void testRegistryMatchesDirectBuilder() {
+        assertThat(ToolDescriptionRegistry.buildToolCard("bash", "BashTool", "cn", null).get("input_params"))
+                .isEqualTo(ToolDescriptionRegistry.getToolInputParams("bash", "cn"));
+        assertThat(ToolDescriptionRegistry.buildToolCard("powershell", "PowerShellTool", "cn", null).get("input_params"))
+                .isEqualTo(ToolDescriptionRegistry.getToolInputParams("powershell", "cn"));
+        assertThat(ToolDescriptionRegistry.buildToolCard("image_ocr", "ImageOCRTool", "en", null).get("input_params"))
+                .isEqualTo(ToolDescriptionRegistry.getToolInputParams("image_ocr", "en"));
+        assertThat(ToolDescriptionRegistry.buildToolCard("audio_metadata", "AudioMetadataTool", "en", null).get("input_params"))
+                .isEqualTo(ToolDescriptionRegistry.getToolInputParams("audio_metadata", "en"));
+    }
 
-        @Test
-        @DisplayName("Test object parameter type")
-        @Tag("level0")
-        void testObjectParameterType() {
-            String type = "object";
-            
-            assertThat(type).isEqualTo("object");
+    @Test
+    void testExistingToolsUseBuilderSchemasViaCardBuilder() {
+        for (String name : List.of("bash", "powershell", "code", "read_file", "write_file", "edit_file", "glob", "list_files", "grep", "list_skill")) {
+            assertThat(ToolDescriptionRegistry.buildToolCard(name, name, "en", null).get("input_params"))
+                    .isEqualTo(ToolDescriptionRegistry.getToolInputParams(name, "en"));
         }
+    }
+
+    @Test
+    void testVisionToolsUseBuildersViaCardBuilder() {
+        for (String name : List.of("image_ocr", "visual_question_answering")) {
+            assertThat(ToolDescriptionRegistry.buildToolCard(name, name, "en", null).get("input_params"))
+                    .isEqualTo(ToolDescriptionRegistry.getToolInputParams(name, "en"));
+        }
+    }
+
+    @Test
+    void testAudioToolsUseBuildersViaCardBuilder() {
+        for (String name : List.of("audio_transcription", "audio_question_answering", "audio_metadata")) {
+            assertThat(ToolDescriptionRegistry.buildToolCard(name, name, "en", null).get("input_params"))
+                    .isEqualTo(ToolDescriptionRegistry.getToolInputParams(name, "en"));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> required(String name, String language) {
+        return (List<String>) ToolDescriptionRegistry.getToolInputParams(name, language).get("required");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertBilingualSchema(String name) {
+        Map<String, Object> cn = ToolDescriptionRegistry.getToolInputParams(name, "cn");
+        Map<String, Object> en = ToolDescriptionRegistry.getToolInputParams(name, "en");
+        assertThat(cn.get("type")).isEqualTo("object");
+        assertThat(en.get("type")).isEqualTo("object");
+        Map<String, Object> cnProps = (Map<String, Object>) cn.get("properties");
+        Map<String, Object> enProps = (Map<String, Object>) en.get("properties");
+        assertThat(cnProps.keySet()).isEqualTo(enProps.keySet());
+    }
+
+    private static List<String> coreToolNames() {
+        return List.of(
+                "bash",
+                "powershell",
+                "code",
+                "read_file",
+                "write_file",
+                "edit_file",
+                "glob",
+                "list_files",
+                "grep",
+                "list_skill",
+                "todo_create",
+                "todo_list",
+                "todo_modify",
+                "image_ocr",
+                "visual_question_answering",
+                "audio_transcription",
+                "audio_question_answering",
+                "audio_metadata"
+        );
     }
 }

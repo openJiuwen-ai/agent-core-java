@@ -28,6 +28,9 @@ import java.util.Map;
 
 /**
  * Parser for xlsx/csv/tsv tabular files that emits row and column documents.
+ *
+ * <p>Mirrors Python's {@code ExcelParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.excel_parser}.
  */
 public class ExcelParser extends Parser {
 
@@ -35,6 +38,13 @@ public class ExcelParser extends Parser {
 
     public static String cellStr(Object value) {
         return value == null ? "" : value.toString().trim();
+    }
+
+    public static List<Document> rowsToDocuments(List<? extends List<?>> rows,
+                                                 String sheetName,
+                                                 String baseId,
+                                                 int sheetIndex) {
+        return rowsToDocuments(rows, sheetName, baseId, sheetIndex, true);
     }
 
     public static List<Document> rowsToDocuments(List<? extends List<?>> rows,

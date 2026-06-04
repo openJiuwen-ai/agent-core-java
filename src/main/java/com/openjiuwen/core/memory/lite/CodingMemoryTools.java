@@ -26,6 +26,9 @@ public final class CodingMemoryTools {
     /** Maximum lines to read when extracting context */
     public static final int MAX_INDEX_LINES = 50;
 
+    /** Maximum optimistic retry attempts before falling back. */
+    private static final int MAX_CONFLICT_RETRIES = 2;
+
     // Runtime context (thread-safe)
     private static volatile CodingMemoryToolContext defaultContext = null;
     private static volatile MemoryIndexManager codingMemoryManager = null;
@@ -107,6 +110,13 @@ public final class CodingMemoryTools {
 
         // Normalize path
         String normalizedPath = path.replace("\\", "/");
+        Path requestedPath = Paths.get(normalizedPath);
+        if (normalizedPath.contains("..") || requestedPath.isAbsolute()) {
+            throw new IllegalArgumentException("Invalid path: directory traversal not allowed");
+        }
+        if (!normalizedPath.toLowerCase(Locale.ROOT).endsWith(".md")) {
+            throw new IllegalArgumentException("Path must be a markdown .md file");
+        }
 
         // Ensure it's within coding memory directory
         if (defaultContext != null) {
@@ -129,14 +139,20 @@ public final class CodingMemoryTools {
      * @param frontmatter the frontmatter map
      */
     public static void upsertMemoryIndex(String filePath, Map<String, String> frontmatter) {
-        if (codingMemoryManager == null) {
-            Loggers.MEMORY.warn("Coding memory manager not initialized");
-            return;
-        }
-
         memoryIndexLock.lock();
         try {
-            codingMemoryManager.upsertIndex(filePath, frontmatter);
+            if (codingMemoryManager != null) {
+                codingMemoryManager.upsertIndex(filePath, frontmatter);
+            }
+            if (defaultContext != null && defaultContext.getCodingMemoryDir() != null) {
+                CodingMemoryToolContext.upsertMemoryIndex(
+                        defaultContext.getCodingMemoryDir(),
+                        Paths.get(filePath).getFileName().toString(),
+                        frontmatter != null ? frontmatter : Map.of()
+                );
+            } else if (codingMemoryManager == null) {
+                Loggers.MEMORY.warn("Coding memory manager not initialized");
+            }
         } finally {
             memoryIndexLock.unlock();
         }
@@ -148,14 +164,25 @@ public final class CodingMemoryTools {
      * @param filePath the file path to remove
      */
     public static void removeFromMemoryIndex(String filePath) {
-        if (codingMemoryManager == null) {
-            Loggers.MEMORY.warn("Coding memory manager not initialized");
-            return;
-        }
-
         memoryIndexLock.lock();
         try {
-            codingMemoryManager.removeFromIndex(filePath);
+            if (codingMemoryManager != null) {
+                codingMemoryManager.removeFromIndex(filePath);
+            }
+            if (defaultContext != null && defaultContext.getCodingMemoryDir() != null) {
+                Path indexPath = Paths.get(defaultContext.getCodingMemoryDir(), "MEMORY.md");
+                if (Files.exists(indexPath)) {
+                    String filename = Paths.get(filePath).getFileName().toString();
+                    List<String> lines = new ArrayList<>(Files.readAllLines(indexPath));
+                    lines.removeIf(line -> line.contains("](" + filename + ")"));
+                    Files.writeString(indexPath, String.join("\n", lines),
+                            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                }
+            } else if (codingMemoryManager == null) {
+                Loggers.MEMORY.warn("Coding memory manager not initialized");
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to remove coding memory index entry for " + filePath, e);
         } finally {
             memoryIndexLock.unlock();
         }

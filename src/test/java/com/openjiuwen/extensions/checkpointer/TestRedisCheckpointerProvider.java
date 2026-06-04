@@ -14,6 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for Redis Checkpointer Provider.
  * <p>
  * Tests Redis-specific checkpointer configuration and functionality.
+ *
+ * <p>Mirrors Python's {@code test_redis_checkpointer_provider} in
+ * {@code tests.unit_tests.extensions.checkpointer.test_redis_checkpointer_provider}.
  */
 class TestRedisCheckpointerProvider {
 

@@ -4,453 +4,558 @@
 
 package com.openjiuwen.unit_tests.core.common.log;
 
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.logging.LoggingUtils;
+import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Filter;
 import java.util.logging.Handler;
-import java.util.logging.Level;
 import java.util.logging.LogRecord;
-import java.util.logging.StreamHandler;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for Logger.
- * 
- * <p>Mirrors Python's test_logger in tests.unit_tests.core.common.log.</p>
+ * Mirrors Python's {@code test_logger.py} in
+ * {@code tests.unit_tests.core.common.log}.
  */
-@DisplayName("TestLogger")
+@Tag("unit-test")
 class TestLogger {
-
-    private ByteArrayOutputStream stdoutCapture;
-    private PrintStream originalOut;
-    private PrintStream originalErr;
 
     @TempDir
     Path tempDir;
 
     @BeforeEach
     void setUp() {
-        // Reset LogManager before each test
+        LogManager.LogConfigProvider.setProvider(null);
         LogManager.reset();
-        stdoutCapture = new ByteArrayOutputStream();
-        originalOut = System.out;
-        originalErr = System.err;
-        System.setOut(new PrintStream(stdoutCapture));
+        LoggingUtils.clearSessionId();
+        LoggingUtils.clearMemberId();
     }
 
     @AfterEach
     void tearDown() {
+        LogManager.LogConfigProvider.setProvider(null);
         LogManager.reset();
-        System.setOut(originalOut);
-        System.setErr(originalErr);
         LoggingUtils.clearSessionId();
+        LoggingUtils.clearMemberId();
     }
 
-    // ==================== TestThreadSafety ====================
+    @Test
+    @Tag("level1")
+    @DisplayName("Test thread trace id isolation")
+    void testThreadTraceIdIsolation() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch ready = new CountDownLatch(3);
+        List<String> seen = new CopyOnWriteArrayList<>();
 
-    @Nested
-    @DisplayName("TestThreadSafety")
-    class TestThreadSafety {
+        for (int i = 1; i <= 3; i++) {
+            String traceId = "trace-" + i;
+            executor.submit(() -> {
+                LoggingUtils.setSessionId(traceId);
+                seen.add(LoggingUtils.getSessionId());
+                ready.countDown();
+            });
+        }
 
-        @Test
-        @Tag("level1")
-        @DisplayName("Test thread trace_id isolation")
-        void testThreadTraceIdIsolation() throws InterruptedException {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
+        assertTrue(ready.await(5, TimeUnit.SECONDS));
+        executor.shutdownNow();
 
-            List<String[]> logList = new ArrayList<>();
-            CountDownLatch latch = new CountDownLatch(3);
+        assertTrue(seen.containsAll(List.of("trace-1", "trace-2", "trace-3")));
+        assertEquals("default_trace_id", LoggingUtils.getSessionId());
+    }
 
-            Runnable thread1 = () -> {
-                LoggingUtils.setSessionId("10001");
-                logger.info("Thread started with session id 10001");
-                logList.add(new String[]{"10001", LoggingUtils.getSessionId()});
-                latch.countDown();
-            };
+    @Test
+    @Tag("level1")
+    @DisplayName("Test default logger creation")
+    void testDefaultLoggerCreation() {
+        LogManager.initialize();
 
-            Runnable thread2 = () -> {
-                LoggingUtils.setSessionId("10002");
-                logger.info("Thread started with session id 10002");
-                logList.add(new String[]{"10002", LoggingUtils.getSessionId()});
-                latch.countDown();
-            };
+        LoggerProtocol logger = LogManager.getLogger("common");
 
-            Runnable thread3 = () -> {
-                LoggingUtils.setSessionId("10003");
-                logger.info("Thread started with session id 10003");
-                logList.add(new String[]{"10003", LoggingUtils.getSessionId()});
-                latch.countDown();
-            };
+        assertInstanceOf(DefaultLogger.class, logger);
+    }
 
-            new Thread(thread1).start();
-            new Thread(thread2).start();
-            new Thread(thread3).start();
+    @Test
+    @Tag("level1")
+    @DisplayName("Test custom logger registration and usage")
+    void testCustomLoggerRegistrationAndUsage() {
+        RecordingLogger logger = new RecordingLogger();
 
-            latch.await();
+        LogManager.registerLogger("custom", logger);
+        LogManager.getLogger("custom").info("hello {}", "world");
 
-            for (String[] entry : logList) {
-                assertEquals(entry[0], entry[1], 
-                    "Thread session_id mismatch: expected " + entry[0] + ", actual " + entry[1]);
-            }
+        assertEquals(List.of("INFO: hello {}"), logger.messages());
+    }
 
-            assertEquals("default_trace_id", LoggingUtils.getSessionId());
+    @Test
+    @Tag("level1")
+    @DisplayName("Test get all loggers")
+    void testGetAllLoggers() {
+        LogManager.initialize();
+        LogManager.getLogger("common");
+        LogManager.getLogger("interface");
 
-            String output = stdoutCapture.toString();
-            assertTrue(output.contains("10001") || output.contains("10002") || output.contains("10003"),
-                "Output should contain session IDs");
+        Map<String, LoggerProtocol> loggers = LogManager.getAllLoggers();
+
+        assertTrue(loggers.containsKey("common"));
+        assertTrue(loggers.containsKey("interface"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test register logger type check")
+    void testRegisterLoggerTypeCheck() {
+        LogManager.TypeError thrown = assertThrows(LogManager.TypeError.class,
+                () -> LogManager.registerLogger("bad", null));
+
+        assertTrue(thrown.getMessage().contains("Logger must implement LoggerProtocol"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test get logger creates on demand")
+    void testGetLoggerCreatesOnDemand() {
+        LogManager.initialize();
+
+        LoggerProtocol first = LogManager.getLogger("new_type");
+        LoggerProtocol second = LogManager.getLogger("new_type");
+
+        assertSame(first, second);
+        assertInstanceOf(DefaultLogger.class, first);
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test default logger factory override")
+    void testDefaultLoggerFactoryOverride() {
+        LogManager.setDefaultLoggerFactory((name, config) -> new RecordingLogger());
+
+        LoggerProtocol logger = LogManager.getLogger("factory-test");
+
+        assertInstanceOf(RecordingLogger.class, logger);
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test initialize is idempotent for same backend")
+    void testInitializeIsIdempotentForSameBackend() {
+        LogManager.initialize("default");
+        LoggerProtocol before = LogManager.getLogger("common");
+
+        LogManager.initialize("default");
+
+        assertSame(before, LogManager.getLogger("common"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test reset clears loggers")
+    void testResetClearsLoggers() {
+        LogManager.initialize();
+        LoggerProtocol before = LogManager.getLogger("common");
+
+        LogManager.reset();
+        LoggerProtocol after = LogManager.getLogger("common");
+
+        assertNotSame(before, after);
+        assertInstanceOf(DefaultLogger.class, after);
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test default session id")
+    void testDefaultSessionId() {
+        assertEquals("default_trace_id", LoggingUtils.getSessionId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test set session id")
+    void testSetSessionId() {
+        LoggingUtils.setSessionId("session-001");
+
+        assertEquals("session-001", LoggingUtils.getSessionId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test clear session id")
+    void testClearSessionId() {
+        LoggingUtils.setSessionId("session-001");
+
+        LoggingUtils.clearSessionId();
+
+        assertEquals("default_trace_id", LoggingUtils.getSessionId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test null session id defaults")
+    void testNullSessionIdDefaults() {
+        LoggingUtils.setSessionId(null);
+
+        assertEquals("default_trace_id", LoggingUtils.getSessionId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test default member id")
+    void testDefaultMemberId() {
+        assertEquals("", LoggingUtils.getMemberId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test set member id")
+    void testSetMemberId() {
+        LoggingUtils.setMemberId("member-1");
+
+        assertEquals("member-1", LoggingUtils.getMemberId());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test clear member id")
+    void testClearMemberId() {
+        LoggingUtils.setMemberId("member-1");
+
+        LoggingUtils.clearMemberId();
+
+        assertEquals("", LoggingUtils.getMemberId());
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test log max bytes valid value")
+    void testLogMaxBytesValidValue() {
+        assertEquals(1024, LoggingUtils.getLogMaxBytes("1024"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test log max bytes caps invalid ranges")
+    void testLogMaxBytesCapsInvalidRanges() {
+        int defaultMaxBytes = 100 * 1024 * 1024;
+
+        assertEquals(defaultMaxBytes, LoggingUtils.getLogMaxBytes("-1"));
+        assertEquals(defaultMaxBytes, LoggingUtils.getLogMaxBytes(String.valueOf(defaultMaxBytes + 1)));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test invalid log max bytes raises")
+    void testInvalidLogMaxBytesRaises() {
+        assertThrows(IllegalArgumentException.class, () -> LoggingUtils.getLogMaxBytes("not-a-number"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test resolve log type label")
+    void testResolveLogTypeLabel() {
+        assertEquals("perf", LoggingUtils.resolveLogTypeLabel("performance"));
+        assertEquals("common", LoggingUtils.resolveLogTypeLabel("common"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test format log filename pattern")
+    void testFormatLogFilenamePattern() {
+        String formatted = LoggingUtils.formatLogFilename("app.log", "{name}-{pid}{ext}");
+
+        assertTrue(formatted.startsWith("app-"));
+        assertTrue(formatted.endsWith(".log"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test normalize log level string")
+    void testNormalizeLogLevelString() {
+        assertEquals(LogLevels.INFO, LogLevels.normalizeLogLevel("INFO"));
+        assertEquals(LogLevels.DEBUG, LogLevels.normalizeLogLevel("debug"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test normalize log level fallback")
+    void testNormalizeLogLevelFallback() {
+        assertEquals(LogLevels.ERROR, LogLevels.normalizeLogLevel("bad", LogLevels.ERROR));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test extract backend default")
+    void testExtractBackendDefault() {
+        assertEquals("default", LogLevels.extractBackend(Map.of()));
+        assertEquals("loguru", LogLevels.extractBackend(Map.of("backend", " loguru ")));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test normalize logging config")
+    void testNormalizeLoggingConfig() {
+        Map<String, Object> normalized = LogLevels.normalizeLoggingConfig(Map.of("level", "DEBUG"));
+
+        assertEquals(LogLevels.DEBUG, normalized.get("level"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test logger config access")
+    void testLoggerConfigAccess() {
+        DefaultLogger logger = new DefaultLogger("config-test", Map.of("level", LogLevels.INFO, "output", "console"));
+
+        assertEquals(LogLevels.INFO, logger.getConfig().get("level"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test logger reconfigure")
+    void testLoggerReconfigure() {
+        DefaultLogger logger = new DefaultLogger("reconfigure-test", Map.of("level", LogLevels.INFO));
+
+        logger.reconfigure(Map.of("level", LogLevels.DEBUG, "output", "console"));
+
+        assertEquals(LogLevels.DEBUG, logger.getConfig().get("level"));
+        assertEquals("console", logger.getConfig().get("output"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test default logger percent formatting")
+    void testDefaultLoggerPercentFormatting() {
+        DefaultLogger logger = new DefaultLogger("percent-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("value=%s", 42);
+
+        assertTrue(handler.messages().contains("value=42"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test default logger brace formatting")
+    void testDefaultLoggerBraceFormatting() {
+        DefaultLogger logger = new DefaultLogger("brace-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("hello {}", "world");
+
+        assertTrue(handler.messages().contains("hello world"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test message sanitization")
+    void testMessageSanitization() {
+        DefaultLogger logger = new DefaultLogger("sanitize-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.info("line1\nline2\tend");
+
+        assertTrue(handler.messages().stream().anyMatch(message -> message.contains("line1\\nline2\\tend")));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test filter suppresses log record")
+    void testFilterSuppressesLogRecord() {
+        DefaultLogger logger = new DefaultLogger("filter-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        Filter blockAll = record -> false;
+        logger.addHandler(handler);
+        logger.addFilter(blockAll);
+
+        logger.info("blocked");
+
+        assertFalse(handler.messages().contains("blocked"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test remove filter restores log record")
+    void testRemoveFilterRestoresLogRecord() {
+        DefaultLogger logger = new DefaultLogger("remove-filter-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        Filter blockAll = record -> false;
+        logger.addHandler(handler);
+        logger.addFilter(blockAll);
+        logger.removeFilter(blockAll);
+
+        logger.info("allowed");
+
+        assertTrue(handler.messages().contains("allowed"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test all log levels")
+    void testAllLogLevels() {
+        DefaultLogger logger = new DefaultLogger("levels-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+        logger.setLevel(LogLevels.DEBUG);
+
+        logger.debug("debug message");
+        logger.info("info message");
+        logger.warning("warning message");
+        logger.error("error message");
+        logger.critical("critical message");
+
+        assertTrue(handler.messages().contains("debug message"));
+        assertTrue(handler.messages().contains("info message"));
+        assertTrue(handler.messages().contains("warning message"));
+        assertTrue(handler.messages().contains("error message"));
+        assertTrue(handler.messages().contains("[CRITICAL] critical message"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test log level filtering")
+    void testLogLevelFiltering() {
+        DefaultLogger logger = new DefaultLogger("level-filter-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+        logger.setLevel(LogLevels.ERROR);
+
+        logger.info("hidden info");
+        logger.error("visible error");
+
+        assertFalse(handler.messages().contains("hidden info"));
+        assertTrue(handler.messages().contains("visible error"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test exception logging")
+    void testExceptionLogging() {
+        DefaultLogger logger = new DefaultLogger("exception-test", Map.of("output", "console"));
+        RecordingHandler handler = new RecordingHandler();
+        logger.addHandler(handler);
+
+        logger.exception("Exception occurred", new IllegalArgumentException("bad input"));
+
+        assertTrue(handler.messages().contains("Exception occurred"));
+        assertInstanceOf(IllegalArgumentException.class, handler.records().get(0).getThrown());
+    }
+
+    @Test
+    @Tag("level2")
+    @DisplayName("Test create nested log directory")
+    void testCreateNestedLogDirectory() {
+        Path logFile = tempDir.resolve("logs").resolve("run").resolve("test.log");
+
+        new DefaultLogger("nested-dir-test", Map.of("output", List.of("file"), "log_file", logFile.toString()));
+
+        assertTrue(Files.isDirectory(logFile.getParent()));
+    }
+
+    @Test
+    @Tag("level2")
+    @DisplayName("Test create existing directory no error")
+    void testCreateExistingDirectoryNoError() throws IOException {
+        Path dir = tempDir.resolve("logs").resolve("existing");
+        Files.createDirectories(dir);
+        Path logFile = dir.resolve("test.log");
+
+        assertDoesNotThrow(() -> new DefaultLogger("existing-dir-test",
+                Map.of("output", List.of("file"), "log_file", logFile.toString())));
+    }
+
+    @Test
+    @Tag("level2")
+    @DisplayName("Test normalize and validate log path")
+    void testNormalizeAndValidateLogPath() throws IOException {
+        Path logFile = tempDir.resolve("valid.log");
+        Files.createFile(logFile);
+
+        String normalized = LoggingUtils.normalizeAndValidateLogPath(logFile);
+
+        assertTrue(normalized.endsWith("valid.log"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test logger inner JUL object")
+    void testLoggerInnerJulObject() {
+        DefaultLogger logger = new DefaultLogger("jul-test", Map.of("output", "console"));
+
+        assertNotNull(logger.logger());
+        assertTrue(logger.logger().getName().contains("jul-test"));
+    }
+
+    @Test
+    @Tag("level1")
+    @DisplayName("Test logging context is cleared after publish")
+    void testLoggingContextIsClearedAfterPublish() {
+        DefaultLogger logger = new DefaultLogger("context-clear-test", Map.of("output", "console"));
+        LoggingUtils.setSessionId("trace-ctx");
+
+        logger.info("context message");
+
+        assertEquals("trace-ctx", LoggingUtils.getSessionId());
+        assertFalse(org.slf4j.MDC.getCopyOfContextMap() != null
+                && org.slf4j.MDC.getCopyOfContextMap().containsKey("trace_id"));
+    }
+
+    private static final class RecordingHandler extends Handler {
+        private final List<LogRecord> records = new ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            records.add(record);
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        List<LogRecord> records() {
+            return records;
+        }
+
+        List<String> messages() {
+            return records.stream().map(LogRecord::getMessage).toList();
         }
     }
 
-    // ==================== TestLogManager ====================
-
-    @Nested
-    @DisplayName("TestLogManager")
-    class TestLogManagerTests {
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test default logger creation")
-        void testDefaultLoggerCreation() {
-            LogManager.initialize();
-
-            LoggerProtocol newLogger = LogManager.getLogger("new_type_test");
-            assertNotNull(newLogger);
-            assertTrue(newLogger instanceof DefaultLogger);
-
-            newLogger.warning("Test new logger type");
-
-            String output = stdoutCapture.toString();
-            assertTrue(output.contains("Test new logger type") || output.length() >= 0,
-                "Output should contain log message");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test get all loggers")
-        void testGetAllLoggers() {
-            LogManager.initialize();
-
-            Map<String, LoggerProtocol> allLoggers = LogManager.getAllLoggers();
-            assertNotNull(allLoggers);
-
-            // Should contain at least 'common' logger if initialized
-            assertTrue(allLoggers.isEmpty() || allLoggers.containsKey("common") || allLoggers.size() > 0,
-                "Should have loggers after initialization");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test get logger creates on demand")
-        void testGetLoggerCreatesOnDemand() {
-            LogManager.initialize();
-
-            LoggerProtocol newTypeLogger = LogManager.getLogger("on_demand_test");
-            assertNotNull(newTypeLogger);
-            assertTrue(newTypeLogger instanceof DefaultLogger);
-
-            LoggerProtocol sameLogger = LogManager.getLogger("on_demand_test");
-            assertSame(newTypeLogger, sameLogger, "Should return same logger instance");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test register logger")
-        void testRegisterLogger() {
-            LogManager.initialize();
-
-            // Create a custom logger
-            LoggerProtocol customLogger = new TestCustomLogger();
-            LogManager.registerLogger("custom_test", customLogger);
-
-            LoggerProtocol retrieved = LogManager.getLogger("custom_test");
-            assertSame(customLogger, retrieved, "Should return registered logger");
-        }
-    }
-
-    // ==================== TestLogLevel ====================
-
-    @Nested
-    @DisplayName("TestLogLevel")
-    class TestLogLevelTests {
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test log level filtering")
-        void testLogLevelFiltering() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("level_test");
-
-            // Set to DEBUG level
-            logger.setLevel(Level.FINE.intValue());
-
-            logger.debug("Debug message");
-            logger.info("Info message");
-            logger.warning("Warning message");
-            logger.error("Error message");
-
-            String output = stdoutCapture.toString();
-            // Basic verification - messages should be logged
-            assertNotNull(output);
-
-            // Clear capture
-            stdoutCapture.reset();
-
-            // Set to ERROR level - higher messages should be filtered
-            logger.setLevel(Level.SEVERE.intValue());
-
-            logger.debug("Should not appear debug");
-            logger.info("Should not appear info");
-            logger.warning("Should not appear warning");
-            logger.error("Should appear error");
-
-            // Verify error still appears
-            output = stdoutCapture.toString();
-            assertTrue(output.contains("Should appear error") || output.length() >= 0,
-                "Error message should be logged");
-        }
-    }
-
-    // ==================== TestDefaultLogger ====================
-
-    @Nested
-    @DisplayName("TestDefaultLogger")
-    class TestDefaultLoggerTests {
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test message sanitization")
-        void testMessageSanitization() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
-
-            String testMessage = "Test message\nwith newline\r\nand carriage return\r";
-            logger.info(testMessage);
-
-            String output = stdoutCapture.toString();
-            // Verify message is logged (sanitized)
-            assertTrue(output.contains("Test message") || output.length() > 0,
-                "Sanitized message should be logged");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test logger config access")
-        void testLoggerConfigAccess() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
-
-            Map<String, Object> config = logger.getConfig();
-            assertNotNull(config, "Config should not be null");
-            assertTrue(config.containsKey("level") || config.isEmpty() || config.size() >= 0,
-                "Config should have level or be empty");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test logger reconfigure")
-        void testLoggerReconfigure() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
-
-            Map<String, Object> originalConfig = logger.getConfig();
-            Map<String, Object> newConfig = Map.of("level", Level.FINE.intValue());
-            logger.reconfigure(newConfig);
-
-            Map<String, Object> updatedConfig = logger.getConfig();
-            assertNotNull(updatedConfig, "Config should not be null after reconfigure");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test all log levels")
-        void testAllLogLevels() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
-            logger.setLevel(Level.ALL.intValue());
-
-            stdoutCapture.reset();
-
-            logger.debug("Debug level message");
-            logger.info("Info level message");
-            logger.warning("Warning level message");
-            logger.error("Error level message");
-            logger.critical("Critical level message");
-
-            String output = stdoutCapture.toString();
-            assertNotNull(output, "Output should not be null");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test exception logging")
-        void testExceptionLogging() {
-            LogManager.initialize();
-            LoggerProtocol logger = LogManager.getLogger("common");
-            logger.setLevel(Level.SEVERE.intValue());
-
-            stdoutCapture.reset();
-
-            try {
-                throw new IllegalArgumentException("Test exception");
-            } catch (Exception e) {
-                logger.exception("Exception occurred", e);
-            }
-
-            String output = stdoutCapture.toString();
-            assertTrue(output.contains("Exception occurred") || output.contains("Test exception") || output.length() > 0,
-                "Exception info should be logged");
-        }
-    }
-
-    // ==================== TestLogManagerReset ====================
-
-    @Nested
-    @DisplayName("TestLogManagerReset")
-    class TestLogManagerResetTests {
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test reset clears loggers")
-        void testResetClearsLoggers() {
-            LogManager.initialize();
-            LogManager.getLogger("common");
-            LogManager.getLogger("interface");
-
-            Map<String, LoggerProtocol> beforeReset = LogManager.getAllLoggers();
-            assertTrue(beforeReset.size() > 0, "Should have loggers before reset");
-
-            LogManager.reset();
-
-            // After reset, getLogger should create a new instance
-            LoggerProtocol newLogger = LogManager.getLogger("common");
-            assertNotNull(newLogger, "Should be able to get logger after reset");
-            assertTrue(newLogger instanceof DefaultLogger, "Should be DefaultLogger instance");
-        }
-    }
-
-    // ==================== TestLogDirectoryCreation ====================
-
-    @Nested
-    @DisplayName("TestLogDirectoryCreation")
-    class TestLogDirectoryCreationTests {
-
-        @Test
-        @Tag("level2")
-        @DisplayName("Test create nested log directory")
-        void testCreateNestedLogDirectory() throws IOException {
-            Path nestedLogPath = tempDir.resolve("logs").resolve("run");
-            Path nestedLogFile = nestedLogPath.resolve("test.log");
-
-            // Ensure directory doesn't exist
-            if (Files.exists(nestedLogPath)) {
-                deleteRecursively(tempDir.resolve("logs"));
-            }
-
-            Map<String, Object> config = Map.of(
-                "log_file", nestedLogFile.toString(),
-                "output", List.of("file"),
-                "level", Level.INFO.intValue()
-            );
-
-            DefaultLogger logger = new DefaultLogger("test_nested", config);
-
-            assertTrue(Files.exists(nestedLogPath), 
-                "Directory " + nestedLogPath + " should be created");
-            assertTrue(Files.isDirectory(nestedLogPath),
-                nestedLogPath + " should be a directory");
-
-            logger.info("Test nested directory log");
-
-            // Verify log file exists
-            assertTrue(Files.exists(nestedLogFile) || true,
-                "Log file should exist or be created on first write");
-        }
-
-        @Test
-        @Tag("level2")
-        @DisplayName("Test create existing directory no error")
-        void testCreateExistingDirectoryNoError() throws IOException {
-            Path existingLogPath = tempDir.resolve("logs").resolve("existing");
-            Files.createDirectories(existingLogPath);
-
-            Path existingLogFile = existingLogPath.resolve("test.log");
-
-            Map<String, Object> config = Map.of(
-                "log_file", existingLogFile.toString(),
-                "output", List.of("file"),
-                "level", Level.INFO.intValue()
-            );
-
-            // Should not throw when directory already exists
-            assertDoesNotThrow(() -> {
-                DefaultLogger logger = new DefaultLogger("test_existing", config);
-                logger.info("Test existing directory");
-            }, "Should not throw for existing directory");
-        }
-    }
-
-    // ==================== TestSessionId ====================
-
-    @Nested
-    @DisplayName("TestSessionId")
-    class TestSessionIdTests {
-
-        @Test
-        @Tag("level0")
-        @DisplayName("Test default session id")
-        void testDefaultSessionId() {
-            assertEquals("default_trace_id", LoggingUtils.getSessionId(),
-                "Default session ID should be 'default_trace_id'");
-        }
-
-        @Test
-        @Tag("level0")
-        @DisplayName("Test set session id")
-        void testSetSessionId() {
-            LoggingUtils.setSessionId("test-trace-123");
-            assertEquals("test-trace-123", LoggingUtils.getSessionId(),
-                "Session ID should be updated");
-
-            LoggingUtils.clearSessionId();
-            assertEquals("default_trace_id", LoggingUtils.getSessionId(),
-                "Session ID should reset to default after clear");
-        }
-
-        @Test
-        @Tag("level1")
-        @DisplayName("Test null session id defaults")
-        void testNullSessionIdDefaults() {
-            LoggingUtils.setSessionId(null);
-            assertEquals("default_trace_id", LoggingUtils.getSessionId(),
-                "Null session ID should default to 'default_trace_id'");
-        }
-    }
-
-    // ==================== Helper Classes ====================
-
-    /**
-     * Custom test logger for testing logger registration.
-     */
-    private static class TestCustomLogger implements LoggerProtocol {
+    private static final class RecordingLogger implements LoggerProtocol {
         private final List<String> messages = new ArrayList<>();
-        private Map<String, Object> config = Map.of();
+        private final AtomicReference<Map<String, Object>> config = new AtomicReference<>(Map.of());
 
         @Override
         public void debug(String msg, Object... args) {
@@ -479,7 +584,7 @@ class TestLogger {
 
         @Override
         public void exception(String msg, Throwable t, Object... args) {
-            messages.add("EXCEPTION: " + msg + " - " + t.getMessage());
+            messages.add("EXCEPTION: " + msg + ":" + t.getMessage());
         }
 
         @Override
@@ -489,37 +594,21 @@ class TestLogger {
 
         @Override
         public void setLevel(int level) {
-            // No-op for test
+            config.set(Map.of("level", level));
         }
 
         @Override
         public Map<String, Object> getConfig() {
-            return config;
+            return config.get();
         }
 
         @Override
         public void reconfigure(Map<String, Object> newConfig) {
-            this.config = newConfig != null ? Map.copyOf(newConfig) : Map.of();
+            config.set(newConfig == null ? Map.of() : Map.copyOf(newConfig));
         }
 
-        public List<String> getMessages() {
+        List<String> messages() {
             return messages;
-        }
-    }
-
-    // ==================== Helper Methods ====================
-
-    private void deleteRecursively(Path path) throws IOException {
-        if (Files.exists(path)) {
-            Files.walk(path)
-                .sorted((a, b) -> b.compareTo(a)) // Delete in reverse order (files before dirs)
-                .forEach(p -> {
-                    try {
-                        Files.delete(p);
-                    } catch (IOException e) {
-                        // Ignore
-                    }
-                });
         }
     }
 }

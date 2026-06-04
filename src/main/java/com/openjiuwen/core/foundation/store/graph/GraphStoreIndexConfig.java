@@ -25,7 +25,7 @@ public class GraphStoreIndexConfig {
     public GraphStoreIndexConfig(VectorField indexType, String distanceMetric, Map<String, Object> extraConfigs,
                                  BM25Config bm25Config, Map<String, Object> bm25AnalyzerSettings) {
         this.indexType = indexType;
-        this.distanceMetric = distanceMetric != null ? distanceMetric : "cosine";
+        this.distanceMetric = normalizeDistanceMetric(distanceMetric);
         this.extraConfigs = extraConfigs != null ? Map.copyOf(extraConfigs) : Map.of();
         this.bm25Config = bm25Config != null ? bm25Config : new BM25Config();
         this.bm25AnalyzerSettings = bm25AnalyzerSettings;
@@ -53,5 +53,14 @@ public class GraphStoreIndexConfig {
 
     public Map<String, Object> getBm25AnalyzerSettings() {
         return bm25AnalyzerSettings;
+    }
+
+    private static String normalizeDistanceMetric(String distanceMetric) {
+        String normalized = distanceMetric == null ? "cosine" : distanceMetric;
+        if (!normalized.equals("cosine") && !normalized.equals("euclidean") && !normalized.equals("dot")) {
+            throw new IllegalArgumentException(
+                    "distanceMetric must be one of cosine, euclidean, dot, got " + normalized);
+        }
+        return normalized;
     }
 }

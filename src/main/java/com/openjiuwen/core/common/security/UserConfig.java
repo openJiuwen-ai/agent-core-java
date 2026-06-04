@@ -16,6 +16,9 @@ import java.util.Properties;
  * User configuration — singleton that reads security settings from a properties/ini file.
  * <p>
  * Thread-safe singleton with configurable path.
+ *
+ * <p>Mirrors Python's {@code UserConfig} in
+ * {@code openjiuwen.core.common.security.user_config}.
  */
 public final class UserConfig {
 

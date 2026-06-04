@@ -19,6 +19,7 @@ import java.util.function.Function;
  * <p>
  * In Java, the callback is a {@code Function<Map<String, Object>, Object>} that accepts
  * a map of keyword arguments (including positional args under key "_args") and returns a result.
+ * Mirrors Python's {@code CallbackInfo} in {@code openjiuwen.core.runner.callback.models}.
  */
 @Data
 @Builder
@@ -67,6 +68,10 @@ public class CallbackInfo {
     /** Name of the callback for logging purposes. */
     private String callbackName;
 
+    /** Semantic callback type marker, e.g. "transform". */
+    @Builder.Default
+    private String callbackType = "";
+
     /**
      * Get the callback name for logging/metrics purposes.
      *
@@ -77,5 +82,13 @@ public class CallbackInfo {
             return callbackName;
         }
         return callback != null ? callback.getClass().getSimpleName() : "unknown";
+    }
+
+    /**
+     * Hash based on callback identity, matching Python's {@code hash(id(callback))}.
+     */
+    @Override
+    public int hashCode() {
+        return System.identityHashCode(callback);
     }
 }

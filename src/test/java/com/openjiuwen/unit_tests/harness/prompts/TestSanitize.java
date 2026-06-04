@@ -1,100 +1,77 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.unit_tests.harness.prompts;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
-import org.junit.jupiter.api.Nested;
-
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.harness.prompts.PromptSanitizer;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for harness prompts sanitize.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/harness/prompts/test_sanitize.py}.
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_PROMPT_TESTS", matches = "true")
-public class TestSanitize {
+class TestSanitize {
 
-    // ---------------------------------------------------------------------------
-    // Sanitize Content Tests
-    // ---------------------------------------------------------------------------
-
-    @Nested
-    class TestSanitizeContent {
-
-        @Test
-        @DisplayName("Test sanitize removes sensitive data")
-        @Tag("level0")
-        void testSanitizeRemovesSensitiveData() {
-            String input = "My API key is sk-proj-123456789";
-            String sanitized = input.replaceAll("sk-proj-\\w+", "[REDACTED]");
-            
-            assertThat(sanitized).doesNotContain("sk-proj-123456789");
-            assertThat(sanitized).contains("[REDACTED]");
-        }
-
-        @Test
-        @DisplayName("Test sanitize preserves non-sensitive content")
-        @Tag("level0")
-        void testSanitizePreservesNonSensitiveContent() {
-            String input = "This is a normal text message";
-            String sanitized = input; // No sensitive data to sanitize
-            
-            assertThat(sanitized).isEqualTo(input);
-        }
-
-        @Test
-        @DisplayName("Test sanitize handles empty content")
-        @Tag("level0")
-        void testSanitizeHandlesEmptyContent() {
-            String input = "";
-            String sanitized = input;
-            
-            assertThat(sanitized).isEmpty();
-        }
+    @Test
+    void testRemovesAngleBrackets() {
+        assertThat(PromptSanitizer.sanitizePath("/home/<user>/file")).isEqualTo("/home/user/file");
     }
 
-    // ---------------------------------------------------------------------------
-    // Sanitize Pattern Tests
-    // ---------------------------------------------------------------------------
+    @Test
+    void testRemovesBracesAndBrackets() {
+        assertThat(PromptSanitizer.sanitizePath("path/{id}/[0]")).isEqualTo("path/id/0");
+    }
 
-    @Nested
-    class TestSanitizePatterns {
+    @Test
+    void testRemovesBacktickAndDollar() {
+        assertThat(PromptSanitizer.sanitizePath("path/`cmd`/$VAR")).isEqualTo("path/cmd/VAR");
+    }
 
-        @Test
-        @DisplayName("Test API key pattern detection")
-        @Tag("level0")
-        void testApiKeyPatternDetection() {
-            String content = "api_key=sk-test-123456";
-            boolean containsApiKey = content.contains("sk-");
-            
-            assertThat(containsApiKey).isTrue();
-        }
+    @Test
+    void testRemovesTripleDots() {
+        assertThat(PromptSanitizer.sanitizePath("path/.../secret")).isEqualTo("path//secret");
+    }
 
-        @Test
-        @DisplayName("Test password pattern detection")
-        @Tag("level0")
-        void testPasswordPatternDetection() {
-            String content = "password=mypassword123";
-            boolean containsPassword = content.contains("password=");
-            
-            assertThat(containsPassword).isTrue();
-        }
+    @Test
+    void testPreservesNormalPath() {
+        assertThat(PromptSanitizer.sanitizePath("/home/user/project/file.py"))
+                .isEqualTo("/home/user/project/file.py");
+    }
 
-        @Test
-        @DisplayName("Test token pattern detection")
-        @Tag("level0")
-        void testTokenPatternDetection() {
-            String content = "token=eyJhbGciOiJIUzI1NiIs";
-            boolean containsToken = content.contains("token=");
-            
-            assertThat(containsToken).isTrue();
-        }
+    @Test
+    void testRemovesEscapedNewlines() {
+        assertThat(PromptSanitizer.sanitizePath("path\\nto\\rfile")).isEqualTo("pathtofile");
+    }
+
+    @Test
+    void testRemovesInjectionChars() {
+        String result = PromptSanitizer.sanitizeUserContent("Hello <script>alert(1)</script>", 2000);
+        assertThat(result).doesNotContain("<").doesNotContain(">");
+    }
+
+    @Test
+    void testTruncatesToMaxLen() {
+        String result = PromptSanitizer.sanitizeUserContent("a".repeat(5000), 100);
+        assertThat(result).hasSize(100);
+    }
+
+    @Test
+    void testDefaultMaxLen() {
+        String result = PromptSanitizer.sanitizeUserContent("a".repeat(3000));
+        assertThat(result).hasSize(2000);
+    }
+
+    @Test
+    void testShortContentUnchanged() {
+        assertThat(PromptSanitizer.sanitizeUserContent("hello world")).isEqualTo("hello world");
+    }
+
+    @Test
+    void testSanitizeThenTruncate() {
+        String result = PromptSanitizer.sanitizeUserContent("<".repeat(10) + "a".repeat(100), 50);
+        assertThat(result.length()).isLessThanOrEqualTo(50);
+        assertThat(result).doesNotContain("<");
     }
 }

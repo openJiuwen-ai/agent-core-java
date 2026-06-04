@@ -13,7 +13,7 @@ class AgentCallbackEventTest {
     @Test
     void testEnumValues() {
         AgentCallbackEvent[] values = AgentCallbackEvent.values();
-        assertThat(values).hasSize(8);
+        assertThat(values).hasSize(10);
     }
 
     @Test
@@ -24,6 +24,16 @@ class AgentCallbackEventTest {
     @Test
     void testAfterInvokeValue() {
         assertThat(AgentCallbackEvent.AFTER_INVOKE.getValue()).isEqualTo("after_invoke");
+    }
+
+    @Test
+    void testBeforeTaskIterationValue() {
+        assertThat(AgentCallbackEvent.BEFORE_TASK_ITERATION.getValue()).isEqualTo("before_task_iteration");
+    }
+
+    @Test
+    void testAfterTaskIterationValue() {
+        assertThat(AgentCallbackEvent.AFTER_TASK_ITERATION.getValue()).isEqualTo("after_task_iteration");
     }
 
     @Test

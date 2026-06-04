@@ -82,6 +82,33 @@ class JudgeServerTest {
     }
 
     @Test
+    void scoreAllowsMissingBearerTokenWhenNoApiKeyConfigured() throws Exception {
+        JudgeConfig config = new JudgeConfig("http://llm.local", "judge-model");
+        AtomicReference<ScoreRequest> captured = new AtomicReference<>();
+
+        try (JudgeServer server = new JudgeServer("127.0.0.1", 0, config, request -> {
+            captured.set(request);
+            return new ScoreResponse(0.5, 7.5, List.of(7.5), Map.of("overall", 7.5), "judge-model",
+                    request.sessionId(), request.turnNum());
+        })) {
+            server.start();
+            HttpClient client = HttpClient.newHttpClient();
+
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder()
+                            .uri(URI.create("http://127.0.0.1:" + server.getPort() + "/score"))
+                            .POST(HttpRequest.BodyPublishers.ofString("{\"response_text\":\"resp\"}"))
+                            .header("Content-Type", "application/json")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            Map<String, Object> payload = OBJECT_MAPPER.readValue(response.body(), MAP_TYPE);
+            assertEquals(200, response.statusCode());
+            assertEquals("resp", captured.get().responseText());
+            assertEquals(0.5, ((Number) payload.get("score")).doubleValue());
+        }
+    }
+
+    @Test
     void scoreReturnsHandlerPayloadForValidRequest() throws Exception {
         JudgeConfig config = new JudgeConfig("http://llm.local", "judge-model");
         config.setExpectedApiKey("secret");

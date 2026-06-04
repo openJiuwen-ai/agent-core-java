@@ -29,7 +29,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for StandardReranker.
- * Mirrors Python's tests/unit_tests/core/retrieval/reranker/test_standard_reranker.py
+ *
+ * <p>Mirrors Python's {@code test_standard_reranker.py} in
+ * {@code tests/unit_tests/core/retrieval/reranker}.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class TestStandardReranker {
@@ -416,6 +418,7 @@ class TestStandardReranker {
             String query = "test query";
             MultimodalDocument doc = new MultimodalDocument();
             doc.addField("text", "Hello world");
+            doc.setText("Hello world");
             
             StandardReranker.CandidateBatch batch = StandardReranker.prepareCandidates(List.of(doc));
             
@@ -548,6 +551,30 @@ class TestStandardReranker {
             );
             
             assertEquals(0.9, result.get("doc1"), 1e-6);
+        }
+
+        @Test
+        @DisplayName("test_rerank_success")
+        void testRerankSuccess() throws Exception {
+            testRerankSyncSuccess();
+        }
+
+        @Test
+        @DisplayName("test_rerank_with_documents")
+        void testRerankWithDocuments() throws Exception {
+            testRerankSyncWithDocuments();
+        }
+
+        @Test
+        @DisplayName("test_rerank_with_instruct_false")
+        void testRerankWithInstructFalse() throws Exception {
+            testRerankSyncWithInstructFalse();
+        }
+
+        @Test
+        @DisplayName("test_rerank_with_custom_instruct")
+        void testRerankWithCustomInstruct() throws Exception {
+            testRerankSyncWithCustomInstruct();
         }
     }
 

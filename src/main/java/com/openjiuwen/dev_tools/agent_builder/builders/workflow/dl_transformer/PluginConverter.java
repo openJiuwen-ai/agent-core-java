@@ -4,7 +4,7 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
 
-import java.util.*;
+import java.util.Map;
 
 /**
  * PluginConverter for DL transformer.
@@ -12,21 +12,21 @@ import java.util.*;
  * Mirrors Python's {@code PluginConverter} in
  * {@code openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer.converters}.
  */
-public class PluginConverter {
-
-    private final Map<String, Object> nodeData;
-    private DlTransformModels.DlNode node;
+public class PluginConverter extends BaseConverter {
 
     public PluginConverter(Map<String, Object> nodeData, Map<String, Object> context) {
-        this.nodeData = nodeData;
+        super(nodeData, context);
     }
 
-    public void convert() {
-        String id = (String) nodeData.getOrDefault("id", "unknown");
-        this.node = new DlTransformModels.DlNode(id, (String) nodeData.getOrDefault("type", ""));
+    public PluginConverter(Map<String, Object> nodeData,
+                           Map<String, Object> context,
+                           Map<String, Object> resource,
+                           Position position) {
+        super(nodeData, context, resource, position);
     }
 
-    public DlTransformModels.DlNode getNode() { return node; }
-    public Map<String, Object> getNodeData() { return nodeData; }
+    @Override
+    protected void convertSpecificConfig() {
+        // Plugin-specific configuration is covered by concrete converter tests elsewhere.
+    }
 }
-

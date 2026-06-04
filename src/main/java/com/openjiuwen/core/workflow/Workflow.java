@@ -75,9 +75,21 @@ public class Workflow {
     private boolean isStreaming = false;
 
     public Workflow(WorkflowCard card) {
+        this(card, null);
+    }
+
+    public Workflow(int workflowMaxNestingDepth) {
+        this(null, workflowMaxNestingDepth);
+    }
+
+    private Workflow(WorkflowCard card, Integer workflowMaxNestingDepth) {
         this.card = card != null ? card
                 : WorkflowCard.builder().id(UUID.randomUUID().toString().replace("-", "")).build();
-        this.internal = new BaseWorkflow(new WorkflowConfig(this.card), new PregelGraph());
+        WorkflowConfig workflowConfig = new WorkflowConfig(this.card);
+        if (workflowMaxNestingDepth != null) {
+            workflowConfig.setWorkflowMaxNestingDepth(workflowMaxNestingDepth);
+        }
+        this.internal = new BaseWorkflow(workflowConfig, new PregelGraph());
     }
 
     public Workflow() {
@@ -791,7 +803,10 @@ public class Workflow {
             Object graphResult = executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, config);
             finishStreamActorsAfterGraph(subSession, graphResult);
             if (isStreaming) {
-                return drainSubWorkflowStream(subSession);
+                List<Object> messages = drainSubWorkflowStream(subSession, countEndStreamAbilities());
+                if (!messages.isEmpty()) {
+                    return Map.of("stream", messages);
+                }
             }
             NodeSession nodeSession = new NodeSession(subSession, endCompId);
             if (nodeSession.state() instanceof WorkflowStateCollection) {
@@ -813,6 +828,10 @@ public class Workflow {
     @SuppressWarnings("unchecked")
     public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
         Object results = invokeSubWorkflow(inputs, session, context, config);
+        if (results instanceof Map<?, ?> resultMap && resultMap.get("stream") instanceof List<?> list) {
+            List<WorkflowChunk> chunks = (List<WorkflowChunk>) (List<?>) list;
+            return chunks.iterator();
+        }
         if (results instanceof List<?> list) {
             List<WorkflowChunk> chunks = (List<WorkflowChunk>) (List<?>) list;
             return chunks.iterator();
@@ -951,19 +970,49 @@ public class Workflow {
                 && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT);
     }
 
-    private List<Object> drainSubWorkflowStream(SubWorkflowSession subSession) {
+    private List<Object> drainSubWorkflowStream(SubWorkflowSession subSession, int expectedEndFrames) {
         List<Object> messages = new ArrayList<>();
         if (subSession.actorManager() == null || subSession.actorManager().subWorkflowStream() == null) {
             return messages;
         }
+        int remainingEndFrames = Math.max(1, expectedEndFrames);
         while (true) {
             Object frame = subSession.actorManager().subWorkflowStream().poll();
-            if (frame == null || StreamEmitter.END_FRAME.equals(frame)) {
+            if (frame == null) {
                 break;
+            }
+            if (StreamEmitter.END_FRAME.equals(frame)) {
+                remainingEndFrames--;
+                if (remainingEndFrames <= 0) {
+                    break;
+                }
+                continue;
             }
             messages.add(frame);
         }
         return messages;
+    }
+
+    private int countEndStreamAbilities() {
+        internal.autoCompleteAbilities();
+        if (internal.getConfig() == null
+                || internal.getConfig().getSpec() == null
+                || internal.getConfig().getSpec().getCompConfigs() == null
+                || !internal.getConfig().getSpec().getCompConfigs().containsKey(endCompId)) {
+            return 1;
+        }
+        List<ComponentAbility> abilities =
+                internal.getConfig().getSpec().getCompConfigs().get(endCompId).getAbilities();
+        if (abilities == null || abilities.isEmpty()) {
+            return 1;
+        }
+        int count = 0;
+        for (ComponentAbility ability : abilities) {
+            if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
+                count++;
+            }
+        }
+        return Math.max(1, count);
     }
 
     private List<Object> collectOutputChunks(WorkflowSession workflowSession) {

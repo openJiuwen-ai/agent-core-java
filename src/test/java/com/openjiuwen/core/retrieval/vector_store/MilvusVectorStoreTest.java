@@ -26,6 +26,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Supplemental MilvusVectorStore adapter tests.
+ *
+ * <p>Mirrors Python's {@code test_milvus_store.py} in
+ * {@code tests/unit_tests/core/retrieval/vector_store}; the foundation-store
+ * Milvus port is covered by
+ * {@code com.openjiuwen.core.foundation.store.TestMilvusVectorStore}.</p>
+ */
 class MilvusVectorStoreTest {
 
     @Test

@@ -9,6 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,11 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for TeamWorkspace models.
  * 
- * <p>Mirrors Python's openjiuwen.agent_teams.team_workspace.models
+ * <p>Mirrors Python's {@code models.py} module in
+ * {@code openjiuwen.agent_teams.team_workspace.models}.
  * Ported from Python: agent-core-0.1.12/openjiuwen/agent_teams/team_workspace/models.py
  * 
- * <p>NOTE: Python has no dedicated test file for models.
- * Tests are derived from the implementation behavior.
+ * <p>Mirrors Python's {@code tests/unit_tests/agent_teams/team_workspace/test_models.py}.
  */
 @ExtendWith(MockitoExtension.class)
 class TeamWorkspaceModelsTest {
@@ -99,6 +101,8 @@ class TeamWorkspaceModelsTest {
         assertEquals(2, WorkspaceMode.values().length);
         assertEquals(WorkspaceMode.LOCAL, WorkspaceMode.valueOf("LOCAL"));
         assertEquals(WorkspaceMode.DISTRIBUTED, WorkspaceMode.valueOf("DISTRIBUTED"));
+        assertEquals("local", WorkspaceMode.LOCAL.getValue());
+        assertEquals("distributed", WorkspaceMode.DISTRIBUTED.toString());
     }
 
     // ========== ConflictStrategy tests ==========
@@ -111,6 +115,9 @@ class TeamWorkspaceModelsTest {
         assertEquals(ConflictStrategy.LOCK, ConflictStrategy.valueOf("LOCK"));
         assertEquals(ConflictStrategy.MERGE, ConflictStrategy.valueOf("MERGE"));
         assertEquals(ConflictStrategy.LAST_WRITE_WINS, ConflictStrategy.valueOf("LAST_WRITE_WINS"));
+        assertEquals("lock", ConflictStrategy.LOCK.getValue());
+        assertEquals("merge", ConflictStrategy.MERGE.toString());
+        assertEquals("last_write_wins", ConflictStrategy.LAST_WRITE_WINS.getValue());
     }
 
     // ========== WorkspaceFileLock tests ==========
@@ -165,6 +172,18 @@ class TeamWorkspaceModelsTest {
             "/tmp/file.txt", "holder1", "holder-name", acquiredAt, 60
         );
         
+        assertTrue(lock.isExpired());
+    }
+
+    @Test
+    @Tag("level0")
+    @DisplayName("Test WorkspaceFileLock parses Python offset timestamp")
+    void testLockParsesPythonOffsetTimestamp() {
+        String acquiredAt = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(3600).toString();
+        WorkspaceFileLock lock = new WorkspaceFileLock(
+            "/tmp/file.txt", "holder1", "holder-name", acquiredAt, 60
+        );
+
         assertTrue(lock.isExpired());
     }
 }

@@ -1,12 +1,21 @@
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.net.HttpURLConnection;
+import java.net.Proxy;
+import java.net.URI;
 import java.net.URL;
+import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +37,10 @@ public class WebFreeSearchTool extends AbstractHarnessTool {
     );
     private static final Pattern JINA_MD_LINK_PATTERN = Pattern.compile("\\[([^\\]\\n]+)\\]\\((https?://[^\\s)]+)\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]+>");
+    private static final String FREE_SEARCH_DDG_ENABLED = "FREE_SEARCH_DDG_ENABLED";
+    private static final String FREE_SEARCH_BING_ENABLED = "FREE_SEARCH_BING_ENABLED";
+    private static final String FREE_SEARCH_PROXY_URL = "FREE_SEARCH_PROXY_URL";
+    private static final String DEFAULT_NO_PROXY = "127.0.0.1,.huawei.com,localhost,local,.local,10.155.97.247,.myhuaweicloud.com, api.openai.rnd.huawei.com";
 
     private final String language;
 
@@ -65,22 +78,42 @@ public class WebFreeSearchTool extends AbstractHarnessTool {
     }
 
     protected SearchResult search(String query, int maxResults) {
-        try {
-            return searchDuckDuckGo(query, maxResults);
-        } catch (RuntimeException firstFailure) {
+        List<String> errors = new ArrayList<>();
+        if (envFlag(FREE_SEARCH_DDG_ENABLED, false)) {
             try {
-                return searchDuckDuckGoViaJina(query, maxResults);
-            } catch (RuntimeException secondFailure) {
-                try {
-                    return searchBing(query, maxResults);
-                } catch (RuntimeException thirdFailure) {
-                    throw new IllegalStateException(
-                            firstFailure.getMessage() != null ? firstFailure.getMessage() : thirdFailure.getMessage(),
-                            thirdFailure
-                    );
+                SearchResult result = searchDuckDuckGo(query, maxResults);
+                if (!result.rows().isEmpty()) {
+                    return result;
                 }
+                errors.add("duckduckgo: empty result");
+            } catch (RuntimeException failure) {
+                errors.add("duckduckgo: " + failure.getMessage());
+            }
+            try {
+                SearchResult result = searchDuckDuckGoViaJina(query, maxResults);
+                if (!result.rows().isEmpty()) {
+                    return result;
+                }
+                errors.add("duckduckgo-jina: empty result");
+            } catch (RuntimeException failure) {
+                errors.add("duckduckgo-jina: " + failure.getMessage());
             }
         }
+        if (envFlag(FREE_SEARCH_BING_ENABLED, false)) {
+            try {
+                SearchResult result = searchBing(query, maxResults);
+                if (!result.rows().isEmpty()) {
+                    return result;
+                }
+                errors.add("bing: empty result");
+            } catch (RuntimeException failure) {
+                errors.add("bing: " + failure.getMessage());
+            }
+        }
+        if (errors.isEmpty()) {
+            throw new IllegalStateException("all free search engines are disabled");
+        }
+        throw new IllegalStateException(String.join(" | ", errors));
     }
 
     protected SearchResult searchDuckDuckGo(String query, int maxResults) {
@@ -103,7 +136,9 @@ public class WebFreeSearchTool extends AbstractHarnessTool {
 
     protected String httpGet(String url, String query) {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            URL target = new URL(url);
+            URLConnection rawConnection = openConnection(target);
+            HttpURLConnection connection = (HttpURLConnection) rawConnection;
             connection.setRequestMethod("GET");
             connection.setRequestProperty("User-Agent", query != null && containsCjk(query)
                     ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -124,6 +159,14 @@ public class WebFreeSearchTool extends AbstractHarnessTool {
         } catch (Exception e) {
             throw new IllegalStateException(e.getMessage(), e);
         }
+    }
+
+    protected URLConnection openConnection(URL url) throws java.io.IOException {
+        Proxy proxy = proxyForUrl(url.toString());
+        if (proxy == Proxy.NO_PROXY) {
+            return url.openConnection();
+        }
+        return url.openConnection(proxy);
     }
 
     protected List<Map<String, String>> parseDuckDuckGoHtml(String html, int maxResults) {
@@ -256,6 +299,88 @@ public class WebFreeSearchTool extends AbstractHarnessTool {
             }
         }
         return 5;
+    }
+
+    static Proxy proxyForUrl(String url) {
+        String proxyUrl = config(FREE_SEARCH_PROXY_URL);
+        if (proxyUrl.isBlank() || shouldBypassFreeSearchProxy(url)) {
+            return Proxy.NO_PROXY;
+        }
+        try {
+            URI uri = URI.create(proxyUrl);
+            int port = uri.getPort();
+            if (port < 0) {
+                port = "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+            }
+            return new Proxy(Proxy.Type.HTTP, new InetSocketAddress(uri.getHost(), port));
+        } catch (RuntimeException ignored) {
+            return Proxy.NO_PROXY;
+        }
+    }
+
+    static boolean shouldBypassFreeSearchProxy(String url) {
+        if (config(FREE_SEARCH_PROXY_URL).isBlank()) {
+            return true;
+        }
+        String host;
+        try {
+            host = URI.create(url).getHost();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+        if (host == null || host.isBlank()) {
+            return false;
+        }
+        String normalizedHost = host.toLowerCase();
+        for (String entry : noProxyEntries()) {
+            if ("*".equals(entry)) {
+                return true;
+            }
+            if (entry.startsWith(".") && (normalizedHost.equals(entry.substring(1)) || normalizedHost.endsWith(entry))) {
+                return true;
+            }
+            if (normalizedHost.equals(entry) || normalizedHost.endsWith("." + entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> noProxyEntries() {
+        String configured = config("NO_PROXY");
+        if (configured.isBlank()) {
+            configured = config("no_proxy");
+        }
+        if (configured.isBlank()) {
+            configured = DEFAULT_NO_PROXY;
+        }
+        return Arrays.stream(configured.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(entry -> !entry.isBlank())
+                .toList();
+    }
+
+    private static boolean envFlag(String key, boolean defaultValue) {
+        String value = config(key).trim().toLowerCase();
+        if (value.isBlank()) {
+            return defaultValue;
+        }
+        return List.of("1", "true", "yes", "on", "enabled").contains(value);
+    }
+
+    private static String config(String key) {
+        String property = System.getProperty(key);
+        if (property != null) {
+            return property.trim();
+        }
+        String value = System.getenv(key);
+        return value == null ? "" : value.trim();
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", getCard().toString());
     }
 
     protected record SearchResult(String engine, List<Map<String, String>> rows) {

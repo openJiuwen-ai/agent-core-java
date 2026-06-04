@@ -4,24 +4,25 @@
 
 package com.openjiuwen.unit_tests.core.context_engine;
 
-import org.junit.jupiter.api.*;
+import static com.openjiuwen.unit_tests.support.JUnitBridgeAssertions.assertDelegatedClassPasses;
 
-import static org.junit.jupiter.api.Assertions.*;
+import com.openjiuwen.core.context.ModelContextTest;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
- * Tests for ModelContext behavior.
+ * Bridge tests for the canonical Java translation of Python's model-context tests.
  * <p>
  * Mirrors Python's {@code test_context_model.py}.
  * <p>
- * Note: This is a simplified placeholder. Full implementation requires
- * proper context model configuration.
+ * The real translated test coverage lives in {@link ModelContextTest}; this bridge
+ * refreshes the legacy target file so it no longer stays as a disabled placeholder.
  */
-@Disabled("Requires context model configuration")
 class TestContextModel {
-
     @Test
-    @DisplayName("Placeholder test - ContextModel")
-    void testPlaceholder() {
-        assertTrue(true, "Placeholder test - requires context model configuration");
+    @DisplayName("delegates to canonical ModelContextTest")
+    void testDelegatedModelContextCoverage() {
+        assertDelegatedClassPasses(ModelContextTest.class);
     }
 }

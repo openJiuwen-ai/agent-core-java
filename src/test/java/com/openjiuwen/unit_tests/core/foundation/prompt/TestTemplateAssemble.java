@@ -314,10 +314,12 @@ class TestTemplateAssemble {
                     .build());
             content.add(ToolMessage.builder().toolCallId("test").content(List.of()).role("tool").build());
 
-            PromptAssembler asm3 = new PromptAssembler(content, "{{", "}}");
+            Map<String, Variable> initialVars = new LinkedHashMap<>();
+            initialVars.put("user_inputs", new TextableVariable("张三", "default", "{{", "}}"));
+            PromptAssembler asm3 = new PromptAssembler(content, "{{", "}}", initialVars);
             assertEquals(List.of(), asm3.getInputKeys());  // No variables need to be filled
 
-            Object assembled = asm3.promptAssemble(Map.of("user_inputs", "张三"));
+            Object assembled = asm3.promptAssemble(Map.of());
             assertInstanceOf(List.class, assembled);
 
             List<BaseMessage> messages = (List<BaseMessage>) assembled;

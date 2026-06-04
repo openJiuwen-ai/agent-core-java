@@ -57,6 +57,9 @@ import java.util.function.BooleanSupplier;
 /**
  * Main memory engine implementing long-term memory management.
  * Singleton class managing conversation memory, user variables, semantic search, and persistence.
+ *
+ * <p>Mirrors Python's {@code LongTermMemory} in
+ * {@code openjiuwen.core.memory.long_term_memory}.
  */
 public class LongTermMemory {
 
@@ -121,6 +124,13 @@ public class LongTermMemory {
         synchronized (LongTermMemory.class) {
             instance = null;
         }
+    }
+
+    /**
+     * Returns the registered key-value store, primarily for provider integration checks.
+     */
+    public BaseKVStore getKvStore() {
+        return kvStore;
     }
 
     // ========================= Store Registration =========================

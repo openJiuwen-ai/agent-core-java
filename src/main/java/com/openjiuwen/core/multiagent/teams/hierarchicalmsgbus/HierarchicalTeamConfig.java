@@ -7,7 +7,6 @@ package com.openjiuwen.core.multiagent.teams.hierarchicalmsgbus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
 import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -24,7 +23,6 @@ import java.util.Optional;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class HierarchicalTeamConfig extends TeamConfig {
     
@@ -33,8 +31,22 @@ public class HierarchicalTeamConfig extends TeamConfig {
     
     /** Timeout in seconds for P2P message communication. */
     private Double timeout = 1800.0;
+
+    public HierarchicalTeamConfig(AgentCard supervisorAgent) {
+        super();
+        this.supervisorAgent = supervisorAgent;
+    }
+
+    public HierarchicalTeamConfig(AgentCard supervisorAgent, Double timeout) {
+        this(supervisorAgent);
+        this.timeout = timeout;
+    }
     
     public Optional<Double> getTimeout() {
         return Optional.ofNullable(timeout);
+    }
+
+    public double getP2pTimeout() {
+        return getTimeout().orElse(1800.0);
     }
 }

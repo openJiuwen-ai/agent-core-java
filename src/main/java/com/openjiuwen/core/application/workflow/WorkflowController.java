@@ -20,6 +20,9 @@ import java.util.Map;
 
 /**
  * Backward-compatible facade mirroring Python's {@code WorkflowController}.
+ *
+ * <p>Mirrors Python's {@code WorkflowController} in
+ * {@code openjiuwen.core.application.workflow_agent.workflow_controller}.</p>
  */
 public class WorkflowController {
 

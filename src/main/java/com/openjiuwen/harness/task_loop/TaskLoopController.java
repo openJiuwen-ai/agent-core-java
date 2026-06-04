@@ -118,6 +118,27 @@ public class TaskLoopController {
     }
 
     /**
+     * Queue a follow-up message for the next outer-loop round.
+     */
+    public void enqueueFollowUp(String prompt) {
+        pushFollowUp(prompt);
+    }
+
+    /**
+     * Return whether follow-up messages are pending.
+     */
+    public boolean hasFollowUp() {
+        return interactionQueues.hasFollowUp();
+    }
+
+    /**
+     * Drain pending follow-up messages.
+     */
+    public List<String> drainFollowUp() {
+        return interactionQueues.drainFollowUp();
+    }
+
+    /**
      * Get pending steering messages.
      */
     public List<String> getPendingSteering() {

@@ -29,6 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Supplemental QueryRewriter regression tests.
+ *
+ * <p>Mirrors Python's {@code test_query_rewriter.py} in
+ * {@code tests/unit_tests/core/retrieval/query_rewriter}; the full method-by-method
+ * port lives in {@link TestQueryRewriter}.</p>
+ */
 class QueryRewriterTest {
 
     @Test
@@ -138,7 +145,7 @@ class QueryRewriterTest {
                                                      boolean watermark,
                                                      int seed,
                                                      Map<String, Object> kwargs) {
-            return null;
+            return ImageGenerationResponse.builder().build();
         }
 
         @Override
@@ -147,7 +154,7 @@ class QueryRewriterTest {
                                                       String voice,
                                                       String languageType,
                                                       Map<String, Object> kwargs) {
-            return null;
+            return AudioGenerationResponse.builder().build();
         }
 
         @Override
@@ -163,7 +170,7 @@ class QueryRewriterTest {
                                                      String negativePrompt,
                                                      Integer seed,
                                                      Map<String, Object> kwargs) {
-            return null;
+            return VideoGenerationResponse.builder().build();
         }
     }
 }

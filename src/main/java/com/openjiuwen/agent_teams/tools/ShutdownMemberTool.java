@@ -5,6 +5,7 @@
 package com.openjiuwen.agent_teams.tools;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,12 +17,15 @@ import java.util.Map;
 public class ShutdownMemberTool extends TeamTool {
 
     public ShutdownMemberTool(TeamBackend team) {
-        super(toolCard("team.shutdown_member", "shutdown_member", "Shutdown a team member."), team);
+        super(toolCard("team.shutdown_member", "shutdown_member", "Shutdown a team member.", Map.of(
+                "member_name", stringParam("Member name"),
+                "force", booleanParam("Force shutdown")
+        ), List.of("member_name")), team);
     }
 
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String memberName = inputs.get("member_name") != null ? String.valueOf(inputs.get("member_name")) : "";
+        String memberName = stringValue(inputs.get("member_name"));
         boolean force = Boolean.TRUE.equals(inputs.get("force"));
         if (memberName.isBlank()) {
             return new TeamToolOutput(false, null, "member_name is required");

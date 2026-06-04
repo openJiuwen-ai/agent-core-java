@@ -24,8 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,16 +51,17 @@ class TestHybridRetriever {
         mockEmbedModel = mock(Embedding.class);
         when(mockEmbedModel.embedQuery(anyString())).thenReturn(List.of(0.1f, 0.2f, 0.3f));
 
-        when(mockVectorStore.hybridSearch(anyString(), anyList(), anyInt(), anyDouble(), anyMap(), anyMap()))
+        when(mockVectorStore.hybridSearch(anyString(), anyList(), anyInt(), anyDouble(),
+                nullable(Map.class), nullable(Map.class)))
                 .thenReturn(List.of(
                         new SearchResult("1", "Hybrid result 1", 0.95, null),
                         new SearchResult("2", "Hybrid result 2", 0.85, null)
                 ));
 
-        when(mockVectorStore.search(anyList(), anyInt(), anyMap(), anyMap()))
+        when(mockVectorStore.search(anyList(), anyInt(), nullable(Map.class), nullable(Map.class)))
                 .thenReturn(List.of(new SearchResult("1", "Vector result", 0.9, null)));
 
-        when(mockVectorStore.sparseSearch(anyString(), anyInt(), anyMap(), anyMap()))
+        when(mockVectorStore.sparseSearch(anyString(), anyInt(), nullable(Map.class), nullable(Map.class)))
                 .thenReturn(List.of(new SearchResult("1", "Sparse result", 0.8, null)));
     }
 
@@ -75,16 +77,19 @@ class TestHybridRetriever {
 
             assertThat(results).hasSize(2);
             assertThat(results.get(0).getText()).isEqualTo("Hybrid result 1");
-            verify(mockVectorStore).hybridSearch(anyString(), anyList(), anyInt(), anyDouble(), anyMap(), anyMap());
+            verify(mockVectorStore).hybridSearch(anyString(), anyList(), anyInt(), anyDouble(),
+                    nullable(Map.class), nullable(Map.class));
         }
 
         @Test
         @DisplayName("test_retrieve_hybrid_with_custom_alpha - hybrid with custom alpha")
         void testRetrieveHybridWithCustomAlpha() {
             HybridRetriever retriever = new HybridRetriever(mockVectorStore, mockEmbedModel, 0.7);
-            List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "hybrid", null);
+            List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "hybrid", Map.of("alpha", 0.8));
 
             assertThat(results).hasSize(2);
+            verify(mockVectorStore).hybridSearch(anyString(), anyList(), anyInt(), eq(0.8),
+                    nullable(Map.class), eq(Map.of("alpha", 0.8)));
         }
     }
 
@@ -99,7 +104,7 @@ class TestHybridRetriever {
             List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "vector", null);
 
             assertThat(results).hasSize(1);
-            verify(mockVectorStore).search(anyList(), anyInt(), anyMap(), anyMap());
+            verify(mockVectorStore).search(anyList(), anyInt(), nullable(Map.class), nullable(Map.class));
         }
 
         @Test
@@ -133,7 +138,7 @@ class TestHybridRetriever {
             List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "sparse", null);
 
             assertThat(results).hasSize(1);
-            verify(mockVectorStore).sparseSearch(anyString(), anyInt(), anyMap(), anyMap());
+            verify(mockVectorStore).sparseSearch(anyString(), anyInt(), nullable(Map.class), nullable(Map.class));
         }
     }
 

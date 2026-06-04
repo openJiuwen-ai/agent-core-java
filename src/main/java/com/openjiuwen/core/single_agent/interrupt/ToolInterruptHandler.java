@@ -414,6 +414,9 @@ public class ToolInterruptHandler {
             String innerId = entry.getKey();
             Object userValue = entry.getValue();
             if (userValue instanceof Map valueMap && valueMap.containsKey("auto_confirm")) {
+                if (!Boolean.TRUE.equals(valueMap.get("auto_confirm"))) {
+                    continue;
+                }
                 String autoConfirmKey = state.getAutoConfirmMapping().get(innerId);
                 if (autoConfirmKey != null) {
                     config.put(autoConfirmKey, true);

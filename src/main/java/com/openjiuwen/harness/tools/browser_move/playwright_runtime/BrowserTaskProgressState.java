@@ -39,7 +39,8 @@ public class BrowserTaskProgressState {
                 && recentToolSteps.isEmpty()
                 && lastPageUrl.isEmpty()
                 && lastPageTitle.isEmpty()
-                && lastWorkerFinal.isEmpty();
+                && lastWorkerFinal.isEmpty()
+                && (lastScreenshot == null || "".equals(lastScreenshot));
     }
 
     public static BrowserTaskProgressState fromDict(Map<String, Object> data) {
@@ -100,11 +101,10 @@ public class BrowserTaskProgressState {
 
     public Map<String, Object> toDict() {
         Map<String, Object> dict = new LinkedHashMap<>();
-        dict.put("request_id", requestId);
         dict.put("status", status);
         dict.put("completed_steps", new ArrayList<>(completedSteps));
         dict.put("remaining_steps", new ArrayList<>(remainingSteps));
-        dict.put("next_step", nextStep);
+        dict.put("next_step", nextStep.isEmpty() ? null : nextStep);
         dict.put("completion_evidence", new ArrayList<>(completionEvidence));
         dict.put("missing_requirements", new ArrayList<>(missingRequirements));
         dict.put("recent_tool_steps", new ArrayList<>(recentToolSteps));
@@ -115,8 +115,8 @@ public class BrowserTaskProgressState {
         dict.put("last_page", lastPage);
 
         dict.put("last_screenshot", lastScreenshot);
-        dict.put("last_worker_final", lastWorkerFinal);
-
+        dict.put("last_worker_final", lastWorkerFinal.isEmpty() ? null : lastWorkerFinal);
+        dict.put("request_id", requestId.isEmpty() ? null : requestId);
         return dict;
     }
 
@@ -124,7 +124,10 @@ public class BrowserTaskProgressState {
     public void setRequestId(String requestId) { this.requestId = requestId != null ? requestId.trim() : ""; }
 
     public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status != null ? status.trim() : "unknown"; }
+    public void setStatus(String status) {
+        String normalized = status != null ? status.trim() : "";
+        this.status = normalized.isEmpty() ? "unknown" : normalized;
+    }
 
     public List<String> getCompletedSteps() { return completedSteps; }
     public void setCompletedSteps(List<String> completedSteps) {

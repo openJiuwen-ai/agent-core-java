@@ -8,6 +8,7 @@ import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
 import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
@@ -28,7 +29,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for KnowledgeBase.
- * Mirrors Python's tests/unit_tests/core/retrieval/test_knowledge_base.py
+ *
+ * <p>Mirrors Python's {@code test_knowledge_base.py} in
+ * {@code tests/unit_tests/core/retrieval}.</p>
  */
 class TestKnowledgeBase {
 
@@ -57,6 +60,11 @@ class TestKnowledgeBase {
                               Indexer indexManager,
                               BaseModelClient llmClient) {
             super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, null);
+        }
+
+        @Override
+        public List<Document> parseFiles(List<String> filePaths, Map<String, Object> options) {
+            return new ArrayList<>();
         }
 
         @Override
@@ -225,8 +233,37 @@ class TestKnowledgeBase {
         }
 
         @Test
-        @DisplayName("test close with closeable components")
-        void testCloseWithCloseableComponents() throws Exception {
+        @DisplayName("test close with async-style closeable components")
+        void testCloseWithAsyncClose() throws Exception {
+            KnowledgeBaseConfig config = new KnowledgeBaseConfig("test_kb");
+            VectorStore mockVectorStore = mock(VectorStore.class);
+            Indexer mockIndexManager = mock(Indexer.class);
+
+            for (String attr : KNOWLEDGE_BASE_ATTRIBUTES) {
+                setMockAttribute(mockVectorStore, attr, "test_value");
+                setMockAttribute(mockIndexManager, attr, "test_value");
+            }
+
+            KnowledgeBase kb = new ConcreteKnowledgeBase(
+                    config,
+                    mockVectorStore,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mockIndexManager,
+                    null
+            );
+
+            kb.close();
+
+            verify(mockVectorStore, times(1)).close();
+            verify(mockIndexManager, times(1)).close();
+        }
+
+        @Test
+        @DisplayName("test close with sync close method")
+        void testCloseWithSyncClose() throws Exception {
             KnowledgeBaseConfig config = new KnowledgeBaseConfig("test_kb");
             VectorStore mockVectorStore = mock(VectorStore.class);
             Indexer mockIndexManager = mock(Indexer.class);
@@ -286,51 +323,31 @@ class TestKnowledgeBase {
     }
 
     private void setMockAttribute(Object mock, String attr, Object value) {
+        IndexBackendConfig backend = (IndexBackendConfig) mock;
         switch (attr) {
             case "database_name":
-                when(((VectorStore) mock).getDatabaseName()).thenReturn((String) value);
+                when(backend.getDatabaseName()).thenReturn((String) value);
                 break;
             case "distance_metric":
-                when(((VectorStore) mock).getDistanceMetric()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getDistanceMetric()).thenReturn((String) value);
-                }
+                when(backend.getDistanceMetric()).thenReturn((String) value);
                 break;
             case "index_type":
-                when(((VectorStore) mock).getIndexType()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getIndexType()).thenReturn((String) value);
-                }
+                when(backend.getIndexType()).thenReturn((String) value);
                 break;
             case "text_field":
-                when(((VectorStore) mock).getTextField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getTextField()).thenReturn((String) value);
-                }
+                when(backend.getTextField()).thenReturn((String) value);
                 break;
             case "vector_field":
-                when(((VectorStore) mock).getVectorField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getVectorField()).thenReturn((String) value);
-                }
+                when(backend.getVectorField()).thenReturn((String) value);
                 break;
             case "sparse_vector_field":
-                when(((VectorStore) mock).getSparseVectorField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getSparseVectorField()).thenReturn((String) value);
-                }
+                when(backend.getSparseVectorField()).thenReturn((String) value);
                 break;
             case "metadata_field":
-                when(((VectorStore) mock).getMetadataField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getMetadataField()).thenReturn((String) value);
-                }
+                when(backend.getMetadataField()).thenReturn((String) value);
                 break;
             case "doc_id_field":
-                when(((VectorStore) mock).getDocIdField()).thenReturn((String) value);
-                if (mock instanceof Indexer) {
-                    when(((Indexer) mock).getDocIdField()).thenReturn((String) value);
-                }
+                when(backend.getDocIdField()).thenReturn((String) value);
                 break;
         }
     }

@@ -3,6 +3,7 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.rail;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -17,6 +18,7 @@ public final class RlOnlineRailFactory {
     private static final Logger logger = Logger.getLogger(RlOnlineRailFactory.class.getName());
     
     private static final Set<String> TRUTHY_VALUES = Set.of("1", "true", "yes", "on");
+    private static final String DEFAULT_GATEWAY_URL = "http://127.0.0.1:18080";
     
     private RlOnlineRailFactory() {
         // Utility class
@@ -28,7 +30,11 @@ public final class RlOnlineRailFactory {
      * @return true if RL online rail is enabled
      */
     public static boolean isRlOnlineRailEnabledFromEnv() {
-        String envValue = System.getenv("USE_RL_ONLINE_RAIL");
+        return isRlOnlineRailEnabledFromEnv(System.getenv());
+    }
+
+    public static boolean isRlOnlineRailEnabledFromEnv(Map<String, String> env) {
+        String envValue = env != null ? env.get("USE_RL_ONLINE_RAIL") : null;
         if (envValue == null) {
             return false;
         }
@@ -48,43 +54,22 @@ public final class RlOnlineRailFactory {
      * 
      * @return RLOnlineRail instance, or null if not enabled or classes not available
      */
-    public static Object buildRlOnlineRailFromEnv() {
-        if (!isRlOnlineRailEnabledFromEnv()) {
+    public static RLOnlineRail buildRlOnlineRailFromEnv() {
+        return buildRlOnlineRailFromEnv(System.getenv());
+    }
+
+    public static RLOnlineRail buildRlOnlineRailFromEnv(Map<String, String> env) {
+        if (!isRlOnlineRailEnabledFromEnv(env)) {
             return null;
         }
-        
-        try {
-            // Get environment variables
-            String gw = System.getenv("TRAJECTORY_GATEWAY_URL");
-            if (gw == null || gw.isEmpty()) {
-                gw = "http://127.0.0.1:18080";
-            }
-            gw = gw.endsWith("/") ? gw.substring(0, gw.length() - 1) : gw;
-            
-            String apiKey = System.getenv("TRAJECTORY_GATEWAY_API_KEY");
-            if (apiKey == null) {
-                apiKey = "";
-            }
-            
-            String tenantRaw = System.getenv("RL_ONLINE_TENANT_ID");
-            String tenantId = tenantRaw != null && !tenantRaw.trim().isEmpty() ? tenantRaw.trim() : null;
-            
-            // PLACEHOLDER: Requires TrajectoryUploader and RLOnlineRail Java classes
-            // TrajectoryUploader uploader = new TrajectoryUploader(gw, apiKey);
-            // RLOnlineRail rail = new RLOnlineRail("", gw, tenantId, uploader);
-            
-            logger.info("buildRlOnlineRailFromEnv: RLOnlineRail ready (rail-v1), gateway=" + gw);
-            
-            throw new UnsupportedOperationException(
-                "buildRlOnlineRailFromEnv requires TrajectoryUploader and RLOnlineRail Java classes. " +
-                "Placeholder until online_rail.py and uploader.py are fully translated."
-            );
-            
-        } catch (Exception exc) {
-            logger.warning("buildRlOnlineRailFromEnv: import failed (" + exc.getMessage() + 
-                "). Install openjiuwen with online-rl extra.");
-            return null;
-        }
+
+        String gw = getGatewayUrlFromEnv(env);
+        String apiKey = getApiKeyFromEnv(env);
+        String tenantId = getTenantIdFromEnv(env);
+        TrajectoryUploader uploader = new GatewayTrajectoryUploader(gw, apiKey);
+        RLOnlineRail rail = new RLOnlineRail("", gw, tenantId, uploader);
+        logger.info("build_rl_online_rail_from_env: RLOnlineRail ready (rail-v1), gateway=" + gw);
+        return rail;
     }
     
     /**
@@ -93,11 +78,15 @@ public final class RlOnlineRailFactory {
      * @return Gateway URL, default http://127.0.0.1:18080
      */
     public static String getGatewayUrlFromEnv() {
-        String gw = System.getenv("TRAJECTORY_GATEWAY_URL");
-        if (gw == null || gw.isEmpty()) {
-            gw = "http://127.0.0.1:18080";
+        return getGatewayUrlFromEnv(System.getenv());
+    }
+
+    public static String getGatewayUrlFromEnv(Map<String, String> env) {
+        String gw = env != null ? env.get("TRAJECTORY_GATEWAY_URL") : null;
+        if (gw == null) {
+            gw = DEFAULT_GATEWAY_URL;
         }
-        return gw.endsWith("/") ? gw.substring(0, gw.length() - 1) : gw;
+        return stripTrailingSlashes(gw);
     }
     
     /**
@@ -106,8 +95,12 @@ public final class RlOnlineRailFactory {
      * @return API key, or empty string if not set
      */
     public static String getApiKeyFromEnv() {
-        String apiKey = System.getenv("TRAJECTORY_GATEWAY_API_KEY");
-        return apiKey != null ? apiKey : "";
+        return getApiKeyFromEnv(System.getenv());
+    }
+
+    public static String getApiKeyFromEnv(Map<String, String> env) {
+        String apiKey = env != null ? env.get("TRAJECTORY_GATEWAY_API_KEY") : null;
+        return apiKey != null && !apiKey.isEmpty() ? apiKey : "";
     }
     
     /**
@@ -116,7 +109,19 @@ public final class RlOnlineRailFactory {
      * @return Tenant ID, or null if not set
      */
     public static String getTenantIdFromEnv() {
-        String tenantRaw = System.getenv("RL_ONLINE_TENANT_ID");
+        return getTenantIdFromEnv(System.getenv());
+    }
+
+    public static String getTenantIdFromEnv(Map<String, String> env) {
+        String tenantRaw = env != null ? env.get("RL_ONLINE_TENANT_ID") : null;
         return tenantRaw != null && !tenantRaw.trim().isEmpty() ? tenantRaw.trim() : null;
+    }
+
+    private static String stripTrailingSlashes(String value) {
+        int end = value.length();
+        while (end > 0 && value.charAt(end - 1) == '/') {
+            end--;
+        }
+        return value.substring(0, end);
     }
 }

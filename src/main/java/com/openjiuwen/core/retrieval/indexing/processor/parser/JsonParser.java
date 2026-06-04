@@ -13,11 +13,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
 /**
  * JSON file parser that returns formatted JSON text when possible.
+ *
+ * <p>Mirrors Python's {@code JSONParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.json_parser}.
  */
 public class JsonParser extends Parser {
 
@@ -46,6 +50,12 @@ public class JsonParser extends Parser {
     private static String formatJson(String rawJson) {
         try {
             Object value = MAPPER.readValue(rawJson, Object.class);
+            if (value instanceof Map<?, ?> map && map.isEmpty()) {
+                return "{}";
+            }
+            if (value instanceof Collection<?> collection && collection.isEmpty()) {
+                return "[]";
+            }
             return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value);
         } catch (JsonProcessingException ex) {
             return rawJson;

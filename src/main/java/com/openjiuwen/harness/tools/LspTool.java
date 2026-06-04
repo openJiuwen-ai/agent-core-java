@@ -8,6 +8,9 @@ import com.openjiuwen.harness.lsp.core.LspServerManager;
 import com.openjiuwen.harness.tools.lsp.LspOperation;
 import com.openjiuwen.harness.tools.lsp.LspToolSupport;
 
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,6 +22,7 @@ public class LspTool extends AbstractHarnessTool {
 
     public LspTool() {
         super(toolCard("harness.lsp", "lsp", "Language Server Protocol tool for diagnostics and code navigation."), null);
+        getCard().setInputParams(buildInputSchema());
     }
 
     @Override
@@ -72,7 +76,7 @@ public class LspTool extends AbstractHarnessTool {
         return new ToolOutput(true, payload.payload(), null);
     }
 
-    static LspOperation normalizeOperation(String operation) {
+    public static LspOperation normalizeOperation(String operation) {
         if (operation == null || operation.isBlank()) {
             return null;
         }
@@ -87,6 +91,38 @@ public class LspTool extends AbstractHarnessTool {
             case "outgoingCalls", "outgoing_calls" -> LspOperation.OUTGOING_CALLS;
             default -> null;
         };
+    }
+
+    public static Map<String, Object> buildInputSchema() {
+        List<String> operations = Arrays.stream(LspOperation.values()).map(LspOperation::getValue).toList();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("operation", Map.of(
+                "type", "string",
+                "enum", operations,
+                "description", "LSP operation type"));
+        properties.put("file_path", Map.of(
+                "type", "string",
+                "description", "File path (absolute or relative to workspace root)."));
+        properties.put("line", Map.of(
+                "type", "integer",
+                "minimum", 1,
+                "description", "Line number (1-indexed; LSP internally uses 0-indexed)."));
+        properties.put("character", Map.of(
+                "type", "integer",
+                "minimum", 1,
+                "description", "Column number (1-indexed; LSP internally uses 0-indexed)."));
+        properties.put("query", Map.of(
+                "type", "string",
+                "description", "Search query (used by workspaceSymbol only)."));
+        properties.put("include_declaration", Map.of(
+                "type", "boolean",
+                "description", "Whether findReferences includes the declaration location."));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("operation", "file_path"));
+        return schema;
     }
 
     private static String stringValue(Object value) {

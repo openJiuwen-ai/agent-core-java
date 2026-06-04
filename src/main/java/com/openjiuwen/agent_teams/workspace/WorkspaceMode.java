@@ -11,6 +11,21 @@ package com.openjiuwen.agent_teams.workspace;
  * {@code openjiuwen.agent_teams.team_workspace.models}.</p>
  */
 public enum WorkspaceMode {
-    LOCAL,
-    DISTRIBUTED
+    LOCAL("local"),
+    DISTRIBUTED("distributed");
+
+    private final String value;
+
+    WorkspaceMode(String value) {
+        this.value = value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+
+    @Override
+    public String toString() {
+        return value;
+    }
 }

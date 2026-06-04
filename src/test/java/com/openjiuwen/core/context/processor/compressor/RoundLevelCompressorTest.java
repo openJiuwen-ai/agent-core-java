@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link RoundLevelCompressor}.
  * <p>
- * Ported from Python's {@code test_round_level_compressor.py}.
+ * Mirrors Python's {@code test_round_level_compressor.py} in
+ * {@code tests.unit_tests.core.context_engine.test_round_level_compressor}.
  */
 class RoundLevelCompressorTest {
 
@@ -46,7 +47,7 @@ class RoundLevelCompressorTest {
 
             @Override
             public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
+                return tools == null ? 0 : tools.size() * returnValue;
             }
         };
     }

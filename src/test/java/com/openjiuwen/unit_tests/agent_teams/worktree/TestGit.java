@@ -4,16 +4,26 @@
 
 package com.openjiuwen.unit_tests.agent_teams.worktree;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.agent_teams.worktree.Git;
 
-import org.junit.jupiter.api.*;
+import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for worktree git module.
@@ -23,21 +33,17 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(MockitoExtension.class)
 class TestGit {
 
-    // ---------------------------------------------------------------------------
-    // TestGitError
-    // ---------------------------------------------------------------------------
-
     @Nested
     class TestGitError {
 
         @Test
         @Tag("level0")
         void testMessageFormat() {
-            GitError err = new GitError("rev-parse HEAD", 128, "fatal: bad ref");
+            Git.GitError err = new Git.GitError(List.of("rev-parse", "HEAD"), 128, "fatal: bad ref");
             assertTrue(err.getMessage().contains("rev-parse"));
             assertTrue(err.getMessage().contains("128"));
             assertTrue(err.getMessage().contains("fatal: bad ref"));
-            assertEquals("rev-parse HEAD", err.getCommand());
+            assertEquals(List.of("rev-parse", "HEAD"), err.getCommand());
             assertEquals(128, err.getReturncode());
             assertEquals("fatal: bad ref", err.getStderr());
         }
@@ -45,14 +51,10 @@ class TestGit {
         @Test
         @Tag("level0")
         void testIsException() {
-            GitError err = new GitError("status", 1, "");
+            Git.GitError err = new Git.GitError(List.of("status"), 1, "");
             assertTrue(err instanceof Exception);
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestGitResult
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestGitResult {
@@ -60,28 +62,35 @@ class TestGit {
         @Test
         @Tag("level0")
         void testOkTrue() {
-            GitResult r = new GitResult(0, "output", "");
+            Git.GitResult r = new Git.GitResult(0, "output", "");
+            assertTrue(r.ok());
             assertTrue(r.isOk());
         }
 
         @Test
         @Tag("level0")
         void testOkFalse() {
-            GitResult r = new GitResult(1, "", "error");
+            Git.GitResult r = new Git.GitResult(1, "", "error");
+            assertFalse(r.ok());
             assertFalse(r.isOk());
         }
 
         @Test
         @Tag("level0")
         void testOkNonzero() {
-            GitResult r = new GitResult(128, "", "fatal");
-            assertFalse(r.isOk());
+            Git.GitResult r = new Git.GitResult(128, "", "fatal");
+            assertFalse(r.ok());
+        }
+
+        @Test
+        @Tag("level0")
+        void testFrozen() throws Exception {
+            Git.GitResult r = new Git.GitResult(0, "", "");
+            assertTrue(Git.GitResult.class.isRecord());
+            assertEquals(0, r.returncode());
+            assertTrue(Modifier.isFinal(Git.GitResult.class.getDeclaredField("returncode").getModifiers()));
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestGitEnv
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestGitEnv {
@@ -89,272 +98,175 @@ class TestGit {
         @Test
         @Tag("level0")
         void testContainsTerminalPrompt() {
-            Map<String, String> env = gitEnv();
+            Map<String, String> env = Git.gitEnv();
             assertEquals("0", env.get("GIT_TERMINAL_PROMPT"));
         }
 
         @Test
         @Tag("level1")
         void testContainsAskpass() {
-            Map<String, String> env = gitEnv();
+            Map<String, String> env = Git.gitEnv();
             assertEquals("", env.get("GIT_ASKPASS"));
         }
 
         @Test
         @Tag("level1")
         void testInheritsEnvironment() {
-            Map<String, String> env = gitEnv();
+            Map<String, String> env = Git.gitEnv();
             assertTrue(env.containsKey("PATH"));
+            assertEquals(System.getenv().getOrDefault("PATH", System.getenv("Path")), env.get("PATH"));
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestFindGitRoot
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestFindGitRoot {
 
         @Test
         @Tag("level1")
-        void testInGitRepo() throws Exception {
-            Path tempDir = Files.createTempDirectory("git_test");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testInGitRepo(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
 
-            String root = findGitRoot(tempDir.toString()).get();
+            String root = Git.findGitRoot(repo.toString()).get();
+
             assertNotNull(root);
-
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertEquals(repo.toRealPath(), Path.of(root).toRealPath());
         }
 
         @Test
         @Tag("level1")
-        void testNotInGitRepo() throws Exception {
-            Path tempDir = Files.createTempDirectory("not_git");
-            String root = findGitRoot(tempDir.toString()).get();
-            assertNull(root);
+        void testNotInGitRepo(@TempDir Path tempDir) throws Exception {
+            String root = Git.findGitRoot(tempDir.toString()).get();
 
-            Files.deleteIfExists(tempDir);
+            assertNull(root);
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestGetCurrentBranch
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestGetCurrentBranch {
 
         @Test
         @Tag("level1")
-        void testReturnsBranch() throws Exception {
-            Path tempDir = Files.createTempDirectory("git_branch_test");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testReturnsBranch(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
 
-            String branch = getCurrentBranch(tempDir.toString()).get();
-            // Branch may be null if not initialized properly
-            // This is a simplified test
+            String branch = Git.getCurrentBranch(repo.toString()).get();
 
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertNotNull(branch);
+            assertFalse(branch.isEmpty());
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestRevParse
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestRevParse {
 
         @Test
         @Tag("level1")
-        void testResolveHead() throws Exception {
-            Path tempDir = Files.createTempDirectory("rev_parse_test");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testResolveHead(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
 
-            // Stub: would require real git repo
-            assertNotNull(tempDir);
+            String sha = Git.revParse("HEAD", repo.toString()).get();
 
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertNotNull(sha);
+            assertEquals(40, sha.length());
+            assertTrue(sha.chars().allMatch(c -> "0123456789abcdef".indexOf(c) >= 0));
         }
 
         @Test
         @Tag("level1")
-        void testInvalidRef() throws Exception {
-            String sha = revParse("nonexistent-ref-xyz", "/tmp").get();
+        void testInvalidRef(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
+
+            String sha = Git.revParse("nonexistent-ref-xyz", repo.toString()).get();
+
             assertNull(sha);
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestReadWorktreeHeadSha
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestReadWorktreeHeadSha {
 
         @Test
         @Tag("level1")
-        void testNotAWorktree() throws Exception {
-            Path tempDir = Files.createTempDirectory("not_worktree");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testNotAWorktree(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
 
-            String result = readWorktreeHeadSha(tempDir.toString()).get();
+            String result = Git.readWorktreeHeadSha(repo.toString()).get();
+
             assertNull(result);
-
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
         }
 
         @Test
         @Tag("level1")
-        void testNonexistentPath() throws Exception {
-            String result = readWorktreeHeadSha("/nonexistent/path").get();
+        void testNonexistentPath(@TempDir Path tempDir) throws Exception {
+            String result = Git.readWorktreeHeadSha(tempDir.resolve("nonexistent").toString()).get();
+
             assertNull(result);
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestStatusPorcelain
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestStatusPorcelain {
 
         @Test
         @Tag("level1")
-        void testCleanRepo() throws Exception {
-            Path tempDir = Files.createTempDirectory("clean_repo");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testCleanRepo(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
 
-            List<String> lines = statusPorcelain(tempDir.toString()).get();
-            assertNotNull(lines);
+            List<String> lines = Git.statusPorcelain(repo.toString()).get();
 
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertEquals(List.of(), lines);
         }
 
         @Test
         @Tag("level1")
-        void testWithChanges() throws Exception {
-            Path tempDir = Files.createTempDirectory("dirty_repo");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
-            Path newFile = tempDir.resolve("new.txt");
+        void testWithChanges(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
+            Path newFile = repo.resolve("new.txt");
             Files.writeString(newFile, "hello");
 
-            // Simplified test - real git status would show changes
-            assertNotNull(tempDir);
+            List<String> lines = Git.statusPorcelain(repo.toString()).get();
 
-            Files.deleteIfExists(newFile);
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertFalse(lines.isEmpty());
+            assertTrue(lines.stream().anyMatch(line -> line.contains("new.txt")));
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // TestCountCommitsSince
-    // ---------------------------------------------------------------------------
 
     @Nested
     class TestCountCommitsSince {
 
         @Test
         @Tag("level1")
-        void testZeroCommits() throws Exception {
-            Path tempDir = Files.createTempDirectory("zero_commits");
-            Path gitDir = tempDir.resolve(".git");
-            Files.createDirectories(gitDir);
+        void testZeroCommits(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
+            String head = Git.revParse("HEAD", repo.toString()).get();
 
-            Integer count = countCommitsSince("HEAD", tempDir.toString()).get();
-            // Stub: would require real git repo
+            Integer count = Git.countCommitsSince(head, repo.toString()).get();
 
-            Files.deleteIfExists(gitDir);
-            Files.deleteIfExists(tempDir);
+            assertEquals(0, count);
         }
 
         @Test
         @Tag("level1")
-        void testInvalidBase() throws Exception {
-            Integer count = countCommitsSince("0000000000000000000000000000000000000000", "/tmp").get();
+        void testWithCommits(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
+            String headBefore = Git.revParse("HEAD", repo.toString()).get();
+            Files.writeString(repo.resolve("extra.txt"), "content");
+            Git.runGit(List.of("add", "."), repo.toString(), true).get();
+            Git.runGit(List.of("commit", "-m", "second"), repo.toString(), true).get();
+
+            Integer count = Git.countCommitsSince(headBefore, repo.toString()).get();
+
+            assertEquals(1, count);
+        }
+
+        @Test
+        @Tag("level1")
+        void testInvalidBase(@TempDir Path tempDir) throws Exception {
+            Path repo = WorktreeTestFixture.tmpGitRepo(tempDir);
+
+            Integer count = Git.countCommitsSince("0".repeat(40), repo.toString()).get();
+
             assertNull(count);
         }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Stub implementations
-    // ---------------------------------------------------------------------------
-
-    private static class GitError extends Exception {
-        private final String command;
-        private final int returncode;
-        private final String stderr;
-
-        GitError(String command, int returncode, String stderr) {
-            super("Git command failed: " + command + " (exit " + returncode + "): " + stderr);
-            this.command = command;
-            this.returncode = returncode;
-            this.stderr = stderr;
-        }
-
-        public String getCommand() { return command; }
-        public int getReturncode() { return returncode; }
-        public String getStderr() { return stderr; }
-    }
-
-    private static class GitResult {
-        private final int returncode;
-        private final String stdout;
-        private final String stderr;
-
-        GitResult(int returncode, String stdout, String stderr) {
-            this.returncode = returncode;
-            this.stdout = stdout;
-            this.stderr = stderr;
-        }
-
-        public boolean isOk() { return returncode == 0; }
-        public int getReturncode() { return returncode; }
-        public String getStdout() { return stdout; }
-        public String getStderr() { return stderr; }
-    }
-
-    private static Map<String, String> gitEnv() {
-        Map<String, String> env = new HashMap<>(System.getenv());
-        env.put("GIT_TERMINAL_PROMPT", "0");
-        env.put("GIT_ASKPASS", "");
-        return env;
-    }
-
-    private static CompletableFuture<String> findGitRoot(String path) {
-        return CompletableFuture.completedFuture(null); // Stub
-    }
-
-    private static CompletableFuture<String> getCurrentBranch(String path) {
-        return CompletableFuture.completedFuture(null); // Stub
-    }
-
-    private static CompletableFuture<String> revParse(String ref, String path) {
-        return CompletableFuture.completedFuture(null); // Stub
-    }
-
-    private static CompletableFuture<String> readWorktreeHeadSha(String path) {
-        return CompletableFuture.completedFuture(null); // Stub
-    }
-
-    private static CompletableFuture<List<String>> statusPorcelain(String path) {
-        return CompletableFuture.completedFuture(Collections.emptyList()); // Stub
-    }
-
-    private static CompletableFuture<Integer> countCommitsSince(String base, String path) {
-        return CompletableFuture.completedFuture(null); // Stub
     }
 }

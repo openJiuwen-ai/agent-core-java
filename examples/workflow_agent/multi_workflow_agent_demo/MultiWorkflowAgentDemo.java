@@ -8,6 +8,9 @@ import examples.workflow_agent.WorkflowAgentExampleSupport;
 
 /**
  * Recommended entry point aligned with the Python multi_workflow_agent_demo directory.
+ * <p>
+ * Mirrors Python's {@code multi_workflow_agent_demo.py} in
+ * {@code examples.workflow_agent.multi_workflow_agent_demo}.
  */
 public final class MultiWorkflowAgentDemo {
 

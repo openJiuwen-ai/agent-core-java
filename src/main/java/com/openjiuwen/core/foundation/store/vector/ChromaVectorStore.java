@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.store.vector;
 
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,6 +16,10 @@ import java.util.Map;
  * Foundation-store Chroma adapter.
  */
 public class ChromaVectorStore extends AbstractRetrievalVectorStoreAdapter {
+
+    public ChromaVectorStore(VectorStore delegate) {
+        super(delegate);
+    }
 
     public ChromaVectorStore(Map<String, Object> options) {
         super(new com.openjiuwen.core.retrieval.vector_store.ChromaVectorStore(

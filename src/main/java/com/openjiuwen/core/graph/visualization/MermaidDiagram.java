@@ -329,23 +329,23 @@ class MermaidDiagram {
 
         // Header
         sb.append("---\ntitle: ").append(title).append("\n---\n");
-        sb.append("flowchart TD\n");
+        sb.append("flowchart TB\n");
 
         // Regular nodes
         for (MermaidNode node : mermaidNodes.values()) {
-            sb.append("    ").append(node.toMermaid()).append("\n");
+            sb.append("\t").append(node.toMermaid()).append("\n");
         }
 
         // Subgraph nodes
         for (SubGraphNode sgNode : subgraphNodes.values()) {
-            appendSubgraph(sb, sgNode, "    ");
+            appendSubgraph(sb, sgNode, "\t");
         }
 
         // Links
         for (String link : links) {
             // Handle multi-line links (with properties)
             for (String line : link.split("\n")) {
-                sb.append("    ").append(line).append("\n");
+                sb.append("\t").append(line).append("\n");
             }
         }
 
@@ -357,17 +357,17 @@ class MermaidDiagram {
      */
     private void appendSubgraph(StringBuilder sb, SubGraphNode sgNode, String indent) {
         sb.append(indent).append("subgraph ").append(sgNode.node.id)
-                .append("[\"").append(sgNode.node.content).append("\"]\n");
-        sb.append(indent).append("    direction TB\n");
+                .append(" [\"").append(sgNode.node.content).append("\"]\n");
+        sb.append(indent).append("direction TB\n");
 
         // Inner regular nodes
         for (MermaidNode innerNode : sgNode.innerNodes) {
-            sb.append(indent).append("    ").append(innerNode.toMermaid()).append("\n");
+            sb.append(indent).append(innerNode.toMermaid()).append("\n");
         }
 
         // Inner subgraphs (recursive)
         for (SubGraphNode innerSg : sgNode.innerSubgraphs.values()) {
-            appendSubgraph(sb, innerSg, indent + "    ");
+            appendSubgraph(sb, innerSg, indent);
         }
 
         sb.append(indent).append("end\n");

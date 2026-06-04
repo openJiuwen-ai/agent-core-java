@@ -24,12 +24,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.net.ProxySelector;
+import java.util.Set;
 import java.util.StringJoiner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * RESTful API tool that executes HTTP requests.
@@ -40,6 +45,7 @@ public class RestfulApi extends Tool {
 
     private static final String RESTFUL_SSL_VERIFY = "RESTFUL_SSL_VERIFY";
     private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
+    private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{([^/{}]+)}");
 
     private final String url;
     private final String method;
@@ -83,6 +89,7 @@ public class RestfulApi extends Tool {
             // Python parity: empty URL is accepted at construction time and fails during invoke.
             return;
         }
+        validatePathParameters(card);
 
         try {
             UrlUtils.checkUrlIsValid(url);
@@ -90,6 +97,93 @@ public class RestfulApi extends Tool {
             throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
                     "reason", "invalid url: " + url);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void validatePathParameters(RestfulApiCard card) {
+        List<String> pathParams = extractPathParamNames(card.getUrl());
+        if (pathParams.isEmpty()) {
+            return;
+        }
+        Map<String, Object> inputParams = card.getInputParams();
+        Object rawProperties = inputParams == null ? null : inputParams.get("properties");
+        if (!(rawProperties instanceof Map<?, ?> rawMap)) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason", "url path parameters require input_params properties marked with location=path");
+        }
+        Map<String, Object> properties = (Map<String, Object>) rawMap;
+        for (String name : pathParams) {
+            Object rawProp = properties.get(name);
+            if (!(rawProp instanceof Map<?, ?> prop)) {
+                throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                        "reason", "missing input_params definition for path parameter: " + name);
+            }
+            Object location = prop.get("location");
+            if (!"path".equalsIgnoreCase(String.valueOf(location))) {
+                throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                        "reason", "path parameter must be marked with location=path: " + name);
+            }
+        }
+    }
+
+    private static List<String> extractPathParamNames(String url) {
+        List<String> result = new ArrayList<>();
+        if (url == null) {
+            return result;
+        }
+        Matcher matcher = PATH_PARAM_PATTERN.matcher(url);
+        while (matcher.find()) {
+            result.add(matcher.group(1));
+        }
+        return result;
+    }
+
+    /**
+     * Group input parameters by API location for UI and validation helpers.
+     *
+     * @param card RESTful API card
+     * @return location name to parameter metadata list
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, List<Map<String, Object>>> getParametersByLocation(RestfulApiCard card) {
+        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (ApiParamLocation location : ApiParamLocation.values()) {
+            grouped.put(location.getValue(), new ArrayList<>());
+        }
+
+        Map<String, Object> inputParams = card != null ? card.getInputParams() : null;
+        Object rawProperties = inputParams != null ? inputParams.get("properties") : null;
+        if (!(rawProperties instanceof Map<?, ?> rawMap)) {
+            return grouped;
+        }
+
+        Set<String> required = requiredNames(inputParams.get("required"));
+        Map<String, Object> properties = (Map<String, Object>) rawMap;
+        for (Map.Entry<String, Object> entry : properties.entrySet()) {
+            if (!(entry.getValue() instanceof Map<?, ?> rawProp)) {
+                continue;
+            }
+            Map<String, Object> prop = new LinkedHashMap<>();
+            rawProp.forEach((key, value) -> prop.put(String.valueOf(key), value));
+            String name = entry.getKey();
+            prop.put("name", name);
+            prop.put("required", required.contains(name));
+            String location = String.valueOf(prop.getOrDefault("location", "body")).toLowerCase();
+            grouped.computeIfAbsent(location, ignored -> new ArrayList<>()).add(prop);
+        }
+        return grouped;
+    }
+
+    private static Set<String> requiredNames(Object rawRequired) {
+        Set<String> required = new HashSet<>();
+        if (rawRequired instanceof String[] array) {
+            required.addAll(List.of(array));
+        } else if (rawRequired instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                required.add(String.valueOf(item));
+            }
+        }
+        return required;
     }
 
 
@@ -167,12 +261,18 @@ public class RestfulApi extends Tool {
             resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
             requestBuilder.uri(URI.create(resolvedUrl));
             requestBuilder.GET();
+        } else if ("HEAD".equalsIgnoreCase(method)) {
+            requestBuilder.method("HEAD", HttpRequest.BodyPublishers.noBody());
         } else {
-            // POST: serialize body as JSON
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String jsonBody = mapper.writeValueAsString(bodyParams);
-            requestBuilder.header("Content-Type", "application/json");
-            requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+            if (!headers.containsKey("Content-Type")) {
+                requestBuilder.header("Content-Type", "application/json");
+            }
+            HttpRequest.BodyPublisher publisher = bodyParams.isEmpty()
+                    ? HttpRequest.BodyPublishers.noBody()
+                    : HttpRequest.BodyPublishers.ofString(jsonBody);
+            requestBuilder.method(method, publisher);
         }
 
         HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);

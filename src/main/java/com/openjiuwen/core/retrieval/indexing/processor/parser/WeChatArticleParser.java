@@ -16,12 +16,12 @@ import java.util.regex.Pattern;
 
 /**
  * WeChat article parser.
+ *
+ * <p>Mirrors Python's {@code WeChatArticleParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.wechat_article_parser}.
  */
 public class WeChatArticleParser extends WebPageParser {
 
-    private static final Pattern WECHAT_URL_PATTERN = Pattern.compile(
-            "^https?://mp\\.weixin\\.qq\\.com/s/.+",
-            Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTENT_PATTERN = Pattern.compile(
             "<div[^>]+id=[\"']js_content[\"'][^>]*>(.*?)</div>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
@@ -35,7 +35,7 @@ public class WeChatArticleParser extends WebPageParser {
     }
 
     public static boolean isWechatArticleUrl(String url) {
-        return url != null && WECHAT_URL_PATTERN.matcher(url.trim()).matches();
+        return url != null && WECHAT_MP_URL_PATTERN.matcher(url.trim()).matches();
     }
 
     @Override

@@ -10,7 +10,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
-import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageQueueFactory;
+import com.openjiuwen.core.runner.drunner.DistributedRunner;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
@@ -159,16 +159,9 @@ public class RunnerImpl {
         }
 
         if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
-            // Start distributed message queue
-            distributeMessageQueue = MessageQueueFactory.create(
-                    RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
-            distributeMessageQueue.start();
-
-            // Start reply topic subscription
-            String replyTopic = RunnerConfig.getRunnerConfig().replyTopicTemplate()
-                    .replace("{instance_id}", RunnerConfig.getRunnerConfig().getInstanceId());
-            systemReplySub = new ReplyTopicSubscription(distributeMessageQueue, replyTopic);
-            systemReplySub.activate();
+            DistributedRunner.ensureStarted();
+            distributeMessageQueue = DistributedRunner.messageQueue();
+            systemReplySub = DistributedRunner.replySubscription();
         }
 
         result = messageQueue.start();
@@ -184,17 +177,13 @@ public class RunnerImpl {
     public boolean stop() {
         logger.info("Begin to stop runner, runnerId={}", runnerId);
         try {
-            if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
-                // Stop ReplyTopicSubscription and clean up collectors
-                if (systemReplySub != null) {
-                    systemReplySub.deactivate();
-                    systemReplySub = null;
-                }
-                // Stop distributed MQ
-                if (distributeMessageQueue != null) {
-                    distributeMessageQueue.stop();
-                    distributeMessageQueue = null;
-                }
+            if (RunnerConfig.getRunnerConfig().isDistributedMode()
+                    || distributeMessageQueue != null
+                    || systemReplySub != null
+                    || DistributedRunner.isStarted()) {
+                DistributedRunner.shutdown();
+                systemReplySub = null;
+                distributeMessageQueue = null;
             }
 
             messageQueue.stop();
@@ -602,7 +591,7 @@ public class RunnerImpl {
                 continue;
             }
             int score = scoreMethod(method.getParameterTypes(), args);
-            if (score > bestScore) {
+            if (score >= 0 && score > bestScore) {
                 bestScore = score;
                 bestMethod = method;
             }
@@ -615,7 +604,7 @@ public class RunnerImpl {
                 continue;
             }
             int score = scoreMethod(method.getParameterTypes(), args);
-            if (score > bestScore) {
+            if (score >= 0 && score > bestScore) {
                 method.setAccessible(true);
                 bestScore = score;
                 bestMethod = method;

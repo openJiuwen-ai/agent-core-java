@@ -40,6 +40,7 @@ public class ModelClientConfig {
     private final boolean verifySsl;
     private final String sslCert;
     private final Map<String, String> headers;
+    private final Map<String, Object> customHeaders;
     private final Map<String, Object> extraFields;
 
     private ModelClientConfig(Builder builder) {
@@ -61,6 +62,7 @@ public class ModelClientConfig {
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;
         this.headers = new LinkedHashMap<>(builder.headers);
+        this.customHeaders = new LinkedHashMap<>(builder.customHeaders);
         this.extraFields = builder.extraFields;
     }
 
@@ -166,6 +168,16 @@ public class ModelClientConfig {
     }
 
     /**
+     * Returns a copy of developer-provided custom headers.
+     *
+     * @return the custom headers
+     */
+    @JsonProperty("custom_headers")
+    public Map<String, Object> getCustomHeaders() {
+        return new LinkedHashMap<>(customHeaders);
+    }
+
+    /**
      * Returns additional unmapped configuration fields.
      *
      * @return the extra configuration fields
@@ -201,6 +213,7 @@ public class ModelClientConfig {
         private boolean verifySsl = true;
         private String sslCert;
         private final Map<String, String> headers = new LinkedHashMap<>();
+        private final Map<String, Object> customHeaders = new LinkedHashMap<>();
         private final Map<String, Object> extraFields = new HashMap<>();
 
         /**
@@ -326,6 +339,21 @@ public class ModelClientConfig {
                         this.headers.put(key, String.valueOf(value));
                     }
                 });
+            }
+            return this;
+        }
+
+        /**
+         * Replaces developer-provided custom headers.
+         *
+         * @param customHeaders the custom headers to copy
+         * @return this builder
+         */
+        @JsonProperty("custom_headers")
+        public Builder customHeaders(Map<String, ?> customHeaders) {
+            this.customHeaders.clear();
+            if (customHeaders != null) {
+                customHeaders.forEach(this.customHeaders::put);
             }
             return this;
         }

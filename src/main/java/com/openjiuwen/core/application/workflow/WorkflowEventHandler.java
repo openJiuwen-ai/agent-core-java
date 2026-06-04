@@ -58,8 +58,8 @@ import java.util.Map;
  *   <li>Interruption handling: Save interruption state to session.state</li>
  * </ol>
  *
- * <p>Mirrors Python's {@code WorkflowController} in
- * {@code openjiuwen.core.application.workflow_agent}.</p>
+ * <p>Mirrors Python's {@code WorkflowEventHandler} in
+ * {@code openjiuwen.core.application.workflow_agent.workflow_event_handler}.</p>
  */
 public class WorkflowEventHandler extends EventHandler {
 
@@ -153,6 +153,7 @@ public class WorkflowEventHandler extends EventHandler {
                 Map<String, Object> finalPayload = new LinkedHashMap<>();
                 finalPayload.put("response", defaultText);
                 finalPayload.put("output", Map.of());
+                finalPayload.put("status", "default_response");
                 session.writeStream(new OutputSchema("workflow_final", 0, finalPayload));
                 addAssistantMessageToAgentContext(session, defaultText);
                 Map<String, Object> result = new LinkedHashMap<>();

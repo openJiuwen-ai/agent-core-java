@@ -4,91 +4,100 @@
 
 package com.openjiuwen.unit_tests.extensions.sys_operation.sandbox;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for JiuwenBox code operations.
- * <p>
  * Mirrors Python's {@code tests/unit_tests/extensions/sys_operation/sandbox/test_jiuwenbox_code_operation.py}.
  */
-@DisabledIfEnvironmentVariable(named = "SKIP_JIUWENBOX_TESTS", matches = "true")
-public class TestJiuwenboxCodeOperation {
+class TestJiuwenboxCodeOperation extends AbstractSandboxCodeOperationTest {
 
-    // ---------------------------------------------------------------------------
-    // Code Write Tests
-    // ---------------------------------------------------------------------------
+    @TempDir
+    Path tempDir;
 
-    @Test
-    @DisplayName("Test write code to JiuwenBox")
-    @Tag("level0")
-    void testWriteCodeToJiuwenbox() {
-        String codePath = "/workspace/code/test.py";
-        String code = "print('Hello JiuwenBox')";
-        
-        assertThat(codePath).endsWith(".py");
-        assertThat(code).contains("print");
-    }
-
-    // ---------------------------------------------------------------------------
-    // Code Execute Tests
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @DisplayName("Test execute code in JiuwenBox")
-    @Tag("level0")
-    void testExecuteCodeInJiuwenbox() {
-        String expectedOutput = "Hello JiuwenBox";
-        
-        assertThat(expectedOutput).contains("JiuwenBox");
+    @Override
+    protected SysOperation createSysOp() {
+        return newJiuwenboxSysOp();
     }
 
     @Test
-    @DisplayName("Test execute code with timeout")
-    @Tag("level0")
-    void testExecuteCodeWithTimeout() {
-        int timeoutSeconds = 30;
-        
-        assertThat(timeoutSeconds).isEqualTo(30);
-    }
+    void testShellExecuteCmdSuccess() {
+        var result = createSysOp().shell().executeCmd(
+                "printf 'out'; printf 'err' >&2",
+                "/tmp",
+                300,
+                java.util.Map.of("JIUWENBOX_ADAPTER_TEST", "ok"),
+                null
+        );
 
-    // ---------------------------------------------------------------------------
-    // Code Debug Tests
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @DisplayName("Test debug code in JiuwenBox")
-    @Tag("level0")
-    void testDebugCodeInJiuwenbox() {
-        List<Integer> breakpoints = Arrays.asList(5, 10, 15);
-        
-        assertThat(breakpoints).hasSize(3);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Multi-language Tests
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @DisplayName("Test execute Python code")
-    @Tag("level0")
-    void testExecutePythonCode() {
-        String language = "python";
-        
-        assertThat(language).isEqualTo("python");
+        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
+        assertEquals(0, result.getData().getExitCode());
+        assertEquals("out", result.getData().getStdout());
+        assertEquals("err", result.getData().getStderr());
     }
 
     @Test
-    @DisplayName("Test execute JavaScript code")
-    @Tag("level0")
-    void testExecuteJavaScriptCode() {
-        String language = "javascript";
-        
-        assertThat(language).isEqualTo("javascript");
+    void testCodeStreamPythonSuccess() {
+        List<ExecuteCodeStreamResult> results = collect(
+                createSysOp().code().executeCodeStream("print('stream-ok')", "python", 300, null, null)
+        );
+
+        assertFalse(results.isEmpty());
+        assertEquals(StatusCode.SUCCESS.getCode(), results.getLast().getCode());
+        assertEquals(0, results.getLast().getData().getExitCode());
+        String stdout = results.stream()
+                .map(item -> item.getData().getText())
+                .filter(text -> text != null)
+                .reduce("", String::concat);
+        assertTrue(stdout.contains("stream-ok"));
+    }
+
+    @Test
+    void testFsWriteReadListSearchAndTransfer() throws Exception {
+        SysOperation sysOp = createSysOp();
+
+        var write = sysOp.fs().writeFile("/tmp/adapter/hello.txt", "hello-adapter", "text", false, false, true, "644", "utf-8", null);
+        assertEquals(StatusCode.SUCCESS.getCode(), write.getCode());
+
+        var read = sysOp.fs().readFile("/tmp/adapter/hello.txt", "text", null, null, null, "utf-8", 0, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), read.getCode());
+        assertEquals("hello-adapter", read.getData().getContentAsString());
+
+        sysOp.fs().writeFile("/tmp/adapter/sub/keep.py", "print(1)", "text", false, false, true, "644", "utf-8", null);
+        sysOp.fs().writeFile("/tmp/adapter/sub/drop.log", "drop", "text", false, false, true, "644", "utf-8", null);
+
+        var files = sysOp.fs().listFiles("/tmp/adapter", true, null, "name", false, null, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), files.getCode());
+        assertTrue(files.getData().getListItems().stream().map(item -> item.getName()).toList()
+                .containsAll(List.of("hello.txt", "keep.py", "drop.log")));
+
+        var dirs = sysOp.fs().listDirectories("/tmp/adapter", false, null, "name", false, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), dirs.getCode());
+        assertTrue(dirs.getData().getListItems().stream().map(item -> item.getName()).toList().contains("sub"));
+
+        var search = sysOp.fs().searchFiles("/tmp/adapter", "*.py", null);
+        assertEquals(StatusCode.SUCCESS.getCode(), search.getCode());
+        assertEquals(List.of("keep.py"), search.getData().getMatchingFiles().stream().map(item -> item.getName()).toList());
+
+        Path localUpload = tempDir.resolve("upload.txt");
+        Files.writeString(localUpload, "uploaded");
+        var upload = sysOp.fs().uploadFile(localUpload.toString(), "/tmp/adapter/upload.txt", true, true, true, 0, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), upload.getCode());
+
+        Path localDownload = tempDir.resolve("download.txt");
+        var download = sysOp.fs().downloadFile("/tmp/adapter/upload.txt", localDownload.toString(), true, true, true, 0, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), download.getCode());
+        assertEquals("uploaded", Files.readString(localDownload));
     }
 }

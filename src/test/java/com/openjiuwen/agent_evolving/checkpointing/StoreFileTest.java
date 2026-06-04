@@ -173,4 +173,19 @@ class StoreFileTest {
         String path = store.saveCheckpoint(makeMockCheckpoint(), "latest.json");
         assertTrue(path.endsWith("latest.json"));
     }
+
+    @Test
+    void storeFileWritesAndReadsJson() {
+        Path nested = tempDir.resolve("nested").resolve("state.json");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("run_id", "run-store-file");
+        payload.put("step", Map.of("epoch", 2));
+
+        StoreFile.writeFile(nested, payload);
+        Map<String, Object> loaded = StoreFile.readFile(nested);
+
+        assertTrue(Files.exists(nested));
+        assertEquals("run-store-file", loaded.get("run_id"));
+        assertEquals(2, ((Map<?, ?>) loaded.get("step")).get("epoch"));
+    }
 }

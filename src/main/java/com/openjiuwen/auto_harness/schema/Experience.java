@@ -1,5 +1,7 @@
 package com.openjiuwen.auto_harness.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -14,10 +16,12 @@ public class Experience {
     private String summary = "";
     private String outcome = "";
     private String details = "";
+    @JsonProperty("pr_url")
     private String prUrl = "";
+    @JsonProperty("files_changed")
     private List<String> filesChanged = new ArrayList<>();
-    private final String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    private final double timestamp = System.currentTimeMillis() / 1000.0;
+    private String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    private double timestamp = System.currentTimeMillis() / 1000.0;
 
     public ExperienceType getType() { return type; }
     public void setType(ExperienceType type) { this.type = type; }
@@ -34,5 +38,7 @@ public class Experience {
     public List<String> getFilesChanged() { return filesChanged; }
     public void setFilesChanged(List<String> filesChanged) { this.filesChanged = filesChanged != null ? new ArrayList<>(filesChanged) : new ArrayList<>(); }
     public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public double getTimestamp() { return timestamp; }
+    public void setTimestamp(double timestamp) { this.timestamp = timestamp; }
 }

@@ -49,8 +49,7 @@ public class VectorStoreConfig {
     }
 
     public void setStoreProvider(String storeProvider) {
-        this.storeProvider = storeProvider;
-        validate();
+        this.storeProvider = RetrievalValidation.validateStoreType(storeProvider, "VectorStoreConfig.storeProvider");
     }
 
     public String getDatabaseName() {
@@ -58,8 +57,8 @@ public class VectorStoreConfig {
     }
 
     public void setDatabaseName(String databaseName) {
+        RetrievalValidation.validateDatabaseName(databaseName, "VectorStoreConfig.databaseName");
         this.databaseName = databaseName;
-        validate();
     }
 
     public String getCollectionName() {
@@ -67,8 +66,8 @@ public class VectorStoreConfig {
     }
 
     public void setCollectionName(String collectionName) {
+        RetrievalValidation.requireNonBlank(collectionName, "VectorStoreConfig.collectionName");
         this.collectionName = collectionName;
-        validate();
     }
 
     public String getDistanceMetric() {
@@ -76,7 +75,7 @@ public class VectorStoreConfig {
     }
 
     public void setDistanceMetric(String distanceMetric) {
-        this.distanceMetric = distanceMetric;
-        validate();
+        this.distanceMetric = RetrievalValidation.validateDistanceMetric(
+                distanceMetric, "VectorStoreConfig.distanceMetric");
     }
 }

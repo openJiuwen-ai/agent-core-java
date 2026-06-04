@@ -17,6 +17,9 @@ import java.util.Map;
 
 /**
  * Orchestrates memory write operations across all memory type managers.
+ *
+ * <p>Mirrors Python's {@code WriteManager} in
+ * {@code openjiuwen.core.memory.manage.index.write_manager}.
  */
 public class WriteManager {
 

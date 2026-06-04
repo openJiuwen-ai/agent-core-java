@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_teams.schema;
 
+import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
+import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -19,6 +22,9 @@ public class TeamRuntimeContext {
     private String memberName;
     private String persona = "";
     private TeamSpec teamSpec;
+    private MessagerTransportConfig messagerConfig;
+    private DatabaseConfig dbConfig;
+    private TeamModelConfig memberModel;
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public TeamRole getRole() {
@@ -51,6 +57,30 @@ public class TeamRuntimeContext {
 
     public void setTeamSpec(TeamSpec teamSpec) {
         this.teamSpec = teamSpec;
+    }
+
+    public MessagerTransportConfig getMessagerConfig() {
+        return messagerConfig;
+    }
+
+    public void setMessagerConfig(MessagerTransportConfig messagerConfig) {
+        this.messagerConfig = messagerConfig;
+    }
+
+    public DatabaseConfig getDbConfig() {
+        return dbConfig;
+    }
+
+    public void setDbConfig(DatabaseConfig dbConfig) {
+        this.dbConfig = dbConfig;
+    }
+
+    public TeamModelConfig getMemberModel() {
+        return memberModel;
+    }
+
+    public void setMemberModel(TeamModelConfig memberModel) {
+        this.memberModel = memberModel;
     }
 
     public Map<String, Object> getMetadata() {

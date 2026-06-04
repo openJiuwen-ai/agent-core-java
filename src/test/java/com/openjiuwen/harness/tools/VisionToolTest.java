@@ -138,7 +138,7 @@ class VisionToolTest {
         assertTrue(data.containsKey("answer"));
         assertTrue(data.containsKey("ocr_text"));
         assertEquals("test response", data.get("answer"));
-        assertEquals("", data.get("ocr_text"));
+        assertNull(data.get("ocr_text"));
     }
 
     @Test

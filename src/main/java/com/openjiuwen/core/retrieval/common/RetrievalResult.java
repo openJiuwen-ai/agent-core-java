@@ -12,13 +12,16 @@ import java.util.Map;
 
 /**
  * User-facing retrieval result.
+ *
+ * <p>Mirrors Python's {@code RetrievalResult} in
+ * {@code openjiuwen.core.retrieval.common.retrieval_result}.
  */
 @Getter
 @Setter
 public class RetrievalResult {
 
     private String text;
-    private double score;
+    private Double score;
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private String docId;
     private String chunkId;
@@ -26,11 +29,11 @@ public class RetrievalResult {
     public RetrievalResult() {
     }
 
-    public RetrievalResult(String text, double score) {
+    public RetrievalResult(String text, Double score) {
         this(text, score, null, null, null);
     }
 
-    public RetrievalResult(String text, double score, Map<String, Object> metadata, String docId, String chunkId) {
+    public RetrievalResult(String text, Double score, Map<String, Object> metadata, String docId, String chunkId) {
         setText(text);
         setScore(score);
         setMetadata(metadata);
@@ -41,6 +44,11 @@ public class RetrievalResult {
     public void setText(String text) {
         RetrievalValidation.requireNonNull(text, "RetrievalResult.text");
         this.text = text;
+    }
+
+    public void setScore(Double score) {
+        RetrievalValidation.requireNonNull(score, "RetrievalResult.score");
+        this.score = score;
     }
 
     public void setMetadata(Map<String, Object> metadata) {

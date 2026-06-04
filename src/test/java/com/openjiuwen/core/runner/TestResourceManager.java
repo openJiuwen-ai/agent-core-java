@@ -84,11 +84,13 @@ class TestResourceManager {
                     "cannot be None, must be an instance of AgentCard");
 
             err = assertThrows(ValidationError.class, () -> {
-                AgentCard invalidCard = mock(AgentCard.class);
-                when(invalidCard.getId()).thenReturn("invalid_id");
+                Object invalidCard = "not_a_card";
                 resourceMgr.addAgent(invalidCard, mockAgentProvider, null);
             });
             assertEquals(StatusCode.RESOURCE_CARD_VALUE_INVALID.getCode(), err.getCode());
+            assertStatusCode(err,
+                    StatusCode.RESOURCE_CARD_VALUE_INVALID,
+                    "cannot be None, must be an instance of AgentCard");
         }
 
         @Test
@@ -131,12 +133,12 @@ class TestResourceManager {
                     "provider cannot be None, must be a callable function");
 
             err = assertThrows(ValidationError.class, () -> {
-                Supplier<Object> invalidProvider = null;
+                Object invalidProvider = "not_callable";
                 resourceMgr.addAgent(mockAgentCard, invalidProvider, null);
             });
             assertStatusCode(err,
                     StatusCode.RESOURCE_PROVIDER_INVALID,
-                    "invalid provider type");
+                    "invalid provider type, expected callable, got str");
         }
 
         @Test
@@ -161,6 +163,15 @@ class TestResourceManager {
             assertStatusCode(err,
                     StatusCode.RESOURCE_PROVIDER_INVALID,
                     "invalid provider at idx 0: provider cannot be None, must be a callable function");
+
+            err = assertThrows(ValidationError.class, () -> {
+                List<ResourceMgr.AgentEntry> agents = Collections.singletonList(
+                        new ResourceMgr.AgentEntry("not_a_card", mockAgentProvider));
+                resourceMgr.addAgents(agents, null);
+            });
+            assertStatusCode(err,
+                    StatusCode.RESOURCE_PROVIDER_INVALID,
+                    "invalid agent card type at idx 0: expected AgentCard, got str");
         }
 
         @Test
@@ -173,10 +184,10 @@ class TestResourceManager {
                     "tool cannot be None: expected an instance or list of Tool");
 
             err = assertThrows(ValidationError.class, () ->
-                    resourceMgr.addTool(mock(Tool.class), null));
+                    resourceMgr.addTool("not_a_tool", null));
             assertStatusCode(err,
                     StatusCode.RESOURCE_VALUE_INVALID,
-                    "invalid tool type: expected Tool, got");
+                    "invalid tool type: expected Tool, got str");
 
             err = assertThrows(ValidationError.class, () ->
                     resourceMgr.addTools(Collections.emptyList(), null));
@@ -185,16 +196,12 @@ class TestResourceManager {
                     "tool list cannot be empty: expected a non-empty list of Tool");
 
             err = assertThrows(ValidationError.class, () -> {
-                Tool mockTool1 = mock(Tool.class);
-                ToolCard card1 = mock(ToolCard.class);
-                when(card1.getId()).thenReturn("test_tool");
-                when(mockTool1.getCard()).thenReturn(card1);
-                List<Tool> tools = Arrays.asList(mockTool1, null);
+                List<Object> tools = Arrays.asList("not_a_tool", null);
                 resourceMgr.addTools(tools, null);
             });
             assertStatusCode(err,
                     StatusCode.RESOURCE_VALUE_INVALID,
-                    "invalid tool type at index");
+                    "invalid tool type at index 0: expected Tool, got str");
         }
 
         @Test
@@ -207,7 +214,7 @@ class TestResourceManager {
             });
             assertStatusCode(err,
                     StatusCode.RESOURCE_VALUE_INVALID,
-                    "invalid tool type: expected Tool, got Mock");
+                    "tool has invalid card: tool card is invalid");
 
             err = assertThrows(ValidationError.class, () -> {
                 Tool tool = mock(Tool.class);
@@ -218,7 +225,7 @@ class TestResourceManager {
             });
             assertStatusCode(err,
                     StatusCode.RESOURCE_VALUE_INVALID,
-                    "invalid tool type: expected Tool, got Mock");
+                    "tool has invalid card: tool id is invalid");
         }
     }
 

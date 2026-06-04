@@ -8,11 +8,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,6 +35,22 @@ class FrameworkWrapTest {
     @BeforeEach
     void setUp() {
         framework = new CallbackFramework(false, false);
+    }
+
+    private static List<Integer> collectIntegers(Object raw) {
+        List<Integer> values = new ArrayList<>();
+        if (raw instanceof Iterator<?> iterator) {
+            while (iterator.hasNext()) {
+                values.add((Integer) iterator.next());
+            }
+            return values;
+        }
+        if (raw instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                values.add((Integer) item);
+            }
+        }
+        return values;
     }
 
     // ===========================================================================
@@ -226,17 +241,14 @@ class FrameworkWrapTest {
             return "hello " + kwargs.get("name");
         };
 
-        Function<Map<String, Object>, Object> wrapped = framework.wrap("greet");
+        Function<Map<String, Object>, Object> wrapped = framework.wrap("greet", greet);
 
-        // Apply the wrapped function with original greet logic
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("name", "world");
         Object result = wrapped.apply(kwargs);
 
-        // Note: In Java implementation, we need to compose the wrap with the actual function
-        // The test verifies the framework stores handlers correctly
-        String key = CallbackFramework.WRAP_EVENT_PREFIX + "greet";
-        assertTrue(framework.getCallbacks().containsKey(key));
+        assertEquals("hello world", result);
+        assertEquals(List.of("before", "greet", "after"), log);
     }
 
     @Test
@@ -346,13 +358,134 @@ class FrameworkWrapTest {
         CallbackFramework.WrapHandler handler = (callNext, kwargs) -> callNext.apply(kwargs);
         framework.onWrap("other_event", handler, 10);
 
-        // wrap "empty_event" should return empty map (no handlers)
-        Function<Map<String, Object>, Object> wrapped = framework.wrap("empty_event");
+        Function<Map<String, Object>, Object> wrapped = framework.wrap("empty_event", func);
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("x", 5);
         
         Object result = wrapped.apply(kwargs);
-        assertEquals(Collections.emptyMap(), result);
+        assertEquals(10, result);
+    }
+
+    @Test
+    @DisplayName("Sync function promoted to wrapped callable")
+    void testSyncFunctionPromotedToAsync() throws Exception {
+        CallbackFramework.WrapHandler handler = (callNext, kwargs) -> (int) callNext.apply(kwargs) + 1;
+        Function<Map<String, Object>, Object> syncFunc = kwargs -> (int) kwargs.get("n") * 2;
+        Function<Map<String, Object>, Object> wrapped =
+                CallbackFramework.createWrapDecorator(List.of(handler)).apply(syncFunc);
+
+        assertEquals(7, wrapped.apply(new HashMap<>(Map.of("n", 3))));
+    }
+
+    @Test
+    @DisplayName("Iterator single handler transforms yielded items")
+    void testAsyncGeneratorSingleHandler() throws Exception {
+        CallbackFramework.WrapHandler doubleItems = (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> i * 2).toList().iterator();
+        Function<Map<String, Object>, Object> stream = kwargs -> List.of(1, 2, 3).iterator();
+        Function<Map<String, Object>, Object> wrapped =
+                CallbackFramework.createWrapDecorator(List.of(doubleItems)).apply(stream);
+
+        assertEquals(List.of(2, 4, 6), collectIntegers(wrapped.apply(new HashMap<>())));
+    }
+
+    @Test
+    @DisplayName("Iterator handler chain order composes outermost last")
+    void testAsyncGeneratorChainOrder() throws Exception {
+        CallbackFramework.WrapHandler add10 = (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> i + 10).toList().iterator();
+        CallbackFramework.WrapHandler mul2 = (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> i * 2).toList().iterator();
+        Function<Map<String, Object>, Object> stream = kwargs -> List.of(1, 2).iterator();
+
+        Function<Map<String, Object>, Object> wrapped =
+                CallbackFramework.createWrapDecorator(List.of(add10, mul2)).apply(stream);
+
+        assertEquals(List.of(12, 14), collectIntegers(wrapped.apply(new HashMap<>())));
+    }
+
+    @Test
+    @DisplayName("Iterator handler can filter yielded items")
+    void testAsyncGeneratorHandlerFilterItems() throws Exception {
+        CallbackFramework.WrapHandler onlyEven = (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().filter(i -> i % 2 == 0).toList().iterator();
+        Function<Map<String, Object>, Object> stream = kwargs -> List.of(0, 1, 2, 3, 4).iterator();
+
+        Function<Map<String, Object>, Object> wrapped =
+                CallbackFramework.createWrapDecorator(List.of(onlyEven)).apply(stream);
+
+        assertEquals(List.of(0, 2, 4), collectIntegers(wrapped.apply(new HashMap<>())));
+    }
+
+    @Test
+    @DisplayName("Sync generator promoted to wrapped iterator")
+    void testSyncGeneratorPromotedToAsyncGenerator() throws Exception {
+        CallbackFramework.WrapHandler negate = (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> -i).toList().iterator();
+        Function<Map<String, Object>, Object> syncGen = kwargs -> List.of(1, 2).iterator();
+
+        Function<Map<String, Object>, Object> wrapped =
+                CallbackFramework.createWrapDecorator(List.of(negate)).apply(syncGen);
+
+        assertEquals(List.of(-1, -2), collectIntegers(wrapped.apply(new HashMap<>())));
+    }
+
+    @Test
+    @DisplayName("Event wrap handler transforms iterator items")
+    void testAsyncGeneratorHandler() throws Exception {
+        framework.onWrap("stream", (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> -i).toList().iterator(), 0);
+        Function<Map<String, Object>, Object> stream = kwargs -> {
+            int n = (int) kwargs.get("n");
+            List<Integer> values = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                values.add(i);
+            }
+            return values.iterator();
+        };
+
+        Function<Map<String, Object>, Object> wrapped = framework.wrap("stream", stream);
+
+        assertEquals(List.of(0, -1, -2), collectIntegers(wrapped.apply(new HashMap<>(Map.of("n", 3)))));
+    }
+
+    @Test
+    @DisplayName("Event wrap handler supports sync iterator functions")
+    void testSyncGeneratorHandler() throws Exception {
+        framework.onWrap("sync_stream", (callNext, kwargs) ->
+                collectIntegers(callNext.apply(kwargs)).stream().map(i -> i + 1).toList().iterator(), 0);
+        Function<Map<String, Object>, Object> syncGen = kwargs -> {
+            int n = (int) kwargs.get("n");
+            List<Integer> values = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                values.add(i * 10);
+            }
+            return values.iterator();
+        };
+
+        Function<Map<String, Object>, Object> wrapped = framework.wrap("sync_stream", syncGen);
+
+        assertEquals(List.of(1, 11, 21), collectIntegers(wrapped.apply(new HashMap<>(Map.of("n", 3)))));
+    }
+
+    @Test
+    @DisplayName("Register and wrap via factory-style APIs")
+    void testRegisterAndWrapViaFactories() throws Exception {
+        List<String> calls = new ArrayList<>();
+
+        framework.onWrap("factory_ev", (callNext, kwargs) -> {
+            calls.add("handler");
+            return callNext.apply(kwargs);
+        }, 0);
+        Function<Map<String, Object>, Object> func = kwargs -> {
+            calls.add("func");
+            return 99;
+        };
+
+        Object result = framework.wrap("factory_ev", func).apply(new HashMap<>());
+
+        assertEquals(99, result);
+        assertEquals(List.of("handler", "func"), calls);
     }
 
     @Test

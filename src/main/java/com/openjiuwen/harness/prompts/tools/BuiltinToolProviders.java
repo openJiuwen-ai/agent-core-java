@@ -4,12 +4,14 @@
 
 package com.openjiuwen.harness.prompts.tools;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
- * Registers all built-in tool metadata providers at startup.
+ * Registers built-in tool metadata providers.
  * <p>
- * Call {@link #registerAll()} once during application initialization.
- * <p>
- * Mirrors Python's {@code _PROVIDERS} list in
+ * Mirrors Python's provider registry in
  * {@code openjiuwen.harness.prompts.tools.__init__}.
  */
 public final class BuiltinToolProviders {
@@ -25,133 +27,221 @@ public final class BuiltinToolProviders {
             return;
         }
 
-        // Bash (full provider)
         ToolDescriptionRegistry.register(new BashMetadataProvider());
+        ToolDescriptionRegistry.register(new PowerShellMetadataProvider());
+        ToolDescriptionRegistry.register(new CodeMetadataProvider());
+        ToolDescriptionRegistry.register(new CronMetadataProvider());
+        for (ToolMetadataProvider provider : CronMetadataProvider.legacyProviders()) {
+            ToolDescriptionRegistry.register(provider);
+        }
 
-        // Core tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "powershell", "执行 PowerShell 命令。", "Execute PowerShell commands."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "ask_user", "向用户提问并获取回答。", "Ask the user a question and get their answer."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "read_file", "读取文件内容。", "Read file contents."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "write_file", "写入文件内容。", "Write file contents."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "edit_file", "编辑文件的指定部分。", "Edit a specific part of a file."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "glob", "按模式匹配搜索文件。", "Search for files by pattern."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "list_dir", "列出目录内容。", "List directory contents."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "grep", "搜索文件内容。", "Search file contents with regex."));
-
-        // Code tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "code", "执行代码片段。", "Execute code snippets."));
-
-        // Cron tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron", "管理定时任务。", "Manage cron jobs."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_list_jobs", "列出所有定时任务。", "List all cron jobs."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_get_job", "获取定时任务详情。", "Get cron job details."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_create_job", "创建定时任务。", "Create a cron job."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_update_job", "更新定时任务。", "Update a cron job."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_delete_job", "删除定时任务。", "Delete a cron job."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_toggle_job", "启用/禁用定时任务。", "Enable/disable a cron job."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "cron_preview_job", "预览定时任务执行时间。", "Preview cron job execution times."));
-
-        // Todo tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "todo_create", "创建新任务。", "Create a new todo item."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "todo_list", "查看所有任务。", "List all todo items."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "todo_modify", "更新任务状态。", "Modify a todo item."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "todo_get", "获取任务详情。", "Get todo item details."));
-
-        // Task/session tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "task_tool", "创建并管理子任务。", "Create and manage sub-tasks."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "sessions_list", "列出所有活跃会话。", "List all active sessions."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "sessions_spawn", "创建新的后台会话。", "Create a new background session."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "sessions_cancel", "取消指定会话。", "Cancel a specified session."));
-
-        // Skill tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "list_skills", "查看可用技能列表。", "List available skills."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "use_skill", "加载并执行指定技能。", "Load and execute a specified skill."));
-
-        // Search/load tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "search_tools", "搜索可用工具。", "Search for available tools."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "load_tools", "加载指定工具。", "Load specified tools."));
-
-        // Vision/media tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "image_ocr", "识别图片中的文字。", "Recognize text in images."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "visual_qa", "回答关于图片的问题。", "Answer questions about images."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "video_understanding", "分析视频内容。", "Analyze video content."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "audio_transcription", "转录音频为文本。", "Transcribe audio to text."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "audio_qa", "回答关于音频的问题。", "Answer questions about audio."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "audio_metadata", "获取音频元数据。", "Get audio metadata."));
-
-        // Web tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "free_search", "免费搜索。", "Free web search."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "paid_search", "付费搜索。", "Paid web search."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "fetch_webpage", "获取网页内容。", "Fetch webpage content."));
-
-        // Mode tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "switch_mode", "切换代理模式。", "Switch agent mode."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "enter_plan_mode", "进入规划模式。", "Enter plan mode."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "exit_plan_mode", "退出规划模式。", "Exit plan mode."));
-
-        // MCP tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "list_mcp_resources", "列出 MCP 资源。", "List MCP resources."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "read_mcp_resource", "读取 MCP 资源。", "Read MCP resource."));
-
-        // LSP tool
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "lsp_tool", "语言服务器协议工具。", "Language Server Protocol tool."));
-
-        // Memory tools
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "memory_search", "搜索记忆内容。", "Search memory content."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "memory_get", "获取记忆详情。", "Get memory details."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "write_memory", "写入记忆内容。", "Write memory content."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "edit_memory", "编辑记忆内容。", "Edit memory content."));
-        ToolDescriptionRegistry.register(SimpleToolMetadataProvider.of(
-                "read_memory", "读取记忆内容。", "Read memory content."));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "read_file",
+                "Read file contents.",
+                "Read file contents.",
+                Map.of("file_path", prop("string", "文件路径", "File path")),
+                List.of("file_path")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "write_file",
+                "Write file contents.",
+                "Write file contents.",
+                Map.of(
+                        "file_path", prop("string", "文件路径", "File path"),
+                        "content", prop("string", "文件内容", "Content")),
+                List.of("file_path", "content")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "edit_file",
+                "Edit a specific part of a file.",
+                "Edit a specific part of a file.",
+                Map.of(
+                        "file_path", prop("string", "文件路径", "File path"),
+                        "old_string", prop("string", "旧文本", "Old text"),
+                        "new_string", prop("string", "新文本", "New text")),
+                List.of("file_path", "old_string", "new_string")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "glob",
+                "Search for files by pattern.",
+                "Search for files by pattern.",
+                Map.of("pattern", prop("string", "模式", "Pattern")),
+                List.of("pattern")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "list_files",
+                "List directory contents.",
+                "List directory contents.",
+                Map.of("path", prop("string", "路径", "Path")),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "list_dir",
+                "List directory contents.",
+                "List directory contents.",
+                Map.of("path", prop("string", "路径", "Path")),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "grep",
+                "Search file contents with regex.",
+                "Search file contents with regex.",
+                Map.of("pattern", prop("string", "模式", "Pattern")),
+                List.of("pattern")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "list_skill",
+                "List available skills.",
+                "List available skills.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "todo_create",
+                "Create a new todo item.",
+                "Create a new todo item.",
+                Map.of("tasks", prop("array", "任务列表", "Tasks")),
+                List.of("tasks")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "todo_list",
+                "List all todo items.",
+                "List all todo items.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "todo_modify",
+                "Modify a todo item.",
+                "Modify a todo item.",
+                Map.of(
+                        "id", prop("string", "任务ID", "Todo id"),
+                        "status", prop("string", "状态", "Status")),
+                List.of("id")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "image_ocr",
+                "Recognize text in images.",
+                "Recognize text in images.",
+                Map.of("image_path_or_url", prop("string", "图片路径或URL", "Image path or URL")),
+                List.of("image_path_or_url")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "visual_question_answering",
+                "Answer questions about images.",
+                "Answer questions about images.",
+                Map.of(
+                        "image_path_or_url", prop("string", "图片路径或URL", "Image path or URL"),
+                        "question", prop("string", "问题", "Question")),
+                List.of("image_path_or_url", "question")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "audio_transcription",
+                "Transcribe audio to text.",
+                "Transcribe audio to text.",
+                Map.of("audio_path_or_url", prop("string", "音频路径或URL", "Audio path or URL")),
+                List.of("audio_path_or_url")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "audio_question_answering",
+                "Answer questions about audio.",
+                "Answer questions about audio.",
+                Map.of(
+                        "audio_path_or_url", prop("string", "音频路径或URL", "Audio path or URL"),
+                        "question", prop("string", "问题", "Question")),
+                List.of("audio_path_or_url", "question")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "audio_metadata",
+                "Get audio metadata.",
+                "Get audio metadata.",
+                Map.of("audio_path_or_url", prop("string", "音频路径或URL", "Audio path or URL")),
+                List.of("audio_path_or_url")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "sessions_spawn",
+                "Create a new background session.",
+                "Create a new background session.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "sessions_list",
+                "List all active sessions.",
+                "List all active sessions.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "sessions_cancel",
+                "Cancel a specified session.",
+                "Cancel a specified session.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "task_tool",
+                "Create and manage sub-tasks.",
+                "Create and manage sub-tasks.",
+                Map.of(
+                        "subagent_type", prop("string", "子代理类型", "Subagent type"),
+                        "task_description", prop("string", "任务描述", "Task description")),
+                List.of("subagent_type", "task_description")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "switch_mode",
+                "Switch agent mode.",
+                "Switch agent mode.",
+                Map.of("mode", prop("string", "模式", "Mode")),
+                List.of("mode")));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "enter_plan_mode",
+                "Enter plan mode.",
+                "Enter plan mode.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "exit_plan_mode",
+                "Exit plan mode.",
+                "Exit plan mode.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "list_mcp_resources",
+                "List MCP resources.",
+                "List MCP resources.",
+                Map.of(),
+                List.of()));
+        ToolDescriptionRegistry.register(schemaProvider(
+                "read_mcp_resource",
+                "Read MCP resource.",
+                "Read MCP resource.",
+                Map.of("uri", prop("string", "资源URI", "Resource URI")),
+                List.of("uri")));
 
         registered = true;
+    }
+
+    private static SimpleToolMetadataProvider schemaProvider(
+            String name,
+            String cnDescription,
+            String enDescription,
+            Map<String, Map<String, String>> properties,
+            List<String> required
+    ) {
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        descriptions.put("cn", cnDescription);
+        descriptions.put("en", enDescription);
+        Map<String, Map<String, Object>> schemas = new LinkedHashMap<>();
+        schemas.put("cn", objectSchema(properties, required, "cn"));
+        schemas.put("en", objectSchema(properties, required, "en"));
+        return new SimpleToolMetadataProvider(name, descriptions, schemas);
+    }
+
+    private static Map<String, Object> objectSchema(
+            Map<String, Map<String, String>> properties,
+            List<String> required,
+            String language
+    ) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> propertyMap = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, String>> entry : properties.entrySet()) {
+            propertyMap.put(entry.getKey(), Map.of(
+                    "type", entry.getValue().get("type"),
+                    "description", entry.getValue().get(language)
+            ));
+        }
+        schema.put("properties", propertyMap);
+        schema.put("required", required);
+        return schema;
+    }
+
+    private static Map<String, String> prop(String type, String cnDescription, String enDescription) {
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("type", type);
+        result.put("cn", cnDescription);
+        result.put("en", enDescription);
+        return result;
     }
 }

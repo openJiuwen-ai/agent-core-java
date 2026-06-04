@@ -4,11 +4,14 @@
 
 package com.openjiuwen.unit_tests.agent_teams.worktree;
 
+import com.openjiuwen.agent_teams.messager.Messager;
+import com.openjiuwen.agent_teams.worktree.WorktreeConfig;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import org.junit.jupiter.api.*;
+import org.mockito.Mockito;
 
 /**
  * Test fixtures for worktree tests.
@@ -22,15 +25,16 @@ public class WorktreeTestFixture {
      * Default worktree config for testing.
      */
     public static WorktreeConfig worktreeConfig() {
-        return new WorktreeConfig(true);
+        WorktreeConfig config = new WorktreeConfig();
+        config.setEnabled(true);
+        return config;
     }
 
     /**
      * Mock Messager for testing.
      */
-    public static Object mockMessager() {
-        // Stub: would return a mock Messager instance
-        return null;
+    public static Messager mockMessager() {
+        return Mockito.mock(Messager.class);
     }
 
     /**
@@ -73,18 +77,4 @@ public class WorktreeTestFixture {
         }
     }
 
-    /**
-     * Simple worktree config stub.
-     */
-    public static class WorktreeConfig {
-        private final boolean enabled;
-
-        public WorktreeConfig(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-    }
 }

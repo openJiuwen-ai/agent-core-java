@@ -16,6 +16,9 @@ import java.util.Map;
  * Legacy reasoner configuration using sub-module configuration.
  * Mirrors Python's {@code ReasonerConfig} dataclass which composes
  * IntentDetectionConfig, PlannerConfig, ProactiveIdentifierConfig, ReflectorConfig.
+ *
+ * <p>Mirrors Python's {@code ReasonerConfig} in
+ * {@code openjiuwen.core.controller.legacy.config.reasoner_config}.
  */
 @Data
 @Builder

@@ -90,7 +90,9 @@ class BrowserMoveManagedAndToolsTest {
 
     @Test
     void browserRuntimeToolsExposeExpectedHelpers() {
-        List<Tool> tools = BrowserRuntimeTools.buildBrowserRuntimeTools(makeRuntime());
+        BrowserAgentRuntime runtime = makeRuntime();
+        runtime.ensureRuntimeReady();
+        List<Tool> tools = BrowserRuntimeTools.buildBrowserRuntimeTools(runtime);
         assertEquals(5, tools.size());
         assertEquals(List.of(
                 "browser_cancel_run",
@@ -109,29 +111,26 @@ class BrowserMoveManagedAndToolsTest {
         BrowserListActionsTool listActionsTool = (BrowserListActionsTool) tools.get(3);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) listActionsTool.invoke(Map.of(), Map.of())).getData();
-        assertEquals(List.of(
-                "browser_cancel",
-                "browser_clear_cancel",
-                "browser_custom_action",
-                "browser_list_custom_actions",
-                "browser_runtime_health"
-        ), data.get("actions"));
+        @SuppressWarnings("unchecked")
+        List<String> actions = (List<String>) data.get("actions");
+        assertTrue(actions.containsAll(List.of("ping", "echo", "browser_task", "run_browser_task")));
 
         BrowserCustomActionTool customActionTool = (BrowserCustomActionTool) tools.get(2);
         @SuppressWarnings("unchecked")
-        Map<String, Object> customData = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) customActionTool.invoke(Map.of(), Map.of())).getData();
-        assertEquals("browser_custom_action", customData.get("tool"));
-        assertTrue(customData.containsKey("runtime_ready"));
+        Map<String, Object> customData = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) customActionTool.invoke(Map.of("action", "ping"), Map.of())).getData();
+        assertEquals("ping", customData.get("action"));
+        assertTrue(Boolean.TRUE.equals(customData.get("pong")));
 
         BrowserCancelTool cancelTool = (BrowserCancelTool) tools.get(0);
         @SuppressWarnings("unchecked")
-        Map<String, Object> cancelData = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) cancelTool.invoke(Map.of(), Map.of())).getData();
-        assertEquals("browser_cancel", cancelData.get("tool"));
+        Map<String, Object> cancelData = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) cancelTool.invoke(Map.of("session_id", "s1"), Map.of())).getData();
+        assertEquals("s1", cancelData.get("session_id"));
+        assertTrue(Boolean.TRUE.equals(cancelData.get("ok")));
 
         BrowserRuntimeHealthTool healthTool = (BrowserRuntimeHealthTool) tools.get(4);
         @SuppressWarnings("unchecked")
         Map<String, Object> healthData = (Map<String, Object>) ((com.openjiuwen.harness.tools.ToolOutput) healthTool.invoke(Map.of(), Map.of())).getData();
-        assertEquals("browser_runtime_health", healthData.get("tool"));
         assertTrue(Boolean.TRUE.equals(healthData.get("ok")));
+        assertEquals("test-model", healthData.get("model_name"));
     }
 }

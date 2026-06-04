@@ -7,11 +7,13 @@ package com.openjiuwen.agent_evolving.agent_rl.offline.coordinator;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
 import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Objects;
+import java.util.Queue;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -23,29 +25,24 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class TaskQueue {
 
-    private final List<RLTask> taskQueue = new ArrayList<>();
-    private final Map<String, RLTask> inProcessingTask = new ConcurrentHashMap<>();
-    private final Map<String, RolloutMessage> rollouts = new ConcurrentHashMap<>();
+    private final Queue<RLTask> taskQueue = new ArrayDeque<>();
+    private final Map<String, RLTask> inProcessingTask = new LinkedHashMap<>();
+    private final Map<String, RolloutMessage> rollouts = new LinkedHashMap<>();
     private final ReentrantLock queueLock = new ReentrantLock();
     private final ReentrantLock rolloutLock = new ReentrantLock();
 
     /**
-     * Initialize an empty task queue and rollout buffer.
-     */
-    public TaskQueue() {
-    }
-
-    /**
      * Enqueue a new task and return its task identifier.
-     * 
-     * @param task Task to queue
-     * @return Task identifier
+     *
+     * @param task task to queue
+     * @return task identifier
      */
     public String queueTask(RLTask task) {
+        RLTask queuedTask = Objects.requireNonNull(task, "task");
         queueLock.lock();
         try {
-            taskQueue.add(task);
-            return task.getTaskId();
+            taskQueue.add(queuedTask);
+            return queuedTask.getTaskId();
         } finally {
             queueLock.unlock();
         }
@@ -53,16 +50,16 @@ public class TaskQueue {
 
     /**
      * Retrieve the next task for processing.
-     * 
-     * @return Next task or null if queue is empty
+     *
+     * @return next task, or null when the queue is empty
      */
     public RLTask getTask() {
         queueLock.lock();
         try {
-            if (taskQueue.isEmpty()) {
+            RLTask task = taskQueue.poll();
+            if (task == null) {
                 return null;
             }
-            RLTask task = taskQueue.remove(0);
             inProcessingTask.put(task.getTaskId(), task);
             return task;
         } finally {
@@ -72,15 +69,16 @@ public class TaskQueue {
 
     /**
      * Remove a task from the in-processing pool directly.
-     * 
-     * @param task Task to delete
+     *
+     * @param task task to delete
      */
     public void deleteTask(RLTask task) {
+        if (task == null) {
+            return;
+        }
         queueLock.lock();
         try {
-            if (task != null && task.getTaskId() != null) {
-                inProcessingTask.remove(task.getTaskId());
-            }
+            inProcessingTask.remove(task.getTaskId());
         } finally {
             queueLock.unlock();
         }
@@ -88,21 +86,18 @@ public class TaskQueue {
 
     /**
      * Store a completed rollout and clear its in-processing entry.
-     * 
-     * @param rollout Completed rollout message
-     * @return Rollout identifier
+     *
+     * @param rollout completed rollout message
+     * @return rollout identifier
      */
     public String addRollout(RolloutMessage rollout) {
-        if (rollout == null) {
-            return null;
-        }
-        
-        String rolloutId = rollout.getRolloutId();
-        String taskId = rollout.getTaskId();
-        
+        RolloutMessage completedRollout = Objects.requireNonNull(rollout, "rollout");
+        String rolloutId = completedRollout.getRolloutId();
+        String taskId = completedRollout.getTaskId();
+
         queueLock.lock();
         try {
-            if (taskId != null && inProcessingTask.containsKey(taskId)) {
+            if (taskId != null) {
                 inProcessingTask.remove(taskId);
             }
         } finally {
@@ -111,7 +106,7 @@ public class TaskQueue {
 
         rolloutLock.lock();
         try {
-            rollouts.put(rolloutId, rollout);
+            rollouts.put(rolloutId, completedRollout);
             return rolloutId;
         } finally {
             rolloutLock.unlock();
@@ -119,27 +114,63 @@ public class TaskQueue {
     }
 
     /**
-     * Get all completed rollouts.
-     * 
-     * @return Map of rollout_id to rollout
+     * Retrieve and clear all cached rollouts atomically.
+     *
+     * @return copied rollout map
      */
     public Map<String, RolloutMessage> getRollouts() {
-        return new HashMap<>(rollouts);
+        rolloutLock.lock();
+        try {
+            Map<String, RolloutMessage> copied = new LinkedHashMap<>(rollouts);
+            rollouts.clear();
+            return copied;
+        } finally {
+            rolloutLock.unlock();
+        }
     }
 
     /**
-     * Get a specific rollout by ID.
-     * 
-     * @param rolloutId Rollout identifier
-     * @return Rollout message or null
+     * Check whether all tasks have been processed.
+     *
+     * @return true when no queued or in-processing tasks remain
      */
+    public boolean isFinished() {
+        queueLock.lock();
+        try {
+            return taskQueue.isEmpty() && inProcessingTask.isEmpty();
+        } finally {
+            queueLock.unlock();
+        }
+    }
+
+    /**
+     * Fully reset the queue and rollout buffer.
+     */
+    public void clear() {
+        queueLock.lock();
+        try {
+            taskQueue.clear();
+            inProcessingTask.clear();
+        } finally {
+            queueLock.unlock();
+        }
+        rolloutLock.lock();
+        try {
+            rollouts.clear();
+        } finally {
+            rolloutLock.unlock();
+        }
+    }
+
     public RolloutMessage getRollout(String rolloutId) {
-        return rollouts.get(rolloutId);
+        rolloutLock.lock();
+        try {
+            return rollouts.get(rolloutId);
+        } finally {
+            rolloutLock.unlock();
+        }
     }
 
-    /**
-     * Clear all rollouts.
-     */
     public void clearRollouts() {
         rolloutLock.lock();
         try {
@@ -149,57 +180,51 @@ public class TaskQueue {
         }
     }
 
-    /**
-     * Check if task queue is empty.
-     * 
-     * @return true if empty
-     */
     public boolean isQueueEmpty() {
-        return taskQueue.isEmpty();
+        queueLock.lock();
+        try {
+            return taskQueue.isEmpty();
+        } finally {
+            queueLock.unlock();
+        }
     }
 
-    /**
-     * Get number of pending tasks in queue.
-     * 
-     * @return Count of pending tasks
-     */
     public int getQueueSize() {
-        return taskQueue.size();
+        queueLock.lock();
+        try {
+            return taskQueue.size();
+        } finally {
+            queueLock.unlock();
+        }
     }
 
-    /**
-     * Get number of in-processing tasks.
-     * 
-     * @return Count of in-processing tasks
-     */
     public int getInProcessingCount() {
-        return inProcessingTask.size();
+        queueLock.lock();
+        try {
+            return inProcessingTask.size();
+        } finally {
+            queueLock.unlock();
+        }
     }
 
-    /**
-     * Get number of completed rollouts.
-     * 
-     * @return Count of rollouts
-     */
     public int getRolloutCount() {
-        return rollouts.size();
+        rolloutLock.lock();
+        try {
+            return rollouts.size();
+        } finally {
+            rolloutLock.unlock();
+        }
     }
 
-    /**
-     * Get in-processing task by ID.
-     * 
-     * @param taskId Task identifier
-     * @return Task or null
-     */
     public RLTask getInProcessingTask(String taskId) {
-        return inProcessingTask.get(taskId);
+        queueLock.lock();
+        try {
+            return inProcessingTask.get(taskId);
+        } finally {
+            queueLock.unlock();
+        }
     }
-    
-    /**
-     * Get all pending tasks from the queue.
-     * 
-     * @return List of pending tasks
-     */
+
     public List<RLTask> getPendingTasks() {
         queueLock.lock();
         try {
@@ -208,23 +233,20 @@ public class TaskQueue {
             queueLock.unlock();
         }
     }
-    
-    /**
-     * Mark a task as in-processing.
-     * 
-     * @param taskId Task identifier
-     */
+
     public void markInProcessing(String taskId) {
         queueLock.lock();
         try {
-            // Find and remove task from queue, add to inProcessingTask
-            for (int i = 0; i < taskQueue.size(); i++) {
-                RLTask task = taskQueue.get(i);
-                if (task.getTaskId().equals(taskId)) {
-                    taskQueue.remove(i);
-                    inProcessingTask.put(taskId, task);
+            RLTask matched = null;
+            for (RLTask task : taskQueue) {
+                if (Objects.equals(task.getTaskId(), taskId)) {
+                    matched = task;
                     break;
                 }
+            }
+            if (matched != null) {
+                taskQueue.remove(matched);
+                inProcessingTask.put(taskId, matched);
             }
         } finally {
             queueLock.unlock();

@@ -49,15 +49,18 @@ public class PendingJudgeStore {
     }
 
     public void put(Map<String, Object> sample) {
-        String sessionId = String.valueOf(sample.getOrDefault("session_id", ""));
-        String trajectoryId = String.valueOf(sample.getOrDefault("trajectory_id", ""));
-        int stepIndex = intValue(sample.get("step_index"), 0);
+        String sessionId = pythonStr(firstTruthy(sample.get("session_id"), ""));
+        String trajectoryId = pythonStr(firstTruthy(sample.get("trajectory_id"), ""));
+        int stepIndex = intValue(firstTruthy(sample.get("step_index"), 0), 0);
         String key = sampleKey(sessionId, trajectoryId, stepIndex);
         Map<String, Object> payload = new LinkedHashMap<>(sample);
         payload.put("_pending_key", key);
-        payload.putIfAbsent("_pending_created_at", System.currentTimeMillis() / 1000.0);
+        if (!payload.containsKey("_pending_created_at")) {
+            payload.put("_pending_created_at", System.currentTimeMillis() / 1000.0);
+        }
         redisSet(key, writeJson(payload));
         redis.zadd(sessionKey(sessionId), Map.of(key, doubleValue(payload.get("_pending_created_at"), 0.0)));
+        redisExpire(sessionKey(sessionId), ttlSec);
     }
 
     public List<Map<String, Object>> getBySession(String sessionId) {
@@ -92,14 +95,22 @@ public class PendingJudgeStore {
             return null;
         }
         Map<String, Object> first = samples.getFirst();
-        return popOne(sessionId, String.valueOf(first.getOrDefault("trajectory_id", "")), intValue(first.get("step_index"), 0));
+        return popOne(
+                sessionId,
+                pythonStr(firstTruthy(first.get("trajectory_id"), "")),
+                intValue(firstTruthy(first.get("step_index"), 0), 0)
+        );
     }
 
     public List<Map<String, Object>> popAll(String sessionId) {
         List<Map<String, Object>> samples = getBySession(sessionId);
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> sample : samples) {
-            Map<String, Object> popped = popOne(sessionId, String.valueOf(sample.getOrDefault("trajectory_id", "")), intValue(sample.get("step_index"), 0));
+            Map<String, Object> popped = popOne(
+                    sessionId,
+                    pythonStr(firstTruthy(sample.get("trajectory_id"), "")),
+                    intValue(firstTruthy(sample.get("step_index"), 0), 0)
+            );
             if (popped != null) {
                 out.add(popped);
             }
@@ -116,13 +127,19 @@ public class PendingJudgeStore {
     }
 
     private static double sortKey(Map<String, Object> sample) {
-        return doubleValue(sample.get("_pending_created_at"), 0.0) * 1_000_000 + intValue(sample.get("step_index"), 0);
+        return doubleValue(firstTruthy(sample.get("_pending_created_at"), 0.0), 0.0) * 1_000_000
+                + intValue(firstTruthy(sample.get("step_index"), 0), 0);
     }
 
     private void redisSet(String key, String value) {
         if (redis instanceof TestablePendingJudgeBackend testable) {
             testable.set(key, value, ttlSec);
-            testable.expire(sessionKey(extractSessionId(key)), ttlSec);
+        }
+    }
+
+    private void redisExpire(String key, int ttl) {
+        if (redis instanceof TestablePendingJudgeBackend testable) {
+            testable.expire(key, ttl);
         }
     }
 
@@ -150,11 +167,6 @@ public class PendingJudgeStore {
         if (pipeline instanceof TestablePendingJudgePipeline testable) {
             testable.zremSingle(key, member);
         }
-    }
-
-    private static String extractSessionId(String sampleKey) {
-        String[] parts = sampleKey.split(":", 4);
-        return parts.length >= 2 ? parts[1] : "";
     }
 
     private static String writeJson(Map<String, Object> payload) {
@@ -197,6 +209,47 @@ public class PendingJudgeStore {
             }
         }
         return fallback;
+    }
+
+    private static Object firstTruthy(Object... values) {
+        if (values == null || values.length == 0) {
+            return "";
+        }
+        for (Object value : values) {
+            if (isPythonTruthy(value)) {
+                return value;
+            }
+        }
+        return values[values.length - 1];
+    }
+
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof List<?> list) {
+            return !list.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static String pythonStr(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return value == null ? "None" : String.valueOf(value);
     }
 
     public interface TestablePendingJudgeBackend {

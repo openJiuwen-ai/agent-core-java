@@ -10,6 +10,9 @@ import com.openjiuwen.core.session.Session;
 
 /**
  * Legacy task planner contract.
+ *
+ * <p>Mirrors Python's {@code Planner} in
+ * {@code openjiuwen.core.controller.legacy.reasoner.planner}.
  */
 public interface Planner {
 

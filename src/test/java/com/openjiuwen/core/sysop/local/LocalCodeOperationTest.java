@@ -11,6 +11,8 @@ import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
 import org.junit.jupiter.api.*;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,24 +47,37 @@ class LocalCodeOperationTest {
     }
 
     private static boolean isNodeAvailable() {
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) return false;
-        String nodeExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "node.exe" : "node";
-        for (String dir : pathEnv.split(File.pathSeparator)) {
-            File f = new File(dir, nodeExe);
-            if (f.exists() && f.isFile() && f.canExecute())
-                return true;
-        }
-        return false;
+        return isCommandAvailable("node");
     }
 
     private static boolean isPythonAvailable() {
+        return isCommandAvailable("python");
+    }
+
+    private static boolean isCommandAvailable(String command) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return false;
-        String pythonExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python.exe" : "python";
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String[] candidates = isWindows
+                ? new String[]{command + ".exe", command + ".cmd", command + ".bat"}
+                : new String[]{command};
         for (String dir : pathEnv.split(File.pathSeparator)) {
-            File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute()) return true;
+            String trimmedDir = dir.trim();
+            if (trimmedDir.isEmpty()) {
+                continue;
+            }
+            for (String candidate : candidates) {
+                Path executable = Path.of(trimmedDir, candidate);
+                boolean isExecutable = Files.isExecutable(executable);
+                boolean isRunnableFile = Files.exists(executable)
+                        && Files.isRegularFile(executable)
+                        && (isWindows || isExecutable);
+                // Windows App Execution Alias entries like python.exe may report
+                // executable=true while regular-file checks stay false.
+                if (isRunnableFile || (isWindows && isExecutable)) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -90,10 +105,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Execute valid JavaScript code successfully (requires Node.js)")
     void testExecuteJavascriptCodeSuccess() {
-        if (!isNodeAvailable()) {
-            System.out.println("Node.js not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping test");
         String code = "console.log('Hello, JavaScript!'); const x = 3 * 4; console.log(x)";
         ExecuteCodeResult result = code().executeCode(code, "javascript", 300, null, null);
 
@@ -248,6 +260,29 @@ class LocalCodeOperationTest {
     }
 
     @Test
+    @DisplayName("Execute JavaScript code with force_file=true")
+    void testExecuteCodeForceFileTrueJavascript() {
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping test");
+        String code = """
+                console.log("JS Exec Mode: Temp File");
+                const num1 = 15, num2 = 25;
+                console.log(`15 * 25 = ${num1 * num2}`);
+                """;
+        Map<String, Object> opts = new HashMap<>();
+        opts.put("force_file", true);
+        opts.put("encoding", "utf-8");
+
+        ExecuteCodeResult result = code().executeCode(code, "javascript", 300, null, opts);
+
+        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
+        assertNotNull(result.getData());
+        assertEquals(0, result.getData().getExitCode());
+        assertTrue(result.getData().getStdout().contains("JS Exec Mode: Temp File"));
+        assertTrue(result.getData().getStdout().contains("15 * 25 = 375"));
+        assertEquals("", result.getData().getStderr().trim());
+    }
+
+    @Test
     @DisplayName("Execute code with force_file=true and runtime error")
     void testExecuteCodeForceFileTrueWithError() {
         Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
@@ -361,10 +396,7 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: JavaScript normal execution (requires Node.js)")
     void testStreamJavascriptNormal() {
-        if (!isNodeAvailable()) {
-            System.out.println("Node.js not found, skipping...");
-            return;
-        }
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping test");
         String code = "console.log('hello javascript');\nconsole.log('stream test for js');";
         List<ExecuteCodeStreamResult> results = collectStreamResults(
                 code().executeCodeStream(code, "javascript", 10, null, null));
@@ -377,6 +409,27 @@ class LocalCodeOperationTest {
         ExecuteCodeStreamResult lastResult = results.get(results.size() - 1);
         assertEquals("Code executed successfully", lastResult.getMessage());
         assertEquals(0, lastResult.getData().getExitCode());
+    }
+
+    @Test
+    @DisplayName("Stream: custom chunk size and encoding options")
+    void testStreamCustomOptions() {
+        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
+        String code = "print('a'*2048)";
+        Map<String, Object> opts = new HashMap<>();
+        opts.put("chunk_size", 512);
+        opts.put("encoding", "utf-8");
+
+        List<ExecuteCodeStreamResult> results = collectStreamResults(
+                code().executeCodeStream(code, "python", 10, null, opts));
+
+        assertTrue(results.size() >= 5, "Should have at least four data chunks plus exit event");
+        long totalACount = results.stream()
+                .filter(r -> r.getData() != null && r.getData().getText() != null)
+                .map(ExecuteCodeStreamResult::getData)
+                .mapToLong(data -> data.getText().chars().filter(ch -> ch == 'a').count())
+                .sum();
+        assertEquals(2048, totalACount);
     }
 
     @Test

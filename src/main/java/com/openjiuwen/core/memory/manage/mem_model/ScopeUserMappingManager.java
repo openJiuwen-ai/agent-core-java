@@ -8,6 +8,9 @@ import java.util.*;
 
 /**
  * Manages scope-user mapping records in the SQL database.
+ *
+ * <p>Mirrors Python's {@code ScopeUserMappingManager} in
+ * {@code openjiuwen.core.memory.manage.mem_model.scope_user_mapping_manager}.
  */
 public class ScopeUserMappingManager {
 

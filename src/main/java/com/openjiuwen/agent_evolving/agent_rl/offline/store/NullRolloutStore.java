@@ -20,6 +20,10 @@ public class NullRolloutStore {
         // no-op
     }
 
+    public void saveRollout(int step, String taskId, Object rollout) {
+        // no-op
+    }
+
     public void saveStepSummary(int step, Map<String, Object> metrics) {
         // no-op
     }

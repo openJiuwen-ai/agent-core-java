@@ -12,22 +12,33 @@ import com.openjiuwen.core.session.Session;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Memory invocation operator with enabled and retry tunables.
+ *
+ * <p>Mirrors Python's {@code MemoryCallOperator} in
+ * {@code openjiuwen.core.operator.memory_call.base}.</p>
  */
 public class MemoryCallOperator extends Operator {
 
     private final MemoryOperation memory;
     private final String memoryCallId;
     private final MemoryInvoker memoryInvoker;
+    private final BiConsumer<String, Object> onParameterUpdated;
     private boolean enabled = true;
     private int maxRetries;
 
     public MemoryCallOperator(MemoryOperation memory, String memoryCallId, MemoryInvoker memoryInvoker) {
+        this(memory, memoryCallId, memoryInvoker, null);
+    }
+
+    public MemoryCallOperator(MemoryOperation memory, String memoryCallId, MemoryInvoker memoryInvoker,
+                              BiConsumer<String, Object> onParameterUpdated) {
         this.memory = memory;
         this.memoryCallId = memoryCallId != null ? memoryCallId : "memory_call";
         this.memoryInvoker = memoryInvoker;
+        this.onParameterUpdated = onParameterUpdated;
     }
 
     public MemoryCallOperator(MemoryOperation memory) {
@@ -61,9 +72,11 @@ public class MemoryCallOperator extends Operator {
     public void setParameter(String target, Object value) {
         if ("enabled".equals(target)) {
             enabled = value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value));
+            notifyParameterUpdated("enabled", enabled);
         }
         if ("max_retries".equals(target)) {
             maxRetries = clampRetries(value);
+            notifyParameterUpdated("max_retries", maxRetries);
         }
     }
 
@@ -84,11 +97,10 @@ public class MemoryCallOperator extends Operator {
             setParameter("enabled", state.get("enabled"));
         }
         if (state.containsKey("max_retries")) {
-            maxRetries = clampRetries(state.get("max_retries"));
+            setParameter("max_retries", state.get("max_retries"));
         }
     }
 
-    @Override
     public Object invoke(Map<String, Object> inputs,
                          Session session,
                          Map<String, Object> kwargs) throws Exception {
@@ -121,7 +133,10 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
-    @Override
+    public Object invoke(Map<String, Object> inputs, Session session) throws Exception {
+        return invoke(inputs, session, Collections.emptyMap());
+    }
+
     public OperatorStream<Object> stream(Map<String, Object> inputs,
                                          Session session,
                                          Map<String, Object> kwargs) throws Exception {
@@ -138,9 +153,19 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
+    public OperatorStream<Object> stream(Map<String, Object> inputs, Session session) throws Exception {
+        return stream(inputs, session, Collections.emptyMap());
+    }
+
     private static int clampRetries(Object value) {
         int retries = Integer.parseInt(String.valueOf(value));
         return Math.max(0, Math.min(5, retries));
+    }
+
+    private void notifyParameterUpdated(String target, Object value) {
+        if (onParameterUpdated != null) {
+            onParameterUpdated.accept(target, value);
+        }
     }
 
 }

@@ -68,18 +68,22 @@ public class LLMAsJudgeMetric extends Metric {
 
     @Override
     public Double compute(Object prediction, Object label, Map<String, Object> kwargs) {
-        Object question = kwargs != null ? kwargs.get("question") : null;
-        List<?> messages = template.format(Map.of(
-                "question", String.valueOf(question != null ? question : ""),
-                "expected_answer", String.valueOf(label),
-                "model_answer", String.valueOf(prediction)
-        )).toMessages();
+        List<?> messages = formatMessages(prediction, label, kwargs);
         try {
             AssistantMessage response = invokeModel(messages);
             return parseResult(response != null ? response.getContentAsString() : "");
         } catch (Exception e) {
             return 0.0;
         }
+    }
+
+    protected List<?> formatMessages(Object prediction, Object label, Map<String, Object> kwargs) {
+        Object question = kwargs != null ? kwargs.get("question") : null;
+        return template.format(Map.of(
+                "question", pythonStringOrEmpty(question),
+                "expected_answer", pythonString(label),
+                "model_answer", pythonString(prediction)
+        )).toMessages();
     }
 
     protected AssistantMessage invokeModel(List<?> messages) throws Exception {
@@ -100,5 +104,41 @@ public class LLMAsJudgeMetric extends Metric {
             return "true".equalsIgnoreCase(((String) result).trim()) ? 1.0 : 0.0;
         }
         return 0.0;
+    }
+
+    private static String pythonStringOrEmpty(Object value) {
+        return isPythonTruthy(value) ? pythonString(value) : "";
+    }
+
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof java.util.Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return String.valueOf(value);
     }
 }

@@ -37,4 +37,12 @@ public class ExecuteCmdChunkData {
 
     /** Data for command. */
     private Map<String, Object> metadata;
+
+    public String getStdout() {
+        return "stdout".equals(type) ? text : "";
+    }
+
+    public String getStderr() {
+        return "stderr".equals(type) ? text : "";
+    }
 }

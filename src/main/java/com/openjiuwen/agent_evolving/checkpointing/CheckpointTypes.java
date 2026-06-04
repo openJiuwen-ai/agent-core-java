@@ -12,6 +12,22 @@ import java.util.*;
  * {@code openjiuwen.agent_evolving.checkpointing.types}.
  */
 public final class CheckpointTypes {
+
+    /**
+     * Valid sections for skill evolution.
+     *
+     * <p>Mirrors Python's {@code VALID_SECTIONS} in
+     * {@code openjiuwen.agent_evolving.checkpointing.types}.</p>
+     */
+    public static final Set<String> VALID_SECTIONS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+            "Instructions",
+            "Examples",
+            "Troubleshooting",
+            "Scripts",
+            "Collaboration",
+            "Roles",
+            "Constraints"
+    )));
     
     private CheckpointTypes() {
         // Utility class

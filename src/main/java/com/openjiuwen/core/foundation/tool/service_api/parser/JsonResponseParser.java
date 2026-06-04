@@ -12,7 +12,8 @@ import java.util.Set;
 /**
  * JSON response parser.
  * <p>
- * Mirrors Python's {@code JsonResponseParser}.
+ * Mirrors Python's {@code JsonResponseParser} in
+ * {@code openjiuwen.core.foundation.tool.service_api.response_parser}.
  */
 public class JsonResponseParser extends BaseResponseParser {
 
@@ -30,13 +31,17 @@ public class JsonResponseParser extends BaseResponseParser {
         if (contentType == null) {
             contentType = "";
         }
-        if (JSON_CONTENT_TYPES.contains(contentType)) {
+        String contentTypeLower = contentType.toLowerCase();
+        if (JSON_CONTENT_TYPES.contains(contentTypeLower)) {
             return true;
         }
-        if (contentType.contains("application/json") || contentType.contains("text/json")) {
+        if (contentTypeLower.endsWith("+json")) {
             return true;
         }
-        if (contentType.isEmpty() && statusCode == 200 && headers != null) {
+        if (contentTypeLower.contains("application/json") || contentTypeLower.contains("text/json")) {
+            return true;
+        }
+        if (contentTypeLower.isEmpty() && statusCode == 200 && headers != null) {
             String accept = headers.getOrDefault("Accept", "").toLowerCase();
             return accept.contains("application/json") || accept.contains("json");
         }
@@ -51,7 +56,7 @@ public class JsonResponseParser extends BaseResponseParser {
         }
         String decoded = decodeBytes(responseData, contentType);
         try {
-            return MAPPER.readValue(decoded, Map.class);
+            return MAPPER.readValue(decoded, Object.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("JSON parsing failed: " + e.getMessage(), e);
         }

@@ -36,11 +36,16 @@ public class RecoveryManager {
     private final TeamAgentSpec spec;
     private final TeamRuntimeContext runtimeContext;
     private final TeamBackend teamBackend;
+    private ModelAllocator modelAllocator;
 
     public RecoveryManager(TeamAgentSpec spec, TeamRuntimeContext runtimeContext, TeamBackend teamBackend) {
         this.spec = spec;
         this.runtimeContext = runtimeContext;
         this.teamBackend = teamBackend;
+    }
+
+    public void setModelAllocator(ModelAllocator modelAllocator) {
+        this.modelAllocator = modelAllocator;
     }
 
     public void persistLeaderConfig(Session session) {
@@ -55,7 +60,17 @@ public class RecoveryManager {
         payload.put("context", serializeRuntimeContext(runtimeContext));
         payload.put("leader", serializeLeaderSpec(spec));
         payload.put("recoverable_members", snapshotRecoverableMembers());
+        if (modelAllocator != null) {
+            payload.put("model_allocator_state", modelAllocator.stateDict());
+        }
         session.updateState(Map.of(LEADER_STATE_KEY, payload));
+    }
+
+    public void persistAllocatorState(Session teamSession) {
+        if (teamSession == null || modelAllocator == null) {
+            return;
+        }
+        teamSession.updateState(Map.of("model_allocator_state", modelAllocator.stateDict()));
     }
 
     public List<RecoverableMember> collectLiveTeammatesForSessionSwitch() {
@@ -126,6 +141,10 @@ public class RecoveryManager {
         Object savedMetadata = state.get("metadata");
         if (savedMetadata instanceof Map<?, ?> metadata) {
             spec.setMetadata(OBJECT_MAPPER.convertValue(metadata, MAP_TYPE));
+        }
+        Object rawAllocatorState = state.get("model_allocator_state");
+        if (modelAllocator != null && rawAllocatorState instanceof Map<?, ?> allocatorState) {
+            modelAllocator.loadStateDict(OBJECT_MAPPER.convertValue(allocatorState, MAP_TYPE));
         }
         restoreLeaderSpec(state.get("leader"));
         restoreRuntimeContext(state.get("context"));
@@ -222,6 +241,7 @@ public class RecoveryManager {
             teamSpec.put("leader_member_name", context.getTeamSpec().getLeaderMemberName());
             teamSpec.put("language", context.getTeamSpec().getLanguage());
             teamSpec.put("metadata", copyMap(context.getTeamSpec().getMetadata()));
+            teamSpec.put("model_pool_strategy", context.getTeamSpec().getModelPoolStrategy());
             payload.put("team_spec", teamSpec);
         }
         return payload;
@@ -264,6 +284,10 @@ public class RecoveryManager {
             Object teamMetadata = teamSpec.get("metadata");
             if (teamMetadata instanceof Map<?, ?> map) {
                 runtimeContext.getTeamSpec().setMetadata(OBJECT_MAPPER.convertValue(map, MAP_TYPE));
+            }
+            Object strategy = teamSpec.get("model_pool_strategy");
+            if (strategy instanceof String value) {
+                runtimeContext.getTeamSpec().setModelPoolStrategy(value);
             }
         }
     }

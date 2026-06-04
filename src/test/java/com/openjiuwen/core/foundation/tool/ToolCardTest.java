@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.foundation.tool;
 
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -9,12 +11,16 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for ToolCard and ToolInfo.
- * Ported from Python: tests/unit_tests/core/foundation/tool/test_tool_decorator.py
- * (ToolInfo creation and card property tests)
+ * Tests for ToolCard and ToolInfo helper models.
+ * <p>
+ * Complements the Python {@code test_tool_decorator.py} mapping by covering
+ * generated card metadata and ToolInfo conversion.
  */
 class ToolCardTest {
 
@@ -25,14 +31,7 @@ class ToolCardTest {
         @Test
         @DisplayName("ToolCard builder creates card with correct properties")
         void testToolCardBuilder() {
-            Map<String, Object> inputParams = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "a", Map.of("description", "first arg", "type", "integer"),
-                            "b", Map.of("description", "second arg", "type", "integer")
-                    ),
-                    "required", new String[]{"a", "b"}
-            );
+            Map<String, Object> inputParams = twoArgSchema();
 
             ToolCard card = ToolCard.builder()
                     .name("local_sub")
@@ -42,7 +41,7 @@ class ToolCardTest {
 
             assertEquals("local_sub", card.getName());
             assertEquals("local function for sub", card.getDescription());
-            assertNotNull(card.getInputParams());
+            assertEquals(inputParams, card.getInputParams());
         }
 
         @Test
@@ -75,16 +74,9 @@ class ToolCardTest {
     class ToolInfoTests {
 
         @Test
-        @DisplayName("toolInfo() returns correct ToolInfo from ToolCard")
+        @DisplayName("toolInfo returns correct ToolInfo from ToolCard")
         void testToolInfoFromCard() {
-            Map<String, Object> inputParams = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "a", Map.of("description", "first arg", "type", "integer"),
-                            "b", Map.of("description", "second arg", "type", "integer")
-                    ),
-                    "required", new String[]{"a", "b"}
-            );
+            Map<String, Object> inputParams = twoArgSchema();
 
             ToolCard card = ToolCard.builder()
                     .name("local_sub")
@@ -92,7 +84,7 @@ class ToolCardTest {
                     .inputParams(inputParams)
                     .build();
 
-            ToolInfo toolInfo = (ToolInfo) card.toolInfo();
+            ToolInfo toolInfo = card.toolInfo();
             assertEquals("local_sub", toolInfo.getName());
             assertEquals("local function for sub", toolInfo.getDescription());
             assertEquals(inputParams, toolInfo.getParameters());
@@ -122,33 +114,28 @@ class ToolCardTest {
                                     "items", Map.of(
                                             "type", "object",
                                             "properties", Map.of(
-                                                    "name", Map.of("type", "string", "description", "商品名称"),
-                                                    "sales", Map.of("type", "integer", "default", 0, "description", "销量"),
-                                                    "price", Map.of("type", "number", "default", 1.0, "description", "价格")
-                                            )
-                                    ),
-                                    "description", "products"
-                            )
-                    ),
-                    "required", new String[]{"title", "products"}
-            );
+                                                    "name", Map.of("type", "string", "description", "product name"),
+                                                    "sales", Map.of("type", "integer", "default", 0,
+                                                            "description", "sales"),
+                                                    "price", Map.of("type", "number", "default", 1.0,
+                                                            "description", "price"))),
+                                    "description", "products")),
+                    "required", new String[]{"title", "products"});
 
             ToolInfo info = ToolInfo.builder()
                     .name("summarize")
-                    .description("汇总商品信息")
+                    .description("summarize product information")
                     .parameters(parameters)
                     .build();
 
             assertEquals("summarize", info.getName());
-            assertEquals("汇总商品信息", info.getDescription());
+            assertEquals("summarize product information", info.getDescription());
 
             Map<String, Object> props = (Map<String, Object>) info.getParameters().get("properties");
             assertNotNull(props);
             assertTrue(props.containsKey("title"));
             assertTrue(props.containsKey("products"));
-
-            Map<String, Object> productsSchema = (Map<String, Object>) props.get("products");
-            assertEquals("array", productsSchema.get("type"));
+            assertEquals("array", ((Map<String, Object>) props.get("products")).get("type"));
         }
 
         @Test
@@ -156,15 +143,13 @@ class ToolCardTest {
         void testToolInfoEquality() {
             Map<String, Object> params = Map.of(
                     "type", "object",
-                    "properties", Map.of("x", Map.of("type", "string"))
-            );
+                    "properties", Map.of("x", Map.of("type", "string")));
 
             ToolInfo info1 = ToolInfo.builder()
                     .name("test")
                     .description("test tool")
                     .parameters(params)
                     .build();
-
             ToolInfo info2 = ToolInfo.builder()
                     .name("test")
                     .description("test tool")
@@ -173,5 +158,14 @@ class ToolCardTest {
 
             assertEquals(info1, info2);
         }
+    }
+
+    private Map<String, Object> twoArgSchema() {
+        return Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "a", Map.of("description", "first arg", "type", "integer"),
+                        "b", Map.of("description", "second arg", "type", "integer")),
+                "required", new String[]{"a", "b"});
     }
 }

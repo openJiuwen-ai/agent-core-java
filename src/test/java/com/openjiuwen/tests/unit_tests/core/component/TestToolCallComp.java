@@ -15,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for ToolCall workflow component.
  */
 @Tag("unit-test")
-@Disabled("Requires tool call configuration")
 class TestToolCallComp {
 
     // -----------------------------------------------------------------------
@@ -211,10 +210,4 @@ class TestToolCallComp {
         assertEquals("Something went wrong", result.error);
     }
 
-    @Test
-    @Tag("level0")
-    @DisplayName("Placeholder test")
-    void testPlaceholder() {
-        assertTrue(true);
-    }
 }

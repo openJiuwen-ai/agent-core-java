@@ -17,4 +17,8 @@ public class SubWorkflowComponent extends SubWorkflowComponentImpl {
     public SubWorkflowComponent(Workflow subWorkflow) {
         super(subWorkflow);
     }
+
+    public SubWorkflowComponent(Workflow subWorkflow, boolean cacheStream) {
+        super(subWorkflow, cacheStream);
+    }
 }

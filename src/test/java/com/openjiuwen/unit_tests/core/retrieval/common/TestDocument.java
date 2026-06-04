@@ -6,6 +6,7 @@ package com.openjiuwen.unit_tests.core.retrieval.common;
 
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.common.exception.BaseError;
 
 import org.junit.jupiter.api.Test;
 
@@ -49,7 +50,7 @@ class TestDocument {
     @Test
     void testMissingText() {
         // Test missing required text
-        assertThrows(IllegalArgumentException.class, () -> new Document());
+        assertThrows(BaseError.class, () -> new Document(null, null, null));
     }
 }
 
@@ -111,18 +112,18 @@ class TestTextChunk {
     @Test
     void testMissingRequiredFieldsId() {
         // Test missing required fields - id
-        assertThrows(IllegalArgumentException.class, () -> new TextChunk());
+        assertThrows(BaseError.class, () -> new TextChunk(null, null, null));
     }
 
     @Test
     void testMissingRequiredFieldsText() {
         // Test missing required fields - text (id provided)
-        assertThrows(IllegalArgumentException.class, () -> new TextChunk("chunk_1", null, "doc_1"));
+        assertThrows(BaseError.class, () -> new TextChunk("chunk_1", null, "doc_1"));
     }
 
     @Test
     void testMissingRequiredFieldsDocId() {
         // Test missing required fields - doc_id (id and text provided)
-        assertThrows(IllegalArgumentException.class, () -> new TextChunk("chunk_1", "Test chunk", null));
+        assertThrows(BaseError.class, () -> new TextChunk("chunk_1", "Test chunk", null));
     }
 }

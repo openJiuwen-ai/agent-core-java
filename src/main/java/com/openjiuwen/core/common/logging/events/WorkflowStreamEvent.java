@@ -13,8 +13,8 @@ import java.util.Map;
 /**
  * Workflow streaming event — for workflow component streaming.
  * <p>
- * Mirrors Python's {@code WorkflowStreamEvent} which extends {@code StreamEvent}
- * with workflow-specific fields.
+ * Mirrors Python's {@code WorkflowStreamEvent} in
+ * {@code openjiuwen.core.common.logging.events}.
  */
 @Data
 @SuperBuilder

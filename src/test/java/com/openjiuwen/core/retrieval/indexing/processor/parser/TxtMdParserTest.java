@@ -13,29 +13,54 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code test_txt_md_parser.py} in
+ * {@code tests.unit_tests.core.retrieval.indexing.processor.parser}.
+ */
 class TxtMdParserTest {
 
     @TempDir
     Path tempDir;
 
     @Test
-    void parseStripsWhitespace() throws IOException {
+    void testInit() {
+        TxtMdParser parser = new TxtMdParser();
+
+        assertNotNull(parser);
+    }
+
+    @Test
+    void testParseEmptyFile() throws IOException {
+        Path file = tempDir.resolve("empty.txt");
+        Files.writeString(file, "", StandardCharsets.UTF_8);
+
+        TxtMdParser parser = new TxtMdParser();
+        List<Document> documents = parser.parse(file.toString(), "doc_1", null, Map.of());
+
+        assertTrue(documents.isEmpty());
+    }
+
+    @Test
+    void testParseFileNotFound() {
+        TxtMdParser parser = new TxtMdParser();
+
+        List<Document> documents = parser.parse(tempDir.resolve("nonexistent.txt").toString(), "doc_1", null, Map.of());
+
+        assertTrue(documents.isEmpty());
+    }
+
+    @Test
+    void testParseStripsContent() throws IOException {
         Path file = tempDir.resolve("sample.txt");
         Files.writeString(file, "   \n  Content  \n   ", StandardCharsets.UTF_8);
 
         TxtMdParser parser = new TxtMdParser();
-        List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
+        List<Document> documents = parser.parse(file.toString(), "doc_1", null, Map.of());
 
-        assertEquals(1, docs.size());
-        assertEquals("Content", docs.getFirst().getText());
-    }
-
-    @Test
-    void parseMissingFileReturnsEmpty() {
-        TxtMdParser parser = new TxtMdParser();
-
-        assertTrue(parser.parse(tempDir.resolve("missing.txt").toString(), "doc-1", null, Map.of()).isEmpty());
+        assertEquals(1, documents.size());
+        assertEquals("Content", documents.getFirst().getText());
     }
 }

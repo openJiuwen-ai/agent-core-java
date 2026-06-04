@@ -167,12 +167,9 @@ public class PowerShellTool extends Tool {
 
         String resolvedCwd = resolveWorkingDirectory(p.workdir);
 
-        // Guard check in strict mode
-        if ("1".equals(System.getenv("OPENJIUWEN_BASH_STRICT"))) {
-            ToolOutput guard = guard(p);
-            if (guard != null) {
-                return guard;
-            }
+        ToolOutput guard = guard(p);
+        if (guard != null) {
+            return guard;
         }
 
         String warning = PowerShellSecurity.getDestructiveWarning(p.command);
@@ -205,7 +202,7 @@ public class PowerShellTool extends Tool {
                 resolvedCwd,
                 p.timeout,
                 null,  // environment
-                null   // options
+                Map.of("shell_type", "powershell")
         );
         Integer code = readIntField(res, "code");
         if (code == null || code != StatusCode.SUCCESS.getCode()) {
@@ -262,14 +259,11 @@ public class PowerShellTool extends Tool {
 
         String resolvedCwd = resolveWorkingDirectory(p.workdir);
 
-        // Guard check in strict mode
-        if ("1".equals(System.getenv("OPENJIUWEN_BASH_STRICT"))) {
-            ToolOutput guard = guard(p);
-            if (guard != null) {
-                java.util.List<Object> guardList = new java.util.ArrayList<>();
-                guardList.add(guard);
-                return guardList.iterator();
-            }
+        ToolOutput guard = guard(p);
+        if (guard != null) {
+            java.util.List<Object> guardList = new java.util.ArrayList<>();
+            guardList.add(guard);
+            return guardList.iterator();
         }
 
         String warning = PowerShellSecurity.getDestructiveWarning(p.command);
@@ -289,7 +283,7 @@ public class PowerShellTool extends Tool {
                 resolvedCwd,
                 p.timeout,
                 null,  // environment
-                null   // options
+                Map.of("shell_type", "powershell")
         );
 
         java.util.List<Object> results = new java.util.ArrayList<>();

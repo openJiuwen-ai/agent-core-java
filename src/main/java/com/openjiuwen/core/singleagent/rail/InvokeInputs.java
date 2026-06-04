@@ -25,4 +25,15 @@ public class InvokeInputs implements EventInputs {
     private String query;
     private String conversationId;
     private Map<String, Object> result;
+    @Builder.Default
+    private RunKind runKind = RunKind.NORMAL;
+    private RunContext runContext;
+
+    public boolean isHeartbeat() {
+        return runKind == RunKind.HEARTBEAT;
+    }
+
+    public boolean isLightweightContext() {
+        return runContext != null && "lightweight".equalsIgnoreCase(runContext.getContextMode());
+    }
 }

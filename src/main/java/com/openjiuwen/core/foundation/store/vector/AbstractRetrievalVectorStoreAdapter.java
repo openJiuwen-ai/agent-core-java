@@ -26,6 +26,7 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
 
     private final VectorStore delegate;
     private final Map<String, CollectionSchema> schemas = new ConcurrentHashMap<>();
+    private final Map<String, FieldMapping> fieldMappings = new ConcurrentHashMap<>();
 
     protected AbstractRetrievalVectorStoreAdapter(VectorStore delegate) {
         this.delegate = delegate;
@@ -38,7 +39,9 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
     @Override
     public void createCollection(String collectionName, Object schema, Map<String, Object> kwargs) throws Exception {
         CollectionSchema resolvedSchema = normalizeSchema(schema);
+        FieldMapping mapping = resolveMapping(resolvedSchema);
         schemas.put(collectionName, resolvedSchema);
+        fieldMappings.put(collectionName, mapping);
 
         Integer dimension = resolvedSchema.getVectorFields().stream()
                 .findFirst()
@@ -57,6 +60,7 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
             }
         }
         scoped.ensureCollection(collectionName, requestedIndexType, dimension, kwargs == null ? Map.of() : kwargs);
+        updateCollectionMetadata(collectionName, collectionMetadata(resolvedSchema, mapping, kwargs));
     }
 
     @Override
@@ -72,13 +76,18 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
 
     @Override
     public CollectionSchema getSchema(String collectionName, Map<String, Object> kwargs) throws Exception {
+        if (!collectionExists(collectionName, kwargs)) {
+            throw new IllegalArgumentException("collection doesn't exist: " + collectionName);
+        }
         return schemas.computeIfAbsent(collectionName, key -> defaultSchema());
     }
 
     @Override
     public void addDocs(String collectionName, List<Map<String, Object>> docs, Map<String, Object> kwargs) throws Exception {
         VectorStore scoped = delegate.withCollection(collectionName);
-        scoped.add(docs, kwargs != null && kwargs.get("batch_size") instanceof Number number ? number.intValue() : null, kwargs);
+        scoped.add(normalizeDocs(collectionName, docs),
+                kwargs != null && kwargs.get("batch_size") instanceof Number number ? number.intValue() : null,
+                kwargs);
     }
 
     @Override
@@ -95,16 +104,17 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
             options.put("vector_field", vectorField);
         }
         List<SearchResult> results = scoped.search(queryVector, topK, filters, options);
+        FieldMapping mapping = mappingFor(collectionName);
         List<VectorSearchResult> mapped = new ArrayList<>();
         for (SearchResult result : results) {
-            // Build fields including all available data, not just id/text/metadata
             Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("id", result.getId());
-            fields.put("text", result.getText());
-            // Merge metadata fields directly into the result fields map
+            fields.put(mapping.primaryKey(), result.getId());
             Map<String, Object> metadata = result.getMetadata();
             if (metadata != null) {
                 fields.putAll(metadata);
+            }
+            if (mapping.textField() != null) {
+                fields.put(mapping.textField(), result.getText());
             }
             mapped.add(VectorSearchResult.builder()
                     .score(result.getScore())
@@ -190,7 +200,9 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
         // Return cached metadata if available
         Map<String, Object> cached = collectionMetadata.get(collectionName);
         if (cached != null) {
-            return new LinkedHashMap<>(cached);
+            Map<String, Object> result = new LinkedHashMap<>(defaultsFor(collectionName));
+            result.putAll(cached);
+            return result;
         }
         // Attempt to fetch from real backend
         if (delegate instanceof com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore milvusStore) {
@@ -208,7 +220,7 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
                 // Fall through to empty map
             }
         }
-        return new LinkedHashMap<>();
+        return new LinkedHashMap<>(defaultsFor(collectionName));
     }
 
     /**
@@ -231,6 +243,103 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
         return defaultSchema();
     }
 
+    private FieldMapping resolveMapping(CollectionSchema schema) {
+        FieldSchema primaryField = schema.getPrimaryKeyField()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "schema must contain a primary key field (is_primary=true)"));
+        List<FieldSchema> vectorFields = schema.getVectorFields();
+        if (vectorFields.isEmpty()) {
+            throw new IllegalArgumentException("schema must contain at least one FLOAT_VECTOR field");
+        }
+        String textField = null;
+        for (FieldSchema field : schema.getFields()) {
+            if (field.getDtype() == VectorDataType.VARCHAR && !field.isPrimary()) {
+                textField = field.getName();
+                break;
+            }
+        }
+        return new FieldMapping(primaryField.getName(), vectorFields.get(0).getName(), textField);
+    }
+
+    private FieldMapping mappingFor(String collectionName) {
+        return fieldMappings.computeIfAbsent(collectionName, key -> resolveMapping(schemas.getOrDefault(key, defaultSchema())));
+    }
+
+    private List<Map<String, Object>> normalizeDocs(String collectionName, List<Map<String, Object>> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        FieldMapping mapping = mappingFor(collectionName);
+        List<Map<String, Object>> normalized = new ArrayList<>(docs.size());
+        for (Map<String, Object> doc : docs) {
+            Object id = doc.get(mapping.primaryKey());
+            if (id == null) {
+                throw new IllegalArgumentException("document must have primary field '" + mapping.primaryKey() + "'");
+            }
+            Object vector = doc.get(mapping.vectorField());
+            if (vector == null) {
+                throw new IllegalArgumentException("document must have vector field '" + mapping.vectorField() + "'");
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", String.valueOf(id));
+            item.put("chunk_id", String.valueOf(id));
+            item.put("vector", vector);
+            if (mapping.textField() != null) {
+                item.put("text", String.valueOf(doc.getOrDefault(mapping.textField(), "")));
+            }
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            Object existingMetadata = doc.get("metadata");
+            if (existingMetadata instanceof Map<?, ?> existingMap) {
+                for (Map.Entry<?, ?> entry : existingMap.entrySet()) {
+                    metadata.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            for (Map.Entry<String, Object> entry : doc.entrySet()) {
+                String key = entry.getKey();
+                if (!key.equals(mapping.primaryKey())
+                        && !key.equals(mapping.vectorField())
+                        && !key.equals(mapping.textField())
+                        && !"metadata".equals(key)) {
+                    metadata.put(key, entry.getValue());
+                }
+            }
+            item.put("metadata", metadata);
+            normalized.add(item);
+        }
+        return normalized;
+    }
+
+    private Map<String, Object> collectionMetadata(CollectionSchema schema,
+                                                   FieldMapping mapping,
+                                                   Map<String, Object> kwargs) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("schema", schema.toDict());
+        metadata.put("fields", schema.toDict());
+        metadata.put("field_mapping", Map.of(
+                "primary_key", mapping.primaryKey(),
+                "vector_field", mapping.vectorField(),
+                "text_field", mapping.textField() == null ? "" : mapping.textField()));
+        metadata.put("primary_key", mapping.primaryKey());
+        metadata.put("vector_field", mapping.vectorField());
+        metadata.put("text_field", mapping.textField());
+        metadata.put("distance_metric", kwargs != null && kwargs.get("distance_metric") != null
+                ? String.valueOf(kwargs.get("distance_metric")).toLowerCase()
+                : delegate.getDistanceMetric());
+        metadata.put("schema_version", 0);
+        return metadata;
+    }
+
+    private Map<String, Object> defaultsFor(String collectionName) {
+        FieldMapping mapping = mappingFor(collectionName);
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        defaults.put("distance_metric", delegate.getDistanceMetric());
+        defaults.put("schema_version", 0);
+        defaults.put("primary_key", mapping.primaryKey());
+        defaults.put("vector_field", mapping.vectorField());
+        defaults.put("text_field", mapping.textField());
+        return defaults;
+    }
+
     private CollectionSchema defaultSchema() {
         return CollectionSchema.fromFields(List.of(
                 FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256).build(),
@@ -238,5 +347,8 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
                 FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build(),
                 FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()
         ), "Default adapter schema", false);
+    }
+
+    private record FieldMapping(String primaryKey, String vectorField, String textField) {
     }
 }

@@ -23,6 +23,18 @@ import lombok.Builder;
 @AllArgsConstructor
 @Builder
 public class TeamConfig {
+
+    /** Maximum number of agents allowed in the team. */
+    @Builder.Default
+    private int maxAgents = 10;
+
+    /** Maximum concurrent message processing. */
+    @Builder.Default
+    private int maxConcurrentMessages = 100;
+
+    /** Message processing timeout in seconds. */
+    @Builder.Default
+    private double messageTimeout = 30.0;
     
     /** Maximum parallel sub-agent executions. */
     @Builder.Default
@@ -46,4 +58,19 @@ public class TeamConfig {
     /** Custom properties. */
     @Builder.Default
     private java.util.Map<String, Object> properties = new java.util.HashMap<>();
+
+    public TeamConfig configureMaxAgents(int maxAgents) {
+        this.maxAgents = maxAgents;
+        return this;
+    }
+
+    public TeamConfig configureTimeout(double timeout) {
+        this.messageTimeout = timeout;
+        return this;
+    }
+
+    public TeamConfig configureConcurrency(int maxConcurrent) {
+        this.maxConcurrentMessages = maxConcurrent;
+        return this;
+    }
 }

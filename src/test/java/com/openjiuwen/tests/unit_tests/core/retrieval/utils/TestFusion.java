@@ -4,6 +4,7 @@
 package com.openjiuwen.tests.unit_tests.core.retrieval.utils;
 
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
+import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.utils.FusionUtils;
 
 import org.junit.jupiter.api.DisplayName;
@@ -112,6 +113,22 @@ class TestFusion {
 
             assertThat(fusedK30).hasSize(3);
             assertThat(fusedK60).hasSize(3);
+        }
+
+        @Test
+        @DisplayName("test_rrf_fusion_with_search_result - search result fusion")
+        void testRrfFusionWithSearchResult() {
+            List<SearchResult> results = new ArrayList<>();
+            results.add(new SearchResult("1", "Result 1", 0.9));
+            results.add(new SearchResult("2", "Result 2", 0.8));
+
+            List<List<SearchResult>> input = new ArrayList<>();
+            input.add(results);
+
+            List<SearchResult> fused = FusionUtils.rrfFusionSearch(input, 60);
+
+            assertThat(fused).hasSize(2);
+            assertThat(fused.get(0)).isInstanceOf(SearchResult.class);
         }
     }
 }

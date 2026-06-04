@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session.tracer;
 
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.session.callback.TriggerEvent;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
@@ -59,6 +60,9 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
     public void onCallStart(String invokeId, Map<String, Object> metadata, Object inputs,
                             boolean needSend, List<String> sourceIds) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
+        if (sourceIds != null && !sourceIds.isEmpty()) {
+            span.setParentInvokeId(sourceIds.get(sourceIds.size() - 1));
+        }
         Map<String, Object> data = new HashMap<>();
         data.put("start_time", LocalDateTime.now());
         data.put("on_invoke_data", new ArrayList<>());
@@ -114,6 +118,10 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
                 data.put("status", NodeStatus.INTERRUPTED.getValue());
             } else {
                 Map<String, Object> errorInfo = new HashMap<>();
+                if (exception instanceof BaseError baseError) {
+                    errorInfo.put("error_code", baseError.getCode());
+                    errorInfo.put("status", baseError.getStatus().name());
+                }
                 errorInfo.put("message", exception.getMessage());
                 data.put("error", errorInfo);
             }

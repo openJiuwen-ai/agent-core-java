@@ -4,7 +4,11 @@
 
 package com.openjiuwen.agent_teams.schema;
 
+import com.openjiuwen.agent_teams.agent.ModelPoolEntry;
+
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,6 +24,8 @@ public class TeamSpec {
     private String leaderMemberName;
     private String language;
     private Map<String, Object> metadata = new LinkedHashMap<>();
+    private List<ModelPoolEntry> modelPool = new ArrayList<>();
+    private String modelPoolStrategy = "round_robin";
 
     public String getTeamName() {
         return teamName;
@@ -59,5 +65,21 @@ public class TeamSpec {
 
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
+    }
+
+    public List<ModelPoolEntry> getModelPool() {
+        return new ArrayList<>(modelPool);
+    }
+
+    public void setModelPool(List<ModelPoolEntry> modelPool) {
+        this.modelPool = modelPool != null ? new ArrayList<>(modelPool) : new ArrayList<>();
+    }
+
+    public String getModelPoolStrategy() {
+        return modelPoolStrategy;
+    }
+
+    public void setModelPoolStrategy(String modelPoolStrategy) {
+        this.modelPoolStrategy = modelPoolStrategy != null ? modelPoolStrategy : "round_robin";
     }
 }

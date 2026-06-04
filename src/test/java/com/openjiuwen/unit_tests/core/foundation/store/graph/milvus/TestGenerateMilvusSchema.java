@@ -1,119 +1,76 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.unit_tests.core.foundation.store.graph.milvus;
 
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreIndexConfig;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreStorageConfig;
+import com.openjiuwen.core.foundation.store.graph.milvus.GenerateMilvusSchema;
+import com.openjiuwen.core.foundation.store.vector_fields.MilvusAUTO;
+import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
-import java.util.Map;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for Milvus schema generation.
- * <p>
- * Mirrors Python's {@code test_generate_milvus_schema.py} from
- * {@code tests/unit_tests/core/foundation/store/graph/milvus/test_generate_milvus_schema.py}.
- * Tests Milvus vector database schema creation and configuration.
- */
 class TestGenerateMilvusSchema {
 
-    // ---------------------------------------------------------------------------
-    // Tests - Level 0 (Schema basics)
-    // ---------------------------------------------------------------------------
-
     @Test
-    @Tag("level0")
-    void testMapClassExists() {
-        assertNotNull(Map.class);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 1 (Schema field creation)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level1")
-    void testSchemaFieldCreation() {
-        Map<String, Object> field = new HashMap<>();
-        field.put("name", "embedding");
-        field.put("type", "FLOAT_VECTOR");
-        field.put("dimension", 128);
-        assertNotNull(field);
-        assertEquals("embedding", field.get("name"));
+    void testEntityCollectionSchemaHasExpectedFields() {
+        GenerateMilvusSchema.SchemaResult result = GenerateMilvusSchema.generateSchemaAndIndex(
+                GenerateMilvusSchema.ENTITY_COLLECTION,
+                new GraphStoreStorageConfig(),
+                new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null),
+                64,
+                true);
+        assertTrue(result.getFields().containsKey("name"));
+        assertTrue(result.getFields().containsKey("name_embedding"));
+        assertTrue(result.getFields().containsKey("relations"));
+        assertTrue(result.getFields().containsKey("episodes"));
+        assertTrue(result.getIndexedFields().contains("name_embedding"));
     }
 
     @Test
-    @Tag("level1")
-    void testPrimaryField() {
-        Map<String, Object> field = new HashMap<>();
-        field.put("name", "id");
-        field.put("type", "INT64");
-        field.put("is_primary", true);
-        assertTrue((Boolean) field.get("is_primary"));
+    void testRelationCollectionSchemaHasExpectedFields() {
+        GenerateMilvusSchema.SchemaResult result = GenerateMilvusSchema.generateSchemaAndIndex(
+                GenerateMilvusSchema.RELATION_COLLECTION,
+                new GraphStoreStorageConfig(),
+                new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null),
+                64,
+                true);
+        assertTrue(result.getFields().containsKey("valid_since"));
+        assertTrue(result.getFields().containsKey("valid_until"));
+        assertTrue(result.getFields().containsKey("lhs"));
+        assertTrue(result.getFields().containsKey("rhs"));
     }
 
     @Test
-    @Tag("level1")
-    void testVectorFieldDimension() {
-        Map<String, Object> field = new HashMap<>();
-        field.put("dimension", 768);
-        assertEquals(768, field.get("dimension"));
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 2 (Schema validation)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level2")
-    void testValidSchemaFields() {
-        java.util.List<Map<String, Object>> fields = new java.util.ArrayList<>();
-        fields.add(createField("id", "INT64", true));
-        fields.add(createField("embedding", "FLOAT_VECTOR", false));
-        assertEquals(2, fields.size());
+    void testEpisodeCollectionSchemaHasExpectedFields() {
+        GenerateMilvusSchema.SchemaResult result = GenerateMilvusSchema.generateSchemaAndIndex(
+                GenerateMilvusSchema.EPISODE_COLLECTION,
+                new GraphStoreStorageConfig(),
+                new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null),
+                64,
+                true);
+        assertTrue(result.getFields().containsKey("valid_since"));
+        assertTrue(result.getFields().containsKey("entities"));
     }
 
     @Test
-    @Tag("level2")
-    void testSchemaFieldNames() {
-        java.util.List<String> names = java.util.List.of("id", "embedding", "metadata");
-        assertTrue(names.contains("id"));
-        assertTrue(names.contains("embedding"));
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests - Level 3 (Index configuration)
-    // ---------------------------------------------------------------------------
-
-    @Test
-    @Tag("level3")
-    void testIndexType() {
-        Map<String, Object> index = new HashMap<>();
-        index.put("type", "IVF_FLAT");
-        index.put("nlist", 1024);
-        assertEquals("IVF_FLAT", index.get("type"));
+    void testUnknownCollectionRaisesNotImplementedError() {
+        assertThrows(IllegalArgumentException.class, () -> GenerateMilvusSchema.generateSchemaAndIndex(
+                "UNKNOWN_COLLECTION",
+                new GraphStoreStorageConfig(),
+                new GraphStoreIndexConfig(new MilvusAUTO(), "cosine", null, null, null),
+                64,
+                true));
     }
 
     @Test
-    @Tag("level3")
-    void testMetricType() {
-        Map<String, Object> index = new HashMap<>();
-        index.put("metric_type", "L2");
-        assertEquals("L2", index.get("metric_type"));
-    }
-
-    // ---------------------------------------------------------------------------
-    // Helper methods
-    // ---------------------------------------------------------------------------
-
-    private Map<String, Object> createField(String name, String type, boolean isPrimary) {
-        Map<String, Object> field = new HashMap<>();
-        field.put("name", name);
-        field.put("type", type);
-        field.put("is_primary", isPrimary);
-        return field;
+    void testMetricTypeDotMapsToIp() {
+        GenerateMilvusSchema.SchemaResult result = GenerateMilvusSchema.generateSchemaAndIndex(
+                GenerateMilvusSchema.ENTITY_COLLECTION,
+                new GraphStoreStorageConfig(),
+                new GraphStoreIndexConfig(new MilvusAUTO(), "dot", null, null, null),
+                64,
+                true);
+        assertEquals("IP", result.getMetricType());
     }
 }

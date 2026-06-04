@@ -17,6 +17,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Tests for the online RL rail.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.agent_rl.online.test_rl_online_rail}.
+ */
 class RLOnlineRailTest {
 
     static class CollectingUploader implements TrajectoryUploader {

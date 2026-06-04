@@ -7,7 +7,8 @@ package com.openjiuwen.core.common.logging.events;
 /**
  * Log event type enumeration.
  * <p>
- * Faithfully ported from Python's {@code LogEventType}.
+ * Mirrors Python's {@code LogEventType} in
+ * {@code openjiuwen.core.common.logging.events}.
  */
 public enum LogEventType {
     // Agent events
@@ -145,6 +146,12 @@ public enum LogEventType {
     RESOURCE_MGR_ADD_RESOURCE_SERVER("add_resource_server"),
     RESOURCE_MGR_REMOVE_RESOURCE_SERVER("remove_resource_server"),
     RESOURCE_MGR_REMOVE_TAG("remove_tag"),
+
+    // Coroutine task manager events
+    CORO_MANAGER_INIT("coro_manager_init"),
+    CORO_MANAGER_TASK_STATUS_CHANGED("coro_manager_task_status_changed"),
+    CORO_MANAGER_TASK_CANCELLED("coro_manager_task_cancelled"),
+    CORO_MANAGER_DEBUG_TASK_TREE("coro_manager_debug_task_tree"),
     ;
 
     private final String value;

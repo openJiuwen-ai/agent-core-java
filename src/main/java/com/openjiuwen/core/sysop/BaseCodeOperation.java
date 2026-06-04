@@ -25,7 +25,19 @@ public abstract class BaseCodeOperation extends BaseOperation {
 
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of("executeCode", "executeCodeStream"));
+        List<ToolCard> toolCards = generateToolCards(List.of("executeCode", "executeCodeStream"));
+        for (ToolCard toolCard : toolCards) {
+            Map<String, Object> inputParams = toolCard.getInputParams();
+            inputParams.put("required", List.of("code"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) inputParams.get("properties");
+            if (properties != null && properties.get("language") instanceof Map<?, ?> rawLanguageSchema) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> languageSchema = (Map<String, Object>) rawLanguageSchema;
+                languageSchema.put("enum", List.of("python", "javascript"));
+            }
+        }
+        return toolCards;
     }
 
     /**

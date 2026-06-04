@@ -27,6 +27,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Query rewriter with template loading, JSON parsing, and optional context-aware compression.
+ *
+ * <p>Mirrors Python's {@code QueryRewriter} in
+ * {@code openjiuwen.core.retrieval.query_rewriter.query_rewriter}.</p>
  */
 public class QueryRewriter {
 
@@ -190,12 +193,12 @@ public class QueryRewriter {
             Class<?> type = entry.getValue();
             Object value = output.get(field);
             if (value == null) {
-                value = defaultValue(type);
-            }
-            if ("typo".equals(field)) {
-                value = normalizeTypo(value);
-            } else if (!type.isInstance(value)) {
-                value = coerce(type, field, value);
+            value = defaultValue(type);
+        }
+        if ("typo".equals(field)) {
+            value = normalizeTypo(value);
+        } else if (!type.isInstance(value)) {
+            value = coerce(type, field, value);
             }
             repaired.put(field, value);
         }
@@ -212,8 +215,9 @@ public class QueryRewriter {
     }
 
     private String llmCall(String prompt) {
+        AssistantMessage response;
         try {
-            AssistantMessage response = llmClient.invoke(
+            response = llmClient.invoke(
                     List.of(Map.of("role", "user", "content", prompt)),
                     null,
                     0.0f,
@@ -224,15 +228,13 @@ public class QueryRewriter {
                     null,
                     null,
                     Map.of());
-            if (response == null) {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, "LLM returned null");
-            }
-            return response.getContentAsString();
-        } catch (RuntimeException ex) {
-            throw ex;
         } catch (Exception ex) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, ex.getMessage());
         }
+        if (response == null) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, "LLM returned null");
+        }
+        return response.getContentAsString();
     }
 
     private void ensureLlm() {
@@ -286,32 +288,19 @@ public class QueryRewriter {
 
     private static Object coerce(Class<?> type, String field, Object value) {
         if (type == String.class) {
-            return stringify(value);
+            return forceString(value);
         }
         if (type == List.class) {
-            return value instanceof List<?> list ? list : List.of(value);
+            return forceList(value);
         }
         if (type == Map.class) {
-            if (value instanceof Map<?, ?> map) {
-                Map<String, Object> repaired = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> entry : map.entrySet()) {
-                    repaired.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-                return repaired;
-            }
-            if (value instanceof String string) {
-                Map<String, Object> parsed = parseLlmJson(string);
-                if (parsed != null) {
-                    return parsed;
-                }
-            }
-            return Map.of(field, value);
+            return forceJson(field, value);
         }
         return value;
     }
 
     private static List<Map<String, Object>> normalizeTypo(Object value) {
-        List<?> rawList = value instanceof List<?> list ? list : List.of(value);
+        List<?> rawList = forceList(value);
         List<Map<String, Object>> repaired = new ArrayList<>();
         for (Object item : rawList) {
             Map<String, Object> itemMap;
@@ -322,16 +311,55 @@ public class QueryRewriter {
                 }
             } else {
                 itemMap = new LinkedHashMap<>();
-                itemMap.put("original", stringify(item));
+                itemMap.put("original", forceString(item));
                 itemMap.put("corrected", "");
                 itemMap.put("reason", "");
             }
-            itemMap.put("original", stringify(itemMap.get("original")));
-            itemMap.put("corrected", stringify(itemMap.get("corrected")));
-            itemMap.put("reason", stringify(itemMap.get("reason")));
+            itemMap.put("original", forceString(itemMap.get("original")));
+            itemMap.put("corrected", forceString(itemMap.get("corrected")));
+            itemMap.put("reason", forceString(itemMap.get("reason")));
             repaired.add(itemMap);
         }
         return repaired;
+    }
+
+    static String forceString(Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Map<String, Object> repaired = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                repaired.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return writeJson(repaired);
+        }
+        return raw == null ? "null" : String.valueOf(raw);
+    }
+
+    static List<Object> forceList(Object raw) {
+        if (raw instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        List<Object> list = new ArrayList<>();
+        list.add(raw);
+        return list;
+    }
+
+    static Map<String, Object> forceJson(String key, Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Map<String, Object> repaired = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                repaired.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return repaired;
+        }
+        if (raw instanceof String string) {
+            Map<String, Object> parsed = parseLlmJson(string);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+        Map<String, Object> fallback = new LinkedHashMap<>();
+        fallback.put(key, raw);
+        return fallback;
     }
 
     private static Map<String, Class<?>> compressSchema() {

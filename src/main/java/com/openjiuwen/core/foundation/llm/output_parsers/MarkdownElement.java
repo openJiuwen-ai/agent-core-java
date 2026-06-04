@@ -13,6 +13,9 @@ import java.util.Map;
 
 /**
  * Single Markdown element with positional metadata.
+ *
+ * <p>Mirrors Python's {@code MarkdownElement} in
+ * {@code openjiuwen.core.foundation.llm.output_parsers.markdown_output_parser}.</p>
  */
 @Data
 @Builder

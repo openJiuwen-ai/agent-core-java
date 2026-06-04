@@ -311,29 +311,61 @@ class TestDbBasedKVStore {
         }
     }
     
-    // ========== Placeholder Tests ==========
-    
-    /**
-     * Full KV store operations test placeholder.
-     * 
-     * Requires:
-     * 1. H2 database with KV table initialized
-     * 2. Actual JDBC operations
-     */
     @Test
-    @Tag("placeholder")
-    @DisplayName("Placeholder - Full KV store operations (needs database setup)")
-    void testPlaceholderFullKVStoreOperations() {
-        assertTrue(true, "Placeholder - waiting for database test infrastructure");
+    @Tag("level0")
+    @DisplayName("H2 KV store runs Python default operation flow")
+    void testH2KvStoreRunsDefaultOperationFlow() throws Exception {
+        DbBasedKVStore kvStore = newStore("kv_default_flow");
+
+        kvStore.set("key1", "value1");
+        assertEquals("value1", kvStore.get("key1"));
+        kvStore.set("key1", "update_value1");
+        assertEquals("update_value1", kvStore.get("key1"));
+        assertFalse(kvStore.exclusiveSet("key1", "update_value2", null));
+        assertEquals("update_value1", kvStore.get("key1"));
+
+        kvStore.set("key2", "value2");
+        kvStore.set("key3", "value3");
+        kvStore.set("key345", "value345");
+        kvStore.set("key3456", "value3456");
+        kvStore.set("key4", "value4");
+
+        assertEquals("value2", kvStore.get("key2"));
+        kvStore.delete("key2");
+        assertFalse(kvStore.exists("key2"));
+        assertEquals(
+                new LinkedHashMap<String, Object>() {{
+                    put("key3", "value3");
+                    put("key345", "value345");
+                    put("key3456", "value3456");
+                }},
+                kvStore.getByPrefix("key3"));
+        kvStore.deleteByPrefix("key3", null);
+        assertEquals(Map.of(), kvStore.getByPrefix("key3"));
+        assertEquals(Arrays.asList("value4", null, "update_value1"),
+                kvStore.mget(List.of("key4", "key53245", "key1")));
+
+        assertTrue(kvStore.exclusiveSet("exclusive_key", "exclusive_value", 1));
+        assertEquals("exclusive_value", kvStore.get("exclusive_key"));
+        assertFalse(kvStore.exclusiveSet("exclusive_key", "update_exclusive_value", 1));
+        Thread.sleep(1100);
+        assertTrue(kvStore.exclusiveSet("exclusive_key", "update_exclusive_value", 1));
+        assertEquals("update_exclusive_value", kvStore.get("exclusive_key"));
+
+        kvStore.set("key56", "10");
+        assertEquals("10", kvStore.get("key56"));
     }
-    
-    /**
-     * SQLite KV store test placeholder.
-     */
+
     @Test
-    @Disabled("Requires SQLite/H2 database configuration")
-    @DisplayName("Placeholder - SQLite/H2 KV store test")
-    void testPlaceholderSqliteKVStore() {
-        assertTrue(true, "Placeholder - waiting for SQLite/H2 setup");
+    @Disabled("Matches Python test_mysql_kv_store skip: no MySQL environment")
+    @DisplayName("MySQL KV store is skipped when no MySQL environment exists")
+    void testMysqlKvStoreSkippedLikePython() {
+        DbBasedKVStore kvStore = new DbBasedKVStore(new DefaultDbStore("jdbc:mysql://localhost:3306/agent"));
+        assertNotNull(kvStore);
+    }
+
+    private DbBasedKVStore newStore(String databaseName) {
+        String jdbcUrl = "jdbc:h2:mem:" + databaseName + ";DB_CLOSE_DELAY=-1";
+        return new DbBasedKVStore(new DefaultDbStore(jdbcUrl));
     }
 }

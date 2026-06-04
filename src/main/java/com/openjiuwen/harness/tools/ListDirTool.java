@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 public class ListDirTool extends AbstractHarnessTool {
 
     public ListDirTool(SysOperation sysOperation) {
-        super(toolCard("harness.list_dir", "list_dir", "List directories under a path."), sysOperation);
+        super(toolCard("harness.list_files", "list_files", "List directories under a path."), sysOperation);
     }
 
     @Override

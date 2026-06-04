@@ -140,7 +140,7 @@ class EncodingE2eTest {
         List<RolloutWithReward> results = new ArrayList<>();
         for (int i = 0; i < msg.rolloutInfo.size(); i++) {
             RolloutWithReward r = new RolloutWithReward();
-            r.reward = msg.rewardList.get(i);
+            r.reward = msg.globalReward;
             r.nTurns = msg.turnCount;
             Map<String, Object> info = msg.rolloutInfo.get(i);
             Map<String, Object> inputPrompt = (Map<String, Object>) info.get("input_prompt");

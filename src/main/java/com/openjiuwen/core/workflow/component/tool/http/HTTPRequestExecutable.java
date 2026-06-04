@@ -59,6 +59,16 @@ public class HTTPRequestExecutable extends ComponentExecutable {
         return Collections.singleton(result).iterator();
     }
 
+    @Override
+    public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
+        return invoke(inputs, session, context);
+    }
+
+    @Override
+    public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
+        return stream(inputs, session, context);
+    }
+
     /**
      * Process the input data and merge with component configuration.
      */
@@ -118,7 +128,7 @@ public class HTTPRequestExecutable extends ComponentExecutable {
         String url = (String) params.get("url");
         String method = (String) params.get("method");
         Map<String, String> headers = (Map<String, String>) params.get("headers");
-        HttpRequestBodyConfig bodyConfig = (HttpRequestBodyConfig) params.get("body");
+        HttpRequestBodyConfig bodyConfig = normalizeBodyConfig(params.get("body"));
 
         try {
             HttpClient client = HttpClient.newBuilder()
@@ -167,9 +177,11 @@ public class HTTPRequestExecutable extends ComponentExecutable {
         String body = (String) response.get("body");
 
         Map<String, Object> output = new LinkedHashMap<>();
-        output.put("status_code", statusCode);
-        output.put("data", body);
-        output.put("success", statusCode >= 200 && statusCode < 300);
+        output.put("statusCode", statusCode);
+        output.put("headers", response.get("headers"));
+        output.put("body", body);
+        output.put("url", response.getOrDefault("url", ""));
+        output.put("ok", statusCode >= 200 && statusCode < 300);
 
         return output;
     }
@@ -224,5 +236,53 @@ public class HTTPRequestExecutable extends ComponentExecutable {
             return sb.toString();
         }
         return String.valueOf(obj);
+    }
+
+    @SuppressWarnings("unchecked")
+    private HttpRequestBodyConfig normalizeBodyConfig(Object rawBody) {
+        if (rawBody == null) {
+            return null;
+        }
+        if (rawBody instanceof HttpRequestBodyConfig bodyConfig) {
+            return bodyConfig;
+        }
+        if (rawBody instanceof Map<?, ?> rawMap) {
+            if (rawMap.isEmpty()) {
+                return null;
+            }
+            Map<String, Object> bodyMap = (Map<String, Object>) rawMap;
+            HttpRequestBodyConfig.HttpRequestBodyConfigBuilder builder = HttpRequestBodyConfig.builder();
+            Object contentType = bodyMap.get("content_type");
+            if (contentType == null) {
+                contentType = bodyMap.get("contentType");
+            }
+            if (contentType instanceof HttpContentType httpContentType) {
+                builder.contentType(httpContentType);
+            } else if (contentType != null) {
+                builder.contentType(HttpContentType.valueOf(String.valueOf(contentType).toUpperCase()));
+            }
+            Object jsonData = bodyMap.containsKey("json_data") ? bodyMap.get("json_data") : bodyMap.get("jsonData");
+            Object textData = bodyMap.containsKey("text_data") ? bodyMap.get("text_data") : bodyMap.get("textData");
+            Object binaryData = bodyMap.containsKey("binary_data") ? bodyMap.get("binary_data") : bodyMap.get("binaryData");
+            Object formData = bodyMap.containsKey("form_data") ? bodyMap.get("form_data") : bodyMap.get("formData");
+            Object multipartForm = bodyMap.containsKey("multipart_form")
+                    ? bodyMap.get("multipart_form")
+                    : bodyMap.get("multipartForm");
+            builder.jsonData(jsonData);
+            if (textData != null) {
+                builder.textData(String.valueOf(textData));
+            }
+            if (binaryData != null) {
+                builder.binaryData(String.valueOf(binaryData));
+            }
+            if (formData instanceof Map<?, ?> map) {
+                builder.formData((Map<String, Object>) map);
+            }
+            if (multipartForm instanceof Map<?, ?> map) {
+                builder.multipartForm((Map<String, Object>) map);
+            }
+            return builder.build();
+        }
+        return null;
     }
 }

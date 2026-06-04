@@ -34,7 +34,7 @@ public class UserInbox {
         if (!teamBackend.hasMember(target)) {
             return Map.of("error", "Member '" + target + "' not found");
         }
-        return teamBackend.deliverMessage(body, target, TeamConstants.USER_PSEUDO_MEMBER_NAME);
+        return teamBackend.sendMessage(body, target, TeamConstants.USER_PSEUDO_MEMBER_NAME);
     }
 
     public Object broadcast(String body) {

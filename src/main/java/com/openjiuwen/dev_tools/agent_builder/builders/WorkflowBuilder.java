@@ -4,14 +4,23 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders;
 
-import com.openjiuwen.dev_tools.agent_builder.builders.workflow.IntentionDetector;
+import com.openjiuwen.dev_tools.agent_builder.builders.workflow.CycleChecker;
+import com.openjiuwen.dev_tools.agent_builder.builders.workflow.DlGenerator;
 import com.openjiuwen.dev_tools.agent_builder.builders.workflow.DlReflector;
+import com.openjiuwen.dev_tools.agent_builder.builders.workflow.IntentionDetector;
+import com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer.DlTransformer;
+import com.openjiuwen.dev_tools.agent_builder.builders.workflow.workflow_designer.WorkflowDesigner;
+import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
 import com.openjiuwen.dev_tools.agent_builder.utils.AgentBuilderEnums;
 import com.openjiuwen.dev_tools.agent_builder.utils.ProgressReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Workflow agent builder — creates workflow-based agents from user specifications.
@@ -28,6 +37,8 @@ public class WorkflowBuilder extends BaseAgentBuilder {
 
     private static final Logger LOG = LoggerFactory.getLogger(WorkflowBuilder.class);
 
+    private static final String REQUEST_CONTENT = "Please provide workflow requirements";
+
     // Workflow metadata
     private String workflowName;
     private String workflowNameEn;
@@ -38,14 +49,10 @@ public class WorkflowBuilder extends BaseAgentBuilder {
     // Components
     private final IntentionDetector intentionDetector;
     private final DlReflector dlReflector;
-    private final Object workflowDesigner; // Placeholder for WorkflowDesigner
-    private final Object dlGenerator;       // Placeholder for DLGenerator
-    private final Object dlTransformer;     // Placeholder for DLTransformer
-    private final Object cycleChecker;      // Placeholder for CycleChecker
-    private final Object historyManager;    // Placeholder for HistoryManager
-
-    // LLM service
-    private final Object llm;
+    private final WorkflowDesigner workflowDesigner;
+    private final DlGenerator dlGenerator;
+    private final DlTransformer dlTransformer;
+    private final CycleChecker cycleChecker;
 
     /**
      * Initialize Workflow builder.
@@ -56,20 +63,13 @@ public class WorkflowBuilder extends BaseAgentBuilder {
      * @param historyManager History manager instance
      */
     public WorkflowBuilder(Object llm, Object historyManager) {
-        super(null); // BaseAgentBuilder with null ProgressReporter
-        this.llm = llm;
-        this.historyManager = historyManager;
-
-        // Initialize components
-        this.intentionDetector = new IntentionDetector();
+        super(llm, historyManager instanceof HistoryManager manager ? manager : null, null);
+        this.intentionDetector = new IntentionDetector(llm);
         this.dlReflector = new DlReflector();
-
-        // Placeholders for components that need full implementation
-        this.workflowDesigner = null; // TODO: WorkflowDesigner(llm)
-        this.dlGenerator = null;      // TODO: DLGenerator(llm)
-        this.dlTransformer = null;    // TODO: DLTransformer()
-        this.cycleChecker = null;     // TODO: CycleChecker(llm)
-
+        this.workflowDesigner = new WorkflowDesigner(llm);
+        this.dlGenerator = new DlGenerator(llm);
+        this.dlTransformer = new DlTransformer();
+        this.cycleChecker = new CycleChecker(llm);
         LOG.debug("WorkflowBuilder initialized");
     }
 
@@ -80,17 +80,13 @@ public class WorkflowBuilder extends BaseAgentBuilder {
      */
     public WorkflowBuilder(ProgressReporter progressReporter) {
         super(progressReporter);
-        this.llm = null;
-        this.historyManager = null;
         this.intentionDetector = new IntentionDetector();
         this.dlReflector = new DlReflector();
-        this.workflowDesigner = null;
-        this.dlGenerator = null;
-        this.dlTransformer = null;
-        this.cycleChecker = null;
+        this.workflowDesigner = new WorkflowDesigner();
+        this.dlGenerator = new DlGenerator(null);
+        this.dlTransformer = new DlTransformer();
+        this.cycleChecker = new CycleChecker();
     }
-
-    // Property getters - Mirrors Python's property methods
 
     public String getWorkflowName() {
         return workflowName;
@@ -112,12 +108,28 @@ public class WorkflowBuilder extends BaseAgentBuilder {
         return mermaidCode;
     }
 
-    public Map<String, Object> getResource() {
-        return resource;
+    public IntentionDetector getIntentionDetector() {
+        return intentionDetector;
     }
 
-    public Object getLlm() {
-        return llm;
+    public WorkflowDesigner getWorkflowDesigner() {
+        return workflowDesigner;
+    }
+
+    public DlGenerator getDlGenerator() {
+        return dlGenerator;
+    }
+
+    public DlReflector getDlReflector() {
+        return dlReflector;
+    }
+
+    public DlTransformer getDlTransformer() {
+        return dlTransformer;
+    }
+
+    public CycleChecker getCycleChecker() {
+        return cycleChecker;
     }
 
     @Override
@@ -125,125 +137,92 @@ public class WorkflowBuilder extends BaseAgentBuilder {
         LOG.info("[WorkflowBuilder] Handling INITIAL state");
 
         if (progressReporter != null) {
-            progressReporter.report(AgentBuilderEnums.ProgressStage.DETECTING_INTENTION,
-                    AgentBuilderEnums.ProgressStatus.RUNNING, "Detecting workflow intention");
+            progressReporter.report(
+                    AgentBuilderEnums.ProgressStage.DETECTING_INTENTION,
+                    AgentBuilderEnums.ProgressStatus.RUNNING,
+                    "Detecting workflow intention"
+            );
         }
 
-        // Check initial instruction
         String userInput = extractUserInput(query);
         boolean hasInstruction = intentionDetector.detect(userInput) != IntentionDetector.Intention.UNKNOWN;
-
         if (!hasInstruction) {
-            if (progressReporter != null) {
-                progressReporter.report(AgentBuilderEnums.ProgressStage.DETECTING_INTENTION,
-                        AgentBuilderEnums.ProgressStatus.SUCCESS, "More information needed");
-            }
             state = AgentBuilderEnums.BuildState.PROCESSING;
-            return Map.of("status", "request_content", "state", "processing",
-                    "message", "Please provide workflow requirements");
+            return Map.of("status", "request_content", "state", "processing", "message", REQUEST_CONTENT);
         }
 
-        if (progressReporter != null) {
-            progressReporter.report(AgentBuilderEnums.ProgressStage.DETECTING_INTENTION,
-                    AgentBuilderEnums.ProgressStatus.SUCCESS, "Intent detection completed");
-            progressReporter.report(AgentBuilderEnums.ProgressStage.GENERATING_WORKFLOW_DESIGN,
-                    AgentBuilderEnums.ProgressStatus.RUNNING, "Designing workflow");
-        }
-
-        // Update workflow info
         updateWorkflowInfo(Map.of(
-                "name", userInput.length() > 100 ? userInput.substring(0, 100) : userInput,
+                "name", abbreviate(userInput),
                 "name_en", "workflow",
                 "description", "Workflow design"
         ));
 
-        // Placeholder: Generate DL and Mermaid
-        // TODO: Full implementation requires DLGenerator, WorkflowDesigner, etc.
-        if (progressReporter != null) {
-            progressReporter.report(AgentBuilderEnums.ProgressStage.GENERATING_DL,
-                    AgentBuilderEnums.ProgressStatus.RUNNING, "Generating DL");
-            progressReporter.report(AgentBuilderEnums.ProgressStage.VALIDATING_DL,
-                    AgentBuilderEnums.ProgressStatus.RUNNING, "Validating DL");
-        }
+        String design = workflowDesigner.design(userInput, formatToolList());
+        String generatedDl = dlGenerator.generate(design == null || design.isBlank() ? userInput : design, resource);
+        this.dl = generatedDl == null || generatedDl.isBlank() ? fallbackDl() : generatedDl;
+        this.mermaidCode = generateMermaid(dl);
 
         state = AgentBuilderEnums.BuildState.PROCESSING;
-        return Map.of("status", "detecting_intention", "state", "processing",
-                "workflow_name", workflowName != null ? workflowName : "");
+        return Map.of(
+                "status", "detecting_intention",
+                "state", "processing",
+                "workflow_name", workflowName != null ? workflowName : "",
+                "mermaid_code", mermaidCode != null ? mermaidCode : ""
+        );
     }
 
     @Override
     protected Map<String, Object> handleProcessing(Map<String, Object> query, List<Map<String, Object>> history) {
         LOG.info("[WorkflowBuilder] Handling PROCESSING state");
 
-        if (progressReporter != null) {
-            progressReporter.report(AgentBuilderEnums.ProgressStage.GENERATING_WORKFLOW_DESIGN,
-                    AgentBuilderEnums.ProgressStatus.RUNNING, "Generating workflow design");
-        }
-
+        String userInput = extractUserInput(query);
         if (dl == null) {
-            // Generate new workflow
-            String userInput = extractUserInput(query);
             updateWorkflowInfo(Map.of(
-                    "name", userInput.length() > 100 ? userInput.substring(0, 100) : userInput,
+                    "name", abbreviate(userInput),
                     "name_en", "workflow",
                     "description", "Workflow design"
             ));
-
-            if (progressReporter != null) {
-                progressReporter.report(AgentBuilderEnums.ProgressStage.GENERATING_DL,
-                        AgentBuilderEnums.ProgressStatus.RUNNING, "Generating DL");
-            }
-
-            // Placeholder for DL generation
-            dl = generatePlaceholderDl(userInput);
-            mermaidCode = generatePlaceholderMermaid(dl);
-
-            return Map.of("status", "processing", "state", "processing",
-                    "mermaid_code", mermaidCode != null ? mermaidCode : "");
-        } else {
-            // Refine existing workflow
-            IntentionDetector.Intention intention = intentionDetector.detect(extractUserInput(query));
-
-            if (intention == IntentionDetector.Intention.MODIFY_WORKFLOW) {
-                if (progressReporter != null) {
-                    progressReporter.report(AgentBuilderEnums.ProgressStage.REFINING_DL,
-                            AgentBuilderEnums.ProgressStatus.RUNNING, "Refining DL");
-                }
-
-                // Placeholder for DL refinement
-                return Map.of("status", "refining", "state", "processing",
-                        "mermaid_code", mermaidCode != null ? mermaidCode : "");
-            } else {
-                // Transform to DSL
-                if (progressReporter != null) {
-                    progressReporter.report(AgentBuilderEnums.ProgressStage.TRANSFORMING_WORKFLOW_DSL,
-                            AgentBuilderEnums.ProgressStatus.RUNNING, "Converting to DSL");
-                }
-
-                state = AgentBuilderEnums.BuildState.COMPLETED;
-                return Map.of("status", "completed", "state", "completed",
-                        "dsl", dl != null ? dl : "");
-            }
+            String design = workflowDesigner.design(userInput, formatToolList());
+            String generatedDl = dlGenerator.generate(design == null || design.isBlank() ? userInput : design, resource);
+            dl = generatedDl == null || generatedDl.isBlank() ? fallbackDl() : generatedDl;
+            mermaidCode = generateMermaid(dl);
+            return Map.of("status", "processing", "state", "processing", "mermaid_code", mermaidCode);
         }
+
+        IntentionDetector.Intention intention = intentionDetector.detect(userInput);
+        if (intention == IntentionDetector.Intention.MODIFY_WORKFLOW
+                || intention == IntentionDetector.Intention.REFINE_WORKFLOW) {
+            String refinedDl = dlGenerator.refine(userInput, resource, dl, mermaidCode == null ? "" : mermaidCode);
+            if (refinedDl != null && !refinedDl.isBlank()) {
+                dl = refinedDl;
+                mermaidCode = generateMermaid(dl);
+            }
+            return Map.of("status", "refining", "state", "processing", "mermaid_code", mermaidCode);
+        }
+
+        state = AgentBuilderEnums.BuildState.COMPLETED;
+        return Map.of("status", "completed", "state", "completed", "dsl", dlTransformer.transformToDsl(dl, resource));
     }
 
-    // Helper methods
+    @Override
+    protected Map<String, Object> handleCompleted(Map<String, Object> query, List<Map<String, Object>> history) {
+        if (dl == null) {
+            return Map.of("status", "completed", "state", "completed");
+        }
+        return Map.of("status", "completed", "state", "completed", "dsl", dlTransformer.transformToDsl(dl, resource));
+    }
 
-    /**
-     * Extract user input from query map.
-     */
     private String extractUserInput(Map<String, Object> query) {
-        if (query == null) return "";
+        if (query == null) {
+            return "";
+        }
         Object input = query.get("query");
-        if (input == null) input = query.get("input");
+        if (input == null) {
+            input = query.get("input");
+        }
         return input != null ? input.toString() : "";
     }
 
-    /**
-     * Update workflow info from design info.
-     * <p>
-     * Mirrors Python's {@code _update_workflow_info} method.
-     */
     private void updateWorkflowInfo(Map<String, Object> designInfo) {
         this.workflowName = (String) designInfo.getOrDefault("name", null);
         this.workflowNameEn = (String) designInfo.getOrDefault("name_en", null);
@@ -251,46 +230,55 @@ public class WorkflowBuilder extends BaseAgentBuilder {
         LOG.debug("Workflow info updated: name={}, name_en={}", workflowName, workflowNameEn);
     }
 
-    /**
-     * Reset internal state.
-     * <p>
-     * Mirrors Python's {@code _reset_internal_state} method.
-     */
+    @Override
     public void reset() {
+        super.reset();
         this.workflowName = null;
         this.workflowNameEn = null;
         this.workflowDesc = null;
         this.dl = null;
         this.mermaidCode = null;
-        this.state = AgentBuilderEnums.BuildState.INITIAL;
         LOG.debug("WorkflowBuilder state reset");
     }
 
     /**
-     * Check if this is a workflow builder.
-     * <p>
      * Mirrors Python's {@code _is_workflow_builder} method.
      */
     public boolean isWorkflowBuilder() {
         return true;
     }
 
-    // Placeholder methods for full implementation
-
-    /**
-     * Generate placeholder DL for testing.
-     * TODO: Replace with full DLGenerator implementation.
-     */
-    private String generatePlaceholderDl(String input) {
-        return "[{\"id\": \"node_start\", \"type\": \"Start\", \"next\": \"node_end\"}, " +
-                "{\"id\": \"node_end\", \"type\": \"End\"}]";
+    private String formatToolList() {
+        Object plugins = resource.get("plugins");
+        if (plugins instanceof Collection<?> collection && !collection.isEmpty()) {
+            return String.join("\n", collection.stream().map(Objects::toString).toList());
+        }
+        return plugins == null ? "" : plugins.toString();
     }
 
-    /**
-     * Generate placeholder Mermaid for testing.
-     * TODO: Replace with full DLTransformer implementation.
-     */
-    private String generatePlaceholderMermaid(String dlContent) {
-        return "graph TD\n  node_start --> node_end";
+    private String abbreviate(String userInput) {
+        if (userInput == null) {
+            return "";
+        }
+        return userInput.length() > 100 ? userInput.substring(0, 100) : userInput;
+    }
+
+    private String fallbackDl() {
+        return "[{\"id\":\"node_start\",\"type\":\"Start\",\"next\":\"node_end\"}," +
+                "{\"id\":\"node_end\",\"type\":\"End\"}]";
+    }
+
+    private String generateMermaid(String dlContent) {
+        try {
+            String mermaid = DlTransformer.transformToMermaid(dlContent);
+            CycleChecker.CycleResult cycleResult = cycleChecker.checkAndParse(mermaid);
+            if (cycleResult.needRefined()) {
+                LOG.warn("Generated Mermaid may contain cycle: {}", cycleResult.loopDesc());
+            }
+            return mermaid;
+        } catch (Exception e) {
+            LOG.warn("Failed to transform DL to Mermaid, using fallback graph", e);
+            return "graph TD\n  node_start --> node_end";
+        }
     }
 }

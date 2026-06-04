@@ -6,11 +6,13 @@ package com.openjiuwen.unit_tests.core.memory.graph.graph_memory;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.memory.graph.graph_memory.GraphMemoryUtils;
 import org.junit.jupiter.api.*;
 import org.mockito.Mockito;
 
+import java.lang.reflect.Method;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -185,6 +187,56 @@ class TestUtils {
             // Cannot dict([1,2,3]) meaningfully; code catches and leaves attributes as {} or keeps orig
             assertTrue(entity.getAttributes() instanceof Map);
         }
+
+        @Test
+        @Tag("level0")
+        void testUpdateEntityExtractedInfoAsStrTreatedAsSummary() throws Exception {
+            Entity entity = new Entity("E1", "", "");
+
+            invokeParseSummary(entity, Map.of("summary", "just a string summary"));
+
+            assertEquals("just a string summary", entity.getContent());
+        }
+
+        @Test
+        @Tag("level0")
+        void testUpdateEntitySummaryAsSetJoined() throws Exception {
+            Entity entity = new Entity("E1", "", "");
+
+            invokeParseSummary(entity, Map.of("summary", Set.of("a", "b")));
+
+            assertTrue(Set.of("a\nb", "b\na").contains(entity.getContent()));
+        }
+
+        @Test
+        @Tag("level0")
+        void testUpdateEntityExtractedInfoListTakesFirst() {
+            Entity entity = new Entity("E1", "", "");
+
+            GraphMemoryUtils.updateEntity(entity, "[{\"summary\": \"first\"}]", Map.of("type", "array"));
+
+            assertEquals("first", entity.getContent());
+        }
+
+        @Test
+        @Tag("level0")
+        void testUpdateEntityExtractedInfoStrWrappedAsSummary() {
+            Entity entity = new Entity("E1", "", "");
+
+            GraphMemoryUtils.updateEntity(entity, "\"string summary\"", Map.of("type", "string"));
+
+            assertEquals("string summary", entity.getContent());
+        }
+
+        @Test
+        @Tag("level0")
+        void testParseSummaryNonStrSummaryConverted() throws Exception {
+            Entity entity = new Entity("E1", "", "");
+
+            invokeParseSummary(entity, Map.of("summary", 42));
+
+            assertEquals("42", entity.getContent());
+        }
     }
 
     // ==================== TestAssembleInvokeParams ====================
@@ -195,14 +247,14 @@ class TestUtils {
         @Test
         @Tag("level0")
         void testAssembleInvokeParamsMessagesOnly() {
-            /** Without output_model, params contain only messages from template */
-            // Note: This test requires PromptTemplate mocking which is complex in Java
-            // For now, test with null template
+            /** Without output_model, params contain formatted messages from template */
+            PromptTemplate template = new PromptTemplate("tmpl", "Hello {{name}}", "{{", "}}");
+
             Map<String, Object> params = GraphMemoryUtils.assembleInvokeParams(
-                    Map.of("k", "v"), null, null);
+                    Map.of("name", "World"), template, null);
 
             assertTrue(params.containsKey("messages"));
-            assertTrue(params.get("messages") instanceof List);
+            assertEquals(List.of(Map.of("role", "user", "content", "Hello World")), params.get("messages"));
             assertFalse(params.containsKey("response_format"));
         }
 
@@ -210,6 +262,7 @@ class TestUtils {
         @Tag("level0")
         void testAssembleInvokeParamsWithOutputModel() {
             /** With output_model, response_format is set */
+            PromptTemplate template = new PromptTemplate("tmpl", List.of(new UserMessage("Hello")), "{{", "}}");
             Map<String, Object> output = new HashMap<>();
             output.put("type", "json_schema");
             Map<String, Object> jsonSchema = new HashMap<>();
@@ -217,9 +270,16 @@ class TestUtils {
             output.put("json_schema", jsonSchema);
 
             Map<String, Object> params = GraphMemoryUtils.assembleInvokeParams(
-                    Map.of("k", "v"), null, output);
+                    Map.of("k", "v"), template, output);
 
             assertEquals(output, params.get("response_format"));
+            assertEquals(List.of(Map.of("role", "user", "content", "Hello")), params.get("messages"));
         }
+    }
+
+    private static void invokeParseSummary(Entity entity, Map<String, Object> extractedEntityInfo) throws Exception {
+        Method method = GraphMemoryUtils.class.getDeclaredMethod("parseSummary", Entity.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(null, entity, extractedEntityInfo);
     }
 }

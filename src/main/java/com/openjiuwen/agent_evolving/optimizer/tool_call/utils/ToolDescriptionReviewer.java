@@ -5,11 +5,9 @@
 package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Function;
 
 /**
  * Tool description reviewer for cleaning and processing.
@@ -22,6 +20,7 @@ public class ToolDescriptionReviewer {
 
     private final String evalModelId;
     private final String llmApiKey;
+    private final List<Object> processors;
 
     /**
      * Create tool description reviewer.
@@ -32,6 +31,7 @@ public class ToolDescriptionReviewer {
     public ToolDescriptionReviewer(String evalModelId, String llmApiKey) {
         this.evalModelId = evalModelId;
         this.llmApiKey = llmApiKey;
+        this.processors = new ArrayList<>();
     }
 
     /**
@@ -44,18 +44,7 @@ public class ToolDescriptionReviewer {
      */
     public Map<String, Object> format(Map<String, Object> jsonSchema, String description, String example) {
         String prompt = buildFormatPrompt(jsonSchema, description);
-
-        try {
-            String response = RitsUtils.getRitsResponse(
-                    "gpt-5.2",
-                    prompt,
-                    llmApiKey
-            );
-            return parseJsonResponse(response);
-        } catch (Exception e) {
-            Loggers.AGENT.error("Format failed: {}", e.getMessage());
-            return new HashMap<>();
-        }
+        return ensureMap(invokeRitsJson("gpt-5.2", prompt));
     }
 
     /**
@@ -72,7 +61,7 @@ public class ToolDescriptionReviewer {
         for (String step : steps) {
             switch (step) {
                 case "cross_check":
-                    result = crossCheck(result, oriTool);
+                    result = crossCheck(data, oriTool);
                     break;
                 case "clean":
                     result = cleanAndDeduplicate(result);
@@ -95,18 +84,7 @@ public class ToolDescriptionReviewer {
      */
     public Map<String, Object> cleanAndDeduplicate(Map<String, Object> data) {
         String prompt = buildCleanPrompt(data);
-
-        try {
-            String response = RitsUtils.getRitsResponse(
-                    evalModelId,
-                    prompt,
-                    llmApiKey
-            );
-            return parseJsonResponse(response);
-        } catch (Exception e) {
-            Loggers.AGENT.error("Clean failed: {}", e.getMessage());
-            return data;
-        }
+        return ensureMap(invokeRitsJson(evalModelId, prompt));
     }
 
     /**
@@ -118,18 +96,7 @@ public class ToolDescriptionReviewer {
      */
     public Map<String, Object> crossCheck(Map<String, Object> data, String oriTool) {
         String prompt = buildCrossCheckPrompt(data, oriTool);
-
-        try {
-            String response = RitsUtils.getRitsResponse(
-                    evalModelId,
-                    prompt,
-                    llmApiKey
-            );
-            return parseJsonResponse(response);
-        } catch (Exception e) {
-            Loggers.AGENT.error("Cross-check failed: {}", e.getMessage());
-            return data;
-        }
+        return ensureMap(invokeRitsJson(evalModelId, prompt));
     }
 
     /**
@@ -139,27 +106,17 @@ public class ToolDescriptionReviewer {
      * @return Translated description
      */
     public Map<String, Object> translateToChinese(Map<String, Object> data) {
-        try {
-            String jsonStr = OBJECT_MAPPER.writeValueAsString(data);
+        String jsonStr = toJson(data);
 
-            if (!isMostlyEnglish(jsonStr)) {
-                return data;
-            }
-
-            String prompt = buildTranslatePrompt(data);
-            String response = RitsUtils.getRitsResponse(
-                    evalModelId,
-                    prompt,
-                    llmApiKey
-            );
-            return parseJsonResponse(response);
-        } catch (Exception e) {
-            Loggers.AGENT.error("Translation failed: {}", e.getMessage());
+        if (!isMostlyEnglish(jsonStr)) {
             return data;
         }
+
+        String prompt = buildTranslatePrompt(data);
+        return ensureMap(invokeRitsJson(evalModelId, prompt));
     }
 
-    private boolean isMostlyEnglish(String text) {
+    protected boolean isMostlyEnglish(String text) {
         String noSpace = text.replaceAll("\\s+", "");
         if (noSpace.isEmpty()) {
             return false;
@@ -172,9 +129,12 @@ public class ToolDescriptionReviewer {
         return (double) englishChars / noSpace.length() > 0.7;
     }
 
+    public List<Object> getProcessors() {
+        return processors;
+    }
+
     private String buildFormatPrompt(Map<String, Object> jsonSchema, String description) {
-        try {
-            return String.format("""
+        return String.format("""
 将下面输入转换为目标 JSON 结构。必须满足：
 
 - 输出只允许是有效 JSON，且严格匹配目标结构的键路径与层级（不多不少）。
@@ -190,15 +150,11 @@ public class ToolDescriptionReviewer {
 
 Input:
 %s
-""", OBJECT_MAPPER.writeValueAsString(jsonSchema), description);
-        } catch (Exception e) {
-            return "";
-        }
+""", toJson(jsonSchema), description);
     }
 
     private String buildCleanPrompt(Map<String, Object> data) {
-        try {
-            return String.format("""
+        return String.format("""
 Given a tool description JSON, go through the content sentence by sentence and perform cleaning tasks:
 
 1. Remove usage example in the main tool description
@@ -210,15 +166,11 @@ Keep only unique, essential, and actionable information.
 
 Input JSON:
 %s
-""", OBJECT_MAPPER.writeValueAsString(data));
-        } catch (Exception e) {
-            return "";
-        }
+""", toJson(data));
     }
 
     private String buildCrossCheckPrompt(Map<String, Object> data, String oriTool) {
-        try {
-            return String.format("""
+        return String.format("""
 比较原始描述和修改后的描述，按照以下要求整理修改后的描述：
 1. 补充修改后的描述丢失的信息
 2. 确保参数描述信息和工具描述信息位置正确
@@ -228,34 +180,62 @@ Input JSON:
 
 修改后描述（待优化）：
 %s
-""", oriTool, OBJECT_MAPPER.writeValueAsString(data));
-        } catch (Exception e) {
-            return "";
-        }
+""", oriTool, toJson(data));
     }
 
     private String buildTranslatePrompt(Map<String, Object> data) {
-        try {
-            return String.format("""
+        return String.format("""
 Translate all English text in the following JSON to Chinese.
 Keep JSON structure unchanged. Keep technical terms and code examples as-is.
 Output only the translated JSON without explanations.
 
 Input JSON:
 %s
-""", OBJECT_MAPPER.writeValueAsString(data));
-        } catch (Exception e) {
-            return "";
-        }
+""", toJson(data));
+    }
+
+    protected Object invokeRitsResponse(String modelId, String prompt, Function<String, Object> verifyFn) {
+        return RitsUtils.getRitsResponse(
+                modelId,
+                prompt,
+                llmApiKey,
+                verifyFn,
+                false,
+                Map.of("max_attempts", 5, "include_stop_sequence", false)
+        );
+    }
+
+    private Object invokeRitsJson(String modelId, String prompt) {
+        return invokeRitsResponse(modelId, prompt, this::parseJsonResponse);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseJsonResponse(String response) {
+    private Object parseJsonResponse(String response) {
         try {
             return OBJECT_MAPPER.readValue(response, Map.class);
         } catch (Exception e) {
-            Loggers.AGENT.error("Failed to parse JSON response: {}", e.getMessage());
-            return new HashMap<>();
+            throw new IllegalArgumentException("Failed to parse JSON response", e);
+        }
+    }
+
+    private Map<String, Object> ensureMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to serialize JSON", e);
         }
     }
 }

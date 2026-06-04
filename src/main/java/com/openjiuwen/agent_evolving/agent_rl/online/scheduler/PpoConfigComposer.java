@@ -3,11 +3,16 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.scheduler;
 
+import com.openjiuwen.agent_evolving.agent_rl.config.OnlinePpoVerlConfig;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.logging.Logger;
 
 /**
  * Build Hydra OmegaConf for online PPO training (built-in overlay or custom YAML).
@@ -16,8 +21,8 @@ import java.util.logging.Logger;
  * {@code openjiuwen.agent_evolving.agent_rl.online.scheduler.ppo_config}.
  */
 public final class PpoConfigComposer {
-    
-    private static final Logger logger = Logger.getLogger(PpoConfigComposer.class.getName());
+
+    private static final String DEFAULT_LOCAL_DIR = "/tmp/online_ppo_ckpt";
     
     private PpoConfigComposer() {
         // Utility class
@@ -26,8 +31,9 @@ public final class PpoConfigComposer {
     /**
      * Compose online PPO config.
      * <p>
-     * PLACEHOLDER: Java does not have Hydra/OmegaConf. This provides a basic Map-based config.
-     * 
+     * Java represents the Hydra/OmegaConf object as a nested map while preserving
+     * the Python-visible configuration fields.
+     *
      * @param modelPath Model path
      * @param nGpusPerNode GPUs per node
      * @param configPath Custom config path (optional)
@@ -35,27 +41,22 @@ public final class PpoConfigComposer {
      */
     public static Map<String, Object> composeOnlinePpoConfig(
             String modelPath, int nGpusPerNode, String configPath) {
-        
-        Map<String, Object> cfg = new HashMap<>();
-        
-        // Default overlay values
-        cfg.put("actor_rollout_ref", new HashMap<String, Object>());
-        ((Map<String, Object>) cfg.get("actor_rollout_ref")).put("model", new HashMap<String, Object>());
-        ((Map<String, Object>) ((Map<String, Object>) cfg.get("actor_rollout_ref")).get("model"))
-            .put("path", modelPath);
-        
-        cfg.put("trainer", new HashMap<String, Object>());
-        ((Map<String, Object>) cfg.get("trainer")).put("n_gpus_per_node", nGpusPerNode);
-        ((Map<String, Object>) cfg.get("trainer")).put("default_local_dir", "/tmp/online_ppo_ckpt");
-        
-        if (configPath != null && !configPath.isEmpty()) {
-            // PLACEHOLDER: Would load YAML config from path
-            Path path = Paths.get(configPath);
-            logger.info("Custom config path: " + path);
-            // Would parse YAML and merge with defaults
+
+        Map<String, Object> cfg;
+        if (configPath == null) {
+            cfg = deepCopyMap(OnlinePpoVerlConfig.getOnlinePpoVerlHydraOverlay());
+        } else {
+            cfg = loadYamlConfig(Paths.get(configPath));
         }
-        
-        logger.info("Composed PPO config for model: " + modelPath);
+
+        Map<String, Object> actorRolloutRef = nestedMap(cfg, "actor_rollout_ref");
+        nestedMap(actorRolloutRef, "model").put("path", modelPath);
+
+        Map<String, Object> trainer = nestedMap(cfg, "trainer");
+        trainer.put("n_gpus_per_node", nGpusPerNode);
+        if (!pythonTruthy(trainer.get("default_local_dir"))) {
+            trainer.put("default_local_dir", DEFAULT_LOCAL_DIR);
+        }
         return cfg;
     }
     
@@ -70,25 +71,72 @@ public final class PpoConfigComposer {
      * Online PPO VERL overlay defaults.
      */
     public static Map<String, Object> getOnlinePpoVerlOverlay() {
-        Map<String, Object> overlay = new HashMap<>();
-        
-        // Default training parameters
-        overlay.put("trainer", Map.of(
-            "total_epochs", 1,
-            "ppo_epochs", 1,
-            "rollout_batch_size", 128,
-            "rollout_batch_data_device", "cpu"
-        ));
-        
-        // Default actor rollout parameters
-        overlay.put("actor_rollout_ref", Map.of(
-            "rollout", Map.of(
-                "n", 1,
-                "temperature", 1.0,
-                "use_start", false
-            )
-        ));
-        
-        return overlay;
+        return deepCopyMap(OnlinePpoVerlConfig.getOnlinePpoVerlHydraOverlay());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> loadYamlConfig(Path configPath) {
+        try {
+            Object loaded = new Yaml().load(Files.readString(configPath.toAbsolutePath()));
+            if (loaded == null) {
+                return new LinkedHashMap<>();
+            }
+            if (!(loaded instanceof Map<?, ?> map)) {
+                throw new IllegalArgumentException("PPO config YAML must contain a mapping: " + configPath);
+            }
+            return deepCopyMap((Map<String, Object>) map);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Unable to load PPO config: " + configPath, exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> nestedMap(Map<String, Object> parent, String key) {
+        Object existing = parent.get(key);
+        if (existing instanceof Map<?, ?> existingMap) {
+            return (Map<String, Object>) existingMap;
+        }
+        Map<String, Object> created = new LinkedHashMap<>();
+        parent.put(key, created);
+        return created;
+    }
+
+    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, value) -> copy.put(String.valueOf(key), deepCopyValue(value)));
+        return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object deepCopyValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return deepCopyMap((Map<String, Object>) map);
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.stream().map(PpoConfigComposer::deepCopyValue).toList();
+        }
+        return value;
+    }
+
+    private static boolean pythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 }

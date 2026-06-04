@@ -72,7 +72,7 @@ public class LspToolMetadataProvider implements ToolMetadataProvider {
         cnProps.put("query", Map.of("type", "string", "description", "搜索查询字符串；为空时返回所有可用符号（仅 workspaceSymbol 使用）"));
         cnProps.put("include_declaration", Map.of("type", "boolean", "description", "为 true 时，结果中包含符号的定义位置（默认 true）"));
         cnSchema.put("properties", cnProps);
-        cnSchema.put("required", Collections.singletonList("operation"));
+        cnSchema.put("required", Arrays.asList("operation", "file_path"));
         INPUT_PARAMS.put("cn", cnSchema);
 
         Map<String, Object> enSchema = new LinkedHashMap<>();
@@ -86,7 +86,7 @@ public class LspToolMetadataProvider implements ToolMetadataProvider {
         enProps.put("query", Map.of("type", "string", "description", "Search query string; when empty, returns all available symbols (used by workspaceSymbol only)"));
         enProps.put("include_declaration", Map.of("type", "boolean", "description", "When true, the declaration location itself is included in the results (default: true)"));
         enSchema.put("properties", enProps);
-        enSchema.put("required", Collections.singletonList("operation"));
+        enSchema.put("required", Arrays.asList("operation", "file_path"));
         INPUT_PARAMS.put("en", enSchema);
     }
 

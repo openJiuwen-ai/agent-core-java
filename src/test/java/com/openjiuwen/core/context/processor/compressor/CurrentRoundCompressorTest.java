@@ -24,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link CurrentRoundCompressor}.
  * <p>
- * Ported from Python's {@code test_current_round_compressor.py}.
+ * Mirrors Python's {@code test_current_round_compressor.py} in
+ * {@code tests.unit_tests.core.context_engine.test_current_round_compressor}.
  * <p>
  * Note: The Python tests rely on mocking the Model.invoke call for actual LLM compression.
  * In Java we test the trigger logic and structural behaviour without a real LLM endpoint.
@@ -52,7 +53,7 @@ class CurrentRoundCompressorTest {
 
             @Override
             public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
+                return tools == null ? 0 : tools.size() * returnValue;
             }
         };
     }

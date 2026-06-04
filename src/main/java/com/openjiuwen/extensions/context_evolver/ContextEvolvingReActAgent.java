@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
@@ -300,12 +301,8 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     private void tryRegisterTool(Tool tool) {
         try {
-            Class<?> runnerClass = Class.forName("com.openjiuwen.core.runner.Runner");
-            Object resourceMgr = runnerClass.getMethod("resourceMgr").invoke(null);
-            resourceMgr.getClass()
-                .getMethod("addTool", Tool.class, Object.class)
-                .invoke(resourceMgr, tool, getCard().getId());
-        } catch (ClassNotFoundException | LinkageError e) {
+            Runner.resourceMgr().addTool(tool, null);
+        } catch (LinkageError e) {
             logger.debug("Runner runtime is unavailable; skipping resource-manager registration for {}",
                 tool.getCard().getId());
         } catch (Exception e) {

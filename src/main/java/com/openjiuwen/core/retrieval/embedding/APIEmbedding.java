@@ -33,6 +33,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
+ *
+ * <p>Mirrors Python's {@code APIEmbedding} in
+ * {@code openjiuwen.core.retrieval.embedding.api_embedding}.</p>
  */
 public class APIEmbedding implements Embedding, AutoCloseable {
 
@@ -100,7 +103,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                 this.maxConcurrent,
                 runnable -> {
                     Thread thread = new Thread(runnable);
-                    thread.setName("openjiuwen-embed");
+                    thread.setName("openjiuwen_embed");
                     thread.setDaemon(true);
                     thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
                         @Override
@@ -213,9 +216,12 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                         requestBuilder.build(),
                         HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
-                            "Failed to get embedding after " + attempt + " attempts");
+                    if (attempt >= maxRetries) {
+                        throw RetrievalExceptions.error(
+                                StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                                "Failed to get embedding after " + maxRetries + " attempts");
+                    }
+                    continue;
                 }
                 List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body()));
                 if (dimension == null && !embeddings.isEmpty() && !embeddings.getFirst().isEmpty()) {
@@ -227,9 +233,10 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                     Thread.currentThread().interrupt();
                 }
                 if (attempt >= maxRetries) {
+                    String reason = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
                     throw RetrievalExceptions.error(
                             StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
-                            "Failed to get embedding after " + maxRetries + " attempts");
+                            reason + " (max_retries=" + maxRetries + ")");
                 }
             }
         }

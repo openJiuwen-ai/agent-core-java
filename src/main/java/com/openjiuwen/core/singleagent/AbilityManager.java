@@ -21,13 +21,17 @@ import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -38,6 +42,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Agent Ability Manager.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.single_agent.ability_manager.AbilityManager}.</p>
  *
  * <p>Responsibilities:
  * <ul>
@@ -60,28 +66,40 @@ public class AbilityManager implements ToolRegistry {
      * Add an ability.
      *
      * @param ability the ability card to add (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
+     * @return whether at least one new ability name was added
      */
-    public void add(Object ability) {
+    public AddAbilityResult add(Object ability) {
+        boolean added = false;
         if (ability instanceof List<?> list) {
             for (Object item : list) {
-                addSingle(item);
+                added = addSingle(item) || added;
             }
         } else {
-            addSingle(ability);
+            added = addSingle(ability);
         }
+        return new AddAbilityResult(added);
     }
 
-    private void addSingle(Object ability) {
+    private boolean addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
+            boolean added = !tools.containsKey(toolCard.getName());
             tools.put(toolCard.getName(), toolCard);
+            return added;
         } else if (ability instanceof WorkflowCard wfCard) {
+            boolean added = !workflows.containsKey(wfCard.getName());
             workflows.put(wfCard.getName(), wfCard);
+            return added;
         } else if (ability instanceof AgentCard agentCard) {
+            boolean added = !agents.containsKey(agentCard.getName());
             agents.put(agentCard.getName(), agentCard);
+            return added;
         } else if (ability instanceof McpServerConfig mcpConfig) {
+            boolean added = !mcpServers.containsKey(mcpConfig.getServerName());
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
+            return added;
         } else {
             Loggers.AGENT.warning("Unknown ability type: " + (ability != null ? ability.getClass().getName() : "null"));
+            return false;
         }
     }
 
@@ -184,7 +202,7 @@ public class AbilityManager implements ToolRegistry {
     public List<ToolInfo> listToolInfo(List<String> names, String mcpServerName) {
         List<ToolInfo> toolInfos = new ArrayList<>();
 
-        for (ToolCard toolCard : tools.values()) {
+        for (ToolCard toolCard : prioritizePaidSearch(tools.values())) {
             if (names == null || names.contains(toolCard.getName())) {
                 appendToolInfo(toolInfos, toolCard.toolInfo());
             }
@@ -347,6 +365,27 @@ public class AbilityManager implements ToolRegistry {
                 AgentCallbackEvent.AFTER_TOOL_CALL,
                 AgentCallbackEvent.ON_TOOL_EXCEPTION,
                 () -> {
+                    if (Boolean.TRUE.equals(ctx.getExtra().remove("_skip_tool"))
+                            && ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        ToolCall effectiveToolCall = inputs.getToolCall() != null ? inputs.getToolCall() : toolCall;
+                        Object toolResult = inputs.getToolResult();
+                        ToolMessage toolMessage = inputs.getToolMsg();
+                        if (toolMessage == null) {
+                            toolMessage = ToolMessage.builder()
+                                    .content(String.valueOf(toolResult))
+                                    .toolCallId(effectiveToolCall.getId())
+                                    .build();
+                            inputs.setToolMsg(toolMessage);
+                        }
+                        return new ToolExecutionEntry(
+                                effectiveToolCall,
+                                toolResult,
+                                toolMessage,
+                                ToolExecutionClassification.SUCCESS,
+                                null
+                        );
+                    }
+
                     if (ctx.getInputs() instanceof ToolCallInputs inputs) {
                         if (inputs.getToolName() != null && !inputs.getToolName().isEmpty()) {
                             toolCall.setName(inputs.getToolName());
@@ -388,7 +427,7 @@ public class AbilityManager implements ToolRegistry {
             Tool tool = getToolFromResourceMgr(toolId, tag)
                     .orElseThrow(() -> buildExecutionError(toolCall, "Tool instance not found in resource_mgr: " + toolId));
             try {
-                result = tool.invoke(toolArgs, Map.of());
+                result = tool.invoke(toolArgs, toolKwargs(session));
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
@@ -396,15 +435,7 @@ public class AbilityManager implements ToolRegistry {
                 throw buildExecutionError(toolCall, errorMsg);
             }
         } else if (workflows.containsKey(toolName)) {
-            WorkflowCard workflowCard = workflows.get(toolName);
-            String workflowId = workflowCard.getId() != null ? workflowCard.getId() : workflowCard.getName();
-            try {
-                result = Runner.runWorkflow(workflowId, toolArgs, adaptSubtaskSession(session), null);
-            } catch (Exception e) {
-                String errorMsg = "Workflow execution error: " + e.getMessage();
-                Loggers.AGENT.error(errorMsg);
-                throw buildExecutionError(toolCall, errorMsg);
-            }
+            return executeWorkflowCall(toolCall, toolArgs, session, tag);
         } else if (agents.containsKey(toolName)) {
             AgentCard agentCard = agents.get(toolName);
             String agentId = agentCard.getId() != null ? agentCard.getId() : agentCard.getName();
@@ -423,7 +454,7 @@ public class AbilityManager implements ToolRegistry {
             Tool tool = getToolFromResourceMgr(toolName, tag)
                     .orElseThrow(() -> buildExecutionError(toolCall, "Ability not found in resource_mgr: " + toolName));
             try {
-                result = tool.invoke(toolArgs, Map.of());
+                result = tool.invoke(toolArgs, toolKwargs(session));
                 Loggers.TOOL.info("Tool result summary: " + summarizeForLog(result));
             } catch (Exception e) {
                 String errorMsg = "Tool execution error: " + e.getMessage();
@@ -432,13 +463,101 @@ public class AbilityManager implements ToolRegistry {
             }
         }
 
-        String content = String.valueOf(result);
+        if (result instanceof WorkflowOutput workflowOutput) {
+            result = workflowOutput.getResult();
+        }
+        String content = buildToolMessageContent(result);
         ToolMessage toolMessage = ToolMessage.builder()
                 .content(content)
                 .toolCallId(toolCall.getId())
                 .build();
 
         return new ToolExecutionEntry(toolCall, result, toolMessage, ToolExecutionClassification.SUCCESS, null);
+    }
+
+    /**
+     * Execute a workflow ability with already-normalized inputs.
+     *
+     * <p>Workflow resume can pass an {@code InteractiveInput}; that value cannot
+     * be represented faithfully in {@link ToolCall#getArguments()} because the
+     * field is a JSON string.</p>
+     */
+    public ToolExecutionEntry executeWorkflowCall(ToolCall toolCall, Object toolArgs, Session session, String tag) {
+        String toolName = toolCall.getName();
+        WorkflowCard workflowCard = workflows.get(toolName);
+        if (workflowCard == null) {
+            throw buildExecutionError(toolCall, "Workflow ability not found: " + toolName);
+        }
+
+        String workflowId = workflowCard.getId() != null ? workflowCard.getId() : workflowCard.getName();
+        Object result;
+        try {
+            result = Runner.runWorkflow(workflowId, toolArgs, adaptSubtaskSession(session), null);
+        } catch (Exception e) {
+            String errorMsg = "Workflow execution error: " + e.getMessage();
+            Loggers.AGENT.error(errorMsg);
+            throw buildExecutionError(toolCall, errorMsg);
+        }
+
+        if (result instanceof WorkflowOutput workflowOutput) {
+            if (workflowOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED) {
+                return new ToolExecutionEntry(
+                        toolCall,
+                        workflowOutput,
+                        null,
+                        ToolExecutionClassification.SUCCESS,
+                        null
+                );
+            }
+            result = workflowOutput.getResult();
+        }
+
+        String content = buildToolMessageContent(result);
+        ToolMessage toolMessage = ToolMessage.builder()
+                .content(content)
+                .toolCallId(toolCall.getId())
+                .build();
+
+        return new ToolExecutionEntry(toolCall, result, toolMessage, ToolExecutionClassification.SUCCESS, null);
+    }
+
+    /**
+     * Build the text stored in a tool message from a tool output.
+     *
+     * <p>Mirrors Python's {@code AbilityManager._build_tool_message_content}.
+     * Multimodal payloads can be carried separately by ReActAgent, so the tool
+     * message keeps only the human-readable {@code data.content} value.</p>
+     *
+     * @param result raw tool execution result
+     * @return text content for the LLM tool message
+     */
+    public static String buildToolMessageContent(Object result) {
+        Object data = readBeanValue(result, "getData");
+        Object error = readBeanValue(result, "getError");
+        Object success = readBeanValue(result, "isSuccess");
+
+        if (data instanceof Map<?, ?> dataMap && dataMap.containsKey("content")) {
+            Object content = dataMap.get("content");
+            return content != null ? String.valueOf(content) : "";
+        }
+
+        if (Boolean.FALSE.equals(success) && error != null) {
+            return String.valueOf(error);
+        }
+
+        return String.valueOf(result);
+    }
+
+    private static Object readBeanValue(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException | SecurityException ignored) {
+            return null;
+        }
     }
 
     private static Map<String, Object> parseToolArguments(ToolCall toolCall) {
@@ -456,8 +575,12 @@ public class AbilityManager implements ToolRegistry {
         }
     }
 
+    private static Map<String, Object> toolKwargs(Session session) {
+        return session != null ? Map.of("session", session) : Map.of();
+    }
+
     private static ToolExecutionClassification classifyException(Throwable throwable) {
-        return findInterruptedException(throwable).isPresent()
+        return findInterruptSignal(throwable).isPresent()
                 ? ToolExecutionClassification.INTERRUPT_PENDING_CANDIDATE
                 : ToolExecutionClassification.ERROR;
     }
@@ -482,10 +605,16 @@ public class AbilityManager implements ToolRegistry {
     }
 
     private static Optional<InterruptedException> findInterruptedException(Throwable throwable) {
+        return findInterruptSignal(throwable)
+                .filter(InterruptedException.class::isInstance)
+                .map(InterruptedException.class::cast);
+    }
+
+    private static Optional<Throwable> findInterruptSignal(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
-            if (current instanceof InterruptedException interruptedException) {
-                return Optional.of(interruptedException);
+            if (current instanceof InterruptedException || current instanceof AgentInterrupt) {
+                return Optional.of(current);
             }
             current = current.getCause();
         }
@@ -547,10 +676,44 @@ public class AbilityManager implements ToolRegistry {
         INTERRUPT_PENDING_CANDIDATE
     }
 
+    /**
+     * Result returned by {@link #add(Object)}.
+     *
+     * @param added true when a new ability name was added
+     */
+    public record AddAbilityResult(boolean added) {
+    }
+
     private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {
         if (toolInfoObj instanceof ToolInfo toolInfo) {
             toolInfos.add(toolInfo);
         }
+    }
+
+    private static List<ToolCard> prioritizePaidSearch(Collection<ToolCard> toolCards) {
+        List<ToolCard> ordered = new ArrayList<>(toolCards);
+        int paidIndex = -1;
+        int freeIndex = -1;
+        for (int i = 0; i < ordered.size(); i++) {
+            String name = ordered.get(i).getName();
+            if ("paid_search".equals(name)) {
+                paidIndex = i;
+            } else if ("free_search".equals(name)) {
+                freeIndex = i;
+            }
+        }
+        if (paidIndex >= 0 && freeIndex >= 0 && paidIndex > freeIndex) {
+            ToolCard paid = ordered.remove(paidIndex);
+            int adjustedFreeIndex = -1;
+            for (int i = 0; i < ordered.size(); i++) {
+                if ("free_search".equals(ordered.get(i).getName())) {
+                    adjustedFreeIndex = i;
+                    break;
+                }
+            }
+            ordered.add(Math.max(adjustedFreeIndex, 0), paid);
+        }
+        return ordered;
     }
 
     private void appendMcpToolInfos(List<ToolInfo> toolInfos, List<String> names, McpServerConfig mcpServer) {

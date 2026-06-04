@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -287,20 +288,24 @@ public class SimpleEval {
             Object generatedArgs = parsePossibleJson(generated.get("arguments"));
             Object expectedArgs = parsePossibleJson(expectedMap.get("arguments"));
 
-            if (isEmptyArguments(expectedArgs) && isEmptyArguments(generatedArgs)) {
+            if (isPythonFalsy(expectedArgs) && isPythonFalsy(generatedArgs)) {
                 score += 0.7d;
                 maxScore += 0.7d;
-            } else if (expectedArgs instanceof Map<?, ?> expectedParams) {
-                maxScore += 0.7d;
-                int expectedSize = expectedParams.isEmpty() ? 1 : expectedParams.size();
-                double perKeyScore = 0.7d / expectedSize;
-                for (Map.Entry<?, ?> entry : expectedParams.entrySet()) {
-                    Object key = entry.getKey();
-                    if (generatedArgs instanceof Map<?, ?> generatedParams
-                            && generatedParams.containsKey(key)
-                            && compareParameterValues(generatedParams.get(key), entry.getValue())) {
-                        score += perKeyScore;
+            } else if (!isPythonFalsy(expectedArgs)) {
+                if (expectedArgs instanceof Map<?, ?> expectedParams) {
+                    maxScore += 0.7d;
+                    int expectedSize = expectedParams.isEmpty() ? 1 : expectedParams.size();
+                    double perKeyScore = 0.7d / expectedSize;
+                    for (Map.Entry<?, ?> entry : expectedParams.entrySet()) {
+                        Object key = entry.getKey();
+                        if (generatedArgs instanceof Map<?, ?> generatedParams
+                                && generatedParams.containsKey(key)
+                                && compareParameterValues(generatedParams.get(key), entry.getValue())) {
+                            score += perKeyScore;
+                        }
                     }
+                } else {
+                    return 0.0d;
                 }
             } else {
                 maxScore += 0.7d;
@@ -443,15 +448,24 @@ Respond with only a number between 0 and 100. Do not include explainations.
         return null;
     }
 
-    private boolean isEmptyArguments(Object arguments) {
-        if (arguments == null) {
+    private boolean isPythonFalsy(Object value) {
+        if (value == null) {
             return true;
         }
-        if (arguments instanceof Map<?, ?> map) {
+        if (value instanceof Boolean bool) {
+            return !bool;
+        }
+        if (value instanceof Number number) {
+            return Double.compare(number.doubleValue(), 0.0d) == 0;
+        }
+        if (value instanceof CharSequence text) {
+            return text.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
             return map.isEmpty();
         }
-        if (arguments instanceof String text) {
-            return text.isBlank();
+        if (value instanceof Collection<?> collection) {
+            return collection.isEmpty();
         }
         return false;
     }

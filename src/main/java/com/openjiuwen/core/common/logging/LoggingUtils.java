@@ -23,6 +23,8 @@ import java.util.Map;
  * <p>
  * Uses {@link ThreadLocal} (or {@link InheritableThreadLocal}) to maintain trace/session IDs
  * across threads — the Java equivalent of Python's {@code contextvars.ContextVar}.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.common.logging.utils}.</p>
  */
 public final class LoggingUtils {
 
@@ -37,6 +39,13 @@ public final class LoggingUtils {
             @Override
             protected String initialValue() {
                 return DEFAULT_TRACE_ID;
+            }
+        };
+    private static final InheritableThreadLocal<String> MEMBER_ID_CONTEXT =
+        new InheritableThreadLocal<>() {
+            @Override
+            protected String initialValue() {
+                return "";
             }
         };
 
@@ -57,6 +66,22 @@ public final class LoggingUtils {
     /** Clear the current thread's trace ID (useful for thread-pool cleanup). */
     public static void clearSessionId() {
         TRACE_ID_CONTEXT.remove();
+    }
+
+    /** Set member_id in current context for multi-agent log correlation. */
+    public static void setMemberId(String memberId) {
+        MEMBER_ID_CONTEXT.set(memberId != null ? memberId : "");
+    }
+
+    /** Get member_id from current context. */
+    public static String getMemberId() {
+        String memberId = MEMBER_ID_CONTEXT.get();
+        return memberId != null ? memberId : "";
+    }
+
+    /** Clear the current thread's member ID. */
+    public static void clearMemberId() {
+        MEMBER_ID_CONTEXT.remove();
     }
 
     /**

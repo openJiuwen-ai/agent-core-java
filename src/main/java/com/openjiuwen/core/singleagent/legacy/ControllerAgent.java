@@ -75,4 +75,32 @@ public class ControllerAgent extends BaseAgent {
         agentSessionApi.preRun(inputs);
         return agentSessionApi;
     }
+
+    /**
+     * Clear the default session.
+     *
+     * <p>Mirrors Python's {@code ControllerAgent.clear_session()} default
+     * {@code session_id="default_session"} behavior.</p>
+     */
+    public void clearSession() {
+        clearSession("default_session");
+    }
+
+    /**
+     * Clear controller-specific and runner-managed session resources.
+     *
+     * <p>Mirrors Python's {@code ControllerAgent.clear_session(session_id)}:
+     * call parent clear, clear context state for the session, then clean the
+     * controller conversation subscription.</p>
+     *
+     * @param sessionId session ID to clear
+     */
+    @Override
+    public void clearSession(String sessionId) {
+        super.clearSession(sessionId);
+        getContextEngine().clearContextBySession(sessionId);
+        if (controller != null) {
+            controller.cleanupConversation(sessionId);
+        }
+    }
 }

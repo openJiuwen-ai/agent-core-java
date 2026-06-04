@@ -71,6 +71,15 @@ public final class MessageEnvelope {
     public boolean isP2p() {
         return recipient != null;
     }
+
+    /**
+     * Python-style alias for {@link #isP2p()}.
+     *
+     * @return true if recipient is specified
+     */
+    public boolean isP2P() {
+        return isP2p();
+    }
     
     /**
      * Check if this is a Pub-Sub message.
@@ -79,6 +88,15 @@ public final class MessageEnvelope {
      */
     public boolean isPubsub() {
         return topicId != null;
+    }
+
+    /**
+     * Python-style alias for {@link #isPubsub()}.
+     *
+     * @return true if topicId is specified
+     */
+    public boolean isPubSub() {
+        return isPubsub();
     }
     
     @Override

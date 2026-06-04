@@ -13,6 +13,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -60,13 +61,32 @@ class LocalShellOperationTest {
     }
 
     private static boolean isPythonAvailable() {
+        return isCommandAvailable("python");
+    }
+
+    private static boolean isCommandAvailable(String command) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return false;
-        String pythonExe = isWindows() ? "python.exe" : "python";
+        String[] candidates = isWindows()
+                ? new String[]{command + ".exe", command + ".cmd", command + ".bat"}
+                : new String[]{command};
         for (String dir : pathEnv.split(File.pathSeparator)) {
-            File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute())
-                return true;
+            String trimmedDir = dir.trim();
+            if (trimmedDir.isEmpty()) {
+                continue;
+            }
+            for (String candidate : candidates) {
+                Path executable = Path.of(trimmedDir, candidate);
+                boolean isExecutable = Files.isExecutable(executable);
+                boolean isRunnableFile = Files.exists(executable)
+                        && Files.isRegularFile(executable)
+                        && (isWindows() || isExecutable);
+                // Windows App Execution Alias entries like python.exe may report
+                // executable=true while regular-file checks stay false.
+                if (isRunnableFile || (isWindows() && isExecutable)) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -197,10 +217,11 @@ class LocalShellOperationTest {
     @DisplayName("Shell list tools")
     void testShellListTools() {
         var tools = shell().listTools();
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
         var toolNames = tools.stream().map(t -> t.getName()).toList();
         assertTrue(toolNames.contains("executeCmd"));
         assertTrue(toolNames.contains("executeCmdStream"));
+        assertTrue(toolNames.contains("executeCmdBackground"));
     }
 
     @Test

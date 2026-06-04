@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.memory.lite.MemoryToolContext;
+import com.openjiuwen.core.memory.lite.MemoryToolOps;
 import com.openjiuwen.core.sysop.SysOperation;
 
 import java.util.*;
@@ -25,6 +27,10 @@ public class ReadMemoryTool extends AbstractHarnessTool {
         this.memoryContext = memoryContext;
     }
 
+    public ReadMemoryTool(String language, String agentId, Object memoryContext) {
+        this(language, agentId, memoryContext, null);
+    }
+
     private static ToolCard buildCard(String language, String agentId) {
         String id = "ReadMemoryTool_" + (agentId != null ? agentId : UUID.randomUUID().toString().substring(0, 8));
         String desc = "cn".equals(language) ? "读取记忆内容。" : "Read memory content.";
@@ -37,10 +43,29 @@ public class ReadMemoryTool extends AbstractHarnessTool {
         if (path == null || path.isBlank()) {
             return new ToolOutput(false, null, "path is required");
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
-        result.put("path", path);
-        result.put("content", "");
-        return new ToolOutput(true, result, null);
+        Integer offset = parseInteger(inputs.get("offset"));
+        Integer limit = parseInteger(inputs.get("limit"));
+
+        Map<String, Object> result;
+        if (memoryContext instanceof MemoryToolContext ctx) {
+            result = MemoryToolOps.readMemoryWithContext(ctx, path, offset, limit).join();
+        } else {
+            result = new LinkedHashMap<>();
+            result.put("success", false);
+            result.put("path", path);
+            result.put("content", "");
+            result.put("error", "Memory context not available");
+        }
+        return new ToolOutput(Boolean.TRUE.equals(result.get("success")), result, null);
+    }
+
+    private Integer parseInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(value));
     }
 }

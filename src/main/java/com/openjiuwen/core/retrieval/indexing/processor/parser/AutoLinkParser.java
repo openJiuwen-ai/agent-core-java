@@ -15,10 +15,13 @@ import java.util.regex.Pattern;
 
 /**
  * URL parser router.
+ *
+ * <p>Mirrors Python's {@code AutoLinkParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.auto_link_parser}.
  */
 public class AutoLinkParser extends Parser {
 
-    public static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://.+", Pattern.CASE_INSENSITIVE);
+    public static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://\\S+", Pattern.CASE_INSENSITIVE);
 
     private final List<Route> routes;
 
@@ -49,6 +52,9 @@ public class AutoLinkParser extends Parser {
 
     @Override
     public boolean supports(String doc) {
+        if (doc == null || !HTTP_URL_PATTERN.matcher(doc.trim()).matches()) {
+            return false;
+        }
         for (Route route : routes) {
             if (route.matches(doc)) {
                 return true;

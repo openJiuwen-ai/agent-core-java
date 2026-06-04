@@ -17,6 +17,9 @@ import java.util.Map;
 
 /**
  * Pure vector retriever.
+ *
+ * <p>Mirrors Python's {@code VectorRetriever} in
+ * {@code openjiuwen.core.retrieval.retriever.vector_retriever}.</p>
  */
 public class VectorRetriever extends AbstractStoreBackedRetriever {
 

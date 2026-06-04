@@ -2,6 +2,10 @@
 
 package com.openjiuwen.agent_teams.monitor;
 
+import com.openjiuwen.agent_teams.agent.TeamMember;
+
+import java.util.Map;
+
 /**
  * Team member information.
  * 
@@ -100,7 +104,43 @@ public class MemberInfo {
     }
     
     public static MemberInfo fromInternal(Object member) {
-        // Placeholder: convert internal member model
-        return new MemberInfo("", "", "", "active", "member");
+        if (member instanceof TeamMember row) {
+            MemberInfo info = new MemberInfo(
+                    row.getMemberName(),
+                    row.getTeamName(),
+                    row.getDisplayName(),
+                    row.getStatus() != null ? row.getStatus().name() : null,
+                    null
+            );
+            info.setDesc(row.getDesc());
+            info.setExecutionStatus(row.getExecutionStatus() != null ? row.getExecutionStatus().name() : null);
+            return info;
+        }
+        if (member instanceof Map<?, ?> map) {
+            MemberInfo info = new MemberInfo(
+                    stringValue(firstPresent(map, "member_name", "memberName", "member_id", "memberId")),
+                    stringValue(firstPresent(map, "team_name", "teamName", "team_id", "teamId")),
+                    stringValue(firstPresent(map, "display_name", "displayName", "name")),
+                    stringValue(firstPresent(map, "status")),
+                    stringValue(firstPresent(map, "mode"))
+            );
+            info.setDesc(stringValue(firstPresent(map, "desc", "description")));
+            info.setExecutionStatus(stringValue(firstPresent(map, "execution_status", "executionStatus")));
+            return info;
+        }
+        return null;
+    }
+
+    private static Object firstPresent(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            if (map.containsKey(key)) {
+                return map.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : "";
     }
 }

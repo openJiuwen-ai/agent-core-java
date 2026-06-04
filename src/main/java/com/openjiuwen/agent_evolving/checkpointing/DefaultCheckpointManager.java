@@ -4,7 +4,9 @@
 
 package com.openjiuwen.agent_evolving.checkpointing;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,6 +24,7 @@ public class DefaultCheckpointManager implements CheckpointManager {
     private final String checkpointVersion;
     private final int saveEveryNEpochs;
     private final boolean saveOnImprove;
+    private final Map<String, List<PendingChange>> pending = new HashMap<>();
 
     /**
      * Create with default settings.
@@ -57,6 +60,34 @@ public class DefaultCheckpointManager implements CheckpointManager {
      */
     public String getRunId() {
         return runId;
+    }
+
+    public void addPending(String operatorId, PendingChange change) {
+        pending.computeIfAbsent(operatorId, ignored -> new ArrayList<>()).add(change);
+    }
+
+    public List<PendingChange> getPending(String operatorId) {
+        return new ArrayList<>(pending.getOrDefault(operatorId, List.of()));
+    }
+
+    public int commitPending(String operatorId, EvolutionStore store) {
+        List<PendingChange> pendingList = pending.remove(operatorId);
+        if (pendingList == null || pendingList.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (PendingChange change : pendingList) {
+            count += change.getPayload().size();
+        }
+        return count;
+    }
+
+    public void discardPending(String operatorId, String changeId) {
+        List<PendingChange> pendingList = pending.get(operatorId);
+        if (pendingList == null) {
+            return;
+        }
+        pendingList.removeIf(change -> change.getChangeId().equals(changeId));
     }
 
     @Override
@@ -232,7 +263,7 @@ public class DefaultCheckpointManager implements CheckpointManager {
         try {
             return invokeMethod(obj, "get" + capitalize(property), type);
         } catch (Exception e) {
-            return null;
+            return missingValue();
         }
     }
 
@@ -251,8 +282,12 @@ public class DefaultCheckpointManager implements CheckpointManager {
             }
             return (T) method.invoke(obj, params);
         } catch (Exception e) {
-            return null;
+            return missingValue();
         }
+    }
+
+    private <T> T missingValue() {
+        return java.util.Optional.<T>empty().orElse(null);
     }
 
     private java.lang.reflect.Method findMethod(Class<?> type, String methodName, Class<?>[] parameterTypes)

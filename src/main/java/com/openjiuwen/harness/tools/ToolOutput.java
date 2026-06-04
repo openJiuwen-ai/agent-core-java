@@ -26,6 +26,10 @@ public class ToolOutput {
         return success;
     }
 
+    public boolean getSuccess() {
+        return success;
+    }
+
     public Object getData() {
         return data;
     }

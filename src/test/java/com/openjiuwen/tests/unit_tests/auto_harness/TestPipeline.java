@@ -1,6 +1,7 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 package com.openjiuwen.tests.unit_tests.auto_harness;
 
+import com.openjiuwen.auto_harness.contexts.BaseExecutionContext;
 import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.pipelines.BasePipeline;
 import com.openjiuwen.auto_harness.pipelines.ExtendedEvolvePipeline;
@@ -20,10 +21,13 @@ import com.openjiuwen.auto_harness.stages.PlanStage;
 import com.openjiuwen.auto_harness.stages.PublishPrStage;
 import com.openjiuwen.auto_harness.stages.SessionStage;
 import com.openjiuwen.auto_harness.stages.VerifyStage;
+import com.openjiuwen.core.session.stream.OutputSchema;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -50,7 +54,21 @@ class TestPipeline {
 
         @Override
         public StageResult run(Object context) {
-            return new StageResult();
+            Iterator<Object> events = stream(context);
+            while (events.hasNext()) {
+                Object event = events.next();
+                if (event instanceof StageResult result) {
+                    return result;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Mirrors Python's {@code _DummyStage.stream}.
+         */
+        public Iterator<Object> stream(Object context) {
+            return List.of((Object) new StageResult()).iterator();
         }
     }
 
@@ -67,6 +85,13 @@ class TestPipeline {
         @Override
         public List<String> expectedOutputs() {
             return List.of("custom_artifact");
+        }
+
+        /**
+         * Mirrors Python's {@code _DummyPipeline.stream}.
+         */
+        public Iterator<Object> stream(BaseExecutionContext ctx) {
+            return List.of((Object) BaseExecutionContext.message("ok")).iterator();
         }
     }
 
@@ -182,5 +207,24 @@ class TestPipeline {
 
         PipelineSpec spec = pipelineRegistry.require("custom_pipeline");
         assertEquals(DummyPipeline.class, spec.getPipelineClass());
+    }
+
+    @Test
+    void testDummyStageStreamMatchesPythonHelper() {
+        Iterator<Object> events = new DummyStage().stream(null);
+
+        assertInstanceOf(StageResult.class, events.next());
+        assertFalse(events.hasNext());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testDummyPipelineStreamMatchesPythonHelper() {
+        Iterator<Object> events = new DummyPipeline().stream(null);
+
+        OutputSchema event = assertInstanceOf(OutputSchema.class, events.next());
+        assertEquals("message", event.getType());
+        assertEquals("ok", ((Map<String, Object>) event.getPayload()).get("content"));
+        assertFalse(events.hasNext());
     }
 }

@@ -136,7 +136,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         Pattern summaryPattern = Pattern.compile("<summary>((?:(?!</summary>).)*?)</summary>", Pattern.DOTALL);
         Matcher summaryMatcher = summaryPattern.matcher(content);
         String parseSummary = content;
-        if (summaryMatcher.find()) {
+        while (summaryMatcher.find()) {
             parseSummary = summaryMatcher.group(1).trim();
         }
         return parseSummary;
@@ -144,7 +144,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
 
     private String buildBadCaseString(List<EvaluatedCase> cases) {
         PromptTemplate badCaseTemplate = PromptTemplateUtils.getTemplate(template, "FORMAT_BAD_CASE_TEMPLATE");
-        StringBuilder sb = new StringBuilder();
+        List<String> formattedCases = new ArrayList<>();
         for (EvaluatedCase evaluatedCase : cases) {
             Map<String, Object> formatParams = new HashMap<>();
             formatParams.put("question", evaluatedCase.getInputs() != null ? evaluatedCase.getInputs().toString() : "");
@@ -152,13 +152,14 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
             formatParams.put("answer", evaluatedCase.getAnswer() != null ? evaluatedCase.getAnswer().toString() : "");
             formatParams.put("reason", evaluatedCase.getReason() != null ? evaluatedCase.getReason() : "");
 
+            StringBuilder sb = new StringBuilder();
             var messages = badCaseTemplate.format(formatParams).toMessages();
             for (var msg : messages) {
                 sb.append(msg.getContentAsString());
             }
-            sb.append("\n");
+            formattedCases.add(sb.toString());
         }
-        return sb.toString();
+        return String.join("\n", formattedCases);
     }
 
     private void validateInput(String prompt, List<EvaluatedCase> cases) {

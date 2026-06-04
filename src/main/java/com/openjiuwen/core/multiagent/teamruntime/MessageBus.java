@@ -60,7 +60,7 @@ public class MessageBus {
     public MessageBus(MessageBusConfig config, TeamRuntime runtime) {
         this.config = config;
         this.teamId = config.getTeamId().orElse("default");
-        this.subscriptionManager = new SubscriptionManager();
+        this.subscriptionManager = runtime != null ? runtime.getSubscriptionManager() : new SubscriptionManager();
         this.router = new MessageRouter(subscriptionManager, runtime);
         this.runtime = runtime;
         
@@ -240,5 +240,53 @@ public class MessageBus {
     public void setRuntime(TeamRuntime runtime) {
         this.runtime = runtime;
         this.router.setRuntime(runtime);
+    }
+
+    /**
+     * Add a topic subscription for an agent.
+     *
+     * @param agentId agent ID
+     * @param topic topic pattern
+     */
+    public void addSubscription(String agentId, String topic) {
+        subscriptionManager.subscribe(agentId, topic);
+    }
+
+    /**
+     * Remove a topic subscription for an agent.
+     *
+     * @param agentId agent ID
+     * @param topic topic pattern
+     */
+    public void removeSubscription(String agentId, String topic) {
+        subscriptionManager.unsubscribe(agentId, topic);
+    }
+
+    /**
+     * Remove all subscriptions for an agent.
+     *
+     * @param agentId agent ID
+     */
+    public void removeAllSubscriptions(String agentId) {
+        subscriptionManager.unsubscribeAll(agentId);
+    }
+
+    /**
+     * List subscriptions for debugging and introspection.
+     *
+     * @param agentId optional agent ID filter
+     * @return subscription snapshot
+     */
+    public Map<String, Object> listSubscriptions(String agentId) {
+        return subscriptionManager.listSubscriptions(agentId);
+    }
+
+    /**
+     * Return the total number of topic subscriptions.
+     *
+     * @return subscription count
+     */
+    public int getSubscriptionCount() {
+        return subscriptionManager.getSubscriptionCount();
     }
 }

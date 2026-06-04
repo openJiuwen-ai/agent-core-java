@@ -25,6 +25,9 @@ import java.util.Map;
 
 /**
  * PDF parser with optional image caption extraction.
+ *
+ * <p>Mirrors Python's {@code PDFParser} in
+ * {@code openjiuwen.core.retrieval.indexing.processor.parser.pdf_parser}.
  */
 public class PDFParser extends Parser {
 
@@ -60,7 +63,7 @@ public class PDFParser extends Parser {
                 pageNum++;
             }
             if (llmClient != null && !images.isEmpty()) {
-                List<String> captions = new ImageCaptioner(llmClient).captionImages(images);
+                List<String> captions = createImageCaptioner(llmClient).captionImages(images);
                 for (String caption : captions) {
                     if (caption != null && !caption.isBlank()) {
                         content.add(caption);
@@ -72,6 +75,10 @@ public class PDFParser extends Parser {
         } catch (IOException ex) {
             return null;
         }
+    }
+
+    protected ImageCaptioner createImageCaptioner(BaseModelClient llmClient) {
+        return new ImageCaptioner(llmClient);
     }
 
     @Override

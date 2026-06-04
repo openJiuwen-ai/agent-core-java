@@ -4,46 +4,65 @@
 
 package com.openjiuwen.system_tests.memory;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Memory quality tests.
- * <p>
  * Mirrors Python's {@code test_memory_quality.py} in
  * {@code tests/system_tests/memory/test_memory_quality.py}.
+ *
+ * <p>The Python class is decorated with {@code @unittest.skip("skip system test")}.
+ * This Java translation keeps one disabled test for every Python test method so
+ * the mapping and skip semantics remain explicit.</p>
  */
+@Disabled("Mirrors Python @unittest.skip(\"skip system test\")")
 public class TestMemoryQuality {
 
-    @Nested
-    @DisplayName("Quality tests")
-    class QualityTests {
+    @Test
+    void testVariable01() {
+    }
 
-        @Test
-        @DisplayName("Test memory quality score placeholder")
-        void testMemoryQualityScore() {
-            // Placeholder: Memory quality score test
-            
-            assertThat(true).isTrue();
-        }
+    @Test
+    void testVariable02() {
+    }
 
-        @Test
-        @DisplayName("Test memory relevance threshold")
-        void testMemoryRelevanceThreshold() {
-            double threshold = 0.5;
-            
-            assertThat(threshold).isGreaterThan(0.0);
-        }
+    @Test
+    void testUserMemBase() {
+    }
 
-        @Test
-        @DisplayName("Test memory ranking")
-        void testMemoryRanking() {
-            // Placeholder: Memory ranking test
-            
-            assertThat(true).isTrue();
-        }
+    @Test
+    void testUserMemCheckNewConflict() {
+    }
+
+    @Test
+    void testUserMemNotSelf() {
+    }
+
+    @Test
+    void testUserMemUpdate() {
+    }
+
+    @Test
+    void testUserMemReference() {
+    }
+
+    @Test
+    void testUserMemEpisodic() {
+    }
+
+    @Test
+    void testUserMemEpisodicConflictReal() {
+    }
+
+    @Test
+    void testUserMemEpisodicConflictFalse() {
+    }
+
+    @Test
+    void testUserMemSemantic() {
+    }
+
+    @Test
+    void testUserMemMixed() {
     }
 }

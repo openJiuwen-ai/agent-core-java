@@ -2,6 +2,10 @@
 
 package com.openjiuwen.agent_teams.monitor;
 
+import com.openjiuwen.agent_teams.tools.Team;
+
+import java.util.Map;
+
 /**
  * Team basic information.
  * 
@@ -78,7 +82,52 @@ public class TeamInfo {
     }
     
     public static TeamInfo fromInternal(Object team) {
-        // Placeholder: convert internal team model
-        return new TeamInfo("", "", "", "", System.currentTimeMillis());
+        if (team instanceof Team row) {
+            return new TeamInfo(
+                    row.getTeamName(),
+                    row.getDisplayName(),
+                    row.getLeaderMemberName(),
+                    row.getDesc(),
+                    row.getCreated() != null ? row.getCreated() : 0L
+            );
+        }
+        if (team instanceof Map<?, ?> map) {
+            String teamName = stringValue(firstPresent(map, "team_name", "teamName", "team_id", "teamId"));
+            return new TeamInfo(
+                    teamName,
+                    stringValue(firstPresent(map, "display_name", "displayName", "name")),
+                    stringValue(firstPresent(map, "leader_member_name", "leaderMemberName", "leader_id", "leaderId")),
+                    stringValue(firstPresent(map, "desc", "description")),
+                    longValue(firstPresent(map, "created", "created_at", "createdAt"))
+            );
+        }
+        return null;
+    }
+
+    private static Object firstPresent(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            if (map.containsKey(key)) {
+                return map.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : "";
+    }
+
+    private static long longValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value != null) {
+            try {
+                return Long.parseLong(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 }

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.drunner.remote_client;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.DistributedRunner;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
@@ -22,6 +24,9 @@ import java.util.concurrent.CancellationException;
 
 /**
  * MQ-backed remote client.
+ *
+ * <p>Mirrors Python's {@code MqRemoteClient} in
+ * {@code openjiuwen.core.runner.drunner.remote_client.mq_remote_clent}.</p>
  */
 public class MqRemoteClient implements RemoteClient {
 
@@ -41,7 +46,11 @@ public class MqRemoteClient implements RemoteClient {
         if (started) {
             return;
         }
-        DistributedRunner.ensureStarted();
+        if (!DistributedRunner.isStarted()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.DIST_MESSAGE_QUEUE_CLIENT_START_ERROR,
+                    "reason", "reply topic not initialized");
+        }
         this.mq = DistributedRunner.messageQueue();
         this.replySubscription = DistributedRunner.replySubscription();
         this.started = true;
@@ -65,6 +74,11 @@ public class MqRemoteClient implements RemoteClient {
         } catch (CancellationException e) {
             logger.info("[MqRemoteClient] invoke {} cancelled, sending STOP", messageId);
             sendStopMessage(messageId);
+            throw e;
+        } catch (InterruptedException e) {
+            logger.info("[MqRemoteClient] invoke {} interrupted, sending STOP", messageId);
+            sendStopMessage(messageId);
+            Thread.currentThread().interrupt();
             throw e;
         } finally {
             replySubscription.unregisterCollector(messageId, config.getId(), null);

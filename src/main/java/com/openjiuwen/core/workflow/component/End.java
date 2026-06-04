@@ -7,7 +7,9 @@ package com.openjiuwen.core.workflow.component;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 
@@ -26,7 +28,7 @@ import java.util.regex.Pattern;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
  */
-public class End extends WorkflowComponent {
+public class End extends WorkflowComponent implements Vertex.MixModeAware {
 
     private static final Pattern TEMPLATE_PATTERN = Pattern.compile("(\\{\\{[^}]+\\}\\})");
 
@@ -34,12 +36,16 @@ public class End extends WorkflowComponent {
     private final String template;
     private final List<String> segments;
     private final List<Boolean> isVariable;
+    private final TemplateProcessor templateProcessor;
+    private final Object batchRenderLock = new Object();
+    private TemplateBatchProcessor batchTemplate;
     private boolean mix = false;
 
     public End(EndConfig conf) {
         if (conf != null) {
             this.conf = conf;
             this.template = conf.getResponseTemplate();
+            this.templateProcessor = new TemplateProcessor(template);
             this.segments = splitTemplate(template);
             this.isVariable = new ArrayList<>();
             for (int i = 0; i < segments.size(); i++) {
@@ -54,6 +60,7 @@ public class End extends WorkflowComponent {
         } else {
             this.conf = null;
             this.template = null;
+            this.templateProcessor = null;
             this.segments = null;
             this.isVariable = null;
         }
@@ -61,7 +68,7 @@ public class End extends WorkflowComponent {
 
     @SuppressWarnings("unchecked")
     public End(Map<String, Object> confMap) {
-        this(confMap != null ? EndConfig.fromMap(confMap) : null);
+        this(confMap != null && !confMap.isEmpty() ? EndConfig.fromMap(confMap) : null);
     }
 
     public End() {
@@ -73,8 +80,13 @@ public class End extends WorkflowComponent {
      * <p>
      * Mirrors Python's {@code End.set_mix()}.
      */
+    @Override
     public void setMix() {
         this.mix = true;
+        if (templateProcessor != null) {
+            templateProcessor.setDataSourceCount(2);
+            templateProcessor.reset();
+        }
     }
 
     public boolean isMix() {
@@ -86,8 +98,7 @@ public class End extends WorkflowComponent {
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-            String rendered = renderTemplate(template, inputsMap);
-            return Map.of("response", rendered);
+            return render(inputsMap, session);
         }
         if (inputs != null) {
             if (inputs instanceof Map) {
@@ -111,33 +122,19 @@ public class End extends WorkflowComponent {
         List<Object> frames = new ArrayList<>();
 
         if (template != null) {
-            int chunkIndex = 0;
-            for (int i = 0; i < segments.size(); i++) {
-                String seg = segments.get(i);
-                Object data;
-                if (isVariable.get(i)) {
-                    data = getNestedValue(seg, inputsMap);
-                } else {
-                    data = seg;
+            Iterator<Map<String, Object>> rendered = templateProcessor.renderStream(inputsMap, session);
+            return new Iterator<>() {
+                @Override
+                public boolean hasNext() {
+                    return rendered.hasNext();
                 }
-                if (data instanceof Iterator<?> iterator) {
-                    while (iterator.hasNext()) {
-                        Map<String, Object> frame = new HashMap<>();
-                        frame.put("type", Constant.END_NODE_STREAM);
-                        frame.put("index", chunkIndex++);
-                        frame.put("payload", Map.of("response", iterator.next()));
-                        frames.add(frame);
-                    }
-                    continue;
+
+                @Override
+                public Object next() {
+                    Map<String, Object> frame = rendered.next();
+                    return buildTemplateFrame(((Number) frame.get("index")).intValue(), frame.get("data"));
                 }
-                if (data != null) {
-                    Map<String, Object> frame = new HashMap<>();
-                    frame.put("type", Constant.END_NODE_STREAM);
-                    frame.put("index", chunkIndex++);
-                    frame.put("payload", Map.of("response", data));
-                    frames.add(frame);
-                }
-            }
+            };
         } else {
             if (inputsMap != null) {
                 for (Map.Entry<String, Object> entry : inputsMap.entrySet()) {
@@ -153,7 +150,7 @@ public class End extends WorkflowComponent {
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
         if (template != null) {
-            return templateTransformIterator(inputsMap);
+            return templateTransformIterator(inputsMap, session);
         }
         return outputTransformIterator(inputsMap);
     }
@@ -163,8 +160,7 @@ public class End extends WorkflowComponent {
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-            String rendered = renderTemplate(template, materializeStreamingInputs(inputsMap));
-            return Map.of("response", rendered);
+            return render(inputsMap, session);
         }
         if (inputs instanceof Map) {
             List<Object> chunks = new ArrayList<>();
@@ -205,65 +201,18 @@ public class End extends WorkflowComponent {
         return new OutputSchema(Constant.END_NODE_STREAM, index, Map.of("response", data));
     }
 
-    private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap) {
+    private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap, NodeSessionApi session) {
+        Iterator<Map<String, Object>> rendered = templateProcessor.renderStream(inputsMap, session);
         return new Iterator<>() {
-            private int segmentIndex = 0;
-            private int chunkIndex = 0;
-            private Iterator<?> currentIterator;
-            private Object nextFrame;
-            private boolean prepared = false;
-
             @Override
             public boolean hasNext() {
-                prepareNext();
-                return nextFrame != null;
+                return rendered.hasNext();
             }
 
             @Override
             public Object next() {
-                if (!hasNext()) {
-                    throw new java.util.NoSuchElementException();
-                }
-                Object current = nextFrame;
-                nextFrame = null;
-                prepared = false;
-                return current;
-            }
-
-            private void prepareNext() {
-                if (prepared) {
-                    return;
-                }
-                prepared = true;
-                nextFrame = null;
-
-                while (true) {
-                    if (currentIterator != null) {
-                        if (currentIterator.hasNext()) {
-                            nextFrame = buildTemplateFrame(chunkIndex++, currentIterator.next());
-                            return;
-                        }
-                        currentIterator = null;
-                    }
-
-                    if (segmentIndex >= segments.size()) {
-                        return;
-                    }
-
-                    int currentSegmentIndex = segmentIndex++;
-                    String seg = segments.get(currentSegmentIndex);
-                    Object data = isVariable.get(currentSegmentIndex)
-                            ? getNestedValue(seg, inputsMap)
-                            : seg;
-                    if (data instanceof Iterator<?> iterator) {
-                        currentIterator = iterator;
-                        continue;
-                    }
-                    if (data != null) {
-                        nextFrame = buildTemplateFrame(chunkIndex++, data);
-                        return;
-                    }
-                }
+                Map<String, Object> frame = rendered.next();
+                return buildTemplateFrame(((Number) frame.get("index")).intValue(), frame.get("data"));
             }
         };
     }
@@ -331,6 +280,72 @@ public class End extends WorkflowComponent {
     }
 
     // ==================== Template rendering ====================
+
+    private Object render(Map<String, Object> inputs, NodeSessionApi session) {
+        if (templateProcessor == null) {
+            return null;
+        }
+        if (!mix) {
+            return Map.of("response", renderWithProcessor(inputs, session));
+        }
+
+        synchronized (batchRenderLock) {
+            if (batchTemplate == null) {
+                batchTemplate = new TemplateBatchProcessor(templateProcessor, inputs);
+                long timeoutMs = resolveBatchRenderTimeoutMillis(session);
+                try {
+                    if (timeoutMs > 0) {
+                        batchRenderLock.wait(timeoutMs);
+                    } else {
+                        batchRenderLock.wait();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                if (batchTemplate != null && !batchTemplate.isRendered()) {
+                    String rendered = batchTemplate.render(inputs, session);
+                    batchTemplate = null;
+                    batchRenderLock.notifyAll();
+                    return Map.of("response", rendered);
+                }
+                return null;
+            }
+
+            String rendered = batchTemplate.render(inputs, session);
+            batchTemplate = null;
+            batchRenderLock.notifyAll();
+            return Map.of("response", rendered);
+        }
+    }
+
+    private String renderWithProcessor(Map<String, Object> inputs, NodeSessionApi session) {
+        Iterator<Map<String, Object>> frames = templateProcessor.renderStream(inputs, session);
+        StringBuilder answer = new StringBuilder();
+        while (frames.hasNext()) {
+            Object data = frames.next().get("data");
+            if (data != null) {
+                answer.append(data);
+            }
+        }
+        return answer.toString();
+    }
+
+    private static long resolveBatchRenderTimeoutMillis(NodeSessionApi session) {
+        Object raw = session != null
+                ? session.getEnv(SessionConstants.END_COMP_TEMPLATE_BATCH_READER_TIMEOUT_KEY)
+                : null;
+        if (raw instanceof Number number) {
+            return Math.max(0L, Math.round(number.doubleValue() * 1000));
+        }
+        if (raw != null) {
+            try {
+                return Math.max(0L, Math.round(Double.parseDouble(String.valueOf(raw)) * 1000));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
 
     /**
      * Render a template string with {{variable}} substitution.

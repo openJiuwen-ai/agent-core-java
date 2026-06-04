@@ -112,21 +112,37 @@ public class TeamsUtils {
         // Standalone path - create and manage session
         Session newSession = makeTeamSession(card, message);
         String sessionId = newSession.getSessionId();
+        preRunIfSupported(newSession, standaloneInputs(message));
         
-        // Bind session to runtime (if applicable)
         if (runtime != null) {
-            // runtime.bindSession(sessionId, newSession); // TODO: implement bindSession
+            runtime.bindTeamSession(newSession);
         }
         
-        // Cleanup runnable
         Runnable cleanup = () -> {
             if (runtime != null) {
-                runtime.getMessageBus().cleanupSession(sessionId);
+                runtime.unbindTeamSession(sessionId);
+                runtime.cleanupSession(sessionId);
             }
-            // newSession.postRun(); // TODO: implement postRun
+            postRunIfSupported(newSession);
         };
         
         return new InvokeContext(newSession, sessionId, cleanup);
+    }
+
+    private static Object standaloneInputs(Object message) {
+        return message instanceof Map ? message : null;
+    }
+
+    private static void preRunIfSupported(Session session, Object inputs) {
+        if (session instanceof AgentTeamSession teamSession) {
+            teamSession.preRun(inputs);
+        }
+    }
+
+    private static void postRunIfSupported(Session session) {
+        if (session instanceof AgentTeamSession teamSession) {
+            teamSession.postRun();
+        }
     }
     
     /**

@@ -4,8 +4,12 @@
 
 package com.openjiuwen.agent_teams.agent;
 
+import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -20,6 +24,7 @@ public class CoordinatorLoop {
     private final Consumer<CoordinationEvent> wakeCallback;
     private final long mailboxPollIntervalMillis;
     private final long taskPollIntervalMillis;
+    private final BlockingQueue<CoordinationEvent> queuedEvents = new LinkedBlockingQueue<>();
     private boolean running;
     private boolean pollsPaused;
     private Thread pollThread;
@@ -87,11 +92,28 @@ public class CoordinatorLoop {
         wakeCallback.accept(event);
     }
 
+    public void enqueue(EventMessage event) {
+        if (event == null) {
+            return;
+        }
+        enqueue(new CoordinationEvent(event.getEventType(), event.getPayload()));
+    }
+
+    public void enqueue(CoordinationEvent event) {
+        if (event != null) {
+            queuedEvents.offer(event);
+        }
+    }
+
     private void runPollingLoop() {
         long lastMailboxPollAt = System.currentTimeMillis();
         long lastTaskPollAt = System.currentTimeMillis();
         while (running) {
             try {
+                CoordinationEvent queuedEvent = queuedEvents.poll(50L, TimeUnit.MILLISECONDS);
+                if (queuedEvent != null) {
+                    wake(queuedEvent);
+                }
                 long now = System.currentTimeMillis();
                 if (!pollsPaused) {
                     if (now - lastMailboxPollAt >= mailboxPollIntervalMillis) {
@@ -103,7 +125,6 @@ public class CoordinatorLoop {
                         lastTaskPollAt = now;
                     }
                 }
-                Thread.sleep(250L);
             } catch (InterruptedException interruptedException) {
                 Thread.currentThread().interrupt();
                 return;
