@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -247,20 +248,20 @@ class TestFrameworkTriggers {
     void testTriggerParallelRespectsFilters() {
         ValidationFilter validation = new ValidationFilter(kwargs -> (Boolean) kwargs.getOrDefault("enabled", true));
         framework.addFilter("event", validation);
-        int[] callCount = {0};
+        AtomicInteger callCount = new AtomicInteger();
         framework.on("event", kwargs -> {
-            callCount[0]++;
+            callCount.incrementAndGet();
             return "cb1";
         }, "callback1");
         framework.on("event", kwargs -> {
-            callCount[0]++;
+            callCount.incrementAndGet();
             return "cb2";
         }, "callback2");
 
         framework.triggerParallel("event", new Object[0], new HashMap<>(Map.of("enabled", false)));
         framework.triggerParallel("event", new Object[0], new HashMap<>(Map.of("enabled", true)));
 
-        assertEquals(2, callCount[0]);
+        assertEquals(2, callCount.get());
     }
 
     @Test

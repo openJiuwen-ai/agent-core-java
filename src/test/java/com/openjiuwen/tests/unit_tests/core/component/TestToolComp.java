@@ -56,16 +56,17 @@ class TestToolComp {
     @Test
     @DisplayName("ToolExecutable invokes a RESTful API tool and reports success")
     void testToolCompInvoke() {
-        System.setProperty("SSRF_PROTECT_ENABLED", "false");
-        ToolExecutable executable = new ToolExecutable(new ToolComponentConfig());
-        executable.setTool(new FakeRestfulApi(Map.of()));
+        withSsrfProtectionDisabled(() -> {
+            ToolExecutable executable = new ToolExecutable(new ToolComponentConfig());
+            executable.setTool(new FakeRestfulApi(Map.of()));
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) executable.invoke(
-                Map.of("location", "Beijing", "date", 15), null, null);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) executable.invoke(
+                    Map.of("location", "Beijing", "date", 15), null, null);
 
-        assertEquals(0, result.get(ToolComponentOutput.PY_ERR_CODE));
-        assertEquals(Map.of(), result.get(ToolComponentOutput.RESTFUL_DATA));
+            assertEquals(0, result.get(ToolComponentOutput.PY_ERR_CODE));
+            assertEquals(Map.of(), result.get(ToolComponentOutput.RESTFUL_DATA));
+        });
     }
 
     @Test
@@ -102,41 +103,42 @@ class TestToolComp {
     @Test
     @DisplayName("ToolComponent propagates mocked RESTful API data through workflow")
     void testInvokeWorkflowWithStartToolEndRestfulApi() {
-        System.setProperty("SSRF_PROTECT_ENABLED", "false");
-        Map<String, Object> expectedWeather = new LinkedHashMap<>();
-        expectedWeather.put("city", "Hangzhou");
-        expectedWeather.put("country", "CN");
-        expectedWeather.put("weather", "rainy");
-        expectedWeather.put("temperature", 12.95);
-        expectedWeather.put("feels_like", 12.42);
-        expectedWeather.put("humidity", 81);
-        expectedWeather.put("wind_speed", 1.62);
+        withSsrfProtectionDisabled(() -> {
+            Map<String, Object> expectedWeather = new LinkedHashMap<>();
+            expectedWeather.put("city", "Hangzhou");
+            expectedWeather.put("country", "CN");
+            expectedWeather.put("weather", "rainy");
+            expectedWeather.put("temperature", 12.95);
+            expectedWeather.put("feels_like", 12.42);
+            expectedWeather.put("humidity", 81);
+            expectedWeather.put("wind_speed", 1.62);
 
-        ToolComponent component = new ToolComponent(new ToolComponentConfig())
-                .bindTool(new FakeRestfulApi(expectedWeather));
+            ToolComponent component = new ToolComponent(new ToolComponentConfig())
+                    .bindTool(new FakeRestfulApi(expectedWeather));
 
-        Workflow flow = new Workflow(WorkflowCard.builder()
-                .name("tool")
-                .id("mock")
-                .version("1.0")
-                .build());
-        flow.setStartComp("s", new Start(), Map.of("query", "${query}", "name", "${name}"));
-        flow.addWorkflowComp("tool", component, Map.of("location", "${s.query}"));
-        flow.setEndComp("e", new End(Map.of("responseTemplate", "{{output}}")),
-                Map.of("output", "${tool.data}"));
-        flow.addConnection("s", "tool");
-        flow.addConnection("tool", "e");
+            Workflow flow = new Workflow(WorkflowCard.builder()
+                    .name("tool")
+                    .id("mock")
+                    .version("1.0")
+                    .build());
+            flow.setStartComp("s", new Start(), Map.of("query", "${query}", "name", "${name}"));
+            flow.addWorkflowComp("tool", component, Map.of("location", "${s.query}"));
+            flow.setEndComp("e", new End(Map.of("responseTemplate", "{{output}}")),
+                    Map.of("output", "${tool.data}"));
+            flow.addConnection("s", "tool");
+            flow.addConnection("tool", "e");
 
-        WorkflowSessionApi session = WorkflowSessions.createWorkflowSession("test_tool_restful");
-        ModelContext context = new ContextEngine().createContext("tool_workflow", null);
-        WorkflowOutput result = flow.invoke(Map.of("query", "hangzhou"), session, context);
+            WorkflowSessionApi session = WorkflowSessions.createWorkflowSession("test_tool_restful");
+            ModelContext context = new ContextEngine().createContext("tool_workflow", null);
+            WorkflowOutput result = flow.invoke(Map.of("query", "hangzhou"), session, context);
 
-        assertNotNull(result);
-        assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
-        String response = stringResponse(result);
-        assertTrue(response.contains("Hangzhou"));
-        assertTrue(response.contains("temperature"));
-        assertTrue(response.contains("rainy"));
+            assertNotNull(result);
+            assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
+            String response = stringResponse(result);
+            assertTrue(response.contains("Hangzhou"));
+            assertTrue(response.contains("temperature"));
+            assertTrue(response.contains("rainy"));
+        });
     }
 
     @Test
@@ -196,6 +198,20 @@ class TestToolComp {
 
     private static String uniqueId(String prefix) {
         return prefix + "_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static void withSsrfProtectionDisabled(Runnable action) {
+        String previousSsrfProtectEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
+        System.setProperty("SSRF_PROTECT_ENABLED", "false");
+        try {
+            action.run();
+        } finally {
+            if (previousSsrfProtectEnabled == null) {
+                System.clearProperty("SSRF_PROTECT_ENABLED");
+            } else {
+                System.setProperty("SSRF_PROTECT_ENABLED", previousSsrfProtectEnabled);
+            }
+        }
     }
 
     private static final class FakeRestfulApi extends RestfulApi {

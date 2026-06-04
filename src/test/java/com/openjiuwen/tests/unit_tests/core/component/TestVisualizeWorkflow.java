@@ -530,50 +530,51 @@ class TestVisualizeWorkflow {
     @DisplayName("intent workflow visualization")
     void testVisualizeSimpleWorkflowIntent() {
         String actual = withDrawable(() -> {
-            System.setProperty("SSRF_PROTECT_ENABLED", "false");
-            Workflow flow = new Workflow();
-            flow.setStartComp("start", new MockStartNode("start"), Map.of("a", "${a}"));
+            return withSsrfProtectionDisabled(() -> {
+                Workflow flow = new Workflow();
+                flow.setStartComp("start", new MockStartNode("start"), Map.of("a", "${a}"));
 
-            IntentDetectionCompConfig intentConfig = new IntentDetectionCompConfig();
-            intentConfig.setUserPrompt("judge intent");
-            intentConfig.setCategoryNameList(List.of("query weather"));
-            IntentDetectionComponent intent = new IntentDetectionComponent(intentConfig);
-            intent.addBranch("${intent.classification_id} == 1", List.of("llm"), "weather branch");
-            intent.addBranch("${intent.classification_id} == 0", List.of("end"), "default branch");
-            flow.addWorkflowComp("intent", intent, Map.of("query", "${start.query}"));
+                IntentDetectionCompConfig intentConfig = new IntentDetectionCompConfig();
+                intentConfig.setUserPrompt("judge intent");
+                intentConfig.setCategoryNameList(List.of("query weather"));
+                IntentDetectionComponent intent = new IntentDetectionComponent(intentConfig);
+                intent.addBranch("${intent.classification_id} == 1", List.of("llm"), "weather branch");
+                intent.addBranch("${intent.classification_id} == 0", List.of("end"), "default branch");
+                flow.addWorkflowComp("intent", intent, Map.of("query", "${start.query}"));
 
-            LLMCompConfig llmConfig = new LLMCompConfig();
-            llmConfig.setTemplateContent(List.of(Map.of("role", "user", "content", "")));
-            llmConfig.setResponseFormat(Map.of("type", "json"));
-            llmConfig.setOutputConfig(Map.of(
-                    "location", Map.of("type", "string", "description", "location", "required", true),
-                    "date", Map.of("type", "string", "description", "date", "required", true),
-                    "query", Map.of("type", "string", "description", "query", "required", true)));
-            flow.addWorkflowComp("llm", new LLMComponent(llmConfig), Map.of("query", "${start.query}"));
+                LLMCompConfig llmConfig = new LLMCompConfig();
+                llmConfig.setTemplateContent(List.of(Map.of("role", "user", "content", "")));
+                llmConfig.setResponseFormat(Map.of("type", "json"));
+                llmConfig.setOutputConfig(Map.of(
+                        "location", Map.of("type", "string", "description", "location", "required", true),
+                        "date", Map.of("type", "string", "description", "date", "required", true),
+                        "query", Map.of("type", "string", "description", "query", "required", true)));
+                flow.addWorkflowComp("llm", new LLMComponent(llmConfig), Map.of("query", "${start.query}"));
 
-            ToolComponentConfig toolConfig = new ToolComponentConfig();
-            toolConfig.setToolId("WeatherReporter");
-            Runner.resourceMgr().addTool(new RestfulApi(RestfulApiCard.builder()
-                    .id("WeatherReporter")
-                    .name("WeatherReporter")
-                    .description("weather plugin")
-                    .inputParams(Map.of(
-                            "type", "object",
-                            "properties", Map.of(
-                                    "location", Map.of("type", "string"),
-                                    "date", Map.of("type", "string")),
-                            "required", List.of("location", "date")))
-                    .url("http://127.0.0.1:9000/weather")
-                    .method("GET")
-                    .headers(Map.of())
-                    .build()), null);
-            flow.addWorkflowComp("plugin", new ToolComponent(toolConfig),
-                    Map.of("location", "${llm.location}", "date", "${llm.date}"));
-            flow.setEndComp("end", new MockEndNode("end"), Map.of("output", "${plugin.data}"));
-            flow.addConnection("start", "intent");
-            flow.addConnection("llm", "plugin");
-            flow.addConnection("plugin", "end");
-            return flow.draw("jiuwen workflow");
+                ToolComponentConfig toolConfig = new ToolComponentConfig();
+                toolConfig.setToolId("WeatherReporter");
+                Runner.resourceMgr().addTool(new RestfulApi(RestfulApiCard.builder()
+                        .id("WeatherReporter")
+                        .name("WeatherReporter")
+                        .description("weather plugin")
+                        .inputParams(Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "location", Map.of("type", "string"),
+                                        "date", Map.of("type", "string")),
+                                "required", List.of("location", "date")))
+                        .url("http://127.0.0.1:9000/weather")
+                        .method("GET")
+                        .headers(Map.of())
+                        .build()), null);
+                flow.addWorkflowComp("plugin", new ToolComponent(toolConfig),
+                        Map.of("location", "${llm.location}", "date", "${llm.date}"));
+                flow.setEndComp("end", new MockEndNode("end"), Map.of("output", "${plugin.data}"));
+                flow.addConnection("start", "intent");
+                flow.addConnection("llm", "plugin");
+                flow.addConnection("plugin", "end");
+                return flow.draw("jiuwen workflow");
+            });
         });
 
         assertEquals(mermaid(
@@ -710,6 +711,20 @@ class TestVisualizeWorkflow {
                 System.clearProperty("WORKFLOW_DRAWABLE");
             } else {
                 System.setProperty("WORKFLOW_DRAWABLE", previous);
+            }
+        }
+    }
+
+    private static <T> T withSsrfProtectionDisabled(Supplier<T> supplier) {
+        String previousSsrfProtectEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
+        System.setProperty("SSRF_PROTECT_ENABLED", "false");
+        try {
+            return supplier.get();
+        } finally {
+            if (previousSsrfProtectEnabled == null) {
+                System.clearProperty("SSRF_PROTECT_ENABLED");
+            } else {
+                System.setProperty("SSRF_PROTECT_ENABLED", previousSsrfProtectEnabled);
             }
         }
     }

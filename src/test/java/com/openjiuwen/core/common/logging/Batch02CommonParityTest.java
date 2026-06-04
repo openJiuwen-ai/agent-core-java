@@ -124,10 +124,35 @@ class Batch02CommonParityTest {
 
     @Test
     void urlUtilsExposePythonCompatibleIpHelpers() {
-        assertEquals(2130706433L, UrlUtils.ipToLong("127.0.0.1"));
-        if (!"false".equalsIgnoreCase(System.getenv("SSRF_PROTECT_ENABLED"))) {
-            assertTrue(UrlUtils.isInnerIpAddress("10.0.0.1"));
-            assertFalse(UrlUtils.isInnerIpAddress("8.8.8.8"));
+        String previousSsrfProtectEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
+        try {
+            if (System.getenv("SSRF_PROTECT_ENABLED") == null || System.getenv("SSRF_PROTECT_ENABLED").isBlank()) {
+                System.clearProperty("SSRF_PROTECT_ENABLED");
+            }
+
+            assertEquals(2130706433L, UrlUtils.ipToLong("127.0.0.1"));
+            if (!"false".equalsIgnoreCase(resolveSsrfProtectEnabled())) {
+                assertTrue(UrlUtils.isInnerIpAddress("10.0.0.1"));
+                assertFalse(UrlUtils.isInnerIpAddress("8.8.8.8"));
+            }
+        } finally {
+            restoreSystemProperty("SSRF_PROTECT_ENABLED", previousSsrfProtectEnabled);
+        }
+    }
+
+    private static String resolveSsrfProtectEnabled() {
+        String ssrfProtectEnabled = System.getenv("SSRF_PROTECT_ENABLED");
+        if (ssrfProtectEnabled == null || ssrfProtectEnabled.isBlank()) {
+            ssrfProtectEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
+        }
+        return ssrfProtectEnabled;
+    }
+
+    private static void restoreSystemProperty(String key, String previousValue) {
+        if (previousValue == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, previousValue);
         }
     }
 

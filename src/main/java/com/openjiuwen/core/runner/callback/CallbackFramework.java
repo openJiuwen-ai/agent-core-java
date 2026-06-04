@@ -623,7 +623,8 @@ if (enableLogging) {
 
             futures.add(executor.submit(() -> {
                 try {
-                    FilterResult filterResult = applyFilters(event, callbackInfo, finalArgs, finalKwargs);
+                    Map<String, Object> callbackKwargsSource = new HashMap<>(finalKwargs);
+                    FilterResult filterResult = applyFilters(event, callbackInfo, finalArgs, callbackKwargsSource);
 
                     if (filterResult.getAction() == FilterAction.STOP ||
                         filterResult.getAction() == FilterAction.SKIP) {
@@ -632,7 +633,8 @@ if (enableLogging) {
 
                     Object[] fa = filterResult.getModifiedArgs() != null ? filterResult.getModifiedArgs() : finalArgs;
                     Map<String, Object> fk = filterResult.getModifiedKwargs() != null
-                            ? filterResult.getModifiedKwargs() : finalKwargs;
+                            ? new HashMap<>(filterResult.getModifiedKwargs())
+                            : callbackKwargsSource;
 
                     CallbackKwargs callbackKwargs = prepareCallbackKwargs(fk, fa);
 

@@ -66,6 +66,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     private final String nodeId;
     private final Executable<Object, Object> executable;
+    private final Object mixOutputLock = new Object();
 
     private Object context;
     private NodeSession session;
@@ -81,6 +82,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private boolean hasStreamCall = false;
     private boolean hasCall = false;
     private List<String> sourceId = new ArrayList<>();
+    private List<Object> mixInvokeOutputs = new ArrayList<>();
+    private List<Object> mixCollectOutputs = new ArrayList<>();
     private Map<String, Object> logMessage = new HashMap<>();
     private boolean isFirstInit = true;
 
@@ -124,6 +127,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
         this.hasStreamCall = !streamAbilities().isEmpty();
         this.hasCall = componentAbility.size() > streamAbilities().size();
+        synchronized (mixOutputLock) {
+            mixInvokeOutputs = new ArrayList<>();
+            mixCollectOutputs = new ArrayList<>();
+        }
 
         this.logMessage = new HashMap<>();
         logMessage.put("graph_id", this.session.workflowId());
@@ -358,7 +365,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             inputs = wrappedInputs;
         }
         Object results = executable.onInvoke(inputs, session, context);
-        results = postInvoke(results);
+        results = postInvoke(results, ComponentAbility.INVOKE);
         logger.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
     }
 
@@ -382,7 +389,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             latch.countDown();
         }
         Object batchOutput = executable.onCollect(collectInputs, session, context);
-        Object results = postInvoke(batchOutput);
+        Object results = postInvoke(batchOutput, ComponentAbility.COLLECT);
         logger.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
     }
 
@@ -420,7 +427,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     }
 
     @SuppressWarnings("unchecked")
-    private Object postInvoke(Object results) {
+    private Object postInvoke(Object results, ComponentAbility ability) {
         Object outputsSchema = null;
         if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
             outputsSchema = nodeConfig.getIoConfigs().getOutputsSchema();
@@ -443,30 +450,40 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
         // Mix mode: end node with both batch and stream calls
         boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
-        if (results instanceof Map && isEndMixMode) {
-            Map<String, Object> resultMap = new LinkedHashMap<>((Map<String, Object>) results);
-            results = resultMap;
-            Object outputs = resultMap.get("output");
-            if (outputs != null && !(outputs instanceof List)) {
-                resultMap.put("output", new ArrayList<>(List.of(outputs)));
-            }
-            if (session.state() instanceof WorkflowStateCollection) {
-                Object oldOutputs = ((WorkflowStateCollection) session.state()).getOutputs(nodeId);
-                if (oldOutputs instanceof Map) {
-                    Map<String, Object> oldMap = (Map<String, Object>) oldOutputs;
-                    if (oldMap.get("output") instanceof List && resultMap.get("output") instanceof List) {
-                        ((List<Object>) resultMap.get("output")).addAll((List<Object>) oldMap.get("output"));
+        if (results != null && session.state() instanceof WorkflowStateCollection stateCollection) {
+            if (results instanceof Map && isEndMixMode) {
+                synchronized (mixOutputLock) {
+                    Map<String, Object> resultMap = new LinkedHashMap<>((Map<String, Object>) results);
+                    Object outputs = resultMap.get("output");
+                    if (outputs != null) {
+                        List<Object> normalizedOutputs = normalizeMixOutputs(outputs);
+                        resultMap.put("output", normalizedOutputs);
+                        if (ability == ComponentAbility.INVOKE) {
+                            mixInvokeOutputs = new ArrayList<>(normalizedOutputs);
+                        } else if (ability == ComponentAbility.COLLECT) {
+                            mixCollectOutputs = new ArrayList<>(normalizedOutputs);
+                        }
+                        List<Object> mergedOutputs = new ArrayList<>(mixInvokeOutputs);
+                        mergedOutputs.addAll(mixCollectOutputs);
+                        resultMap.put("output", mergedOutputs);
                     }
+                    results = resultMap;
+                    stateCollection.setOutputs(results);
                 }
+            } else {
+                stateCollection.setOutputs(results);
             }
-        }
-
-        if (results != null && session.state() instanceof WorkflowStateCollection) {
-            ((WorkflowStateCollection) session.state()).setOutputs(results);
         }
         traceComponentOutputs(results);
         clearInteractive();
         return results;
+    }
+
+    private static List<Object> normalizeMixOutputs(Object outputs) {
+        if (outputs instanceof List<?> outputList) {
+            return new ArrayList<>(outputList);
+        }
+        return new ArrayList<>(List.of(outputs));
     }
 
     @SuppressWarnings("unchecked")
@@ -738,6 +755,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         streamCallCount = 0;
         streamDone.cancel(true);
         streamDone = new CompletableFuture<>();
+        synchronized (mixOutputLock) {
+            mixInvokeOutputs = new ArrayList<>();
+            mixCollectOutputs = new ArrayList<>();
+        }
     }
 
     // ---- Tracing Helpers ----

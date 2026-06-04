@@ -131,13 +131,15 @@ public class HTTPRequestExecutable extends ComponentExecutable {
         HttpRequestBodyConfig bodyConfig = normalizeBodyConfig(params.get("body"));
 
         try {
+            Duration requestTimeout = resolveRequestTimeout();
             HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis((long) requestParams.getTimeout()))
+                    .connectTimeout(requestTimeout)
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
 
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(url));
+                    .uri(URI.create(url))
+                    .timeout(requestTimeout);
 
             // Add headers
             if (headers != null) {
@@ -167,6 +169,11 @@ public class HTTPRequestExecutable extends ComponentExecutable {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
                     "error_msg", "HTTP request failed: " + e.getMessage());
         }
+    }
+
+    private Duration resolveRequestTimeout() {
+        double timeoutSeconds = requestParams.getTimeout() > 0 ? requestParams.getTimeout() : 60.0;
+        return Duration.ofMillis(Math.round(timeoutSeconds * 1000));
     }
 
     /**
