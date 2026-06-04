@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -36,6 +37,9 @@ class OperatorSystemTest {
 
     @BeforeAll
     static void setUp() {
+        Assumptions.assumeTrue(
+                ApiConfigLoader.hasUsableModelConfig(),
+                "Mirrors Python live/system test behavior: skip when remote LLM config is unavailable");
         ModelClientConfig clientConfig = ModelClientConfig.builder()
                 .clientProvider(ApiConfigLoader.getModelProvider())
                 .apiKey(ApiConfigLoader.getApiKey())

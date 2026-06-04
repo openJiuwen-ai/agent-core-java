@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.InputStream;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -85,5 +86,36 @@ public final class ApiConfigLoader {
 
     public static String getEmbeddingSslCert() {
         return load().getOrDefault("EMBEDDING_SSL_CERT", load().get("LLM_SSL_CERT"));
+    }
+
+    public static boolean hasUsableModelConfig() {
+        return isConfigured(getApiBase())
+                && isConfigured(getApiKey())
+                && isConfigured(getModelProvider())
+                && isConfigured(getModelName());
+    }
+
+    public static boolean hasUsableEmbeddingConfig() {
+        return isConfigured(getEmbeddingApiBase())
+                && isConfigured(getApiKey())
+                && isConfigured(getEmbeddingModelName());
+    }
+
+    private static boolean isConfigured(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            return false;
+        }
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        return !lower.contains("your-api-base.example")
+                && !lower.contains("your-api-key")
+                && !lower.contains("your-model-name")
+                && !lower.contains("your-embedding-model-name")
+                && !lower.contains("sk-your-api-key")
+                && !lower.contains("dashscope-url")
+                && !lower.contains("mock://");
     }
 }
