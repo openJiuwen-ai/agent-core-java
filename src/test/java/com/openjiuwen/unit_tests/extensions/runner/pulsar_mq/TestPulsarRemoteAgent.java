@@ -16,8 +16,6 @@ import com.openjiuwen.core.runner.drunner.server_adapter.AgentAdapter;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -61,14 +59,16 @@ class TestPulsarRemoteAgent {
                     Map.of("MOCK_STREAM", "chunk_2")))
                     .iterator();
 
-    TestPulsarRemoteAgent() {
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        Runner.stop();
         Runner.setConfig(FAKE_MQ_CONFIG);
     }
 
     @AfterEach
     void tearDown() {
-        Runner.setConfig(RunnerConfig.DEFAULT);
         Runner.stop();
+        Runner.setConfig(RunnerConfig.DEFAULT);
     }
 
     @Test
@@ -177,7 +177,10 @@ class TestPulsarRemoteAgent {
             Runner.resourceMgr().addAgent(AgentCard.builder().id("weather-agent").build(), () -> client, null);
             BaseError error = assertThrows(BaseError.class,
                     () -> Runner.runAgent("weather-agent", Map.of("city", "London"), null, null));
-            assertEquals(StatusCode.REMOTE_AGENT_EXECUTION_TIMEOUT.getCode(), error.getCode());
+            assertEquals(StatusCode.REMOTE_AGENT_RESPONSE_PROCESS_ERROR.getCode(), error.getCode());
+            assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR.getCode(),
+                    ((Number) error.getParams().get("error_code")).intValue());
+            assertTrue(String.valueOf(error.getParams().get("error_msg")).contains("ADAPTER_ERROR"));
         } finally {
             adapter.stop();
         }

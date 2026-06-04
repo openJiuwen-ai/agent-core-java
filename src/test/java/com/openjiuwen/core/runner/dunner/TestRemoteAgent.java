@@ -242,7 +242,10 @@ class TestRemoteAgent {
                 BaseError ex = assertThrows(BaseError.class, () ->
                         Runner.runAgent("weather-agent", Map.of("city", "London"), null, null)
                 );
-                assertEquals(StatusCode.REMOTE_AGENT_EXECUTION_TIMEOUT.getCode(), ex.getCode());
+                assertEquals(StatusCode.REMOTE_AGENT_RESPONSE_PROCESS_ERROR.getCode(), ex.getCode());
+                assertEquals(StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR.getCode(),
+                        ((Number) ex.getParams().get("error_code")).intValue());
+                assertTrue(String.valueOf(ex.getParams().get("error_msg")).contains("ADAPTER_ERROR"));
             } finally {
                 weatherAdapter.stop();
                 Runner.stop();

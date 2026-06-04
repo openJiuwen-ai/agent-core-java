@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assumptions.*;
  * {@code tests.system_tests.harness.test_memory_rail_e2e}.
  */
 @Tag("system-test")
+@Disabled("need llm and embedding")
 class MemoryRailE2ETest {
 
     static final String LLM_API_BASE = System.getenv().getOrDefault("API_BASE", "your_llm_api_url");

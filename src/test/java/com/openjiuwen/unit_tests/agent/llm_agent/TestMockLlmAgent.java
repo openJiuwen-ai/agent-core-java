@@ -136,15 +136,15 @@ class TestMockLlmAgent {
     @Tag("level0")
     @DisplayName("workflow interrupt and resume")
     void testWorkflowInterruptAndResume() {
-        Workflow flow = makeSingleQuestionerWorkflow("wf_weather", "1.0");
+        Workflow flow = makeSingleQuestionerWorkflow("wf_weather_unit", "1.0");
         setMockResponses(
-            toolCallResponse("call_001", "wf_weather", "{\"query\":\"weather\"}"),
+            toolCallResponse("call_001", "wf_weather_unit", "{\"query\":\"weather\"}"),
             textResponse("The weather in Shanghai is sunny.")
         );
         LlmAgentConfig agentConfig = makeAgentConfig("agent_s1", List.of(makeWorkflowSchema(flow)));
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());
 
-        Object result = agent.invoke(Map.of("conversation_id", "conv_s1", "query", "weather query"), null);
+        Object result = agent.invoke(Map.of("conversation_id", "conv_s1_unit", "query", "weather query"), null);
         List<OutputSchema> interactions = interactionChunks(outputItems(result));
 
         assertEquals(1, interactions.size());
@@ -153,7 +153,7 @@ class TestMockLlmAgent {
 
         InteractiveInput userInput = new InteractiveInput();
         userInput.update("questioner", "Shanghai");
-        Object result2 = agent.invoke(Map.of("conversation_id", "conv_s1", "query", userInput), null);
+        Object result2 = agent.invoke(Map.of("conversation_id", "conv_s1_unit", "query", userInput), null);
 
         assertEquals(0, interactionChunks(outputItems(result2)).size());
         assertTrue(collectOutputText(outputItems(result2)).contains("Shanghai"));
@@ -180,7 +180,7 @@ class TestMockLlmAgent {
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(), List.of());
 
         Object result = agent.invoke(
-            Map.of("conversation_id", "conv_mem", "query", "Hello", "user_id", "user_001"),
+            Map.of("conversation_id", "conv_mem_unit", "query", "Hello", "user_id", "user_001"),
             null
         );
 
@@ -188,7 +188,7 @@ class TestMockLlmAgent {
         assertTrue(collectOutputText(outputItems(result)).contains("remember"));
         verify(memory).searchUserMem(eq("Hello"), eq(10), eq("user_001"), eq("scope_001"), eq(0.0));
         verify(memory, timeout(1000)).addMessages(
-            anyList(), same(memoryConfig), eq("user_001"), eq("scope_001"), eq("conv_mem")
+            anyList(), same(memoryConfig), eq("user_001"), eq("scope_001"), eq("conv_mem_unit")
         );
     }
 
@@ -199,8 +199,8 @@ class TestMockLlmAgent {
         LongTermMemory memory = installMockMemory();
         when(memory.searchUserMem(anyString(), anyInt(), anyString(), anyString(), anyDouble())).thenReturn(List.of());
 
-        Workflow flow = makeSingleQuestionerWorkflow("mem_wf", "1.0");
-        setMockResponses(toolCallResponse("call_mem", "mem_wf", "{\"query\":\"q\"}"));
+        Workflow flow = makeSingleQuestionerWorkflow("mem_wf_unit", "1.0");
+        setMockResponses(toolCallResponse("call_mem", "mem_wf_unit", "{\"query\":\"q\"}"));
         LlmAgentConfig agentConfig = makeAgentConfig("agent_mem_interrupt", List.of(makeWorkflowSchema(flow)));
         AgentMemoryConfig memoryConfig = AgentMemoryConfig.builder()
             .enableLongTermMem(true)
@@ -214,7 +214,7 @@ class TestMockLlmAgent {
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());
 
         Object result = agent.invoke(
-            Map.of("conversation_id", "conv_mi", "query", "q", "user_id", "user_001"),
+            Map.of("conversation_id", "conv_mi_unit", "query", "q", "user_id", "user_001"),
             null
         );
 
@@ -229,16 +229,16 @@ class TestMockLlmAgent {
     @Tag("level0")
     @DisplayName("parallel questioners resume one at a time")
     void testParallelQuestionersSequentialResume() {
-        Workflow flow = buildParallelWorkflow("wf_parallel");
+        Workflow flow = buildParallelWorkflow("wf_parallel_unit");
         setMockResponses(
-            toolCallResponse("call_p1", "wf_parallel", "{\"query\":\"info\"}"),
+            toolCallResponse("call_p1", "wf_parallel_unit", "{\"query\":\"info\"}"),
             textResponse("Got both name and address.")
         );
         LlmAgentConfig agentConfig = makeAgentConfig("agent_s3", List.of(makeWorkflowSchema(flow)));
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());
 
         List<OutputSchema> chunks1 = interactionChunks(outputItems(
-            agent.invoke(Map.of("conversation_id", "conv_s3", "query", "collect info"), null)
+            agent.invoke(Map.of("conversation_id", "conv_s3_unit", "query", "collect info"), null)
         ));
         assertEquals(1, chunks1.size());
         String firstComponent = ((InteractionOutput) chunks1.get(0).getPayload()).getId();
@@ -247,7 +247,7 @@ class TestMockLlmAgent {
         InteractiveInput userInput1 = new InteractiveInput();
         userInput1.update(firstComponent, "Alice");
         List<OutputSchema> chunks2 = interactionChunks(outputItems(
-            agent.invoke(Map.of("conversation_id", "conv_s3", "query", userInput1), null)
+            agent.invoke(Map.of("conversation_id", "conv_s3_unit", "query", userInput1), null)
         ));
         assertEquals(1, chunks2.size());
         String secondComponent = ((InteractionOutput) chunks2.get(0).getPayload()).getId();
@@ -255,7 +255,7 @@ class TestMockLlmAgent {
 
         InteractiveInput userInput2 = new InteractiveInput();
         userInput2.update(secondComponent, "Beijing");
-        Object result3 = agent.invoke(Map.of("conversation_id", "conv_s3", "query", userInput2), null);
+        Object result3 = agent.invoke(Map.of("conversation_id", "conv_s3_unit", "query", userInput2), null);
 
         assertEquals(0, interactionChunks(outputItems(result3)).size());
         assertNotNull(result3);
@@ -265,13 +265,13 @@ class TestMockLlmAgent {
     @Tag("level0")
     @DisplayName("two workflows interrupt and resume serially")
     void testTwoWorkflowsSerialInterruptResume() {
-        Workflow flowA = makeSingleQuestionerWorkflow("wf_city_a", "1.0");
-        Workflow flowB = makeSingleQuestionerWorkflow("wf_city_b", "1.0");
+        Workflow flowA = makeSingleQuestionerWorkflow("wf_city_a_unit", "1.0");
+        Workflow flowB = makeSingleQuestionerWorkflow("wf_city_b_unit", "1.0");
         setMockResponses(
             multiToolCallResponse(
                 List.of(
-                    toolCall("call_a", "wf_city_a", "{\"query\":\"city a\"}"),
-                    toolCall("call_b", "wf_city_b", "{\"query\":\"city b\"}")
+                    toolCall("call_a", "wf_city_a_unit", "{\"query\":\"city a\"}"),
+                    toolCall("call_b", "wf_city_b_unit", "{\"query\":\"city b\"}")
                 )
             ),
             textResponse("Cities collected: Shanghai and Beijing.")
@@ -282,7 +282,7 @@ class TestMockLlmAgent {
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flowA, flowB), List.of());
 
         List<OutputSchema> chunks1 = interactionChunks(outputItems(
-            agent.invoke(Map.of("conversation_id", "conv_s4", "query", "collect cities"), null)
+            agent.invoke(Map.of("conversation_id", "conv_s4_unit", "query", "collect cities"), null)
         ));
         assertEquals(1, chunks1.size());
         assertEquals("questioner", ((InteractionOutput) chunks1.get(0).getPayload()).getId());
@@ -290,13 +290,13 @@ class TestMockLlmAgent {
         InteractiveInput userInput1 = new InteractiveInput();
         userInput1.update("questioner", "Shanghai");
         List<OutputSchema> chunks2 = interactionChunks(outputItems(
-            agent.invoke(Map.of("conversation_id", "conv_s4", "query", userInput1), null)
+            agent.invoke(Map.of("conversation_id", "conv_s4_unit", "query", userInput1), null)
         ));
         assertEquals(1, chunks2.size());
 
         InteractiveInput userInput2 = new InteractiveInput();
         userInput2.update("questioner", "Beijing");
-        Object result3 = agent.invoke(Map.of("conversation_id", "conv_s4", "query", userInput2), null);
+        Object result3 = agent.invoke(Map.of("conversation_id", "conv_s4_unit", "query", userInput2), null);
 
         assertEquals(0, interactionChunks(outputItems(result3)).size());
         String output = collectOutputText(outputItems(result3));
@@ -315,7 +315,7 @@ class TestMockLlmAgent {
         List<Map<String, String>> newTemplate =
             List.of(Map.of("role", "system", "content", "You are a new assistant."));
         agent.setPromptTemplate(newTemplate);
-        agent.invoke(Map.of("conversation_id", "conv_s5", "query", "hello"), null);
+        agent.invoke(Map.of("conversation_id", "conv_s5_unit", "query", "hello"), null);
 
         assertEquals(newTemplate, agent.getAgentConfig().getPromptTemplate());
         assertFalse(MODEL_CALLS.isEmpty());

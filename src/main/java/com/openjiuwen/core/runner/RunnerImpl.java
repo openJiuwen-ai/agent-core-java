@@ -177,7 +177,10 @@ public class RunnerImpl {
     public boolean stop() {
         logger.info("Begin to stop runner, runnerId={}", runnerId);
         try {
-            if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
+            if (RunnerConfig.getRunnerConfig().isDistributedMode()
+                    || distributeMessageQueue != null
+                    || systemReplySub != null
+                    || DistributedRunner.isStarted()) {
                 DistributedRunner.shutdown();
                 systemReplySub = null;
                 distributeMessageQueue = null;

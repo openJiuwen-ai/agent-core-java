@@ -104,16 +104,16 @@ class TestMockLlmAgentAutoSession {
     @Tag("level0")
     @DisplayName("invoke auto session workflow interrupt and resume")
     void testInvokeAutoSessionWorkflowInterruptAndResume() {
-        Workflow flow = makeSingleQuestionerWorkflow("wf_auto");
+        Workflow flow = makeSingleQuestionerWorkflow("wf_auto_unit");
         setMockResponses(
-            toolCallResponse("call_001", "wf_auto", "{\"query\": \"hello\"}"),
+            toolCallResponse("call_001", "wf_auto_unit", "{\"query\": \"hello\"}"),
             textResponse("Collected info: Shanghai. Task complete.")
         );
         LlmAgentConfig agentConfig = makeAgentConfig("agent_invoke_auto", List.of(makeWorkflowSchema(flow)));
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());
 
         Object result = agent.invoke(
-            Map.of("query", "collect info", "conversation_id", "conv_invoke_auto"),
+            Map.of("query", "collect info", "conversation_id", "conv_invoke_auto_unit"),
             null
         );
 
@@ -125,7 +125,7 @@ class TestMockLlmAgentAutoSession {
         InteractiveInput userInput = new InteractiveInput();
         userInput.update("questioner", "Shanghai");
         Object result2 = agent.invoke(
-            Map.of("query", userInput, "conversation_id", "conv_invoke_auto"),
+            Map.of("query", userInput, "conversation_id", "conv_invoke_auto_unit"),
             null
         );
 
@@ -138,16 +138,16 @@ class TestMockLlmAgentAutoSession {
     @DisplayName("stream auto session workflow interrupt and resume")
     @SuppressWarnings("unchecked")
     void testStreamAutoSessionWorkflowInterruptAndResume() {
-        Workflow flow = makeSingleQuestionerWorkflow("wf_stream");
+        Workflow flow = makeSingleQuestionerWorkflow("wf_stream_unit");
         setMockResponses(
-            toolCallResponse("call_s01", "wf_stream", "{\"query\": \"weather\"}"),
+            toolCallResponse("call_s01", "wf_stream_unit", "{\"query\": \"weather\"}"),
             textResponse("Weather in Beijing is sunny.")
         );
         LlmAgentConfig agentConfig = makeAgentConfig("agent_stream_auto", List.of(makeWorkflowSchema(flow)));
         MockLlmAgent agent = MockLlmAgent.createLlmAgent(agentConfig, List.of(flow), List.of());
 
         List<Object> allChunks = drain((Iterator<Object>) agent.stream(
-            Map.of("query", "weather query", "conversation_id", "conv_stream_auto"),
+            Map.of("query", "weather query", "conversation_id", "conv_stream_auto_unit"),
             null,
             List.of(StreamMode.OUTPUT)
         ));
@@ -160,7 +160,7 @@ class TestMockLlmAgentAutoSession {
         InteractiveInput userInput = new InteractiveInput();
         userInput.update("questioner", "Beijing");
         List<Object> allChunks2 = drain((Iterator<Object>) agent.stream(
-            Map.of("query", userInput, "conversation_id", "conv_stream_auto"),
+            Map.of("query", userInput, "conversation_id", "conv_stream_auto_unit"),
             null,
             List.of(StreamMode.OUTPUT)
         ));

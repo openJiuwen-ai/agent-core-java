@@ -509,8 +509,7 @@ public class LlmEventHandler extends EventHandler {
         taskInfo.put("iteration", interruptionState.getCurrentIteration());
         interruptedTasks.put(stateKey, taskInfo);
 
-        // Save state
-        interruptionState.getSession().updateState(Map.of(STATE_KEY, (Object) state));
+        replaceControllerState(interruptionState.getSession(), state);
 
         Loggers.CONTROLLER.info("Task interrupted: workflow={}, state_key={}, remaining_tasks={}",
                 workflowId, stateKey, interruptionState.getRemainingTasks().size());
@@ -969,9 +968,19 @@ public class LlmEventHandler extends EventHandler {
         }
         String stateKey = workflowId.replace('.', '_');
         if (interruptedTasks.remove(stateKey) != null) {
-            session.updateState(Map.of(STATE_KEY, state));
+            replaceControllerState(session, state);
             Loggers.CONTROLLER.info("Cleared interrupted state for workflow: {}", workflowId);
         }
+    }
+
+    private void replaceControllerState(AgentSessionApi session, Map<String, Object> state) {
+        Map<String, Object> clearState = new HashMap<>();
+        clearState.put(STATE_KEY, null);
+        session.updateState(clearState);
+
+        Map<String, Object> updatedState = new HashMap<>();
+        updatedState.put(STATE_KEY, state);
+        session.updateState(updatedState);
     }
 
     private List<String> extractComponentIdsFromInteractionData(List<Object> interactionData) {

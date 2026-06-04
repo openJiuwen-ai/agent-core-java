@@ -198,7 +198,7 @@ class TestDefaultDbStore {
         void testDataSourceSupportsConnectionRetrieval() throws Exception {
             // Concept: DataSource should allow getting connections
             
-            String jdbcUrl = "jdbc:h2:mem:connection_test;DB_CLOSE_DELAY=-1";
+            String jdbcUrl = "jdbc:h2:mem:connection_test_unit;DB_CLOSE_DELAY=-1";
             DefaultDbStore store = new DefaultDbStore(jdbcUrl);
             
             DataSource dataSource = store.getEngine();
@@ -215,7 +215,7 @@ class TestDefaultDbStore {
         void testDefaultDbStoreExtendsBaseDbStore() {
             // Java specific: Verify inheritance
             
-            String jdbcUrl = "jdbc:h2:mem:inheritance_test";
+            String jdbcUrl = "jdbc:h2:mem:inheritance_test_unit";
             DefaultDbStore store = new DefaultDbStore(jdbcUrl);
             
             // Verify DefaultDbStore extends BaseDbStore
@@ -228,7 +228,7 @@ class TestDefaultDbStore {
     @Tag("level0")
     @DisplayName("actual connection execution returns expected data")
     void testActualConnectionExecution() throws Exception {
-        String jdbcUrl = "jdbc:h2:mem:actual_connection_test;DB_CLOSE_DELAY=-1";
+        String jdbcUrl = "jdbc:h2:mem:actual_connection_test_unit;DB_CLOSE_DELAY=-1";
         DefaultDbStore store = new DefaultDbStore(jdbcUrl);
 
         try (Connection connection = store.getEngine().getConnection();

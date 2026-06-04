@@ -254,8 +254,15 @@ public final class CodeAgent {
         if (agent == null || tool == null) {
             return;
         }
-        Runner.resourceMgr().addTool(tool, agent.getCard().getId());
-        agent.getDelegate().getAbilityManager().add(tool.getCard());
+        if (tool.getCard() == null) {
+            return;
+        }
+        if (Runner.resourceMgr().getTool(tool.getCard().getId()) == null) {
+            Runner.resourceMgr().addTool(tool, agent.getCard().getId());
+        }
+        if (agent.getDelegate().getAbilityManager().get(tool.getCard().getName()) == null) {
+            agent.getDelegate().getAbilityManager().add(tool.getCard());
+        }
     }
 
     private static Workspace resolveWorkspace(Object workspace, String language) {

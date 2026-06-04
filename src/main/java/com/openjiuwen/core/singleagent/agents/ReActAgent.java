@@ -39,6 +39,8 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
@@ -76,6 +78,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ReActAgent extends BaseAgent {
 
+    private static final String IDENTITY_SECTION = "identity";
+    private static final String SKILLS_SECTION = "skills";
+    private static final int IDENTITY_SECTION_PRIORITY = 10;
+    private static final int SKILLS_SECTION_PRIORITY = 90;
     private static final String REACT_INTERRUPT_STATE_KEY = "react_interrupt_state";
     private static final String REACT_WORKFLOW_INTERRUPT_STATE_KEY = "react_workflow_interrupt_state";
     private static final String INTERRUPTED_TOOL_PLACEHOLDER = "[INTERRUPTED - Waiting for user input]";
@@ -84,6 +90,7 @@ public class ReActAgent extends BaseAgent {
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
     private Model llm;
+    private SystemPromptBuilder systemPromptBuilder;
     private String warnedKvCacheReleaseProvider;
     private final Queue<String> steeringQueue = new ConcurrentLinkedQueue<>();
     private final Map<String, Queue<String>> steeringQueuesBySession = new ConcurrentHashMap<>();
@@ -98,6 +105,8 @@ public class ReActAgent extends BaseAgent {
         this.config = createDefaultConfig();
         this.contextEngine = new ContextEngine(config.getContextEngineConfig());
         this.llm = null;
+        this.systemPromptBuilder = new SystemPromptBuilder();
+        rebuildPromptBuilderSections(null, null);
         initMemoryScope();
     }
 
@@ -162,6 +171,9 @@ public class ReActAgent extends BaseAgent {
             lazyInitSkill();
         }
 
+        this.systemPromptBuilder = new SystemPromptBuilder();
+        rebuildPromptBuilderSections(null, null);
+
         return this;
     }
 
@@ -204,6 +216,31 @@ public class ReActAgent extends BaseAgent {
      */
     public void setLlm(Model model) {
         this.llm = model;
+    }
+
+    public SystemPromptBuilder getSystemPromptBuilder() {
+        return systemPromptBuilder;
+    }
+
+    /**
+     * Add or replace one prompt-builder section. Blank content removes the section.
+     */
+    public void addPromptBuilderSection(String name, String content, int priority) {
+        if (systemPromptBuilder == null) {
+            systemPromptBuilder = new SystemPromptBuilder();
+        }
+
+        String text = content != null ? content.trim() : "";
+        if (text.isEmpty()) {
+            systemPromptBuilder.removeSection(name);
+            return;
+        }
+
+        systemPromptBuilder.addSection(new PromptSection(
+                name,
+                Map.of("cn", text, "en", text),
+                priority
+        ));
     }
 
     /**
@@ -274,36 +311,27 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModel(
             AgentCallbackContext ctx,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools
     ) {
-        Model model = getLlm();
-        var contextWindow = context.getContextWindow(
-                systemMessages,
-                tools != null ? tools : null,
-                (Integer) null,
-                (Integer) null,
-                buildContextWindowKwargs(model)
-        );
-
         ctx.setInputs(ModelCallInputs.builder()
-                .messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList())
+                .messages(buildPreviewMessages(context))
+                .tools(tools != null ? new ArrayList<>(tools) : null)
                 .build());
 
-        return railedModelCall(ctx);
+        return railedModelCall(ctx, context);
     }
 
     /**
      * Execute LLM call with rail before/after/on_exception hooks.
      */
-    private AssistantMessage railedModelCall(AgentCallbackContext ctx) {
+    private AssistantMessage railedModelCall(AgentCallbackContext ctx, ModelContext context) {
         return RailExecutor.execute(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
+                    finalizeModelCallInputs(ctx, context);
                     Model model = getLlm();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
@@ -388,7 +416,7 @@ public class ReActAgent extends BaseAgent {
             }
 
             if (entry.classification() == AbilityManager.ToolExecutionClassification.ERROR) {
-                return Optional.of(buildFailureOutcome("Tool execution failed"));
+                continue;
             }
         }
 
@@ -651,7 +679,6 @@ public class ReActAgent extends BaseAgent {
     private record PreparedExecution(
             InvokeInputs invokeInputs,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools
     ) {
     }
@@ -1247,6 +1274,7 @@ public class ReActAgent extends BaseAgent {
      */
     private AssistantMessage railedModelStreamCall(
             AgentCallbackContext ctx,
+            ModelContext context,
             AgentSessionApi agentSession,
             int[] chunkIndexRef,
             StringBuilder visibleOutput
@@ -1257,6 +1285,7 @@ public class ReActAgent extends BaseAgent {
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
+                    finalizeModelCallInputs(ctx, context);
                     Model model = getLlm();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
@@ -1303,27 +1332,17 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModelStream(
             AgentCallbackContext ctx,
             ModelContext context,
-            List<BaseMessage> systemMessages,
             List<ToolInfo> tools,
             AgentSessionApi agentSession,
             int[] chunkIndexRef,
             StringBuilder visibleOutput
     ) {
-        Model model = getLlm();
-        var contextWindow = context.getContextWindow(
-                systemMessages,
-                tools != null ? tools : null,
-                (Integer) null,
-                (Integer) null,
-                buildContextWindowKwargs(model)
-        );
-
         ctx.setInputs(ModelCallInputs.builder()
-                .messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList())
+                .messages(buildPreviewMessages(context))
+                .tools(tools != null ? new ArrayList<>(tools) : null)
                 .build());
 
-        return railedModelStreamCall(ctx, agentSession, chunkIndexRef, visibleOutput);
+        return railedModelStreamCall(ctx, context, agentSession, chunkIndexRef, visibleOutput);
     }
 
     private InvokeInputs buildInvokeInputs(Object inputs) {
@@ -1369,29 +1388,123 @@ public class ReActAgent extends BaseAgent {
         }
 
         Object memoryVariables = ctx.getExtra() != null ? ctx.getExtra().get("memory_variables") : null;
-        List<BaseMessage> systemMessages = buildSystemMessages(rawInputs, memoryVariables);
+        rebuildPromptBuilderSections(rawInputs, memoryVariables);
         List<ToolInfo> tools = getAbilityManager().listToolInfo();
-        return new PreparedExecution((InvokeInputs) ctx.getInputs(), context, systemMessages, tools);
+        return new PreparedExecution((InvokeInputs) ctx.getInputs(), context, tools);
     }
 
-    private List<BaseMessage> buildSystemMessages(Object rawInputs, Object extraRenderFields) {
+    private String buildRenderedSystemPrompt(Object rawInputs, Object extraRenderFields) {
         Map<String, Object> renderFields = buildRenderFields(rawInputs, extraRenderFields);
-        List<BaseMessage> systemMessages = new ArrayList<>();
+        List<String> systemContents = new ArrayList<>();
         if (config.getPromptTemplate() != null) {
             for (Map<String, String> msg : config.getPromptTemplate()) {
                 if ("system".equals(msg.get("role"))) {
-                    systemMessages.add(new SystemMessage(renderSystemContent(msg.get("content"), renderFields)));
+                    String rendered = renderSystemContent(msg.get("content"), renderFields);
+                    if (rendered != null && !rendered.isBlank()) {
+                        systemContents.add(rendered);
+                    }
                 }
             }
         }
+        return String.join("\n\n", systemContents);
+    }
 
-        if (!systemMessages.isEmpty() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
-            warnMissingSkillReadFileTool();
-            String skillPrompt = getSkillUtil().getSkillPrompt();
-            BaseMessage lastMsg = systemMessages.get(systemMessages.size() - 1);
-            lastMsg.setContent((lastMsg.getContent() != null ? lastMsg.getContent() : "") + "\n" + skillPrompt);
+    private void rebuildPromptBuilderSections(Object rawInputs, Object extraRenderFields) {
+        if (systemPromptBuilder == null) {
+            systemPromptBuilder = new SystemPromptBuilder();
+        } else {
+            systemPromptBuilder.removeSection(IDENTITY_SECTION);
+            systemPromptBuilder.removeSection(SKILLS_SECTION);
         }
-        return systemMessages;
+
+        String renderedSystemPrompt = buildRenderedSystemPrompt(rawInputs, extraRenderFields);
+        addPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
+
+        if (!renderedSystemPrompt.isBlank() && getSkillUtil() != null && getSkillUtil().hasSkill()) {
+            warnMissingSkillReadFileTool();
+            addPromptBuilderSection(SKILLS_SECTION, getSkillUtil().getSkillPrompt(), SKILLS_SECTION_PRIORITY);
+        } else if (systemPromptBuilder != null) {
+            systemPromptBuilder.removeSection(SKILLS_SECTION);
+        }
+    }
+
+    private List<Object> buildPreviewMessages(ModelContext context) {
+        List<Object> previewMessages = new ArrayList<>();
+        String previewSystemPrompt = systemPromptBuilder != null ? systemPromptBuilder.build() : "";
+        if (!previewSystemPrompt.isBlank()) {
+            previewMessages.add(new SystemMessage(previewSystemPrompt));
+        }
+        for (BaseMessage message : context.getMessages()) {
+            previewMessages.add(copyMessage(message));
+        }
+        return previewMessages;
+    }
+
+    private void finalizeModelCallInputs(AgentCallbackContext ctx, ModelContext context) {
+        Model model = getLlm();
+        ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
+        List<BaseMessage> finalSystemMessages = new ArrayList<>();
+        String finalSystemPrompt = systemPromptBuilder != null ? systemPromptBuilder.build() : "";
+        if (!finalSystemPrompt.isBlank()) {
+            finalSystemMessages.add(new SystemMessage(finalSystemPrompt));
+        }
+
+        var contextWindow = context.getContextWindow(
+                finalSystemMessages,
+                inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null,
+                (Integer) null,
+                (Integer) null,
+                buildContextWindowKwargs(model)
+        );
+
+        inputs.setMessages(new ArrayList<>(contextWindow.getMessages()));
+        inputs.setTools(contextWindow.getToolList());
+    }
+
+    private BaseMessage copyMessage(BaseMessage message) {
+        if (message == null) {
+            return null;
+        }
+        if (message instanceof AssistantMessage assistantMessage) {
+            return copyAssistantMessage(assistantMessage);
+        }
+        if (message instanceof ToolMessage toolMessage) {
+            ToolMessage copy = new ToolMessage();
+            copy.setRole(toolMessage.getRole());
+            copy.setContent(copyContent(toolMessage.getContent()));
+            copy.setName(toolMessage.getName());
+            copy.setToolCallId(toolMessage.getToolCallId());
+            return copy;
+        }
+        if (message instanceof SystemMessage systemMessage) {
+            SystemMessage copy = new SystemMessage();
+            copy.setRole(systemMessage.getRole());
+            copy.setContent(copyContent(systemMessage.getContent()));
+            copy.setName(systemMessage.getName());
+            return copy;
+        }
+        if (message instanceof UserMessage userMessage) {
+            UserMessage copy = new UserMessage();
+            copy.setRole(userMessage.getRole());
+            copy.setContent(copyContent(userMessage.getContent()));
+            copy.setName(userMessage.getName());
+            return copy;
+        }
+        BaseMessage copy = new BaseMessage();
+        copy.setRole(message.getRole());
+        copy.setContent(copyContent(message.getContent()));
+        copy.setName(message.getName());
+        return copy;
+    }
+
+    private Object copyContent(Object content) {
+        if (content instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        if (content instanceof Map<?, ?> map) {
+            return new LinkedHashMap<>(map);
+        }
+        return content;
     }
 
     private void populateInvocationExtra(AgentCallbackContext ctx, Object inputs, boolean streaming) {
@@ -1532,11 +1645,10 @@ public class ReActAgent extends BaseAgent {
                 injectPendingSteering(ctx, prepared.context());
 
                 AssistantMessage aiMessage = agentSession == null
-                        ? callModel(ctx, prepared.context(), prepared.systemMessages(), prepared.tools())
+                        ? callModel(ctx, prepared.context(), prepared.tools())
                         : callModelStream(
                                 ctx,
                                 prepared.context(),
-                                prepared.systemMessages(),
                                 prepared.tools(),
                                 agentSession,
                                 chunkIndexRef,

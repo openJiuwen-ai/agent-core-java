@@ -168,8 +168,13 @@ public class MqServerAdapter {
         } catch (Exception e) {
             logger.error("[{}] Task {} error: {}", adapterId, message.getMessageId(), e.getMessage(), e);
             try {
+                Exception remoteError = e instanceof com.openjiuwen.core.common.exception.BaseError
+                        ? e
+                        : ErrorHelper.buildError(
+                        StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
+                        "reason", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
                 mq.produceMessage(message.getReplyTopic(),
-                        MqMessageUtils.buildErrorResponse(message, adapterId, e));
+                        MqMessageUtils.buildErrorResponse(message, adapterId, remoteError));
             } catch (Exception ex) {
                 logger.error("[{}] Failed to send error response for {}: {}",
                         adapterId, message.getMessageId(), ex.getMessage());

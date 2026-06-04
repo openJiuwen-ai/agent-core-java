@@ -208,11 +208,15 @@ public class ResponseCollector {
         }
         if (message.getResultType() == ResultType.ERROR) {
             throw ErrorHelper.buildError(
-                    StatusCode.REMOTE_AGENT_EXECUTION_TIMEOUT,
+                    StatusCode.REMOTE_AGENT_RESPONSE_PROCESS_ERROR,
                     null,
                     null,
                     null,
-                    java.util.Map.of("agent_id", receiverId, "timeout", String.valueOf(ttlSeconds)));
+                    java.util.Map.of(
+                            "message_id", messageId,
+                            "process_id", receiverId,
+                            "error_code", message.getErrorCode(),
+                            "error_msg", message.getErrorMsg() != null ? message.getErrorMsg() : ""));
         }
     }
 

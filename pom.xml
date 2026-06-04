@@ -40,7 +40,7 @@
         <jacoco.version>0.8.11</jacoco.version>
         <argLine></argLine>
         <surefire.groups></surefire.groups>
-        <surefire.excludedGroups>system-test</surefire.excludedGroups>
+        <surefire.excludedGroups></surefire.excludedGroups>
     </properties>
 
     <dependencyManagement>

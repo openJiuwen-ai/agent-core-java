@@ -3,115 +3,139 @@
  */
 package com.openjiuwen.harness.rails.memory;
 
-import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.SysOperationCard;
-import com.openjiuwen.harness.workspace.Workspace;
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CodingMemoryRail E2E tests - basic functionality.
- * <p>
- * Mirrors Python's {@code test_coding_memory_rail_e2e} in
- * {@code tests.system_tests.harness.test_coding_memory_rail_e2e}.
+ * Mirrors Python's {@code tests/system_tests/harness/test_coding_memory_rail_e2e.py}.
  */
 @Tag("system-test")
 class CodingMemoryRailE2ETest {
 
-    private Path tmpDir;
-    private String workDir;
-    private String sysOperationId;
-    private Object sysOp;
-    private String codingMemoryDir;
+    @TempDir
+    Path tempDir;
+
+    private Path codingMemoryDir;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() throws IOException {
         Runner.start();
-        tmpDir = Files.createTempDirectory("coding_memory_rail_e2e_");
-        workDir = new Workspace().getRootPath();
-        sysOperationId = "coding_memory_rail_sysop_" + UUID.randomUUID().toString().replace("-", "");
-        SysOperationCard card = new SysOperationCard();
-        card.setId(sysOperationId);
-        card.setMode(OperationMode.LOCAL);
-        LocalWorkConfig workConfig = new LocalWorkConfig();
-        workConfig.setWorkDir(workDir);
-        card.setWorkConfig(workConfig);
-        var addResult = Runner.resourceMgr().addSysOperation(card, null);
-        if (addResult.isError()) {
-            throw new RuntimeException("add_sys_operation failed: " + addResult.getError());
-        }
-        Path cmDir = Path.of(workDir).resolve("coding_memory");
-        Files.createDirectories(cmDir);
-        codingMemoryDir = cmDir.toString();
-        sysOp = Runner.resourceMgr().getSysOperation(sysOperationId, null, null);
+        codingMemoryDir = tempDir.resolve("coding_memory");
+        Files.createDirectories(codingMemoryDir);
     }
 
     @AfterEach
     void tearDown() {
-        try {
-            Runner.resourceMgr().removeSysOperation(sysOperationId, null, null, false);
-        } finally {
-            Runner.stop();
-        }
+        Runner.stop();
     }
 
     @Test
-    void testFullInvokeFlow() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig("test-model", "http://test", "test-key");
+    @DisplayName("full invoke flow initializes tools, recalls memories, and injects prompt")
+    void testFullInvokeFlow() throws IOException {
+        writeMemory("python_pref.md", "Python Preference", "User prefers Python programming.");
+        FakeAgent agent = new FakeAgent();
+        CodingMemoryRail rail = new CodingMemoryRail(codingMemoryDir.toString(), new Object(), "cn");
 
-        CodingMemoryRail rail = new CodingMemoryRail();
-        Object mockAgent = mock(Object.class);
-        rail.init(mockAgent);
+        rail.init(agent);
+        rail.setMemoryManager(new FakeMemoryManager(List.of(Map.of("path", "python_pref.md", "score", 0.9))));
+        rail.prefetch("Python");
+        rail.beforeModelCall(AgentCallbackContext.builder().agent(agent).build());
 
-        assertNotNull(rail);
+        assertTrue(rail.isManagerInitialized());
+        assertTrue(agent.abilityManager.addedToolNames.containsAll(List.of(
+                "coding_memory_read", "coding_memory_write", "coding_memory_edit")));
+        assertNotNull(rail.getRecalledContent());
+        assertTrue(rail.getRecalledContent().contains("Python Preference"));
+        assertNotNull(agent.promptBuilder.lastSection);
+        assertTrue(agent.promptBuilder.lastSection.render("cn").contains("Python Preference"));
     }
 
     @Test
-    void testAutoRecallWithResults() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig("test-model", "http://test", "test-key");
+    @DisplayName("auto recall returns formatted content for matching memory files")
+    void testAutoRecallWithResults() throws IOException {
+        writeMemory("python_pref.md", "Python Preference", "User prefers Python programming.");
+        CodingMemoryRail rail = new CodingMemoryRail(codingMemoryDir.toString(), new Object(), "cn");
+        rail.setMemoryManager(new FakeMemoryManager(List.of(Map.of("path", "python_pref.md", "score", 0.9))));
 
-        CodingMemoryRail rail = new CodingMemoryRail();
-        rail.init(mock(Object.class));
+        CodingMemoryRail.RecallResult result = rail.autoRecall("Python");
 
-        assertNotNull(rail);
+        assertNotNull(result.getContent());
+        assertTrue(result.getContent().contains("Python Preference"));
+        assertTrue(result.getContent().contains("User prefers Python"));
+        assertEquals(1, result.getTotal());
     }
 
     @Test
+    @DisplayName("auto recall returns empty result when manager finds nothing")
     void testAutoRecallNoResults() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig("test-model", "http://test", "test-key");
+        CodingMemoryRail rail = new CodingMemoryRail(codingMemoryDir.toString(), new Object(), "cn");
+        rail.setMemoryManager(new FakeMemoryManager(List.of()));
 
-        CodingMemoryRail rail = new CodingMemoryRail();
-        rail.init(mock(Object.class));
+        CodingMemoryRail.RecallResult result = rail.autoRecall("UnknownQuery");
 
-        assertNotNull(rail);
+        assertNull(result.getContent());
+        assertEquals(0, result.getTotal());
     }
 
     @Test
+    @DisplayName("beforeModelCall injects recalled memory content")
     void testBeforeModelCallWithRecallResults() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig("test-model", "http://test", "test-key");
+        FakeAgent agent = new FakeAgent();
+        CodingMemoryRail rail = new CodingMemoryRail(codingMemoryDir.toString(), new Object(), "cn");
+        rail.init(agent);
+        rail.setRecalledContent("### Test Memory\n\nTest content");
 
-        CodingMemoryRail rail = new CodingMemoryRail();
-        rail.init(mock(Object.class));
+        rail.beforeModelCall(AgentCallbackContext.builder().agent(agent).build());
 
-        assertNotNull(rail);
+        assertNotNull(agent.promptBuilder.lastSection);
+        String rendered = agent.promptBuilder.lastSection.render("cn");
+        assertTrue(rendered.contains("Test Memory"));
+        assertTrue(rendered.contains("Test content"));
+        assertFalse(rendered.isBlank());
     }
 
     @Test
+    @DisplayName("memory scenario selection matches Python helper semantics")
     void testScenarioSwitching() {
-        assertTrue(getMemoryScenario(Map.of("memory", Map.of("scenario", "personal"))).equals("personal"));
-        assertTrue(getMemoryScenario(Map.of("memory", Map.of("scenario", "coding"))).equals("coding"));
-        assertTrue(getMemoryScenario(Map.of("memory", Map.of())).equals("personal"));
-        assertTrue(getMemoryScenario(Map.of("memory", Map.of("scenario", "CODING"))).equals("coding"));
+        assertEquals("personal", getMemoryScenario(Map.of("memory", Map.of("scenario", "personal"))));
+        assertEquals("coding", getMemoryScenario(Map.of("memory", Map.of("scenario", "coding"))));
+        assertEquals("personal", getMemoryScenario(Map.of("memory", Map.of())));
+        assertEquals("coding", getMemoryScenario(Map.of("memory", Map.of("scenario", "CODING"))));
+    }
+
+    private void writeMemory(String filename, String name, String body) throws IOException {
+        String content = """
+                ---
+                name: %s
+                description: test memory
+                type: user
+                ---
+
+                %s
+                """.formatted(name, body);
+        Files.writeString(codingMemoryDir.resolve(filename), content);
     }
 
     @SuppressWarnings("unchecked")
@@ -119,5 +143,62 @@ class CodingMemoryRailE2ETest {
         Map<String, Object> memoryCfg = (Map<String, Object>) config.getOrDefault("memory", Map.of());
         String scenario = String.valueOf(memoryCfg.getOrDefault("scenario", "personal")).trim().toLowerCase();
         return "coding".equals(scenario) ? "coding" : "personal";
+    }
+
+    static final class FakeAgent {
+        private final FakeAbilityManager abilityManager = new FakeAbilityManager();
+        private final FakePromptBuilder promptBuilder = new FakePromptBuilder();
+
+        public FakeAbilityManager getAbilityManager() {
+            return abilityManager;
+        }
+
+        public FakePromptBuilder getSystemPromptBuilder() {
+            return promptBuilder;
+        }
+    }
+
+    static final class FakeAbilityManager {
+        private final List<String> addedToolNames = new ArrayList<>();
+        private final List<String> removedToolNames = new ArrayList<>();
+
+        public Object add(Object card) {
+            if (card instanceof ToolCard toolCard) {
+                addedToolNames.add(toolCard.getName());
+            }
+            return new Object();
+        }
+
+        public void remove(String name) {
+            removedToolNames.add(name);
+        }
+    }
+
+    static final class FakePromptBuilder {
+        private PromptSection lastSection;
+        private final List<String> removedSections = new ArrayList<>();
+
+        public void addSection(PromptSection section) {
+            this.lastSection = section;
+        }
+
+        public void removeSection(String name) {
+            removedSections.add(name);
+        }
+    }
+
+    static final class FakeMemoryManager {
+        private final List<Map<String, Object>> results;
+
+        FakeMemoryManager(List<Map<String, Object>> results) {
+            this.results = new ArrayList<>();
+            for (Map<String, Object> result : results) {
+                this.results.add(new LinkedHashMap<>(result));
+            }
+        }
+
+        public List<Map<String, Object>> search(String query, Map<String, Object> options) {
+            return results;
+        }
     }
 }

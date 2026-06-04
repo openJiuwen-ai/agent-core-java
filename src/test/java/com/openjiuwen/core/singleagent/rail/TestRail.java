@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.singleagent.rail;
 
+import com.openjiuwen.core.memory.MemInfo;
+import com.openjiuwen.core.memory.MemResult;
+import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,6 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.lang.reflect.Proxy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -456,11 +462,28 @@ class TestRail {
 
     @Test
     @DisplayName("test_before_model_call_preview_messages_do_not_override_builder")
-    void testBeforeModelCallPreviewMessagesDoNotOverrideBuilder() {
-        Assumptions.assumeTrue(
-                hasPublicMethod(ReActAgent.class, "addPromptBuilderSection"),
-                "Java ReActAgent has no prompt-builder section API equivalent to Python add_prompt_builder_section."
-        );
+    void testBeforeModelCallPreviewMessagesDoNotOverrideBuilder() throws Exception {
+        MockModelHandle mock = mockModel(textResponse("ok"));
+        TestableReActAgent agent = makeAgent(mock.model());
+
+        agent.registerRail(new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext ctx) {
+                ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
+                for (Object message : inputs.getMessages()) {
+                    if (message instanceof BaseMessage baseMessage
+                            && "system".equals(baseMessage.getRole())) {
+                        baseMessage.setContent("preview only");
+                    }
+                }
+                agent.addPromptBuilderSection("identity", "builder final", 10);
+            }
+        });
+
+        agent.invoke(Map.of("query", "test"), null);
+
+        assertThat(mock.callHistory()).hasSize(1);
+        assertThat(systemContents(mock.callHistory().getFirst())).containsExactly("builder final");
     }
 
     @Test
@@ -612,11 +635,12 @@ class TestRail {
 
     @Test
     @DisplayName("test_memory_rail_rendered_prompt_survives_multiple_iterations")
-    void testMemoryRailRenderedPromptSurvivesMultipleIterations() {
-        Assumptions.assumeTrue(
-                false,
-                "Exact MemoryRail parity needs an injectable memory mock or main-code seam outside this test file."
+    void testMemoryRailRenderedPromptSurvivesMultipleIterations() throws Exception {
+        MockModelHandle mock = mockModel(
+                toolResponse("mock_call_add", "add", "{\"a\": 1, \"b\": 2}"),
+                textResponse("done")
         );
+        registerAddToolAgentWithMemoryPrompt(mock);
     }
 
     private AgentCallbackManager makeManager() {
@@ -664,6 +688,64 @@ class TestRail {
                     return textResponse("Default mock response");
                 });
         return new MockModelHandle(model, callCount, callHistory);
+    }
+
+    private void registerAddToolAgentWithMemoryPrompt(MockModelHandle mock) throws Exception {
+        String id = "rail-test-agent-" + UUID.randomUUID();
+        AgentCard card = AgentCard.builder()
+                .id(id)
+                .name(id)
+                .description("memory assistant")
+                .build();
+        TestableReActAgent agent = new TestableReActAgent(card, mock.model());
+        agent.configure(ReActAgentConfig.builder()
+                .promptTemplate(List.of(Map.of("role", "system", "content", "Memory info: {{sys_long_term_memory}}")))
+                .maxIterations(3)
+                .build());
+        agentsToClear.add(agent);
+        registerAddTool(agent);
+        agent.registerRail(stubMemoryRail("preference: math"));
+
+        agent.invoke(Map.of("query", "1+2", "user_id", "user_001"), null);
+
+        assertThat(mock.callHistory()).hasSize(2);
+        for (List<Object> call : mock.callHistory()) {
+            assertThat(systemContents(call)).singleElement()
+                    .satisfies(content -> {
+                        assertThat(content).contains("preference: math");
+                        assertThat(content).doesNotContain("{{sys_long_term_memory}}");
+                    });
+        }
+    }
+
+    private AgentRail stubMemoryRail(String memoryContent) throws Exception {
+        Class<?> railClass = Class.forName("com.openjiuwen.core.application.llm.rails.MemoryRail");
+        Class<?> memoryClientType = Class.forName("com.openjiuwen.core.application.llm.rails.MemoryRail$MemoryClient");
+        Constructor<?> constructor = railClass.getDeclaredConstructor(String.class, AgentMemoryConfig.class, memoryClientType);
+        constructor.setAccessible(true);
+
+        Object memoryClient = Proxy.newProxyInstance(
+                memoryClientType.getClassLoader(),
+                new Class<?>[] {memoryClientType},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getVariables" -> Map.of();
+                    case "searchUserMem" -> List.of(MemResult.builder()
+                            .memInfo(MemInfo.builder().content(memoryContent).build())
+                            .build());
+                    case "searchUserHistorySummary" -> List.of();
+                    case "addMessages" -> null;
+                    default -> throw new UnsupportedOperationException("Unexpected memory client method: " + method.getName());
+                }
+        );
+
+        AgentMemoryConfig memoryConfig = AgentMemoryConfig.builder()
+                .enableLongTermMem(true)
+                .enableUserProfile(true)
+                .enableSemanticMemory(false)
+                .enableEpisodicMemory(false)
+                .enableSummaryMemory(false)
+                .build();
+        return (AgentRail) constructor.newInstance("scope_001", memoryConfig, memoryClient);
     }
 
     private void registerAddTool(ReActAgent agent) {
@@ -728,15 +810,6 @@ class TestRail {
                 .build();
     }
 
-    private static boolean hasPublicMethod(Class<?> type, String methodName) {
-        for (Method method : type.getMethods()) {
-            if (method.getName().equals(methodName)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static ForceFinishApi assumeForceFinishApi() {
         Method request = findMethod(AgentCallbackContext.class, "requestForceFinish", "request_force_finish", 1);
         Method consume = findMethod(AgentCallbackContext.class, "consumeForceFinish", "consume_force_finish", 0);
@@ -777,6 +850,15 @@ class TestRail {
         } catch (ReflectiveOperationException ignored) {
             return signal;
         }
+    }
+
+    private static List<String> systemContents(List<Object> messages) {
+        return messages.stream()
+                .filter(BaseMessage.class::isInstance)
+                .map(BaseMessage.class::cast)
+                .filter(message -> "system".equals(message.getRole()))
+                .map(message -> String.valueOf(message.getContent()))
+                .collect(Collectors.toList());
     }
 
     private static final class LogRail extends AgentRail {

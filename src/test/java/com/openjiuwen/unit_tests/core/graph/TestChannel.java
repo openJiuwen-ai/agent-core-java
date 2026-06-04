@@ -4,13 +4,21 @@
 
 package com.openjiuwen.unit_tests.core.graph;
 
+import com.openjiuwen.core.graph.pregel.BarrierChannel;
+import com.openjiuwen.core.graph.pregel.BarrierMessage;
+import com.openjiuwen.core.graph.pregel.ChannelManager;
+import com.openjiuwen.core.graph.pregel.TriggerChannel;
+import com.openjiuwen.core.graph.pregel.TriggerMessage;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import java.util.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for Channel and ChannelManager.
@@ -20,127 +28,148 @@ import java.util.*;
  * 
  * Tests trigger channels and barrier channels for graph-based workflows.
  */
-@Disabled("Requires Channel implementation")
 class TestChannel {
-
-    // ==================== Trigger Channel Tests ====================
 
     @Test
     @DisplayName("Test trigger channel reset")
     void testTriggerChannelReset() {
-        // In Python:
-        // ch_start = TriggerChannel("start")
-        // ch_a = TriggerChannel("a")
-        // manager = ChannelManager([ch_start, ch_a])
-        // manager.buffer_message(TriggerMessage(sender="__start__", target="start"))
-        // manager.flush()
-        // assert "start" in manager.get_ready_nodes()
-        // manager.consume("start")
-        // assert "start" not in manager.get_ready_nodes()
-        
-        assertTrue(true, "Trigger channel reset test placeholder");
-    }
+        TriggerChannel chStart = new TriggerChannel("start");
+        TriggerChannel chA = new TriggerChannel("a");
+        ChannelManager manager = new ChannelManager(List.of(chStart, chA));
 
-    @Test
-    @DisplayName("Test trigger channel is ready")
-    void testTriggerChannelIsReady() {
-        assertTrue(true, "Trigger channel is ready test placeholder");
-    }
+        assertTrue(manager.getReadyNodes().isEmpty());
 
-    @Test
-    @DisplayName("Test trigger channel consume")
-    void testTriggerChannelConsume() {
-        assertTrue(true, "Trigger channel consume test placeholder");
-    }
+        manager.bufferMessage(new TriggerMessage("__start__", "start"));
+        manager.flush();
 
-    // ==================== Barrier Channel Tests ====================
+        assertTrue(manager.getReadyNodes().contains("start"));
+        assertTrue(chStart.isReady());
+
+        manager.consume("start");
+
+        assertFalse(manager.getReadyNodes().contains("start"));
+        assertFalse(chStart.isReady());
+
+        manager.bufferMessage(new TriggerMessage("start", "a"));
+        manager.flush();
+
+        assertTrue(manager.getReadyNodes().contains("a"));
+        assertFalse(manager.getReadyNodes().contains("start"));
+
+        manager.consume("a");
+        assertFalse(manager.getReadyNodes().contains("a"));
+
+        manager.flush();
+        assertTrue(manager.getReadyNodes().isEmpty());
+    }
 
     @Test
     @DisplayName("Test barrier lifecycle")
     void testBarrierLifecycle() {
-        // In Python:
-        // barrier_ch = BarrierChannel("collect", {"A", "B"})
-        // manager = ChannelManager([barrier_ch])
-        // Test: Waiting -> Partial arrival -> All arrived (Ready) -> Consumed (Reset) -> Waiting again
-        
-        assertTrue(true, "Barrier lifecycle test placeholder");
+        BarrierChannel barrier = new BarrierChannel("collect", Set.of("A", "B"));
+        ChannelManager manager = new ChannelManager(List.of(barrier));
+
+        assertTrue(manager.getReadyNodes().isEmpty());
+        assertFalse(barrier.isReady());
+
+        BarrierMessage msgA = new BarrierMessage("A", barrier.getKey());
+        manager.bufferMessage(msgA);
+        manager.flush();
+
+        assertEquals(List.of("A"), barrier.snapshot());
+        assertFalse(barrier.isReady());
+        assertFalse(manager.getReadyNodes().contains("collect"));
+
+        BarrierMessage msgB = new BarrierMessage("B", barrier.getKey());
+        manager.bufferMessage(msgB);
+        manager.flush();
+
+        assertTrue(((List<?>) barrier.snapshot()).containsAll(List.of("A", "B")));
+        assertTrue(barrier.isReady());
+        assertTrue(manager.getReadyNodes().contains("collect"));
+
+        manager.consume("collect");
+
+        assertFalse(manager.getReadyNodes().contains("collect"));
+        assertEquals(List.of(), barrier.snapshot());
+        assertFalse(barrier.isReady());
+
+        manager.bufferMessage(msgA);
+        manager.flush();
+
+        assertEquals(List.of("A"), barrier.snapshot());
+        assertFalse(barrier.isReady());
+        assertFalse(manager.getReadyNodes().contains("collect"));
     }
 
     @Test
-    @DisplayName("Test barrier channel partial arrival")
-    void testBarrierChannelPartialArrival() {
-        assertTrue(true, "Barrier channel partial arrival test placeholder");
+    @DisplayName("Test barrier duplicate signals")
+    void testBarrierDuplicateSignals() {
+        BarrierChannel barrier = new BarrierChannel("collect", Set.of("A", "B"));
+        ChannelManager manager = new ChannelManager(List.of(barrier));
+        String key = barrier.getKey();
+
+        manager.bufferMessage(new BarrierMessage("A", key));
+        manager.bufferMessage(new BarrierMessage("A", key));
+        manager.flush();
+
+        assertEquals(List.of("A"), barrier.snapshot());
+        assertFalse(barrier.isReady());
     }
 
     @Test
-    @DisplayName("Test barrier channel all arrived")
-    void testBarrierChannelAllArrived() {
-        assertTrue(true, "Barrier channel all arrived test placeholder");
+    @DisplayName("Test trigger channel snapshot restore")
+    void testTriggerChannelSnapshotRestore() {
+        TriggerChannel trigger = new TriggerChannel("start");
+        trigger.accept(new TriggerMessage("__start__", "start"));
+        trigger.accept(new TriggerMessage("node", "start"));
+
+        assertTrue(trigger.isReady());
+        assertEquals(2, ((List<?>) trigger.snapshot()).size());
+
+        TriggerChannel restored = new TriggerChannel("start");
+        restored.restore(trigger.snapshot());
+
+        assertTrue(restored.isReady());
+        assertEquals(2, ((List<?>) restored.snapshot()).size());
+
+        restored.consume();
+        assertFalse(restored.isReady());
     }
 
     @Test
-    @DisplayName("Test barrier channel consumed reset")
-    void testBarrierChannelConsumedReset() {
-        assertTrue(true, "Barrier channel consumed reset test placeholder");
-    }
+    @DisplayName("Test barrier channel snapshot restore marks manager ready")
+    void testBarrierChannelSnapshotRestoreMarksManagerReady() {
+        BarrierChannel barrier = new BarrierChannel("collect", Set.of("A", "B"));
+        barrier.restore(List.of("A", "B"));
 
-    // ==================== Channel Manager Tests ====================
+        ChannelManager manager = new ChannelManager(List.of(barrier));
 
-    @Test
-    @DisplayName("Test channel manager get ready nodes")
-    void testChannelManagerGetReadyNodes() {
-        assertTrue(true, "Channel manager get ready nodes test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test channel manager buffer message")
-    void testChannelManagerBufferMessage() {
-        assertTrue(true, "Channel manager buffer message test placeholder");
+        assertTrue(barrier.isReady());
+        assertIterableEquals(List.of("collect"), manager.getReadyNodes());
     }
 
     @Test
-    @DisplayName("Test channel manager flush")
-    void testChannelManagerFlush() {
-        assertTrue(true, "Channel manager flush test placeholder");
+    @DisplayName("Test flush fails when target channel missing")
+    void testFlushFailsWhenTargetChannelMissing() {
+        ChannelManager manager = new ChannelManager(List.of(new TriggerChannel("start")));
+
+        manager.bufferMessage(new TriggerMessage("start", "missing"));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, manager::flush);
+        assertTrue(error.getMessage().contains("Channel not found"));
     }
 
     @Test
-    @DisplayName("Test channel manager consume")
-    void testChannelManagerConsume() {
-        assertTrue(true, "Channel manager consume test placeholder");
-    }
+    @DisplayName("Test snapshot ignores end node state")
+    void testSnapshotIgnoresEndNodeState() {
+        TriggerChannel end = new TriggerChannel("__end__");
+        end.accept(new TriggerMessage("worker", "__end__"));
 
-    // ==================== Message Tests ====================
+        ChannelManager manager = new ChannelManager(List.of(end));
 
-    @Test
-    @DisplayName("Test trigger message creation")
-    void testTriggerMessageCreation() {
-        assertTrue(true, "Trigger message creation test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test barrier message creation")
-    void testBarrierMessageCreation() {
-        assertTrue(true, "Barrier message creation test placeholder");
-    }
-
-    // ==================== Edge Cases Tests ====================
-
-    @Test
-    @DisplayName("Test empty channel manager")
-    void testEmptyChannelManager() {
-        assertTrue(true, "Empty channel manager test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test channel with no messages")
-    void testChannelWithNoMessages() {
-        assertTrue(true, "Channel with no messages test placeholder");
-    }
-
-    @Test
-    @DisplayName("Test multiple trigger messages to same channel")
-    void testMultipleTriggerMessagesToSameChannel() {
-        assertTrue(true, "Multiple trigger messages test placeholder");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> snapshot = manager.snapshot();
+        assertFalse(snapshot.containsKey("__end__"));
     }
 }
