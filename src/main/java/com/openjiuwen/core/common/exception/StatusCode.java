@@ -167,6 +167,20 @@ public enum StatusCode {
     COMPONENT_KNOWLEDGE_RETRIEVAL_LLM_MODEL_INIT_ERROR(102103,
             "component knowledge_retrieval_llm_model initialization error, reason: {error_msg}"),
 
+    // MemoryWriteComponent 102120 - 102129
+    COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR(102120,
+            "component memory_write_input parameter error, reason: {error_msg}"),
+
+    COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED(102121,
+            "component memory_write_invoke call failed, reason: {error_msg}"),
+
+    // MemoryRetrievalComponent 102130 - 102139
+    COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR(102130,
+            "component memory_retrieval_input parameter error, reason: {error_msg}"),
+
+    COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED(102131,
+            "component memory_retrieval_invoke call failed, reason: {error_msg}"),
+
     // =============================================================================================================
     // Agent Orchestration 120000–129999
     // =============================================================================================================
