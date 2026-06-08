@@ -10,7 +10,8 @@ package com.openjiuwen.core.common.exception;
  * <p>Each member carries an integer {@code code} and a message template ({@code errmsg}).
  * Message templates support {@code {placeholder}} syntax for deferred rendering.</p>
  *
- * <p>Mirrors Python's {@code openjiuwen.core.common.exception.codes.StatusCode}.</p>
+ * <p>Mirrors Python's {@code StatusCode} in
+ * {@code openjiuwen/core/common/exception/codes.py}.</p>
  */
 public enum StatusCode {
 
@@ -245,6 +246,9 @@ public enum StatusCode {
     AGENT_GROUP_EXECUTION_ERROR(132002, "agent group execution error, reason: {error_msg}"),
     AGENT_TEAM_EXECUTION_ERROR(132003, "agent team execution error, reason: {error_msg}"),
     AGENT_TEAM_CREATE_RUNTIME_ERROR(132004, "agent team create runtime error, reason: {error_msg}"),
+    AGENT_TEAM_CONFIG_INVALID(132004, "agent team config invalid, reason: {reason}"),
+    AGENT_TEAM_BUSY_INVALID(132005, "agent team busy invalid, reason: {reason}"),
+    AGENT_TEAM_STATE_INVALID(132006, "agent team state inconsistent, reason: {reason}"),
 
     // =============================================================================================================
     // ContextEngine 150000 - 154999
@@ -424,6 +428,8 @@ public enum StatusCode {
     COMMON_JSON_EXECUTION_PROCESS_ERROR(188003, "common json_execution process error, reason: {error_msg}"),
     COMMON_URL_INPUT_INVALID(188004, "common url_input is invalid, reason: {error_msg}"),
     COMMON_SSL_CERT_INVALID(188005, "common ssl_cert is invalid, reason: {error_msg}"),
+    COMMON_ENCRYPTION_ERROR(188006, "encryption failed, reason: {error_msg}"),
+    COMMON_DECRYPTION_ERROR(188007, "decryption failed, reason: {error_msg}"),
 
     // Task Manager 188100 - 188199
     COMMON_TASK_NOT_FOUND(188100, "common task not found, task_id: {task_id}"),
@@ -490,5 +496,14 @@ public enum StatusCode {
      */
     public String getErrmsg() {
         return errmsg;
+    }
+
+    /**
+     * Compatibility accessor for translated code that still uses the Python property name.
+     *
+     * @return the error message template
+     */
+    public String errmsg() {
+        return getErrmsg();
     }
 }

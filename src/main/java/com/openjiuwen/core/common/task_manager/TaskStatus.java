@@ -6,9 +6,9 @@ package com.openjiuwen.core.common.task_manager;
 
 /**
  * Task status enumeration.
- * <p>
- * Mirrors Python's {@code TaskStatus} enum from
- * <code>common/task_manager/types.py</code>.
+ *
+ * <p>Mirrors Python's {@code TaskStatus} in
+ * {@code openjiuwen/core/common/task_manager/types.py}.</p>
  */
 public enum TaskStatus {
     PENDING("pending"),
@@ -28,8 +28,7 @@ public enum TaskStatus {
         return value;
     }
 
-    /** Check if this is a terminal state. */
     public boolean isTerminal() {
-        return this == COMPLETED || this == FAILED || this == CANCELLED || this == TIMEOUT;
+        return TaskStates.TERMINAL_STATES.contains(this);
     }
 }

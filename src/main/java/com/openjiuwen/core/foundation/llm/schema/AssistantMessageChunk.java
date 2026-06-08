@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -15,80 +13,85 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Streaming assistant message chunk with tool call fragment merging.
- * <p>
- * Mirrors Python's {@code AssistantMessageChunk} model. Tool call fragments
- * from the same call are concatenated rather than appended as new elements.
+ * Mirrors Python's {@code AssistantMessageChunk} in
+ * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
  */
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessageChunk extends AssistantMessage {
 
-    /**
-     * Merge another chunk into this one, combining content and tool call fragments.
-     *
-     * @param other the chunk to merge
-     * @return a new merged chunk
-     */
-    public AssistantMessageChunk merge(AssistantMessageChunk other) {
-        if (other == null) {
-            return this;
+    public AssistantMessageChunk merge(Object other) {
+        if (!(other instanceof AssistantMessageChunk otherChunk)) {
+            throw new IllegalArgumentException("Cannot merge AssistantMessageChunk with " + other);
         }
 
-        // Merge content
-        Object combinedContent = BaseMessageChunk.mergeContent(this.getContent(), other.getContent());
-
-        // Merge tool_calls by concatenating fragments of the same call
-        List<ToolCall> mergedToolCalls = new ArrayList<>();
-        if (this.getToolCalls() != null) {
-            mergedToolCalls.addAll(this.getToolCalls());
-        }
-
-        if (other.getToolCalls() != null) {
-            for (ToolCall incoming : other.getToolCalls()) {
-                if (!mergedToolCalls.isEmpty()) {
-                    ToolCall last = mergedToolCalls.get(mergedToolCalls.size() - 1);
-                    boolean sameId = (last.getId() != null && incoming.getId() != null
-                            && last.getId().equals(incoming.getId()))
-                            || (last.getId() == null || incoming.getId() == null);
-
-                    if (sameId && "function".equals(last.getType()) && "function".equals(incoming.getType())) {
-                        // Merge fragments into the existing tool call
-                        last.setId(last.getId() != null ? last.getId() : incoming.getId());
-                        last.setType(last.getType() != null ? last.getType() : incoming.getType());
-                        last.setName(orEmpty(last.getName()) + orEmpty(incoming.getName()));
-                        last.setArguments(orEmpty(last.getArguments()) + orEmpty(incoming.getArguments()));
-                        continue;
-                    }
-                }
-                mergedToolCalls.add(incoming);
-            }
-        }
-
-        String mergedFinishReason = !"null".equals(other.getFinishReason())
-                ? other.getFinishReason()
-                : this.getFinishReason();
-        Object mergedParserContent = MergeUtils.mergeParserContent(this.getParserContent(), other.getParserContent());
-        String mergedReasoningContent = orEmpty(this.getReasoningContent()) + orEmpty(other.getReasoningContent());
-        if (mergedReasoningContent.isEmpty()) {
-            mergedReasoningContent = null;
-        }
+        Object combinedContent = MessageChunkMerge.mergeParserContent(getContent(), otherChunk.getContent());
+        List<ToolCall> mergedToolCalls = mergeToolCalls(getToolCalls(), otherChunk.getToolCalls());
+        String mergedFinishReason = !"null".equals(otherChunk.getFinishReason())
+                ? otherChunk.getFinishReason()
+                : getFinishReason();
 
         return AssistantMessageChunk.builder()
-                .role(this.getRole())
+                .role(getRole())
                 .content(combinedContent)
                 .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
-                .usageMetadata(other.getUsageMetadata() != null ? other.getUsageMetadata() : this.getUsageMetadata())
+                .usageMetadata(otherChunk.getUsageMetadata() != null ? otherChunk.getUsageMetadata() : getUsageMetadata())
                 .finishReason(mergedFinishReason)
-                .parserContent(mergedParserContent)
-                .reasoningContent(mergedReasoningContent)
+                .parserContent(MessageChunkMerge.mergeParserContent(getParserContent(), otherChunk.getParserContent()))
+                .reasoningContent(orEmpty(getReasoningContent()) + orEmpty(otherChunk.getReasoningContent()))
+                .promptTokenIds(preferLeft(getPromptTokenIds(), otherChunk.getPromptTokenIds()))
+                .completionTokenIds(MessageChunkMerge.concatTokenIds(getCompletionTokenIds(), otherChunk.getCompletionTokenIds()))
+                .logprobs(MessageChunkMerge.mergeLogprobs(getLogprobs(), otherChunk.getLogprobs()))
                 .build();
     }
 
-    private static String orEmpty(String s) {
-        return s != null ? s : "";
+    private static List<ToolCall> mergeToolCalls(List<ToolCall> left, List<ToolCall> right) {
+        List<ToolCall> merged = new ArrayList<>();
+        if (left != null) {
+            for (ToolCall toolCall : left) {
+                merged.add(copyToolCall(toolCall));
+            }
+        }
+        if (right != null) {
+            for (ToolCall incoming : right) {
+                if (!merged.isEmpty()) {
+                    ToolCall last = merged.get(merged.size() - 1);
+                    boolean sameId = (last.getId() != null && incoming.getId() != null && last.getId().equals(incoming.getId()))
+                            || (last.getId() == null || incoming.getId() == null);
+                    if (sameId && "function".equals(last.getType()) && "function".equals(incoming.getType())) {
+                        merged.set(merged.size() - 1, ToolCall.builder()
+                                .id(last.getId() != null ? last.getId() : incoming.getId())
+                                .type(last.getType() != null ? last.getType() : incoming.getType())
+                                .name(!orEmpty(last.getName()).isEmpty() ? last.getName() : incoming.getName())
+                                .arguments(orEmpty(last.getArguments()) + orEmpty(incoming.getArguments()))
+                                .index(last.getIndex())
+                                .build());
+                        continue;
+                    }
+                }
+                merged.add(copyToolCall(incoming));
+            }
+        }
+        return merged;
+    }
+
+    private static ToolCall copyToolCall(ToolCall toolCall) {
+        return ToolCall.builder()
+                .id(toolCall.getId())
+                .type(toolCall.getType())
+                .name(toolCall.getName())
+                .arguments(toolCall.getArguments())
+                .index(toolCall.getIndex())
+                .build();
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static List<Integer> preferLeft(List<Integer> left, List<Integer> right) {
+        return (left != null && !left.isEmpty()) ? left : right;
     }
 }

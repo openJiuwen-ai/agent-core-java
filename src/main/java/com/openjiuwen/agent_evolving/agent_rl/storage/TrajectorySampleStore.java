@@ -11,7 +11,7 @@ import java.util.Map;
  * Shared RL trajectory sample store contract.
  * <p>
  * Mirrors Python's {@code TrajectorySampleStore} in
- * {@code openjiuwen.agent_evolving.agent_rl.storage.trajectory_store}.
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/trajectory_store.py}.
  */
 public interface TrajectorySampleStore {
 

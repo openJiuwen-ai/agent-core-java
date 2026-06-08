@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Named parameters for adding a nested property to an {@link OutputsField}.
  * <p>
- * Mirrors Python's {@code OutputPropertySpec} dataclass.
+ * Mirrors Python's {@code OutputPropertySpec} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class OutputPropertySpec {
     private final List<String> variableNames;

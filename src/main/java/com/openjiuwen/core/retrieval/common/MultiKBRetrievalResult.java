@@ -4,35 +4,88 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import lombok.Getter;
-import lombok.Setter;
-
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Retrieval result aggregated across multiple knowledge bases.
+ * Mirrors Python's {@code MultiKBRetrievalResult} in
+ * {@code openjiuwen/core/retrieval/common/retrieval_result.py}.
  */
-@Getter
-@Setter
-public class MultiKBRetrievalResult extends RetrievalResult {
+public class MultiKBRetrievalResult {
 
+    private String text;
+    private double score;
     private double rawScore;
     private double rawScoreScaled;
-    private List<String> kbIds = new ArrayList<>();
+    private List<Object> kbIds = new ArrayList<>();
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 
-    public MultiKBRetrievalResult(String text,
-                                  double score,
-                                  double rawScore,
-                                  double rawScoreScaled,
-                                  List<String> kbIds,
-                                  Map<String, Object> metadata) {
-        super(text, score, metadata, null, null);
+    public MultiKBRetrievalResult() {
+    }
+
+    public MultiKBRetrievalResult(
+            String text,
+            double score,
+            double rawScore,
+            double rawScoreScaled,
+            List<Object> kbIds,
+            Map<String, Object> metadata
+    ) {
+        this.text = text;
+        this.score = score;
         this.rawScore = rawScore;
         this.rawScoreScaled = rawScoreScaled;
-        if (kbIds != null) {
-            this.kbIds = new ArrayList<>(kbIds);
-        }
+        setKbIds(kbIds);
+        setMetadata(metadata);
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public double getScore() {
+        return score;
+    }
+
+    public void setScore(double score) {
+        this.score = score;
+    }
+
+    public double getRawScore() {
+        return rawScore;
+    }
+
+    public void setRawScore(double rawScore) {
+        this.rawScore = rawScore;
+    }
+
+    public double getRawScoreScaled() {
+        return rawScoreScaled;
+    }
+
+    public void setRawScoreScaled(double rawScoreScaled) {
+        this.rawScoreScaled = rawScoreScaled;
+    }
+
+    public List<Object> getKbIds() {
+        return kbIds;
+    }
+
+    public void setKbIds(List<Object> kbIds) {
+        this.kbIds = kbIds == null ? new ArrayList<>() : new ArrayList<>(kbIds);
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
 }

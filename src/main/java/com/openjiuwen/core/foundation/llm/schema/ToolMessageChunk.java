@@ -4,45 +4,31 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 /**
- * Streaming tool message chunk.
- * <p>
- * Mirrors Python's {@code ToolMessageChunk} model.
+ * Mirrors Python's {@code ToolMessageChunk} in
+ * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
  */
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolMessageChunk extends ToolMessage {
 
-    /**
-     * Merge another tool message chunk into this one.
-     *
-     * @param other the chunk to merge
-     * @return a new merged chunk
-     */
-    public ToolMessageChunk merge(ToolMessageChunk other) {
-        if (other == null) {
-            return this;
+    public ToolMessageChunk merge(Object other) {
+        if (!(other instanceof ToolMessageChunk otherChunk)) {
+            throw new IllegalArgumentException("Cannot merge ToolMessageChunk with " + other);
         }
         return ToolMessageChunk.builder()
                 .role("tool")
-                .content(orEmpty(this.getContentAsString()) + orEmpty(other.getContentAsString()))
-                .toolCallId(other.getToolCallId() != null && !other.getToolCallId().isBlank()
-                        ? other.getToolCallId()
-                        : this.getToolCallId())
+                .content(getContentAsString() + otherChunk.getContentAsString())
+                .toolCallId((otherChunk.getToolCallId() != null && !otherChunk.getToolCallId().isEmpty())
+                        ? otherChunk.getToolCallId()
+                        : getToolCallId())
                 .build();
-    }
-
-    private static String orEmpty(String s) {
-        return s != null ? s : "";
     }
 }

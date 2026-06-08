@@ -12,7 +12,8 @@ import java.util.Map;
 /**
  * Outputs field model.
  * <p>
- * Mirrors Python's {@code OutputsField} dataclass.
+ * Mirrors Python's {@code OutputsField} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class OutputsField {
     private String type;

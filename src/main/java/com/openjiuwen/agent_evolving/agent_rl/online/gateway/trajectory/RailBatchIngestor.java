@@ -4,18 +4,24 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
 
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayMessageUtils;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * rail-v1 upload batch ingestion for the online-RL gateway.
+ * Normalize rail-v1 uploads and stage samples for delayed judge scoring.
  * <p>
- * Mirrors the deterministic normalization and staging behavior in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.rail_ingest}.
+ * Mirrors Python's {@code RailBatchIngestor} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/rail_ingest.py}.
  */
 public class RailBatchIngestor {
+
+    private static final Logger LOGGER = Logger.getLogger("online_rl.gateway");
 
     private final PendingJudgeStore pendingJudgeStore;
     private final JudgeDispatcher judgeDispatcher;
@@ -24,15 +30,16 @@ public class RailBatchIngestor {
     public RailBatchIngestor(PendingJudgeStore pendingJudgeStore, JudgeDispatcher judgeDispatcher, String defaultUserId) {
         this.pendingJudgeStore = pendingJudgeStore;
         this.judgeDispatcher = judgeDispatcher;
-        this.defaultUserId = defaultUserId != null ? defaultUserId : "";
+        this.defaultUserId = defaultUserId == null ? "" : defaultUserId;
     }
 
     public Map<String, Object> ingestRailBatch(Map<String, Object> payload) {
         if (!"rail-v1".equals(payload.get("protocol_version"))) {
             throw new IllegalArgumentException("unsupported protocol_version: " + payload.get("protocol_version"));
         }
-        String sessionId = String.valueOf(payload.getOrDefault("session_id", ""));
-        String trajectoryId = String.valueOf(payload.getOrDefault("trajectory_id", ""));
+
+        String sessionId = pythonString(firstTruthyValue(payload.get("session_id"), ""));
+        String trajectoryId = pythonString(firstTruthyValue(payload.get("trajectory_id"), ""));
         Object samplesRaw = payload.get("samples");
         if (sessionId.isBlank()) {
             throw new IllegalArgumentException("session_id is required");
@@ -56,8 +63,7 @@ public class RailBatchIngestor {
                 }
                 continue;
             }
-            Map<String, Object> sample = new LinkedHashMap<>();
-            rawMap.forEach((key, value) -> sample.put(String.valueOf(key), value));
+            Map<String, Object> sample = normalizeRawMap(rawMap);
             try {
                 Map<String, Object> normalized = normalizeRailSample(payload, sample, defaultUserId);
                 pendingJudgeStore.put(normalized);
@@ -67,106 +73,130 @@ public class RailBatchIngestor {
                 if (firstError == null) {
                     firstError = exception.getMessage();
                 }
+                LOGGER.log(
+                        Level.WARNING,
+                        "[Gateway] rail-v1 sample rejected trajectory={0} err={1}",
+                        new Object[]{trajectoryId, exception.getMessage()}
+                );
             }
         }
+
         if (accepted == 0 && rejected > 0) {
-            throw new IllegalArgumentException(firstError != null ? firstError : "all rail-v1 samples were rejected");
+            throw new IllegalArgumentException(firstError == null ? "all rail-v1 samples were rejected" : firstError);
         }
 
-        int sessionFlushed = Boolean.TRUE.equals(payload.get("session_done")) ? judgeDispatcher.onSessionDone(sessionId) : 0;
-        return Map.of(
-                "protocol_version", "rail-v1",
-                "session_id", sessionId,
-                "trajectory_id", trajectoryId,
-                "accepted", accepted,
-                "rejected", rejected,
-                "judged", judged,
-                "session_flushed", sessionFlushed
-        );
+        int sessionFlushed = 0;
+        if (pythonBool(payload.get("session_done"))) {
+            sessionFlushed = judgeDispatcher.onSessionDone(sessionId);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("protocol_version", "rail-v1");
+        result.put("session_id", sessionId);
+        result.put("trajectory_id", trajectoryId);
+        result.put("accepted", accepted);
+        result.put("rejected", rejected);
+        result.put("judged", judged);
+        result.put("session_flushed", sessionFlushed);
+        return result;
     }
 
-    public static Map<String, Object> normalizeRailSample(Map<String, Object> payload, Map<String, Object> sample, String defaultUserId) {
-        String sessionId = String.valueOf(sample.getOrDefault("session_id", payload.getOrDefault("session_id", "")));
-        String trajectoryId = String.valueOf(sample.getOrDefault("trajectory_id", payload.getOrDefault("trajectory_id", "")));
+    public static Map<String, Object> normalizeRailSample(Map<String, Object> payload,
+                                                          Map<String, Object> sample,
+                                                          String defaultUserId) {
+        String sessionId = pythonString(firstTruthyValue(sample.get("session_id"), payload.get("session_id"), ""));
+        String trajectoryId = pythonString(firstTruthyValue(sample.get("trajectory_id"), payload.get("trajectory_id"), ""));
         int stepIndex = intValue(sample.get("step_index"), 0);
-        List<Map<String, Object>> messages = listOfMaps(sample.get("messages"));
-        if (messages.isEmpty()) {
+        Map<String, Object> trajectoryMeta = mapValue(payload.get("trajectory_meta"));
+        Object messagesRaw = sample.get("messages");
+        if (!(messagesRaw instanceof List<?> rawMessages) || rawMessages.isEmpty()) {
             throw new IllegalArgumentException("messages must be a non-empty list");
         }
-        Map<String, Object> response = mapValue(sample.get("response"));
-        String responseText = String.valueOf(sample.getOrDefault("response_text", response.getOrDefault("content", "")));
+        List<Map<String, Object>> messages = listOfMaps(rawMessages);
+        Map<String, Object> response = sample.get("response") instanceof Map<?, ?> rawResponse
+                ? normalizeRawMap(rawResponse)
+                : new LinkedHashMap<>();
+        String responseText = pythonString(firstTruthyValue(
+                sample.get("response_text"),
+                response.get("content"),
+                ""
+        ));
+        Object tools = sample.get("tools");
         Object renderFingerprintExpected = sample.get("render_fingerprint_expected");
-        if (renderFingerprintExpected != null && !String.valueOf(renderFingerprintExpected).equals(String.valueOf(sample.get("render_fingerprint")))) {
+        if (renderFingerprintExpected != null
+                && !pythonString(sample.get("render_fingerprint")).equals(String.valueOf(renderFingerprintExpected))) {
             throw new IllegalArgumentException("render_fingerprint mismatch");
         }
 
         Object promptIdsRaw = sample.get("prompt_ids");
-        if (!(promptIdsRaw instanceof List<?> promptIdsList)) {
+        if (!(promptIdsRaw instanceof List<?> promptIdList)) {
             throw new IllegalArgumentException("missing prompt_ids; rail-v1 samples must provide prompt token ids");
         }
-        List<Integer> promptIds = toIntList(promptIdsList);
-        String promptText = String.valueOf(sample.getOrDefault("prompt_text", ""));
+        List<Integer> promptIds = toIntList(promptIdList);
+        String promptText = pythonString(firstTruthyValue(sample.get("prompt_text"), ""));
 
-        Object responseTokensRaw = sample.get("response_tokens");
-        if (!(responseTokensRaw instanceof List<?> responseIdsList)) {
+        Object responseIdsRaw = sample.get("response_tokens");
+        if (!(responseIdsRaw instanceof List<?> responseIdList)) {
             throw new IllegalArgumentException("missing response_tokens; rail-v1 samples must provide response token ids");
         }
-        List<Integer> responseIds = toIntList(responseIdsList);
+        List<Integer> responseIds = toIntList(responseIdList);
         List<Double> responseLogprobs = SamplePayloads.coerceLogprobs(sample.get("logprobs"), responseIds.size());
 
-        String userId = String.valueOf(
-                sample.getOrDefault(
-                        "user_id",
-                        payload.getOrDefault(
-                                "user_id",
-                                payload.getOrDefault("tenant_id", sample.getOrDefault("tenant_id", defaultUserId != null ? defaultUserId : ""))
-                        )
-                )
-        ).trim();
+        String userId = pythonString(firstTruthyValue(
+                sample.get("user_id"),
+                payload.get("user_id"),
+                payload.get("tenant_id"),
+                sample.get("tenant_id"),
+                defaultUserId == null ? "" : defaultUserId,
+                ""
+        )).trim();
         if (userId.isBlank()) {
-            throw new IllegalArgumentException("missing user_id; rail-v1 requires user or tenant id");
+            throw new IllegalArgumentException("missing user_id/tenant_id; upload batch samples require a stable user id");
         }
 
-        String model = String.valueOf(sample.getOrDefault("model", payload.getOrDefault("model", "")));
-        String mode = String.valueOf(payload.getOrDefault("mode", "online"));
-        String ioMode = String.valueOf(payload.getOrDefault("io_mode", "assistant_response"));
-        List<Map<String, Object>> toolCalls = listOfMaps(sample.get("tool_calls"));
-        Map<String, Object> usage = mapValue(sample.get("usage"));
-        String finishReason = sample.get("finish_reason") != null ? String.valueOf(sample.get("finish_reason")) : null;
-        Map<String, Object> requestExtras = mapValue(sample.get("request_extras"));
+        int turnNum = stepIndex + 1;
+        Map<String, Object> railMeta = new LinkedHashMap<>();
+        railMeta.put("protocol_version", "rail-v1");
+        railMeta.put("sample_meta", mapValue(sample.get("meta")));
+        railMeta.put("trajectory_meta", trajectoryMeta);
+        railMeta.put("instruction_text", GatewayMessageUtils.extractLastUserInstruction(messages));
 
         Map<String, Object> extraFields = new LinkedHashMap<>();
         extraFields.put("trajectory_id", trajectoryId);
         extraFields.put("step_index", stepIndex);
+        extraFields.put("rail_meta", railMeta);
 
         return SamplePayloads.buildSample(
                 userId,
                 sessionId,
-                intValue(sample.get("turn_num"), stepIndex),
-                mode,
-                ioMode,
-                model,
+                turnNum,
+                "rail-v1",
+                "rail",
+                firstTruthyValue(sample.get("model_id"), payload.get("model_id")),
                 messages,
-                sample.get("tools"),
+                tools,
                 response,
-                usage,
-                finishReason,
+                mapValue(response.get("usage")),
+                stringOrNull(response.get("finish_reason")),
                 promptText,
                 promptIds,
                 responseText,
                 responseIds,
                 responseLogprobs,
-                toolCalls,
-                requestExtras,
-                sample.get("sample_id") != null ? String.valueOf(sample.get("sample_id")) : null,
-                sample.get("created_at") != null ? String.valueOf(sample.get("created_at")) : null,
+                listOfMaps(response.get("tool_calls")),
+                null,
+                trajectoryId + ":" + stepIndex,
+                null,
                 extraFields
         );
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> mapValue(Object value) {
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+        if (value instanceof Map<?, ?> rawMap) {
+            return normalizeRawMap(rawMap);
+        }
+        return new LinkedHashMap<>();
     }
 
     @SuppressWarnings("unchecked")
@@ -177,32 +207,95 @@ public class RailBatchIngestor {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object item : list) {
             if (item instanceof Map<?, ?> rawMap) {
-                Map<String, Object> map = new LinkedHashMap<>();
-                rawMap.forEach((key, val) -> map.put(String.valueOf(key), val));
-                out.add(map);
+                out.add(normalizeRawMap(rawMap));
             }
         }
         return out;
     }
 
+    private static Map<String, Object> normalizeRawMap(Map<?, ?> rawMap) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
     private static List<Integer> toIntList(List<?> values) {
-        List<Integer> out = new ArrayList<>();
+        List<Integer> result = new ArrayList<>(values.size());
         for (Object value : values) {
-            out.add(intValue(value, 0));
+            result.add(intValue(value, 0));
         }
-        return out;
+        return result;
     }
 
     private static int intValue(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
         }
-        if (value != null) {
-            try {
-                return Integer.parseInt(String.valueOf(value));
-            } catch (Exception ignored) {
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static boolean pythonBool(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof List<?> list) {
+            return !list.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static Object firstTruthyValue(Object... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Object value : values) {
+            if (pythonBool(value)) {
+                return value;
             }
         }
-        return fallback;
+        return null;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private static String stringOrDefault(Object value, String fallback) {
+        return value == null ? fallback : String.valueOf(value);
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String pythonString(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }

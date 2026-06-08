@@ -5,9 +5,8 @@
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Trigger message that activates a target node in the next super-step.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.TriggerMessage}.
+ * Mirrors Python's {@code TriggerMessage} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public class TriggerMessage extends Message {
 

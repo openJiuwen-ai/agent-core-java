@@ -11,7 +11,7 @@ import java.util.Map;
  * Gateway service configuration.
  * <p>
  * Mirrors Python's {@code GatewayServiceConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class GatewayServiceConfig {
 

@@ -7,14 +7,10 @@ package com.openjiuwen.agent_teams.tools;
 import java.util.Objects;
 
 /**
- * Base class for message read status table (one per session).
+ * Base class for message read status tables (one per session).
  * <p>
- * Tracks which broadcast message each member has read up to.
- * Each member has one record per team, storing the timestamp of the broadcast message they have read.
- * </p>
- * <p>
- * Mirrors Python's {@code MessageReadStatusBase} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code MessageReadStatusBase} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class MessageReadStatus {
 
@@ -57,8 +53,12 @@ public class MessageReadStatus {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof MessageReadStatus that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof MessageReadStatus that)) {
+            return false;
+        }
         return Objects.equals(memberName, that.memberName)
                 && Objects.equals(teamName, that.teamName)
                 && Objects.equals(readAt, that.readAt);
@@ -71,10 +71,10 @@ public class MessageReadStatus {
 
     @Override
     public String toString() {
-        return "MessageReadStatus{" +
-                "memberName='" + memberName + '\'' +
-                ", teamName='" + teamName + '\'' +
-                ", readAt=" + readAt +
-                '}';
+        return "MessageReadStatus{"
+                + "memberName='" + memberName + '\''
+                + ", teamName='" + teamName + '\''
+                + ", readAt=" + readAt
+                + '}';
     }
 }

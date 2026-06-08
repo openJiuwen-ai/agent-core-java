@@ -14,6 +14,9 @@ import java.util.Map;
 
 /**
  * Legacy workflow schema for backward compatibility.
+ * <p>
+ * Mirrors Python's {@code WorkflowSchema} in
+ * {@code openjiuwen/core/single_agent/legacy/schema.py}.
  */
 @Data
 @Builder

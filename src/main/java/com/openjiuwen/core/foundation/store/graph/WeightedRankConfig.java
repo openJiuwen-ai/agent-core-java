@@ -5,17 +5,14 @@
 package com.openjiuwen.core.foundation.store.graph;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Weighted combination of scores from name_dense, content_dense, content_sparse.
+ * Weighted combination of scores from name_dense, content_dense, and content_sparse.
  * <p>
- * Mirrors Python's {@code WeightedRankConfig} model from
- * <code>foundation/store/graph/result_ranking.py</code>.
- *
- * <p>Weights are normalized; 0 excludes that channel.
+ * Mirrors Python's {@code WeightedRankConfig} in
+ * {@code openjiuwen/core/foundation/store/graph/result_ranking.py}.
  */
 public class WeightedRankConfig extends BaseRankConfig {
 
@@ -28,7 +25,7 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     public WeightedRankConfig(double nameDense, double contentDense, double contentSparse) {
-        setName("weighted");
+        this();
         this.nameDense = nameDense;
         this.contentDense = contentDense;
         this.contentSparse = contentSparse;
@@ -41,11 +38,10 @@ public class WeightedRankConfig extends BaseRankConfig {
                 .toList();
         double total = weights.stream().mapToDouble(Double::doubleValue).sum();
         List<Object> positional = new ArrayList<>();
-        Map<String, Object> keyword = new HashMap<>();
         if (total > 0) {
             weights.forEach(weight -> positional.add(weight / total));
         }
-        return new RankerArgs(positional, keyword);
+        return new RankerArgs(positional, Map.of());
     }
 
     @Override
@@ -57,12 +53,27 @@ public class WeightedRankConfig extends BaseRankConfig {
         );
     }
 
-    public double getNameDense() { return nameDense; }
-    public void setNameDense(double nameDense) { this.nameDense = nameDense; }
+    public double getNameDense() {
+        return nameDense;
+    }
 
-    public double getContentDense() { return contentDense; }
-    public void setContentDense(double contentDense) { this.contentDense = contentDense; }
+    public void setNameDense(double nameDense) {
+        this.nameDense = nameDense;
+    }
 
-    public double getContentSparse() { return contentSparse; }
-    public void setContentSparse(double contentSparse) { this.contentSparse = contentSparse; }
+    public double getContentDense() {
+        return contentDense;
+    }
+
+    public void setContentDense(double contentDense) {
+        this.contentDense = contentDense;
+    }
+
+    public double getContentSparse() {
+        return contentSparse;
+    }
+
+    public void setContentSparse(double contentSparse) {
+        this.contentSparse = contentSparse;
+    }
 }

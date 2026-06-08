@@ -13,7 +13,8 @@ import lombok.experimental.SuperBuilder;
 /**
  * Base generation response from LLM.
  * <p>
- * Mirrors Python's {@code GenerationResponse} model.
+ * Mirrors Python's {@code GenerationResponse} in
+ * {@code openjiuwen/core/foundation/llm/schema/generation_response.py}.
  */
 @Data
 @SuperBuilder

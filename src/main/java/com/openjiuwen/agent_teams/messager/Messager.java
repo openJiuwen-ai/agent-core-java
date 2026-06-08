@@ -5,28 +5,29 @@
 package com.openjiuwen.agent_teams.messager;
 
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Minimal messager transport abstraction.
- *
- * <p>Mirrors Python's {@code Messager} in
- * {@code openjiuwen.agent_teams.messager.messager}.</p>
+ * <p>
+ * Mirrors Python's {@code Messager} in
+ * {@code openjiuwen/agent_teams/messager/messager.py}.
  */
 public interface Messager {
 
-    void start();
+    CompletionStage<Void> start();
 
-    void stop();
+    CompletionStage<Void> stop();
 
-    void publish(String topicId, EventMessage message);
+    CompletionStage<Void> publish(String topicId, EventMessage message);
 
-    void subscribe(String topicId, MessagerHandler handler);
+    CompletionStage<Void> subscribe(String topicId, MessagerHandler handler);
 
-    void unsubscribe(String topicId);
+    CompletionStage<Void> unsubscribe(String topicId);
 
-    void send(String agentId, EventMessage message);
+    CompletionStage<Void> send(String agentId, EventMessage message);
 
-    void registerDirectMessageHandler(MessagerHandler handler);
+    CompletionStage<Void> registerDirectMessageHandler(MessagerHandler handler);
 
-    void unregisterDirectMessageHandler();
+    CompletionStage<Void> unregisterDirectMessageHandler();
 }

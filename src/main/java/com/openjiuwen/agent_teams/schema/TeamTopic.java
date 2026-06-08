@@ -1,13 +1,17 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.agent_teams.schema;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Topic categories for team event routing.
- * 
- * Mirrors Python's agent_teams.schema.events.TeamTopic
- * 
- * @since 0.1.12
+ * <p>
+ * Mirrors Python's {@code TeamTopic} in
+ * {@code openjiuwen/agent_teams/schema/events.py}.
  */
 public enum TeamTopic {
     TEAM("team"),
@@ -20,34 +24,21 @@ public enum TeamTopic {
         this.value = value;
     }
 
-    /**
-     * Get the string value of this topic.
-     * 
-     * @return The string representation
-     */
-    public String getValue() {
+    @JsonValue
+    public String value() {
         return value;
     }
 
-    /**
-     * Build the final topic string.
-     * 
-     * @param sessionId The session identifier
-     * @param teamName The team identifier (human-chosen unique name)
-     * @return Topic string in the format "session:{sessionId}:team:{teamName}:{topic}"
-     */
     public String build(String sessionId, String teamName) {
-        return String.format("session:%s:team:%s:%s", sessionId, teamName, value);
+        return "session:" + sessionId + ":team:" + teamName + ":" + value;
     }
 
-    /**
-     * Parse a string to a TeamTopic.
-     * 
-     * @param value The string value to parse
-     * @return The corresponding TeamTopic, or null if not found
-     */
+    @JsonCreator
     public static TeamTopic fromValue(String value) {
-        for (TeamTopic topic : TeamTopic.values()) {
+        if (value == null) {
+            return null;
+        }
+        for (TeamTopic topic : values()) {
             if (topic.value.equals(value)) {
                 return topic;
             }

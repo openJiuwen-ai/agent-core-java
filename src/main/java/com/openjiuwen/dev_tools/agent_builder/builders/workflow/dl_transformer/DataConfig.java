@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Data configuration model.
  * <p>
- * Mirrors Python's {@code DataConfig} dataclass.
+ * Mirrors Python's {@code DataConfig} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class DataConfig {
     private String title;

@@ -5,11 +5,11 @@
 package com.openjiuwen.core.runner.callback;
 
 import java.util.Map;
+import java.util.function.Function;
 
 /**
- * Authorization filter for role-based access control.
- * <p>
- * Validates that callbacks are executed only by authorized users with the required role.
+ * Mirrors Python's {@code AuthFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class AuthFilter extends EventFilter {
 
@@ -25,15 +25,17 @@ public class AuthFilter extends EventFilter {
     }
 
     @Override
-    public FilterResult filter(String event, CallbackInfo callback,
-                                Object[] args, Map<String, Object> kwargs) {
-        String userRole = kwargs != null
-                ? String.valueOf(kwargs.getOrDefault("user_role", "guest"))
-                : "guest";
-
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        String userRole = String.valueOf(safeKwargs(kwargs).getOrDefault("user_role", "guest"));
         if (!requiredRole.equals(userRole)) {
             return FilterResult.skipResult(
-                    "Unauthorized: requires " + requiredRole + ", got " + userRole);
+                    "Unauthorized: requires " + requiredRole + ", got " + userRole
+            );
         }
         return FilterResult.continueResult();
     }

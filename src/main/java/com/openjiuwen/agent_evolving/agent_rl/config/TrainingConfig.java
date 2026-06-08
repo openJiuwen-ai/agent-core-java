@@ -13,7 +13,7 @@ import java.util.Map;
  * Training configuration covering data, model, algorithm, and Verl trainer params.
  * <p>
  * Mirrors Python's {@code TrainingConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class TrainingConfig {
 

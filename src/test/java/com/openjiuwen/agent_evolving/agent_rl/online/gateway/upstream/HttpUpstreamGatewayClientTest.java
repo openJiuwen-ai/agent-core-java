@@ -33,7 +33,8 @@ class HttpUpstreamGatewayClientTest {
                 transport,
                 "http://mock.local",
                 new RetryPolicy(2, 0.0, 0.0),
-                millis -> { },
+                millis -> {
+                },
                 Duration.ofSeconds(3)
         );
 
@@ -45,7 +46,7 @@ class HttpUpstreamGatewayClientTest {
     }
 
     @Test
-    void requestRetriesOnConnectErrorThenSucceeds() {
+    void requestRetriesOnIoExceptionThenSucceeds() {
         List<HttpRequest> requests = new ArrayList<>();
         CountingTransport transport = new CountingTransport(requests) {
             @Override
@@ -61,7 +62,8 @@ class HttpUpstreamGatewayClientTest {
                 transport,
                 "http://mock.local",
                 new RetryPolicy(3, 0.0, 0.0),
-                millis -> { },
+                millis -> {
+                },
                 Duration.ofSeconds(3)
         );
 

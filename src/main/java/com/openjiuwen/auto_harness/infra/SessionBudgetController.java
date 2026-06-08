@@ -3,7 +3,8 @@ package com.openjiuwen.auto_harness.infra;
 import java.util.logging.Logger;
 
 /**
- * Mirrors Python's {@code SessionBudgetController} in {@code openjiuwen.auto_harness.infra.session_budget}.
+ * Mirrors Python's {@code SessionBudgetController} in
+ * {@code openjiuwen/auto_harness/infra/session_budget.py}.
  */
 public class SessionBudgetController {
 

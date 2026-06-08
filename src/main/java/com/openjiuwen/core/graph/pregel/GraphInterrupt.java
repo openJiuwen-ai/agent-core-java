@@ -5,24 +5,23 @@
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Exception thrown when a graph execution is interrupted.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.GraphInterrupt}.
+ * Mirrors Python's {@code GraphInterrupt} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public class GraphInterrupt extends Exception {
 
-    private final Interrupt value;
+    private final Object value;
 
     public GraphInterrupt() {
         this(null);
     }
 
-    public GraphInterrupt(Interrupt value) {
-        super(value != null ? value.toString() : "GraphInterrupt");
+    public GraphInterrupt(Object value) {
+        super(String.valueOf(value));
         this.value = value;
     }
 
-    public Interrupt getValue() {
+    public Object getValue() {
         return value;
     }
 }

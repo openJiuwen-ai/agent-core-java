@@ -6,9 +6,6 @@ package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.foundation.tool.mcp.McpClient;
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.foundation.tool.mcp.sdk.OfficialMcpClientFactory;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,8 +13,9 @@ import java.util.Map;
 
 /**
  * MCP callable helper and SearchFunds tool metadata used by tool-call tests.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.callable_fortest}.</p>
+ * <p>
+ * Mirrors Python's module in
+ * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/callable_fortest.py}.
  */
 public final class CallableForTest {
 
@@ -25,8 +23,9 @@ public final class CallableForTest {
 
     public static final String MCP_URL = System.getenv().getOrDefault("MCP_URL", "");
     public static final String MCP_NAME = System.getenv().getOrDefault("MCP_NAME", "Streamable HTTP Python Server");
-    public static final String DESCRIPTION = buildSearchFundsDescription();
-    public static final Map<String, Object> TOOL = Map.of("name", "SearchFunds", "description", DESCRIPTION);
+    public static final String description = buildSearchFundsDescription();
+    public static final Map<String, Object> tool = Map.of("name", "SearchFunds", "description", description);
+    public static final McpToolCaller gaodeMapMcpGeneric = makeSyncMcpCaller(MCP_URL);
 
     private CallableForTest() {
     }
@@ -38,7 +37,15 @@ public final class CallableForTest {
 
     @FunctionalInterface
     public interface McpClientFactory {
-        McpClient create(McpServerConfig config);
+        McpSession create(String url, String name) throws Exception;
+    }
+
+    public interface McpSession extends AutoCloseable {
+        Object callTool(String toolName, Map<String, Object> arguments) throws Exception;
+
+        @Override
+        default void close() throws Exception {
+        }
     }
 
     public static McpToolCaller makeSyncMcpCaller(String url) {
@@ -46,34 +53,25 @@ public final class CallableForTest {
     }
 
     public static McpToolCaller makeSyncMcpCaller(String url, String name) {
-        return makeSyncMcpCaller(url, name, OfficialMcpClientFactory::create);
+        return makeSyncMcpCaller(url, name, UnsupportedMcpClient::new);
     }
 
     static McpToolCaller makeSyncMcpCaller(String url, String name, McpClientFactory clientFactory) {
         return toolArguments -> {
             String toolName = String.valueOf(toolArguments.get("name"));
             Map<String, Object> arguments = normalizeArguments(toolArguments.get("arguments"));
-            McpServerConfig config = McpServerConfig.builder()
-                    .serverName(name)
-                    .serverPath(url)
-                    .clientType("sse")
-                    .build();
-            McpClient client = clientFactory.create(config);
-            client.connect();
-            try {
-                return extractText(client.callTool(toolName, arguments));
-            } finally {
-                client.disconnect();
+            try (McpSession session = clientFactory.create(url, name)) {
+                return extractText(session.callTool(toolName, arguments));
             }
         };
     }
 
     public static Map<String, Object> getTool() {
-        return TOOL;
+        return tool;
     }
 
     public static String getDescription() {
-        return DESCRIPTION;
+        return description;
     }
 
     @SuppressWarnings("unchecked")
@@ -97,7 +95,8 @@ public final class CallableForTest {
             } catch (JsonProcessingException exception) {
                 throw new IllegalArgumentException(
                         "Failed to parse `arguments` as JSON string. Raw arguments: " + text,
-                        exception);
+                        exception
+                );
             }
         }
         throw new IllegalArgumentException("`arguments` must be a JSON object or a map");
@@ -155,5 +154,22 @@ public final class CallableForTest {
         property.put("type", type);
         property.put("description", description);
         return property;
+    }
+
+    private static final class UnsupportedMcpClient implements McpSession {
+        private final String url;
+        private final String name;
+
+        private UnsupportedMcpClient(String url, String name) {
+            this.url = url;
+            this.name = name;
+        }
+
+        @Override
+        public Object callTool(String toolName, Map<String, Object> arguments) {
+            throw new UnsupportedOperationException(
+                    "No Java MCP runtime is available for " + name + " at " + url + " when calling " + toolName
+            );
+        }
     }
 }

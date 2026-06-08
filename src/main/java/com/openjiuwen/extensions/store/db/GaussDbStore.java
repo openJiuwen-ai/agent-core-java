@@ -15,11 +15,11 @@ import javax.sql.DataSource;
 /**
  * GaussDB database store implementation.
  *
- * <p>Mirrors Python's {@code openjiuwen.extensions.store.db.gauss_db_store.GaussDbStore}.
+ * <p>Mirrors Python's {@code openjiuwen/extensions/store/db/gauss_db_store.py}.
  *
  * This class wraps a DataSource for GaussDB database operations.
  */
-public class GaussDbStore extends BaseDbStore {
+public class GaussDbStore extends BaseDbStore<DataSource> {
 
     private final DataSource dataSource;
 
@@ -63,17 +63,8 @@ public class GaussDbStore extends BaseDbStore {
         });
     }
 
-    public DataSource getAsyncEngine() {
-        return dataSource;
-    }
-
-    /**
-     * Get the underlying DataSource.
-     *
-     * @return The DataSource instance.
-     */
     @Override
-    public DataSource getDataSource() {
+    public DataSource getAsyncEngine() {
         return dataSource;
     }
 

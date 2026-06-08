@@ -41,3 +41,5 @@ logs/run/run.log
 ### Mac OS ###
 .DS_Store
 /logs/run/run.2026-03-15.1.log.gz
+/javaify-project/tests
+/javaify-project

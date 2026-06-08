@@ -5,7 +5,8 @@
 package com.openjiuwen.extensions.context_evolver.schema;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.trajectory.FeedbackType}.
+ * Mirrors Python's {@code FeedbackType} in
+ * {@code openjiuwen/extensions/context_evolver/schema/trajectory.py}.
  * 
  * Feedback type for trajectory outcomes.
  */

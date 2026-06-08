@@ -5,20 +5,12 @@
 package com.openjiuwen.core.security.guardrail;
 
 /**
- * Base class for model output parsers.
- * 
- * Converts raw model output to RiskAssessment.
- * Users can implement custom parsers by inheriting from this class.
- * 
- * Mirrors Python's openjiuwen.core.security.guardrail.context.ModelOutputParser
+ * Converts raw model output into a guardrail risk assessment.
+ * <p>
+ * Mirrors Python's {@code ModelOutputParser} in
+ * {@code openjiuwen/core/security/guardrail/context.py}.
  */
 public interface ModelOutputParser {
-    
-    /**
-     * Parse model output to RiskAssessment.
-     * 
-     * @param modelOutput Raw model output (format varies by model)
-     * @return RiskAssessment with risk level and details
-     */
+
     RiskAssessment parse(Object modelOutput);
 }

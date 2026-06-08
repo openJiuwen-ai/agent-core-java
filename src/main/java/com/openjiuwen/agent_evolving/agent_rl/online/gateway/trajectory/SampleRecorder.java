@@ -19,7 +19,7 @@ import java.util.Map;
  * Sample recording helpers for the gateway.
  * <p>
  * Mirrors Python's {@code SampleRecorder} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.sample_recorder}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/sample_recorder.py}.
  */
 public class SampleRecorder {
 
@@ -28,6 +28,10 @@ public class SampleRecorder {
     private final Path sampleFile;
     private final boolean dumpTokenIds;
     private int totalSamples;
+
+    public SampleRecorder(String sampleFile, boolean dumpTokenIds) {
+        this(Path.of(sampleFile), dumpTokenIds);
+    }
 
     public SampleRecorder(Path sampleFile, boolean dumpTokenIds) {
         this.sampleFile = sampleFile;
@@ -43,8 +47,8 @@ public class SampleRecorder {
         return Map.of("total_samples", totalSamples);
     }
 
-    static Map<String, Object> sampleForLog(Map<String, Object> sample) {
-        if (!(sample instanceof Map<?, ?>)) {
+    public static Map<String, Object> sampleForLog(Map<String, Object> sample) {
+        if (sample == null) {
             return Map.of();
         }
         Map<String, Object> out = new LinkedHashMap<>(sample);
@@ -66,7 +70,10 @@ public class SampleRecorder {
 
     private static void appendJsonl(Path path, Map<String, Object> payload) {
         try {
-            Files.createDirectories(path.getParent());
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.writeString(
                     path,
                     OBJECT_MAPPER.writeValueAsString(payload) + "\n",

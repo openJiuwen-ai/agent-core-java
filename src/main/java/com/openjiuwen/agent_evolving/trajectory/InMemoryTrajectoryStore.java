@@ -8,13 +8,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
  * In-memory trajectory store for testing and development.
  * <p>
  * Mirrors Python's {@code InMemoryTrajectoryStore} in
- * {@code openjiuwen.agent_evolving.trajectory.store}.
+ * {@code openjiuwen/agent_evolving/trajectory/store.py}.
  * </p>
  */
 public class InMemoryTrajectoryStore implements TrajectoryStore {
@@ -78,7 +79,7 @@ public class InMemoryTrajectoryStore implements TrajectoryStore {
             return true;
         }
         for (Map.Entry<String, Object> entry : filters.entrySet()) {
-            if (!java.util.Objects.equals(fieldValue(trajectory, entry.getKey()), entry.getValue())) {
+            if (!Objects.equals(fieldValue(trajectory, entry.getKey()), entry.getValue())) {
                 return false;
             }
         }

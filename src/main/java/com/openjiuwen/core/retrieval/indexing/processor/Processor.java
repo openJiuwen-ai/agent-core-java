@@ -4,12 +4,16 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor;
 
-import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Generic retrieval processor abstraction.
+ * Mirrors Python's {@code Processor} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/base.py}.
+ *
+ * @param <O> async result type
  */
-public interface Processor<I, O> {
+@FunctionalInterface
+public interface Processor<O> {
 
-    O process(I input, Map<String, Object> options);
+    CompletableFuture<O> process(Object... args);
 }

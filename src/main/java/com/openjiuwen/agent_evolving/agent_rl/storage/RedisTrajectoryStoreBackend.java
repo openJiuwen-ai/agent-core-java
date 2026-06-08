@@ -12,7 +12,7 @@ import java.util.Set;
  * Minimal Redis-like backend contract for {@link RedisTrajectoryStore}.
  * <p>
  * Mirrors Python's Redis client surface consumed by
- * {@code openjiuwen.agent_evolving.agent_rl.storage.redis_trajectory_store}.
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/redis_trajectory_store.py}.
  */
 public interface RedisTrajectoryStoreBackend {
 

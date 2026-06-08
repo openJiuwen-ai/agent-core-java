@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.retriever;
@@ -11,25 +11,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Unified retriever abstraction.
+ * Mirrors Python's {@code Retriever} in
+ * {@code openjiuwen/core/retrieval/retriever/base.py}.
  */
 public interface Retriever extends AutoCloseable {
 
-    List<RetrievalResult> retrieve(String query,
-                                   int topK,
-                                   Double scoreThreshold,
-                                   String mode,
-                                   Map<String, Object> options);
+    List<RetrievalResult> retrieve(
+            String query,
+            int topK,
+            Double scoreThreshold,
+            String mode,
+            Map<String, Object> options
+    );
 
-    List<List<RetrievalResult>> batchRetrieve(List<String> queries,
-                                              int topK,
-                                              String mode,
-                                              Map<String, Object> options);
+    List<List<RetrievalResult>> batchRetrieve(
+            List<String> queries,
+            int topK,
+            String mode,
+            Map<String, Object> options
+    );
 
-    default List<SearchResult> retrieveSearchResults(String query,
-                                                     int topK,
-                                                     String mode,
-                                                     Map<String, Object> options) {
+    default List<SearchResult> retrieveSearchResults(
+            String query,
+            int topK,
+            String mode,
+            Map<String, Object> options
+    ) {
         List<RetrievalResult> retrievalResults = retrieve(query, topK, null, mode, options);
         if (retrievalResults == null || retrievalResults.isEmpty()) {
             return List.of();

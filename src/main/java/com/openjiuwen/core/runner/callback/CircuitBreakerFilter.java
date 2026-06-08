@@ -9,22 +9,25 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
- * Circuit breaker pattern implementation.
- * <p>
- * Prevents execution of failing callbacks after a threshold is reached.
- * Automatically attempts to reset after a timeout period.
+ * Mirrors Python's {@code CircuitBreakerFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class CircuitBreakerFilter extends EventFilter {
 
-    private static final Logger logger = LoggerFactory.getLogger(CircuitBreakerFilter.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CircuitBreakerFilter.class);
 
     private final int failureThreshold;
+
     private final double timeout;
+
     private final Map<String, Integer> failures = new ConcurrentHashMap<>();
+
     private final Map<String, Double> lastFailureTime = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> isOpen = new ConcurrentHashMap<>();
+
+    private final Map<String, Boolean> openCircuits = new ConcurrentHashMap<>();
 
     public CircuitBreakerFilter() {
         this(5, 60.0, "CircuitBreaker");
@@ -45,55 +48,43 @@ public class CircuitBreakerFilter extends EventFilter {
     }
 
     @Override
-    public synchronized FilterResult filter(String event, CallbackInfo callback,
-                                             Object[] args, Map<String, Object> kwargs) {
-        String key = event + ":" + callback.getCallbackDisplayName();
+    public synchronized FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        String key = event + ":" + callbackName(callback);
         double currentTime = System.currentTimeMillis() / 1000.0;
-
-        // Check if circuit is open
-        if (Boolean.TRUE.equals(isOpen.getOrDefault(key, false))) {
-            Double lastTime = lastFailureTime.get(key);
-            if (lastTime != null && currentTime - lastTime > timeout) {
-                // Try to close circuit if timeout passed
-                isOpen.put(key, false);
-                failures.put(key, 0);
-            } else {
-                return FilterResult.skipResult(
-                        "Circuit breaker open, retry after " + timeout + "s");
-            }
+        boolean isOpen = openCircuits.getOrDefault(key, false);
+        if (!isOpen) {
+            return FilterResult.continueResult();
         }
 
-        return FilterResult.continueResult();
+        double lastFailure = lastFailureTime.getOrDefault(key, 0.0);
+        if (currentTime - lastFailure > timeout) {
+            openCircuits.put(key, false);
+            failures.put(key, 0);
+            return FilterResult.continueResult();
+        }
+
+        return FilterResult.skipResult("Circuit breaker open, retry after " + timeout + "s");
     }
 
-    /**
-     * Record successful execution.
-     *
-     * @param event    Event name
-     * @param callback Callback that succeeded
-     */
-    public synchronized void recordSuccess(String event, CallbackInfo callback) {
-        String key = event + ":" + callback.getCallbackDisplayName();
+    public synchronized void recordSuccess(String event, Function<Map<String, Object>, Object> callback) {
+        String key = event + ":" + callbackName(callback);
         failures.put(key, 0);
+        openCircuits.put(key, false);
     }
 
-    /**
-     * Record failed execution and potentially open circuit.
-     *
-     * @param event    Event name
-     * @param callback Callback that failed
-     */
-    public synchronized void recordFailure(String event, CallbackInfo callback) {
-        String key = event + ":" + callback.getCallbackDisplayName();
-        double currentTime = System.currentTimeMillis() / 1000.0;
-
-        int failCount = failures.getOrDefault(key, 0) + 1;
-        failures.put(key, failCount);
-        lastFailureTime.put(key, currentTime);
-
-        if (failCount >= failureThreshold) {
-            isOpen.put(key, true);
-            logger.warn("Circuit breaker opened for {}", key);
+    public synchronized void recordFailure(String event, Function<Map<String, Object>, Object> callback) {
+        String key = event + ":" + callbackName(callback);
+        int updatedFailures = failures.getOrDefault(key, 0) + 1;
+        failures.put(key, updatedFailures);
+        lastFailureTime.put(key, System.currentTimeMillis() / 1000.0);
+        if (updatedFailures >= failureThreshold) {
+            openCircuits.put(key, true);
+            LOGGER.warn("Circuit breaker opened for {}", key);
         }
     }
 }

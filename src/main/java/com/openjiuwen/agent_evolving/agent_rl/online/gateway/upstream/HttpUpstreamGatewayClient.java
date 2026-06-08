@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * HTTP-backed upstream client with retry for transient failures.
  * <p>
  * Mirrors Python's {@code HTTPXUpstreamGatewayClient} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.upstream_client}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/upstream/upstream_client.py}.
  */
 public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
 
@@ -43,10 +43,12 @@ public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
         }, Duration.ofSeconds(120));
     }
 
-    public HttpUpstreamGatewayClient(GatewayHttpTransport httpTransport,
-                                     String llmUrl,
-                                     RetryPolicy retryPolicy,
-                                     Duration requestTimeout) {
+    public HttpUpstreamGatewayClient(
+            GatewayHttpTransport httpTransport,
+            String llmUrl,
+            RetryPolicy retryPolicy,
+            Duration requestTimeout
+    ) {
         this(httpTransport, llmUrl, retryPolicy, millis -> {
             if (millis > 0L) {
                 Thread.sleep(millis);
@@ -54,11 +56,13 @@ public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
         }, requestTimeout);
     }
 
-    HttpUpstreamGatewayClient(GatewayHttpTransport httpTransport,
-                              String llmUrl,
-                              RetryPolicy retryPolicy,
-                              Sleeper sleeper,
-                              Duration requestTimeout) {
+    HttpUpstreamGatewayClient(
+            GatewayHttpTransport httpTransport,
+            String llmUrl,
+            RetryPolicy retryPolicy,
+            Sleeper sleeper,
+            Duration requestTimeout
+    ) {
         this.httpTransport = httpTransport;
         this.llmUrl = trimTrailingSlash(llmUrl);
         this.retryPolicy = retryPolicy != null ? retryPolicy : new RetryPolicy();
@@ -68,12 +72,24 @@ public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
 
     @Override
     public GatewayHttpResponse postChatCompletions(Map<String, Object> jsonBody, Map<String, String> headers) {
-        return requestWithRetry("chat.completions", () -> buildJsonRequest("POST", llmUrl + "/v1/chat/completions", headers, jsonBody));
+        return requestWithRetry(
+                "chat.completions",
+                () -> buildJsonRequest("POST", llmUrl + "/v1/chat/completions", headers, jsonBody)
+        );
     }
 
     @Override
-    public GatewayHttpResponse request(String method, String url, Map<String, Object> params, Map<String, String> headers, byte[] content) {
-        return requestWithRetry("proxy." + method.toLowerCase(), () -> buildBinaryRequest(method, appendParams(url, params), headers, content));
+    public GatewayHttpResponse request(
+            String method,
+            String url,
+            Map<String, Object> params,
+            Map<String, String> headers,
+            byte[] content
+    ) {
+        return requestWithRetry(
+                "proxy." + method.toLowerCase(),
+                () -> buildBinaryRequest(method, appendParams(url, params), headers, content)
+        );
     }
 
     private GatewayHttpResponse requestWithRetry(String operation, Supplier<HttpRequest> requestFactory) {
@@ -109,7 +125,12 @@ public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
         }
     }
 
-    private HttpRequest buildJsonRequest(String method, String url, Map<String, String> headers, Map<String, Object> body) {
+    private HttpRequest buildJsonRequest(
+            String method,
+            String url,
+            Map<String, String> headers,
+            Map<String, Object> body
+    ) {
         try {
             return buildRequest(method, url, headers, OBJECT_MAPPER.writeValueAsBytes(body), true);
         } catch (JsonProcessingException exception) {
@@ -121,7 +142,13 @@ public class HttpUpstreamGatewayClient implements UpstreamGatewayClient {
         return buildRequest(method, url, headers, content != null ? content : new byte[0], false);
     }
 
-    private HttpRequest buildRequest(String method, String url, Map<String, String> headers, byte[] content, boolean json) {
+    private HttpRequest buildRequest(
+            String method,
+            String url,
+            Map<String, String> headers,
+            byte[] content,
+            boolean json
+    ) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(requestTimeout)

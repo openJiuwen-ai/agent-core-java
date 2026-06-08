@@ -8,61 +8,50 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Registry for managing KV store key prefixes used by memory modules.
- * Singleton instance accessible via {@link #getInstance()}.
+ * Registry for KV-store prefixes used by memory modules.
  *
  * <p>Mirrors Python's {@code KvPrefixRegistry} in
- * {@code openjiuwen.core.memory.common.kv_prefix_registry}.
+ * {@code openjiuwen/core/memory/common/kv_prefix_registry.py}.</p>
  */
-public final class KvPrefixRegistry {
-
+public class KvPrefixRegistry {
     private static final KvPrefixRegistry INSTANCE = new KvPrefixRegistry();
 
     private final Set<String> allPrefixes = new HashSet<>();
     private final Set<String> currentPrefixes = new HashSet<>();
 
-    private KvPrefixRegistry() {
+    public KvPrefixRegistry() {
     }
 
     public static KvPrefixRegistry getInstance() {
         return INSTANCE;
     }
 
-    /**
-     * Register a current (active) key prefix used by a memory module.
-     */
     public synchronized void registerCurrent(String prefix) {
-        if (prefix == null || prefix.trim().isEmpty()) {
-            throw new IllegalArgumentException("Prefix cannot be empty or contain only whitespace characters: '" + prefix + "'");
-        }
-        if (!currentPrefixes.contains(prefix)) {
-            currentPrefixes.add(prefix);
+        validatePrefix(prefix);
+        if (currentPrefixes.add(prefix)) {
             allPrefixes.add(prefix);
         }
     }
 
-    /**
-     * Register a legacy (deprecated) key prefix for migration detection.
-     */
     public synchronized void registerLegacy(String prefix) {
-        if (prefix == null || prefix.trim().isEmpty()) {
-            throw new IllegalArgumentException("Prefix cannot be empty or contain only whitespace characters: '" + prefix + "'");
-        }
+        validatePrefix(prefix);
         allPrefixes.add(prefix);
     }
 
-    /**
-     * Get all registered prefixes (both current and legacy).
-     */
     public synchronized Set<String> getAllPrefixes() {
         return new HashSet<>(allPrefixes);
     }
 
-    /**
-     * Unregister a prefix from both current and all prefixes.
-     */
     public synchronized void unregister(String prefix) {
         allPrefixes.remove(prefix);
         currentPrefixes.remove(prefix);
+    }
+
+    private static void validatePrefix(String prefix) {
+        if (prefix == null || prefix.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Prefix cannot be empty or contain only whitespace characters: '" + prefix + "'"
+            );
+        }
     }
 }

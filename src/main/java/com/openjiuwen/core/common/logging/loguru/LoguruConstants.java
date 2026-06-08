@@ -1,7 +1,3 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.core.common.logging.loguru;
 
 import java.util.LinkedHashMap;
@@ -9,19 +5,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Default Loguru backend configuration.
- *
- * <p>Mirrors Python's {@code DEFAULT_INNER_LOG_CONFIG} in
- * {@code openjiuwen.core.common.logging.loguru.constant}.</p>
+ * Mirrors Python's {@code DEFAULT_INNER_LOG_CONFIG} in
+ * {@code openjiuwen/core/common/logging/loguru/constant.py}.
  */
 public final class LoguruConstants {
-
     private LoguruConstants() {
     }
 
-    /**
-     * Build the default Loguru backend config as mutable nested maps.
-     */
     public static Map<String, Object> defaultInnerLogConfig() {
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("level", "INFO");
@@ -39,13 +29,13 @@ public final class LoguruConstants {
         console.put("backtrace", true);
         console.put("diagnose", false);
         console.put("format",
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-                + "<magenta>{process.id}</magenta> | "
-                + "<level>{level: <8}</level> | "
-                + "<cyan>{extra[log_type]}</cyan> | "
-                + "<yellow>{extra[trace_id]}</yellow> | "
-                + "<blue>{extra[short_path]}:{line}</blue> | "
-                + "{message}");
+                "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+                        + "<magenta>{process.id}</magenta> | "
+                        + "<level>{level: <8}</level> | "
+                        + "<cyan>{extra[log_type]}</cyan> | "
+                        + "<yellow>{extra[trace_id]}</yellow> | "
+                        + "<blue>{extra[short_path]}:{line}</blue> | "
+                        + "{message}");
 
         Map<String, Object> appJson = new LinkedHashMap<>();
         appJson.put("target", "./logs/run/jiuwen.jsonl");

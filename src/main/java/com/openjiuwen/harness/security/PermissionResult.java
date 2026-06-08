@@ -4,28 +4,37 @@
 
 package com.openjiuwen.harness.security;
 
+import java.util.List;
+
 /**
- * Minimal permission evaluation result.
- *
- * <p>Mirrors Python's {@code PermissionResult} in
- * {@code openjiuwen.harness.security.models}.
+ * Mirrors Python's {@code PermissionResult} in
+ * {@code openjiuwen/harness/security/models.py}.
  */
-public class PermissionResult {
+public final class PermissionResult {
 
     private final PermissionLevel permission;
     private final String matchedRule;
     private final String reason;
-    private final java.util.List<String> externalPaths;
+    private final List<String> externalPaths;
 
-    public PermissionResult(PermissionLevel permission, String matchedRule, String reason) {
-        this(permission, matchedRule, reason, java.util.List.of());
+    public PermissionResult(PermissionLevel permission) {
+        this(permission, null, null, null);
     }
 
-    public PermissionResult(PermissionLevel permission, String matchedRule, String reason, java.util.List<String> externalPaths) {
+    public PermissionResult(PermissionLevel permission, String matchedRule, String reason) {
+        this(permission, matchedRule, reason, null);
+    }
+
+    public PermissionResult(
+            PermissionLevel permission,
+            String matchedRule,
+            String reason,
+            List<String> externalPaths
+    ) {
         this.permission = permission;
         this.matchedRule = matchedRule;
         this.reason = reason;
-        this.externalPaths = externalPaths != null ? externalPaths : java.util.List.of();
+        this.externalPaths = externalPaths == null ? null : List.copyOf(externalPaths);
     }
 
     public PermissionLevel getPermission() {
@@ -40,30 +49,18 @@ public class PermissionResult {
         return reason;
     }
 
-    public java.util.List<String> getExternalPaths() {
+    public List<String> getExternalPaths() {
         return externalPaths;
     }
 
-    /**
-     * Check if permission is ALLOW.
-     * <p>Mirrors Python's {@code is_allowed} property.
-     */
     public boolean isAllowed() {
         return permission == PermissionLevel.ALLOW;
     }
 
-    /**
-     * Check if permission is DENY.
-     * <p>Mirrors Python's {@code is_denied} property.
-     */
     public boolean isDenied() {
         return permission == PermissionLevel.DENY;
     }
 
-    /**
-     * Check if permission requires approval (ASK).
-     * <p>Mirrors Python's {@code needs_approval} property.
-     */
     public boolean needsApproval() {
         return permission == PermissionLevel.ASK;
     }

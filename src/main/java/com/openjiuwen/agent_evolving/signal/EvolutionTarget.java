@@ -1,19 +1,16 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agent_evolving.signal;
 
 /**
- * Which layer of the skill the experience targets.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.signal.base.EvolutionTarget}.
+ * Mirrors Python's {@code openjiuwen/agent_evolving/signal/base.py}.
  */
 public enum EvolutionTarget {
     DESCRIPTION("description"),
     BODY("body"),
-    SCRIPT("script"),
-    TEAM_SKILL("team_skill");
+    SCRIPT("script");
 
     private final String value;
 
@@ -31,6 +28,6 @@ public enum EvolutionTarget {
                 return target;
             }
         }
-        return BODY; // Default fallback
+        return BODY;
     }
 }

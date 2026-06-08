@@ -18,13 +18,14 @@ import java.util.regex.Pattern;
 /**
  * Judge evaluation helper.
  * <p>
- * Mirrors Python's evaluator flow in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.evaluator}.
+ * Mirrors Python's helpers in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/judge/evaluator.py}.
  */
 public class JudgeEvaluator {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
     private static final Pattern TOOL_CALL_BLOCK = Pattern.compile("<tool_call>.*?</tool_call>", Pattern.DOTALL);
     private static final Pattern OPEN_TAG = Pattern.compile("<[a-zA-Z_][^>]{0,80}>");
     private static final Pattern CLOSE_TAG = Pattern.compile("</[a-zA-Z_][^>]{0,80}>");
@@ -46,7 +47,8 @@ public class JudgeEvaluator {
         this.sleeper = sleeper;
     }
 
-    public List<Map<String, String>> buildJudgeMessages(String responseText, String instructionText, String followupUserFeedback) {
+    public List<Map<String, String>> buildJudgeMessages(String responseText, String instructionText,
+                                                        String followupUserFeedback) {
         String prompt = JudgeScoring.buildJudgePrompt(
                 sanitizeText(instructionText),
                 sanitizeText(responseText),

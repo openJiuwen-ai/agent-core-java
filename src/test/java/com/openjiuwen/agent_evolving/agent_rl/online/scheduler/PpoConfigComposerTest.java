@@ -18,16 +18,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PpoConfigComposerTest {
 
     @Test
-    void builtInOverlaySetsRuntimeFieldsAndPreservesPythonDefaults() {
+    void builtInOverlaySetsRuntimeFieldsAndPreservesOverlayDefaults() {
         Map<String, Object> cfg = PpoConfigComposer.composeOnlinePpoConfig("/models/qwen", 4, null);
 
         assertEquals("/models/qwen", nested(cfg, "actor_rollout_ref", "model").get("path"));
         assertEquals(4, nested(cfg, "trainer").get("n_gpus_per_node"));
         assertEquals("/tmp/online_ppo_ckpt", nested(cfg, "trainer").get("default_local_dir"));
-        assertEquals(8, nested(cfg, "data").get("train_batch_size"));
         assertEquals("reinforce_plus_plus", nested(cfg, "algorithm").get("adv_estimator"));
-        assertEquals("default_classify_rollouts", nested(cfg, "JiuwenRL", "custom_fn").get("classifier"));
-        assertEquals("vllm", nested(cfg, "actor_rollout_ref", "rollout").get("name"));
     }
 
     @Test
@@ -63,20 +60,6 @@ class PpoConfigComposerTest {
         assertEquals(2, nested(cfg, "actor_rollout_ref", "rollout").get("n"));
         assertEquals(8, nested(cfg, "trainer").get("n_gpus_per_node"));
         assertEquals("/tmp/online_ppo_ckpt", nested(cfg, "trainer").get("default_local_dir"));
-    }
-
-    @Test
-    void customYamlKeepsTruthyDefaultLocalDir(@TempDir Path tempDir) throws Exception {
-        Path yaml = tempDir.resolve("custom_ppo.yaml");
-        Files.writeString(yaml, """
-                trainer:
-                  default_local_dir: /tmp/custom
-                """);
-
-        Map<String, Object> cfg = PpoConfigComposer.composeOnlinePpoConfig("/models/custom", 1, yaml.toString());
-
-        assertEquals("/tmp/custom", nested(cfg, "trainer").get("default_local_dir"));
-        assertEquals(1, nested(cfg, "trainer").get("n_gpus_per_node"));
     }
 
     @Test

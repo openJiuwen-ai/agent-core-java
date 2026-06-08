@@ -14,7 +14,8 @@ import lombok.NoArgsConstructor;
 /**
  * Represents a tool call from LLM output.
  * <p>
- * Mirrors Python's {@code ToolCall} model from the foundation LLM schema.
+ * Mirrors Python's {@code ToolCall} in
+ * {@code openjiuwen/core/foundation/llm/schema/tool_call.py}.
  *
  * @see <a href="https://platform.openai.com/docs/api-reference/chat/object">OpenAI Tool Call</a>
  */

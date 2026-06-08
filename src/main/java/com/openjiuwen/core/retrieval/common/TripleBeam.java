@@ -1,44 +1,48 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.common;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
- * Beam of retrieval triples.
+ * Mirrors Python's {@code TripleBeam} in
+ * {@code openjiuwen/core/retrieval/common/triple_beam.py}.
  */
 public class TripleBeam implements Iterable<RetrievalResult> {
 
-    private final List<RetrievalResult> triples;
-    private final Set<String> exists;
+    private final List<RetrievalResult> beam;
+    private final Set<String> existTriples;
     private final double score;
 
-    public TripleBeam(List<RetrievalResult> triples, double score) {
-        this.triples = new ArrayList<>(triples);
-        this.exists = this.triples.stream().map(RetrievalResult::getText).collect(Collectors.toSet());
+    public TripleBeam(List<RetrievalResult> nodes, double score) {
+        this.beam = nodes == null ? new ArrayList<>() : new ArrayList<>(nodes);
+        this.existTriples = new LinkedHashSet<>();
+        for (RetrievalResult item : this.beam) {
+            this.existTriples.add(item.getText());
+        }
         this.score = score;
     }
 
     public RetrievalResult get(int index) {
-        return triples.get(index);
+        return beam.get(index);
     }
 
     public int size() {
-        return triples.size();
+        return beam.size();
     }
 
     public boolean contains(RetrievalResult triple) {
-        return exists.contains(triple.getText());
+        return triple != null && existTriples.contains(triple.getText());
     }
 
     public List<RetrievalResult> getTriples() {
-        return new ArrayList<>(triples);
+        return new ArrayList<>(beam);
     }
 
     public double getScore() {
@@ -47,6 +51,6 @@ public class TripleBeam implements Iterable<RetrievalResult> {
 
     @Override
     public Iterator<RetrievalResult> iterator() {
-        return triples.iterator();
+        return beam.iterator();
     }
 }

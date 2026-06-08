@@ -5,259 +5,100 @@
 package com.openjiuwen.agent_evolving.trajectory;
 
 import java.nio.file.Path;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * Team trajectory aggregator.
- * <p>
- * Reads individual member trajectories from a shared store and
- * aggregates them into a combined view for team-level analysis.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.aggregator}.
+ * Mirrors Python's {@code TeamTrajectoryAggregator} in
+ * {@code openjiuwen/agent_evolving/trajectory/aggregator.py}.
  */
 public class TeamTrajectoryAggregator {
 
-    private final TrajectoryStore store;
-    private final String teamId;
-
-    /**
-     * Create aggregator with TrajectoryStore.
-     *
-     * @param store Trajectory store
-     * @param teamId Team identifier
-     */
-    public TeamTrajectoryAggregator(TrajectoryStore store, String teamId) {
-        if (store == null) {
-            throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
-        }
-        this.store = store;
-        this.teamId = teamId;
-    }
-
-    /**
-     * Create aggregator with a file-backed trajectory directory.
-     *
-     * @param trajectoriesDir Directory containing trajectory JSONL files
-     * @param teamId Team identifier
-     */
-    public TeamTrajectoryAggregator(Path trajectoriesDir, String teamId) {
-        this(createFileStore(trajectoriesDir), teamId);
-    }
-
-    /**
-     * Preserve Python's constructor validation when no store is provided.
-     *
-     * @param teamId Team identifier
-     */
-    public TeamTrajectoryAggregator(String teamId) {
-        throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
-    }
-
-    private static TrajectoryStore createFileStore(Path trajectoriesDir) {
-        if (trajectoriesDir == null) {
-            throw new IllegalArgumentException("Either 'store' or 'trajectoriesDir' must be provided");
-        }
-        return new FileTrajectoryStore(trajectoriesDir);
-    }
-
-    /**
-     * Aggregated team trajectory for a single session.
-     */
-    public static class TeamTrajectory {
-        private final String teamId;
-        private final String sessionId;
-        private final Trajectory combined;
-        private final Map<String, Trajectory> members;
-
-        public TeamTrajectory(String teamId, String sessionId, Trajectory combined, Map<String, Trajectory> members) {
-            this.teamId = teamId;
-            this.sessionId = sessionId;
-            this.combined = combined;
-            this.members = members;
-        }
-
-        public String getTeamId() {
-            return teamId;
-        }
-
-        public String getSessionId() {
-            return sessionId;
-        }
-
-        public Trajectory getCombined() {
-            return combined;
-        }
-
-        public Map<String, Trajectory> getMembers() {
-            return members;
-        }
-    }
-
-    // Collaborative tool names -- reflect inter-member interaction behavior
-    public static final Set<String> COLLABORATIVE_TOOLS = Set.of(
+    private static final Set<String> COLLABORATIVE_TOOLS = Set.of(
             "view_task",
             "claim_task",
             "send_message",
-            "workspace_meta",
-            "read_file",
-            "write_file"
+            "workspace_meta"
     );
-
-    // Pure internal tools -- member's own work
-    public static final Set<String> INTERNAL_TOOLS = Set.of(
-            "bash",
-            "python",
-            "node",
-            "edit",
-            "grep",
-            "glob",
-            "web_search",
-            "web_fetch"
-    );
-
-    // Cross-member interaction meta markers
-    public static final Set<String> CROSS_MEMBER_META_KEYS = Set.of(
+    private static final Set<String> CROSS_MEMBER_META_KEYS = Set.of(
             "invoke_id",
             "parent_invoke_id",
             "child_invokes"
     );
+    private static final List<String> MEMBER_ROLE_META_KEYS = List.of("member_role", "role");
+    private static final String LEADER_ROLE = "leader";
 
-    /**
-     * Aggregate all member trajectories for the given session.
-     *
-     * @param sessionId Session to aggregate
-     * @return TeamTrajectory with merged view
-     */
+    private final TrajectoryStore store;
+    private final String teamId;
+
+    public TeamTrajectoryAggregator(TrajectoryStore store, String teamId) {
+        this(store, null, teamId);
+    }
+
+    public TeamTrajectoryAggregator(Path trajectoriesDir, String teamId) {
+        this(null, trajectoriesDir, teamId);
+    }
+
+    public TeamTrajectoryAggregator(TrajectoryStore store, Path trajectoriesDir, String teamId) {
+        if (store != null) {
+            this.store = store;
+        } else if (trajectoriesDir != null) {
+            this.store = new FileTrajectoryStore(trajectoriesDir);
+        } else {
+            throw new IllegalArgumentException("Either 'store' or 'trajectories_dir' must be provided");
+        }
+        this.teamId = Objects.requireNonNull(teamId, "teamId must not be null");
+    }
+
     public TeamTrajectory aggregate(String sessionId) {
         return aggregate(sessionId, true);
     }
 
-    /**
-     * Aggregate all member trajectories for the given session.
-     *
-     * @param sessionId Session to aggregate
-     * @param filterCollaborative If true, apply filterMemberTrajectory
-     * @return TeamTrajectory with merged view
-     */
     public TeamTrajectory aggregate(String sessionId, boolean filterCollaborative) {
         List<Trajectory> trajectories = store.queryBySessionId(sessionId);
         if (trajectories.isEmpty()) {
             return emptyCombined(sessionId);
         }
 
-        Map<String, Trajectory> members = new LinkedHashMap<>();
-        for (Trajectory traj : trajectories) {
-            String mid = traj.getMeta() != null
-                    ? (String) traj.getMeta().getOrDefault("member_id", executionPrefix(traj.getExecutionId()))
-                    : executionPrefix(traj.getExecutionId());
-            Trajectory processed = traj;
-            if (filterCollaborative && !"leader".equals(mid)) {
-                processed = filterMemberTrajectory(traj);
-            }
-            if (processed.getSteps() != null && !processed.getSteps().isEmpty()) {
-                members.put(mid, processed);
-            }
-        }
-
+        Map<String, Trajectory> members = memberTrajectoriesById(trajectories, filterCollaborative);
         if (members.isEmpty()) {
             return emptyCombined(sessionId);
         }
 
-        Trajectory combined = merge(members, sessionId);
-        return new TeamTrajectory(teamId, sessionId, combined, members);
-    }
-
-    private static String executionPrefix(String executionId) {
-        if (executionId == null) {
-            return "";
-        }
-        return executionId.substring(0, Math.min(8, executionId.length()));
-    }
-
-    /**
-     * Merge all member trajectories into a combined view.
-     */
-    private Trajectory merge(Map<String, Trajectory> members, String sessionId) {
-        List<TrajectoryStep> allSteps = new ArrayList<>();
-        for (Trajectory traj : members.values()) {
-            if (traj.getSteps() != null) {
-                allSteps.addAll(traj.getSteps());
-            }
-        }
-
-        // Sort by start_time_ms for temporal ordering
-        allSteps.sort((a, b) -> {
-            long aTime = a.getStartTimeMs() != null ? a.getStartTimeMs() : 0L;
-            long bTime = b.getStartTimeMs() != null ? b.getStartTimeMs() : 0L;
-            return Long.compare(aTime, bTime);
-        });
-
-        // Aggregate costs
-        long totalInput = 0;
-        long totalOutput = 0;
-        for (Trajectory traj : members.values()) {
-            if (traj.getCost() != null) {
-                totalInput += ((Number) traj.getCost().getOrDefault("input_tokens", 0)).longValue();
-                totalOutput += ((Number) traj.getCost().getOrDefault("output_tokens", 0)).longValue();
-            }
-        }
-
-        Map<String, Integer> cost = null;
-        if (totalInput > 0 || totalOutput > 0) {
-            cost = new LinkedHashMap<>();
-            cost.put("input_tokens", (int) totalInput);
-            cost.put("output_tokens", (int) totalOutput);
-        }
-
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("member_count", members.size());
-
-        return new Trajectory(
-                "team-" + teamId,
+        return new TeamTrajectory(
+                teamId,
                 sessionId,
-                "online",
-                allSteps,
-                cost,
-                meta
+                buildCombinedTrajectory(members, teamId, sessionId),
+                members
         );
     }
 
-    /**
-     * Return an empty combined trajectory.
-     */
-    private TeamTrajectory emptyCombined(String sessionId) {
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("member_count", 0);
-
-        Trajectory combined = new Trajectory(
-                "team-" + teamId,
-                sessionId,
-                "online",
-                Collections.emptyList(),
-                null,
-                meta
+    public static Trajectory aggregateMemberTrajectories(List<Trajectory> trajectories,
+                                                         String teamId,
+                                                         String sessionId,
+                                                         boolean filterCollaborative) {
+        return buildCombinedTrajectory(
+                memberTrajectoriesById(trajectories, filterCollaborative),
+                teamId,
+                sessionId
         );
-        return new TeamTrajectory(teamId, sessionId, combined, Collections.emptyMap());
     }
 
-    /**
-     * Filter a member's trajectory to keep only collaboration-relevant steps.
-     *
-     * Retains steps that reflect inter-member behavior:
-     * - Steps with cross-member meta keys
-     * - Tool calls using collaborative tool names
-     * - Skips pure internal LLM reasoning and internal tool calls
-     *
-     * @param trajectory Original trajectory
-     * @return Filtered trajectory
-     */
     public static Trajectory filterMemberTrajectory(Trajectory trajectory) {
-        List<TrajectoryStep> filteredSteps = trajectory.getSteps() != null
-                ? trajectory.getSteps().stream()
-                    .filter(TeamTrajectoryAggregator::isCollaborativeStep)
-                    .collect(Collectors.toList())
-                : Collections.emptyList();
+        List<TrajectoryStep> filteredSteps = new ArrayList<>();
+        List<TrajectoryStep> steps = trajectory.getSteps();
+        if (steps != null) {
+            for (TrajectoryStep step : steps) {
+                if (isCollaborativeStep(step)) {
+                    filteredSteps.add(step);
+                }
+            }
+        }
 
         return new Trajectory(
                 trajectory.getExecutionId(),
@@ -269,66 +110,261 @@ public class TeamTrajectoryAggregator {
         );
     }
 
-    /**
-     * Return true if the step reflects inter-member collaboration.
-     */
-    private static boolean isCollaborativeStep(TrajectoryStep step) {
-        // 1. Cross-member invoke markers
-        if (step.getMeta() != null) {
-            for (String key : CROSS_MEMBER_META_KEYS) {
-                if (step.getMeta().containsKey(key)) {
-                    return true;
-                }
+    private TeamTrajectory emptyCombined(String sessionId) {
+        Trajectory combined = Trajectory.builder()
+                .executionId("team-" + teamId)
+                .sessionId(sessionId)
+                .source("online")
+                .steps(List.of())
+                .meta(Map.of("member_count", 0))
+                .build();
+        return new TeamTrajectory(teamId, sessionId, combined, Map.of());
+    }
+
+    private static Map<String, Trajectory> memberTrajectoriesById(List<Trajectory> trajectories,
+                                                                  boolean filterCollaborative) {
+        Map<String, Trajectory> members = new LinkedHashMap<>();
+        if (trajectories == null) {
+            return members;
+        }
+
+        for (Trajectory trajectory : trajectories) {
+            String memberId = memberIdFor(trajectory);
+            Trajectory processed = trajectory;
+            if (filterCollaborative && !isLeaderTrajectory(trajectory, memberId)) {
+                processed = filterMemberTrajectory(trajectory);
+            }
+            if (processed.getSteps() != null && !processed.getSteps().isEmpty()) {
+                members.put(memberId, mergeMemberTrajectory(members.get(memberId), processed));
+            }
+        }
+        return members;
+    }
+
+    private static Trajectory buildCombinedTrajectory(Map<String, Trajectory> members,
+                                                      String teamId,
+                                                      String sessionId) {
+        List<TrajectoryStep> allSteps = new ArrayList<>();
+        int totalInput = 0;
+        int totalOutput = 0;
+
+        for (Trajectory trajectory : members.values()) {
+            if (trajectory.getSteps() != null) {
+                allSteps.addAll(trajectory.getSteps());
+            }
+            Map<String, Integer> cost = trajectory.getCost();
+            if (cost != null) {
+                totalInput += intValue(cost.get("input_tokens"));
+                totalOutput += intValue(cost.get("output_tokens"));
             }
         }
 
-        // 2. Tool steps: check tool name
-        if ("tool".equals(step.getKind()) && step.getDetail() != null) {
-            Object detail = step.getDetail();
-            String toolName = "";
-            if (detail instanceof ToolCallDetail) {
-                toolName = ((ToolCallDetail) detail).getToolName();
-            } else if (detail instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> detailMap = (Map<String, Object>) detail;
-                Object toolNameObj = detailMap.get("tool_name");
-                if (toolNameObj == null) {
-                    toolNameObj = detailMap.get("toolName");
-                }
-                toolName = toolNameObj != null ? String.valueOf(toolNameObj) : "";
-            }
-            toolName = toolName.toLowerCase();
+        allSteps.sort((left, right) -> Long.compare(timeOrZero(left), timeOrZero(right)));
 
-            if (COLLABORATIVE_TOOLS.contains(toolName)) {
-                return true;
-            }
-            // Also keep any tool whose name suggests reading team skill files
-            if (toolName.contains("read")) {
-                String argsStr = "";
-                if (detail instanceof ToolCallDetail) {
-                    argsStr = String.valueOf(((ToolCallDetail) detail).getCallArgs());
-                } else if (detail instanceof Map) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> detailMap = (Map<String, Object>) detail;
-                    Object argsObj = detailMap.get("call_args");
-                    if (argsObj == null) {
-                        argsObj = detailMap.get("callArgs");
-                    }
-                    argsStr = argsObj != null ? String.valueOf(argsObj) : "";
+        Map<String, Integer> combinedCost = null;
+        if (totalInput > 0 || totalOutput > 0) {
+            combinedCost = new LinkedHashMap<>();
+            combinedCost.put("input_tokens", totalInput);
+            combinedCost.put("output_tokens", totalOutput);
+        }
+
+        return Trajectory.builder()
+                .executionId("team-" + teamId)
+                .sessionId(sessionId)
+                .source("online")
+                .steps(allSteps)
+                .cost(combinedCost)
+                .meta(Map.of("member_count", members.size()))
+                .build();
+    }
+
+    private static boolean isLeaderTrajectory(Trajectory trajectory, String memberId) {
+        Map<String, Object> meta = trajectory.getMeta();
+        if (meta != null) {
+            for (String key : MEMBER_ROLE_META_KEYS) {
+                Object role = meta.get(key);
+                if (role == null) {
+                    continue;
                 }
-                if (argsStr.toLowerCase().contains("skill")) {
-                    return true;
-                }
+                return LEADER_ROLE.equals(asRoleValue(role));
             }
-            // Internal tools: explicitly filter out
-            if (INTERNAL_TOOLS.contains(toolName)) {
+        }
+        return LEADER_ROLE.equals(memberId);
+    }
+
+    private static String memberIdFor(Trajectory trajectory) {
+        Map<String, Object> meta = trajectory.getMeta();
+        if (meta != null && meta.get("member_id") != null) {
+            return String.valueOf(meta.get("member_id"));
+        }
+        String executionId = trajectory.getExecutionId();
+        if (executionId == null) {
+            return "null";
+        }
+        return executionId.substring(0, Math.min(8, executionId.length()));
+    }
+
+    private static Trajectory mergeMemberTrajectory(Trajectory existing, Trajectory next) {
+        if (existing == null) {
+            return next;
+        }
+
+        if (next.getSteps().size() > existing.getSteps().size()
+                && stepsArePrefix(existing.getSteps(), next.getSteps())) {
+            return next;
+        }
+        if (existing.getSteps().size() > next.getSteps().size()
+                && stepsArePrefix(next.getSteps(), existing.getSteps())) {
+            return existing;
+        }
+
+        List<TrajectoryStep> mergedSteps = new ArrayList<>(existing.getSteps());
+        mergedSteps.addAll(next.getSteps());
+
+        return Trajectory.builder()
+                .executionId(existing.getExecutionId())
+                .sessionId(existing.getSessionId() != null ? existing.getSessionId() : next.getSessionId())
+                .source(existing.getSource())
+                .caseId(existing.getCaseId() != null ? existing.getCaseId() : next.getCaseId())
+                .steps(mergedSteps)
+                .cost(mergeCost(existing.getCost(), next.getCost()))
+                .meta(mergeMeta(existing.getMeta(), next.getMeta()))
+                .build();
+    }
+
+    private static Map<String, Object> mergeMeta(Map<String, Object> first, Map<String, Object> second) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (first != null) {
+            merged.putAll(first);
+        }
+        if (second != null) {
+            merged.putAll(second);
+        }
+        return merged;
+    }
+
+    private static Map<String, Integer> mergeCost(Map<String, Integer> first, Map<String, Integer> second) {
+        if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
+            return null;
+        }
+        Map<String, Integer> merged = new LinkedHashMap<>();
+        mergeCostEntries(merged, first);
+        mergeCostEntries(merged, second);
+        return merged;
+    }
+
+    private static void mergeCostEntries(Map<String, Integer> target, Map<String, Integer> source) {
+        if (source == null) {
+            return;
+        }
+        for (Map.Entry<String, Integer> entry : source.entrySet()) {
+            target.put(entry.getKey(), target.getOrDefault(entry.getKey(), 0) + intValue(entry.getValue()));
+        }
+    }
+
+    private static boolean stepsArePrefix(List<TrajectoryStep> prefix, List<TrajectoryStep> steps) {
+        if (prefix.size() > steps.size()) {
+            return false;
+        }
+        for (int i = 0; i < prefix.size(); i++) {
+            if (!stepEquals(prefix.get(i), steps.get(i))) {
                 return false;
             }
-            // Unknown tools: keep them (conservative)
-            return true;
+        }
+        return true;
+    }
+
+    private static boolean stepEquals(TrajectoryStep first, TrajectoryStep second) {
+        return Objects.equals(first.getKind(), second.getKind())
+                && Objects.equals(first.getOperatorId(), second.getOperatorId())
+                && Objects.equals(first.getAgentId(), second.getAgentId())
+                && Objects.equals(first.getRole(), second.getRole())
+                && Objects.equals(first.getNodeId(), second.getNodeId())
+                && Objects.deepEquals(first.getInputs(), second.getInputs())
+                && Objects.deepEquals(first.getOutputs(), second.getOutputs())
+                && Objects.deepEquals(first.getError(), second.getError())
+                && Objects.equals(first.getStartTimeMs(), second.getStartTimeMs())
+                && Objects.equals(first.getEndTimeMs(), second.getEndTimeMs())
+                && Objects.equals(first.getReward(), second.getReward())
+                && Objects.equals(first.getPromptTokenIds(), second.getPromptTokenIds())
+                && Objects.equals(first.getCompletionTokenIds(), second.getCompletionTokenIds())
+                && Objects.deepEquals(first.getLogprobs(), second.getLogprobs())
+                && Objects.equals(first.getMeta(), second.getMeta())
+                && detailEquals(first.getDetail(), second.getDetail());
+    }
+
+    private static boolean detailEquals(Object first, Object second) {
+        if (first instanceof ToolCallDetail leftTool && second instanceof ToolCallDetail rightTool) {
+            return Objects.equals(leftTool.getToolName(), rightTool.getToolName())
+                    && Objects.deepEquals(leftTool.getCallArgs(), rightTool.getCallArgs())
+                    && Objects.deepEquals(leftTool.getCallResult(), rightTool.getCallResult())
+                    && Objects.equals(leftTool.getToolDescription(), rightTool.getToolDescription())
+                    && Objects.equals(leftTool.getToolSchema(), rightTool.getToolSchema())
+                    && Objects.equals(leftTool.getToolCallId(), rightTool.getToolCallId());
+        }
+        if (first instanceof LLMCallDetail leftLlm && second instanceof LLMCallDetail rightLlm) {
+            return Objects.equals(leftLlm.getModel(), rightLlm.getModel())
+                    && Objects.equals(leftLlm.getMessages(), rightLlm.getMessages())
+                    && Objects.deepEquals(leftLlm.getResponse(), rightLlm.getResponse())
+                    && Objects.equals(leftLlm.getTools(), rightLlm.getTools())
+                    && Objects.equals(leftLlm.getUsage(), rightLlm.getUsage())
+                    && Objects.equals(leftLlm.getMeta(), rightLlm.getMeta());
+        }
+        return Objects.deepEquals(first, second);
+    }
+
+    private static boolean isCollaborativeStep(TrajectoryStep step) {
+        Map<String, Object> meta = step.getMeta();
+        if (meta != null) {
+            for (String key : CROSS_MEMBER_META_KEYS) {
+                if (meta.containsKey(key)) {
+                    return true;
+                }
+            }
         }
 
-        // 3. LLM steps without cross-member markers: filter out
-        return false;
+        if (!"tool".equals(step.getKind()) || step.getDetail() == null) {
+            return false;
+        }
+
+        String toolName = toolName(step.getDetail()).toLowerCase(Locale.ROOT);
+        return COLLABORATIVE_TOOLS.contains(toolName) || isTeamSkillFileAccess(step.getDetail(), toolName);
+    }
+
+    private static boolean isTeamSkillFileAccess(Object detail, String toolName) {
+        if (!toolName.contains("read") && !toolName.contains("write")) {
+            return false;
+        }
+        String args = String.valueOf(callArgs(detail)).toLowerCase(Locale.ROOT);
+        return args.contains("skill");
+    }
+
+    private static String toolName(Object detail) {
+        if (detail instanceof ToolCallDetail toolCallDetail && toolCallDetail.getToolName() != null) {
+            return toolCallDetail.getToolName();
+        }
+        return "";
+    }
+
+    private static Object callArgs(Object detail) {
+        if (detail instanceof ToolCallDetail toolCallDetail) {
+            return toolCallDetail.getCallArgs();
+        }
+        return null;
+    }
+
+    private static String asRoleValue(Object role) {
+        return String.valueOf(role).toLowerCase(Locale.ROOT);
+    }
+
+    private static long timeOrZero(TrajectoryStep step) {
+        return step.getStartTimeMs() != null ? step.getStartTimeMs() : 0L;
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
     }
 }

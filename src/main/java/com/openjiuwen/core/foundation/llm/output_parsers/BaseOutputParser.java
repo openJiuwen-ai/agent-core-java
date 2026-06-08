@@ -5,29 +5,15 @@
 package com.openjiuwen.core.foundation.llm.output_parsers;
 
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Base class for parsing LLM output into the desired format.
- * <p>
- * Mirrors Python's {@code BaseOutputParser} ABC.
+ * Mirrors Python's {@code BaseOutputParser} in
+ * {@code openjiuwen/core/foundation/llm/output_parsers/output_parser.py}.
  */
 public abstract class BaseOutputParser {
 
-    /**
-     * Parse LLM output.
-     *
-     * @param inputs the assistant message or its content string
-     * @return parsed result
-     * @throws Exception if parsing fails
-     */
-    public abstract Object parse(Object inputs) throws Exception;
+    public abstract CompletableFuture<Object> parse(Object inputs);
 
-    /**
-     * Parse streaming LLM output.
-     *
-     * @param streamingInputs an iterator of AssistantMessageChunk or String
-     * @return an iterator of parsed fragments
-     * @throws Exception if parsing fails
-     */
-    public abstract Iterator<Object> streamParse(Iterator<?> streamingInputs) throws Exception;
+    public abstract Iterator<Object> streamParse(Iterator<?> streamingInputs);
 }

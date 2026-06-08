@@ -14,11 +14,11 @@ import com.openjiuwen.core.common.exception.ValidationError;
 import java.util.*;
 
 /**
- * Schema utility class for handling JSON Schema validation, data formatting,
- * and default value population.
- * <p>
- * Java equivalent of Python's {@code SchemaUtils}. Uses Jackson for JSON
- * processing. Provides:
+ * Mirrors Python's {@code SchemaUtils} in
+ * {@code openjiuwen/core/common/utils/schema_utils.py}.
+ *
+ * <p>Schema utility class for handling JSON Schema validation, data formatting,
+ * and default value population. Uses Jackson for JSON processing. Provides:
  * <ul>
  *   <li>{@link #formatWithSchema} — format data according to schema, filling defaults</li>
  *   <li>{@link #validateWithSchema} — validate data against a JSON Schema</li>

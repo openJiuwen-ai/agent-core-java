@@ -8,7 +8,7 @@ package com.openjiuwen.harness.schema;
  * Event types consumed by the outer task-loop.
  *
  * <p>Mirrors Python's {@code DeepLoopEventType} in
- * {@code openjiuwen.harness.schema.loop_event}.
+ * {@code openjiuwen/harness/schema/loop_event.py}.
  */
 public enum DeepLoopEventType {
 

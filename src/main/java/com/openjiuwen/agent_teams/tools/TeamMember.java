@@ -9,8 +9,8 @@ import java.util.Objects;
 /**
  * Team member table model.
  * <p>
- * Mirrors Python's {@code TeamMember} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code TeamMember} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class TeamMember {
 
@@ -22,6 +22,7 @@ public class TeamMember {
     private String status;
     private String executionStatus;
     private String mode;
+    private String role = "teammate";
     private String prompt;
     private String modelRefJson;
     private Long updatedAt;
@@ -30,9 +31,17 @@ public class TeamMember {
     }
 
     public TeamMember(String memberName, String teamName, String displayName,
-                       String desc, String agentCard, String status,
-                       String executionStatus, String mode, String prompt,
-                       String modelRefJson, Long updatedAt) {
+            String desc, String agentCard, String status,
+            String executionStatus, String mode, String prompt,
+            String modelRefJson, Long updatedAt) {
+        this(memberName, teamName, displayName, desc, agentCard, status,
+                executionStatus, mode, "teammate", prompt, modelRefJson, updatedAt);
+    }
+
+    public TeamMember(String memberName, String teamName, String displayName,
+            String desc, String agentCard, String status,
+            String executionStatus, String mode, String role, String prompt,
+            String modelRefJson, Long updatedAt) {
         this.memberName = memberName;
         this.teamName = teamName;
         this.displayName = displayName;
@@ -41,6 +50,7 @@ public class TeamMember {
         this.status = status;
         this.executionStatus = executionStatus;
         this.mode = mode;
+        this.role = role == null ? "teammate" : role;
         this.prompt = prompt;
         this.modelRefJson = modelRefJson;
         this.updatedAt = updatedAt;
@@ -110,6 +120,14 @@ public class TeamMember {
         this.mode = mode;
     }
 
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
     public String getPrompt() {
         return prompt;
     }
@@ -136,8 +154,12 @@ public class TeamMember {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof TeamMember that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof TeamMember that)) {
+            return false;
+        }
         return Objects.equals(memberName, that.memberName)
                 && Objects.equals(teamName, that.teamName)
                 && Objects.equals(displayName, that.displayName)
@@ -146,6 +168,7 @@ public class TeamMember {
                 && Objects.equals(status, that.status)
                 && Objects.equals(executionStatus, that.executionStatus)
                 && Objects.equals(mode, that.mode)
+                && Objects.equals(role, that.role)
                 && Objects.equals(prompt, that.prompt)
                 && Objects.equals(modelRefJson, that.modelRefJson)
                 && Objects.equals(updatedAt, that.updatedAt);
@@ -154,23 +177,24 @@ public class TeamMember {
     @Override
     public int hashCode() {
         return Objects.hash(memberName, teamName, displayName, desc, agentCard,
-                         status, executionStatus, mode, prompt, modelRefJson, updatedAt);
+                status, executionStatus, mode, role, prompt, modelRefJson, updatedAt);
     }
 
     @Override
     public String toString() {
-        return "TeamMember{" +
-                "memberName='" + memberName + '\'' +
-                ", teamName='" + teamName + '\'' +
-                ", displayName='" + displayName + '\'' +
-                ", desc='" + desc + '\'' +
-                ", agentCard='" + agentCard + '\'' +
-                ", status='" + status + '\'' +
-                ", executionStatus='" + executionStatus + '\'' +
-                ", mode='" + mode + '\'' +
-                ", prompt='" + prompt + '\'' +
-                ", modelRefJson='" + modelRefJson + '\'' +
-                ", updatedAt=" + updatedAt +
-                '}';
+        return "TeamMember{"
+                + "memberName='" + memberName + '\''
+                + ", teamName='" + teamName + '\''
+                + ", displayName='" + displayName + '\''
+                + ", desc='" + desc + '\''
+                + ", agentCard='" + agentCard + '\''
+                + ", status='" + status + '\''
+                + ", executionStatus='" + executionStatus + '\''
+                + ", mode='" + mode + '\''
+                + ", role='" + role + '\''
+                + ", prompt='" + prompt + '\''
+                + ", modelRefJson='" + modelRefJson + '\''
+                + ", updatedAt=" + updatedAt
+                + '}';
     }
 }

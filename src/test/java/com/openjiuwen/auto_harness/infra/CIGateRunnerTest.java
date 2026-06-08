@@ -14,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_ci_gate_tool}.
- * Tests for CIGateRunner YAML loading and gate matching functionality.
  */
 class CIGateRunnerTest {
 

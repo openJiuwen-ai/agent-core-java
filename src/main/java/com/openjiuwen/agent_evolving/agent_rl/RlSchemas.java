@@ -1,5 +1,6 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.agent_evolving.agent_rl;
 
@@ -7,145 +8,148 @@ import com.openjiuwen.agent_evolving.agent_rl.schemas.Rollout;
 import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
-
-import java.util.*;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * RL training schemas and data structures.
- * <p>
- * Mirrors Python's {@code schemas.py} from
- * {@code openjiuwen.agent_evolving.agent_rl.schemas}.
+ * RL training schemas and helpers.
+ *
+ * <p>Mirrors Python's module helpers in
+ * {@code openjiuwen/agent_evolving/agent_rl/schemas.py}.</p>
  */
 public final class RlSchemas {
-    
+
     private RlSchemas() {
-        // Utility class
-    }
-    
-    /**
-     * Training sample schema.
-     */
-    public static class TrainingSample {
-        private final String trajectoryId;
-        private final int stepIndex;
-        private final List<Integer> tokenIds;
-        private final List<Double> logprobs;
-        private final Double reward;
-        
-        public TrainingSample(String trajectoryId, int stepIndex,
-                              List<Integer> tokenIds, List<Double> logprobs, Double reward) {
-            this.trajectoryId = trajectoryId;
-            this.stepIndex = stepIndex;
-            this.tokenIds = tokenIds;
-            this.logprobs = logprobs;
-            this.reward = reward;
-        }
-        
-        public String getTrajectoryId() { return trajectoryId; }
-        public int getStepIndex() { return stepIndex; }
-        public List<Integer> getTokenIds() { return tokenIds; }
-        public List<Double> getLogprobs() { return logprobs; }
-        public Double getReward() { return reward; }
-    }
-    
-    /**
-     * Training batch schema.
-     */
-    public static class TrainingBatch {
-        private final List<TrainingSample> samples;
-        private final String modelId;
-        private final Map<String, Object> metadata;
-        
-        public TrainingBatch(List<TrainingSample> samples, String modelId, Map<String, Object> metadata) {
-            this.samples = samples != null ? samples : new ArrayList<>();
-            this.modelId = modelId;
-            this.metadata = metadata != null ? metadata : new LinkedHashMap<>();
-        }
-        
-        public List<TrainingSample> getSamples() { return samples; }
-        public String getModelId() { return modelId; }
-        public Map<String, Object> getMetadata() { return metadata; }
     }
 
-    /**
-     * Convert LLM trajectory steps into rollout objects.
-     *
-     * <p>Mirrors Python's {@code trajectory_to_rollouts} in
-     * {@code openjiuwen.agent_evolving.agent_rl.schemas}.</p>
-     *
-     * @param trajectory source trajectory
-     * @return one rollout per LLM step
-     */
     public static List<Rollout> trajectoryToRollouts(Trajectory trajectory) {
-        if (trajectory == null || trajectory.getSteps() == null) {
-            return List.of();
-        }
         List<Rollout> rollouts = new ArrayList<>();
-        int turnId = 0;
+        if (trajectory == null || trajectory.getSteps() == null) {
+            return rollouts;
+        }
         for (TrajectoryStep step : trajectory.getSteps()) {
             if (step == null || !"llm".equals(step.getKind())) {
                 continue;
             }
-            Object detailObject = step.getDetail();
-            if (!(detailObject instanceof LLMCallDetail detail)) {
+            if (!(step.getDetail() instanceof LLMCallDetail detail)) {
                 continue;
             }
 
-            Rollout rollout = new Rollout();
-            rollout.setTurnId(turnId++);
-
             Map<String, Object> inputPrompt = new LinkedHashMap<>();
             inputPrompt.put("message", normalizeMessages(detail.getMessages()));
-            inputPrompt.put("tools", detail.getTools() != null ? new ArrayList<>(detail.getTools()) : null);
+            inputPrompt.put("tools", normalizeTools(detail.getTools()));
+
+            Rollout rollout = new Rollout();
+            rollout.setTurnId(rollouts.size());
             rollout.setInputPrompt(inputPrompt);
-            rollout.setOutputResponse(normalizeMessage(detail.getResponse()));
-            rollout.setLlmConfig(Map.of("model", detail.getModel()));
-            rollout.setInputPromptIds(firstIntegerList(step.getPromptTokenIds(), detail.getMeta().get("prompt_token_ids")));
-            rollout.setOutputResponseIds(firstIntegerList(step.getCompletionTokenIds(), detail.getMeta().get("completion_token_ids")));
+            rollout.setOutputResponse(normalizeResponse(detail.getResponse()));
+            rollout.setLlmConfig(extractLlmConfig(step.getMeta()));
+            rollout.setInputPromptIds(emptyToNull(step.getPromptTokenIds()));
+            rollout.setOutputResponseIds(emptyToNull(step.getCompletionTokenIds()));
             rollouts.add(rollout);
         }
         return rollouts;
     }
 
-    private static List<Map<String, Object>> normalizeMessages(List<Map<String, Object>> messages) {
-        if (messages == null) {
-            return new ArrayList<>();
+    private static List<Object> normalizeMessages(List<Object> rawMessages) {
+        List<Object> normalized = new ArrayList<>();
+        if (rawMessages == null) {
+            return normalized;
         }
-        List<Map<String, Object>> normalized = new ArrayList<>();
-        for (Map<String, Object> message : messages) {
-            normalized.add(normalizeMessage(message));
+        for (Object message : rawMessages) {
+            if (message instanceof Map<?, ?> map) {
+                normalized.add(copyMap(map));
+                continue;
+            }
+            Object dumped = modelDump(message);
+            normalized.add(dumped != null ? dumped : message);
         }
         return normalized;
     }
 
-    private static Map<String, Object> normalizeMessage(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (entry.getKey() != null) {
-                    normalized.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-            }
-            return normalized;
+    private static List<Object> normalizeTools(List<Map<String, Object>> rawTools) {
+        if (rawTools == null) {
+            return null;
         }
-        Map<String, Object> fallback = new LinkedHashMap<>();
-        fallback.put("role", "assistant");
-        fallback.put("content", value == null ? "" : String.valueOf(value));
-        return fallback;
+        List<Object> normalized = new ArrayList<>();
+        for (Object tool : rawTools) {
+            if (tool instanceof Map<?, ?> map) {
+                normalized.add(copyMap(map));
+                continue;
+            }
+            Object dumped = modelDump(tool);
+            normalized.add(dumped != null ? dumped : tool);
+        }
+        return normalized;
+    }
+
+    private static Map<String, Object> normalizeResponse(Object rawResponse) {
+        if (rawResponse == null) {
+            return null;
+        }
+        if (rawResponse instanceof Map<?, ?> map) {
+            return copyMap(map);
+        }
+        Object dumped = modelDump(rawResponse);
+        if (dumped instanceof Map<?, ?> map) {
+            return copyMap(map);
+        }
+        if (dumped instanceof String stringValue) {
+            return Map.of("role", "assistant", "content", stringValue);
+        }
+        return Map.of(
+                "role", stringValue(readProperty(rawResponse, "role"), "assistant"),
+                "content", stringValue(readProperty(rawResponse, "content"), "")
+        );
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Integer> firstIntegerList(Object first, Object second) {
-        Object value = first != null ? first : second;
-        if (!(value instanceof List<?> list)) {
+    private static Map<String, Object> extractLlmConfig(Map<String, Object> meta) {
+        Object value = meta != null ? meta.get("llm_config") : null;
+        return value instanceof Map<?, ?> map ? copyMap(map) : null;
+    }
+
+    private static List<Integer> emptyToNull(List<Integer> values) {
+        return values == null || values.isEmpty() ? null : new ArrayList<>(values);
+    }
+
+    private static Object modelDump(Object value) {
+        if (value == null) {
             return null;
         }
-        List<Integer> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Number number) {
-                out.add(number.intValue());
+        for (String methodName : new String[]{"modelDump", "model_dump"}) {
+            try {
+                Method method = value.getClass().getMethod(methodName);
+                return method.invoke(value);
+            } catch (ReflectiveOperationException ignored) {
+                // Try next fallback.
             }
         }
-        return out;
+        return null;
+    }
+
+    private static Object readProperty(Object value, String property) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return value.getClass().getMethod("get" + Character.toUpperCase(property.charAt(0)) + property.substring(1))
+                    .invoke(value);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static String stringValue(Object value, String fallback) {
+        return value == null ? fallback : String.valueOf(value);
+    }
+
+    private static Map<String, Object> copyMap(Map<?, ?> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, value) -> copy.put(String.valueOf(key), value));
+        return copy;
     }
 }

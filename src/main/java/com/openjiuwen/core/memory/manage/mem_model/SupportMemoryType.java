@@ -5,7 +5,10 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Supported memory types for vector operations.
+ * Memory types supported by summary/vector-specific paths.
+ *
+ * <p>Mirrors Python's {@code SupportMemoryType} in
+ * {@code openjiuwen/core/memory/manage/mem_model/memory_unit.py}.</p>
  */
 public enum SupportMemoryType {
     USER_PROFILE("user_profile"),

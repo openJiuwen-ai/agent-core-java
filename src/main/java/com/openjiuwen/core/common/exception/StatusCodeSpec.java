@@ -5,28 +5,24 @@
 package com.openjiuwen.core.common.exception;
 
 /**
- * A fully-specified status code entry generated from a {@link StatusCodeTemplate}.
+ * Mirrors Python's {@code StatusCodeSpec} in
+ * {@code openjiuwen/core/common/exception/code_template.py}.
  *
- * <p>Mirrors Python's {@code StatusCodeSpec} in
- * {@code openjiuwen.core.common.exception.code_template}.</p>
- *
- * @param name    the enum member name
- * @param code    the integer status code
- * @param message the error message template
+ * @param name enum member name
+ * @param code numeric status code
+ * @param message rendered message template
  */
 public record StatusCodeSpec(String name, int code, String message) {
 
-    /**
-     * Create a spec by combining a template with a concrete code value.
-     */
-    public static StatusCodeSpec fromTemplate(StatusCodeTemplate template, int code) {
+    public static StatusCodeSpec generateStatusCodeSpec(StatusCodeTemplate template, int code) {
         return new StatusCodeSpec(template.name(), code, template.messageTemplate());
     }
 
-    /**
-     * Render as a Java enum member declaration string (for codegen).
-     */
+    public static String renderEnumMember(StatusCodeSpec spec) {
+        return spec.renderEnumMember();
+    }
+
     public String renderEnumMember() {
-        return "    " + name + "(" + code + ", \"" + message + "\")";
+        return "    " + name + " = (" + code + ", \"" + message + "\")";
     }
 }

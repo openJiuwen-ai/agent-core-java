@@ -7,7 +7,8 @@ package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
 /**
  * Position information.
  * <p>
- * Mirrors Python's {@code Position} dataclass.
+ * Mirrors Python's {@code Position} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class Position {
     private final double x;

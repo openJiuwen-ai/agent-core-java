@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,121 +18,85 @@ import java.util.regex.Pattern;
 
 /**
  * Todo checkbox rendering for CLI output.
- *
- * <p>Mirrors Python's {@code openjiuwen.harness.cli.ui.todo_render}.
- *
- * Renders todo items with visual checkboxes and progress summaries:
- * - ☑ task — completed (green)
- * - ◐ task — in_progress (yellow)
- * - ☐ task — pending (dim)
- * - ✓2 ◐1 ☐3 — progress summary
+ * <p>
+ * Mirrors Python's module in
+ * {@code openjiuwen/harness/cli/ui/todo_render.py}.
  */
 public final class TodoRender {
 
-    /** Status → (icon, Rich style) */
-    private static final Map<String, String[]> STATUS_STYLE = new HashMap<>();
-    private static final Map<String, String> SDK_ICON_TO_STATUS = new HashMap<>();
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Map<String, String[]> STATUS_STYLE = Map.of(
+            "completed", new String[]{"\u2612", "green"},
+            "in_progress", new String[]{"\u25fc", "yellow"},
+            "pending", new String[]{"\u2610", "dim"},
+            "cancelled", new String[]{"\u2715", "dim strike"}
+    );
+    private static final Map<String, String> SDK_ICON_TO_STATUS = Map.of(
+            "[>]", "in_progress",
+            "[ ]", "pending",
+            "[\u221a]", "completed",
+            "[\u00d7]", "cancelled"
+    );
 
     private static final Pattern CREATE_PATTERN = Pattern.compile(
-            "\\[([>√× ])]\\s+task_id:\\s*\\S+\\s*,\\s*content:\\s*(.+)",
-            Pattern.MULTILINE);
+            "\\[([>\\u221a\\u00d7 ])]\\s+task_id:\\s*\\S+\\s*,\\s*content:\\s*(.+)",
+            Pattern.MULTILINE
+    );
     private static final Pattern SECTION_PATTERN = Pattern.compile(
-            "^\\[([>√× ])]\\s+(?:In Progress|Pending|Completed|Cancelled)",
-            Pattern.MULTILINE);
+            "^\\[([>\\u221a\\u00d7 ])]\\s+(?:In Progress|Pending|Completed|Cancelled)",
+            Pattern.MULTILINE
+    );
     private static final Pattern ITEM_PATTERN = Pattern.compile("^\\s+\\[[\\w-]+]\\s+(.+)");
-
-    static {
-        STATUS_STYLE.put("completed", new String[]{"☑", "green"});
-        STATUS_STYLE.put("in_progress", new String[]{"◐", "yellow"});
-        STATUS_STYLE.put("pending", new String[]{"☐", "dim"});
-        STATUS_STYLE.put("cancelled", new String[]{"☒", "dim strike"});
-        SDK_ICON_TO_STATUS.put("[>]", "in_progress");
-        SDK_ICON_TO_STATUS.put("[ ]", "pending");
-        SDK_ICON_TO_STATUS.put("[√]", "completed");
-        SDK_ICON_TO_STATUS.put("[×]", "cancelled");
-    }
 
     private TodoRender() {
     }
 
-    /**
-     * Render a single todo item with a checkbox.
-     *
-     * @param content Task description text.
-     * @param status  One of "completed", "in_progress", "pending", "cancelled".
-     * @return Rich-formatted string like "[green]☑ task[/green]".
-     */
     public static String renderTodoItem(String content, String status) {
-        String[] iconStyle = STATUS_STYLE.getOrDefault(status, new String[]{"☐", "dim"});
+        String[] iconStyle = STATUS_STYLE.getOrDefault(status, STATUS_STYLE.get("pending"));
         String icon = iconStyle[0];
         String style = iconStyle[1];
         return "[" + style + "]" + icon + " " + content + "[/" + style + "]";
     }
 
-    /**
-     * Render a list of todo items as checkbox lines.
-     *
-     * Each line is prefixed with ⎿ for Claude Code style.
-     *
-     * @param items List of dicts with "content" and "status" keys.
-     * @return List of Rich-formatted strings.
-     */
     public static List<String> renderTodoList(List<Map<String, Object>> items) {
         List<String> lines = new ArrayList<>();
         for (Map<String, Object> item : items) {
-            String content = (String) item.getOrDefault("content", item.getOrDefault("activeForm", ""));
-            String status = (String) item.getOrDefault("status", "pending");
-            String checkbox = renderTodoItem(content, status);
-            lines.add("  ⎿  " + checkbox);
+            String content = String.valueOf(item.getOrDefault("content", item.getOrDefault("activeForm", "")));
+            String status = String.valueOf(item.getOrDefault("status", "pending"));
+            lines.add("  \u23bf " + renderTodoItem(content, status));
         }
         return lines;
     }
 
-    /**
-     * Render a compact progress summary.
-     *
-     * @param items List of dicts with "status" keys.
-     * @return String like "✓2 ◐1 ☐3".
-     */
     public static String renderTodoSummary(List<Map<String, Object>> items) {
-        Map<String, Integer> counts = new HashMap<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
         counts.put("completed", 0);
         counts.put("in_progress", 0);
         counts.put("pending", 0);
         counts.put("cancelled", 0);
-
         for (Map<String, Object> item : items) {
-            String status = (String) item.getOrDefault("status", "pending");
+            String status = String.valueOf(item.getOrDefault("status", "pending"));
             if (counts.containsKey(status)) {
                 counts.put(status, counts.get(status) + 1);
             }
         }
-
         List<String> parts = new ArrayList<>();
         if (counts.get("completed") > 0) {
-            parts.add("✓" + counts.get("completed"));
+            parts.add("\u2713" + counts.get("completed"));
         }
         if (counts.get("in_progress") > 0) {
-            parts.add("◐" + counts.get("in_progress"));
+            parts.add("\u25fc" + counts.get("in_progress"));
         }
         if (counts.get("pending") > 0) {
-            parts.add("☐" + counts.get("pending"));
+            parts.add("\u2610" + counts.get("pending"));
         }
         return parts.isEmpty() ? "No tasks" : String.join(" ", parts);
     }
 
-    /**
-     * Parse a todo tool result into todo item maps.
-     *
-     * <p>Mirrors Python's {@code parse_todo_result}: JSON is preferred, then
-     * SDK human-readable create/list output is parsed.</p>
-     */
     public static List<Map<String, Object>> parseTodoResult(String toolResult) {
         if (toolResult == null || toolResult.isBlank()) {
             return null;
         }
-
         try {
             Object data = MAPPER.readValue(toolResult, new TypeReference<Object>() {
             });
@@ -142,51 +105,30 @@ public final class TodoRender {
                 return structured;
             }
         } catch (Exception ignored) {
-            // Fall through to SDK text parsing.
+            // Fall through to SDK-style text parsing.
         }
-
         return parseTodoText(cleanPythonReprSuffix(toolResult));
     }
 
-    /**
-     * Parse raw tool arguments into a map.
-     */
     public static Map<String, Object> parseTodoToolArgs(Object toolArgs) {
         if (toolArgs instanceof Map<?, ?> rawMap) {
-            Map<String, Object> parsed = new LinkedHashMap<>();
-            rawMap.forEach((key, value) -> {
-                if (key != null) {
-                    parsed.put(String.valueOf(key), value);
-                }
-            });
-            return parsed;
+            return toStringKeyMap(rawMap);
         }
         if (toolArgs instanceof String text) {
             try {
                 Object data = MAPPER.readValue(text, new TypeReference<Object>() {
                 });
                 if (data instanceof Map<?, ?> rawMap) {
-                    Map<String, Object> parsed = new LinkedHashMap<>();
-                    rawMap.forEach((key, value) -> {
-                        if (key != null) {
-                            parsed.put(String.valueOf(key), value);
-                        }
-                    });
-                    return parsed;
+                    return toStringKeyMap(rawMap);
                 }
             } catch (Exception ignored) {
-                // Python returns {} on malformed JSON or non-dict args.
+                return new LinkedHashMap<>();
             }
         }
         return new LinkedHashMap<>();
     }
 
-    /**
-     * Apply todo_modify arguments to cached rendered todo items.
-     */
-    public static List<Map<String, Object>> applyTodoModifyArgs(
-            List<Map<String, Object>> items,
-            Object toolArgs) {
+    public static List<Map<String, Object>> applyTodoModifyArgs(List<Map<String, Object>> items, Object toolArgs) {
         Map<String, Object> args = parseTodoToolArgs(toolArgs);
         Object actionObject = args.get("action");
         if (!(actionObject instanceof String action) || action.isBlank()) {
@@ -209,20 +151,6 @@ public final class TodoRender {
         };
     }
 
-    /**
-     * Count items by status.
-     *
-     * @param items List of todo items.
-     * @param status Status to count.
-     * @return Number of items with the given status.
-     */
-    public static long countByStatus(List<Map<String, Object>> items, String status) {
-        return items.stream()
-            .filter(i -> status.equals(i.get("status")))
-            .count();
-    }
-
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> extractStructuredItems(Object data) {
         if (data instanceof List<?> list) {
             return normalizeList(list);
@@ -235,13 +163,7 @@ public final class TodoRender {
                 }
             }
             if (rawMap.containsKey("content") || rawMap.containsKey("status")) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                rawMap.forEach((key, value) -> {
-                    if (key != null) {
-                        item.put(String.valueOf(key), value);
-                    }
-                });
-                return List.of(item);
+                return List.of(toStringKeyMap(rawMap));
             }
         }
         return null;
@@ -251,13 +173,7 @@ public final class TodoRender {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object item : list) {
             if (item instanceof Map<?, ?> rawMap) {
-                Map<String, Object> normalized = new LinkedHashMap<>();
-                rawMap.forEach((key, value) -> {
-                    if (key != null) {
-                        normalized.put(String.valueOf(key), value);
-                    }
-                });
-                result.add(normalized);
+                result.add(toStringKeyMap(rawMap));
             }
         }
         return result;
@@ -269,9 +185,7 @@ public final class TodoRender {
 
         Matcher createMatcher = CREATE_PATTERN.matcher(normalized);
         while (createMatcher.find()) {
-            String marker = createMatcher.group(1);
-            String content = createMatcher.group(2).trim();
-            items.add(todoItem(content, statusFor(marker)));
+            items.add(todoItem(createMatcher.group(2).trim(), statusFor(createMatcher.group(1))));
         }
         if (!items.isEmpty()) {
             return items;
@@ -336,11 +250,7 @@ public final class TodoRender {
             if (item == null) {
                 continue;
             }
-            rawUpdate.forEach((key, value) -> {
-                if (key != null) {
-                    item.put(String.valueOf(key), value);
-                }
-            });
+            item.putAll(toStringKeyMap(rawUpdate));
             syncDisplayContent(item);
         }
         return currentItems;
@@ -351,9 +261,7 @@ public final class TodoRender {
             return null;
         }
         Set<?> deleteIds = Set.copyOf(ids);
-        return currentItems.stream()
-                .filter(item -> !deleteIds.contains(item.get("id")))
-                .toList();
+        return currentItems.stream().filter(item -> !deleteIds.contains(item.get("id"))).toList();
     }
 
     private static List<Map<String, Object>> applyCancel(List<Map<String, Object>> currentItems, Object idsObject) {
@@ -382,10 +290,7 @@ public final class TodoRender {
         return currentItems;
     }
 
-    private static List<Map<String, Object>> applyInsert(
-            List<Map<String, Object>> currentItems,
-            Object todoDataObject,
-            boolean after) {
+    private static List<Map<String, Object>> applyInsert(List<Map<String, Object>> currentItems, Object todoDataObject, boolean after) {
         if (!(todoDataObject instanceof List<?> todoData) || todoData.size() != 2) {
             return null;
         }
@@ -404,7 +309,6 @@ public final class TodoRender {
         if (targetIndex < 0) {
             return null;
         }
-
         List<Map<String, Object>> newItems = new ArrayList<>();
         for (Object todo : insertTodos) {
             if (todo instanceof Map<?, ?> rawMap) {
@@ -420,12 +324,7 @@ public final class TodoRender {
     }
 
     private static Map<String, Object> normalizeTodoItem(Map<?, ?> rawMap) {
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        rawMap.forEach((key, value) -> {
-            if (key != null) {
-                normalized.put(String.valueOf(key), value);
-            }
-        });
+        Map<String, Object> normalized = toStringKeyMap(rawMap);
         syncDisplayContent(normalized);
         return normalized;
     }
@@ -436,5 +335,15 @@ public final class TodoRender {
         if ("in_progress".equals(status) && activeForm instanceof String text && !text.isBlank()) {
             item.put("content", text);
         }
+    }
+
+    private static Map<String, Object> toStringKeyMap(Map<?, ?> rawMap) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> {
+            if (key != null) {
+                result.put(String.valueOf(key), value);
+            }
+        });
+        return result;
     }
 }

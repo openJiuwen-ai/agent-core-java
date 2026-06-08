@@ -4,143 +4,98 @@
 
 package com.openjiuwen.core.common.clients;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.CompletionException;
 
 /**
- * Abstract base class for reference-counted resource managers.
- * <p>
- * Mirrors Python's {@code BaseRefResourceMgr} abstract class from
- * <code>common/clients/ref_counted.py</code>.
+ * Mirrors Python's {@code BaseRefResourceMgr} in
+ * {@code openjiuwen/core/common/clients/ref_counted.py}.
  *
- * <p>Provides thread-safe resource acquisition, release, and cleanup capabilities
- * using reference counting to manage shared resources efficiently.
- *
- * @param <R> the resource type, must extend RefCountedResource
+ * @param <R> resource type bound to {@link RefCountedResource}
  */
 public abstract class BaseRefResourceMgr<R extends RefCountedResource> {
 
-    protected final Map<String, R> resources = new ConcurrentHashMap<>();
-    protected final ReentrantLock lock = new ReentrantLock();
+    private final Map<String, R> resources = new LinkedHashMap<>();
+    private final Object lock = new Object();
 
-    /**
-     * Get the unique key for a resource based on its configuration.
-     *
-     * @param config the configuration object
-     * @return the unique resource key
-     */
     protected abstract String getResourceKey(Object config);
 
-    /**
-     * Create a new resource based on the configuration.
-     *
-     * @param config the configuration object
-     * @return a CompletableFuture containing the created resource
-     */
     protected abstract CompletableFuture<R> createResource(Object config);
 
-    /**
-     * Acquire a resource, creating it if necessary.
-     *
-     * @param config the configuration object
-     * @return a CompletableFuture containing a tuple of (resource, isNew)
-     */
-    public CompletableFuture<Map.Entry<R, Boolean>> acquire(Object config) {
+    public CompletableFuture<ResourceLease<R>> acquire(Object config) {
         String key = getResourceKey(config);
-
-        lock.lock();
-        try {
-            R existing = resources.get(key);
-            if (existing != null && !existing.isClosed()) {
-                existing.incrementRef();
-                return CompletableFuture.completedFuture(
-                    Map.entry(existing, false)
-                );
+        synchronized (lock) {
+            if (resources.containsKey(key)) {
+                R resource = resources.get(key);
+                if (!resource.isClosed()) {
+                    resource.incrementRef();
+                    return CompletableFuture.completedFuture(new ResourceLease<>(resource, false));
+                }
+                resources.remove(key);
             }
-
-            return createResource(config).thenApply(resource -> {
+            try {
+                R resource = createResource(config).join();
                 resources.put(key, resource);
-                return Map.entry(resource, true);
-            });
-        } finally {
-            lock.unlock();
+                return CompletableFuture.completedFuture(new ResourceLease<>(resource, true));
+            } catch (CompletionException exception) {
+                return CompletableFuture.failedFuture(exception.getCause() != null ? exception.getCause() : exception);
+            }
         }
     }
 
-    /**
-     * Release a resource, decrementing its reference count.
-     *
-     * @param config the configuration object
-     * @return a CompletableFuture that completes when release is done
-     */
     public CompletableFuture<Void> release(Object config) {
         String key = getResourceKey(config);
-
-        lock.lock();
-        try {
+        synchronized (lock) {
             R resource = resources.get(key);
-            if (resource == null) {
+            if (resource == null || resource.isClosed()) {
                 return CompletableFuture.completedFuture(null);
             }
-
             boolean shouldClose = resource.decrementRef();
             if (shouldClose) {
-                resources.remove(key);
+                if (resources.containsKey(key)) {
+                    resources.remove(key);
+                }
                 return resource.close();
             }
             return CompletableFuture.completedFuture(null);
-        } finally {
-            lock.unlock();
         }
     }
 
-    /**
-     * Get an existing resource without incrementing ref count.
-     *
-     * @param key the resource key
-     * @return the resource, or null if not found
-     */
-    public R getResource(String key) {
-        return resources.get(key);
+    public CompletableFuture<Void> close(String key) {
+        synchronized (lock) {
+            if (!resources.containsKey(key)) {
+                return CompletableFuture.completedFuture(null);
+            }
+            R resource = resources.remove(key);
+            return resource.close();
+        }
     }
 
-    /**
-     * Get all active resources.
-     *
-     * @return a map of all resources
-     */
-    public Map<String, R> getAllResources() {
-        return new HashMap<>(resources);
-    }
-
-    /**
-     * Close all resources and clear the registry.
-     *
-     * @return a CompletableFuture that completes when all resources are closed
-     */
     public CompletableFuture<Void> closeAll() {
-        lock.lock();
-        try {
-            CompletableFuture<Void>[] futures = resources.values().stream()
+        Map<String, R> snapshot;
+        synchronized (lock) {
+            snapshot = new LinkedHashMap<>(resources);
+            resources.clear();
+        }
+        CompletableFuture<Void>[] futures = snapshot.values().stream()
                 .map(RefCountedResource::close)
                 .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(futures);
+    }
 
-            resources.clear();
-            return CompletableFuture.allOf(futures);
-        } finally {
-            lock.unlock();
+    public CompletableFuture<Map<String, Object>> getStats() {
+        synchronized (lock) {
+            Map<String, Object> resourceStats = new LinkedHashMap<>();
+            resources.forEach((key, resource) -> resourceStats.put(key, resource.getStats()));
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("total_resources", resources.size());
+            stats.put("resources", resourceStats);
+            return CompletableFuture.completedFuture(stats);
         }
     }
 
-    /**
-     * Get the number of active resources.
-     *
-     * @return the count of active resources
-     */
-    public int getResourceCount() {
-        return resources.size();
+    public record ResourceLease<R extends RefCountedResource>(R resource, boolean isNew) {
     }
 }

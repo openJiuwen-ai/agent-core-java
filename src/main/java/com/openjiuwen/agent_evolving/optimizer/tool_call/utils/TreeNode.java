@@ -8,9 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Tree node for beam search algorithm.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.beam_search.TreeNode}.
+ * Mirrors Python's {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/beam_search.py}.
  */
 public class TreeNode {
 

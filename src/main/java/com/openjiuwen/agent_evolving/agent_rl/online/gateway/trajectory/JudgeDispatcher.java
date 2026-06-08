@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
 
+import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayMessageUtils;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +14,8 @@ import java.util.UUID;
 /**
  * Delayed-judge dispatch for pending rail-v1 samples.
  * <p>
- * Mirrors the deterministic finalize-sample behavior from
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.judge_dispatcher}.
+ * Mirrors Python's {@code JudgeDispatcher} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/judge_dispatcher.py}.
  */
 public class JudgeDispatcher {
 
@@ -43,9 +45,9 @@ public class JudgeDispatcher {
     public int onSessionDone(String sessionId) {
         List<Map<String, Object>> samples = pendingStore.popAll(sessionId);
         int count = 0;
-        for (int i = 0; i < samples.size(); i++) {
-            String tag = i == samples.size() - 1 ? "session_done" : "session_flush";
-            recordSample.recordSample(finalizeSample(samples.get(i), "", tag));
+        for (int index = 0; index < samples.size(); index++) {
+            String tag = index == samples.size() - 1 ? "session_done" : "session_flush";
+            recordSample.recordSample(finalizeSample(samples.get(index), "", tag));
             count += 1;
         }
         return count;
@@ -77,9 +79,7 @@ public class JudgeDispatcher {
 
         finalized.put("judge", judge);
         finalized.put("judge_feedback", Map.of("tag", tag, "followup_user_feedback", feedback));
-        if (!finalized.containsKey("sample_id")) {
-            finalized.put("sample_id", UUID.randomUUID().toString());
-        }
+        finalized.putIfAbsent("sample_id", UUID.randomUUID().toString());
         return finalized;
     }
 

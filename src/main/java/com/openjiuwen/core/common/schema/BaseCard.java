@@ -1,60 +1,57 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.core.common.schema;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 import java.util.UUID;
 
 /**
- * Base digital card — the root class for all card-like entities.
- * <p>
- * Mirrors Python's {@code BaseCard} in {@code openjiuwen.core.common.schema.card}.
+ * Mirrors Python's {@code BaseCard} in
+ * {@code openjiuwen/core/common/schema/card.py}.
  */
-@Data
-@SuperBuilder
-@NoArgsConstructor
-@AllArgsConstructor
 public class BaseCard {
+    private String id;
+    private String name;
+    private String description;
 
-    /** Unique identifier (UUID hex by default). */
-    @Builder.Default
-    private String id = UUID.randomUUID().toString().replace("-", "");
+    public BaseCard() {
+        this.id = UUID.randomUUID().toString().replace("-", "");
+        this.name = "";
+        this.description = "";
+    }
 
-    /** Name — also serves as the unique identifier in a namespace. */
-    @Builder.Default
-    private String name = "";
+    public BaseCard(String id, String name, String description) {
+        this.id = id;
+        this.name = name != null ? name : "";
+        this.description = description != null ? description : "";
+    }
 
-    /** Description of functionality, applicable scenarios, etc. */
-    @Builder.Default
-    private String description = "";
+    public String getId() {
+        return id;
+    }
 
-    /**
-     * Override in subclasses to provide tool-specific information.
-     */
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name != null ? name : "";
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description != null ? description : "";
+    }
+
     public Object toolInfo() {
         return null;
     }
 
-    /**
-     * Create a shallow copy of this card.
-     */
-    public BaseCard copy() {
-        return BaseCard.builder()
-            .id(this.id)
-            .name(this.name)
-            .description(this.description)
-            .build();
-    }
-
-    @Override
-    public String toString() {
+    public String toStr() {
         return "id=" + id + ",name=" + name;
     }
 }

@@ -1,17 +1,22 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.runner.mq;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.concurrent.CompletableFuture;
 
 /**
  * Message for invoke (request-response) pattern.
- * Mirrors Python's {@code InvokeQueueMessage}.
+ *
+ * <p>Mirrors Python's {@code InvokeQueueMessage} in
+ * {@code openjiuwen/core/runner/message_queue_base.py}.
  */
 public class InvokeQueueMessage extends QueueMessage {
 
+    @JsonIgnore
     private final CompletableFuture<Object> response = new CompletableFuture<>();
 
     public InvokeQueueMessage() {

@@ -52,7 +52,8 @@ class TestFixLoop {
 
             FixLoopResult result = controller.run(
                     () -> new FixLoopController.CiResult(true, ""),
-                    errors -> { });
+                    errors -> {
+                    });
 
             assertTrue(result.isSuccess());
             assertEquals(1, result.getAttempts());
@@ -70,7 +71,8 @@ class TestFixLoop {
                         int count = callCount.incrementAndGet();
                         return new FixLoopController.CiResult(count >= 3, "lint error");
                     },
-                    errors -> { });
+                    errors -> {
+                    });
 
             assertTrue(result.isSuccess());
             assertEquals(3, result.getAttempts());
@@ -83,7 +85,8 @@ class TestFixLoop {
 
             FixLoopResult result = controller.run(
                     () -> new FixLoopController.CiResult(false, "fail"),
-                    errors -> { });
+                    errors -> {
+                    });
 
             assertFalse(result.isSuccess());
             assertEquals(2, result.getAttempts());
@@ -100,7 +103,8 @@ class TestFixLoop {
                         Thread.sleep(20);
                         return new FixLoopController.CiResult(true, "");
                     },
-                    errors -> { });
+                    errors -> {
+                    });
 
             assertFalse(result.isSuccess());
             assertTrue(result.getErrorLog().get(0).toLowerCase().contains("timeout"));
@@ -119,7 +123,8 @@ class TestFixLoop {
 
             FixLoopResult result = controller.run(
                     () -> new FixLoopController.CiResult(false, "err"),
-                    errors -> { },
+                    errors -> {
+                    },
                     () -> new FixLoopController.ReviewResult(callCount.incrementAndGet() >= 2));
 
             assertTrue(result.isSuccess());
@@ -133,7 +138,8 @@ class TestFixLoop {
 
             FixLoopResult result = controller.run(
                     () -> new FixLoopController.CiResult(false, "err"),
-                    errors -> { },
+                    errors -> {
+                    },
                     null);
 
             assertFalse(result.isSuccess());

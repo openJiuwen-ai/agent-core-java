@@ -10,7 +10,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code TrajectoryStep} in {@code openjiuwen.agent_evolving.trajectory.types}.
+ * Mirrors Python's {@code TrajectoryStep} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.
  */
 public class TrajectoryStep {
 

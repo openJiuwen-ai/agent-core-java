@@ -4,86 +4,75 @@
 
 package com.openjiuwen.core.single_agent.prompts;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Section-based system prompt builder base class.
- * <p>
- * Provides generic section registration, ordering by priority, and rendering.
- * Agent-family-specific policies (mode switching, diagnostics) live in subclasses.
- * <p>
  * Mirrors Python's {@code SystemPromptBuilder} in
- * {@code openjiuwen.core.single_agent.prompts.builder}.
+ * {@code openjiuwen/core/single_agent/prompts/builder.py}.
  */
 public class SystemPromptBuilder {
+    public static final Set<String> SUPPORTED_LANGUAGES = Set.of("cn", "en");
+    public static final String DEFAULT_LANGUAGE = "cn";
 
-    protected String language;
-    protected final Map<String, PromptSection> sections = new LinkedHashMap<>();
+    private final Map<String, PromptSection> sections = new LinkedHashMap<>();
+    private String language;
 
     public SystemPromptBuilder() {
-        this(PromptSection.DEFAULT_LANGUAGE);
+        this(DEFAULT_LANGUAGE);
     }
 
     public SystemPromptBuilder(String language) {
-        this.language = language;
+        this.language = Objects.requireNonNullElse(language, DEFAULT_LANGUAGE);
     }
 
-    /** Add or replace a section (same name overwrites). */
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = Objects.requireNonNullElse(language, DEFAULT_LANGUAGE);
+    }
+
     public SystemPromptBuilder addSection(PromptSection section) {
         sections.put(section.getName(), section);
         return this;
     }
 
-    /** Remove a section by name. */
     public SystemPromptBuilder removeSection(String name) {
         sections.remove(name);
         return this;
     }
 
-    /** Return a copy of all registered sections. */
     public Map<String, PromptSection> getAllSections() {
         return new LinkedHashMap<>(sections);
     }
 
-    /** Check if a section exists. */
     public boolean hasSection(String name) {
         return sections.containsKey(name);
     }
 
-    /** Get a section by name. */
     public Optional<PromptSection> getSection(String name) {
         return Optional.ofNullable(sections.get(name));
     }
 
-    /** Get the current language. */
-    public String getLanguage() {
-        return language;
-    }
-
-    /** Set the language. */
-    public void setLanguage(String language) {
-        this.language = language;
-    }
-
-    /**
-     * Return sections sorted by priority (ascending) for build.
-     * Override in subclasses to filter sections.
-     */
-    protected List<PromptSection> getSectionsForBuild() {
-        return sections.values().stream()
-                .sorted(Comparator.comparingInt(PromptSection::getPriority))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Build the full system prompt by sorting sections by priority
-     * and joining them with double newlines.
-     */
     public String build() {
-        return getSectionsForBuild().stream()
-                .map(s -> s.render(language))
-                .filter(s -> !s.isEmpty())
+        List<PromptSection> sortedSections = new ArrayList<>(getSectionsForBuild());
+        sortedSections.sort(Comparator.comparingInt(PromptSection::getPriority));
+        return sortedSections.stream()
+                .map(section -> section.render(language))
+                .filter(part -> !part.isBlank())
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    protected List<PromptSection> getSectionsForBuild() {
+        return new ArrayList<>(sections.values());
     }
 }

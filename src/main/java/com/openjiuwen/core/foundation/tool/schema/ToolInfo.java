@@ -16,7 +16,8 @@ import java.util.Map;
 /**
  * Tool information descriptor for LLM function calling.
  * <p>
- * Mirrors Python's {@code ToolInfo} model from the foundation tool schema.
+ * Mirrors Python's {@code ToolInfo} in
+ * {@code openjiuwen/core/foundation/tool/schema.py}.
  * Follows the OpenAI function calling format.
  */
 @Data

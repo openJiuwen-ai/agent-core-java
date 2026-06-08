@@ -5,19 +5,19 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Base message class for LLM conversation messages.
- * <p>
- * Mirrors Python's {@code BaseMessage} model. Content can be a simple string
- * or a list of content parts (for multimodal messages).
+ * Mirrors Python's {@code BaseMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
 @Data
 @SuperBuilder
@@ -26,43 +26,46 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseMessage {
 
-    /** Message role (system, user, assistant, tool). */
     private String role;
 
-    /**
-     * Message content — either a plain string or a list of content parts.
-     * <p>
-     * For simple text messages, use {@code String}. For multimodal messages,
-     * use a {@code List} of maps containing text/image data.
-     */
-    private Object content;
+    @Builder.Default
+    private Object content = "";
 
-    /** Optional name identifier for the message sender. */
     private String name;
 
-    // ==================== Convenience Constructors ====================
+    @Builder.Default
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 
-    /**
-     * Create a message with role and string content.
-     */
-    public BaseMessage(String role, String content) {
+    public BaseMessage(String role, Object content) {
         this.role = role;
-        this.content = content;
+        this.content = content != null ? content : "";
+        this.metadata = new LinkedHashMap<>();
     }
 
-    /**
-     * Get content as string. Returns empty string if content is not a string.
-     */
+    public Map<String, Object> modelDump() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("role", getRole());
+        result.put("content", content);
+        if (name != null) {
+            result.put("name", name);
+        }
+        if (metadata != null && !metadata.isEmpty()) {
+            result.put("metadata", metadata);
+        }
+        return result;
+    }
+
+    public Map<String, Object> model_dump() {
+        return modelDump();
+    }
+
     public String getContentAsString() {
-        if (content instanceof String s) {
-            return s;
+        if (content instanceof String value) {
+            return value;
         }
         return content != null ? content.toString() : "";
     }
 
-    /**
-     * Get content as list (for multimodal messages).
-     */
     @SuppressWarnings("unchecked")
     public List<Object> getContentAsList() {
         if (content instanceof List<?> list) {

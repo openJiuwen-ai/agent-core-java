@@ -4,24 +4,29 @@
 
 package com.openjiuwen.harness.lsp;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal custom server configuration override for Java harness LSP.
- *
- * <p>Mirrors Python's {@code CustomServerConfig} in
- * {@code openjiuwen.harness.lsp.types}.
+ * Mirrors Python's {@code CustomServerConfig} in
+ * {@code openjiuwen/harness/lsp/types.py}.
  */
 public class CustomServerConfig {
 
     private String command;
-    private List<String> args = List.of();
-    private Map<String, String> env = new LinkedHashMap<>();
-    private List<String> extensions = List.of();
+    private List<String> args;
+    private Map<String, String> env;
+    private List<String> extensions;
+
+    @JsonProperty("language_id")
     private String languageId;
-    private Map<String, Object> initializationOptions = new LinkedHashMap<>();
+
+    @JsonProperty("initialization_options")
+    private Map<String, Object> initializationOptions;
+
     private boolean disabled;
 
     public String getCommand() {
@@ -37,7 +42,7 @@ public class CustomServerConfig {
     }
 
     public void setArgs(List<String> args) {
-        this.args = args != null ? List.copyOf(args) : List.of();
+        this.args = args == null ? null : List.copyOf(args);
     }
 
     public Map<String, String> getEnv() {
@@ -45,7 +50,7 @@ public class CustomServerConfig {
     }
 
     public void setEnv(Map<String, String> env) {
-        this.env = env != null ? new LinkedHashMap<>(env) : new LinkedHashMap<>();
+        this.env = env == null ? null : new LinkedHashMap<>(env);
     }
 
     public List<String> getExtensions() {
@@ -53,7 +58,7 @@ public class CustomServerConfig {
     }
 
     public void setExtensions(List<String> extensions) {
-        this.extensions = extensions != null ? List.copyOf(extensions) : List.of();
+        this.extensions = extensions == null ? null : List.copyOf(extensions);
     }
 
     public String getLanguageId() {
@@ -69,8 +74,7 @@ public class CustomServerConfig {
     }
 
     public void setInitializationOptions(Map<String, Object> initializationOptions) {
-        this.initializationOptions = initializationOptions != null
-                ? new LinkedHashMap<>(initializationOptions) : new LinkedHashMap<>();
+        this.initializationOptions = initializationOptions == null ? null : new LinkedHashMap<>(initializationOptions);
     }
 
     public boolean isDisabled() {

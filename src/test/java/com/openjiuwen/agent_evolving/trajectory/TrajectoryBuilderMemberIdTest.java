@@ -6,11 +6,18 @@ package com.openjiuwen.agent_evolving.trajectory;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.HashMap;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's tests.unit_tests.agent_evolving.trajectory.test_trajectory_builder_member_id.
- * Unit tests for TrajectoryBuilder with member_id support.
+ * Unit tests for {@link TrajectoryBuilder} member-id support.
+ * <p>
+ * Mirrors Python's
+ * {@code tests/unit_tests/agent_evolving/trajectory/test_trajectory_builder_member_id.py}.
+ * </p>
  */
 class TrajectoryBuilderMemberIdTest {
 
@@ -24,16 +31,16 @@ class TrajectoryBuilderMemberIdTest {
 
         builder.recordStep(TrajectoryStep.builder()
                 .kind("tool")
-                .inputs(ToolCallDetail.builder()
+                .detail(ToolCallDetail.builder()
                         .toolName("read_file")
                         .callArgs("test.txt")
                         .build())
-                .meta(new java.util.HashMap<>())
+                .meta(new HashMap<>())
                 .build());
 
-        Trajectory traj = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
-        assertEquals("agent-001", traj.getMeta().get("member_id"));
+        assertEquals("agent-001", trajectory.getMeta().get("member_id"));
     }
 
     @Test
@@ -43,9 +50,9 @@ class TrajectoryBuilderMemberIdTest {
                 .source("online")
                 .build();
 
-        Trajectory traj = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
-        assertTrue(traj.getMeta().isEmpty());
+        assertTrue(trajectory.getMeta().isEmpty());
     }
 
     @Test

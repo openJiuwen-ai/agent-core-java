@@ -12,95 +12,69 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
- * Abstract serializer for graph state persistence.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.store.serde.Serializer}.
+ * Mirrors Python's serializer module in
+ * {@code openjiuwen/core/graph/store/serde.py}.
  */
 public abstract class Serializer {
 
-    /**
-     * Serialize an object to a typed byte representation.
-     *
-     * @param obj the object to serialize
-     * @return a pair of (type tag, byte data)
-     */
-    public abstract TypedBytes dumpsTyped(Object obj);
-
-    /**
-     * Deserialize a typed byte representation back to an object.
-     *
-     * @param data the typed bytes
-     * @return the deserialized object
-     */
-    public abstract Object loadsTyped(TypedBytes data);
-
-    /**
-     * Container for typed serialized data.
-     */
     public record TypedBytes(String type, byte[] data) {
     }
 
-    /**
-     * Create a serializer of the given type.
-     *
-     * @param typeName serializer type name ("json" or "java")
-     * @return the serializer instance
-     */
+    public abstract TypedBytes dumpsTyped(Object obj);
+
+    public abstract Object loadsTyped(TypedBytes data);
+
     public static Serializer create(String typeName) {
+        return createSerializer(typeName);
+    }
+
+    public static Serializer createSerializer(String typeName) {
         if ("json".equals(typeName)) {
-            return new JsonSerializer();
+            throw new IllegalArgumentException("json is not yet supported");
         }
-        if ("java".equals(typeName)) {
-            return new JavaNativeSerializer();
+        if ("pickle".equals(typeName)) {
+            return new PickleSerializer();
         }
         throw new IllegalArgumentException("Unknown serializer type: " + typeName);
     }
 
     /**
-     * JSON-based serializer implementation using Jackson.
+     * Mirrors Python's {@code JsonSerializer} in
+     * {@code openjiuwen/core/graph/store/serde.py}.
      */
-    public static class JsonSerializer extends Serializer {
+    public static final class JsonSerializer extends Serializer {
 
         private static final ObjectMapper MAPPER = new ObjectMapper();
 
         @Override
         public TypedBytes dumpsTyped(Object obj) {
             try {
-                byte[] bytes = MAPPER.writeValueAsBytes(obj);
-                return new TypedBytes("json", bytes);
+                return new TypedBytes("json", MAPPER.writeValueAsBytes(obj));
             } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to serialize object to JSON", e);
+                throw new IllegalStateException("Failed to serialize JSON", e);
             }
         }
 
         @Override
         public Object loadsTyped(TypedBytes data) {
-            if (data == null) {
-                return null;
-            }
-            if (!"json".equals(data.type())) {
+            if (data == null || !"json".equals(data.type())) {
                 return null;
             }
             try {
                 return MAPPER.readValue(data.data(), Object.class);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to deserialize JSON", e);
+                throw new IllegalStateException("Failed to deserialize JSON", e);
             }
         }
     }
 
     /**
-     * Java native serialization-based serializer.
-     * <p>
-     * Mirrors Python's {@code PickleSerializer} — uses Java's built-in ObjectOutputStream/ObjectInputStream
-     * as the equivalent of Python's pickle module.
-     * <p>
-     * Note: objects must implement {@link java.io.Serializable} to be serialized.
+     * Mirrors Python's {@code PickleSerializer} in
+     * {@code openjiuwen/core/graph/store/serde.py}.
      */
-    public static class JavaNativeSerializer extends Serializer {
+    public static final class PickleSerializer extends Serializer {
 
         @Override
         public TypedBytes dumpsTyped(Object obj) {
@@ -108,25 +82,22 @@ public abstract class Serializer {
                  ObjectOutputStream oos = new ObjectOutputStream(bos)) {
                 oos.writeObject(obj);
                 oos.flush();
-                return new TypedBytes("java", bos.toByteArray());
+                return new TypedBytes("pickle", bos.toByteArray());
             } catch (IOException e) {
-                throw new RuntimeException("Failed to serialize object with Java native serialization", e);
+                throw new IllegalStateException("Failed to serialize pickle payload", e);
             }
         }
 
         @Override
         public Object loadsTyped(TypedBytes data) {
-            if (data == null) {
-                return null;
-            }
-            if (!"java".equals(data.type())) {
+            if (data == null || !"pickle".equals(data.type())) {
                 return null;
             }
             try (ByteArrayInputStream bis = new ByteArrayInputStream(data.data());
                  ObjectInputStream ois = new ObjectInputStream(bis)) {
                 return ois.readObject();
             } catch (IOException | ClassNotFoundException e) {
-                throw new RuntimeException("Failed to deserialize object with Java native serialization", e);
+                throw new IllegalStateException("Failed to deserialize pickle payload", e);
             }
         }
     }

@@ -4,47 +4,32 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * Index configuration.
+ * Mirrors Python's {@code IndexConfig} in
+ * {@code openjiuwen/core/retrieval/common/config.py}.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class IndexConfig {
 
+    @JsonProperty("index_name")
     private String indexName;
+
+    @JsonProperty("index_type")
+    @Builder.Default
     private String indexType = "hybrid";
 
-    public IndexConfig() {
-    }
-
-    public IndexConfig(String indexName) {
-        this(indexName, "hybrid");
-    }
-
-    public IndexConfig(String indexName, String indexType) {
-        this.indexName = indexName;
-        this.indexType = indexType;
-        validate();
-    }
-
-    public void validate() {
-        RetrievalValidation.requireNonBlank(indexName, "IndexConfig.indexName");
-        indexType = RetrievalValidation.validateIndexType(indexType, "IndexConfig.indexType");
-    }
-
-    public String getIndexName() {
-        return indexName;
-    }
-
-    public void setIndexName(String indexName) {
-        this.indexName = indexName;
-        validate();
-    }
-
-    public String getIndexType() {
-        return indexType;
-    }
-
-    public void setIndexType(String indexType) {
-        this.indexType = indexType;
-        validate();
-    }
+    @JsonProperty("use_caption_for_images")
+    @Builder.Default
+    private boolean useCaptionForImages = false;
 }

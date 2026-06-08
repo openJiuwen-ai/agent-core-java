@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 /**
  * GitHub CLI preflight helpers for auto-harness research stages.
  * <p>
- * Mirrors Python's {@code openjiuwen.auto_harness.infra.github_cli}.
+ * Mirrors Python's {@code openjiuwen/auto_harness/infra/github_cli.py}.
  */
 public final class GitHubCli {
 
@@ -55,7 +55,8 @@ public final class GitHubCli {
             Which which,
             CommandRunner runner,
             InstallCommandSupplier installCommandSupplier) {
-        Consumer<String> sink = emit == null ? ignored -> { } : emit;
+        Consumer<String> sink = emit == null ? ignored -> {
+        } : emit;
         Which whichFn = which == null ? GitHubCli::findOnPath : which;
         CommandRunner runFn = runner == null ? GitHubCli::runCommand : runner;
         InstallCommandSupplier installFn = installCommandSupplier == null ? GitHubCli::installCommands : installCommandSupplier;

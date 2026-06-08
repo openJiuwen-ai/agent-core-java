@@ -11,10 +11,8 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Deduplicated triple memory.
- *
- * <p>Mirrors Python's {@code TripleMemory} in
- * {@code openjiuwen.core.retrieval.common.triple_memory}.
+ * Mirrors Python's {@code TripleMemory} in
+ * {@code openjiuwen/core/retrieval/common/triple_memory.py}.
  */
 public class TripleMemory {
 
@@ -26,7 +24,11 @@ public class TripleMemory {
     }
 
     public List<List<String>> getMemory() {
-        return new ArrayList<>(memory);
+        List<List<String>> copy = new ArrayList<>();
+        for (List<String> triple : memory) {
+            copy.add(new ArrayList<>(triple));
+        }
+        return copy;
     }
 
     public String getTriplesStr() {
@@ -37,24 +39,24 @@ public class TripleMemory {
         return String.join("\n", formatted);
     }
 
-    public void extendMemory(List<String> triple) {
-        String normalized = tupleToString(triple);
+    public void extendMemory(List<String> newTriple) {
+        String normalized = tupleToString(newTriple);
         if (includedTriples.add(normalized)) {
-            memory.add(new ArrayList<>(triple));
+            memory.add(new ArrayList<>(newTriple));
         }
     }
 
-    public void batchExtendMemory(List<List<String>> triples) {
-        for (List<String> triple : triples) {
+    public void batchExtendMemory(List<List<String>> newTriples) {
+        for (List<String> triple : newTriples) {
             extendMemory(triple);
         }
     }
 
-    private static String tupleToString(List<String> triple) {
-        List<String> normalized = new ArrayList<>();
-        for (String item : triple) {
-            normalized.add(item.toLowerCase(Locale.ROOT));
+    public static String tupleToString(List<String> newTriple) {
+        List<String> lowered = new ArrayList<>();
+        for (String item : newTriple) {
+            lowered.add(item.toLowerCase(Locale.ROOT));
         }
-        return String.join(" ", normalized);
+        return String.join(" ", lowered);
     }
 }

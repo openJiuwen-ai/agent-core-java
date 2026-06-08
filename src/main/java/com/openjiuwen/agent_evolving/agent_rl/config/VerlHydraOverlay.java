@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Structured defaults merged on top of Verl's ppo_trainer Hydra config.
  * <p>
  * Mirrors Python's {@code VerlHydraOverlay} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class VerlHydraOverlay {
 

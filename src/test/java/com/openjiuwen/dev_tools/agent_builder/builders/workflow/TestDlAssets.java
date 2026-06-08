@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Test DlAssets constants.
  * <p>
  * Mirrors Python's {@code test_dl_assets.py} in
- * {@code tests.unit_tests.dev_tools.agent_builder.builders.workflow.test_dl_assets}.
+ * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/test_dl_assets.py}.
  */
 class TestDlAssets {
 

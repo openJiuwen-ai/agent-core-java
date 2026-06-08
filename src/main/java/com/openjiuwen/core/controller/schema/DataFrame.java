@@ -7,28 +7,23 @@ package com.openjiuwen.core.controller.schema;
 import java.util.Map;
 
 /**
- * DataFrame sealed interface for transmitting different types of data in the controller.
+ * Data-frame union used by the controller.
  * <p>
- * Supported data types:
- * <ul>
- *   <li>{@link TextDataFrame} - text data</li>
- *   <li>{@link FileDataFrame} - file data (bytes or URI)</li>
- *   <li>{@link JsonDataFrame} - JSON format data</li>
- * </ul>
- * <p>
- * Mirrors Python's {@code DataFrame = Union[TextDataFrame, FileDataFrame, JsonDataFrame]}.
+ * Mirrors Python's {@code DataFrame} in
+ * {@code openjiuwen/core/controller/schema/dataframe.py}.
  */
 public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.FileDataFrame, DataFrame.JsonDataFrame {
 
     /**
-     * Get the data frame type.
+     * Return the wire type.
      *
-     * @return one of "text", "file", "json"
+     * @return one of {@code text}, {@code file}, or {@code json}
      */
     String getType();
 
     /**
-     * Text data frame.
+     * Mirrors Python's {@code TextDataFrame} in
+     * {@code openjiuwen/core/controller/schema/dataframe.py}.
      */
     record TextDataFrame(String text) implements DataFrame {
         @Override
@@ -38,21 +33,19 @@ public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.Fil
     }
 
     /**
-     * File data frame supporting both bytes and URI.
+     * Mirrors Python's {@code FileDataFrame} in
+     * {@code openjiuwen/core/controller/schema/dataframe.py}.
      */
     record FileDataFrame(String name, String mimeType, byte[] bytes, String uri) implements DataFrame {
         @Override
         public String getType() {
             return "file";
         }
-
-        public FileDataFrame(String name, String mimeType) {
-            this(name, mimeType, null, null);
-        }
     }
 
     /**
-     * JSON format data frame.
+     * Mirrors Python's {@code JsonDataFrame} in
+     * {@code openjiuwen/core/controller/schema/dataframe.py}.
      */
     record JsonDataFrame(Map<String, Object> data) implements DataFrame {
         @Override

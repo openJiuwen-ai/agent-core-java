@@ -4,77 +4,41 @@
 
 package com.openjiuwen.core.runner.spawn;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
- * Message data structure for async process communication between parent and spawned processes.
- * <p>
- * Mirrors Python's {@code Message} in {@code runner/spawn/protocol.py}.
- * <p>
- * Messages are serialized to JSON for stdin/stdout communication with child processes.
+ * Message data structure for async process communication.
+ *
+ * <p>Mirrors Python's {@code Message} in
+ * {@code openjiuwen/core/runner/spawn/protocol.py}.</p>
  */
 public class SpawnMessage {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SpawnMessageType type;
     private final Object payload;
     private final Instant timestamp;
     private final String messageId;
 
-    /**
-     * Create a new message with auto-generated timestamp and ID.
-     *
-     * @param type    the message type
-     * @param payload the message payload (must be JSON-serializable)
-     */
     public SpawnMessage(SpawnMessageType type, Object payload) {
-        this(type, payload, Instant.now(), UUID.randomUUID().toString());
+        this(type, payload, Instant.now(), null);
     }
 
-    /**
-     * Create a new message with explicit fields.
-     *
-     * @param type      the message type
-     * @param payload   the message payload
-     * @param timestamp the creation timestamp
-     * @param messageId the unique message identifier
-     */
     public SpawnMessage(SpawnMessageType type, Object payload, Instant timestamp, String messageId) {
         this.type = type;
         this.payload = payload;
         this.timestamp = timestamp;
         this.messageId = messageId;
-    }
-
-    /**
-     * Convert this message to a JSON-serializable map.
-     *
-     * @return a map representation suitable for JSON serialization
-     */
-    public Map<String, Object> toMap() {
-        Map<String, Object> map = new HashMap<>();
-        map.put("type", type.getValue());
-        map.put("payload", payload);
-        map.put("timestamp", timestamp.toString());
-        map.put("message_id", messageId);
-        return map;
-    }
-
-    /**
-     * Create a SpawnMessage from a deserialized map.
-     *
-     * @param data the map containing message fields
-     * @return the reconstructed SpawnMessage
-     */
-    @SuppressWarnings("unchecked")
-    public static SpawnMessage fromMap(Map<String, Object> data) {
-        SpawnMessageType msgType = SpawnMessageType.fromValue((String) data.get("type"));
-        Instant ts = Instant.parse((String) data.get("timestamp"));
-        String msgId = (String) data.get("message_id");
-        Object payload = data.get("payload");
-        return new SpawnMessage(msgType, payload, ts, msgId);
     }
 
     public SpawnMessageType getType() {
@@ -93,8 +57,59 @@ public class SpawnMessage {
         return messageId;
     }
 
-    @Override
-    public String toString() {
-        return "SpawnMessage{type=" + type + ", messageId='" + messageId + "', timestamp=" + timestamp + "}";
+    public Map<String, Object> toMap() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("type", type.name());
+        data.put("payload", payload);
+        data.put("timestamp", timestamp.toString());
+        data.put("message_id", messageId);
+        return data;
+    }
+
+    public static SpawnMessage fromMap(Map<String, Object> data) {
+        return new SpawnMessage(
+                SpawnMessageType.fromValue((String) data.get("type")),
+                data.get("payload"),
+                Instant.parse((String) data.get("timestamp")),
+                (String) data.get("message_id")
+        );
+    }
+
+    public static byte[] serializeMessage(SpawnMessage message) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(message.toMap()).getBytes(StandardCharsets.UTF_8);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to serialize spawn message", exception);
+        }
+    }
+
+    public static SpawnMessage deserializeMessage(byte[] data) {
+        try {
+            Map<String, Object> obj = OBJECT_MAPPER.readValue(data, new TypeReference<>() {
+            });
+            return fromMap(obj);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Failed to deserialize spawn message", exception);
+        }
+    }
+
+    public static void serializeMessageToStream(SpawnMessage message, Writer writer) throws IOException {
+        writer.write(new String(serializeMessage(message), StandardCharsets.UTF_8));
+        writer.write('\n');
+        writer.flush();
+    }
+
+    public static SpawnMessage deserializeMessageFromStream(BufferedReader reader) throws IOException {
+        while (true) {
+            String line = reader.readLine();
+            if (line == null) {
+                return null;
+            }
+            try {
+                return deserializeMessage(line.getBytes(StandardCharsets.UTF_8));
+            } catch (RuntimeException ignored) {
+                // Child stdout can contain pre-protocol logs; skip them like the Python runtime.
+            }
+        }
     }
 }

@@ -15,12 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Tests for the online gateway request forwarder.
- *
- * <p>Mirrors Python's
- * {@code tests.unit_tests.agent_evolving.agent_rl.online.gateway.test_forwarder}.
- */
 class ForwarderTest {
 
     @Test
@@ -33,7 +27,7 @@ class ForwarderTest {
 
         Map<String, Object> result = forwarder.forward(Map.of("messages", List.of(Map.of("role", "user", "content", "hi"))), Map.of());
 
-        assertEquals("tool_calls", ((Map<?, ?>)((List<?>) result.get("choices")).getFirst()).get("finish_reason"));
+        assertEquals("tool_calls", ((Map<?, ?>) ((List<?>) result.get("choices")).getFirst()).get("finish_reason"));
         assertEquals("m1", upstreamClient.calls.getFirst().jsonBody.get("model"));
         assertEquals(Boolean.TRUE, upstreamClient.calls.getFirst().jsonBody.get("logprobs"));
         assertEquals(1, upstreamClient.calls.getFirst().jsonBody.get("top_logprobs"));
@@ -61,8 +55,10 @@ class ForwarderTest {
         FakeUpstreamClient upstreamClient = new FakeUpstreamClient(new GatewayHttpResponse(503, "upstream error"));
         Forwarder forwarder = new Forwarder(upstreamClient, "m1");
 
-        GatewayForwardingException error = assertThrows(GatewayForwardingException.class,
-                () -> forwarder.forward(Map.of("messages", List.of()), Map.of()));
+        GatewayForwardingException error = assertThrows(
+                GatewayForwardingException.class,
+                () -> forwarder.forward(Map.of("messages", List.of()), Map.of())
+        );
 
         assertEquals(502, error.getStatusCode());
         assertTrue(error.getMessage().contains("upstream error"));
@@ -83,7 +79,8 @@ class ForwarderTest {
         }
 
         @Override
-        public GatewayHttpResponse request(String method, String url, Map<String, Object> params, Map<String, String> headers, byte[] content) {
+        public GatewayHttpResponse request(String method, String url, Map<String, Object> params,
+                                           Map<String, String> headers, byte[] content) {
             calls.add(new Call(params != null ? params : Map.of(), headers != null ? headers : Map.of()));
             return response;
         }

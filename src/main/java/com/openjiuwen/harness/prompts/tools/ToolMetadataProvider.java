@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.prompts.tools;
@@ -9,103 +9,93 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Standard interface for tool metadata providers.
- * <p>
- * All DeepAgent built-in tools must implement this interface,
- * ensuring complete bilingual descriptions and parameter schemas.
- * <p>
  * Mirrors Python's {@code ToolMetadataProvider} in
- * {@code openjiuwen.harness.prompts.tools.base}.
+ * {@code openjiuwen/harness/prompts/tools/base.py}.
  */
 public interface ToolMetadataProvider {
 
-    /** Unique name of the tool in the registry. */
     String getName();
 
-    /** Return the tool description in the specified language. */
-    String getDescription(String language);
-
-    /** Return the tool description in the default language. */
     default String getDescription() {
         return getDescription("cn");
     }
 
-    /** Return JSON Schema parameter definitions for the specified language. */
-    Map<String, Object> getInputParams(String language);
+    String getDescription(String language);
 
-    /** Return JSON Schema parameter definitions in the default language. */
     default Map<String, Object> getInputParams() {
         return getInputParams("cn");
     }
 
-    /** Validate bilingual metadata parity. */
+    Map<String, Object> getInputParams(String language);
+
     default void validate() {
         validateProvider(this);
     }
 
     static void validateProvider(ToolMetadataProvider provider) {
         String name = provider.getName();
-        for (String language : new String[] {"cn", "en"}) {
+        for (String language : com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder.SUPPORTED_LANGUAGES) {
             String description = provider.getDescription(language);
             if (description == null || description.trim().isEmpty()) {
                 throw new IllegalArgumentException("[" + name + "] " + language + " description is empty");
             }
         }
 
-        Map<String, Object> cnSchema = provider.getInputParams("cn");
-        Map<String, Object> enSchema = provider.getInputParams("en");
-        validateSchemaPair(name, cnSchema, enSchema, "cn", "en", "");
+        Map<String, Object> referenceSchema = provider.getInputParams("cn");
+        Map<String, Object> otherSchema = provider.getInputParams("en");
+        validateSchemaPair(name, referenceSchema, otherSchema, "cn", "en", "");
     }
 
     @SuppressWarnings("unchecked")
     private static void validateSchemaPair(
             String name,
-            Map<String, Object> refSchema,
+            Map<String, Object> referenceSchema,
             Map<String, Object> otherSchema,
-            String refLang,
-            String otherLang,
-            String path
-    ) {
+            String referenceLanguage,
+            String otherLanguage,
+            String path) {
         String prefix = "[" + name + "]" + path;
-        if (!"object".equals(refSchema.get("type"))) {
-            throw new IllegalArgumentException(prefix + " " + refLang + " schema type != 'object'");
+
+        if (!"object".equals(referenceSchema.get("type"))) {
+            throw new IllegalArgumentException(prefix + " " + referenceLanguage + " schema type != 'object'");
         }
         if (!"object".equals(otherSchema.get("type"))) {
-            throw new IllegalArgumentException(prefix + " " + otherLang + " schema type != 'object'");
+            throw new IllegalArgumentException(prefix + " " + otherLanguage + " schema type != 'object'");
         }
-        if (!refSchema.containsKey("properties")) {
-            throw new IllegalArgumentException(prefix + " " + refLang + " schema missing 'properties'");
+        if (!referenceSchema.containsKey("properties")) {
+            throw new IllegalArgumentException(prefix + " " + referenceLanguage + " schema missing 'properties'");
         }
-        if (!refSchema.containsKey("required")) {
-            throw new IllegalArgumentException(prefix + " " + refLang + " schema missing 'required'");
+        if (!referenceSchema.containsKey("required")) {
+            throw new IllegalArgumentException(prefix + " " + referenceLanguage + " schema missing 'required'");
         }
 
-        Map<String, Object> refProps = castMap(refSchema.get("properties"));
+        Map<String, Object> referenceProps = castMap(referenceSchema.get("properties"));
         Map<String, Object> otherProps = castMap(otherSchema.get("properties"));
-        if (!refProps.keySet().equals(otherProps.keySet())) {
+        if (!referenceProps.keySet().equals(otherProps.keySet())) {
             throw new IllegalArgumentException(
                     prefix + " property keys differ: "
-                            + refLang + "=" + refProps.keySet() + ", "
-                            + otherLang + "=" + otherProps.keySet());
+                            + referenceLanguage + "=" + referenceProps.keySet() + ", "
+                            + otherLanguage + "=" + otherProps.keySet()
+            );
         }
 
-        for (String key : refProps.keySet()) {
-            Map<String, Object> refProp = castMap(refProps.get(key));
+        for (String key : referenceProps.keySet()) {
+            Map<String, Object> referenceProp = castMap(referenceProps.get(key));
             Map<String, Object> otherProp = castMap(otherProps.get(key));
-            if (!refProp.containsKey("description")) {
-                throw new IllegalArgumentException(prefix + "." + key + " " + refLang + " missing description");
+            if (!referenceProp.containsKey("description")) {
+                throw new IllegalArgumentException(prefix + "." + key + " " + referenceLanguage + " missing description");
             }
             if (!otherProp.containsKey("description")) {
-                throw new IllegalArgumentException(prefix + "." + key + " " + otherLang + " missing description");
+                throw new IllegalArgumentException(prefix + "." + key + " " + otherLanguage + " missing description");
             }
-            if ("object".equals(refProp.get("type")) && refProp.containsKey("properties")) {
-                validateSchemaPair(name, refProp, otherProp, refLang, otherLang, path + "." + key);
+            if ("object".equals(referenceProp.get("type")) && referenceProp.containsKey("properties")) {
+                validateSchemaPair(name, referenceProp, otherProp, referenceLanguage, otherLanguage, path + "." + key);
             }
-            if ("array".equals(refProp.get("type")) && refProp.containsKey("items")) {
-                Map<String, Object> refItems = castMap(refProp.get("items"));
+            if ("array".equals(referenceProp.get("type")) && referenceProp.containsKey("items")) {
+                Map<String, Object> referenceItems = castMap(referenceProp.get("items"));
                 Map<String, Object> otherItems = castMap(otherProp.get("items"));
-                if ("object".equals(refItems.get("type")) && refItems.containsKey("properties")) {
-                    validateSchemaPair(name, refItems, otherItems, refLang, otherLang, path + "." + key + "[]");
+                if ("object".equals(referenceItems.get("type")) && referenceItems.containsKey("properties")) {
+                    validateSchemaPair(name, referenceItems, otherItems, referenceLanguage, otherLanguage, path + "." + key + "[]");
                 }
             }
         }

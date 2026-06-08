@@ -5,17 +5,17 @@
 package com.openjiuwen.agent_evolving.agent_rl.online.launcher;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * CLI parsing helpers for online RL launcher runtime config.
  * <p>
- * Mirrors Python's {@code build_cli_overrides} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.launcher.cli}.
+ * Mirrors Python's module helpers in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/launcher/cli.py}.
  */
-public class LauncherCli {
+public final class LauncherCli {
 
-    private static final String DEFAULT_CONFIG_FILENAME = "online_rl_config.yaml";
     private static final Map<String, String> OPTION_TO_FIELD = Map.ofEntries(
             Map.entry("--config", "config"),
             Map.entry("--model-path", "modelPath"),
@@ -57,39 +57,27 @@ public class LauncherCli {
             Map.entry("jiuwenWebPort", true)
     );
 
-    /**
-     * Set nested value in data map.
-     * 
-     * @param data Data map
-     * @param path Dot-separated path
-     * @param value Value to set
-     */
+    private LauncherCli() {
+    }
+
     public static void setNestedValue(Map<String, Object> data, String path, Object value) {
+        @SuppressWarnings("unchecked")
         Map<String, Object> current = data;
         String[] parts = path.split("\\.");
-        
-        for (int i = 0; i < parts.length - 1; i++) {
-            Object next = current.get(parts[i]);
-            if (!(next instanceof Map)) {
-                next = new HashMap<String, Object>();
-                current.put(parts[i], next);
+        for (int index = 0; index < parts.length - 1; index++) {
+            Object next = current.get(parts[index]);
+            if (!(next instanceof Map<?, ?>)) {
+                next = new LinkedHashMap<String, Object>();
+                current.put(parts[index], next);
             }
             current = (Map<String, Object>) next;
         }
-        
         current.put(parts[parts.length - 1], value);
     }
 
-    /**
-     * Build CLI overrides from parsed arguments.
-     * 
-     * @param args Parsed CLI arguments
-     * @return Overrides map
-     */
     public static Map<String, Object> buildCliOverrides(LauncherArgs args) {
-        Map<String, Object> overrides = new HashMap<>();
-        
-        Map<String, String> cliMappings = new HashMap<>();
+        Map<String, Object> overrides = new LinkedHashMap<>();
+        Map<String, String> cliMappings = new LinkedHashMap<>();
         cliMappings.put("demo", "demo");
         cliMappings.put("modelPath", "inference.model_path");
         cliMappings.put("modelName", "inference.model_name");
@@ -115,32 +103,23 @@ public class LauncherCli {
         cliMappings.put("jiuwenWsPort", "jiuwen.ws_port");
         cliMappings.put("jiuwenWebHost", "jiuwen.web_host");
         cliMappings.put("jiuwenWebPort", "jiuwen.web_port");
-        
         for (Map.Entry<String, String> entry : cliMappings.entrySet()) {
             Object value = args.get(entry.getKey());
             if (value != null) {
                 setNestedValue(overrides, entry.getValue(), value);
             }
         }
-        
         if (args.isSkipJiuwen()) {
             setNestedValue(overrides, "jiuwen.enabled", false);
         }
-        
         return overrides;
     }
 
-    /**
-     * Parse command line options accepted by Python's build_arg_parser.
-     *
-     * @param args raw command line arguments
-     * @return parsed launcher arguments
-     */
     public static LauncherArgs parseArgs(String[] args) {
         LauncherArgs parsed = new LauncherArgs();
         String[] safeArgs = args == null ? new String[0] : args;
-        for (int i = 0; i < safeArgs.length; i++) {
-            String token = safeArgs[i];
+        for (int index = 0; index < safeArgs.length; index++) {
+            String token = safeArgs[index];
             if (token == null || token.isBlank()) {
                 continue;
             }
@@ -161,11 +140,11 @@ public class LauncherCli {
             }
             String value = option.value();
             if (value == null) {
-                i += 1;
-                if (i >= safeArgs.length || safeArgs[i].startsWith("--")) {
+                index += 1;
+                if (index >= safeArgs.length || safeArgs[index].startsWith("--")) {
                     throw new IllegalArgumentException("Missing value for argument: " + option.name());
                 }
-                value = safeArgs[i];
+                value = safeArgs[index];
             }
             setField(parsed, field, value, option.name());
         }
@@ -232,10 +211,7 @@ public class LauncherCli {
     private record ParsedOption(String name, String value) {
     }
 
-    /**
-     * Launcher arguments container.
-     */
-    public static class LauncherArgs {
+    public static final class LauncherArgs {
         private String config;
         private Boolean demo;
         private String modelPath;
@@ -265,92 +241,251 @@ public class LauncherCli {
         private boolean skipJiuwen;
 
         public Object get(String key) {
-            switch (key) {
-                case "config": return config;
-                case "demo": return demo;
-                case "modelPath": return modelPath;
-                case "modelName": return modelName;
-                case "vllmGpu": return vllmGpu;
-                case "vllmTp": return vllmTp;
-                case "vllmPort": return vllmPort;
-                case "inferenceUrl": return inferenceUrl;
-                case "judgeModelPath": return judgeModelPath;
-                case "judgeModelName": return judgeModelName;
-                case "judgeGpu": return judgeGpu;
-                case "judgeTp": return judgeTp;
-                case "judgePort": return judgePort;
-                case "judgeUrl": return judgeUrl;
-                case "gatewayPort": return gatewayPort;
-                case "redisUrl": return redisUrl;
-                case "threshold": return threshold;
-                case "scanInterval": return scanInterval;
-                case "trainGpu": return trainGpu;
-                case "ppoConfig": return ppoConfig;
-                case "trajectoryBatchSize": return trajectoryBatchSize;
-                case "loraRepo": return loraRepo;
-                case "jiuwenAgentServerPort": return jiuwenAgentServerPort;
-                case "jiuwenWsPort": return jiuwenWsPort;
-                case "jiuwenWebHost": return jiuwenWebHost;
-                case "jiuwenWebPort": return jiuwenWebPort;
-                default: return null;
-            }
+            return switch (key) {
+                case "config" -> config;
+                case "demo" -> demo;
+                case "modelPath" -> modelPath;
+                case "modelName" -> modelName;
+                case "vllmGpu" -> vllmGpu;
+                case "vllmTp" -> vllmTp;
+                case "vllmPort" -> vllmPort;
+                case "inferenceUrl" -> inferenceUrl;
+                case "judgeModelPath" -> judgeModelPath;
+                case "judgeModelName" -> judgeModelName;
+                case "judgeGpu" -> judgeGpu;
+                case "judgeTp" -> judgeTp;
+                case "judgePort" -> judgePort;
+                case "judgeUrl" -> judgeUrl;
+                case "gatewayPort" -> gatewayPort;
+                case "redisUrl" -> redisUrl;
+                case "threshold" -> threshold;
+                case "scanInterval" -> scanInterval;
+                case "trainGpu" -> trainGpu;
+                case "ppoConfig" -> ppoConfig;
+                case "trajectoryBatchSize" -> trajectoryBatchSize;
+                case "loraRepo" -> loraRepo;
+                case "jiuwenAgentServerPort" -> jiuwenAgentServerPort;
+                case "jiuwenWsPort" -> jiuwenWsPort;
+                case "jiuwenWebHost" -> jiuwenWebHost;
+                case "jiuwenWebPort" -> jiuwenWebPort;
+                default -> null;
+            };
         }
 
-        public boolean isSkipJiuwen() { return skipJiuwen; }
-        public void setSkipJiuwen(boolean skipJiuwen) { this.skipJiuwen = skipJiuwen; }
-        
-        // Standard getters/setters
-        public String getConfig() { return config; }
-        public void setConfig(String config) { this.config = config; }
-        public Boolean getDemo() { return demo; }
-        public void setDemo(Boolean demo) { this.demo = demo; }
-        public String getModelPath() { return modelPath; }
-        public void setModelPath(String modelPath) { this.modelPath = modelPath; }
-        public String getModelName() { return modelName; }
-        public void setModelName(String modelName) { this.modelName = modelName; }
-        public String getVllmGpu() { return vllmGpu; }
-        public void setVllmGpu(String vllmGpu) { this.vllmGpu = vllmGpu; }
-        public Integer getVllmTp() { return vllmTp; }
-        public void setVllmTp(Integer vllmTp) { this.vllmTp = vllmTp; }
-        public Integer getVllmPort() { return vllmPort; }
-        public void setVllmPort(Integer vllmPort) { this.vllmPort = vllmPort; }
-        public String getInferenceUrl() { return inferenceUrl; }
-        public void setInferenceUrl(String inferenceUrl) { this.inferenceUrl = inferenceUrl; }
-        public String getJudgeModelPath() { return judgeModelPath; }
-        public void setJudgeModelPath(String judgeModelPath) { this.judgeModelPath = judgeModelPath; }
-        public String getJudgeModelName() { return judgeModelName; }
-        public void setJudgeModelName(String judgeModelName) { this.judgeModelName = judgeModelName; }
-        public String getJudgeGpu() { return judgeGpu; }
-        public void setJudgeGpu(String judgeGpu) { this.judgeGpu = judgeGpu; }
-        public Integer getJudgeTp() { return judgeTp; }
-        public void setJudgeTp(Integer judgeTp) { this.judgeTp = judgeTp; }
-        public Integer getJudgePort() { return judgePort; }
-        public void setJudgePort(Integer judgePort) { this.judgePort = judgePort; }
-        public String getJudgeUrl() { return judgeUrl; }
-        public void setJudgeUrl(String judgeUrl) { this.judgeUrl = judgeUrl; }
-        public Integer getGatewayPort() { return gatewayPort; }
-        public void setGatewayPort(Integer gatewayPort) { this.gatewayPort = gatewayPort; }
-        public String getRedisUrl() { return redisUrl; }
-        public void setRedisUrl(String redisUrl) { this.redisUrl = redisUrl; }
-        public Integer getThreshold() { return threshold; }
-        public void setThreshold(Integer threshold) { this.threshold = threshold; }
-        public Integer getScanInterval() { return scanInterval; }
-        public void setScanInterval(Integer scanInterval) { this.scanInterval = scanInterval; }
-        public String getTrainGpu() { return trainGpu; }
-        public void setTrainGpu(String trainGpu) { this.trainGpu = trainGpu; }
-        public String getPpoConfig() { return ppoConfig; }
-        public void setPpoConfig(String ppoConfig) { this.ppoConfig = ppoConfig; }
-        public Integer getTrajectoryBatchSize() { return trajectoryBatchSize; }
-        public void setTrajectoryBatchSize(Integer trajectoryBatchSize) { this.trajectoryBatchSize = trajectoryBatchSize; }
-        public String getLoraRepo() { return loraRepo; }
-        public void setLoraRepo(String loraRepo) { this.loraRepo = loraRepo; }
-        public Integer getJiuwenAgentServerPort() { return jiuwenAgentServerPort; }
-        public void setJiuwenAgentServerPort(Integer jiuwenAgentServerPort) { this.jiuwenAgentServerPort = jiuwenAgentServerPort; }
-        public Integer getJiuwenWsPort() { return jiuwenWsPort; }
-        public void setJiuwenWsPort(Integer jiuwenWsPort) { this.jiuwenWsPort = jiuwenWsPort; }
-        public String getJiuwenWebHost() { return jiuwenWebHost; }
-        public void setJiuwenWebHost(String jiuwenWebHost) { this.jiuwenWebHost = jiuwenWebHost; }
-        public Integer getJiuwenWebPort() { return jiuwenWebPort; }
-        public void setJiuwenWebPort(Integer jiuwenWebPort) { this.jiuwenWebPort = jiuwenWebPort; }
+        public String getConfig() {
+            return config;
+        }
+
+        public void setConfig(String config) {
+            this.config = config;
+        }
+
+        public Boolean getDemo() {
+            return demo;
+        }
+
+        public void setDemo(Boolean demo) {
+            this.demo = demo;
+        }
+
+        public String getModelPath() {
+            return modelPath;
+        }
+
+        public void setModelPath(String modelPath) {
+            this.modelPath = modelPath;
+        }
+
+        public String getModelName() {
+            return modelName;
+        }
+
+        public void setModelName(String modelName) {
+            this.modelName = modelName;
+        }
+
+        public String getVllmGpu() {
+            return vllmGpu;
+        }
+
+        public void setVllmGpu(String vllmGpu) {
+            this.vllmGpu = vllmGpu;
+        }
+
+        public Integer getVllmTp() {
+            return vllmTp;
+        }
+
+        public void setVllmTp(Integer vllmTp) {
+            this.vllmTp = vllmTp;
+        }
+
+        public Integer getVllmPort() {
+            return vllmPort;
+        }
+
+        public void setVllmPort(Integer vllmPort) {
+            this.vllmPort = vllmPort;
+        }
+
+        public String getInferenceUrl() {
+            return inferenceUrl;
+        }
+
+        public void setInferenceUrl(String inferenceUrl) {
+            this.inferenceUrl = inferenceUrl;
+        }
+
+        public String getJudgeModelPath() {
+            return judgeModelPath;
+        }
+
+        public void setJudgeModelPath(String judgeModelPath) {
+            this.judgeModelPath = judgeModelPath;
+        }
+
+        public String getJudgeModelName() {
+            return judgeModelName;
+        }
+
+        public void setJudgeModelName(String judgeModelName) {
+            this.judgeModelName = judgeModelName;
+        }
+
+        public String getJudgeGpu() {
+            return judgeGpu;
+        }
+
+        public void setJudgeGpu(String judgeGpu) {
+            this.judgeGpu = judgeGpu;
+        }
+
+        public Integer getJudgeTp() {
+            return judgeTp;
+        }
+
+        public void setJudgeTp(Integer judgeTp) {
+            this.judgeTp = judgeTp;
+        }
+
+        public Integer getJudgePort() {
+            return judgePort;
+        }
+
+        public void setJudgePort(Integer judgePort) {
+            this.judgePort = judgePort;
+        }
+
+        public String getJudgeUrl() {
+            return judgeUrl;
+        }
+
+        public void setJudgeUrl(String judgeUrl) {
+            this.judgeUrl = judgeUrl;
+        }
+
+        public Integer getGatewayPort() {
+            return gatewayPort;
+        }
+
+        public void setGatewayPort(Integer gatewayPort) {
+            this.gatewayPort = gatewayPort;
+        }
+
+        public String getRedisUrl() {
+            return redisUrl;
+        }
+
+        public void setRedisUrl(String redisUrl) {
+            this.redisUrl = redisUrl;
+        }
+
+        public Integer getThreshold() {
+            return threshold;
+        }
+
+        public void setThreshold(Integer threshold) {
+            this.threshold = threshold;
+        }
+
+        public Integer getScanInterval() {
+            return scanInterval;
+        }
+
+        public void setScanInterval(Integer scanInterval) {
+            this.scanInterval = scanInterval;
+        }
+
+        public String getTrainGpu() {
+            return trainGpu;
+        }
+
+        public void setTrainGpu(String trainGpu) {
+            this.trainGpu = trainGpu;
+        }
+
+        public String getPpoConfig() {
+            return ppoConfig;
+        }
+
+        public void setPpoConfig(String ppoConfig) {
+            this.ppoConfig = ppoConfig;
+        }
+
+        public Integer getTrajectoryBatchSize() {
+            return trajectoryBatchSize;
+        }
+
+        public void setTrajectoryBatchSize(Integer trajectoryBatchSize) {
+            this.trajectoryBatchSize = trajectoryBatchSize;
+        }
+
+        public String getLoraRepo() {
+            return loraRepo;
+        }
+
+        public void setLoraRepo(String loraRepo) {
+            this.loraRepo = loraRepo;
+        }
+
+        public Integer getJiuwenAgentServerPort() {
+            return jiuwenAgentServerPort;
+        }
+
+        public void setJiuwenAgentServerPort(Integer jiuwenAgentServerPort) {
+            this.jiuwenAgentServerPort = jiuwenAgentServerPort;
+        }
+
+        public Integer getJiuwenWsPort() {
+            return jiuwenWsPort;
+        }
+
+        public void setJiuwenWsPort(Integer jiuwenWsPort) {
+            this.jiuwenWsPort = jiuwenWsPort;
+        }
+
+        public String getJiuwenWebHost() {
+            return jiuwenWebHost;
+        }
+
+        public void setJiuwenWebHost(String jiuwenWebHost) {
+            this.jiuwenWebHost = jiuwenWebHost;
+        }
+
+        public Integer getJiuwenWebPort() {
+            return jiuwenWebPort;
+        }
+
+        public void setJiuwenWebPort(Integer jiuwenWebPort) {
+            this.jiuwenWebPort = jiuwenWebPort;
+        }
+
+        public boolean isSkipJiuwen() {
+            return skipJiuwen;
+        }
+
+        public void setSkipJiuwen(boolean skipJiuwen) {
+            this.skipJiuwen = skipJiuwen;
+        }
     }
 }

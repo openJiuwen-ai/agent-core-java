@@ -5,40 +5,33 @@
 package com.openjiuwen.core.memory.graph.extraction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.logging.Loggers;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.logging.Logger;
 
 /**
  * Utilities to parse JSON and extract structured content from LLM responses.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.memory.graph.extraction.parse_response}.
+ * Mirrors Python's {@code openjiuwen.core.memory.graph.extraction.parse_response} in
+ * {@code openjiuwen/core/memory/graph/extraction/parse_response.py}.
  */
 public final class ParseResponse {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-    /** Pattern to find JSON start characters ([ or {) */
+    private static final Logger LOGGER = Logger.getLogger(ParseResponse.class.getName());
     private static final Pattern REGEX_FIND_JSON_START = Pattern.compile("[\\[\\{]");
-
-    /** Pattern to find code blocks in markdown format */
     private static final Pattern REGEX_FIND_CODE_BLOCK = Pattern.compile("```([A-Za-z]*)\\s*\\n(.*?)```", Pattern.DOTALL);
-
-    /** Pattern to extract word characters from keys */
     private static final Pattern WORD_PATTERN = Pattern.compile("\\w+");
 
     private ParseResponse() {
     }
 
-    /**
-     * Attempt to parse JSON from LLM response.
-     *
-     * @param resp          the raw LLM response string
-     * @param outputSchema  optional schema with required keys for fuzzy matching
-     * @return parsed JSON object (Map, List, or primitive), or null if parsing fails
-     */
     public static Object parseJson(String resp, Map<String, Object> outputSchema) {
         if (resp == null || resp.isEmpty()) {
             return null;
@@ -47,59 +40,57 @@ public final class ParseResponse {
         List<String> mustContainKey = null;
         if (outputSchema != null) {
             Object jsonSchema = outputSchema.get("json_schema");
-            if (jsonSchema instanceof Map) {
-                Object required = ((Map<?, ?>) jsonSchema).get("required");
-                if (required instanceof List) {
-                    mustContainKey = (List<String>) required;
+            if (jsonSchema instanceof Map<?, ?> jsonSchemaMap) {
+                Object required = jsonSchemaMap.get("required");
+                if (required instanceof List<?> requiredList) {
+                    mustContainKey = castStringList(requiredList);
                 }
             } else {
                 Object required = outputSchema.get("required");
-                if (required instanceof List) {
-                    mustContainKey = (List<String>) required;
+                if (required instanceof List<?> requiredList) {
+                    mustContainKey = castStringList(requiredList);
                 }
             }
         }
 
-        // Try to find JSON in code blocks first
         Matcher codeBlockMatcher = REGEX_FIND_CODE_BLOCK.matcher(resp);
         while (codeBlockMatcher.find()) {
             try {
                 String codeBlockType = codeBlockMatcher.group(1).toLowerCase();
                 if (codeBlockType.isEmpty() || "json".equals(codeBlockType)) {
-                    String content = codeBlockMatcher.group(2);
-                    Object result = JSON_MAPPER.readValue(content, Object.class);
+                    Object result = JSON_MAPPER.readValue(codeBlockMatcher.group(2), Object.class);
                     if (mustContainKey != null) {
-                        if (result instanceof Map) {
-                            return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                        if (result instanceof Map<?, ?> resultMap) {
+                            return rebuildRequiredKeysBuggy(castStringObjectMap(resultMap), mustContainKey);
                         }
                         continue;
                     }
                     return result;
                 }
-            } catch (Exception e) {
-                Loggers.MEMORY.debug("Failed to parse JSON from code block: {}", e.getMessage());
+            } catch (Exception exception) {
+                LOGGER.fine("Failed to parse JSON from code block: " + exception.getMessage());
             }
         }
 
-        // Fallback to raw decode
         return rawDecodeJson(resp, mustContainKey);
     }
 
-    /**
-     * Attempt to parse JSON without code block markers.
-     */
+    public static Object parseJson(String resp) {
+        return parseJson(resp, null);
+    }
+
     public static Object rawDecodeJson(String resp, List<String> mustContainKey) {
         try {
             Object direct = JSON_MAPPER.readValue(resp, Object.class);
             if (mustContainKey != null) {
-                if (direct instanceof Map) {
-                    return extractRequiredKeys((Map<String, Object>) direct, mustContainKey);
+                if (direct instanceof Map<?, ?> directMap) {
+                    return rebuildRequiredKeysBuggy(castStringObjectMap(directMap), mustContainKey);
                 }
             } else {
                 return direct;
             }
-        } catch (Exception e) {
-            Loggers.MEMORY.debug("Failed to directly decode JSON: {}", e.getMessage());
+        } catch (Exception exception) {
+            LOGGER.fine("Failed to directly decode JSON: " + exception.getMessage());
         }
 
         List<String> possibleResp = new ArrayList<>();
@@ -117,14 +108,14 @@ public final class ParseResponse {
                 try {
                     Object result = JSON_MAPPER.readValue(candidate.substring(startIdx), Object.class);
                     if (mustContainKey != null) {
-                        if (result instanceof Map) {
-                            return extractRequiredKeys((Map<String, Object>) result, mustContainKey);
+                        if (result instanceof Map<?, ?> resultMap) {
+                            return rebuildRequiredKeysBuggy(castStringObjectMap(resultMap), mustContainKey);
                         }
                         continue;
                     }
                     return result;
-                } catch (Exception e) {
-                    Loggers.MEMORY.debug("Failed to raw decode JSON at position {}: {}", startIdx, e.getMessage());
+                } catch (Exception exception) {
+                    LOGGER.fine("Failed to raw decode JSON at position " + startIdx + ": " + exception.getMessage());
                 }
             }
         }
@@ -136,12 +127,13 @@ public final class ParseResponse {
     }
 
     /**
-     * Extract required keys from a parsed result using fuzzy matching.
+     * Mirrors the current Python branch exactly: it first clears the parsed result and then
+     * attempts fuzzy lookups against the empty dictionary, so the returned dict stays empty.
      */
-    private static Map<String, Object> extractRequiredKeys(Map<String, Object> src, List<String> mustContainKey) {
-        Map<String, Object> result = new HashMap<>();
+    private static Map<String, Object> rebuildRequiredKeysBuggy(Map<String, Object> src, List<String> mustContainKey) {
+        Map<String, Object> result = new LinkedHashMap<>();
         for (String key : mustContainKey) {
-            Object fuzzyMatch = tryGetKey(key, src);
+            String fuzzyMatch = tryGetKey(key, result);
             if (fuzzyMatch != null) {
                 result.put(key, src.get(fuzzyMatch));
             }
@@ -149,58 +141,46 @@ public final class ParseResponse {
         return result;
     }
 
-    /**
-     * Try to get a specific key from the source dictionary using fuzzy matching.
-     * <p>
-     * Normalizes both the target key and source keys by extracting word characters,
-     * then uses similarity matching to find the closest key.
-     *
-     * @param key  the target key to find
-     * @param src  the source dictionary
-     * @return the source key that most closely matches {@code key}, or null if no match
-     */
-    public static Object tryGetKey(String key, Map<String, Object> src) {
+    public static String tryGetKey(String key, Map<String, ?> src) {
         if (key == null || src == null || src.isEmpty()) {
             return null;
         }
 
-        // Normalize target key
         String normalizedKey = normalizeKey(key);
-
-        // Build normalized-to-original key mapping
-        Map<String, String> norm2Key = new HashMap<>();
-        for (String k : src.keySet()) {
-            norm2Key.put(normalizeKey(k), k);
+        Map<String, String> normToKey = new LinkedHashMap<>();
+        for (String srcKey : src.keySet()) {
+            normToKey.put(normalizeKey(srcKey), srcKey);
         }
 
-        // Find closest match
-        String closestMatch = findClosestMatch(normalizedKey, norm2Key.keySet());
-        if (closestMatch != null) {
-            return norm2Key.get(closestMatch);
-        }
-        return null;
+        String closestMatch = findClosestMatch(normalizedKey, normToKey.keySet());
+        return closestMatch == null ? null : normToKey.get(closestMatch);
     }
 
-    /**
-     * Normalize a key by extracting word characters and converting to lowercase.
-     */
+    public static List<Object> ensureList(Object obj) {
+        if (obj instanceof List<?>) {
+            return (List<Object>) obj;
+        }
+        if (obj instanceof Map<?, ?> map && map.size() == 1) {
+            Object value = map.values().iterator().next();
+            if (value instanceof List<?>) {
+                return (List<Object>) value;
+            }
+        }
+        return Collections.singletonList(obj);
+    }
+
     private static String normalizeKey(String key) {
-        StringBuilder sb = new StringBuilder();
-        Matcher m = WORD_PATTERN.matcher(key.toLowerCase());
-        while (m.find()) {
-            sb.append(m.group());
+        StringBuilder builder = new StringBuilder();
+        Matcher matcher = WORD_PATTERN.matcher(key.toLowerCase());
+        while (matcher.find()) {
+            builder.append(matcher.group());
         }
-        return sb.toString();
+        return builder.toString();
     }
 
-    /**
-     * Find the closest matching string from a set of candidates.
-     * Uses similarity ratio with 0.85 cutoff threshold.
-     */
     private static String findClosestMatch(String target, Set<String> candidates) {
         String bestMatch = null;
-        double bestScore = 0.85; // cutoff threshold
-
+        double bestScore = 0.85d;
         for (String candidate : candidates) {
             double score = similarityRatio(target, candidate);
             if (score > bestScore) {
@@ -211,69 +191,44 @@ public final class ParseResponse {
         return bestMatch;
     }
 
-    /**
-     * Calculate similarity ratio between two strings.
-     * Simplified implementation of Python's difflib.get_close_matches logic.
-     */
-    private static double similarityRatio(String a, String b) {
-        if (a.equals(b)) {
-            return 1.0;
+    private static double similarityRatio(String left, String right) {
+        if (left.equals(right)) {
+            return 1.0d;
         }
-        if (a.isEmpty() || b.isEmpty()) {
-            return 0.0;
+        if (left.isEmpty() || right.isEmpty()) {
+            return 0.0d;
         }
-
-        // Use Levenshtein-like similarity
-        int maxLen = Math.max(a.length(), b.length());
-        int editDistance = levenshteinDistance(a, b);
-        return (maxLen - editDistance) / (double) maxLen;
+        int maxLength = Math.max(left.length(), right.length());
+        int editDistance = levenshteinDistance(left, right);
+        return (maxLength - editDistance) / (double) maxLength;
     }
 
-    /**
-     * Calculate Levenshtein edit distance between two strings.
-     */
-    private static int levenshteinDistance(String a, String b) {
-        int[][] dp = new int[a.length() + 1][b.length() + 1];
-
-        for (int i = 0; i <= a.length(); i++) {
+    private static int levenshteinDistance(String left, String right) {
+        int[][] dp = new int[left.length() + 1][right.length() + 1];
+        for (int i = 0; i <= left.length(); i++) {
             dp[i][0] = i;
         }
-        for (int j = 0; j <= b.length(); j++) {
+        for (int j = 0; j <= right.length(); j++) {
             dp[0][j] = j;
         }
-
-        for (int i = 1; i <= a.length(); i++) {
-            for (int j = 1; j <= b.length(); j++) {
-                int cost = (a.charAt(i - 1) == b.charAt(j - 1)) ? 0 : 1;
+        for (int i = 1; i <= left.length(); i++) {
+            for (int j = 1; j <= right.length(); j++) {
+                int cost = left.charAt(i - 1) == right.charAt(j - 1) ? 0 : 1;
                 dp[i][j] = Math.min(
                         Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1),
-                        dp[i - 1][j - 1] + cost
-                );
+                        dp[i - 1][j - 1] + cost);
             }
         }
-        return dp[a.length()][b.length()];
+        return dp[left.length()][right.length()];
     }
 
-    /**
-     * Ensure returned object is a list.
-     * <p>
-     * If the object is already a list, returns it directly.
-     * If the object is a single-key dict whose value is a list, returns that list.
-     * Otherwise, wraps the object in a single-element list.
-     *
-     * @param obj the object to ensure is a list
-     * @return a list representation of the object
-     */
-    public static List<Object> ensureList(Object obj) {
-        if (obj instanceof List) {
-            return (List<Object>) obj;
-        }
-        if (obj instanceof Map && ((Map<?, ?>) obj).size() == 1) {
-            Object value = ((Map<?, ?>) obj).values().iterator().next();
-            if (value instanceof List) {
-                return (List<Object>) value;
-            }
-        }
-        return Collections.singletonList(obj);
+    @SuppressWarnings("unchecked")
+    private static List<String> castStringList(List<?> input) {
+        return (List<String>) input;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castStringObjectMap(Map<?, ?> input) {
+        return (Map<String, Object>) input;
     }
 }

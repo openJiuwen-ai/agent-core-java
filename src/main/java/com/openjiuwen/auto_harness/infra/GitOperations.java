@@ -18,28 +18,34 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Git operations helper for auto-harness.
+ * Git operations helper for auto-harness orchestrators.
  * <p>
- * Mirrors Python's {@code GitOperations} in {@code openjiuwen.auto_harness.infra.git_operations}.
- * <p>
- * This Java port is intentionally minimal and focuses on command execution and branch helpers.
+ * Mirrors Python's {@code GitOperations} in
+ * {@code openjiuwen/auto_harness/infra/git_operations.py}.
  */
 public class GitOperations {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * Mirrors Python's subprocess execution seam in
+     * {@code openjiuwen/auto_harness/infra/git_operations.py}.
+     */
     public interface CommandExecutor {
         CommandResult execute(List<String> command, String cwd, Map<String, String> env)
                 throws IOException, InterruptedException;
     }
 
+    /**
+     * Mirrors Python's ``(returncode, output)`` git subprocess result in
+     * {@code openjiuwen/auto_harness/infra/git_operations.py}.
+     */
     public record CommandResult(int returnCode, String output) {}
 
     private String workspace;
@@ -85,7 +91,7 @@ public class GitOperations {
         this.gitcodeToken = gitcodeToken != null && !gitcodeToken.isBlank() ? gitcodeToken : envToken;
         this.userName = userName;
         this.userEmail = userEmail;
-        this.gitEnv = buildGitAuthEnv(this.gitcodeUsername, this.gitcodeToken);
+        this.gitEnv = GitAuth.buildGitAuthEnv(this.gitcodeUsername, this.gitcodeToken);
         this.executor = executor != null ? executor : new ProcessCommandExecutor();
     }
 
@@ -242,26 +248,6 @@ public class GitOperations {
         }
     }
 
-    public static Map<String, String> buildGitAuthEnv(String username, String token) {
-        Map<String, String> env = new HashMap<>();
-        env.put("GIT_TERMINAL_PROMPT", "0");
-        env.put("GCM_INTERACTIVE", "never");
-        if (username == null || username.isBlank() || token == null || token.isBlank()) {
-            return env;
-        }
-
-        String basic = Base64.getEncoder().encodeToString(
-                (username + ":" + token).getBytes(StandardCharsets.UTF_8));
-        env.put("GIT_CONFIG_COUNT", "3");
-        env.put("GIT_CONFIG_KEY_0", "credential.helper");
-        env.put("GIT_CONFIG_VALUE_0", "");
-        env.put("GIT_CONFIG_KEY_1", "credential.interactive");
-        env.put("GIT_CONFIG_VALUE_1", "never");
-        env.put("GIT_CONFIG_KEY_2", "http.https://gitcode.com/.extraheader");
-        env.put("GIT_CONFIG_VALUE_2", "AUTHORIZATION: basic " + basic);
-        return env;
-    }
-
     private static String normalize(String path) {
         return path.replace('\\', '/');
     }
@@ -271,13 +257,17 @@ public class GitOperations {
     }
 
     private static List<String> unique(List<String> values) {
-        return new ArrayList<>(new java.util.LinkedHashSet<>(values));
+        return new ArrayList<>(new LinkedHashSet<>(values));
     }
 
     private static String stripTrailing(String value) {
         return value == null ? "" : value.stripTrailing();
     }
 
+    /**
+     * Mirrors Python's subprocess-backed git invocation path in
+     * {@code openjiuwen/auto_harness/infra/git_operations.py}.
+     */
     private static final class ProcessCommandExecutor implements CommandExecutor {
         @Override
         public CommandResult execute(List<String> command, String cwd, Map<String, String> env)
@@ -305,5 +295,9 @@ public class GitOperations {
         }
     }
 
+    /**
+     * Mirrors Python's normalized git command result in
+     * {@code openjiuwen/auto_harness/infra/git_operations.py}.
+     */
     public record GitResult(int returnCode, String output) {}
 }

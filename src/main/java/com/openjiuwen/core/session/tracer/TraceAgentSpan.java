@@ -4,18 +4,27 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Map;
 
 /**
- * Agent trace span with invoke type, name, and metadata.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.span.TraceAgentSpan}.
+ * Mirrors Python's {@code TraceAgentSpan} in
+ * {@code openjiuwen/core/session/tracer/span.py}.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TraceAgentSpan extends Span {
-
+    @JsonProperty("invokeType")
     private String invokeType;
+
+    @JsonProperty("name")
     private String name;
+
+    @JsonProperty("elapsedTime")
     private String elapsedTime;
+
+    @JsonProperty("metaData")
     private Map<String, Object> metaData;
 
     public TraceAgentSpan() {
@@ -31,18 +40,26 @@ public class TraceAgentSpan extends Span {
         switch (fieldName) {
             case "invoke_type":
             case "invokeType":
-                if (value instanceof String) invokeType = (String) value;
+                if (value instanceof String) {
+                    invokeType = (String) value;
+                }
                 break;
             case "name":
-                if (value instanceof String) name = (String) value;
+                if (value instanceof String) {
+                    name = (String) value;
+                }
                 break;
             case "elapsed_time":
             case "elapsedTime":
-                if (value instanceof String) elapsedTime = (String) value;
+                if (value instanceof String) {
+                    elapsedTime = (String) value;
+                }
                 break;
             case "meta_data":
             case "metaData":
-                if (value instanceof Map) metaData = (Map<String, Object>) value;
+                if (value instanceof Map<?, ?>) {
+                    metaData = (Map<String, Object>) value;
+                }
                 break;
             default:
                 super.setField(fieldName, value);
@@ -60,12 +77,35 @@ public class TraceAgentSpan extends Span {
         return copy;
     }
 
-    public String getInvokeType() { return invokeType; }
-    public void setInvokeType(String invokeType) { this.invokeType = invokeType; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getElapsedTime() { return elapsedTime; }
-    public void setElapsedTime(String elapsedTime) { this.elapsedTime = elapsedTime; }
-    public Map<String, Object> getMetaData() { return metaData; }
-    public void setMetaData(Map<String, Object> metaData) { this.metaData = metaData; }
+    public String getInvokeType() {
+        return invokeType;
+    }
+
+    public void setInvokeType(String invokeType) {
+        this.invokeType = invokeType;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getElapsedTime() {
+        return elapsedTime;
+    }
+
+    public void setElapsedTime(String elapsedTime) {
+        this.elapsedTime = elapsedTime;
+    }
+
+    public Map<String, Object> getMetaData() {
+        return metaData;
+    }
+
+    public void setMetaData(Map<String, Object> metaData) {
+        this.metaData = metaData;
+    }
 }

@@ -17,9 +17,7 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 /**
- * Beam search algorithm implementation.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.beam_search.BeamSearch}.
+ * Mirrors Python's {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/beam_search.py}.
  */
 public class BeamSearch {
 

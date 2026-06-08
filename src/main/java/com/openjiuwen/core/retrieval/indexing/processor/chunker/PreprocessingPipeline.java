@@ -8,7 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Sequential text preprocessing pipeline.
+ * Mirrors Python's {@code PreprocessingPipeline} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
  */
 public class PreprocessingPipeline implements TextPreprocessor {
 

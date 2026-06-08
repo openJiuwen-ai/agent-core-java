@@ -22,7 +22,7 @@ import java.util.Set;
  * Redis-backed shared trajectory store for scored RL training samples.
  * <p>
  * Mirrors Python's {@code RedisTrajectoryStore} in
- * {@code openjiuwen.agent_evolving.agent_rl.storage.redis_trajectory_store}.
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/redis_trajectory_store.py}.
  */
 public class RedisTrajectoryStore implements TrajectorySampleStore {
 

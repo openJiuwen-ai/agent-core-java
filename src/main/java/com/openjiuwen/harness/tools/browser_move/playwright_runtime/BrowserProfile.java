@@ -5,146 +5,101 @@
 package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Persisted browser profile metadata.
  *
- * <p>Mirrors Python's {@code BrowserProfile} dataclass in
- * {@code openjiuwen.harness.tools.browser_move.playwright_runtime.profiles}.</p>
+ * <p>Mirrors Python's {@code BrowserProfile} in
+ * {@code openjiuwen/harness/tools/browser_move/playwright_runtime/profiles.py}.
  */
-public class BrowserProfile {
+public final class BrowserProfile {
 
     private String name;
     private String driverType = "remote";
     private String cdpUrl = "";
     private String browserBinary = "";
     private String userDataDir = "";
-    private int debugPort = 0;
+    private int debugPort;
     private String host = "127.0.0.1";
     private List<String> extraArgs = new ArrayList<>();
 
-    /**
-     * Default constructor.
-     */
     public BrowserProfile() {
     }
 
-    /**
-     * Create a BrowserProfile with the given name.
-     *
-     * @param name the profile name
-     */
-    public BrowserProfile(String name) {
-        this.name = name;
-    }
-
-    /**
-     * Full constructor with all fields.
-     *
-     * @param name          the profile name
-     * @param driverType    the driver type (default "remote")
-     * @param cdpUrl        the CDP URL
-     * @param browserBinary the browser binary path
-     * @param userDataDir   the user data directory
-     * @param debugPort     the debug port
-     * @param host          the host (default "127.0.0.1")
-     * @param extraArgs     extra browser arguments
-     */
-    public BrowserProfile(String name, String driverType, String cdpUrl, String browserBinary,
-                          String userDataDir, int debugPort, String host, List<String> extraArgs) {
-        this.name = name;
-        this.driverType = driverType != null ? driverType : "remote";
-        this.cdpUrl = cdpUrl != null ? cdpUrl : "";
-        this.browserBinary = browserBinary != null ? browserBinary : "";
-        this.userDataDir = userDataDir != null ? userDataDir : "";
+    public BrowserProfile(
+            String name,
+            String driverType,
+            String cdpUrl,
+            String browserBinary,
+            String userDataDir,
+            int debugPort,
+            String host,
+            List<String> extraArgs
+    ) {
+        this.name = sanitize(name);
+        this.driverType = sanitize(driverType).isEmpty() ? "remote" : sanitize(driverType).toLowerCase();
+        this.cdpUrl = sanitize(cdpUrl);
+        this.browserBinary = sanitize(browserBinary);
+        this.userDataDir = sanitize(userDataDir);
         this.debugPort = debugPort;
-        this.host = host != null ? host : "127.0.0.1";
-        this.extraArgs = extraArgs != null ? new ArrayList<>(extraArgs) : new ArrayList<>();
+        this.host = sanitize(host).isEmpty() ? "127.0.0.1" : sanitize(host);
+        this.extraArgs = extraArgs == null ? new ArrayList<>() : new ArrayList<>(extraArgs);
     }
 
-    /**
-     * Create a BrowserProfile from a raw dictionary.
-     *
-     * @param raw the raw dictionary
-     * @return the BrowserProfile instance
-     */
-    public static BrowserProfile fromDict(Map<String, Object> raw) {
+    public static BrowserProfile fromMap(Map<String, Object> raw) {
         if (raw == null) {
             return new BrowserProfile();
         }
-        
-        int debugPort = 0;
-        Object debugPortRaw = raw.get("debug_port");
-        if (debugPortRaw != null) {
-            try {
-                debugPort = Integer.parseInt(String.valueOf(debugPortRaw));
-            } catch (NumberFormatException ignored) {
-                debugPort = 0;
-            }
+        int debugPort;
+        try {
+            debugPort = Integer.parseInt(String.valueOf(raw.getOrDefault("debug_port", 0)));
+        } catch (RuntimeException ex) {
+            debugPort = 0;
         }
-
-        String name = raw.get("name") != null ? String.valueOf(raw.get("name")).trim() : "";
-        String driverType = raw.get("driver_type") != null 
-                ? String.valueOf(raw.get("driver_type")).trim().toLowerCase() 
-                : "remote";
-        if (driverType.isEmpty()) {
-            driverType = "remote";
-        }
-        String cdpUrl = raw.get("cdp_url") != null ? String.valueOf(raw.get("cdp_url")).trim() : "";
-        String browserBinary = raw.get("browser_binary") != null 
-                ? String.valueOf(raw.get("browser_binary")).trim() : "";
-        String userDataDir = raw.get("user_data_dir") != null 
-                ? String.valueOf(raw.get("user_data_dir")).trim() : "";
-        String host = raw.get("host") != null ? String.valueOf(raw.get("host")).trim() : "127.0.0.1";
-        if (host.isEmpty()) {
-            host = "127.0.0.1";
-        }
-
         List<String> extraArgs = new ArrayList<>();
-        Object extraArgsRaw = raw.get("extra_args");
-        if (extraArgsRaw instanceof List) {
-            for (Object item : (List<?>) extraArgsRaw) {
-                String strItem = String.valueOf(item).trim();
-                if (!strItem.isEmpty()) {
-                    extraArgs.add(strItem);
+        Object rawArgs = raw.get("extra_args");
+        if (rawArgs instanceof List<?> list) {
+            for (Object item : list) {
+                String value = sanitize(item);
+                if (!value.isEmpty()) {
+                    extraArgs.add(value);
                 }
             }
         }
-
-        return new BrowserProfile(name, driverType, cdpUrl, browserBinary, userDataDir, 
-                debugPort, host, extraArgs);
+        return new BrowserProfile(
+                sanitize(raw.get("name")),
+                sanitize(raw.getOrDefault("driver_type", "remote")),
+                sanitize(raw.get("cdp_url")),
+                sanitize(raw.get("browser_binary")),
+                sanitize(raw.get("user_data_dir")),
+                debugPort,
+                sanitize(raw.getOrDefault("host", "127.0.0.1")),
+                extraArgs
+        );
     }
 
-    /**
-     * Convert this profile to a dictionary.
-     *
-     * @return the dictionary representation
-     */
-    public Map<String, Object> toDict() {
-        Map<String, Object> dict = new HashMap<>();
-        dict.put("name", name);
-        dict.put("driver_type", driverType);
-        dict.put("cdp_url", cdpUrl);
-        dict.put("browser_binary", browserBinary);
-        dict.put("user_data_dir", userDataDir);
-        dict.put("debug_port", debugPort);
-        dict.put("host", host);
-        dict.put("extra_args", new ArrayList<>(extraArgs));
-        return dict;
+    public Map<String, Object> toMap() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("name", name);
+        raw.put("driver_type", driverType);
+        raw.put("cdp_url", cdpUrl);
+        raw.put("browser_binary", browserBinary);
+        raw.put("user_data_dir", userDataDir);
+        raw.put("debug_port", debugPort);
+        raw.put("host", host);
+        raw.put("extra_args", List.copyOf(extraArgs));
+        return raw;
     }
-
-    // Getters and setters
 
     public String getName() {
         return name;
     }
 
     public void setName(String name) {
-        this.name = name != null ? name.trim() : "";
+        this.name = sanitize(name);
     }
 
     public String getDriverType() {
@@ -152,10 +107,8 @@ public class BrowserProfile {
     }
 
     public void setDriverType(String driverType) {
-        this.driverType = driverType != null ? driverType.trim().toLowerCase() : "remote";
-        if (this.driverType.isEmpty()) {
-            this.driverType = "remote";
-        }
+        String value = sanitize(driverType).toLowerCase();
+        this.driverType = value.isEmpty() ? "remote" : value;
     }
 
     public String getCdpUrl() {
@@ -163,7 +116,7 @@ public class BrowserProfile {
     }
 
     public void setCdpUrl(String cdpUrl) {
-        this.cdpUrl = cdpUrl != null ? cdpUrl.trim() : "";
+        this.cdpUrl = sanitize(cdpUrl);
     }
 
     public String getBrowserBinary() {
@@ -171,7 +124,7 @@ public class BrowserProfile {
     }
 
     public void setBrowserBinary(String browserBinary) {
-        this.browserBinary = browserBinary != null ? browserBinary.trim() : "";
+        this.browserBinary = sanitize(browserBinary);
     }
 
     public String getUserDataDir() {
@@ -179,7 +132,7 @@ public class BrowserProfile {
     }
 
     public void setUserDataDir(String userDataDir) {
-        this.userDataDir = userDataDir != null ? userDataDir.trim() : "";
+        this.userDataDir = sanitize(userDataDir);
     }
 
     public int getDebugPort() {
@@ -195,51 +148,19 @@ public class BrowserProfile {
     }
 
     public void setHost(String host) {
-        this.host = host != null ? host.trim() : "127.0.0.1";
-        if (this.host.isEmpty()) {
-            this.host = "127.0.0.1";
-        }
+        String value = sanitize(host);
+        this.host = value.isEmpty() ? "127.0.0.1" : value;
     }
 
     public List<String> getExtraArgs() {
-        return extraArgs;
+        return List.copyOf(extraArgs);
     }
 
     public void setExtraArgs(List<String> extraArgs) {
-        this.extraArgs = extraArgs != null ? new ArrayList<>(extraArgs) : new ArrayList<>();
+        this.extraArgs = extraArgs == null ? new ArrayList<>() : new ArrayList<>(extraArgs);
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        BrowserProfile that = (BrowserProfile) o;
-        return debugPort == that.debugPort &&
-                Objects.equals(name, that.name) &&
-                Objects.equals(driverType, that.driverType) &&
-                Objects.equals(cdpUrl, that.cdpUrl) &&
-                Objects.equals(browserBinary, that.browserBinary) &&
-                Objects.equals(userDataDir, that.userDataDir) &&
-                Objects.equals(host, that.host) &&
-                Objects.equals(extraArgs, that.extraArgs);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(name, driverType, cdpUrl, browserBinary, userDataDir, debugPort, host, extraArgs);
-    }
-
-    @Override
-    public String toString() {
-        return "BrowserProfile{" +
-                "name='" + name + '\'' +
-                ", driverType='" + driverType + '\'' +
-                ", cdpUrl='" + cdpUrl + '\'' +
-                ", browserBinary='" + browserBinary + '\'' +
-                ", userDataDir='" + userDataDir + '\'' +
-                ", debugPort=" + debugPort +
-                ", host='" + host + '\'' +
-                ", extraArgs=" + extraArgs +
-                '}';
+    private static String sanitize(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 }

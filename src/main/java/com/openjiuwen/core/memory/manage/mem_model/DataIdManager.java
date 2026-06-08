@@ -6,44 +6,40 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Generates unique memory IDs using timestamp + random + user hash.
+ * Generates 12-byte memory identifiers from timestamp, random bytes, and user hash.
  *
  * <p>Mirrors Python's {@code DataIdManager} in
- * {@code openjiuwen.core.memory.manage.mem_model.data_id_manager}.
+ * {@code openjiuwen/core/memory/manage/mem_model/data_id_manager.py}.</p>
  */
 public class DataIdManager {
-
     private final SecureRandom random = new SecureRandom();
 
-    /**
-     * Generate a unique hex ID based on current time, random bytes, and user ID hash.
-     *
-     * @param userId the user identifier
-     * @return hex string ID (24 chars = 12 bytes)
-     */
-    public String generateNextId(String userId) {
-        long t = System.currentTimeMillis() & 0xFFFFFFFFFFFFL; // 6 bytes
-        byte[] r = new byte[3];
-        random.nextBytes(r);
-        int h = userId.hashCode() & 0xFFFFFF; // 3 bytes
+    public CompletableFuture<String> generateNextId(String userId) {
+        long timestamp = System.currentTimeMillis() & 0xFFFFFFFFFFFFL;
+        byte[] randomBytes = new byte[3];
+        random.nextBytes(randomBytes);
 
-        // Pack: 6 bytes timestamp + 3 bytes random + 3 bytes hash = 12 bytes
-        ByteBuffer buf = ByteBuffer.allocate(12);
-        // 6-byte timestamp (big-endian, top 2 bytes of long trimmed)
-        byte[] tBytes = ByteBuffer.allocate(8).putLong(t).array();
-        buf.put(tBytes, 2, 6);
-        buf.put(r);
-        // 3-byte hash (big-endian, top byte of int trimmed)
-        byte[] hBytes = ByteBuffer.allocate(4).putInt(h).array();
-        buf.put(hBytes, 1, 3);
+        int userHash = Objects.hashCode(userId) & 0xFFFFFF;
+        ByteBuffer raw = ByteBuffer.allocate(12);
+        byte[] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
+        byte[] hashBytes = ByteBuffer.allocate(Integer.BYTES).putInt(userHash).array();
 
-        byte[] raw = buf.array();
-        StringBuilder sb = new StringBuilder(24);
-        for (byte b : raw) {
-            sb.append(String.format("%02x", b & 0xff));
+        raw.put(timestampBytes, 2, 6);
+        raw.put(randomBytes);
+        raw.put(hashBytes, 1, 3);
+        return CompletableFuture.completedFuture(toHex(raw.array()));
+    }
+
+    private static String toHex(byte[] raw) {
+        StringBuilder builder = new StringBuilder(raw.length * 2);
+        for (byte value : raw) {
+            builder.append(Character.forDigit((value >>> 4) & 0x0F, 16));
+            builder.append(Character.forDigit(value & 0x0F, 16));
         }
-        return sb.toString();
+        return builder.toString();
     }
 }

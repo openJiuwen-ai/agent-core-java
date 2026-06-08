@@ -4,28 +4,31 @@
 
 package com.openjiuwen.core.graph;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Graph state container for tracking source node IDs.
- * <p>
- * Mirrors Python's {@code GraphState} TypedDict from
- * <code>graph/graph_state.py</code>.
+ * Mirrors Python's {@code GraphState} in
+ * {@code openjiuwen/core/graph/graph_state.py}.
  */
 public class GraphState {
 
-    private List<String> sourceNodeIds = new ArrayList<>();
+    @JsonProperty("source_node_id")
+    private List<String> sourceNodeId = new ArrayList<>();
 
-    public List<String> getSourceNodeIds() {
-        return sourceNodeIds;
+    public List<String> getSourceNodeId() {
+        return sourceNodeId;
     }
 
-    public void addSourceNodeId(String nodeId) {
-        sourceNodeIds.add(nodeId);
+    public void setSourceNodeId(List<String> sourceNodeId) {
+        this.sourceNodeId = sourceNodeId == null ? new ArrayList<>() : new ArrayList<>(sourceNodeId);
     }
 
-    public void setSourceNodeIds(List<String> sourceNodeIds) {
-        this.sourceNodeIds = sourceNodeIds != null ? sourceNodeIds : new ArrayList<>();
+    public void mergeSourceNodeId(List<String> other) {
+        if (other != null) {
+            sourceNodeId.addAll(other);
+        }
     }
 }

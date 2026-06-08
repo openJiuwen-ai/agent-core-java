@@ -27,8 +27,8 @@ class TrajectoryTypesTest {
                 .build();
     }
 
-    private TrajectoryStep makeLLMStep(String model, List<Map<String, Object>> messages,
-                                       Map<String, Object> response, List<Map<String, Object>> tools,
+    private TrajectoryStep makeLLMStep(String model, List<Object> messages,
+                                       Object response, List<Map<String, Object>> tools,
                                        Map<String, Object> usage) {
         LLMCallDetail detail = LLMCallDetail.builder()
                 .model(model)
@@ -97,6 +97,58 @@ class TrajectoryTypesTest {
         assertEquals(List.of(Map.of("name", "tool1")), detail.getTools());
         assertEquals(10, ((Number) detail.getUsage().get("prompt_tokens")).intValue());
         assertEquals(5, ((Number) detail.getUsage().get("completion_tokens")).intValue());
+    }
+
+    @Test
+    void trajectoryToMessagesNormalizesRuntimeMessageShapes() {
+        RuntimeMessage input = new RuntimeMessage(
+                "user",
+                List.of("hello", new DumpOnlyValue(Map.of("kind", "text"))),
+                "alice",
+                Map.of("trace_id", 7),
+                List.of(Map.of("name", "search")));
+        RuntimeMessage response = new RuntimeMessage(
+                "assistant",
+                "done",
+                null,
+                null,
+                null);
+
+        Trajectory trajectory = makeTrajectory(
+                "case-1",
+                List.of(makeLLMStep("gpt-4", List.of(input), response, null, null)),
+                null);
+
+        List<Map<String, Object>> messages = trajectory.toMessages();
+
+        assertEquals(2, messages.size());
+        assertEquals("user", messages.get(0).get("role"));
+        assertEquals(List.of("hello", Map.of("kind", "text")), messages.get(0).get("content"));
+        assertEquals("alice", messages.get(0).get("name"));
+        assertEquals(Map.of("trace_id", 7), messages.get(0).get("metadata"));
+        assertEquals(List.of(Map.of("name", "search")), messages.get(0).get("tool_calls"));
+        assertEquals("assistant", messages.get(1).get("role"));
+        assertEquals("done", messages.get(1).get("content"));
+    }
+
+    @Test
+    void trajectoryToMessagesFallsBackToModelDumpAndStringConversion() {
+        Trajectory trajectory = makeTrajectory(
+                "case-2",
+                List.of(makeLLMStep(
+                        "gpt-4",
+                        List.of(new DumpOnlyValue(Map.of("role", "system", "content", "boot"))),
+                        new UnknownMessage("opaque"),
+                        null,
+                        null)),
+                null);
+
+        List<Map<String, Object>> messages = trajectory.toMessages();
+
+        assertEquals(List.of(
+                Map.of("role", "system", "content", "boot"),
+                Map.of("role", "unknown", "content", "opaque")),
+                messages);
     }
 
     // === ToolCallDetail Tests ===
@@ -284,5 +336,32 @@ class TrajectoryTypesTest {
 
         assertTrue(updates.containsKey(UpdateKey.of("op1", "system_prompt")));
         assertEquals("new prompt", updates.get("op1", "system_prompt"));
+    }
+
+    private record RuntimeMessage(
+            String role,
+            Object content,
+            String name,
+            Map<String, Object> metadata,
+            List<Map<String, Object>> toolCalls) {
+    }
+
+    private record DumpOnlyValue(Map<String, Object> payload) {
+        public Map<String, Object> modelDump() {
+            return payload;
+        }
+    }
+
+    private static final class UnknownMessage {
+        private final String value;
+
+        private UnknownMessage(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
     }
 }

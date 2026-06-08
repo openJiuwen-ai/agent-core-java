@@ -5,12 +5,10 @@
 package com.openjiuwen.harness.schema;
 
 /**
- * Stop when wall-clock elapsed time exceeds a limit.
- *
- * <p>Mirrors Python's {@code TimeoutEvaluator} in
- * {@code openjiuwen.harness.schema.stop_condition}.
+ * Mirrors Python's {@code TimeoutEvaluator} in
+ * {@code openjiuwen/harness/schema/stop_condition.py}.
  */
-public class TimeoutEvaluator implements StopConditionEvaluator {
+public final class TimeoutEvaluator implements StopConditionEvaluator {
 
     private final double timeoutSeconds;
 
@@ -19,12 +17,7 @@ public class TimeoutEvaluator implements StopConditionEvaluator {
     }
 
     @Override
-    public String getName() {
-        return getClass().getSimpleName();
-    }
-
-    @Override
     public boolean shouldStop(StopEvaluationContext ctx) {
-        return ctx != null && ctx.getElapsedSeconds() >= timeoutSeconds;
+        return ctx.getElapsedSeconds() >= timeoutSeconds;
     }
 }

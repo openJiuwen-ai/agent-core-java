@@ -6,9 +6,8 @@ package com.openjiuwen.core.memory.lite;
 
 /**
  * Write operation mode.
- * <p>
- * Mirrors Python's {@code WriteMode} enum from
- * <code>memory/lite/conflict_types.py</code>.
+ *
+ * <p>Mirrors Python's {@code WriteMode} in {@code openjiuwen/core/memory/lite/conflict_types.py}.</p>
  */
 public enum WriteMode {
     CREATE("create"),
@@ -21,7 +20,7 @@ public enum WriteMode {
         this.value = value;
     }
 
-    public String getValue() {
+    public String value() {
         return value;
     }
 }

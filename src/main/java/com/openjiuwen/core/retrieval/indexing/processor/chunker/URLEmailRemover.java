@@ -7,7 +7,8 @@ package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 import java.util.regex.Pattern;
 
 /**
- * Removes URLs and email addresses from text.
+ * Mirrors Python's {@code URLEmailRemover} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
  */
 public class URLEmailRemover implements TextPreprocessor {
 
@@ -22,6 +23,14 @@ public class URLEmailRemover implements TextPreprocessor {
 
     public URLEmailRemover() {
         this(true, true, "");
+    }
+
+    public URLEmailRemover(String replacement) {
+        this(true, true, replacement);
+    }
+
+    public URLEmailRemover(boolean removeUrls) {
+        this(removeUrls, true, "");
     }
 
     public URLEmailRemover(boolean removeUrls, boolean removeEmails, String replacement) {
@@ -47,6 +56,7 @@ public class URLEmailRemover implements TextPreprocessor {
         if (text == null || text.isEmpty()) {
             return text;
         }
+
         String processed = text;
         if (removeUrls) {
             processed = URL_PATTERN.matcher(processed).replaceAll(replacement);

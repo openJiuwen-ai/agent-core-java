@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.context_evolver.schema;
@@ -15,12 +15,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Shared helpers for the context_evolver schema DTOs.
+ * Mirrors Python's schema helper behavior in
+ * {@code openjiuwen/extensions/context_evolver/schema/io_schema.py}.
  */
 public final class SchemaUtils {
 
     private SchemaUtils() {
-        // Utility class
     }
 
     public static String md5Hex(String value) {
@@ -98,7 +98,6 @@ public final class SchemaUtils {
         if (!(value instanceof Map<?, ?> rawMap)) {
             return new LinkedHashMap<>();
         }
-
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
             if (entry.getKey() != null) {
@@ -148,12 +147,6 @@ public final class SchemaUtils {
         if (value instanceof ReMeRetrievedMemory reMeRetrievedMemory) {
             return reMeRetrievedMemory.toMap();
         }
-        if (value instanceof TaskMemory taskMemory) {
-            return taskMemory.toMap();
-        }
-        if (value instanceof PersonalMemory personalMemory) {
-            return personalMemory.toMap();
-        }
         if (value instanceof Trajectory trajectory) {
             return trajectory.toDict();
         }
@@ -172,10 +165,5 @@ public final class SchemaUtils {
             return converted;
         }
         return value;
-    }
-
-    public static Map<String, Object> toPayloadMap(Object value) {
-        Object payload = toPayload(value);
-        return payload instanceof Map<?, ?> ? mapValue(payload) : new LinkedHashMap<>();
     }
 }

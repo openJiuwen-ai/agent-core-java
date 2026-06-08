@@ -11,9 +11,9 @@ import java.util.Map;
 
 /**
  * Memory base utilities.
- * <p>
- * Mirrors Python's {@code base.py} module from
- * <code>memory/common/base.py</code>.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.memory.common.base} in
+ * {@code openjiuwen/core/memory/common/base.py}.</p>
  */
 public final class MemoryBaseUtils {
 

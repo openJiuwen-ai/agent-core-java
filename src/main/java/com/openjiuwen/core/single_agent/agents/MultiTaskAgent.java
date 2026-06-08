@@ -5,20 +5,14 @@
 package com.openjiuwen.core.single_agent.agents;
 
 /**
- * MultiTaskAgent Implementation.
+ * Mirrors Python's {@code multi_task_agent} in
+ * {@code openjiuwen/core/single_agent/agents/multi_task_agent.py}.
  *
- * <p>Mirrors Python's {@code multi_task_agent} in
- * {@code openjiuwen.core.single_agent.agents.multi_task_agent}.</p>
- *
- * <p>Note: The Python source file is a placeholder with no concrete implementation.
- * This Java class serves as a corresponding placeholder for future implementation.</p>
+ * <p>The Python module currently contains only documentation and no executable implementation.
+ * This placeholder class preserves the module-to-type correspondence without introducing behavior.</p>
  */
 public class MultiTaskAgent {
 
-    /**
-     * Default constructor for MultiTaskAgent placeholder.
-     */
     public MultiTaskAgent() {
-        // Placeholder - Python source has no implementation
     }
 }

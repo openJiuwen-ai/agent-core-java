@@ -12,7 +12,8 @@ import java.net.http.HttpResponse;
 /**
  * JDK HttpClient-backed gateway transport.
  * <p>
- * Mirrors Python's concrete HTTPX transport wiring for upstream calls.
+ * Mirrors Python's concrete upstream transport wiring in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/upstream/upstream_client.py}.
  */
 public class JavaNetGatewayHttpTransport implements GatewayHttpTransport, AutoCloseable {
 
@@ -30,6 +31,6 @@ public class JavaNetGatewayHttpTransport implements GatewayHttpTransport, AutoCl
 
     @Override
     public void close() {
-        httpClient.close();
+        // java.net.http.HttpClient has no close hook; keep method for symmetry with injected transports.
     }
 }

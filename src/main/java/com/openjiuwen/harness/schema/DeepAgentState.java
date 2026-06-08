@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.schema;
@@ -7,40 +7,45 @@ package com.openjiuwen.harness.schema;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Per-invoke mutable state.
- * <p>
- * The object lives on ctx.session while an invoke/stream request is running.
- * A serializable subset can be checkpointed to session state.
- * <p>
- * Mirrors Python's {@code DeepAgentState} in {@code openjiuwen.harness.schema.state}.
+ * Per-invoke mutable DeepAgent state.
+ *
+ * <p>Mirrors Python's {@code DeepAgentState} in
+ * {@code openjiuwen/harness/schema/state.py}.</p>
  */
-public class DeepAgentState {
+public final class DeepAgentState {
 
-    /** Current iteration count. */
-    private int iteration = 0;
-    
-    /** Current task plan. */
-    private TaskPlan taskPlan = null;
-    
-    /** Stop condition state. */
-    private Map<String, Object> stopConditionState = null;
-    
-    /** Pending follow-up actions. */
-    private List<String> pendingFollowUps = new ArrayList<>();
-    
-    /** Plan mode state. */
-    private PlanModeState planMode = new PlanModeState();
+    public static final String SESSION_STATE_KEY = "deepagent";
+    public static final String SESSION_RUNTIME_ATTR = "_deepagent_runtime_state";
+
+    private int iteration;
+    private TaskPlan taskPlan;
+    private Map<String, Object> stopConditionState;
+    private final List<String> pendingFollowUps;
+    private PlanModeState planMode;
 
     public DeepAgentState() {
-        // Default constructor with default values
+        this(0, null, null, List.of(), new PlanModeState());
     }
 
-    // Getters and setters
+    public DeepAgentState(
+            int iteration,
+            TaskPlan taskPlan,
+            Map<String, Object> stopConditionState,
+            List<String> pendingFollowUps,
+            PlanModeState planMode
+    ) {
+        this.iteration = iteration;
+        this.taskPlan = taskPlan;
+        this.stopConditionState = stopConditionState == null ? null : new LinkedHashMap<>(stopConditionState);
+        this.pendingFollowUps = pendingFollowUps == null ? new ArrayList<>() : new ArrayList<>(pendingFollowUps);
+        this.planMode = planMode == null ? new PlanModeState() : planMode;
+    }
+
     public int getIteration() {
         return iteration;
     }
@@ -58,19 +63,15 @@ public class DeepAgentState {
     }
 
     public Map<String, Object> getStopConditionState() {
-        return stopConditionState;
+        return stopConditionState == null ? null : new LinkedHashMap<>(stopConditionState);
     }
 
     public void setStopConditionState(Map<String, Object> stopConditionState) {
-        this.stopConditionState = stopConditionState;
+        this.stopConditionState = stopConditionState == null ? null : new LinkedHashMap<>(stopConditionState);
     }
 
     public List<String> getPendingFollowUps() {
-        return pendingFollowUps;
-    }
-
-    public void setPendingFollowUps(List<String> pendingFollowUps) {
-        this.pendingFollowUps = pendingFollowUps != null ? pendingFollowUps : new ArrayList<>();
+        return new ArrayList<>(pendingFollowUps);
     }
 
     public PlanModeState getPlanMode() {
@@ -78,73 +79,79 @@ public class DeepAgentState {
     }
 
     public void setPlanMode(PlanModeState planMode) {
-        this.planMode = planMode != null ? planMode : new PlanModeState();
+        this.planMode = planMode == null ? new PlanModeState() : planMode;
     }
 
-    /**
-     * Convert to a JSON-friendly map.
-     * <p>
-     * Mirrors Python's {@code to_session_dict()}.
-     *
-     * @return Map representation for session storage
-     */
     public Map<String, Object> toSessionMap() {
-        Map<String, Object> map = new HashMap<>();
+        Map<String, Object> map = new LinkedHashMap<>();
         map.put("iteration", iteration);
-        map.put("task_plan", taskPlan != null ? taskPlan.toMap() : null);
-        map.put("stop_condition_state", stopConditionState);
+        map.put("task_plan", taskPlan == null ? null : taskPlan.toMap());
+        map.put("stop_condition_state", stopConditionState == null ? null : new LinkedHashMap<>(stopConditionState));
         map.put("pending_follow_ups", new ArrayList<>(pendingFollowUps));
         map.put("plan_mode", planMode.toMap());
         return map;
     }
 
-    /**
-     * Build state from session snapshot.
-     * <p>
-     * Mirrors Python's {@code from_session_dict()}.
-     *
-     * @param data Session snapshot map; null returns default state
-     * @return Reconstructed DeepAgentState
-     */
     public static DeepAgentState fromSessionMap(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
             return new DeepAgentState();
         }
-        
-        DeepAgentState state = new DeepAgentState();
-        state.iteration = ((Number) data.getOrDefault("iteration", 0)).intValue();
-        
+        TaskPlan plan = null;
         Object rawPlan = data.get("task_plan");
-        if (rawPlan instanceof Map) {
-            state.taskPlan = TaskPlan.fromMap((Map<String, Object>) rawPlan);
+        if (rawPlan instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            plan = TaskPlan.fromMap(normalized);
         }
-        
-        Object rawStopCondition = data.get("stop_condition_state");
-        if (rawStopCondition instanceof Map) {
-            state.stopConditionState = new HashMap<>((Map<String, Object>) rawStopCondition);
+        Map<String, Object> stopState = null;
+        Object rawStopState = data.get("stop_condition_state");
+        if (rawStopState instanceof Map<?, ?> map) {
+            stopState = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                stopState.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
         }
-        
+        List<String> followUps = new ArrayList<>();
         Object rawFollowUps = data.get("pending_follow_ups");
-        if (rawFollowUps instanceof List) {
-            state.pendingFollowUps = new ArrayList<>((List<String>) rawFollowUps);
+        if (rawFollowUps instanceof Iterable<?> values) {
+            for (Object value : values) {
+                followUps.add(String.valueOf(value));
+            }
         }
-        
-        Object rawPlanMode = data.get("plan_mode");
-        if (rawPlanMode instanceof Map) {
-            state.planMode = PlanModeState.fromMap((Map<String, Object>) rawPlanMode);
-        }
-        
-        return state;
+        PlanModeState modeState = PlanModeState.fromMap(castMap(data.get("plan_mode")));
+        return new DeepAgentState(
+                intValue(data.get("iteration"), 0),
+                plan,
+                stopState,
+                followUps,
+                modeState
+        );
     }
 
-    @Override
-    public String toString() {
-        return "DeepAgentState{" +
-                "iteration=" + iteration +
-                ", taskPlan=" + taskPlan +
-                ", stopConditionState=" + stopConditionState +
-                ", pendingFollowUps=" + pendingFollowUps +
-                ", planMode=" + planMode +
-                '}';
+    private static Map<String, Object> castMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return normalized;
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
     }
 }

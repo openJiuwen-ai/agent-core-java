@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * JSON parsing utilities for tool optimizer.
  *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.format}.
+ * <p>Mirrors Python's {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/format.py}.</p>
  */
 public final class FormatUtils {
 
@@ -20,42 +20,41 @@ public final class FormatUtils {
     }
 
     /**
-     * Parse JSON from LLM output string.
+     * Parse JSON-like content from model output.
      *
-     * @param output LLM output string
-     * @param header Optional header to search for
-     * @return Parsed JSON object
+     * @param output raw model output
+     * @param header optional header key used to locate the JSON object
+     * @return parsed JSON-compatible object
      */
     public static Object parseJson(String output, String header) {
         try {
+            String jsonCandidate = extractJsonCandidate(output, header);
             try {
-                String jsonStr = extractJsonCandidate(output, header);
-                return OBJECT_MAPPER.readValue(jsonStr, Object.class);
+                return OBJECT_MAPPER.readValue(jsonCandidate, Object.class);
             } catch (Exception ignored) {
-                String literal = normalizePythonLiteral(extractJsonCandidate(output, header));
-                return OBJECT_MAPPER.readValue(literal, Object.class);
+                return OBJECT_MAPPER.readValue(normalizePythonLiteral(jsonCandidate), Object.class);
             }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to parse JSON from output.", e);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Failed to parse JSON from output.", exception);
         }
     }
 
     /**
-     * Parse JSON from LLM output string.
+     * Parse JSON-like content from model output.
      *
-     * @param output LLM output string
-     * @return Parsed JSON object
+     * @param output raw model output
+     * @return parsed JSON-compatible object
      */
     public static Object parseJson(String output) {
         return parseJson(output, null);
     }
 
     /**
-     * Format prompt for LLaMA-style models.
+     * Concatenate prompts for llama-style models.
      *
-     * @param systemPrompt System prompt
-     * @param userPrompt   User prompt
-     * @return Combined prompt string
+     * @param systemPrompt system prompt
+     * @param userPrompt user prompt
+     * @return concatenated prompt text
      */
     public static String formatPromptLlama(String systemPrompt, String userPrompt) {
         return (systemPrompt != null ? systemPrompt : "") + (userPrompt != null ? userPrompt : "");
@@ -76,20 +75,10 @@ public final class FormatUtils {
         if (jsonIdx == -1) {
             jsonIdx = text.indexOf('{');
         }
-        if (jsonIdx == -1) {
-            jsonIdx = text.indexOf("[\n");
-        }
-        if (jsonIdx == -1) {
-            jsonIdx = text.indexOf('[');
-        }
-        if (jsonIdx == -1) {
-            return text.trim();
-        }
 
-        char closing = text.charAt(jsonIdx) == '[' ? ']' : '}';
-        int jsonEndIdx = text.lastIndexOf(closing);
-        if (jsonEndIdx == -1 || jsonEndIdx < jsonIdx) {
-            jsonEndIdx = text.length() - 1;
+        int jsonEndIdx = text.lastIndexOf('}');
+        if (jsonIdx == -1 || jsonEndIdx == -1 || jsonEndIdx < jsonIdx) {
+            return text.trim();
         }
         return text.substring(jsonIdx, jsonEndIdx + 1).trim();
     }
@@ -101,8 +90,8 @@ public final class FormatUtils {
         boolean inDouble = false;
         boolean escaping = false;
 
-        for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
+        for (int index = 0; index < text.length(); index++) {
+            char ch = text.charAt(index);
             if (escaping) {
                 normalized.append(ch);
                 escaping = false;
@@ -124,19 +113,19 @@ public final class FormatUtils {
                 continue;
             }
             if (!inSingle && !inDouble) {
-                if (text.startsWith("True", i)) {
+                if (text.startsWith("True", index)) {
                     normalized.append("true");
-                    i += 3;
+                    index += 3;
                     continue;
                 }
-                if (text.startsWith("False", i)) {
+                if (text.startsWith("False", index)) {
                     normalized.append("false");
-                    i += 4;
+                    index += 4;
                     continue;
                 }
-                if (text.startsWith("None", i)) {
+                if (text.startsWith("None", index)) {
                     normalized.append("null");
-                    i += 3;
+                    index += 3;
                     continue;
                 }
             }

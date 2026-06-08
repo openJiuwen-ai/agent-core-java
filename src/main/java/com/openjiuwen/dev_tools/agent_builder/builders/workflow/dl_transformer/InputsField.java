@@ -11,7 +11,8 @@ import java.util.Map;
 /**
  * Inputs field model.
  * <p>
- * Mirrors Python's {@code InputsField} dataclass.
+ * Mirrors Python's {@code InputsField} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class InputsField {
     private final Map<String, InputVariable> inputParameters;

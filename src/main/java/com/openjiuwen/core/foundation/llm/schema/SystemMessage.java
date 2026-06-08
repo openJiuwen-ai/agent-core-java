@@ -10,9 +10,8 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 /**
- * System message in an LLM conversation.
- * <p>
- * Mirrors Python's {@code SystemMessage} model.
+ * Mirrors Python's {@code SystemMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
 @Data
 @SuperBuilder
@@ -20,21 +19,10 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class SystemMessage extends BaseMessage {
 
-    /**
-     * Creates a system message with the given content.
-     *
-     * @param content the message content
-     */
     public SystemMessage(String content) {
         super("system", content);
     }
 
-    /**
-     * Creates a system message with the given content and name.
-     *
-     * @param content the message content
-     * @param name    the sender name
-     */
     public SystemMessage(String content, String name) {
         this(content);
         setName(name);
@@ -42,7 +30,7 @@ public class SystemMessage extends BaseMessage {
 
     @Override
     public String getRole() {
-        String r = super.getRole();
-        return r != null ? r : "system";
+        String value = super.getRole();
+        return value != null ? value : "system";
     }
 }

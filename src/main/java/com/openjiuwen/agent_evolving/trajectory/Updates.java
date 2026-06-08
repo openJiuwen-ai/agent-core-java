@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Updates type: Map of UpdateKey to value.
  *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.types.Updates}.
+ * <p>Mirrors Python's {@code Updates} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.
  */
 public class Updates extends HashMap<UpdateKey, Object> {
 

@@ -4,46 +4,39 @@
 
 package com.openjiuwen.core.foundation.store.base_reranker;
 
-import java.util.HashMap;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Document data model for reranking.
+ * Document data model.
  * <p>
- * Mirrors Python's {@code Document} model from
- * <code>foundation/store/base_reranker.py</code>.
+ * Mirrors Python's {@code Document} in
+ * {@code openjiuwen/core/foundation/store/base_reranker.py}.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Document {
 
-    private final String id;
-    private final String text;
-    private final Map<String, Object> metadata;
+    /** Document ID. */
+    @JsonProperty("id_")
+    @Builder.Default
+    private String id = UUID.randomUUID().toString();
 
-    public Document(String text) {
-        this(UUID.randomUUID().toString(), text, new HashMap<>());
-    }
+    /** Document text content. */
+    private String text;
 
-    public Document(String id, String text, Map<String, Object> metadata) {
-        this.id = id != null ? id : UUID.randomUUID().toString();
-        this.text = text;
-        this.metadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public String getText() {
-        return text;
-    }
-
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
-    @Override
-    public String toString() {
-        return text;
-    }
+    /** Document metadata. */
+    @Builder.Default
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 }

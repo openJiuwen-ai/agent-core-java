@@ -4,38 +4,41 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import java.util.Collection;
 import java.util.List;
 
 /**
- * Lightweight progress callback aligned with Python's TqdmCallback.
- * This Java variant tracks progress counters without introducing a UI dependency.
+ * Mirrors Python's {@code TqdmCallback} in
+ * {@code openjiuwen/core/retrieval/common/callbacks.py}.
  */
 public class TqdmCallback extends BaseCallback {
 
     private final int length;
-    private final String desc;
+    private boolean closed;
 
-    public TqdmCallback(Collection<?> sequence) {
-        this(sequence, "Indexing");
-    }
-
-    public TqdmCallback(Collection<?> sequence, String desc) {
-        super(sequence);
-        this.length = sequence == null ? 0 : sequence.size();
-        this.desc = desc == null || desc.isBlank() ? "Indexing" : desc;
+    public TqdmCallback(List<?> seq, boolean useRich, String desc) {
+        super(seq);
+        this.length = seq == null ? 0 : seq.size();
+        this.closed = length == 0;
     }
 
     @Override
-    public void onBatch(int startIdx, int endIdx, List<String> batch) {
-        super.onBatch(startIdx, endIdx, batch);
+    public void call(int startIdx, int endIdx, List<String> batch) {
+        threadLock.lock();
+        try {
+            callCounter.incrementAndGet();
+            if (callCounter.get() >= length) {
+                closed = true;
+            }
+        } finally {
+            threadLock.unlock();
+        }
     }
 
     public int length() {
         return length;
     }
 
-    public String getDesc() {
-        return desc;
+    public boolean isClosed() {
+        return closed;
     }
 }

@@ -5,18 +5,13 @@
 package com.openjiuwen.core.workflow.component;
 
 /**
- * Defines the execution abilities of a workflow component.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.base.ComponentAbility}.
+ * Mirrors Python's {@code ComponentAbility} in
+ * {@code openjiuwen/core/workflow/components/base.py}.
  */
 public enum ComponentAbility {
-    /** Batch invoke: takes full input, returns full output. */
     INVOKE("invoke", "batch in, batch out"),
-    /** Streaming output: takes full input, yields chunks. */
     STREAM("stream", "batch in, stream out"),
-    /** Collect: consumes a stream of chunks, returns full output. */
     COLLECT("collect", "stream in, batch out"),
-    /** Transform: consumes a stream of chunks, yields transformed chunks. */
     TRANSFORM("transform", "stream in, stream out");
 
     private final String name;

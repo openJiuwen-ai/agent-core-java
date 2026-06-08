@@ -4,33 +4,28 @@
 
 package com.openjiuwen.core.single_agent.prompts;
 
-import java.util.*;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * A single prompt section with multilingual content.
- * <p>
  * Mirrors Python's {@code PromptSection} in
- * {@code openjiuwen.core.single_agent.prompts.builder}.
+ * {@code openjiuwen/core/single_agent/prompts/builder.py}.
  */
 public class PromptSection {
-
-    /** Supported languages. */
-    public static final String[] SUPPORTED_LANGUAGES = {"cn", "en"};
-    /** Default language. */
-    public static final String DEFAULT_LANGUAGE = "cn";
-
     private final String name;
     private final Map<String, String> content;
     private final int priority;
 
-    public PromptSection(String name, Map<String, String> content, int priority) {
-        this.name = name;
-        this.content = new LinkedHashMap<>(content);
-        this.priority = priority;
-    }
-
     public PromptSection(String name, Map<String, String> content) {
         this(name, content, 100);
+    }
+
+    public PromptSection(String name, Map<String, String> content, int priority) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.content = new LinkedHashMap<>(Objects.requireNonNull(content, "content"));
+        this.priority = priority;
     }
 
     public String getName() {
@@ -38,28 +33,32 @@ public class PromptSection {
     }
 
     public Map<String, String> getContent() {
-        return Collections.unmodifiableMap(content);
+        return new LinkedHashMap<>(content);
     }
 
     public int getPriority() {
         return priority;
     }
 
-    /** Render this section for the given language. */
+    public String render() {
+        return render(SystemPromptBuilder.DEFAULT_LANGUAGE);
+    }
+
     public String render(String language) {
-        if (content.containsKey(language)) {
+        if (language != null && content.containsKey(language)) {
             return content.get(language);
         }
-        return content.getOrDefault(DEFAULT_LANGUAGE,
-                content.values().iterator().hasNext() ? content.values().iterator().next() : "");
+        if (content.containsKey(SystemPromptBuilder.DEFAULT_LANGUAGE)) {
+            return content.get(SystemPromptBuilder.DEFAULT_LANGUAGE);
+        }
+        Iterator<String> iterator = content.values().iterator();
+        return iterator.hasNext() ? iterator.next() : "";
     }
 
-    /** Render in default language. */
-    public String render() {
-        return render(DEFAULT_LANGUAGE);
+    public int charCount() {
+        return charCount(SystemPromptBuilder.DEFAULT_LANGUAGE);
     }
 
-    /** Character count for the given language. */
     public int charCount(String language) {
         return render(language).length();
     }

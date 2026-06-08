@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream;
  * Retry policy for upstream HTTP operations.
  * <p>
  * Mirrors Python's {@code RetryPolicy} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.upstream_client}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/upstream/upstream_client.py}.
  */
 public record RetryPolicy(int maxRetries, double backoffBaseSec, double backoffMaxSec) {
 

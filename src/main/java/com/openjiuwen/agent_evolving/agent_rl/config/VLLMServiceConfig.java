@@ -12,7 +12,7 @@ import java.util.Map;
  * VLLM service configuration.
  * <p>
  * Mirrors Python's {@code VLLMServiceConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class VLLMServiceConfig {
 

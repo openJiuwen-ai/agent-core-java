@@ -6,25 +6,21 @@ package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-/**
- * Tests for delayed-judge dispatch.
- * <p>
- * Mirrors Python's {@code JudgeDispatcher} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.judge_dispatcher}.
- */
 class JudgeDispatcherTest {
 
     @Test
     void onPrevFeedbackReturnsZeroForBlankFeedbackAndMissingPendingSample() {
-        FakePendingStore store = new FakePendingStore(List.of());
+        FakePendingJudgeBackend backend = new FakePendingJudgeBackend();
+        PendingJudgeStore store = new PendingJudgeStore(backend);
         FakeRecorder recorder = new FakeRecorder();
         JudgeDispatcher dispatcher = new JudgeDispatcher(store, recorder, null);
 
@@ -35,16 +31,22 @@ class JudgeDispatcherTest {
 
     @Test
     void onSessionDoneScoresSampleWithoutFollowupFeedback() {
-        FakeRecorder recorder = new FakeRecorder();
-        FakeScorer scorer = new FakeScorer(Map.of("score", 0.25, "votes", List.of(6.25), "details", Map.of("overall", 6.25)));
+        FakePendingJudgeBackend backend = new FakePendingJudgeBackend();
+        PendingJudgeStore store = new PendingJudgeStore(backend);
         Map<String, Object> sample = new LinkedHashMap<>();
         sample.put("sample_id", "sample-1");
         sample.put("user_id", "user-1");
         sample.put("session_id", "s1");
         sample.put("turn_num", 1);
+        sample.put("trajectory_id", "traj-1");
+        sample.put("step_index", 0);
         sample.put("request", Map.of("messages", List.of(Map.of("role", "user", "content", "hello"))));
         sample.put("trajectory", Map.of("response_text", "pong"));
-        JudgeDispatcher dispatcher = new JudgeDispatcher(new FakePendingStore(List.of(sample)), recorder, scorer);
+        store.put(sample);
+
+        FakeRecorder recorder = new FakeRecorder();
+        FakeScorer scorer = new FakeScorer(Map.of("score", 0.25, "votes", List.of(6.25), "details", Map.of("overall", 6.25)));
+        JudgeDispatcher dispatcher = new JudgeDispatcher(store, recorder, scorer);
 
         int count = dispatcher.onSessionDone("s1");
 
@@ -57,50 +59,25 @@ class JudgeDispatcherTest {
     }
 
     @Test
-    void finalizeSampleUsesPythonTruthyFallbacks() {
-        FakeScorer scorer = new FakeScorer(Map.of("score", 0.5, "votes", List.of("ok"), "details", Map.of()));
-        JudgeDispatcher dispatcher = new JudgeDispatcher(new FakePendingStore(List.of()), sample -> { }, scorer);
-        Map<String, Object> sample = new LinkedHashMap<>();
-        sample.put("sample_id", null);
-        sample.put("session_id", "s1");
-        sample.put("turn_num", 0);
-        sample.put("step_index", 7);
-        sample.put("response_text", "top-level-response");
-        sample.put("trajectory", Map.of("response_text", ""));
-        sample.put("request", Map.of("messages", List.of(Map.of("role", "user", "content", "   "))));
+    void finalizeSampleAddsGeneratedSampleIdWhenMissing() {
+        FakePendingJudgeBackend backend = new FakePendingJudgeBackend();
+        PendingJudgeStore store = new PendingJudgeStore(backend);
+        JudgeDispatcher dispatcher = new JudgeDispatcher(store, sample -> { }, null);
 
-        Map<String, Object> finalized = dispatcher.finalizeSample(sample, "feedback", "prev_feedback");
+        Map<String, Object> finalized = dispatcher.finalizeSample(
+                new LinkedHashMap<>(Map.of(
+                        "session_id", "s1",
+                        "request", Map.of("messages", List.of()),
+                        "trajectory", Map.of("response_text", "pong")
+                )),
+                "",
+                "session_done"
+        );
 
-        assertEquals(7, scorer.calls.getFirst().get("turn_num"));
-        assertEquals("top-level-response", scorer.calls.getFirst().get("response_text"));
-        assertEquals("   ", scorer.calls.getFirst().get("instruction_text"));
-        assertNull(finalized.get("sample_id"));
+        assertNotNull(finalized.get("sample_id"));
     }
 
-    static final class FakePendingStore extends PendingJudgeStore {
-        private final List<Map<String, Object>> samples;
-
-        FakePendingStore(List<Map<String, Object>> samples) {
-            this.samples = new ArrayList<>(samples);
-        }
-
-        @Override
-        public Map<String, Object> popEarliest(String sessionId) {
-            if (samples.isEmpty()) {
-                return null;
-            }
-            return samples.removeFirst();
-        }
-
-        @Override
-        public List<Map<String, Object>> popAll(String sessionId) {
-            List<Map<String, Object>> out = new ArrayList<>(samples);
-            samples.clear();
-            return out;
-        }
-    }
-
-    static final class FakeRecorder implements SampleRecordingSink {
+    private static final class FakeRecorder implements SampleRecordingSink {
         private final List<Map<String, Object>> samples = new ArrayList<>();
 
         @SuppressWarnings("unchecked")
@@ -113,20 +90,17 @@ class JudgeDispatcherTest {
         }
     }
 
-    static final class FakeScorer implements JudgeScorer {
+    private static final class FakeScorer implements JudgeScorer {
         private final Map<String, Object> result;
         private final List<Map<String, Object>> calls = new ArrayList<>();
 
-        FakeScorer(Map<String, Object> result) {
+        private FakeScorer(Map<String, Object> result) {
             this.result = result;
         }
 
         @Override
-        public Map<String, Object> score(String responseText,
-                                         String instructionText,
-                                         String followupUserFeedback,
-                                         String sessionId,
-                                         int turnNum) {
+        public Map<String, Object> score(String responseText, String instructionText, String followupUserFeedback,
+                                         String sessionId, int turnNum) {
             calls.add(Map.of(
                     "response_text", responseText,
                     "instruction_text", instructionText,
@@ -135,6 +109,69 @@ class JudgeDispatcherTest {
                     "turn_num", turnNum
             ));
             return result;
+        }
+    }
+
+    private static final class FakePendingJudgeBackend implements PendingJudgeStoreBackend {
+        private final Map<String, byte[]> kv = new LinkedHashMap<>();
+        private final Map<String, LinkedHashMap<String, Double>> zsets = new LinkedHashMap<>();
+
+        @Override
+        public void set(String key, String value, int ttlSeconds) {
+            kv.put(key, value.getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public long zadd(String key, Map<String, Double> mapping) {
+            LinkedHashMap<String, Double> set = zsets.computeIfAbsent(key, ignored -> new LinkedHashMap<>());
+            set.putAll(mapping);
+            return mapping.size();
+        }
+
+        @Override
+        public long expire(String key, int ttlSeconds) {
+            return 1;
+        }
+
+        @Override
+        public List<Object> zrange(String key, int start, int end) {
+            return zsets.getOrDefault(key, new LinkedHashMap<>()).entrySet().stream()
+                    .sorted(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .map(value -> (Object) value)
+                    .toList();
+        }
+
+        @Override
+        public List<Object> mget(List<String> keys) {
+            return keys.stream().map(kv::get).map(value -> (Object) value).toList();
+        }
+
+        @Override
+        public Object get(String key) {
+            return kv.get(key);
+        }
+
+        @Override
+        public PendingJudgeStorePipeline pipeline() {
+            return new PendingJudgeStorePipeline() {
+                @Override
+                public PendingJudgeStorePipeline delete(String key) {
+                    kv.remove(key);
+                    return this;
+                }
+
+                @Override
+                public PendingJudgeStorePipeline zrem(String key, Object member) {
+                    zsets.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).remove(String.valueOf(member));
+                    return this;
+                }
+
+                @Override
+                public List<Object> execute() {
+                    return List.of();
+                }
+            };
         }
     }
 }

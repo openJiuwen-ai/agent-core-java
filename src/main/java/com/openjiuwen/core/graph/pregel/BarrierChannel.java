@@ -11,23 +11,23 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Channel for N→1 fan-in barrier synchronization.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.BarrierChannel}.
- * The channel becomes ready only when all expected senders have sent a message.
+ * Mirrors Python's {@code BarrierChannel} in
+ * {@code openjiuwen/core/graph/pregel/channels.py}.
  */
 public class BarrierChannel extends Channel {
 
-    private final String nodeName;
-    private final Set<String> expected;
+    private final List<Set<String>> expectedGroups;
     private final Set<String> received = new HashSet<>();
     private final String routerKey;
 
-    public BarrierChannel(String nodeName, Set<String> expected) {
+    public BarrierChannel(String nodeName, List<Set<String>> expectedGroups) {
         super(nodeName);
-        this.nodeName = nodeName;
-        this.expected = new HashSet<>(expected);
-        this.routerKey = makeRouterKey(nodeName, expected);
+        this.expectedGroups = normalizeGroups(expectedGroups);
+        this.routerKey = makeRouterKey(nodeName, this.expectedGroups);
+    }
+
+    public BarrierChannel(String nodeName, Set<String> expected) {
+        this(nodeName, expected.stream().sorted().map(Set::of).toList());
     }
 
     @Override
@@ -36,29 +36,29 @@ public class BarrierChannel extends Channel {
     }
 
     @Override
-    public String getNodeName() {
-        return nodeName;
-    }
-
-    @Override
     public boolean isReady() {
-        return received.equals(expected);
-    }
-
-    @Override
-    public boolean accept(Message msg) {
-        if (msg instanceof BarrierMessage barrierMsg) {
-            if (!received.contains(barrierMsg.getSender())) {
-                received.add(barrierMsg.getSender());
-                return true;
+        if (received.isEmpty()) {
+            return false;
+        }
+        for (Set<String> group : expectedGroups) {
+            if (group.stream().noneMatch(received::contains)) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     @Override
-    public void consume() {
+    public void accept(Message msg) {
+        if (msg instanceof BarrierMessage barrierMessage && !received.contains(barrierMessage.getSender())) {
+            received.add(barrierMessage.getSender());
+        }
+    }
+
+    @Override
+    public Object consume() {
         received.clear();
+        return null;
     }
 
     @Override
@@ -67,20 +67,31 @@ public class BarrierChannel extends Channel {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public void restore(Object snapshotData) {
-        if (snapshotData instanceof List<?> list) {
+    public void restore(Object snapshot) {
+        if (snapshot instanceof List<?> list) {
             received.clear();
             for (Object item : list) {
-                if (item instanceof String s) {
-                    received.add(s);
+                if (item instanceof String sender) {
+                    received.add(sender);
                 }
             }
         }
     }
 
-    private static String makeRouterKey(String name, Set<String> expected) {
-        String senders = expected.stream().sorted().collect(Collectors.joining("|"));
-        return "barrier:" + senders + "->" + name;
+    private static List<Set<String>> normalizeGroups(List<Set<String>> groups) {
+        List<Set<String>> normalized = new ArrayList<>();
+        for (Set<String> group : groups) {
+            normalized.add(new HashSet<>(group));
+        }
+        return normalized;
+    }
+
+    private static String makeRouterKey(String nodeName, List<Set<String>> groups) {
+        List<String> parts = new ArrayList<>();
+        for (Set<String> group : groups) {
+            String joined = group.stream().sorted().collect(Collectors.joining("|"));
+            parts.add(group.size() == 1 ? joined : "(" + joined + ")");
+        }
+        return "barrier:" + String.join("&", parts) + "->" + nodeName;
     }
 }

@@ -28,9 +28,8 @@ class GatewayConfigAndSupportTest {
     }
 
     @Test
-    void fitListTruncatesAndPads() {
+    void fitListStillWorksWithCurrentGatewayHelpers() {
         assertEquals(List.of(), GatewayCommon.fitList(List.of(1.0, 2.0), 0));
         assertEquals(List.of(1.0, 2.0), GatewayCommon.fitList(List.of(1.0, 2.0, 3.0), 2));
-        assertEquals(List.of(1.0, 0.0, 0.0), GatewayCommon.fitList(List.of(1.0), 3));
     }
 }

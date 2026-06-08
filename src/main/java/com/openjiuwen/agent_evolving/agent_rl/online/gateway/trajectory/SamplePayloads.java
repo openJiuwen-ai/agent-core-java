@@ -16,7 +16,7 @@ import java.util.UUID;
  * Shared helpers for normalized gateway sample payloads.
  * <p>
  * Mirrors Python's helpers in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.sample_payloads}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/sample_payloads.py}.
  */
 public final class SamplePayloads {
 
@@ -30,20 +30,7 @@ public final class SamplePayloads {
                 try {
                     out.add(Double.parseDouble(String.valueOf(item)));
                 } catch (Exception ignored) {
-                    // skip bad values like Python implementation
-                }
-            }
-        } else if (values instanceof Map<?, ?> map) {
-            Object content = map.get("content");
-            if (content instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> entry && entry.get("logprob") != null) {
-                        try {
-                            out.add(Double.parseDouble(String.valueOf(entry.get("logprob"))));
-                        } catch (Exception ignored) {
-                            // skip bad values
-                        }
-                    }
+                    // Python skips malformed values.
                 }
             }
         }

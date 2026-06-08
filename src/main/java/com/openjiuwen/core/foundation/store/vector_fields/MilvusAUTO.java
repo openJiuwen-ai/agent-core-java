@@ -1,17 +1,15 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.store.vector_fields;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * AUTOINDEX configuration for Milvus.
- * <p>
- * Default index type providing good balance between performance and ease of use.
- * Configurable in milvus.yaml when deploying Milvus database.
+ * Mirrors Python's {@code MilvusAUTO} in
+ * {@code openjiuwen/core/foundation/store/vector_fields/milvus_fields.py}.
  */
 public class MilvusAUTO extends MilvusVectorField {
 
@@ -22,6 +20,6 @@ public class MilvusAUTO extends MilvusVectorField {
 
     @Override
     public Map<String, Object> toDict(String stage) {
-        return new HashMap<>();
+        return new LinkedHashMap<>();
     }
 }

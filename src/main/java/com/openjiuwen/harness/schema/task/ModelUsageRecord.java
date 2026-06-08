@@ -5,10 +5,10 @@
 package com.openjiuwen.harness.schema.task;
 
 /**
- * Accumulated token usage for one model id within a single invoke.
+ * Accumulated token usage for one model_id within a single invoke.
  *
  * <p>Mirrors Python's {@code ModelUsageRecord} in
- * {@code openjiuwen.harness.schema.task}.</p>
+ * {@code openjiuwen/harness/schema/task.py}.
  */
 public class ModelUsageRecord {
 
@@ -22,13 +22,13 @@ public class ModelUsageRecord {
 
     public ModelUsageRecord(String modelId, int inputTokens, int outputTokens) {
         this.modelId = modelId;
-        this.inputTokens = Math.max(0, inputTokens);
-        this.outputTokens = Math.max(0, outputTokens);
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
     }
 
     public void add(int inputTokens, int outputTokens) {
-        this.inputTokens += Math.max(0, inputTokens);
-        this.outputTokens += Math.max(0, outputTokens);
+        this.inputTokens += inputTokens;
+        this.outputTokens += outputTokens;
     }
 
     public String getModelId() {

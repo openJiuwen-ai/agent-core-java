@@ -10,7 +10,8 @@ import java.net.http.HttpRequest;
 /**
  * Transport seam for gateway upstream HTTP operations.
  * <p>
- * Mirrors Python's injected HTTPX async client role in a synchronous Java form.
+ * Mirrors Python's injected HTTP transport role in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/upstream/upstream_client.py}.
  */
 public interface GatewayHttpTransport {
 

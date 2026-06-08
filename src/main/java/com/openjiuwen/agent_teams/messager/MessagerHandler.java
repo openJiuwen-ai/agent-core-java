@@ -5,14 +5,16 @@
 package com.openjiuwen.agent_teams.messager;
 
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Minimal handler abstraction for messager delivery callbacks.
- *
- * <p>Mirrors Python's {@code MessagerHandler} callable alias in
- * {@code openjiuwen.agent_teams.messager.messager}.</p>
+ * <p>
+ * Mirrors Python's {@code MessagerHandler} callable alias in
+ * {@code openjiuwen/agent_teams/messager/messager.py}.
  */
 @FunctionalInterface
 public interface MessagerHandler {
-    void handle(EventMessage message);
+
+    CompletionStage<Void> handle(EventMessage message);
 }

@@ -27,16 +27,17 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 /**
- * Real HTTP judge route/auth/healthz hosting slice.
+ * Judge scoring service with voting and retry logic.
  * <p>
  * Mirrors Python's judge server hosting in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.judge_server}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/judge/judge_server.py}.
  */
 public final class JudgeServer implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger("online_rl.judge_server");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private final JudgeConfig config;
     private final HttpServer server;
@@ -60,8 +61,8 @@ public final class JudgeServer implements AutoCloseable {
                 .build();
         RetryPolicy retryPolicy = new RetryPolicy(
                 Math.max(0, config.getMaxRetries()),
-                Math.max(0.0, config.getRetryBackoffSec()),
-                Math.max(0.0, config.getRetryBackoffSec())
+                Math.max(0.0d, config.getRetryBackoffSec()),
+                Math.max(0.0d, config.getRetryBackoffSec())
         );
         HttpUpstreamGatewayClient upstreamClient = new HttpUpstreamGatewayClient(
                 new JavaNetGatewayHttpTransport(httpClient),
@@ -89,10 +90,10 @@ public final class JudgeServer implements AutoCloseable {
         config.setNumVotes(Math.max(1, cliArgs.numVotes));
         config.setTemperature(cliArgs.temperature);
         config.setMaxCompletionTokens(Math.max(1, cliArgs.maxCompletionTokens));
-        config.setTimeout(Math.max(1.0, cliArgs.timeout));
+        config.setTimeout(Math.max(1.0d, cliArgs.timeout));
         config.setExpectedApiKey(cliArgs.judgeApiKey);
         config.setMaxRetries(2);
-        config.setRetryBackoffSec(0.2);
+        config.setRetryBackoffSec(0.2d);
         return start(cliArgs.host, cliArgs.port, config);
     }
 
@@ -207,15 +208,15 @@ public final class JudgeServer implements AutoCloseable {
     ) {
         static CliArgs parse(String[] args) {
             Map<String, String> values = new LinkedHashMap<>();
-            for (int i = 0; i < args.length; i++) {
-                String arg = args[i];
+            for (int index = 0; index < args.length; index++) {
+                String arg = args[index];
                 if (!arg.startsWith("--")) {
                     throw new IllegalArgumentException("unexpected argument: " + arg);
                 }
-                if (i + 1 >= args.length) {
+                if (index + 1 >= args.length) {
                     throw new IllegalArgumentException("missing value for " + arg);
                 }
-                values.put(arg, args[++i]);
+                values.put(arg, args[++index]);
             }
             String host = values.getOrDefault("--host", "127.0.0.1");
             String llmUrl = required(values, "--llm-url");

@@ -13,7 +13,7 @@ import java.util.logging.Logger;
  * Logger protocol — every logger implementation must satisfy this contract.
  * <p>
  * Mirrors Python's {@code LoggerProtocol} in
- * {@code openjiuwen.core.common.logging.protocol}.
+ * {@code openjiuwen/core/common/logging/protocol.py}.
  *
  * <p>In Java we use an interface instead of a Protocol class.</p>
  */

@@ -1,5 +1,6 @@
-// coding: utf-8
-// Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.agent_evolving.agent_rl.online.scheduler;
 
@@ -15,33 +16,22 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Build Hydra OmegaConf for online PPO training (built-in overlay or custom YAML).
+ * Build Hydra-like PPO config maps for online training.
  * <p>
- * Mirrors Python's {@code ppo_config.py} from
- * {@code openjiuwen.agent_evolving.agent_rl.online.scheduler.ppo_config}.
+ * Mirrors Python's {@code compose_online_ppo_config} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/scheduler/ppo_config.py}.
  */
 public final class PpoConfigComposer {
 
     private static final String DEFAULT_LOCAL_DIR = "/tmp/online_ppo_ckpt";
-    
-    private PpoConfigComposer() {
-        // Utility class
-    }
-    
-    /**
-     * Compose online PPO config.
-     * <p>
-     * Java represents the Hydra/OmegaConf object as a nested map while preserving
-     * the Python-visible configuration fields.
-     *
-     * @param modelPath Model path
-     * @param nGpusPerNode GPUs per node
-     * @param configPath Custom config path (optional)
-     * @return Configuration map
-     */
-    public static Map<String, Object> composeOnlinePpoConfig(
-            String modelPath, int nGpusPerNode, String configPath) {
 
+    private PpoConfigComposer() {
+    }
+
+    public static Map<String, Object> composeOnlinePpoConfig(
+            String modelPath,
+            int nGpusPerNode,
+            String configPath) {
         Map<String, Object> cfg;
         if (configPath == null) {
             cfg = deepCopyMap(OnlinePpoVerlConfig.getOnlinePpoVerlHydraOverlay());
@@ -59,19 +49,9 @@ public final class PpoConfigComposer {
         }
         return cfg;
     }
-    
-    /**
-     * Get default PPO config.
-     */
-    public static Map<String, Object> getDefaultPpoConfig(String modelPath) {
+
+    public static Map<String, Object> composeOnlinePpoConfig(String modelPath) {
         return composeOnlinePpoConfig(modelPath, 2, null);
-    }
-    
-    /**
-     * Online PPO VERL overlay defaults.
-     */
-    public static Map<String, Object> getOnlinePpoVerlOverlay() {
-        return deepCopyMap(OnlinePpoVerlConfig.getOnlinePpoVerlHydraOverlay());
     }
 
     @SuppressWarnings("unchecked")
@@ -93,8 +73,8 @@ public final class PpoConfigComposer {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> nestedMap(Map<String, Object> parent, String key) {
         Object existing = parent.get(key);
-        if (existing instanceof Map<?, ?> existingMap) {
-            return (Map<String, Object>) existingMap;
+        if (existing instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
         }
         Map<String, Object> created = new LinkedHashMap<>();
         parent.put(key, created);

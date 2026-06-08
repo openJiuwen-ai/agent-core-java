@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Jiuwen RL Hydra custom function configuration.
  * <p>
  * Mirrors Python's {@code JiuwenRLHydraCustomFn} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class JiuwenRLHydraCustomFn {
 

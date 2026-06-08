@@ -4,84 +4,142 @@
 
 package com.openjiuwen.core.single_agent.interrupt;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.HashMap;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Interrupt request with tool call context.
- *
- * <p>Inherits from InterruptRequest and adds tool call context fields.
- * Used for serializing interrupt info to user output.</p>
- *
- * <p>Mirrors Python's {@code ToolCallInterruptRequest} in
- * {@code openjiuwen.core.single_agent.interrupt.response}.</p>
+ * Mirrors Python's {@code ToolCallInterruptRequest} in
+ * {@code openjiuwen/core/single_agent/interrupt/response.py}.
  */
-@Data
-@EqualsAndHashCode(callSuper = true)
-@NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolCallInterruptRequest extends InterruptRequest {
-
-    // Extra fields storage (for subclasses like AskUserRequest)
-    private Map<String, Object> extraFields = new HashMap<>();
-
+    @JsonProperty("tool_name")
     private String toolName = "";
 
+    @JsonProperty("tool_call_id")
     private String toolCallId = "";
 
+    @JsonProperty("tool_args")
     private Object toolArgs;
 
+    @JsonProperty("index")
     private Integer index;
 
-    /**
-     * Allow extra fields to be set during JSON deserialization.
-     */
-    @JsonAnySetter
-    public void setExtraField(String key, Object value) {
-        extraFields.put(key, value);
+    public ToolCallInterruptRequest() {
     }
 
-    /**
-     * Create ToolCallInterruptRequest from InterruptRequest and ToolCall.
-     *
-     * <p>Preserves all fields from the request, including any extra fields
-     * defined in subclasses.</p>
-     *
-     * @param request  the base interrupt request
-     * @param toolCall the tool call object (with name, id, arguments, index)
-     * @return new ToolCallInterruptRequest instance
-     */
     public static ToolCallInterruptRequest fromToolCall(InterruptRequest request, Object toolCall) {
         ToolCallInterruptRequest result = new ToolCallInterruptRequest();
-        result.setMessage(request.getMessage());
-        result.setPayloadSchema(request.getPayloadSchema());
-        result.setAutoConfirmKey(request.getAutoConfirmKey());
+        Map<String, Object> baseFields = request == null ? new LinkedHashMap<>() : request.toMap();
 
-        // Extract tool call attributes
-        if (toolCall != null) {
-            try {
-                // Handle ToolCall-like objects via reflection
-                java.lang.reflect.Method getName = toolCall.getClass().getMethod("getName");
-                java.lang.reflect.Method getId = toolCall.getClass().getMethod("getId");
-                java.lang.reflect.Method getArguments = toolCall.getClass().getMethod("getArguments");
-                java.lang.reflect.Method getIndex = toolCall.getClass().getMethod("getIndex");
+        result.setMessage((String) baseFields.getOrDefault("message", ""));
+        result.setPayloadSchema(castMap(baseFields.get("payload_schema")));
+        result.setAutoConfirmKey((String) baseFields.getOrDefault("auto_confirm_key", ""));
+        result.setUiOptions(castList(baseFields.get("ui_options")));
 
-                result.setToolName((String) getName.invoke(toolCall));
-                result.setToolCallId((String) getId.invoke(toolCall));
-                result.setToolArgs(getArguments.invoke(toolCall));
-                result.setIndex((Integer) getIndex.invoke(toolCall));
-            } catch (Exception e) {
-                // Fallback: treat toolCall as string
-                result.setToolName(String.valueOf(toolCall));
+        for (Map.Entry<String, Object> entry : baseFields.entrySet()) {
+            if (!isBaseField(entry.getKey())) {
+                result.putExtraField(entry.getKey(), entry.getValue());
             }
         }
 
+        result.setToolName(stringValue(readAttribute(toolCall, "name"), toolCall));
+        result.setToolCallId(stringValue(readAttribute(toolCall, "id"), ""));
+        result.setToolArgs(readAttribute(toolCall, "arguments"));
+        Object indexValue = readAttribute(toolCall, "index");
+        if (indexValue instanceof Number) {
+            result.setIndex(((Number) indexValue).intValue());
+        }
         return result;
+    }
+
+    private static boolean isBaseField(String key) {
+        return "message".equals(key)
+                || "payload_schema".equals(key)
+                || "auto_confirm_key".equals(key)
+                || "ui_options".equals(key);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        if (value instanceof Map<?, ?>) {
+            return (Map<String, Object>) value;
+        }
+        return new LinkedHashMap<>();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<Map<String, Object>> castList(Object value) {
+        if (value instanceof java.util.List<?>) {
+            return (java.util.List<Map<String, Object>>) value;
+        }
+        return null;
+    }
+
+    private static Object readAttribute(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            return map.get(name);
+        }
+        String capitalized = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        for (String methodName : new String[]{name, "get" + capitalized}) {
+            try {
+                Method method = target.getClass().getMethod(methodName);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        try {
+            Field field = target.getClass().getField(name);
+            return field.get(target);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static String stringValue(Object value, Object fallback) {
+        if (value == null) {
+            return fallback == null ? "" : String.valueOf(fallback);
+        }
+        return String.valueOf(value);
+    }
+
+    public String getToolName() {
+        return toolName;
+    }
+
+    public void setToolName(String toolName) {
+        this.toolName = toolName == null ? "" : toolName;
+    }
+
+    public String getToolCallId() {
+        return toolCallId;
+    }
+
+    public void setToolCallId(String toolCallId) {
+        this.toolCallId = toolCallId == null ? "" : toolCallId;
+    }
+
+    public Object getToolArgs() {
+        return toolArgs;
+    }
+
+    public void setToolArgs(Object toolArgs) {
+        this.toolArgs = toolArgs;
+    }
+
+    public Integer getIndex() {
+        return index;
+    }
+
+    public void setIndex(Integer index) {
+        this.index = index;
     }
 }

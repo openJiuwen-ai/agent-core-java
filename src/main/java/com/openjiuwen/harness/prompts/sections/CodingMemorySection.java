@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.prompts.sections;
@@ -10,10 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Coding Memory prompt section builder for DeepAgent.
- * <p>
- * Mirrors Python's {@code coding_memory} in
- * {@code openjiuwen.harness.prompts.sections.coding_memory}.
+ * Coding memory prompt section helpers.
+ *
+ * <p>Mirrors Python's {@code build_coding_memory_section} in
+ * {@code openjiuwen/harness/prompts/sections/coding_memory.py}.</p>
  */
 public final class CodingMemorySection {
 
@@ -185,5 +185,9 @@ public final class CodingMemorySection {
         contentMap.put(language, content);
 
         return new PromptSection(SectionName.MEMORY, contentMap, 85);
+    }
+
+    public static PromptSection buildCodingMemorySection(String language, boolean readOnly, String memoryDir) {
+        return build(language, readOnly, memoryDir);
     }
 }

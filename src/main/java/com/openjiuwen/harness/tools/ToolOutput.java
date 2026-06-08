@@ -4,11 +4,12 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
- * Simple tool output wrapper for harness tools.
- *
- * <p>Java-side supporting type for the migration of Python harness tools such
- * as those in {@code openjiuwen.harness.tools.base_tool} and related modules.
+ * Mirrors Python's {@code ToolOutput} in
+ * {@code openjiuwen/harness/tools/base_tool.py}.
  */
 public class ToolOutput {
 
@@ -16,7 +17,12 @@ public class ToolOutput {
     private final Object data;
     private final String error;
 
-    public ToolOutput(boolean success, Object data, String error) {
+    @JsonCreator
+    public ToolOutput(
+            @JsonProperty("success") boolean success,
+            @JsonProperty("data") Object data,
+            @JsonProperty("error") String error
+    ) {
         this.success = success;
         this.data = data;
         this.error = error;
@@ -26,15 +32,23 @@ public class ToolOutput {
         return success;
     }
 
-    public boolean getSuccess() {
-        return success;
-    }
-
     public Object getData() {
         return data;
     }
 
     public String getError() {
         return error;
+    }
+
+    public static ToolOutput of(boolean success, Object data, String error) {
+        return new ToolOutput(success, data, error);
+    }
+
+    public static ToolOutput success(Object data) {
+        return new ToolOutput(true, data, null);
+    }
+
+    public static ToolOutput failure(String error) {
+        return new ToolOutput(false, null, error);
     }
 }

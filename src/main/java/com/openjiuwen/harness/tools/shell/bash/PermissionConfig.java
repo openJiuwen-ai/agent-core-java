@@ -9,35 +9,21 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Configuration for the permission pipeline.
- *
- * <p>Mirrors Python's PermissionConfig in
- * {@code openjiuwen.harness.tools.shell.bash._permission}.
+ * Mirrors Python's {@code PermissionConfig} in
+ * {@code openjiuwen/harness/tools/shell/bash/_permission.py}.
  */
 public class PermissionConfig {
 
-    private PermissionMode mode;
-    private List<Pattern> denyPatterns;
-    private List<Pattern> allowPatterns;
-
-    public PermissionConfig() {
-        this.mode = PermissionMode.AUTO;
-        this.denyPatterns = new ArrayList<>();
-        this.allowPatterns = new ArrayList<>();
-    }
-
-    public PermissionConfig(PermissionMode mode, List<Pattern> denyPatterns, List<Pattern> allowPatterns) {
-        this.mode = mode;
-        this.denyPatterns = denyPatterns != null ? denyPatterns : new ArrayList<>();
-        this.allowPatterns = allowPatterns != null ? allowPatterns : new ArrayList<>();
-    }
+    private PermissionMode mode = PermissionMode.AUTO;
+    private List<Pattern> denyPatterns = new ArrayList<>();
+    private List<Pattern> allowPatterns = new ArrayList<>();
 
     public PermissionMode getMode() {
         return mode;
     }
 
     public void setMode(PermissionMode mode) {
-        this.mode = mode;
+        this.mode = mode == null ? PermissionMode.AUTO : mode;
     }
 
     public List<Pattern> getDenyPatterns() {
@@ -45,7 +31,7 @@ public class PermissionConfig {
     }
 
     public void setDenyPatterns(List<Pattern> denyPatterns) {
-        this.denyPatterns = denyPatterns != null ? denyPatterns : new ArrayList<>();
+        this.denyPatterns = denyPatterns == null ? new ArrayList<>() : new ArrayList<>(denyPatterns);
     }
 
     public List<Pattern> getAllowPatterns() {
@@ -53,16 +39,16 @@ public class PermissionConfig {
     }
 
     public void setAllowPatterns(List<Pattern> allowPatterns) {
-        this.allowPatterns = allowPatterns != null ? allowPatterns : new ArrayList<>();
+        this.allowPatterns = allowPatterns == null ? new ArrayList<>() : new ArrayList<>(allowPatterns);
     }
 
     public static List<Pattern> compilePatterns(List<String> raw) {
-        if (raw == null || raw.isEmpty()) {
-            return new ArrayList<>();
-        }
         List<Pattern> patterns = new ArrayList<>();
-        for (String p : raw) {
-            patterns.add(Pattern.compile(p, Pattern.CASE_INSENSITIVE));
+        if (raw == null) {
+            return patterns;
+        }
+        for (String value : raw) {
+            patterns.add(Pattern.compile(value, Pattern.CASE_INSENSITIVE));
         }
         return patterns;
     }

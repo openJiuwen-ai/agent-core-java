@@ -11,11 +11,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Represents a task plan with goal and tasks.
- * Mirrors Python's TaskPlan schema.
+ * Structured task plan for the outer task loop.
+ *
+ * <p>Mirrors Python's {@code TaskPlan} in
+ * {@code openjiuwen/harness/schema/task.py}.
  */
 public class TaskPlan {
-    
+
     private String goal;
     private final List<TodoItem> tasks;
     private String currentTaskId;
@@ -27,17 +29,17 @@ public class TaskPlan {
     public TaskPlan(String goal) {
         this(goal, List.of(), null);
     }
-    
+
     public TaskPlan(String goal, List<TodoItem> tasks) {
         this(goal, tasks, null);
     }
 
     public TaskPlan(String goal, List<TodoItem> tasks, String currentTaskId) {
         this.goal = goal == null ? "" : goal;
-        this.tasks = tasks != null ? new ArrayList<>(tasks) : new ArrayList<>();
+        this.tasks = tasks == null ? new ArrayList<>() : new ArrayList<>(tasks);
         this.currentTaskId = currentTaskId;
     }
-    
+
     public String getGoal() {
         return goal;
     }
@@ -45,7 +47,7 @@ public class TaskPlan {
     public void setGoal(String goal) {
         this.goal = goal == null ? "" : goal;
     }
-    
+
     public List<TodoItem> getTasks() {
         return tasks;
     }
@@ -136,7 +138,26 @@ public class TaskPlan {
         long done = tasks.stream().filter(task -> task.getStatus() == TodoStatus.COMPLETED).count();
         return done + "/" + tasks.size() + " completed";
     }
-    
+
+    public String toMarkdown() {
+        List<String> lines = new ArrayList<>();
+        lines.add("## Goal: " + goal);
+        lines.add("");
+        for (TodoItem task : tasks) {
+            String mark = switch (task.getStatus()) {
+                case COMPLETED -> "\u221a";
+                case IN_PROGRESS -> ">";
+                case CANCELLED -> "\u00d7";
+                default -> " ";
+            };
+            String suffix = task.getResultSummary() == null || task.getResultSummary().isEmpty()
+                    ? ""
+                    : " \u2014 " + task.getResultSummary();
+            lines.add("- [" + mark + "] " + task.getContent() + suffix);
+        }
+        return String.join("\n", lines);
+    }
+
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("goal", goal);
@@ -144,13 +165,13 @@ public class TaskPlan {
         map.put("current_task_id", currentTaskId);
         return map;
     }
-    
-    @SuppressWarnings("unchecked")
+
     public static TaskPlan fromMap(Map<String, Object> map) {
         if (map == null || map.isEmpty()) {
             return new TaskPlan();
         }
-        String goal = map.get("goal") != null ? String.valueOf(map.get("goal")) : "";
+
+        String goal = map.get("goal") == null ? "" : String.valueOf(map.get("goal"));
         List<TodoItem> tasks = new ArrayList<>();
         Object rawTasks = map.get("tasks");
         if (rawTasks instanceof Iterable<?> items) {
@@ -166,9 +187,8 @@ public class TaskPlan {
                 }
             }
         }
-        String currentTaskId = map.get("current_task_id") != null
-                ? String.valueOf(map.get("current_task_id"))
-                : null;
+
+        String currentTaskId = map.get("current_task_id") == null ? null : String.valueOf(map.get("current_task_id"));
         return new TaskPlan(goal, tasks, currentTaskId);
     }
 }

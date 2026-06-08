@@ -4,91 +4,102 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.schemas;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Standard MDP data unit used by the training framework.
- * <p>
- * Represents one (input, output, reward) triple at token level
- * after tokenisation.
- * <p>
- * Mirrors Python's {@code RolloutWithReward} in
- * {@code openjiuwen.agent_evolving.agent_rl.schemas}.
+ *
+ * <p>Mirrors Python's {@code RolloutWithReward} in
+ * {@code openjiuwen/agent_evolving/agent_rl/schemas.py}.</p>
  */
 public class RolloutWithReward {
 
+    @JsonProperty("turn_id")
     private Integer turnId;
+
+    @JsonProperty("task_id")
     private String taskId;
+
+    @JsonProperty("rollout_id")
     private String rolloutId;
+
+    @JsonProperty("input_prompt_ids")
     private List<Integer> inputPromptIds = new ArrayList<>();
+
+    @JsonProperty("output_response_ids")
     private List<Integer> outputResponseIds = new ArrayList<>();
+
     private Double reward;
+
+    @JsonProperty("n_turns")
     private Integer nTurns;
-    private List<Integer> lossMask; // Per-token loss mask for whole-trajectory mode
 
-    public RolloutWithReward() {
+    @JsonProperty("loss_mask")
+    private List<Integer> lossMask;
+
+    public Integer getTurnId() {
+        return turnId;
     }
 
-    public RolloutWithReward(List<Integer> inputPromptIds, List<Integer> outputResponseIds) {
-        this.inputPromptIds = inputPromptIds != null ? new ArrayList<>(inputPromptIds) : new ArrayList<>();
-        this.outputResponseIds = outputResponseIds != null ? new ArrayList<>(outputResponseIds) : new ArrayList<>();
-    }
-    
-    /**
-     * Full constructor for RolloutWithReward.
-     */
-    public RolloutWithReward(Integer turnId, String taskId, String rolloutId, 
-                            List<Integer> inputPromptIds, List<Integer> outputResponseIds,
-                            Double reward, Integer nTurns) {
+    public void setTurnId(Integer turnId) {
         this.turnId = turnId;
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
         this.taskId = taskId;
+    }
+
+    public String getRolloutId() {
+        return rolloutId;
+    }
+
+    public void setRolloutId(String rolloutId) {
         this.rolloutId = rolloutId;
+    }
+
+    public List<Integer> getInputPromptIds() {
+        return inputPromptIds;
+    }
+
+    public void setInputPromptIds(List<Integer> inputPromptIds) {
         this.inputPromptIds = inputPromptIds != null ? new ArrayList<>(inputPromptIds) : new ArrayList<>();
+    }
+
+    public List<Integer> getOutputResponseIds() {
+        return outputResponseIds;
+    }
+
+    public void setOutputResponseIds(List<Integer> outputResponseIds) {
         this.outputResponseIds = outputResponseIds != null ? new ArrayList<>(outputResponseIds) : new ArrayList<>();
+    }
+
+    public Double getReward() {
+        return reward;
+    }
+
+    public void setReward(Double reward) {
         this.reward = reward;
+    }
+
+    public Integer getNTurns() {
+        return nTurns;
+    }
+
+    public void setNTurns(Integer nTurns) {
         this.nTurns = nTurns;
     }
 
-    // Getters and setters
-    public Integer getTurnId() { return turnId; }
-    public void setTurnId(Integer turnId) { this.turnId = turnId; }
-    public String getTaskId() { return taskId; }
-    public void setTaskId(String taskId) { this.taskId = taskId; }
-    public String getRolloutId() { return rolloutId; }
-    public void setRolloutId(String rolloutId) { this.rolloutId = rolloutId; }
-    public List<Integer> getInputPromptIds() { return inputPromptIds; }
-    public void setInputPromptIds(List<Integer> inputPromptIds) { 
-        this.inputPromptIds = inputPromptIds != null ? new ArrayList<>(inputPromptIds) : new ArrayList<>(); 
-    }
-    public List<Integer> getOutputResponseIds() { return outputResponseIds; }
-    public void setOutputResponseIds(List<Integer> outputResponseIds) { 
-        this.outputResponseIds = outputResponseIds != null ? new ArrayList<>(outputResponseIds) : new ArrayList<>(); 
-    }
-    public Double getReward() { return reward; }
-    public void setReward(Double reward) { this.reward = reward; }
-    public Integer getNTurns() { return nTurns; }
-    public void setNTurns(Integer nTurns) { this.nTurns = nTurns; }
-    public List<Integer> getLossMask() { return lossMask; }
-    public void setLossMask(List<Integer> lossMask) { 
-        this.lossMask = lossMask != null ? new ArrayList<>(lossMask) : null; 
+    public List<Integer> getLossMask() {
+        return lossMask;
     }
 
-    /**
-     * Check if this is a positive rollout (reward > 0).
-     * 
-     * @return true if reward > 0
-     */
-    public boolean isPositive() {
-        return reward != null && reward > 0;
-    }
-
-    /**
-     * Get total token count (input + output).
-     * 
-     * @return Total token count
-     */
-    public int getTotalTokenCount() {
-        return inputPromptIds.size() + outputResponseIds.size();
+    public void setLossMask(List<Integer> lossMask) {
+        this.lossMask = lossMask != null ? new ArrayList<>(lossMask) : null;
     }
 }

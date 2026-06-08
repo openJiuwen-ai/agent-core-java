@@ -42,10 +42,8 @@ class JudgeScorerTest {
     @Test
     void scoreRetriesLengthSanitizesPromptAndDropsInternalFields() {
         FakeJudgeClient client = new FakeJudgeClient(List.of(
-                new GatewayHttpResponse(200, "{\"choices\":[{\"finish_reason\":\"length\","
-                        + "\"message\":{\"content\":\"<tag>bad</tag>\"}}]}"),
-                new GatewayHttpResponse(200, "{\"choices\":[{\"finish_reason\":\"stop\","
-                        + "\"message\":{\"content\":\"{\\\"overall\\\": 8, \\\"reason\\\": \\\"ok\\\"}\"}}]}")
+                new GatewayHttpResponse(200, "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":\"<tag>bad</tag>\"}}]}"),
+                new GatewayHttpResponse(200, "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"{\\\"overall\\\": 8, \\\"reason\\\": \\\"ok\\\"}\"}}]}")
         ));
         JudgeScorer scorer = new JudgeScorer(
                 "http://judge.local/",
@@ -58,13 +56,7 @@ class JudgeScorerTest {
                 client
         );
 
-        Map<String, Object> result = scorer.score(
-                "<tag>resp</tag>",
-                "<tool_call>plan</tool_call>",
-                "next",
-                "",
-                0
-        ).join();
+        Map<String, Object> result = scorer.score("<tag>resp</tag>", "<tool_call>plan</tool_call>", "next", "", 0).join();
 
         assertEquals(8.0, ((Number) result.get("overall_raw")).doubleValue());
         assertFalse(result.containsKey("model"));

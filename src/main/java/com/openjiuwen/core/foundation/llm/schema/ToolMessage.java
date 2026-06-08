@@ -12,10 +12,11 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.util.Map;
+
 /**
- * Tool response message in an LLM conversation.
- * <p>
- * Mirrors Python's {@code ToolMessage} model.
+ * Mirrors Python's {@code ToolMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
 @Data
 @SuperBuilder
@@ -25,28 +26,14 @@ import lombok.experimental.SuperBuilder;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolMessage extends BaseMessage {
 
-    /** The ID of the tool call this message is responding to. */
     @JsonProperty("tool_call_id")
     private String toolCallId;
 
-    /**
-     * Creates a tool message with the given content and tool call ID.
-     *
-     * @param content   the message content
-     * @param toolCallId the ID of the tool call this message is responding to
-     */
     public ToolMessage(String content, String toolCallId) {
         super("tool", content);
         this.toolCallId = toolCallId;
     }
 
-    /**
-     * Creates a tool message with the given content, tool call ID, and name.
-     *
-     * @param content   the message content
-     * @param toolCallId the ID of the tool call this message is responding to
-     * @param name      the sender name
-     */
     public ToolMessage(String content, String toolCallId, String name) {
         this(content, toolCallId);
         setName(name);
@@ -54,7 +41,22 @@ public class ToolMessage extends BaseMessage {
 
     @Override
     public String getRole() {
-        String r = super.getRole();
-        return r != null ? r : "tool";
+        String value = super.getRole();
+        return value != null ? value : "tool";
+    }
+
+    @Override
+    public Map<String, Object> modelDump() {
+        Map<String, Object> result = super.modelDump();
+        result.put("role", getRole());
+        if (toolCallId != null) {
+            result.put("tool_call_id", toolCallId);
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> model_dump() {
+        return modelDump();
     }
 }

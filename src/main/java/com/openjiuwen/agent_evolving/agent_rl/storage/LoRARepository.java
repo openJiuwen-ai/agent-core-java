@@ -5,9 +5,12 @@ package com.openjiuwen.agent_evolving.agent_rl.storage;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -21,18 +24,19 @@ import java.util.regex.Pattern;
 
 /**
  * LoRA repository for model adaptation storage.
- * <p>
- * Mirrors Python's {@code LoRARepository} and {@code LoRAVersion} in
- * {@code openjiuwen.agent_evolving.agent_rl.storage.lora_repo}.
+ *
+ * <p>Mirrors Python's {@code LoRARepository} and {@code LoRAVersion} in
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/lora_repo.py}.
  */
 public class LoRARepository {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
     private static final Pattern VERSION_RE = Pattern.compile("^v(\\d+)$");
-    
+
     private final Path repoPath;
-    
+
     public LoRARepository(String repoPath) {
         this.repoPath = repoPath != null ? Paths.get(repoPath) : Paths.get("lora_repo");
         try {
@@ -156,11 +160,11 @@ public class LoRARepository {
         }
         return versions;
     }
-    
+
     /**
      * Backward-compatible adapter save helper.
-     * <p>
-     * String and Path values are treated as LoRA artifact paths. Other values
+     *
+     * <p>String and Path values are treated as LoRA artifact paths. Other values
      * are persisted as a small text payload under a new version directory.
      */
     public void saveAdapter(String adapterName, Object adapter) {
@@ -181,14 +185,14 @@ public class LoRARepository {
             throw new IllegalStateException("Unable to save adapter " + adapterName, exception);
         }
     }
-    
+
     /**
      * Backward-compatible adapter load helper.
      */
     public Object loadAdapter(String adapterName) {
         return getLatest(adapterName).<Object>map(LoRAVersion::path).orElse(null);
     }
-    
+
     /**
      * List users with at least one adapter version.
      */
@@ -207,7 +211,7 @@ public class LoRARepository {
             return new ArrayList<>();
         }
     }
-    
+
     /**
      * Get repository path.
      */
@@ -230,14 +234,22 @@ public class LoRARepository {
                     if (Files.isDirectory(child)) {
                         throw new IOException("Nested LoRA artifact directories are not copied: " + child);
                     }
-                    Files.copy(child, versionDir.resolve(child.getFileName()), StandardCopyOption.REPLACE_EXISTING,
-                            StandardCopyOption.COPY_ATTRIBUTES);
+                    Files.copy(
+                            child,
+                            versionDir.resolve(child.getFileName()),
+                            StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.COPY_ATTRIBUTES
+                    );
                 }
             }
             return;
         }
-        Files.copy(source, versionDir.resolve(source.getFileName()), StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.COPY_ATTRIBUTES);
+        Files.copy(
+                source,
+                versionDir.resolve(source.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.COPY_ATTRIBUTES
+        );
     }
 
     private static void updateLatest(Path userDir, String version) throws IOException {

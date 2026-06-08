@@ -4,148 +4,129 @@
 
 package com.openjiuwen.harness.security;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
+import java.util.concurrent.CompletionStage;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
- * Host injection for permission system: permission snapshot, host-side confirmation,
- * persistence, and workspace path resolution.
+ * Host-injected permission coordination hooks.
  *
- * <p>Injected by Agent service or CLI when constructing DeepAgent / PermissionInterruptRail.
- *
- * <p>Mirrors Python's {@code ToolPermissionHost} in
- * {@code openjiuwen.harness.security.host}.
+ * <p>Mirrors Python's {@code openjiuwen/harness/security/host.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ToolPermissionHost {
+public final class ToolPermissionHost {
 
-    /**
-     * Returns a dict with the same structure as config['permissions'],
-     * used for hot-syncing disk configuration.
-     */
-    private Supplier<Map<String, Object>> getPermissionsSnapshot;
-
-    /**
-     * Custom "always allow" write to disk.
-     * Input is the merged permissions dict (with external_directory etc.).
-     * Returns false to trigger rollback of memory config.
-     * When unset, uses writePermissionsSectionToAgentConfigYaml.
-     */
-    private Function<Map<String, Object>, Boolean> persistAllowRule;
-
-    /**
-     * Workspace root directory for external path validation.
-     */
-    private Supplier<Path> resolveWorkspaceDir;
-
-    /**
-     * Agent config file path; used for permission section persistence.
-     * File may not exist, but parent directory must exist.
-     */
+    private Supplier<Map<String, Object>> permissionsSnapshotSupplier;
+    private PersistAllowRuleHook persistAllowRuleHook;
+    private Supplier<Path> workspaceDirResolver;
     private Path permissionYamlPath;
+    private BooleanSupplier toolPermissionChecksActiveSupplier;
+    private RequestPermissionConfirmationHook requestPermissionConfirmationHook;
+    private PermissionSceneHook permissionSceneHook;
 
-    /**
-     * Whether permission checks are active.
-     * When false, all tool calls pass without permission checks.
-     */
-    private Supplier<Boolean> toolPermissionChecksActive;
-
-    /**
-     * Host scene hook: intercept before generic tiered evaluation (e.g., digital twin / owner_scopes).
-     * Returns null to continue tiered evaluation;
-     * returns "approve" to approve directly;
-     * returns "reject" with message to deny.
-     */
-    private Function<PermissionSceneHookInput, CompletableFuture<SceneHookOutput>> permissionSceneHook;
-
-    /**
-     * Request user confirmation for PermissionLevel.ASK.
-     * Returns PermissionConfirmResponse (same semantics as internal interrupt recovery);
-     * returns "interrupt" to fallback to internal ConfirmInterrupt flow;
-     * returns null when host confirmation failed (tool call will be rejected).
-     */
-    private Function<PermissionConfirmationRequest, CompletableFuture<ConfirmationResult>> requestPermissionConfirmation;
-
-    /**
-     * Result types for hooks.
-     */
-    public enum ConfirmationResultType {
-        RESPONSE,
-        INTERRUPT,
-        FAILED
+    public Supplier<Map<String, Object>> getPermissionsSnapshotSupplier() {
+        return permissionsSnapshotSupplier;
     }
 
-    /**
-     * Confirmation result wrapper.
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ConfirmationResult {
-        private ConfirmationResultType type;
-        private PermissionConfirmResponse response;
-
-        public static ConfirmationResult response(PermissionConfirmResponse response) {
-            return ConfirmationResult.builder()
-                    .type(ConfirmationResultType.RESPONSE)
-                    .response(response)
-                    .build();
-        }
-
-        public static ConfirmationResult interrupt() {
-            return ConfirmationResult.builder()
-                    .type(ConfirmationResultType.INTERRUPT)
-                    .build();
-        }
-
-        public static ConfirmationResult failed() {
-            return ConfirmationResult.builder()
-                    .type(ConfirmationResultType.FAILED)
-                    .build();
-        }
+    public void setPermissionsSnapshotSupplier(Supplier<Map<String, Object>> permissionsSnapshotSupplier) {
+        this.permissionsSnapshotSupplier = permissionsSnapshotSupplier;
     }
 
-    /**
-     * Scene hook output wrapper.
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class SceneHookOutput {
-        private String action; // "approve" or "reject"
-        private String message;
-
-        public static SceneHookOutput approve() {
-            return SceneHookOutput.builder()
-                    .action("approve")
-                    .build();
-        }
-
-        public static SceneHookOutput reject(String message) {
-            return SceneHookOutput.builder()
-                    .action("reject")
-                    .message(message != null ? message : "[PERMISSION_DENIED]")
-                    .build();
-        }
+    public PersistAllowRuleHook getPersistAllowRuleHook() {
+        return persistAllowRuleHook;
     }
 
-    /**
-     * Create a default host with no hooks.
-     */
-    public static ToolPermissionHost defaultHost() {
-        return ToolPermissionHost.builder().build();
+    public void setPersistAllowRuleHook(PersistAllowRuleHook persistAllowRuleHook) {
+        this.persistAllowRuleHook = persistAllowRuleHook;
+    }
+
+    public Supplier<Path> getWorkspaceDirResolver() {
+        return workspaceDirResolver;
+    }
+
+    public void setWorkspaceDirResolver(Supplier<Path> workspaceDirResolver) {
+        this.workspaceDirResolver = workspaceDirResolver;
+    }
+
+    public Path getPermissionYamlPath() {
+        return permissionYamlPath;
+    }
+
+    public void setPermissionYamlPath(Path permissionYamlPath) {
+        this.permissionYamlPath = permissionYamlPath;
+    }
+
+    public BooleanSupplier getToolPermissionChecksActiveSupplier() {
+        return toolPermissionChecksActiveSupplier;
+    }
+
+    public void setToolPermissionChecksActiveSupplier(BooleanSupplier toolPermissionChecksActiveSupplier) {
+        this.toolPermissionChecksActiveSupplier = toolPermissionChecksActiveSupplier;
+    }
+
+    public RequestPermissionConfirmationHook getRequestPermissionConfirmationHook() {
+        return requestPermissionConfirmationHook;
+    }
+
+    public void setRequestPermissionConfirmationHook(
+            RequestPermissionConfirmationHook requestPermissionConfirmationHook
+    ) {
+        this.requestPermissionConfirmationHook = requestPermissionConfirmationHook;
+    }
+
+    public PermissionSceneHook getPermissionSceneHook() {
+        return permissionSceneHook;
+    }
+
+    public void setPermissionSceneHook(PermissionSceneHook permissionSceneHook) {
+        this.permissionSceneHook = permissionSceneHook;
+    }
+
+    public record PermissionSceneHookInput(
+            Object ctx,
+            Object toolCall,
+            Object userInput,
+            String normalizedToolName,
+            Map<String, Object> toolArgs,
+            Object engine
+    ) {
+    }
+
+    public record PermissionSceneDecision(String action, String message) {
+    }
+
+    public record PermissionConfirmationRequest(
+            Object ctx,
+            Object toolCall,
+            PermissionResult result,
+            String autoConfirmKey
+    ) {
+    }
+
+    public sealed interface PermissionConfirmationResult
+            permits InterruptPermissionConfirmationResult, PermissionConfirmResponseWrapper {
+    }
+
+    public record InterruptPermissionConfirmationResult() implements PermissionConfirmationResult {
+    }
+
+    public record PermissionConfirmResponseWrapper(PermissionConfirmResponse response)
+            implements PermissionConfirmationResult {
+    }
+
+    @FunctionalInterface
+    public interface PermissionSceneHook {
+        CompletionStage<PermissionSceneDecision> apply(PermissionSceneHookInput input);
+    }
+
+    @FunctionalInterface
+    public interface RequestPermissionConfirmationHook {
+        CompletionStage<PermissionConfirmationResult> apply(PermissionConfirmationRequest request);
+    }
+
+    @FunctionalInterface
+    public interface PersistAllowRuleHook {
+        boolean apply(Map<String, Object> permissions);
     }
 }

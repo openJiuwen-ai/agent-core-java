@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Verl Trainer Hydra overlay configuration.
  * <p>
  * Mirrors Python's {@code VerlTrainerHydraOverlay} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class VerlTrainerHydraOverlay {
 

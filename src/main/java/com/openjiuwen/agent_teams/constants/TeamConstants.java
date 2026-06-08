@@ -9,8 +9,8 @@ import java.util.Set;
 /**
  * Module-wide constants for Java agent teams.
  *
- * <p>Mirrors Python's constants in
- * {@code openjiuwen.agent_teams.constants}.
+ * <p>Mirrors Python's {@code openjiuwen.agent_teams.constants} in
+ * {@code openjiuwen/agent_teams/constants.py}.
  */
 public final class TeamConstants {
 

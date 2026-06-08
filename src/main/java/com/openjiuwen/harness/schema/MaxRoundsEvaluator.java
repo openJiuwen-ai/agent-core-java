@@ -5,12 +5,10 @@
 package com.openjiuwen.harness.schema;
 
 /**
- * Stop after a fixed number of completed outer-loop rounds.
- *
- * <p>Mirrors Python's {@code MaxRoundsEvaluator} in
- * {@code openjiuwen.harness.schema.stop_condition}.
+ * Mirrors Python's {@code MaxRoundsEvaluator} in
+ * {@code openjiuwen/harness/schema/stop_condition.py}.
  */
-public class MaxRoundsEvaluator implements StopConditionEvaluator {
+public final class MaxRoundsEvaluator implements StopConditionEvaluator {
 
     private final int maxRounds;
 
@@ -19,12 +17,7 @@ public class MaxRoundsEvaluator implements StopConditionEvaluator {
     }
 
     @Override
-    public String getName() {
-        return getClass().getSimpleName();
-    }
-
-    @Override
     public boolean shouldStop(StopEvaluationContext ctx) {
-        return ctx != null && ctx.getIteration() >= maxRounds;
+        return ctx.getIteration() >= maxRounds;
     }
 }

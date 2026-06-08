@@ -7,22 +7,20 @@ package com.openjiuwen.core.foundation.llm.schema;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Assistant message from LLM response, with optional tool calls and metadata.
- * <p>
- * Mirrors Python's {@code AssistantMessage} model. Handles conversion between
- * OpenAI nested format and flat {@link ToolCall} format during deserialization.
+ * Mirrors Python's {@code AssistantMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
 @Data
 @SuperBuilder
@@ -32,14 +30,14 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessage extends BaseMessage {
 
-    @JsonProperty("tool_calls")
     private List<ToolCall> toolCalls;
 
     @JsonProperty("usage_metadata")
     private UsageMetadata usageMetadata;
 
+    @Builder.Default
     @JsonProperty("finish_reason")
-    private String finishReason;
+    private String finishReason = "null";
 
     @JsonProperty("parser_content")
     private Object parserContent;
@@ -47,13 +45,15 @@ public class AssistantMessage extends BaseMessage {
     @JsonProperty("reasoning_content")
     private String reasoningContent;
 
-    // ==================== Constructors ====================
+    @JsonProperty("prompt_token_ids")
+    private List<Integer> promptTokenIds;
 
-    /**
-     * Create an assistant message with string content.
-     *
-     * @param content the message content
-     */
+    @JsonProperty("completion_token_ids")
+    private List<Integer> completionTokenIds;
+
+    @JsonProperty("logprobs")
+    private Object logprobs;
+
     public AssistantMessage(String content) {
         super("assistant", content);
         this.finishReason = "null";
@@ -61,77 +61,41 @@ public class AssistantMessage extends BaseMessage {
 
     @Override
     public String getRole() {
-        String r = super.getRole();
-        return r != null ? r : "assistant";
+        String value = super.getRole();
+        return value != null ? value : "assistant";
     }
 
-    // ==================== OpenAI Format Conversion ====================
-
-    /**
-     * Convert OpenAI API nested tool_calls format to flat {@link ToolCall} format.
-     * <p>
-     * OpenAI format: {@code {"id":"xxx","type":"function","function":{"name":"...","arguments":"..."}}}
-     * <br>
-     * Flat format: {@code {"id":"xxx","type":"function","name":"...","arguments":"..."}}
-     *
-     * @param rawToolCalls list of raw tool call maps from API
-     * @return list of converted {@link ToolCall} instances
-     */
     public static List<ToolCall> convertOpenAiToolCalls(List<Map<String, Object>> rawToolCalls) {
-        if (rawToolCalls == null || rawToolCalls.isEmpty()) {
-            return null;
-        }
-        List<ToolCall> result = new ArrayList<>();
-        for (Map<String, Object> tc : rawToolCalls) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> function = (Map<String, Object>) tc.get("function");
-            if (function != null) {
-                result.add(ToolCall.builder()
-                        .id((String) tc.get("id"))
-                        .type((String) tc.getOrDefault("type", "function"))
-                        .name((String) function.getOrDefault("name", ""))
-                        .arguments((String) function.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : null)
-                        .build());
-            } else {
-                result.add(ToolCall.builder()
-                        .id((String) tc.get("id"))
-                        .type((String) tc.getOrDefault("type", "function"))
-                        .name((String) tc.getOrDefault("name", ""))
-                        .arguments((String) tc.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : null)
-                        .build());
-            }
-        }
-        return result;
+        return normalizeToolCalls(rawToolCalls);
     }
 
-    /**
-     * Convert this message to OpenAI-compatible dict format for API requests.
-     *
-     * @return a map containing the message in API format
-     */
-    public Map<String, Object> toApiFormat() {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("role", getRole());
-        result.put("content", getContent());
+    @JsonProperty("tool_calls")
+    public void setToolCallsRaw(List<?> rawToolCalls) {
+        this.toolCalls = normalizeToolCalls(rawToolCalls);
+    }
 
+    @Override
+    public Map<String, Object> modelDump() {
+        Map<String, Object> result = super.modelDump();
         if (toolCalls != null && !toolCalls.isEmpty()) {
-            List<Map<String, Object>> toolCallList = new ArrayList<>();
+            List<Map<String, Object>> serializedCalls = new ArrayList<>();
             for (ToolCall call : toolCalls) {
-                Map<String, Object> tcMap = new LinkedHashMap<>();
-                tcMap.put("id", call.getId());
-                tcMap.put("type", call.getType());
-                Map<String, String> fnMap = new LinkedHashMap<>();
-                fnMap.put("name", call.getName());
-                fnMap.put("arguments", call.getArguments());
-                tcMap.put("function", fnMap);
-                toolCallList.add(tcMap);
+                Map<String, Object> callMap = new LinkedHashMap<>();
+                callMap.put("id", call.getId());
+                callMap.put("type", call.getType());
+                Map<String, Object> functionMap = new LinkedHashMap<>();
+                functionMap.put("name", call.getName());
+                functionMap.put("arguments", call.getArguments());
+                callMap.put("function", functionMap);
+                if (call.getIndex() != null) {
+                    callMap.put("index", call.getIndex());
+                }
+                serializedCalls.add(callMap);
             }
-            result.put("tool_calls", toolCallList);
+            result.put("tool_calls", serializedCalls);
         }
         if (usageMetadata != null) {
-            result.put("usage_metadata", usageMetadata);
+            result.put("usage_metadata", usageMetadata.modelDump());
         }
         if (finishReason != null) {
             result.put("finish_reason", finishReason);
@@ -141,6 +105,63 @@ public class AssistantMessage extends BaseMessage {
         }
         if (reasoningContent != null) {
             result.put("reasoning_content", reasoningContent);
+        }
+        if (promptTokenIds != null) {
+            result.put("prompt_token_ids", promptTokenIds);
+        }
+        if (completionTokenIds != null) {
+            result.put("completion_token_ids", completionTokenIds);
+        }
+        if (logprobs != null) {
+            result.put("logprobs", logprobs);
+        }
+        return result;
+    }
+
+    public Map<String, Object> toApiFormat() {
+        return modelDump();
+    }
+
+    public Map<String, Object> model_dump() {
+        return modelDump();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ToolCall> normalizeToolCalls(List<?> rawToolCalls) {
+        if (rawToolCalls == null || rawToolCalls.isEmpty()) {
+            return null;
+        }
+        List<ToolCall> result = new ArrayList<>();
+        for (Object rawToolCall : rawToolCalls) {
+            if (rawToolCall instanceof ToolCall toolCall) {
+                result.add(toolCall);
+                continue;
+            }
+            if (!(rawToolCall instanceof Map<?, ?> rawMap)) {
+                continue;
+            }
+            Map<String, Object> callMap = new LinkedHashMap<>();
+            rawMap.forEach((key, value) -> callMap.put(String.valueOf(key), value));
+            Object functionValue = callMap.get("function");
+            if (functionValue instanceof Map<?, ?> functionMap) {
+                Map<String, Object> normalizedFunction = new LinkedHashMap<>();
+                functionMap.forEach((key, value) -> normalizedFunction.put(String.valueOf(key), value));
+                result.add(ToolCall.builder()
+                        .id((String) callMap.get("id"))
+                        .type((String) callMap.getOrDefault("type", "function"))
+                        .name((String) normalizedFunction.getOrDefault("name", ""))
+                        .arguments((String) normalizedFunction.getOrDefault("arguments", ""))
+                        .index(callMap.get("index") instanceof Number number ? number.intValue() : null)
+                        .build());
+                continue;
+            }
+            result.add(ToolCall.builder()
+                    .id((String) callMap.get("id"))
+                    .type((String) callMap.getOrDefault("type", "function"))
+                    .name((String) callMap.getOrDefault("name", ""))
+                    .arguments((String) callMap.getOrDefault("arguments", ""))
+                    .index(callMap.get("index") instanceof Number number ? number.intValue() : null)
+                    .build());
         }
         return result;
     }

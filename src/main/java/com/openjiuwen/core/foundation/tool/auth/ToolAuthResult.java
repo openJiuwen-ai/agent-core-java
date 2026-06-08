@@ -4,36 +4,34 @@
 
 package com.openjiuwen.core.foundation.tool.auth;
 
-import java.util.Collections;
-import java.util.HashMap;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Tool authentication result.
- * <p>
- * Mirrors Python's {@code ToolAuthResult} dataclass from
- * <code>foundation/tool/auth/auth.py</code>.
  *
- * @param success   whether authentication was successful
- * @param authData  authentication data (headers, ssl config, credentials, etc.)
- * @param message   authentication message
- * @param error     authentication error, if any
+ * <p>Mirrors Python's {@code ToolAuthResult} in
+ * {@code openjiuwen/core/foundation/tool/auth/auth.py}.
  */
-public class ToolAuthResult {
+public final class ToolAuthResult {
 
     private final boolean success;
     private final Map<String, Object> authData;
     private final String message;
     private final Exception error;
 
-    public ToolAuthResult(boolean success, Map<String, Object> authData, String message) {
-        this(success, authData, message, null);
-    }
-
-    public ToolAuthResult(boolean success, Map<String, Object> authData, String message, Exception error) {
+    @JsonCreator
+    public ToolAuthResult(
+            @JsonProperty("success") boolean success,
+            @JsonProperty("auth_data") Map<String, Object> authData,
+            @JsonProperty("message") String message,
+            @JsonProperty("error") Exception error
+    ) {
         this.success = success;
-        this.authData = authData != null ? new HashMap<>(authData) : new HashMap<>();
-        this.message = message != null ? message : "";
+        this.authData = authData == null ? Map.of() : Map.copyOf(authData);
+        this.message = message == null ? "" : message;
         this.error = error;
     }
 
@@ -42,7 +40,7 @@ public class ToolAuthResult {
     }
 
     public Map<String, Object> getAuthData() {
-        return Collections.unmodifiableMap(authData);
+        return authData;
     }
 
     public String getMessage() {
@@ -51,5 +49,24 @@ public class ToolAuthResult {
 
     public Exception getError() {
         return error;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof ToolAuthResult that)) {
+            return false;
+        }
+        return success == that.success
+                && Objects.equals(authData, that.authData)
+                && Objects.equals(message, that.message)
+                && Objects.equals(error, that.error);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(success, authData, message, error);
     }
 }

@@ -4,23 +4,17 @@
 
 package com.openjiuwen.harness.schema;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Agent mode enum for DeepAgent.
- *
- * <p>DeepAgent operation modes:
- * - PLAN: Read-only planning mode — LLM explores codebase and writes a
- *   plan file before any modifications are made.
- * - NORMAL: Normal execution mode (default).
+ * DeepAgent operation mode.
  *
  * <p>Mirrors Python's {@code AgentMode} in
- * {@code openjiuwen.harness.schema.agent_mode}.
+ * {@code openjiuwen/harness/schema/agent_mode.py}.
  */
 public enum AgentMode {
-
-    /** Read-only planning mode. */
     PLAN("plan"),
-
-    /** Normal execution mode. */
     NORMAL("normal");
 
     private final String value;
@@ -29,15 +23,14 @@ public enum AgentMode {
         this.value = value;
     }
 
-    public String getValue() {
+    @JsonValue
+    public String value() {
         return value;
     }
 
-    /**
-     * Parse from string value.
-     */
+    @JsonCreator
     public static AgentMode fromValue(String value) {
-        if (value == null || value.isEmpty()) {
+        if (value == null || value.isBlank()) {
             return NORMAL;
         }
         for (AgentMode mode : values()) {

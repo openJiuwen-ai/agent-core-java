@@ -4,19 +4,18 @@
 
 package com.openjiuwen.core.runner.drunner.remote_client;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
  * Remote client configuration.
  *
  * <p>Mirrors Python's {@code RemoteClientConfig} in
- * {@code openjiuwen.core.runner.drunner.remote_client.remote_client_config}.
+ * {@code openjiuwen/core/runner/drunner/remote_client/remote_client_config.py}.</p>
  */
 @Data
 @Builder

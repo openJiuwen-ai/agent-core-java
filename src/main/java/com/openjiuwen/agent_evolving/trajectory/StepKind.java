@@ -5,7 +5,8 @@
 package com.openjiuwen.agent_evolving.trajectory;
 
 /**
- * Step kind aligned with Python's trajectory StepKind literal values.
+ * Mirrors Python's {@code StepKind} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.
  */
 public enum StepKind {
     LLM("llm"),

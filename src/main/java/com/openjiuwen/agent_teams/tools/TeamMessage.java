@@ -7,10 +7,10 @@ package com.openjiuwen.agent_teams.tools;
 import java.util.Objects;
 
 /**
- * Base class for team message table (one per session).
+ * Base class for team message tables (one per session).
  * <p>
- * Mirrors Python's {@code TeamMessageBase} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code TeamMessageBase} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class TeamMessage {
 
@@ -27,8 +27,8 @@ public class TeamMessage {
     }
 
     public TeamMessage(String messageId, String teamName, String fromMemberName,
-                       String toMemberName, String content, Long timestamp,
-                       Boolean broadcast, Boolean isRead) {
+            String toMemberName, String content, Long timestamp,
+            Boolean broadcast, Boolean isRead) {
         this.messageId = messageId;
         this.teamName = teamName;
         this.fromMemberName = fromMemberName;
@@ -105,8 +105,12 @@ public class TeamMessage {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof TeamMessage that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof TeamMessage that)) {
+            return false;
+        }
         return Objects.equals(messageId, that.messageId)
                 && Objects.equals(teamName, that.teamName)
                 && Objects.equals(fromMemberName, that.fromMemberName)
@@ -120,20 +124,20 @@ public class TeamMessage {
     @Override
     public int hashCode() {
         return Objects.hash(messageId, teamName, fromMemberName, toMemberName,
-                            content, timestamp, broadcast, isRead);
+                content, timestamp, broadcast, isRead);
     }
 
     @Override
     public String toString() {
-        return "TeamMessage{" +
-                "messageId='" + messageId + '\'' +
-                ", teamName='" + teamName + '\'' +
-                ", fromMemberName='" + fromMemberName + '\'' +
-                ", toMemberName='" + toMemberName + '\'' +
-                ", content='" + content + '\'' +
-                ", timestamp=" + timestamp +
-                ", broadcast=" + broadcast +
-                ", isRead=" + isRead +
-                '}';
+        return "TeamMessage{"
+                + "messageId='" + messageId + '\''
+                + ", teamName='" + teamName + '\''
+                + ", fromMemberName='" + fromMemberName + '\''
+                + ", toMemberName='" + toMemberName + '\''
+                + ", content='" + content + '\''
+                + ", timestamp=" + timestamp
+                + ", broadcast=" + broadcast
+                + ", isRead=" + isRead
+                + '}';
     }
 }

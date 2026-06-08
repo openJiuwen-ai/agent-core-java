@@ -9,31 +9,24 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
 /**
- * IP utility — discovers the local (non-loopback) IPv4 address.
- *
- * <p>Mirrors Python's {@code IpUtils} in
- * {@code openjiuwen.core.common.utils.ip_utils}.
+ * Mirrors Python's {@code openjiuwen.core.common.utils.ip_utils} in
+ * {@code openjiuwen/core/common/utils/ip_utils.py}.
  */
 public final class IpUtils {
+
+    private static final String PROBE_HOST = "8.8.8.8";
+    private static final int PROBE_PORT = 80;
+    private static final String LOOPBACK_IP = "127.0.0.1";
 
     private IpUtils() {
     }
 
-    /**
-     * Get the local available IPv4 address (excluding 127.0.0.1).
-     * <p>
-     * Uses a UDP socket trick: connects a datagram socket to a public address
-     * to reveal the local network interface address.
-     *
-     * @return local IP address string, or "127.0.0.1" on failure
-     */
     public static String getLocalIp() {
-        String defaultIp = AppconfigUtils.getDefaultIp();
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.connect(new InetSocketAddress(InetAddress.getByName(defaultIp), 80));
+            socket.connect(new InetSocketAddress(InetAddress.getByName(PROBE_HOST), PROBE_PORT));
             return socket.getLocalAddress().getHostAddress();
-        } catch (Exception e) {
-            return "127.0.0.1";
+        } catch (Exception ignored) {
+            return LOOPBACK_IP;
         }
     }
 }

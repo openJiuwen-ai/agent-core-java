@@ -4,8 +4,12 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Supported vector store providers.
+ * Mirrors Python's {@code StoreType} in
+ * {@code openjiuwen/core/retrieval/common/config.py}.
  */
 public enum StoreType {
     MILVUS("milvus"),
@@ -18,17 +22,18 @@ public enum StoreType {
         this.value = value;
     }
 
-    public String value() {
+    @JsonValue
+    public String getValue() {
         return value;
     }
 
+    @JsonCreator
     public static StoreType fromValue(String value) {
-        String normalized = RetrievalValidation.validateStoreType(value, "StoreType");
         for (StoreType type : values()) {
-            if (type.value.equals(normalized)) {
+            if (type.value.equals(value)) {
                 return type;
             }
         }
-        throw RetrievalExceptions.validation("unsupported store type: " + value);
+        throw new IllegalArgumentException("Unsupported store provider: " + value);
     }
 }

@@ -5,10 +5,8 @@
 package com.openjiuwen.harness.tools.shell.bash;
 
 /**
- * Bash tool permission enforcement mode.
- *
- * <p>Mirrors Python's PermissionMode in
- * {@code openjiuwen.harness.tools.shell.bash._permission}.
+ * Mirrors Python's {@code PermissionMode} in
+ * {@code openjiuwen/harness/tools/shell/bash/_permission.py}.
  */
 public enum PermissionMode {
     AUTO("auto"),
@@ -22,16 +20,7 @@ public enum PermissionMode {
         this.value = value;
     }
 
-    public String getValue() {
+    public String value() {
         return value;
-    }
-
-    public static PermissionMode fromString(String value) {
-        for (PermissionMode mode : values()) {
-            if (mode.value.equals(value)) {
-                return mode;
-            }
-        }
-        return AUTO;
     }
 }

@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Jiuwen configuration for online RL.
  * <p>
  * Mirrors Python's {@code JiuwenConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class JiuwenConfig {
 

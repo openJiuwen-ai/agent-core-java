@@ -1,10 +1,10 @@
 package com.openjiuwen.auto_harness.infra;
 
-import java.time.Duration;
 import java.util.concurrent.Callable;
 
 /**
- * Mirrors Python's {@code FixLoopController} in {@code openjiuwen.auto_harness.infra.fix_loop}.
+ * Mirrors Python's {@code FixLoopController} in
+ * {@code openjiuwen/auto_harness/infra/fix_loop.py}.
  */
 public class FixLoopController {
 
@@ -20,9 +20,11 @@ public class FixLoopController {
         ReviewResult evaluate() throws Exception;
     }
 
-    public record CiResult(boolean passed, String errors) {}
+    public record CiResult(boolean passed, String errors) {
+    }
 
-    public record ReviewResult(boolean approved) {}
+    public record ReviewResult(boolean approved) {
+    }
 
     private final int phase1MaxRetries;
     private final int phase2MaxRetries;
@@ -62,7 +64,10 @@ public class FixLoopController {
             String errors = ci.errors() == null || ci.errors().isBlank() ? "unknown error" : ci.errors();
             result.getErrorLog().add("Phase 1 attempt " + i + ": " + trim(errors));
             try {
-                withTimeout(() -> { agentFixer.fix(errors); return null; });
+                withTimeout(() -> {
+                    agentFixer.fix(errors);
+                    return null;
+                });
             } catch (Exception e) {
                 result.getErrorLog().add("Phase 1 attempt " + i + ": fixer timeout");
             }
@@ -88,7 +93,10 @@ public class FixLoopController {
             }
             result.getErrorLog().add("Phase 2 attempt " + j + ": evaluator rejected");
             try {
-                withTimeout(() -> { agentFixer.fix("evaluator rejected"); return null; });
+                withTimeout(() -> {
+                    agentFixer.fix("evaluator rejected");
+                    return null;
+                });
             } catch (Exception e) {
                 result.getErrorLog().add("Phase 2 attempt " + j + ": fixer timeout");
             }

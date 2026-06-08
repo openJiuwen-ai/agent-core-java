@@ -11,6 +11,7 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ReMeMemoryMetadata}.
+ * {@code openjiuwen/extensions/context_evolver/schema/io_schema.py}.
  */
 public class ReMeMemoryMetadata {
 

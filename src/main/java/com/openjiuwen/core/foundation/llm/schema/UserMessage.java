@@ -10,9 +10,8 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 /**
- * User message in an LLM conversation.
- * <p>
- * Mirrors Python's {@code UserMessage} model.
+ * Mirrors Python's {@code UserMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
 @Data
 @SuperBuilder
@@ -20,21 +19,10 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class UserMessage extends BaseMessage {
 
-    /**
-     * Creates a user message with the given content.
-     *
-     * @param content the message content
-     */
     public UserMessage(String content) {
         super("user", content);
     }
 
-    /**
-     * Creates a user message with the given content and name.
-     *
-     * @param content the message content
-     * @param name    the sender name
-     */
     public UserMessage(String content, String name) {
         this(content);
         setName(name);
@@ -42,7 +30,7 @@ public class UserMessage extends BaseMessage {
 
     @Override
     public String getRole() {
-        String r = super.getRole();
-        return r != null ? r : "user";
+        String value = super.getRole();
+        return value != null ? value : "user";
     }
 }

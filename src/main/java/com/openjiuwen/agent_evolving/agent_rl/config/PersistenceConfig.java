@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Rollout persistence configuration.
  * <p>
  * Mirrors Python's {@code PersistenceConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class PersistenceConfig {
 
@@ -29,3 +29,4 @@ public class PersistenceConfig {
     public boolean isSaveStepSummaries() { return saveStepSummaries; }
     public void setSaveStepSummaries(boolean saveStepSummaries) { this.saveStepSummaries = saveStepSummaries; }
 }
+

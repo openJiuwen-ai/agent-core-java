@@ -4,41 +4,48 @@
 
 package com.openjiuwen.core.runner.callback;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
- * Base class for event filters.
- * <p>
- * Filters can intercept and modify callback execution before it occurs.
- * Subclass this to create custom filters.
+ * Mirrors Python's {@code EventFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class EventFilter {
 
     private final String name;
 
     public EventFilter() {
-        this.name = getClass().getSimpleName();
+        this("");
     }
 
     public EventFilter(String name) {
-        this.name = (name != null && !name.isEmpty()) ? name : getClass().getSimpleName();
+        this.name = name != null && !name.isEmpty() ? name : getClass().getSimpleName();
     }
 
     public String getName() {
         return name;
     }
 
-    /**
-     * Filter logic to execute before callback.
-     * Override this method to implement custom filtering logic.
-     *
-     * @param event    Event name being processed
-     * @param callback Callback about to be executed
-     * @param args     Positional arguments for callback
-     * @param kwargs   Keyword arguments for callback
-     * @return FilterResult indicating action to take
-     */
-    public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs) {
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
         return FilterResult.continueResult();
+    }
+
+    protected static Object[] safeArgs(Object[] args) {
+        return args == null ? new Object[0] : args.clone();
+    }
+
+    protected static Map<String, Object> safeKwargs(Map<String, Object> kwargs) {
+        return kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
+    }
+
+    protected static String callbackName(Function<Map<String, Object>, Object> callback) {
+        return callback == null ? "<null-callback>" : callback.toString();
     }
 }

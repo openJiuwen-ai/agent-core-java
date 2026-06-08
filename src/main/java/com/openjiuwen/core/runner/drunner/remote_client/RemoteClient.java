@@ -6,17 +6,27 @@ package com.openjiuwen.core.runner.drunner.remote_client;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Remote-client abstraction.
+ *
+ * <p>Mirrors Python's {@code RemoteClient} in
+ * {@code openjiuwen/core/runner/drunner/remote_client/remote_client.py}.</p>
  */
 public interface RemoteClient {
 
-    void start();
+    CompletionStage<Void> start();
 
-    void stop();
+    CompletionStage<Void> stop();
 
-    Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception;
+    boolean isStarted();
 
-    Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception;
+    default boolean isStopped() {
+        return !isStarted();
+    }
+
+    CompletionStage<Map<String, Object>> invoke(Map<String, Object> inputs, Double timeoutSeconds);
+
+    Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds);
 }

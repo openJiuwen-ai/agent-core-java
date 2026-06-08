@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.indexer;
@@ -10,27 +10,36 @@ import com.openjiuwen.core.retrieval.embedding.Embedding;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Index manager abstraction.
+ * Mirrors Python's {@code Indexer} in
+ * {@code openjiuwen/core/retrieval/indexing/indexer/base.py}.
  */
-public interface Indexer extends IndexBackendConfig, AutoCloseable {
+public abstract class Indexer {
 
-    boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel, Map<String, Object> options);
+    public abstract CompletableFuture<Boolean> buildIndex(
+            List<TextChunk> chunks,
+            IndexConfig config,
+            Embedding embedModel,
+            Map<String, Object> kwargs
+    );
 
-    boolean updateIndex(List<TextChunk> chunks,
-                        String docId,
-                        IndexConfig config,
-                        Embedding embedModel,
-                        Map<String, Object> options);
+    public abstract CompletableFuture<Boolean> updateIndex(
+            List<TextChunk> chunks,
+            String docId,
+            IndexConfig config,
+            Embedding embedModel,
+            Map<String, Object> kwargs
+    );
 
-    boolean deleteIndex(String docId, String indexName, Map<String, Object> options);
+    public abstract CompletableFuture<Boolean> deleteIndex(
+            String docId,
+            String indexName,
+            Map<String, Object> kwargs
+    );
 
-    boolean indexExists(String indexName);
+    public abstract CompletableFuture<Boolean> indexExists(String indexName);
 
-    Map<String, Object> getIndexInfo(String indexName);
-
-    @Override
-    default void close() {
-    }
+    public abstract CompletableFuture<Map<String, Object>> getIndexInfo(String indexName);
 }

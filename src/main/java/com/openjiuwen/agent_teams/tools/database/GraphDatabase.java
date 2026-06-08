@@ -4,69 +4,60 @@
 
 package com.openjiuwen.agent_teams.tools.database;
 
-import java.util.*;
+import com.openjiuwen.agent_teams.schema.status.TaskStatus;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Dependency graph helper functions and constants.
  * <p>
- * Mirrors Python's {@code graph} module in
- * {@code openjiuwen.agent_teams.tools.database.graph}.
+ * Mirrors Python's module in
+ * {@code openjiuwen/agent_teams/tools/database/graph.py}.
  */
-public class GraphDatabase {
+public final class GraphDatabase {
 
-    // Terminal statuses for tasks
     public static final Set<String> TASK_TERMINAL_STATUSES = Set.of(
-        "completed",
-        "cancelled"
+            TaskStatus.COMPLETED.value(),
+            TaskStatus.CANCELLED.value()
     );
 
-    // Reject statuses for task dependencies
     public static final Set<String> TASK_DEPENDENCY_REJECT_STATUSES = Set.of(
-        "completed",
-        "cancelled",
-        "claimed",
-        "plan_approved"
+            TaskStatus.COMPLETED.value(),
+            TaskStatus.CANCELLED.value(),
+            TaskStatus.CLAIMED.value(),
+            TaskStatus.PLAN_APPROVED.value()
     );
 
-    /**
-     * Detect a cycle in a task-dependency adjacency map.
-     * <p>
-     * The map points from a task to the tasks it depends on
-     * (task_id -> [depends_on_task_id, ...]). The walk follows edges
-     * in that direction; reaching an ancestor node in the current DFS
-     * path means the dependency chain loops back on itself.
-     * <p>
-     * Uses iterative DFS with WHITE/GRAY/BLACK coloring to keep
-     * recursion depth bounded for deep dependency chains.
-     *
-     * @param adjacency Outgoing-edge adjacency map
-     * @return The cycle as a list of task IDs (the repeated node appears
-     *         at both ends, e.g. [A, B, C, A]), or null if acyclic
-     */
-    public static List<String> detectCycleInAdjacency(Map<String, List<String>> adjacency) {
-        // Color constants: WHITE=0 (unvisited), GRAY=1 (visiting), BLACK=2 (done)
-        final int WHITE = 0, GRAY = 1, BLACK = 2;
-        Map<String, Integer> color = new HashMap<>();
+    private GraphDatabase() {
+    }
 
-        // Initialize all nodes as WHITE
+    public static List<String> detectCycleInAdjacency(Map<String, List<String>> adjacency) {
+        final int white = 0;
+        final int gray = 1;
+        final int black = 2;
+        Map<String, Integer> color = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : adjacency.entrySet()) {
-            color.put(entry.getKey(), WHITE);
-            for (String dep : entry.getValue()) {
-                color.putIfAbsent(dep, WHITE);
+            color.put(entry.getKey(), white);
+            for (String dependency : entry.getValue()) {
+                color.putIfAbsent(dependency, white);
             }
         }
 
-        // Iterative DFS
-        for (String root : new ArrayList<>(color.keySet())) {
-            if (color.getOrDefault(root, WHITE) != WHITE) {
+        for (String root : List.copyOf(color.keySet())) {
+            if (color.getOrDefault(root, white) != white) {
                 continue;
             }
 
             List<String> path = new ArrayList<>();
             path.add(root);
-            color.put(root, GRAY);
+            color.put(root, gray);
 
-            // Stack of (node, children iterator)
             Deque<Map.Entry<String, Iterator<String>>> stack = new ArrayDeque<>();
             stack.push(Map.entry(root, adjacency.getOrDefault(root, List.of()).iterator()));
 
@@ -77,80 +68,28 @@ public class GraphDatabase {
 
                 if (!children.hasNext()) {
                     stack.pop();
-                    color.put(node, BLACK);
+                    color.put(node, black);
                     path.remove(path.size() - 1);
                     continue;
                 }
 
                 String next = children.next();
-                int c = color.getOrDefault(next, WHITE);
-
-                if (c == GRAY) {
-                    // Found cycle - extract it from path
-                    int idx = path.indexOf(next);
-                    List<String> cycle = new ArrayList<>(path.subList(idx, path.size()));
+                int nextColor = color.getOrDefault(next, white);
+                if (nextColor == gray) {
+                    int index = path.indexOf(next);
+                    List<String> cycle = new ArrayList<>(path.subList(index, path.size()));
                     cycle.add(next);
                     return cycle;
                 }
 
-                if (c == WHITE) {
-                    color.put(next, GRAY);
+                if (nextColor == white) {
+                    color.put(next, gray);
                     path.add(next);
-                    stack.push(Map.entry(next, 
-                        adjacency.getOrDefault(next, List.of()).iterator()));
+                    stack.push(Map.entry(next, adjacency.getOrDefault(next, List.of()).iterator()));
                 }
             }
         }
 
-        return null;  // No cycle found
-    }
-
-    /**
-     * Check if the adjacency map contains a cycle.
-     *
-     * @param adjacency Outgoing-edge adjacency map
-     * @return true if a cycle exists
-     */
-    public static boolean hasCycle(Map<String, List<String>> adjacency) {
-        return detectCycleInAdjacency(adjacency) != null;
-    }
-
-    /**
-     * Get all nodes reachable from a starting node.
-     *
-     * @param adjacency Outgoing-edge adjacency map
-     * @param start     Starting node
-     * @return Set of reachable nodes
-     */
-    public static Set<String> getReachableNodes(Map<String, List<String>> adjacency, String start) {
-        Set<String> visited = new HashSet<>();
-        Deque<String> stack = new ArrayDeque<>();
-        stack.push(start);
-
-        while (!stack.isEmpty()) {
-            String node = stack.pop();
-            if (visited.contains(node)) {
-                continue;
-            }
-            visited.add(node);
-            for (String dep : adjacency.getOrDefault(node, List.of())) {
-                if (!visited.contains(dep)) {
-                    stack.push(dep);
-                }
-            }
-        }
-
-        return visited;
-    }
-
-    /**
-     * Get all dependencies of a task (transitive closure).
-     *
-     * @param adjacency Outgoing-edge adjacency map
-     * @param taskId    Task to get dependencies for
-     * @return Set of all transitive dependencies
-     */
-    public static Set<String> getAllDependencies(Map<String, List<String>> adjacency, String taskId) {
-        return getReachableNodes(adjacency, taskId);
+        return null;
     }
 }

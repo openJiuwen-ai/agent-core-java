@@ -9,8 +9,8 @@ import java.util.*;
 /**
  * Bilingual text constants for workspace and context sections.
  * <p>
- * Mirrors Python's {@code workspace_header} in
- * {@code openjiuwen.harness.prompts.workspace_content.workspace_header}.
+ * Mirrors Python's {@code workspace_header} module constants in
+ * {@code openjiuwen/harness/prompts/workspace_content/workspace_header.py}.
  */
 public final class WorkspaceHeader {
 

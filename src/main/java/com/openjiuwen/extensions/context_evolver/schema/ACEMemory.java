@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ACEMemory}.
+ * {@code openjiuwen/extensions/context_evolver/schema/io_schema.py}.
  */
-public class ACEMemory {
+public class ACEMemory implements BaseMemory {
 
     private String workspaceId = "default";
     private String id;

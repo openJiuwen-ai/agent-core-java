@@ -1,1 +1,0 @@
-Simple template without variables

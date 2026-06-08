@@ -6,29 +6,12 @@ package com.openjiuwen.core.common.exception;
 
 import java.util.Map;
 
-/** System operation error. */
+/**
+ * Mirrors Python's {@code SysOperationError} in
+ * {@code openjiuwen/core/common/exception/errors.py}.
+ */
 public class SysOperationError extends ExecutionError {
-    /**
-     * Creates a SysOperationError with full details.
-     *
-     * @param status  the status code
-     * @param msg     optional custom message
-     * @param details optional additional details
-     * @param cause   optional root cause
-     * @param params  template parameters for message rendering
-     */
     public SysOperationError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) { super(status, msg, details, cause, params); }
-    /**
-     * Creates a SysOperationError with status and parameters.
-     *
-     * @param status the status code
-     * @param params template parameters for message rendering
-     */
     public SysOperationError(StatusCode status, Map<String, Object> params) { super(status, params); }
-    /**
-     * Creates a SysOperationError with status only.
-     *
-     * @param status the status code
-     */
     public SysOperationError(StatusCode status) { super(status); }
 }

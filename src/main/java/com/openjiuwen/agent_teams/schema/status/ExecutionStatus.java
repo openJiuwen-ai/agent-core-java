@@ -4,11 +4,14 @@
 
 package com.openjiuwen.agent_teams.schema.status;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Minimal execution status enum.
- *
- * <p>Mirrors Python's {@code ExecutionStatus} in
- * {@code openjiuwen.agent_teams.schema.status}.
+ * Execution status enum.
+ * <p>
+ * Mirrors Python's {@code ExecutionStatus} in
+ * {@code openjiuwen/agent_teams/schema/status.py}.
  */
 public enum ExecutionStatus {
     IDLE("idle"),
@@ -28,10 +31,12 @@ public enum ExecutionStatus {
         this.value = value;
     }
 
+    @JsonValue
     public String value() {
         return value;
     }
 
+    @JsonCreator
     public static ExecutionStatus fromValue(String value) {
         if (value == null) {
             return null;

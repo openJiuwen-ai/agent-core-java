@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.online.judge;
  * Judge evaluator configuration.
  * <p>
  * Mirrors Python's {@code JudgeEvaluatorConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.evaluator}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/judge/evaluator.py}.
  */
 public class JudgeEvaluatorConfig {
 
@@ -26,9 +26,8 @@ public class JudgeEvaluatorConfig {
         this.modelId = modelId;
     }
 
-    public JudgeEvaluatorConfig(String llmUrl, String modelId, String apiKey, int numVotes,
-                                double temperature, int maxCompletionTokens, int maxRetries,
-                                double retryBackoffSec) {
+    public JudgeEvaluatorConfig(String llmUrl, String modelId, String apiKey, int numVotes, double temperature,
+                                int maxCompletionTokens, int maxRetries, double retryBackoffSec) {
         this.llmUrl = llmUrl;
         this.modelId = modelId;
         this.apiKey = apiKey != null ? apiKey : "";
@@ -39,20 +38,67 @@ public class JudgeEvaluatorConfig {
         this.retryBackoffSec = retryBackoffSec;
     }
 
-    public String getLlmUrl() { return llmUrl; }
-    public void setLlmUrl(String llmUrl) { this.llmUrl = llmUrl; }
-    public String getModelId() { return modelId; }
-    public void setModelId(String modelId) { this.modelId = modelId; }
-    public String getApiKey() { return apiKey; }
-    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
-    public int getNumVotes() { return numVotes; }
-    public void setNumVotes(int numVotes) { this.numVotes = numVotes; }
-    public double getTemperature() { return temperature; }
-    public void setTemperature(double temperature) { this.temperature = temperature; }
-    public int getMaxCompletionTokens() { return maxCompletionTokens; }
-    public void setMaxCompletionTokens(int maxCompletionTokens) { this.maxCompletionTokens = maxCompletionTokens; }
-    public int getMaxRetries() { return maxRetries; }
-    public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
-    public double getRetryBackoffSec() { return retryBackoffSec; }
-    public void setRetryBackoffSec(double retryBackoffSec) { this.retryBackoffSec = retryBackoffSec; }
+    public String getLlmUrl() {
+        return llmUrl;
+    }
+
+    public void setLlmUrl(String llmUrl) {
+        this.llmUrl = llmUrl;
+    }
+
+    public String getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(String modelId) {
+        this.modelId = modelId;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public int getNumVotes() {
+        return numVotes;
+    }
+
+    public void setNumVotes(int numVotes) {
+        this.numVotes = numVotes;
+    }
+
+    public double getTemperature() {
+        return temperature;
+    }
+
+    public void setTemperature(double temperature) {
+        this.temperature = temperature;
+    }
+
+    public int getMaxCompletionTokens() {
+        return maxCompletionTokens;
+    }
+
+    public void setMaxCompletionTokens(int maxCompletionTokens) {
+        this.maxCompletionTokens = maxCompletionTokens;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
+    public double getRetryBackoffSec() {
+        return retryBackoffSec;
+    }
+
+    public void setRetryBackoffSec(double retryBackoffSec) {
+        this.retryBackoffSec = retryBackoffSec;
+    }
 }

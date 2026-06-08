@@ -15,12 +15,13 @@ import java.util.Map;
  * LLM request forwarder for upstream chat completions.
  * <p>
  * Mirrors Python's {@code Forwarder} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.forwarder}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/upstream/forwarder.py}.
  */
 public class Forwarder {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private final UpstreamGatewayClient upstreamClient;
     private final String modelId;

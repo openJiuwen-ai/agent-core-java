@@ -5,34 +5,50 @@
 package com.openjiuwen.core.runner.callback;
 
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
- * Filter for validating callback arguments.
+ * Mirrors Python's {@code ValidationFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class ValidationFilter extends EventFilter {
 
-    private final Predicate<Map<String, Object>> validator;
+    private final ArgumentsValidator validator;
 
-    public ValidationFilter(Predicate<Map<String, Object>> validator) {
+    public ValidationFilter(ArgumentsValidator validator) {
         this(validator, "Validation");
     }
 
-    public ValidationFilter(Predicate<Map<String, Object>> validator, String name) {
+    public ValidationFilter(ArgumentsValidator validator, String name) {
         super(name);
-        this.validator = validator;
+        this.validator = Objects.requireNonNull(validator, "validator");
     }
 
     @Override
-    public FilterResult filter(String event, CallbackInfo callback,
-                                Object[] args, Map<String, Object> kwargs) {
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
         try {
-            if (!validator.test(kwargs)) {
+            if (!validator.validate(safeArgs(args), safeKwargs(kwargs))) {
                 return FilterResult.skipResult("Argument validation failed");
             }
-        } catch (Exception e) {
-            return FilterResult.skipResult("Validation error: " + e.getMessage());
+        } catch (Exception error) {
+            return FilterResult.skipResult("Validation error: " + error.getMessage());
         }
         return FilterResult.continueResult();
+    }
+
+    /**
+     * Mirrors Python's validator callable shape for
+     * {@code openjiuwen/core/runner/callback/filters.py}.
+     */
+    @FunctionalInterface
+    public interface ArgumentsValidator {
+
+        boolean validate(Object[] args, Map<String, Object> kwargs) throws Exception;
     }
 }

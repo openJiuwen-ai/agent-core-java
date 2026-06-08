@@ -4,87 +4,44 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import com.openjiuwen.core.common.exception.StatusCode;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * Knowledge base configuration.
+ * Mirrors Python's {@code KnowledgeBaseConfig} in
+ * {@code openjiuwen/core/retrieval/common/config.py}.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class KnowledgeBaseConfig {
 
+    @JsonProperty("kb_id")
     private String kbId;
+
+    @JsonProperty("index_type")
+    @Builder.Default
     private String indexType = "hybrid";
+
+    @JsonProperty("use_graph")
+    @Builder.Default
     private boolean useGraph = false;
+
+    @JsonProperty("chunk_size")
+    @Builder.Default
     private int chunkSize = 512;
+
+    @JsonProperty("chunk_overlap")
+    @Builder.Default
     private int chunkOverlap = 50;
 
-    public KnowledgeBaseConfig() {
-    }
-
-    public KnowledgeBaseConfig(String kbId) {
-        this.kbId = kbId;
-        validate();
-    }
-
-    public KnowledgeBaseConfig(String kbId, String indexType, boolean useGraph, int chunkSize, int chunkOverlap) {
-        this.kbId = kbId;
-        this.indexType = indexType;
-        this.useGraph = useGraph;
-        this.chunkSize = chunkSize;
-        this.chunkOverlap = chunkOverlap;
-        validate();
-    }
-
-    public void validate() {
-        RetrievalValidation.requireNonBlank(kbId, "KnowledgeBaseConfig.kbId");
-        this.indexType = RetrievalValidation.validateIndexType(indexType, "KnowledgeBaseConfig.indexType");
-        RetrievalValidation.requirePositive(chunkSize, "chunk_size", StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
-        RetrievalValidation.requireNonNegative(
-                chunkOverlap,
-                "chunk_overlap",
-                StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
-    }
-
-    public String getKbId() {
-        return kbId;
-    }
-
-    public void setKbId(String kbId) {
-        this.kbId = kbId;
-        validate();
-    }
-
-    public String getIndexType() {
-        return indexType;
-    }
-
-    public void setIndexType(String indexType) {
-        this.indexType = indexType;
-        validate();
-    }
-
-    public boolean isUseGraph() {
-        return useGraph;
-    }
-
-    public void setUseGraph(boolean useGraph) {
-        this.useGraph = useGraph;
-    }
-
-    public int getChunkSize() {
-        return chunkSize;
-    }
-
-    public void setChunkSize(int chunkSize) {
-        this.chunkSize = chunkSize;
-        validate();
-    }
-
-    public int getChunkOverlap() {
-        return chunkOverlap;
-    }
-
-    public void setChunkOverlap(int chunkOverlap) {
-        this.chunkOverlap = chunkOverlap;
-        validate();
-    }
+    @JsonProperty("use_caption_for_images")
+    @Builder.Default
+    private boolean useCaptionForImages = false;
 }

@@ -5,9 +5,8 @@
 package com.openjiuwen.core.session.tracer;
 
 /**
- * Workflow node status for tracing.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.data.NodeStatus}.
+ * Mirrors Python's {@code NodeStatus} in
+ * {@code openjiuwen/core/session/tracer/data.py}.
  */
 public enum NodeStatus {
     START("start"),

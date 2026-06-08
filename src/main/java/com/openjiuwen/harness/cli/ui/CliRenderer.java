@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  * CLI output renderer.
  * <p>
  * Mirrors Python's {@code renderer} in
- * {@code openjiuwen.harness.cli.ui.renderer}.
+ * {@code openjiuwen/harness/cli/ui/renderer.py}.
  */
 public class CliRenderer {
 
@@ -34,26 +34,6 @@ public class CliRenderer {
     public static final String CHUNK_CONTROLLER_OUTPUT = "controller_output";
 
     private static final Pattern CONTROLLER_TEXT_PATTERN = Pattern.compile("text=\"(.*?)\"");
-
-    /** Render a text message to console. */
-    public void renderText(String text) {
-        System.out.println(text);
-    }
-
-    /** Render an error message. */
-    public void renderError(String error) {
-        System.err.println("[ERROR] " + error);
-    }
-
-    /** Render a tool call. */
-    public void renderToolCall(String toolName, String input) {
-        System.out.println("[Tool: " + toolName + "] " + input);
-    }
-
-    /** Render a tool result. */
-    public void renderToolResult(String toolName, Object result) {
-        System.out.println("[Result: " + toolName + "] " + result);
-    }
 
     public RenderResult renderStream(Iterator<?> stream, PrintStream terminal, PrintStream console) {
         return renderStream(stream, terminal, console, null, false);
@@ -93,7 +73,7 @@ public class CliRenderer {
                     String text = extractContent(payload);
                     if (!text.isBlank()) {
                         if (!inLlmOutput) {
-                            terminal.print("\033[92m● \033[0m");
+                            terminal.print("\033[92m■\033[0m");
                             inLlmOutput = true;
                         }
                         hasLlmOutput = true;
@@ -128,19 +108,17 @@ public class CliRenderer {
                     }
                 }
                 case CHUNK_TOOL_CALL -> {
-                    Map<String, Object> data = mapPayload(payload);
-                    renderToolCall(data, console);
+                    renderToolCall(mapPayload(payload), console);
                     visibleChunkSeen = true;
                 }
                 case CHUNK_TOOL_RESULT -> {
-                    Map<String, Object> data = mapPayload(payload);
-                    todoItems = renderToolResult(data, console, todoItems);
+                    todoItems = renderToolResult(mapPayload(payload), console, todoItems);
                     visibleChunkSeen = true;
                 }
                 case CHUNK_TODO_UPDATED -> {
-                    Map<String, Object> data = mapPayload(payload);
-                    Object itemsObject = data.getOrDefault("items", "[]");
-                    List<Map<String, Object>> parsed = TodoRender.parseTodoResult(String.valueOf(itemsObject));
+                    List<Map<String, Object>> parsed = TodoRender.parseTodoResult(
+                            String.valueOf(mapPayload(payload).getOrDefault("items", "[]"))
+                    );
                     if (parsed != null) {
                         todoItems = parsed;
                         for (String line : TodoRender.renderTodoList(parsed)) {
@@ -172,8 +150,7 @@ public class CliRenderer {
                     visibleChunkSeen = true;
                 }
                 default -> {
-                    // Python renderer silently skips unknown chunk types, then
-                    // reports an integrity warning if nothing visible appeared.
+                    // Keep Python behavior: ignore unknown chunks unless everything is invisible.
                 }
             }
         }
@@ -198,9 +175,9 @@ public class CliRenderer {
         String displayName = ToolDisplay.getDisplayName(toolName);
         String args = ToolDisplay.formatToolArgs(toolName, toolArgs);
         if (args.isBlank()) {
-            console.println("[cyan]● " + displayName + "[/cyan]");
+            console.println("[cyan]■ " + displayName + "[/cyan]");
         } else {
-            console.println("[cyan]● " + displayName + "[/cyan][dim](" + args + ")[/dim]");
+            console.println("[cyan]■ " + displayName + "[/cyan][dim](" + args + ")[/dim]");
         }
     }
 
@@ -233,7 +210,7 @@ public class CliRenderer {
             }
             String message = extractTodoMessage(String.valueOf(toolResult));
             if (!message.isBlank()) {
-                console.println("[dim]  ⎿  " + message + "[/dim]");
+                console.println("[dim]  ⏿ " + message + "[/dim]");
                 console.println();
                 return todoItems;
             }
@@ -241,21 +218,17 @@ public class CliRenderer {
 
         String summary = formatToolResult(toolName, toolResult, toolArgs, payload);
         if (!summary.isBlank()) {
-            console.println("[dim]  ⎿  " + summary + "[/dim]");
+            console.println("[dim]  ⏿ " + summary + "[/dim]");
         }
         console.println();
         return todoItems;
     }
 
-    private static String formatToolResult(
-            String toolName,
-            Object toolResult,
-            Object toolArgs,
-            Map<String, Object> payload) {
+    private static String formatToolResult(String toolName, Object toolResult, Object toolArgs, Map<String, Object> payload) {
         if ("read_file".equals(toolName) && payload.get("line_count") instanceof Number number) {
             return "Read " + number.intValue() + " lines";
         }
-        return ToolDisplay.formatToolResult(toolName, toolResult);
+        return ToolDisplay.formatToolResult(toolName, toolResult, toolArgs, payload);
     }
 
     private static String extractContent(Object payload) {
@@ -340,7 +313,7 @@ public class CliRenderer {
             field.setAccessible(true);
             return field.get(target);
         } catch (Exception ignored) {
-            // Try JavaBean-style getter next.
+            // Fall through to getter lookup.
         }
         try {
             String methodName = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);

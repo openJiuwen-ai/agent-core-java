@@ -12,7 +12,7 @@ import java.util.Map;
  * Judge service configuration (extends VLLMServiceConfig).
  * <p>
  * Mirrors Python's {@code JudgeConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class JudgeConfig {
 

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.legacy.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,9 @@ import java.util.Map;
 
 /**
  * Legacy plugin schema for backward compatibility.
+ * <p>
+ * Mirrors Python's {@code PluginSchema} in
+ * {@code openjiuwen/core/single_agent/legacy/schema.py}.
  */
 @Data
 @Builder
@@ -36,6 +40,7 @@ public class PluginSchema {
     @Builder.Default
     private Map<String, Object> inputs = new LinkedHashMap<>();
 
+    @JsonProperty("plugin_id")
     @Builder.Default
     private String pluginId = "";
 }

@@ -7,9 +7,8 @@ package com.openjiuwen.core.graph.visualization;
 import java.util.Map;
 
 /**
- * Represents a node in a drawable graph for visualization.
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_node.DrawableNode}.</p>
+ * Mirrors Python's {@code DrawableNode} in
+ * {@code openjiuwen/core/graph/visualization/drawable_node.py}.
  */
 public class DrawableNode {
 
@@ -18,7 +17,7 @@ public class DrawableNode {
     private Map<String, Object> metadata;
 
     public DrawableNode(String id) {
-        this.id = id;
+        this(id, null, null);
     }
 
     public DrawableNode(String id, String name, Map<String, Object> metadata) {

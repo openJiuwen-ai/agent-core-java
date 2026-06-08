@@ -14,8 +14,7 @@ import java.util.Map;
 /**
  * Plugin resource preprocessing helpers.
  * <p>
- * Mirrors Python's {@code PluginProcessor} in
- * {@code openjiuwen.dev_tools.agent_builder.resource.processor}.
+ * Mirrors Python's {@code openjiuwen/dev_tools/agent_builder/resource/processor.py}.
  */
 public final class PluginProcessor {
 

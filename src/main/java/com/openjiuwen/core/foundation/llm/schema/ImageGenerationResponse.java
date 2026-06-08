@@ -17,7 +17,8 @@ import java.util.List;
 /**
  * Image generation response.
  * <p>
- * Mirrors Python's {@code ImageGenerationResponse} model.
+ * Mirrors Python's {@code ImageGenerationResponse} in
+ * {@code openjiuwen/core/foundation/llm/schema/generation_response.py}.
  */
 @Data
 @SuperBuilder

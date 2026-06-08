@@ -5,16 +5,13 @@
 package com.openjiuwen.core.runner.callback;
 
 /**
- * Actions that callbacks can return to control chain execution.
+ * Mirrors Python's {@code ChainAction} in
+ * {@code openjiuwen/core/runner/callback/enums.py}.
  */
 public enum ChainAction {
-    /** Continue to next callback in chain. */
     CONTINUE("continue"),
-    /** Break the chain and return current result. */
     BREAK("break"),
-    /** Retry current callback. */
     RETRY("retry"),
-    /** Rollback all executed callbacks. */
     ROLLBACK("rollback");
 
     private final String value;

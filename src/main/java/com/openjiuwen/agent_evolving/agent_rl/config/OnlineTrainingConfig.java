@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Training configuration for online RL (different from offline TrainingConfig).
  * <p>
  * Mirrors Python's {@code TrainingConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class OnlineTrainingConfig {
 

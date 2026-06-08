@@ -5,10 +5,15 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Types of memory data.
+ * Memory-type enumeration.
+ *
+ * <p>Mirrors Python's {@code MemoryType} in
+ * {@code openjiuwen/core/memory/manage/mem_model/memory_unit.py}.</p>
  */
 public enum MemoryType {
-    FRAGMENT_MEMORY("fragment"),
+    USER_PROFILE("user_profile"),
+    SEMANTIC_MEMORY("semantic_memory"),
+    EPISODIC_MEMORY("episodic_memory"),
     VARIABLE("variable"),
     SUMMARY("summary"),
     UNKNOWN("unknown");

@@ -1,16 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.store.query;
 
 /**
- * Logical expression for combining query filters.
- * <p>
- * Mirrors Python's {@code LogicalExpr} class from
- * <code>foundation/store/query/base.py</code>.
+ * Mirrors Python's {@code LogicalExpr} in
+ * {@code openjiuwen/core/foundation/store/query/base.py}.
  */
-public class LogicalExpr extends QueryExpr {
+public final class LogicalExpr extends QueryExpr {
 
     private final String operator;
     private final QueryExpr left;
@@ -22,21 +20,20 @@ public class LogicalExpr extends QueryExpr {
         this.right = right;
     }
 
-    public String getOperator() { return operator; }
-    public QueryExpr getLeft() { return left; }
-    public QueryExpr getRight() { return right; }
+    public String getOperator() {
+        return operator;
+    }
 
-    @Override
-    public Object toExpr(String database) {
-        QueryLanguageDefinition lang = QueryExpr.getLanguage(database);
-        return lang.getLogical().apply(this);
+    public QueryExpr getLeft() {
+        return left;
+    }
+
+    public QueryExpr getRight() {
+        return right;
     }
 
     @Override
-    public String toString() {
-        if ("not".equals(operator)) {
-            return "NOT(" + left + ")";
-        }
-        return "(" + left + " " + operator.toUpperCase() + " " + right + ")";
+    public Object toExpr(String database) {
+        return QueryExpr.getLanguageDefinition(database).applyLogical(this);
     }
 }

@@ -4,16 +4,12 @@
 
 package com.openjiuwen.core.graph.visualization;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Container for a drawable graph representation used in visualization.
- *
- * <p>Holds the nodes, edges, start/end/break nodes for a graph.
- * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_graph.DrawableGraph}.</p>
+ * Mirrors Python's {@code DrawableGraph} in
+ * {@code openjiuwen/core/graph/visualization/drawable_graph.py}.
  */
 public class DrawableGraph {
 
@@ -23,17 +19,13 @@ public class DrawableGraph {
     private final List<DrawableNode> endNodes;
     private List<DrawableNode> breakNodes;
 
-    public DrawableGraph() {
-        this.nodes = new LinkedHashMap<>();
-        this.edges = new ArrayList<>();
-        this.startNodes = new ArrayList<>();
-        this.endNodes = new ArrayList<>();
-        this.breakNodes = new ArrayList<>();
-    }
-
-    public DrawableGraph(Map<String, DrawableNode> nodes, List<DrawableEdge> edges,
-                         List<DrawableNode> startNodes, List<DrawableNode> endNodes,
-                         List<DrawableNode> breakNodes) {
+    public DrawableGraph(
+            Map<String, DrawableNode> nodes,
+            List<DrawableEdge> edges,
+            List<DrawableNode> startNodes,
+            List<DrawableNode> endNodes,
+            List<DrawableNode> breakNodes
+    ) {
         this.nodes = nodes;
         this.edges = edges;
         this.startNodes = startNodes;

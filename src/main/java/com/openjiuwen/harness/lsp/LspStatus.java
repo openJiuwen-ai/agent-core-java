@@ -6,29 +6,31 @@ package com.openjiuwen.harness.lsp;
 
 import com.openjiuwen.harness.lsp.core.LspServerStatus;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Minimal aggregate status for the Java harness LSP subsystem.
- *
- * <p>Mirrors Python's {@code LspStatus} in
- * {@code openjiuwen.harness.lsp.types}.
+ * Mirrors Python's {@code LspStatus} in
+ * {@code openjiuwen/harness/lsp/types.py}.
  */
 public class LspStatus {
 
-    private final boolean initialized;
-    private final List<LspServerStatus> servers;
-
-    public LspStatus(boolean initialized, List<LspServerStatus> servers) {
-        this.initialized = initialized;
-        this.servers = servers != null ? List.copyOf(servers) : List.of();
-    }
+    private boolean initialized;
+    private List<LspServerStatus> servers = new ArrayList<>();
 
     public boolean isInitialized() {
         return initialized;
     }
 
+    public void setInitialized(boolean initialized) {
+        this.initialized = initialized;
+    }
+
     public List<LspServerStatus> getServers() {
         return servers;
+    }
+
+    public void setServers(List<LspServerStatus> servers) {
+        this.servers = servers == null ? new ArrayList<>() : new ArrayList<>(servers);
     }
 }

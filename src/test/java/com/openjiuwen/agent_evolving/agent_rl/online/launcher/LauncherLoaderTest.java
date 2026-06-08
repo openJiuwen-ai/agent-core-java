@@ -29,7 +29,7 @@ class LauncherLoaderTest {
                   model_name: BaseModel
                   existing_url: http://inference.local
                 judge:
-                  port: 19002
+                  existing_url: http://judge.local
                 gateway:
                   port: 19003
                   redis_url: redis://localhost:6379/0
@@ -39,8 +39,8 @@ class LauncherLoaderTest {
                   threshold: 8
                 """);
         Map<String, Object> cliOverrides = new LinkedHashMap<>();
-        LauncherCli.setNestedValue(cliOverrides, "training.threshold", 9);
-        LauncherCli.setNestedValue(cliOverrides, "gateway.record_dir", "cli-records");
+        setNestedValue(cliOverrides, "training.threshold", 9);
+        setNestedValue(cliOverrides, "gateway.record_dir", "cli-records");
 
         LauncherLoader.RuntimeConfigResult result = LauncherLoader.loadRuntimeConfig(config.toString(), cliOverrides);
 
@@ -52,8 +52,8 @@ class LauncherLoaderTest {
         assertEquals(config.toAbsolutePath().normalize(), result.resolvedPath());
         assertEquals(9, ((Number) training.get("threshold")).intValue());
         assertEquals("cli-records", gateway.get("record_dir"));
-        assertEquals("/models/base", validated.getJudge().getModelPath());
-        assertEquals("BaseModel", validated.getJudge().getModelName());
+        assertEquals("/models/base", validated.getInference().getModelPath());
+        assertEquals("BaseModel", validated.getInference().getModelName());
         assertEquals("redis://localhost:6379/0", validated.getGateway().getRedisUrl());
     }
 
@@ -72,8 +72,8 @@ class LauncherLoaderTest {
     @Test
     void loadConfigValidatesRequiredRuntimeFields() {
         Map<String, Object> overrides = new LinkedHashMap<>();
-        LauncherCli.setNestedValue(overrides, "inference.existing_url", "http://inference.local");
-        LauncherCli.setNestedValue(overrides, "judge.existing_url", "http://judge.local");
+        setNestedValue(overrides, "inference.existing_url", "http://inference.local");
+        setNestedValue(overrides, "judge.existing_url", "http://judge.local");
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -85,11 +85,21 @@ class LauncherLoaderTest {
 
     private static Map<String, Object> validCliOverrides() {
         Map<String, Object> overrides = new LinkedHashMap<>();
-        LauncherCli.setNestedValue(overrides, "inference.existing_url", "http://inference.local");
-        LauncherCli.setNestedValue(overrides, "judge.existing_url", "http://judge.local");
-        LauncherCli.setNestedValue(overrides, "gateway.port", 19003);
-        LauncherCli.setNestedValue(overrides, "gateway.redis_url", "redis://localhost:6379/0");
-        LauncherCli.setNestedValue(overrides, "jiuwen.enabled", false);
+        setNestedValue(overrides, "inference.existing_url", "http://inference.local");
+        setNestedValue(overrides, "judge.existing_url", "http://judge.local");
+        setNestedValue(overrides, "gateway.port", 19003);
+        setNestedValue(overrides, "gateway.redis_url", "redis://localhost:6379/0");
+        setNestedValue(overrides, "jiuwen.enabled", false);
         return overrides;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void setNestedValue(Map<String, Object> root, String dottedPath, Object value) {
+        String[] segments = dottedPath.split("\\.");
+        Map<String, Object> current = root;
+        for (int index = 0; index < segments.length - 1; index++) {
+            current = (Map<String, Object>) current.computeIfAbsent(segments[index], ignored -> new LinkedHashMap<>());
+        }
+        current.put(segments[segments.length - 1], value);
     }
 }

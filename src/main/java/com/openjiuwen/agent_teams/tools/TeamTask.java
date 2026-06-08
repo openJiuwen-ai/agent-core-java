@@ -11,8 +11,8 @@ import java.util.Objects;
 /**
  * Base class for task tables (one per session).
  * <p>
- * Mirrors Python's {@code TeamTaskBase} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code TeamTaskBase} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class TeamTask {
 
@@ -28,7 +28,7 @@ public class TeamTask {
     }
 
     public TeamTask(String taskId, String teamName, String title,
-                    String content, String status, String assignee, Long updatedAt) {
+            String content, String status, String assignee, Long updatedAt) {
         this.taskId = taskId;
         this.teamName = teamName;
         this.title = title;
@@ -94,11 +94,6 @@ public class TeamTask {
         this.updatedAt = updatedAt;
     }
 
-    /**
-     * Return a lightweight summary (id + title + status) for write-op responses.
-     *
-     * @return a map with task_id, title, and status
-     */
     public Map<String, Object> brief() {
         Map<String, Object> result = new HashMap<>();
         result.put("task_id", taskId);
@@ -109,8 +104,12 @@ public class TeamTask {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof TeamTask that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof TeamTask that)) {
+            return false;
+        }
         return Objects.equals(taskId, that.taskId)
                 && Objects.equals(teamName, that.teamName)
                 && Objects.equals(title, that.title)
@@ -127,14 +126,14 @@ public class TeamTask {
 
     @Override
     public String toString() {
-        return "TeamTask{" +
-                "taskId='" + taskId + '\'' +
-                ", teamName='" + teamName + '\'' +
-                ", title='" + title + '\'' +
-                ", content='" + content + '\'' +
-                ", status='" + status + '\'' +
-                ", assignee='" + assignee + '\'' +
-                ", updatedAt=" + updatedAt +
-                '}';
+        return "TeamTask{"
+                + "taskId='" + taskId + '\''
+                + ", teamName='" + teamName + '\''
+                + ", title='" + title + '\''
+                + ", content='" + content + '\''
+                + ", status='" + status + '\''
+                + ", assignee='" + assignee + '\''
+                + ", updatedAt=" + updatedAt
+                + '}';
     }
 }

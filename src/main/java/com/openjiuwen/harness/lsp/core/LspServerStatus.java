@@ -4,45 +4,81 @@
 
 package com.openjiuwen.harness.lsp.core;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
- * Minimal snapshot for one Java harness LSP server instance.
- *
- * <p>Mirrors Python's {@code LspServerStatus} in
- * {@code openjiuwen.harness.lsp.core.types}.
+ * Mirrors Python's {@code LspServerStatus} in
+ * {@code openjiuwen/harness/lsp/core/types.py}.
  */
 public class LspServerStatus {
 
-    private final String serverId;
-    private final String name;
-    private final boolean running;
-    private final String workspaceFolder;
-    private final LspServerState state;
+    @JsonProperty("server_id")
+    private String serverId;
 
-    public LspServerStatus(String serverId, String name, boolean running, String workspaceFolder, LspServerState state) {
-        this.serverId = serverId;
-        this.name = name;
-        this.running = running;
-        this.workspaceFolder = workspaceFolder;
-        this.state = state;
-    }
+    private String name;
+    private boolean running;
+    private LspServerState state = LspServerState.STOPPED;
+    private String root;
+
+    @JsonProperty("crash_count")
+    private int crashCount;
+
+    @JsonProperty("last_error")
+    private String lastError;
 
     public String getServerId() {
         return serverId;
+    }
+
+    public void setServerId(String serverId) {
+        this.serverId = serverId;
     }
 
     public String getName() {
         return name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public boolean isRunning() {
         return running;
     }
 
-    public String getWorkspaceFolder() {
-        return workspaceFolder;
+    public void setRunning(boolean running) {
+        this.running = running;
     }
 
     public LspServerState getState() {
         return state;
+    }
+
+    public void setState(LspServerState state) {
+        this.state = state == null ? LspServerState.STOPPED : state;
+    }
+
+    public String getRoot() {
+        return root;
+    }
+
+    public void setRoot(String root) {
+        this.root = root;
+    }
+
+    public int getCrashCount() {
+        return crashCount;
+    }
+
+    public void setCrashCount(int crashCount) {
+        this.crashCount = crashCount;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public void setLastError(String lastError) {
+        this.lastError = lastError;
     }
 }

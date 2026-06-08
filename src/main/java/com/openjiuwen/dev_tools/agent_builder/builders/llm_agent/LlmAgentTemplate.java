@@ -10,7 +10,7 @@ import java.util.*;
  * LLM agent template providing the base configuration structure.
  * <p>
  * Mirrors Python's {@code LLM_AGENT_TEMPLATE} in
- * {@code openjiuwen.dev_tools.agent_builder.builders.llm_agent.template}.
+ * {@code openjiuwen/dev_tools/agent_builder/builders/llm_agent/template.py}.
  */
 public final class LlmAgentTemplate {
 

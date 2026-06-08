@@ -4,24 +4,25 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * Model configuration combining provider info and model info.
- * <p>
- * Mirrors Python's {@code ModelConfig} dataclass.
- *
- * @param modelProvider the model provider name (e.g., "OpenAI", "DashScope")
- * @param modelInfo     the detailed model connection info
+ * Mirrors Python's {@code ModelConfig} in
+ * {@code openjiuwen/core/foundation/llm/schema/mode_info.py}.
  */
-public record   ModelConfig(
-        String modelProvider,
-        BaseModelInfo modelInfo
-) {
-    /**
-     * Creates a ModelConfig with the given model provider and default model info.
-     *
-     * @param modelProvider the model provider name
-     */
-    public ModelConfig(String modelProvider) {
-        this(modelProvider, new BaseModelInfo());
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ModelConfig {
+
+    private String modelProvider;
+
+    @Builder.Default
+    private BaseModelInfo modelInfo = new BaseModelInfo();
 }

@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Input variable model.
  * <p>
- * Mirrors Python's {@code InputVariable} dataclass.
+ * Mirrors Python's {@code InputVariable} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public class InputVariable {
     private final String type;

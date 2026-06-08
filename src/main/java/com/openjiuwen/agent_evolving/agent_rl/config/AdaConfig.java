@@ -12,7 +12,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * sampler are wired in.
  * <p>
  * Mirrors Python's {@code AdaConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class AdaConfig {
 

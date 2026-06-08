@@ -8,10 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Configuration for Pregel graph execution.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.config.PregelConfig}
- * and {@code InnerPregelConfig}.
+ * Mirrors Python's {@code PregelConfig} and {@code InnerPregelConfig} in
+ * {@code openjiuwen/core/graph/pregel/config.py}.
  */
 public class PregelConfig {
 
@@ -62,9 +60,6 @@ public class PregelConfig {
         this.parentNs = parentNs;
     }
 
-    /**
-     * Get a config value by key name (for compatibility with dict-style access).
-     */
     public Object get(String key) {
         return switch (key) {
             case PregelConstants.SESSION_ID -> sessionId;
@@ -75,9 +70,6 @@ public class PregelConfig {
         };
     }
 
-    /**
-     * Convert to a map representation.
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new HashMap<>();
         map.put(PregelConstants.SESSION_ID, sessionId);
@@ -87,23 +79,22 @@ public class PregelConfig {
         return map;
     }
 
-    /**
-     * Create an inner config copy with defaults applied.
-     */
     public static PregelConfig createInnerConfig(PregelConfig config) {
         PregelConfig inner = new PregelConfig();
         if (config != null) {
             inner.sessionId = config.sessionId;
             inner.ns = config.ns;
             inner.parentNs = config.parentNs;
-            inner.recursionLimit = config.recursionLimit > 0 ? config.recursionLimit
+            inner.recursionLimit = config.recursionLimit > 0
+                    ? config.recursionLimit
                     : PregelConstants.MAX_RECURSIVE_LIMIT;
         }
         return inner;
     }
 
-    /**
-     * Default Pregel configuration.
-     */
-    public static final PregelConfig DEFAULT = new PregelConfig(null, null, PregelConstants.MAX_RECURSIVE_LIMIT);
+    public static final PregelConfig DEFAULT = new PregelConfig(
+            null,
+            null,
+            PregelConstants.MAX_RECURSIVE_LIMIT
+    );
 }

@@ -10,7 +10,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * CLI / optional YAML overlays merge on top of defaults.
  * <p>
  * Mirrors Python's {@code OnlineRLConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class OnlineRLConfig {
 

@@ -11,7 +11,8 @@ import java.util.Objects;
 /**
  * Module-level facade for RL trajectory sample stores.
  * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.agent_rl.storage.trajectory_store}.
+ * Mirrors Python's module in
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/trajectory_store.py}.
  */
 public final class TrajectoryStore {
 

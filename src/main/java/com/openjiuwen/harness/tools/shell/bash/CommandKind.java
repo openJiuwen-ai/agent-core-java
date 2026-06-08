@@ -7,8 +7,8 @@ package com.openjiuwen.harness.tools.shell.bash;
 /**
  * Classification of the primary command.
  *
- * <p>Mirrors Python's CommandKind in
- * {@code openjiuwen.harness.tools.shell.bash._semantics}.
+ * <p>Mirrors Python's {@code CommandKind} in
+ * {@code openjiuwen/harness/tools/shell/bash/_semantics.py}.
  */
 public enum CommandKind {
     SEARCH("search"),

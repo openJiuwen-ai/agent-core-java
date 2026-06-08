@@ -5,42 +5,55 @@
 package com.openjiuwen.core.runner.callback;
 
 import java.util.Map;
-import java.util.function.BiFunction;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
- * Filter for modifying callback arguments.
- * <p>
- * Applies a modifier function to transform arguments before callback execution.
- * The modifier receives (args, kwargs) and returns a two-element Object array: [newArgs, newKwargs].
+ * Mirrors Python's {@code ParamModifyFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class ParamModifyFilter extends EventFilter {
 
-    /**
-     * Modifier that takes (args, kwargs) and returns a two-element array: [newArgs, newKwargs].
-     * Element [0] should be Object[] (new args), element [1] should be Map&lt;String, Object&gt; (new kwargs).
-     */
-    private final BiFunction<Object[], Map<String, Object>, Object[]> modifier;
+    private final ArgumentsModifier modifier;
 
-    public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier) {
+    public ParamModifyFilter(ArgumentsModifier modifier) {
         this(modifier, "ParamModify");
     }
 
-    public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier, String name) {
+    public ParamModifyFilter(ArgumentsModifier modifier, String name) {
         super(name);
-        this.modifier = modifier;
+        this.modifier = Objects.requireNonNull(modifier, "modifier");
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public FilterResult filter(String event, CallbackInfo callback,
-                                Object[] args, Map<String, Object> kwargs) {
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
         try {
-            Object[] modified = modifier.apply(args, kwargs);
-            Object[] newArgs = (Object[]) modified[0];
-            Map<String, Object> newKwargs = (Map<String, Object>) modified[1];
-            return FilterResult.modifyResult(newArgs, newKwargs);
-        } catch (Exception e) {
-            return FilterResult.skipResult("Parameter modification failed: " + e.getMessage());
+            Modification modification = modifier.modify(safeArgs(args), safeKwargs(kwargs));
+            return FilterResult.modifyResult(modification.args(), modification.kwargs());
+        } catch (Exception error) {
+            return FilterResult.skipResult("Parameter modification failed: " + error.getMessage());
         }
+    }
+
+    /**
+     * Mirrors Python's modifier callable shape for
+     * {@code openjiuwen/core/runner/callback/filters.py}.
+     */
+    @FunctionalInterface
+    public interface ArgumentsModifier {
+
+        Modification modify(Object[] args, Map<String, Object> kwargs) throws Exception;
+    }
+
+    /**
+     * Mirrors Python's {@code (new_args, new_kwargs)} return pair in
+     * {@code openjiuwen/core/runner/callback/filters.py}.
+     */
+    public record Modification(Object[] args, Map<String, Object> kwargs) {
     }
 }

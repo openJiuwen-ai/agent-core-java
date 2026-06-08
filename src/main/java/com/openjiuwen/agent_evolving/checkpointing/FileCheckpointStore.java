@@ -1,205 +1,157 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agent_evolving.checkpointing;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal usable checkpoint store: local JSON file.
+ * Minimal usable checkpoint store backed by a local JSON file.
  *
- * <p>Does not depend on core checkpointer (avoids polluting core lifecycle semantics).
- * Can run in any environment, convenient for debugging and auditing.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.checkpointing.store_file.FileCheckpointStore}.
+ * <p>Mirrors Python's {@code FileCheckpointStore} in
+ * {@code openjiuwen/agent_evolving/checkpointing/store_file.py}.
  */
 public class FileCheckpointStore {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final String DEFAULT_FILENAME = "latest.json";
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .findAndRegisterModules()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
     private final String baseDir;
 
-    /**
-     * Create with base directory.
-     *
-     * @param baseDir Base directory for checkpoint files
-     */
     public FileCheckpointStore(String baseDir) {
         this.baseDir = baseDir;
         ensureDir();
     }
 
-    private void ensureDir() {
-        if (baseDir != null) {
-            try {
-                Files.createDirectories(Paths.get(baseDir));
-            } catch (IOException e) {
-                Loggers.AGENT.warn("Failed to create checkpoint directory: {}", baseDir);
-            }
-        }
+    public String saveCheckpoint(EvolveCheckpoint checkpoint) {
+        return saveCheckpoint(checkpoint, DEFAULT_FILENAME);
     }
 
-    /**
-     * Save checkpoint to file.
-     *
-     * @param checkpoint Checkpoint to save
-     * @param filename   Target filename
-     * @return Path to saved file, or null on failure
-     */
     public String saveCheckpoint(EvolveCheckpoint checkpoint, String filename) {
         if (baseDir == null) {
             return null;
         }
         ensureDir();
-        Path path = Paths.get(baseDir, filename != null ? filename : "latest.json");
+        Path path = Path.of(baseDir).resolve(filename == null || filename.isBlank() ? DEFAULT_FILENAME : filename);
         try {
-            Map<String, Object> normalized = normalizeCheckpointRaw(
-                    OBJECT_MAPPER.convertValue(checkpoint, new TypeReference<Map<String, Object>>() {})
-            );
-            String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(normalized);
+            Map<String, Object> serialized = toJsonCompatible(checkpoint);
+            String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(serialized);
             Files.writeString(path, json, StandardCharsets.UTF_8);
             return path.toString();
-        } catch (IOException e) {
-            Loggers.AGENT.error("Failed to save checkpoint: {}", e.getMessage());
-            return null;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to save checkpoint: " + path, exception);
         }
     }
 
-    /**
-     * Load checkpoint from file.
-     *
-     * @param path Path to checkpoint file
-     * @return Loaded checkpoint, or null on failure
-     */
     public EvolveCheckpoint loadCheckpoint(String path) {
-        if (baseDir == null) {
-            return null;
-        }
-        File file = new File(path);
-        if (!file.exists()) {
+        if (baseDir == null || path == null || !Files.exists(Path.of(path))) {
             return null;
         }
         try {
-            String json = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-            Map<String, Object> raw = OBJECT_MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
-            Map<String, Object> normalized = normalizeCheckpointRaw(raw);
-            return OBJECT_MAPPER.convertValue(normalized, EvolveCheckpoint.class);
-        } catch (IOException e) {
-            Loggers.AGENT.error("Failed to load checkpoint: {}", e.getMessage());
-            return null;
+            Map<String, Object> raw = OBJECT_MAPPER.readValue(Files.readString(Path.of(path), StandardCharsets.UTF_8), MAP_TYPE);
+            return OBJECT_MAPPER.convertValue(raw, EvolveCheckpoint.class);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to load checkpoint: " + path, exception);
         }
     }
 
-    /**
-     * Deep-learning style inference loader.
-     *
-     * <p>A single, simple API for inference side that reads `operators_state` from a checkpoint JSON.
-     *
-     * @param path Path to checkpoint file
-     * @return Operators state map, or null on failure
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Map<String, Object>> loadStateDict(String path) {
-        if (baseDir == null) {
-            return null;
-        }
-        File file = new File(path);
-        if (!file.exists()) {
+        if (baseDir == null || path == null || !Files.exists(Path.of(path))) {
             return null;
         }
         try {
-            String json = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-            Map<String, Object> raw = OBJECT_MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
-            boolean hasOperatorsState = raw.containsKey("operators_state") || raw.containsKey("operatorsState");
-            if (!hasOperatorsState) {
+            Map<String, Object> raw = OBJECT_MAPPER.readValue(Files.readString(Path.of(path), StandardCharsets.UTF_8), MAP_TYPE);
+            if (!raw.containsKey("operators_state")) {
                 return null;
             }
-            Map<String, Object> normalized = normalizeCheckpointRaw(raw);
-            Object operatorsState = normalized.get("operators_state");
-            if (operatorsState instanceof Map) {
-                return (Map<String, Map<String, Object>>) operatorsState;
+            Object operatorsState = raw.get("operators_state");
+            if (!(operatorsState instanceof Map<?, ?> input)) {
+                return Map.of();
             }
-            return new HashMap<>();
-        } catch (IOException e) {
-            Loggers.AGENT.error("Failed to load state dict: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> normalizeCheckpointRaw(Map<String, Object> raw) {
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        if (raw == null) {
-            return normalized;
-        }
-        normalized.put("version", raw.get("version"));
-        normalized.put("run_id", firstPresent(raw, "run_id", "runId"));
-        normalized.put("step", asMap(firstPresent(raw, "step")));
-        normalized.put("best", normalizeBestMap(asMap(firstPresent(raw, "best"))));
-        normalized.put("seed", firstPresent(raw, "seed"));
-        normalized.put("operators_state", asNestedMap(firstPresent(raw, "operators_state", "operatorsState")));
-        normalized.put("updater_state", asMap(firstPresent(raw, "updater_state", "updaterState")));
-        normalized.put("searcher_state", asMap(firstPresent(raw, "searcher_state", "searcherState")));
-        normalized.put("last_metrics", normalizeLastMetricsMap(asMap(firstPresent(raw, "last_metrics", "lastMetrics"))));
-        return normalized;
-    }
-
-    private Object firstPresent(Map<String, Object> raw, String... keys) {
-        for (String key : keys) {
-            if (raw.containsKey(key)) {
-                return raw.get(key);
+            Map<String, Map<String, Object>> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : input.entrySet()) {
+                Object value = entry.getValue();
+                if (value instanceof Map<?, ?> nested) {
+                    Map<String, Object> nestedMap = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> nestedEntry : nested.entrySet()) {
+                        nestedMap.put(String.valueOf(nestedEntry.getKey()), nestedEntry.getValue());
+                    }
+                    result.put(String.valueOf(entry.getKey()), nestedMap);
+                } else {
+                    result.put(String.valueOf(entry.getKey()), Map.of());
+                }
             }
+            return result;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to load checkpoint state dict: " + path, exception);
         }
-        return null;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> asMap(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            return new LinkedHashMap<>((Map<String, Object>) map);
+    private void ensureDir() {
+        if (baseDir == null) {
+            return;
         }
-        return new LinkedHashMap<>();
+        try {
+            Files.createDirectories(Path.of(baseDir));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to create checkpoint directory: " + baseDir, exception);
+        }
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Map<String, Object>> asNestedMap(Object value) {
-        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
-        if (!(value instanceof Map<?, ?> map)) {
+    private static Map<String, Object> toJsonCompatible(Object value) {
+        Object normalized = normalize(value);
+        if (normalized instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
             return result;
         }
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            String key = String.valueOf(entry.getKey());
-            result.put(key, asMap(entry.getValue()));
-        }
-        return result;
+        return OBJECT_MAPPER.convertValue(normalized, MAP_TYPE);
     }
 
-    private Map<String, Object> normalizeBestMap(Map<String, Object> best) {
-        Map<String, Object> normalized = new LinkedHashMap<>(best);
-        if (normalized.containsKey("bestScore") && !normalized.containsKey("best_score")) {
-            normalized.put("best_score", normalized.remove("bestScore"));
+    @SuppressWarnings("unchecked")
+    private static Object normalize(Object value) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) {
+            return value;
         }
-        return normalized;
-    }
-
-    private Map<String, Object> normalizeLastMetricsMap(Map<String, Object> lastMetrics) {
-        Map<String, Object> normalized = new LinkedHashMap<>(lastMetrics);
-        if (normalized.containsKey("currentEpochScore") && !normalized.containsKey("current_epoch_score")) {
-            normalized.put("current_epoch_score", normalized.remove("currentEpochScore"));
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                normalized.put(String.valueOf(entry.getKey()), normalize(entry.getValue()));
+            }
+            return normalized;
         }
-        return normalized;
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> normalized = new ArrayList<>();
+            for (Object item : iterable) {
+                normalized.add(normalize(item));
+            }
+            return normalized;
+        }
+        if (value instanceof Object[] array) {
+            List<Object> normalized = new ArrayList<>();
+            for (Object item : array) {
+                normalized.add(normalize(item));
+            }
+            return normalized;
+        }
+        return normalize(OBJECT_MAPPER.convertValue(value, MAP_TYPE));
     }
 }

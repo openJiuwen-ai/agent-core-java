@@ -1,45 +1,71 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.prompts.sections;
 
 import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.harness.prompts.workspace_content.WorkspaceHeader;
 
-import java.util.LinkedHashMap;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 /**
- * Workspace prompt section builder.
+ * Workspace prompt section helpers.
  * <p>
  * Mirrors Python's {@code workspace} in
- * {@code openjiuwen.harness.prompts.sections.workspace}.
+ * {@code openjiuwen/harness/prompts/sections/workspace.py}.
  */
 public final class WorkspaceSection {
+
+    private static final int WORKSPACE_PRIORITY = 70;
 
     private WorkspaceSection() {
     }
 
-    private static final String CN = "# 工作区\n"
-            + "\n"
-            + "- 当前位于项目工作区中\n"
-            + "- 优先在工作区内操作\n"
-            + "- 注意保护重要文件，修改前先备份\n";
+    public static String buildWorkspaceContent(Object sysOperation, Object workspace, String language) {
+        String resolvedLanguage = "en".equals(language) ? "en" : "cn";
+        String rootPath = resolveRootPath(workspace);
+        String header = WorkspaceHeader.getWorkspaceHeader(resolvedLanguage);
+        String importantFiles = WorkspaceHeader.getImportantFiles(resolvedLanguage);
 
-    private static final String EN = "# Workspace\n"
-            + "\n"
-            + "- Currently in the project workspace\n"
-            + "- Prefer operating within the workspace\n"
-            + "- Protect important files; back up before modifying\n";
-
-    private static final Map<String, String> WORKSPACE = new LinkedHashMap<>();
-
-    static {
-        WORKSPACE.put("cn", CN);
-        WORKSPACE.put("en", EN);
+        if ("en".equals(resolvedLanguage)) {
+            return header + "Your working directory is: `" + rootPath + "`\n\n" + importantFiles;
+        }
+        return header + "你的工作目录是：`" + rootPath + "`\n\n" + importantFiles;
     }
 
-    public static PromptSection build() {
-        return new PromptSection(SectionName.WORKSPACE, WORKSPACE, 75);
+    public static PromptSection buildWorkspaceSection(Object sysOperation, Object workspace, String language) {
+        if (workspace == null) {
+            return null;
+        }
+        String resolvedLanguage = "en".equals(language) ? "en" : "cn";
+        return new PromptSection(
+                SectionName.WORKSPACE,
+                Map.of(resolvedLanguage, buildWorkspaceContent(sysOperation, workspace, resolvedLanguage)),
+                WORKSPACE_PRIORITY
+        );
+    }
+
+    private static String resolveRootPath(Object workspace) {
+        if (workspace == null) {
+            return "";
+        }
+        for (String methodName : new String[]{"getRootPath", "rootPath"}) {
+            try {
+                Method method = workspace.getClass().getMethod(methodName);
+                Object value = method.invoke(workspace);
+                return value == null ? "" : String.valueOf(value);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        try {
+            Field field = workspace.getClass().getField("rootPath");
+            Object value = field.get(workspace);
+            return value == null ? "" : String.valueOf(value);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return "";
     }
 }

@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JudgeServerTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     @Test
     void healthzReturnsConfiguredModelAndVotes() throws Exception {
@@ -120,13 +121,13 @@ class JudgeServerTest {
         })) {
             server.start();
             HttpClient client = HttpClient.newHttpClient();
-            String body = "{" +
-                    "\"response_text\":\"resp\"," +
-                    "\"instruction_text\":\"inst\"," +
-                    "\"followup_user_feedback\":\"next\"," +
-                    "\"session_id\":\"s1\"," +
-                    "\"turn_num\":2" +
-                    "}";
+            String body = "{"
+                    + "\"response_text\":\"resp\","
+                    + "\"instruction_text\":\"inst\","
+                    + "\"followup_user_feedback\":\"next\","
+                    + "\"session_id\":\"s1\","
+                    + "\"turn_num\":2"
+                    + "}";
 
             HttpResponse<String> response = client.send(HttpRequest.newBuilder()
                             .uri(URI.create("http://127.0.0.1:" + server.getPort() + "/score"))

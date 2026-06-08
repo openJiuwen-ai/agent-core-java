@@ -5,9 +5,8 @@
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Represents an interrupt value during graph execution.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Interrupt}.
+ * Mirrors Python's {@code Interrupt} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public class Interrupt {
 
@@ -23,6 +22,6 @@ public class Interrupt {
 
     @Override
     public String toString() {
-        return "Interrupt{value=" + value + '}';
+        return String.valueOf(value);
     }
 }

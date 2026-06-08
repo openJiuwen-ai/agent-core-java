@@ -4,47 +4,70 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
- * Conditional router that determines targets dynamically via a selector function.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.router.ConditionalRouter}.
- * The selector returns either a single node name or a list of node names.
+ * Mirrors Python's {@code ConditionalRouter} in
+ * {@code openjiuwen/core/graph/pregel/router.py}.
  */
 public class ConditionalRouter implements IRouter {
 
-    private final Function<Object, Object> selector;
+    private final Supplier<?> selector;
+    private final Function<Object, ?> stateSelector;
 
-    /**
-     * Create a conditional router.
-     *
-     * @param selector function that takes optional state and returns
-     *                 a String (single target) or List&lt;String&gt; (multiple targets)
-     */
-    public ConditionalRouter(Function<Object, Object> selector) {
+    public ConditionalRouter(Supplier<?> selector) {
         this.selector = selector;
+        this.stateSelector = null;
+    }
+
+    public ConditionalRouter(Function<Object, ?> stateSelector) {
+        this.selector = null;
+        this.stateSelector = stateSelector;
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public List<Message> dispatch(String sourceNode) {
-        Object result = selector.apply(null);
-        List<String> targets;
-        if (result instanceof String s) {
-            targets = List.of(s);
-        } else if (result instanceof List<?> list) {
-            targets = (List<String>) list;
+        Object rawTargets;
+        if (stateSelector != null) {
+            rawTargets = stateSelector.apply(null);
+        } else if (selector != null) {
+            rawTargets = selector.get();
         } else {
-            targets = List.of(String.valueOf(result));
+            throw new IllegalStateException("ConditionalRouter requires a selector");
         }
-
+        List<String> targets = normalizeTargets(rawTargets);
         List<Message> messages = new ArrayList<>(targets.size());
         for (String target : targets) {
             messages.add(new TriggerMessage(sourceNode, target));
         }
         return messages;
+    }
+
+    private List<String> normalizeTargets(Object rawTargets) {
+        if (rawTargets instanceof String target) {
+            return List.of(target);
+        }
+        if (rawTargets instanceof Collection<?> collection) {
+            List<String> targets = new ArrayList<>(collection.size());
+            for (Object item : collection) {
+                targets.add(String.valueOf(item));
+            }
+            return targets;
+        }
+        if (rawTargets != null && rawTargets.getClass().isArray()) {
+            int length = Array.getLength(rawTargets);
+            List<String> targets = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                targets.add(String.valueOf(Array.get(rawTargets, index)));
+            }
+            return targets;
+        }
+        throw new IllegalArgumentException(
+                "ConditionalRouter selector must return a target string or a target collection");
     }
 }

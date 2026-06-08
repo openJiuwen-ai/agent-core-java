@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.lang.reflect.Array;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -12,22 +15,42 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Base trace span class holding common trace properties.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.span.Span}.
+ * Mirrors Python's {@code Span} in
+ * {@code openjiuwen/core/session/tracer/span.py}.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Span {
-
+    @JsonProperty("traceId")
     private String traceId;
+
+    @JsonProperty("startTime")
     private LocalDateTime startTime;
+
+    @JsonProperty("endTime")
     private LocalDateTime endTime;
-    private Object inputs;
+
+    @JsonProperty("inputs")
+    private Map<String, Object> inputs;
+
+    @JsonProperty("outputs")
     private Object outputs;
+
+    @JsonProperty("error")
     private Map<String, Object> error;
+
+    @JsonProperty("invokeId")
     private String invokeId;
+
+    @JsonProperty("parentInvokeId")
     private String parentInvokeId;
+
+    @JsonProperty("childInvokes")
     private List<String> childInvokesId;
+
+    @JsonProperty("status")
     private String status;
+
+    @JsonProperty("onInvokeData")
     private List<Map<String, Object>> onInvokeData;
 
     public Span() {
@@ -40,65 +63,35 @@ public class Span {
     }
 
     /**
-     * Update span attributes from a data map.
+     * Mirrors the Python model update helper and ignores unknown keys.
+     *
+     * @param data updates to apply
      */
     public void update(Map<String, Object> data) {
-        if (data == null) return;
+        if (data == null) {
+            return;
+        }
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             setField(entry.getKey(), entry.getValue());
         }
     }
 
     /**
-     * Append a child invoke ID.
+     * Appends a child invoke identifier.
+     *
+     * @param childInvokeId child invoke id
      */
-    public void appendChildInvokeId(String invokeId) {
+    public void appendChildInvokeId(String childInvokeId) {
         if (childInvokesId == null) {
             childInvokesId = new ArrayList<>();
         }
-        childInvokesId.add(invokeId);
-    }
-
-    // -- field setters for reflection-like update --
-    @SuppressWarnings("unchecked")
-    protected void setField(String name, Object value) {
-        switch (name) {
-            case "start_time":
-            case "startTime":
-                if (value instanceof LocalDateTime) startTime = (LocalDateTime) value;
-                break;
-            case "end_time":
-            case "endTime":
-                if (value instanceof LocalDateTime) endTime = (LocalDateTime) value;
-                break;
-            case "inputs":
-                inputs = value;
-                break;
-            case "outputs":
-                outputs = value;
-                break;
-            case "error":
-                if (value instanceof Map) error = (Map<String, Object>) value;
-                break;
-            case "invoke_id":
-            case "invokeId":
-                if (value instanceof String) invokeId = (String) value;
-                break;
-            case "status":
-                if (value instanceof String) status = (String) value;
-                break;
-            case "on_invoke_data":
-            case "onInvokeData":
-                if (value instanceof List) onInvokeData = (List<Map<String, Object>>) value;
-                break;
-            default:
-                // subclasses can override
-                break;
-        }
+        childInvokesId.add(childInvokeId);
     }
 
     /**
-     * Create a detached snapshot so previously emitted trace frames are not mutated later.
+     * Creates a detached copy for later tracer serialization.
+     *
+     * @return copied span
      */
     public Span snapshot() {
         Span copy = new Span();
@@ -106,11 +99,16 @@ public class Span {
         return copy;
     }
 
+    /**
+     * Copies the base fields into a span subtype.
+     *
+     * @param copy target span
+     */
     protected void copyBaseFields(Span copy) {
         copy.traceId = traceId;
         copy.startTime = startTime;
         copy.endTime = endTime;
-        copy.inputs = deepCopyValue(inputs);
+        copy.inputs = deepCopyMap(inputs);
         copy.outputs = deepCopyValue(outputs);
         copy.error = deepCopyMap(error);
         copy.invokeId = invokeId;
@@ -121,6 +119,73 @@ public class Span {
     }
 
     @SuppressWarnings("unchecked")
+    protected void setField(String name, Object value) {
+        switch (name) {
+            case "trace_id":
+            case "traceId":
+                if (value instanceof String) {
+                    traceId = (String) value;
+                }
+                break;
+            case "start_time":
+            case "startTime":
+                if (value instanceof LocalDateTime) {
+                    startTime = (LocalDateTime) value;
+                }
+                break;
+            case "end_time":
+            case "endTime":
+                if (value instanceof LocalDateTime) {
+                    endTime = (LocalDateTime) value;
+                }
+                break;
+            case "inputs":
+                if (value instanceof Map<?, ?>) {
+                    inputs = (Map<String, Object>) value;
+                }
+                break;
+            case "outputs":
+                outputs = value;
+                break;
+            case "error":
+                if (value instanceof Map<?, ?>) {
+                    error = (Map<String, Object>) value;
+                }
+                break;
+            case "invoke_id":
+            case "invokeId":
+                if (value instanceof String) {
+                    invokeId = (String) value;
+                }
+                break;
+            case "parent_invoke_id":
+            case "parentInvokeId":
+                if (value instanceof String) {
+                    parentInvokeId = (String) value;
+                }
+                break;
+            case "child_invokes_id":
+            case "childInvokes":
+                if (value instanceof List<?>) {
+                    childInvokesId = (List<String>) value;
+                }
+                break;
+            case "status":
+                if (value instanceof String) {
+                    status = (String) value;
+                }
+                break;
+            case "on_invoke_data":
+            case "onInvokeData":
+                if (value instanceof List<?>) {
+                    onInvokeData = (List<Map<String, Object>>) value;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
     protected static Map<String, Object> deepCopyMap(Map<?, ?> source) {
         if (source == null) {
             return null;
@@ -132,7 +197,6 @@ public class Span {
         return copy;
     }
 
-    @SuppressWarnings("unchecked")
     protected static List<Map<String, Object>> deepCopyMapList(List<Map<String, Object>> source) {
         if (source == null) {
             return null;
@@ -185,28 +249,91 @@ public class Span {
         return value;
     }
 
-    // -- Getters and Setters --
+    public String getTraceId() {
+        return traceId;
+    }
 
-    public String getTraceId() { return traceId; }
-    public void setTraceId(String traceId) { this.traceId = traceId; }
-    public LocalDateTime getStartTime() { return startTime; }
-    public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
-    public LocalDateTime getEndTime() { return endTime; }
-    public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
-    public Object getInputs() { return inputs; }
-    public void setInputs(Object inputs) { this.inputs = inputs; }
-    public Object getOutputs() { return outputs; }
-    public void setOutputs(Object outputs) { this.outputs = outputs; }
-    public Map<String, Object> getError() { return error; }
-    public void setError(Map<String, Object> error) { this.error = error; }
-    public String getInvokeId() { return invokeId; }
-    public void setInvokeId(String invokeId) { this.invokeId = invokeId; }
-    public String getParentInvokeId() { return parentInvokeId; }
-    public void setParentInvokeId(String parentInvokeId) { this.parentInvokeId = parentInvokeId; }
-    public List<String> getChildInvokesId() { return childInvokesId; }
-    public void setChildInvokesId(List<String> childInvokesId) { this.childInvokesId = childInvokesId; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public List<Map<String, Object>> getOnInvokeData() { return onInvokeData; }
-    public void setOnInvokeData(List<Map<String, Object>> onInvokeData) { this.onInvokeData = onInvokeData; }
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
+    }
+
+    public LocalDateTime getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(LocalDateTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public LocalDateTime getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(LocalDateTime endTime) {
+        this.endTime = endTime;
+    }
+
+    public Map<String, Object> getInputs() {
+        return inputs;
+    }
+
+    public void setInputs(Map<String, Object> inputs) {
+        this.inputs = inputs;
+    }
+
+    public Object getOutputs() {
+        return outputs;
+    }
+
+    public void setOutputs(Object outputs) {
+        this.outputs = outputs;
+    }
+
+    public Map<String, Object> getError() {
+        return error;
+    }
+
+    public void setError(Map<String, Object> error) {
+        this.error = error;
+    }
+
+    public String getInvokeId() {
+        return invokeId;
+    }
+
+    public void setInvokeId(String invokeId) {
+        this.invokeId = invokeId;
+    }
+
+    public String getParentInvokeId() {
+        return parentInvokeId;
+    }
+
+    public void setParentInvokeId(String parentInvokeId) {
+        this.parentInvokeId = parentInvokeId;
+    }
+
+    public List<String> getChildInvokesId() {
+        return childInvokesId;
+    }
+
+    public void setChildInvokesId(List<String> childInvokesId) {
+        this.childInvokesId = childInvokesId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public List<Map<String, Object>> getOnInvokeData() {
+        return onInvokeData;
+    }
+
+    public void setOnInvokeData(List<Map<String, Object>> onInvokeData) {
+        this.onInvokeData = onInvokeData;
+    }
 }

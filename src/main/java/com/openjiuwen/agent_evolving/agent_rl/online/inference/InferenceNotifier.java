@@ -4,133 +4,108 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.inference;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * InferenceNotifier — 通知 vLLM 运行时热加载用户 LoRA.
- * <p>
- * vLLM 原生支持 /v1/load_lora_adapter 接口，无需重启服务。
- * 加载后，对应 lora_name 的请求将自动应用新权重。
- * <p>
- * Mirrors Python's {@code InferenceNotifier} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.inference.notifier}.
+ * Notify a vLLM runtime to hot-load user LoRA adapters.
+ *
+ * <p>Mirrors Python's {@code InferenceNotifier} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/inference/notifier.py}.</p>
  */
 public class InferenceNotifier {
 
-    private String vllmBaseUrl;
-    private double timeout;
-    private HttpClient httpClient;
-    private boolean ownedClient;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public InferenceNotifier(String vllmBaseUrl, double timeout) {
-        this.vllmBaseUrl = vllmBaseUrl.replaceAll("/$", "");
-        this.timeout = timeout;
-        this.ownedClient = true;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds((long) timeout))
-                .build();
+    private final String vllmBaseUrl;
+    private final double timeout;
+    private final boolean ownedClient;
+    private final HttpClient httpClient;
+
+    public InferenceNotifier(String vllmBaseUrl) {
+        this(vllmBaseUrl, 120.0, null);
     }
 
     public InferenceNotifier(String vllmBaseUrl, double timeout, HttpClient httpClient) {
-        this.vllmBaseUrl = vllmBaseUrl.replaceAll("/$", "");
+        this.vllmBaseUrl = vllmBaseUrl.replaceAll("/+$", "");
         this.timeout = timeout;
-        this.httpClient = httpClient;
         this.ownedClient = httpClient == null;
-        if (this.httpClient == null) {
-            this.httpClient = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds((long) timeout))
-                    .build();
-        }
+        this.httpClient = httpClient != null
+                ? httpClient
+                : HttpClient.newBuilder().connectTimeout(Duration.ofSeconds((long) timeout)).build();
     }
 
-    /**
-     * 通知 vLLM 热加载指定用户的 LoRA。
-     * 
-     * @param userId 用户 ID，作为 vLLM 中的 lora_name
-     * @param loraPath LoRA 权重目录的绝对路径
-     */
-    public void notifyUpdate(String userId, String loraPath) throws Exception {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("lora_name", userId);
-        payload.put("lora_path", loraPath);
-        payload.put("load_inplace", true);
+    public CompletionStage<Void> close() {
+        return CompletableFuture.completedFuture(null);
+    }
 
-        String jsonBody = toJson(payload);
-        
+    public CompletionStage<Void> notifyUpdate(String userId, String loraPath) {
+        return postJson(
+                "/v1/load_lora_adapter",
+                Map.of(
+                        "lora_name", userId,
+                        "lora_path", loraPath,
+                        "load_inplace", true
+                ),
+                "vLLM load_lora_adapter failed"
+        );
+    }
+
+    public CompletionStage<Void> unload(String userId) {
+        return postJson(
+                "/v1/unload_lora_adapter",
+                Map.of("lora_name", userId),
+                "vLLM unload_lora_adapter failed"
+        );
+    }
+
+    public String getVllmBaseUrl() {
+        return vllmBaseUrl;
+    }
+
+    public double getTimeout() {
+        return timeout;
+    }
+
+    public boolean isOwnedClient() {
+        return ownedClient;
+    }
+
+    private CompletionStage<Void> postJson(String path, Map<String, Object> payload, String errorPrefix) {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(vllmBaseUrl + "/v1/load_lora_adapter"))
+                .uri(URI.create(vllmBaseUrl + path))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .timeout(Duration.ofSeconds((long) timeout))
+                .POST(HttpRequest.BodyPublishers.ofString(toJson(payload)))
                 .build();
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenAccept(response -> {
+                    if (response.statusCode() >= 400) {
+                        String body = response.body() == null ? "" : response.body();
+                        throw new RuntimeException(
+                                errorPrefix + ": status=" + response.statusCode() + ", body=" + truncate(body)
+                        );
+                    }
+                });
+    }
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        
-        if (response.statusCode() >= 400) {
-            throw new RuntimeException(
-                "vLLM load_lora_adapter failed: status=" + response.statusCode() + 
-                ", body=" + response.body().substring(0, Math.min(400, response.body().length())));
+    private static String toJson(Map<String, Object> payload) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to serialize notifier payload", exception);
         }
     }
 
-    /**
-     * 卸载用户 LoRA（可选，用于清理不活跃用户）。
-     * 
-     * @param userId 用户 ID
-     */
-    public void unload(String userId) throws Exception {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("lora_name", userId);
-
-        String jsonBody = toJson(payload);
-        
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(vllmBaseUrl + "/v1/unload_lora_adapter"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .timeout(Duration.ofSeconds((long) timeout))
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        
-        if (response.statusCode() >= 400) {
-            throw new RuntimeException("vLLM unload_lora_adapter failed: status=" + response.statusCode());
-        }
+    private static String truncate(String value) {
+        return value.length() <= 400 ? value : value.substring(0, 400);
     }
-
-    /**
-     * Close HTTP client if owned.
-     */
-    public void close() {
-        if (ownedClient && httpClient != null) {
-            httpClient.close();
-        }
-    }
-
-    private String toJson(Map<String, Object> map) {
-        StringBuilder sb = new StringBuilder("{");
-        int i = 0;
-        for (Map.Entry<String, Object> entry : map.entrySet()) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(entry.getKey()).append("\":");
-            Object value = entry.getValue();
-            if (value instanceof String) {
-                sb.append("\"").append(value).append("\"");
-            } else {
-                sb.append(value);
-            }
-            i++;
-        }
-        sb.append("}");
-        return sb.toString();
-    }
-
-    public String getVllmBaseUrl() { return vllmBaseUrl; }
-    public double getTimeout() { return timeout; }
 }

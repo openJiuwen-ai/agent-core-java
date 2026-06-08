@@ -7,16 +7,17 @@ package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
 import java.util.Map;
 
 /**
- * Minimal delayed-judge scorer seam for gateway trajectory flow.
+ * Delayed-judge scorer seam for gateway trajectory flow.
  * <p>
- * Mirrors Python's {@code JudgeScorer.score} contract in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.judge_scorer}.
+ * Mirrors Python's {@code JudgeScorer.score} contract consumed by
+ * {@code openjiuwen/agent_evolving/agent_rl/online/gateway/trajectory/judge_dispatcher.py}.
  */
 public interface JudgeScorer {
 
-    Map<String, Object> score(String responseText,
-                              String instructionText,
-                              String followupUserFeedback,
-                              String sessionId,
-                              int turnNum);
+    Map<String, Object> score(
+            String responseText,
+            String instructionText,
+            String followupUserFeedback,
+            String sessionId,
+            int turnNum);
 }

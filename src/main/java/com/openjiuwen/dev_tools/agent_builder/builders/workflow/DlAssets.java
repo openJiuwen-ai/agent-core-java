@@ -8,7 +8,7 @@ package com.openjiuwen.dev_tools.agent_builder.builders.workflow;
  * DL assets constants.
  * <p>
  * Mirrors Python's {@code dl_assets} in
- * {@code openjiuwen.dev_tools.agent_builder.builders.workflow.dl_assets}.
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_assets.py}.
  */
 public final class DlAssets {
 

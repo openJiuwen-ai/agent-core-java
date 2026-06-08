@@ -10,54 +10,58 @@ import java.util.Map;
 /**
  * Trajectory persistence interface.
  * <p>
- * Provides interface for saving/loading/querying trajectory data
- * with optional version isolation.
+ * Provides interface for saving, loading, and querying trajectory data with optional version
+ * isolation.
+ * </p>
  * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.store.TrajectoryStore}.
+ * Mirrors Python's {@code TrajectoryStore} in
+ * {@code openjiuwen/agent_evolving/trajectory/store.py}.
+ * </p>
  */
 public interface TrajectoryStore {
 
     /**
      * Save trajectory. Version is used for experiment isolation.
      *
-     * @param trajectory Trajectory to save
-     * @param version Optional version identifier
+     * @param trajectory trajectory to save
+     * @param version optional version identifier
      */
     void save(Trajectory trajectory, String version);
 
     /**
      * Load a specific trajectory.
      *
-     * @param executionId Execution ID of the trajectory
-     * @param version Optional version identifier
-     * @return Loaded Trajectory or null if not found
+     * @param executionId execution ID of the trajectory
+     * @param version optional version identifier
+     * @return loaded trajectory or {@code null} if not found
      */
     Trajectory load(String executionId, String version);
 
     /**
      * Query trajectories by session ID.
      *
-     * @param sessionId Session ID to query
-     * @return List of matching trajectories
+     * @param sessionId session ID to query
+     * @return list of matching trajectories
      */
     List<Trajectory> queryBySessionId(String sessionId);
 
     /**
      * Query trajectories using Python-style field filters.
      *
-     * @param version Optional version filter
-     * @param filters Optional field filters such as session_id, case_id, source
-     * @return List of matching trajectories
+     * @param version optional version filter
+     * @param filters optional field filters such as {@code session_id}, {@code case_id}, and
+     *                {@code source}
+     * @return list of matching trajectories
      */
     List<Trajectory> query(String version, Map<String, Object> filters);
 
     /**
      * Query trajectories with optional filters.
      *
-     * @param sessionId Optional session ID filter
-     * @param executionId Optional execution ID filter
-     * @param version Optional version filter
-     * @return List of matching trajectories
+     * @param sessionId optional session ID filter
+     * @param executionId optional execution ID filter
+     * @param version optional version filter
+     * @return list of matching trajectories
      */
     List<Trajectory> query(String sessionId, String executionId, String version);
 }

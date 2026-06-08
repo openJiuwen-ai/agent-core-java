@@ -14,12 +14,9 @@ import java.util.Map;
 
 /**
  * Multilingual base model for LLM response schema generation.
- * <p>
- * Mirrors Python's {@code MultilingualBaseModel} class from
- * <code>memory/graph/extraction/base.py</code>.
  *
- * <p>Provides multilingual description lookup and JSON schema generation
- * with OpenAI structured output compliance.
+ * <p>Mirrors Python's {@code MultilingualBaseModel} in
+ * {@code openjiuwen/core/memory/graph/extraction/base.py}.</p>
  */
 public abstract class MultilingualBaseModel {
 

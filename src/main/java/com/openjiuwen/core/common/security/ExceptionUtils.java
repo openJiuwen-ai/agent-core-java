@@ -4,40 +4,38 @@
 
 package com.openjiuwen.core.common.security;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
- * Exception formatting utilities.
- *
- * <p>Mirrors Python's {@code ExceptionUtils} in
- * {@code openjiuwen.core.common.security.exception_utils}.
+ * Mirrors Python's {@code ExceptionUtils} in
+ * {@code openjiuwen/core/common/security/exception_utils.py}.
  */
 public final class ExceptionUtils {
 
     private ExceptionUtils() {
     }
 
-    /**
-     * Format a validation exception's errors into a human-readable multi-line string.
-     * <p>
-     * Generic replacement for Python's Pydantic ValidationError formatting.
-     *
-     * @param t the exception
-     * @return formatted string
-     */
-    public static String formatValidationError(Throwable t) {
-        if (t == null) {
+    public static String formatValidationError(List<? extends Map<String, ?>> errors) {
+        if (errors == null || errors.isEmpty()) {
             return "";
         }
-        return t.getClass().getSimpleName() + ": " + t.getMessage();
+        return errors.stream()
+                .map(ExceptionUtils::formatOneError)
+                .collect(Collectors.joining("\n"));
     }
 
-    /**
-     * Get the root cause of an exception chain.
-     */
-    public static Throwable getRootCause(Throwable t) {
-        Throwable cause = t;
-        while (cause.getCause() != null && cause.getCause() != cause) {
-            cause = cause.getCause();
+    private static String formatOneError(Map<String, ?> error) {
+        Object locObject = error.get("loc");
+        List<String> locSegments = new ArrayList<>();
+        if (locObject instanceof Iterable<?> iterable) {
+            for (Object segment : iterable) {
+                locSegments.add(String.valueOf(segment));
+            }
         }
-        return cause;
+        Object message = error.get("msg");
+        return String.join(".", locSegments) + ": " + (message == null ? "Unknown error" : String.valueOf(message));
     }
 }

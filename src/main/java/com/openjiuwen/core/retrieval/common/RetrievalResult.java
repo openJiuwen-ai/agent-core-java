@@ -4,24 +4,17 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import lombok.Getter;
-import lombok.Setter;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * User-facing retrieval result.
- *
- * <p>Mirrors Python's {@code RetrievalResult} in
- * {@code openjiuwen.core.retrieval.common.retrieval_result}.
+ * Mirrors Python's {@code RetrievalResult} in
+ * {@code openjiuwen/core/retrieval/common/retrieval_result.py}.
  */
-@Getter
-@Setter
 public class RetrievalResult {
 
     private String text;
-    private Double score;
+    private double score;
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private String docId;
     private String chunkId;
@@ -29,29 +22,51 @@ public class RetrievalResult {
     public RetrievalResult() {
     }
 
-    public RetrievalResult(String text, Double score) {
-        this(text, score, null, null, null);
-    }
-
-    public RetrievalResult(String text, Double score, Map<String, Object> metadata, String docId, String chunkId) {
-        setText(text);
-        setScore(score);
+    public RetrievalResult(String text, double score, Map<String, Object> metadata, String docId, String chunkId) {
+        this.text = text;
+        this.score = score;
         setMetadata(metadata);
         this.docId = docId;
         this.chunkId = chunkId;
     }
 
+    public String getText() {
+        return text;
+    }
+
     public void setText(String text) {
-        RetrievalValidation.requireNonNull(text, "RetrievalResult.text");
         this.text = text;
     }
 
-    public void setScore(Double score) {
-        RetrievalValidation.requireNonNull(score, "RetrievalResult.score");
+    public double getScore() {
+        return score;
+    }
+
+    public void setScore(double score) {
         this.score = score;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
     }
 
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+    }
+
+    public String getDocId() {
+        return docId;
+    }
+
+    public void setDocId(String docId) {
+        this.docId = docId;
+    }
+
+    public String getChunkId() {
+        return chunkId;
+    }
+
+    public void setChunkId(String chunkId) {
+        this.chunkId = chunkId;
     }
 }

@@ -6,23 +6,28 @@ package com.openjiuwen.agent_evolving.trajectory;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's tests.unit_tests.agent_evolving.trajectory.test_builder.TestTrajectoryBuilder.
- * Tests for TrajectoryBuilder - unified trajectory assembler.
+ * Tests for {@link TrajectoryBuilder}.
+ * <p>
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/trajectory/test_builder.py}.
+ * </p>
  */
 class TrajectoryBuilderTest {
 
     private TrajectoryStep makeStep(StepKind kind, Object detail, Object error) {
         return TrajectoryStep.builder()
                 .kind(kind != null ? kind.value() : "llm")
-                .inputs(detail)
+                .detail(detail)
                 .error(error)
                 .meta(new HashMap<>())
                 .build();
@@ -55,6 +60,15 @@ class TrajectoryBuilderTest {
     }
 
     @Test
+    void builderRejectsNonPositiveMaxSteps() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> TrajectoryBuilder.builder().sessionId("s1").source("online").maxSteps(0).build());
+
+        assertEquals("max_steps must be >= 1", error.getMessage());
+    }
+
+    @Test
     void recordSingleStep() {
         TrajectoryBuilder builder = TrajectoryBuilder.builder()
                 .sessionId("s1")
@@ -65,7 +79,7 @@ class TrajectoryBuilderTest {
         builder.recordStep(step);
 
         assertEquals(1, builder.getSteps().size());
-        assertEquals(StepKind.LLM, builder.getSteps().get(0).getKindEnum());
+        assertEquals(StepKind.LLM, builder.getSteps().getFirst().getKindEnum());
     }
 
     @Test
@@ -90,6 +104,23 @@ class TrajectoryBuilderTest {
     }
 
     @Test
+    void recordStepRetainsOnlyRecentWindowWhenMaxStepsSet() {
+        TrajectoryBuilder builder = TrajectoryBuilder.builder()
+                .sessionId("s1")
+                .source("online")
+                .maxSteps(2)
+                .build();
+
+        builder.recordStep(TrajectoryStep.builder().kind("llm").meta(Map.of("idx", 1)).build());
+        builder.recordStep(TrajectoryStep.builder().kind("tool").meta(Map.of("idx", 2)).build());
+        builder.recordStep(TrajectoryStep.builder().kind("llm").meta(Map.of("idx", 3)).build());
+
+        assertEquals(2, builder.getSteps().size());
+        assertEquals(2, builder.getSteps().get(0).getMeta().get("idx"));
+        assertEquals(3, builder.getSteps().get(1).getMeta().get("idx"));
+    }
+
+    @Test
     void buildReturnsTrajectory() {
         TrajectoryBuilder builder = TrajectoryBuilder.builder()
                 .sessionId("session_123")
@@ -100,7 +131,7 @@ class TrajectoryBuilderTest {
         TrajectoryStep step = makeStep(StepKind.LLM, null, null);
         builder.recordStep(step);
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertEquals("session_123", trajectory.getSessionId());
         assertEquals("online", trajectory.getSource());
@@ -116,7 +147,7 @@ class TrajectoryBuilderTest {
                 .source("online")
                 .build();
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertTrue(trajectory.getSteps().isEmpty());
         assertNull(trajectory.getCost());
@@ -141,13 +172,13 @@ class TrajectoryBuilderTest {
 
         TrajectoryStep step = TrajectoryStep.builder()
                 .kind("llm")
-                .inputs(detail)
+                .detail(detail)
                 .meta(new HashMap<>())
                 .build();
 
         builder.recordStep(step);
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertNotNull(trajectory.getCost());
         assertEquals(10, trajectory.getCost().get("input_tokens"));
@@ -181,11 +212,11 @@ class TrajectoryBuilderTest {
                 .usage(usage2)
                 .build();
 
-        builder.recordStep(TrajectoryStep.builder().kind("llm").inputs(detail1).meta(new HashMap<>()).build());
+        builder.recordStep(TrajectoryStep.builder().kind("llm").detail(detail1).meta(new HashMap<>()).build());
         builder.recordStep(makeStep(StepKind.TOOL, null, null));
-        builder.recordStep(TrajectoryStep.builder().kind("llm").inputs(detail2).meta(new HashMap<>()).build());
+        builder.recordStep(TrajectoryStep.builder().kind("llm").detail(detail2).meta(new HashMap<>()).build());
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertNotNull(trajectory.getCost());
         assertEquals(30, trajectory.getCost().get("input_tokens"));
@@ -206,13 +237,13 @@ class TrajectoryBuilderTest {
 
         TrajectoryStep step = TrajectoryStep.builder()
                 .kind("tool")
-                .inputs(detail)
+                .detail(detail)
                 .meta(new HashMap<>())
                 .build();
 
         builder.recordStep(step);
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertNull(trajectory.getCost());
     }
@@ -232,13 +263,13 @@ class TrajectoryBuilderTest {
 
         TrajectoryStep step = TrajectoryStep.builder()
                 .kind("llm")
-                .inputs(detail)
+                .detail(detail)
                 .meta(new HashMap<>())
                 .build();
 
         builder.recordStep(step);
 
-        Trajectory trajectory = builder.buildTrajectory();
+        Trajectory trajectory = builder.build();
 
         assertNull(trajectory.getCost());
     }
@@ -255,8 +286,8 @@ class TrajectoryBuilderTest {
                 .source("offline")
                 .build();
 
-        Trajectory onlineTraj = onlineBuilder.buildTrajectory();
-        Trajectory offlineTraj = offlineBuilder.buildTrajectory();
+        Trajectory onlineTraj = onlineBuilder.build();
+        Trajectory offlineTraj = offlineBuilder.build();
 
         assertEquals("online", onlineTraj.getSource());
         assertEquals("offline", offlineTraj.getSource());

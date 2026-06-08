@@ -9,8 +9,8 @@ import java.util.Objects;
 /**
  * Base class for task dependency tables (one per session).
  * <p>
- * Mirrors Python's {@code TeamTaskDependencyBase} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code TeamTaskDependencyBase} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class TeamTaskDependency {
 
@@ -23,7 +23,7 @@ public class TeamTaskDependency {
     }
 
     public TeamTaskDependency(String taskId, String dependsOnTaskId,
-                               String teamName, Boolean resolved) {
+            String teamName, Boolean resolved) {
         this.taskId = taskId;
         this.dependsOnTaskId = dependsOnTaskId;
         this.teamName = teamName;
@@ -64,8 +64,12 @@ public class TeamTaskDependency {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof TeamTaskDependency that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof TeamTaskDependency that)) {
+            return false;
+        }
         return Objects.equals(taskId, that.taskId)
                 && Objects.equals(dependsOnTaskId, that.dependsOnTaskId)
                 && Objects.equals(teamName, that.teamName)
@@ -79,11 +83,11 @@ public class TeamTaskDependency {
 
     @Override
     public String toString() {
-        return "TeamTaskDependency{" +
-                "taskId='" + taskId + '\'' +
-                ", dependsOnTaskId='" + dependsOnTaskId + '\'' +
-                ", teamName='" + teamName + '\'' +
-                ", resolved=" + resolved +
-                '}';
+        return "TeamTaskDependency{"
+                + "taskId='" + taskId + '\''
+                + ", dependsOnTaskId='" + dependsOnTaskId + '\''
+                + ", teamName='" + teamName + '\''
+                + ", resolved=" + resolved
+                + '}';
     }
 }

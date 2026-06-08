@@ -1,17 +1,15 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.store.vector_fields;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * SCANN (Scalable Nearest Neighbors) index configuration for Milvus.
- * <p>
- * IVF-based index with product quantization for compression.
- * Good balance between search speed, accuracy, and memory usage.
+ * Mirrors Python's {@code MilvusSCANN} in
+ * {@code openjiuwen/core/foundation/store/vector_fields/milvus_fields.py}.
  */
 public class MilvusSCANN extends MilvusVectorField {
 
@@ -44,9 +42,6 @@ public class MilvusSCANN extends MilvusVectorField {
         if (nprobe < 1 || nprobe > 65536) {
             throw new IllegalArgumentException("nprobe must be in range [1, 65536]");
         }
-        if (nprobe > nlist) {
-            throw new IllegalArgumentException("nprobe must be <= nlist");
-        }
         this.nprobe = nprobe;
     }
 
@@ -71,7 +66,8 @@ public class MilvusSCANN extends MilvusVectorField {
 
     @Override
     public Map<String, Object> toDict(String stage) {
-        Map<String, Object> result = new HashMap<>();
+        validate();
+        Map<String, Object> result = new LinkedHashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {
             result.put("nlist", nlist);
             result.put("with_raw_data", withRawData);
@@ -82,5 +78,11 @@ public class MilvusSCANN extends MilvusVectorField {
             }
         }
         return finalizeDict(result, stage);
+    }
+
+    private void validate() {
+        if (nprobe > nlist) {
+            throw new IllegalArgumentException("nprobe must be <= nlist");
+        }
     }
 }

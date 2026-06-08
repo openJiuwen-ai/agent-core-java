@@ -13,7 +13,7 @@ import java.util.Map;
  * VERL converter for RL training.
  * <p>
  * Mirrors Python's {@code VerlDataProtoConverter} in
- * {@code openjiuwen.agent_evolving.agent_rl.rl_trainer.verl_converter}.
+ * {@code openjiuwen/agent_evolving/agent_rl/rl_trainer/verl_converter.py}.
  */
 public class VerlConverter {
 
@@ -29,6 +29,9 @@ public class VerlConverter {
 
     /**
      * Convert samples to a Java DataProto representation.
+     *
+     * @param samples batch map or sample list
+     * @return converted data proto payload
      */
     public static Object convertToVerl(Object samples) {
         VerlConverter converter = new VerlConverter();
@@ -40,9 +43,12 @@ public class VerlConverter {
         }
         throw new IllegalArgumentException("samples must be a batch map or a sample list");
     }
-    
+
     /**
-     * Convert DataProto output to a map for callers that need a standard Java structure.
+     * Convert DataProto output to a plain map structure.
+     *
+     * @param verlOutput DataProto or already-converted payload
+     * @return plain Java structure
      */
     public static Object convertFromVerl(Object verlOutput) {
         if (verlOutput instanceof DataProto dataProto) {
@@ -51,6 +57,12 @@ public class VerlConverter {
         return verlOutput;
     }
 
+    /**
+     * Convert a Python-style batch payload.
+     *
+     * @param batch batch payload containing {@code samples}
+     * @return converted data proto payload
+     */
     public DataProto convertBatch(Map<String, Object> batch) {
         Object samples = batch != null ? batch.get("samples") : null;
         if (!(samples instanceof List<?> list) || list.isEmpty()) {
@@ -59,6 +71,12 @@ public class VerlConverter {
         return convertSamples(castSampleList(list));
     }
 
+    /**
+     * Convert normalized trajectory samples to a DataProto-like structure.
+     *
+     * @param samples trajectory samples
+     * @return converted data proto payload
+     */
     public DataProto convertSamples(List<Map<String, Object>> samples) {
         if (samples == null || samples.isEmpty()) {
             throw new IllegalArgumentException("samples must be non-empty");
@@ -126,15 +144,15 @@ public class VerlConverter {
             }
         }
 
-        Map<String, Object> batch = new LinkedHashMap<>();
-        batch.put("input_ids", inputIds);
-        batch.put("attention_mask", attentionMask);
-        batch.put("position_ids", positionIds);
-        batch.put("prompts", prompts);
-        batch.put("responses", responses);
-        batch.put("response_mask", responseMask);
-        batch.put("old_log_probs", oldLogProbs);
-        batch.put("token_level_scores", tokenLevelScores);
+        Map<String, Object> tensors = new LinkedHashMap<>();
+        tensors.put("input_ids", inputIds);
+        tensors.put("attention_mask", attentionMask);
+        tensors.put("position_ids", positionIds);
+        tensors.put("prompts", prompts);
+        tensors.put("responses", responses);
+        tensors.put("response_mask", responseMask);
+        tensors.put("old_log_probs", oldLogProbs);
+        tensors.put("token_level_scores", tokenLevelScores);
 
         Map<String, Object> nonTensors = new LinkedHashMap<>();
         nonTensors.put("sample_id", rows.stream().map(row -> row.sampleId).toList());
@@ -160,7 +178,7 @@ public class VerlConverter {
         metaInfo.put("max_prompt_length", options.maxPromptLength);
         metaInfo.put("max_response_length", options.maxResponseLength);
 
-        return new DataProto(batch, nonTensors, metaInfo);
+        return new DataProto(tensors, nonTensors, metaInfo);
     }
 
     private Row normalizeSample(Map<String, Object> sample, int idx) {
@@ -173,10 +191,13 @@ public class VerlConverter {
         if (inputIds.isEmpty()) {
             inputIds = concat(promptIds, responseIds);
         }
+
         boolean hasResponse = !responseIds.isEmpty();
         boolean hasPrompt = !promptIds.isEmpty();
-        boolean canSplitInputByPrompt = !hasResponse && !inputIds.isEmpty() && hasPrompt && inputIds.size() >= promptIds.size();
-        boolean canSplitInputByResponse = !hasPrompt && !inputIds.isEmpty() && hasResponse && inputIds.size() >= responseIds.size();
+        boolean canSplitInputByPrompt = !hasResponse && !inputIds.isEmpty() && hasPrompt
+                && inputIds.size() >= promptIds.size();
+        boolean canSplitInputByResponse = !hasPrompt && !inputIds.isEmpty() && hasResponse
+                && inputIds.size() >= responseIds.size();
 
         if (canSplitInputByPrompt) {
             responseIds = new ArrayList<>(inputIds.subList(promptIds.size(), inputIds.size()));
@@ -194,7 +215,9 @@ public class VerlConverter {
             if (options.filterOverlongPrompts && !"truncate".equals(options.truncation)) {
                 return null;
             }
-            promptIds = new ArrayList<>(promptIds.subList(promptIds.size() - options.maxPromptLength, promptIds.size()));
+            promptIds = new ArrayList<>(
+                    promptIds.subList(promptIds.size() - options.maxPromptLength, promptIds.size())
+            );
             promptTruncated = true;
         }
         if (options.maxResponseLength != null && responseIds.size() > options.maxResponseLength) {
@@ -393,10 +416,10 @@ public class VerlConverter {
     }
 
     /**
-     * Java representation of verl's DataProto object.
+     * Java representation of the DataProto surface produced by the converter.
      */
     public record DataProto(
-            Map<String, Object> batch,
+            Map<String, Object> tensors,
             Map<String, Object> nonTensors,
             Map<String, Object> metaInfo
     ) {
@@ -405,9 +428,13 @@ public class VerlConverter {
             return sampleIds instanceof List<?> list ? list.size() : 0;
         }
 
+        public Map<String, Object> batch() {
+            return tensors;
+        }
+
         public Map<String, Object> toMap() {
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("batch", batch);
+            out.put("tensors", tensors);
             out.put("non_tensors", nonTensors);
             out.put("meta_info", metaInfo);
             return out;

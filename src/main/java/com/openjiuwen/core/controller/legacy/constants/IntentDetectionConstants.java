@@ -7,8 +7,8 @@ package com.openjiuwen.core.controller.legacy.constants;
 import java.util.Map;
 
 /**
- * Intent detection constants.
- * Mirrors Python's {@code IntentDetectionConstants}.
+ * Mirrors Python's {@code IntentDetectionConstants} in
+ * {@code openjiuwen/core/controller/legacy/constants.py}.
  */
 public final class IntentDetectionConstants {
 

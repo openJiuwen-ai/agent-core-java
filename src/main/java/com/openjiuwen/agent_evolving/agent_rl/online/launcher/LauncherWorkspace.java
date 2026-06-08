@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.online.launcher;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,18 +19,22 @@ import java.util.Map;
  * Workspace integration helpers for the online RL launcher.
  * <p>
  * Mirrors Python's helpers in
- * {@code openjiuwen.agent_evolving.agent_rl.online.launcher.workspace}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/launcher/workspace.py}.
  */
 public final class LauncherWorkspace {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private LauncherWorkspace() {
     }
 
-    public static Map<String, String> buildTrajectoryEnvUpdates(String gatewayUrl,
-                                                                String modelPath,
-                                                                int trajectoryBatchSize,
-                                                                String trajectoryMode,
-                                                                String trajectoryTenantId) {
+    public static Map<String, String> buildTrajectoryEnvUpdates(
+            String gatewayUrl,
+            String modelPath,
+            int trajectoryBatchSize,
+            String trajectoryMode,
+            String trajectoryTenantId
+    ) {
         Map<String, String> updates = new LinkedHashMap<>();
         updates.put("USE_RL_ONLINE_RAIL", "1");
         updates.put("ENABLE_TRAJECTORY_COLLECTION", "false");
@@ -41,16 +48,45 @@ public final class LauncherWorkspace {
         return updates;
     }
 
-    public static void ensureWorkspace(Path configEnv,
-                                       String gatewayUrl,
-                                       String modelName,
-                                       String modelPath,
-                                       String trajectoryMode,
-                                       String trajectoryGatewayUrl,
-                                       int trajectoryBatchSize,
-                                       Map<String, String> environment) {
-        String trajGateway = trajectoryGatewayUrl != null && !trajectoryGatewayUrl.isBlank() ? trajectoryGatewayUrl : gatewayUrl;
-        Map<String, String> safeEnv = environment != null ? environment : System.getenv();
+    public static void ensureWorkspace(
+            Path configEnv,
+            String gatewayUrl,
+            String modelName,
+            String modelPath,
+            String trajectoryMode,
+            String trajectoryGatewayUrl,
+            int trajectoryBatchSize
+    ) {
+        ensureWorkspace(
+                configEnv,
+                gatewayUrl,
+                modelName,
+                modelPath,
+                trajectoryMode,
+                trajectoryGatewayUrl,
+                trajectoryBatchSize,
+                System.getenv()
+        );
+    }
+
+    public static void ensureWorkspace(
+            Path configEnv,
+            String gatewayUrl,
+            String modelName,
+            String modelPath,
+            String trajectoryMode,
+            String trajectoryGatewayUrl,
+            int trajectoryBatchSize,
+            Map<String, String> environment
+    ) {
+        if (configEnv == null) {
+            throw new IllegalArgumentException("configEnv is required");
+        }
+
+        String trajGateway = trajectoryGatewayUrl != null && !trajectoryGatewayUrl.isBlank()
+                ? trajectoryGatewayUrl
+                : gatewayUrl;
+        Map<String, String> safeEnv = environment != null ? environment : Map.of();
         String webUserId = safeEnv.getOrDefault("WEB_USER_ID", "local-web-user").trim();
         if (webUserId.isBlank()) {
             webUserId = "local-web-user";
@@ -59,7 +95,8 @@ public final class LauncherWorkspace {
         if (trajectoryTenantId.isBlank()) {
             trajectoryTenantId = webUserId;
         }
-        String customHeaders = "{'x-user-id':'%s'}".formatted(trajectoryTenantId).replace("'", "\"").replace("{\"", "{'").replace("\"}", "'}").replace("\":\"", "':'");
+
+        String customHeaders = toCompactJson(Map.of("x-user-id", trajectoryTenantId));
 
         Map<String, String> updates = new LinkedHashMap<>();
         updates.put("API_BASE", gatewayUrl);
@@ -67,13 +104,19 @@ public final class LauncherWorkspace {
         updates.put("MODEL_NAME", modelName);
         updates.put("MODEL_PROVIDER", "OpenAI");
         updates.put("WEB_USER_ID", webUserId);
-        updates.put("CUSTOM_HEADERS", "'" + "{\"x-user-id\":\"" + trajectoryTenantId + "\"}" + "'");
+        updates.put("CUSTOM_HEADERS", "'" + customHeaders + "'");
         updates.put("EMBED_API_BASE", gatewayUrl);
         updates.put("EMBED_API_KEY", "EMPTY");
         updates.put("EMBED_MODEL", modelName);
         updates.put("BROWSER_RUNTIME_MCP_ENABLED", "0");
         updates.put("EVOLUTION_AUTO_SCAN", "false");
-        updates.putAll(buildTrajectoryEnvUpdates(trajGateway, modelPath, trajectoryBatchSize, trajectoryMode, trajectoryTenantId));
+        updates.putAll(buildTrajectoryEnvUpdates(
+                trajGateway,
+                modelPath,
+                trajectoryBatchSize,
+                trajectoryMode,
+                trajectoryTenantId
+        ));
 
         Map<String, String> existing = new LinkedHashMap<>();
         if (Files.exists(configEnv)) {
@@ -90,11 +133,19 @@ public final class LauncherWorkspace {
         }
 
         List<String> quotedKeys = List.of(
-                "API_BASE", "API_KEY", "MODEL_NAME", "MODEL_PROVIDER", "WEB_USER_ID",
-                "RL_ONLINE_TENANT_ID", "EMBED_API_BASE", "EMBED_API_KEY", "EMBED_MODEL"
+                "API_BASE",
+                "API_KEY",
+                "MODEL_NAME",
+                "MODEL_PROVIDER",
+                "WEB_USER_ID",
+                "RL_ONLINE_TENANT_ID",
+                "EMBED_API_BASE",
+                "EMBED_API_KEY",
+                "EMBED_MODEL"
         );
         for (Map.Entry<String, String> entry : updates.entrySet()) {
-            existing.put(entry.getKey(), quotedKeys.contains(entry.getKey()) ? '"' + entry.getValue() + '"' : entry.getValue());
+            String value = entry.getValue();
+            existing.put(entry.getKey(), quotedKeys.contains(entry.getKey()) ? '"' + value + '"' : value);
         }
 
         StringBuilder builder = new StringBuilder();
@@ -102,10 +153,21 @@ public final class LauncherWorkspace {
             builder.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
         }
         try {
-            Files.createDirectories(configEnv.getParent());
+            Path parent = configEnv.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.writeString(configEnv, builder.toString(), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to write workspace env file", exception);
+        }
+    }
+
+    private static String toCompactJson(Map<String, String> value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize CUSTOM_HEADERS", exception);
         }
     }
 }

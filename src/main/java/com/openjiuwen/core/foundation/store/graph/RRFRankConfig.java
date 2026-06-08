@@ -4,16 +4,14 @@
 
 package com.openjiuwen.core.foundation.store.graph;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Reciprocal Rank Fusion (RRF) rank configuration.
+ * Reciprocal Rank Fusion configuration for hybrid graph search.
  * <p>
- * Mirrors Python's {@code RRFRankConfig} model from
- * <code>foundation/store/graph/result_ranking.py</code>.
+ * Mirrors Python's {@code RRFRankConfig} in
+ * {@code openjiuwen/core/foundation/store/graph/result_ranking.py}.
  */
 public class RRFRankConfig extends BaseRankConfig {
 
@@ -48,10 +46,7 @@ public class RRFRankConfig extends BaseRankConfig {
 
     @Override
     public RankerArgs getArgs() {
-        List<Object> positional = new ArrayList<>();
-        Map<String, Object> keyword = new HashMap<>();
-        positional.add(k);
-        return new RankerArgs(positional, keyword);
+        return new RankerArgs(List.of(k), Map.of());
     }
 
     @Override
@@ -63,15 +58,35 @@ public class RRFRankConfig extends BaseRankConfig {
         );
     }
 
-    public int getK() { return k; }
-    public void setK(int k) { this.k = k; }
+    public int getK() {
+        return k;
+    }
 
-    public boolean isNameDense() { return nameDense; }
-    public void setNameDense(boolean nameDense) { this.nameDense = nameDense; }
+    public void setK(int k) {
+        this.k = k;
+    }
 
-    public boolean isContentDense() { return contentDense; }
-    public void setContentDense(boolean contentDense) { this.contentDense = contentDense; }
+    public boolean isNameDense() {
+        return nameDense;
+    }
 
-    public boolean isContentSparse() { return contentSparse; }
-    public void setContentSparse(boolean contentSparse) { this.contentSparse = contentSparse; }
+    public void setNameDense(boolean nameDense) {
+        this.nameDense = nameDense;
+    }
+
+    public boolean isContentDense() {
+        return contentDense;
+    }
+
+    public void setContentDense(boolean contentDense) {
+        this.contentDense = contentDense;
+    }
+
+    public boolean isContentSparse() {
+        return contentSparse;
+    }
+
+    public void setContentSparse(boolean contentSparse) {
+        this.contentSparse = contentSparse;
+    }
 }

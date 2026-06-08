@@ -11,7 +11,7 @@ import java.util.Map;
  * Built-in online RL PPO configuration overlay constants.
  * <p>
  * Mirrors Python's {@code ONLINE_PPO_VERL_HYDRA_OVERLAY} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public final class OnlinePpoVerlConfig {
 

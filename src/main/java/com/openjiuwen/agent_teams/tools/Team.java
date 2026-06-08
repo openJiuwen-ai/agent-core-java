@@ -9,8 +9,8 @@ import java.util.Objects;
 /**
  * Team info table model.
  * <p>
- * Mirrors Python's {@code Team} in {@code openjiuwen.agent_teams.tools.models}.
- * </p>
+ * Mirrors Python's {@code Team} in
+ * {@code openjiuwen/agent_teams/tools/models.py}.
  */
 public class Team {
 
@@ -26,7 +26,7 @@ public class Team {
     }
 
     public Team(String teamName, String displayName, String leaderMemberName,
-                 String desc, String prompt, Long created, Long updatedAt) {
+            String desc, String prompt, Long created, Long updatedAt) {
         this.teamName = teamName;
         this.displayName = displayName;
         this.leaderMemberName = leaderMemberName;
@@ -94,8 +94,12 @@ public class Team {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof Team that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof Team that)) {
+            return false;
+        }
         return Objects.equals(teamName, that.teamName)
                 && Objects.equals(displayName, that.displayName)
                 && Objects.equals(leaderMemberName, that.leaderMemberName)
@@ -112,14 +116,14 @@ public class Team {
 
     @Override
     public String toString() {
-        return "Team{" +
-                "teamName='" + teamName + '\'' +
-                ", displayName='" + displayName + '\'' +
-                ", leaderMemberName='" + leaderMemberName + '\'' +
-                ", desc='" + desc + '\'' +
-                ", prompt='" + prompt + '\'' +
-                ", created=" + created +
-                ", updatedAt=" + updatedAt +
-                '}';
+        return "Team{"
+                + "teamName='" + teamName + '\''
+                + ", displayName='" + displayName + '\''
+                + ", leaderMemberName='" + leaderMemberName + '\''
+                + ", desc='" + desc + '\''
+                + ", prompt='" + prompt + '\''
+                + ", created=" + created
+                + ", updatedAt=" + updatedAt
+                + '}';
     }
 }

@@ -16,7 +16,8 @@ import lombok.experimental.SuperBuilder;
 /**
  * Video generation response.
  * <p>
- * Mirrors Python's {@code VideoGenerationResponse} model.
+ * Mirrors Python's {@code VideoGenerationResponse} in
+ * {@code openjiuwen/core/foundation/llm/schema/generation_response.py}.
  */
 @Data
 @SuperBuilder

@@ -1,45 +1,28 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.agent_teams.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
 /**
  * Event published when a member's status changes.
- * 
- * Mirrors Python's agent_teams.schema.events.MemberStatusChangedEvent
- * 
- * @since 0.1.12
+ * <p>
+ * Mirrors Python's {@code MemberStatusChangedEvent} in
+ * {@code openjiuwen/agent_teams/schema/events.py}.
  */
+@Data
+@NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class MemberStatusChangedEvent extends BaseEventMessage {
-    
-    /** Previous status */
+
+    @JsonProperty("old_status")
     private String oldStatus;
-    
-    /** New status */
+
+    @JsonProperty("new_status")
     private String newStatus;
-    
-    public MemberStatusChangedEvent() {
-        super();
-    }
-    
-    public MemberStatusChangedEvent(String teamName, String memberName, String oldStatus, String newStatus) {
-        super(teamName, memberName);
-        this.oldStatus = oldStatus;
-        this.newStatus = newStatus;
-    }
-    
-    public String getOldStatus() {
-        return oldStatus;
-    }
-    
-    public void setOldStatus(String oldStatus) {
-        this.oldStatus = oldStatus;
-    }
-    
-    public String getNewStatus() {
-        return newStatus;
-    }
-    
-    public void setNewStatus(String newStatus) {
-        this.newStatus = newStatus;
-    }
 }

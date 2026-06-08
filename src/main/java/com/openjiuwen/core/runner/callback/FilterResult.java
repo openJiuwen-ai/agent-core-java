@@ -12,7 +12,8 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * Result returned by event filters.
+ * Mirrors Python's {@code FilterResult} in
+ * {@code openjiuwen/core/runner/callback/models.py}.
  */
 @Data
 @Builder
@@ -20,28 +21,18 @@ import java.util.Map;
 @AllArgsConstructor
 public class FilterResult {
 
-    /** The action to take (CONTINUE, STOP, SKIP, MODIFY). */
     private FilterAction action;
 
-    /** New positional arguments if action is MODIFY. */
     private Object[] modifiedArgs;
 
-    /** New keyword arguments if action is MODIFY. */
     private Map<String, Object> modifiedKwargs;
 
-    /** Optional reason for the action taken. */
     private String reason;
 
-    /**
-     * Create a CONTINUE result.
-     */
     public static FilterResult continueResult() {
         return FilterResult.builder().action(FilterAction.CONTINUE).build();
     }
 
-    /**
-     * Create a CONTINUE result with modified arguments.
-     */
     public static FilterResult continueResult(Object[] args, Map<String, Object> kwargs) {
         return FilterResult.builder()
                 .action(FilterAction.CONTINUE)
@@ -50,9 +41,6 @@ public class FilterResult {
                 .build();
     }
 
-    /**
-     * Create a SKIP result with reason.
-     */
     public static FilterResult skipResult(String reason) {
         return FilterResult.builder()
                 .action(FilterAction.SKIP)
@@ -60,9 +48,6 @@ public class FilterResult {
                 .build();
     }
 
-    /**
-     * Create a STOP result with reason.
-     */
     public static FilterResult stopResult(String reason) {
         return FilterResult.builder()
                 .action(FilterAction.STOP)
@@ -70,9 +55,6 @@ public class FilterResult {
                 .build();
     }
 
-    /**
-     * Create a MODIFY result with new arguments.
-     */
     public static FilterResult modifyResult(Object[] modifiedArgs, Map<String, Object> modifiedKwargs) {
         return FilterResult.builder()
                 .action(FilterAction.MODIFY)

@@ -8,16 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Barrier router that sends barrier messages for N→1 fan-in synchronization.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.router.BarrierRouter}.
+ * Mirrors Python's {@code BarrierRouter} in
+ * {@code openjiuwen/core/graph/pregel/router.py}.
  */
 public class BarrierRouter implements IRouter {
 
     private final List<String> targets;
 
     public BarrierRouter(List<String> targets) {
-        this.targets = targets != null ? new ArrayList<>(targets) : new ArrayList<>();
+        this.targets = targets == null ? List.of() : List.copyOf(targets);
+    }
+
+    public List<String> getTargets() {
+        return targets;
     }
 
     @Override

@@ -5,10 +5,8 @@
 package com.openjiuwen.harness.prompts.sections;
 
 /**
- * Centralized section name constants used by PromptSection and Rails.
- * <p>
  * Mirrors Python's {@code SectionName} in
- * {@code openjiuwen.harness.prompts.sections}.
+ * {@code openjiuwen/harness/prompts/sections/__init__.py}.
  */
 public final class SectionName {
 

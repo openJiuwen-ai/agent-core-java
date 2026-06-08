@@ -8,9 +8,8 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Base message passed between Pregel nodes via channels.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Message}.
+ * Mirrors Python's {@code Message} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public class Message implements Serializable {
 
@@ -41,10 +40,5 @@ public class Message implements Serializable {
 
     public Object getPayload() {
         return payload;
-    }
-
-    @Override
-    public String toString() {
-        return "Message{sender='" + sender + "', target='" + target + "'}";
     }
 }

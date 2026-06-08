@@ -11,7 +11,7 @@ import java.util.Map;
  * Judge score response payload.
  * <p>
  * Mirrors Python's {@code ScoreResponse} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.judge_server}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/judge/judge_server.py}.
  */
 public record ScoreResponse(
         double score,

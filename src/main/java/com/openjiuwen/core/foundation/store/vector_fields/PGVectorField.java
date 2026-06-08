@@ -4,13 +4,12 @@
 
 package com.openjiuwen.core.foundation.store.vector_fields;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Index configuration for PGVector database.
- * <p>
- * Supports HNSW and IVFFlat algorithms.
+ * Mirrors Python's {@code PGVectorField} in
+ * {@code openjiuwen/core/foundation/store/vector_fields/pg_fields.py}.
  */
 public class PGVectorField extends VectorField {
 
@@ -20,7 +19,7 @@ public class PGVectorField extends VectorField {
     private int efSearch = 40;
     private int lists = 100;
     private int probes = 1;
-    private Map<String, Object> extraSearch = new HashMap<>();
+    private Map<String, Object> extraSearch = new LinkedHashMap<>();
 
     @Override
     public String getDatabaseType() {
@@ -95,16 +94,16 @@ public class PGVectorField extends VectorField {
     }
 
     public Map<String, Object> getExtraSearch() {
-        return extraSearch;
+        return new LinkedHashMap<>(extraSearch);
     }
 
     public void setExtraSearch(Map<String, Object> extraSearch) {
-        this.extraSearch = extraSearch != null ? extraSearch : new HashMap<>();
+        this.extraSearch = extraSearch == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraSearch);
     }
 
     @Override
     public Map<String, Object> toDict(String stage) {
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {
             result.put("index_type", indexType);
             result.put("m", m);
@@ -113,7 +112,7 @@ public class PGVectorField extends VectorField {
         } else if (STAGE_SEARCH.equals(stage)) {
             result.put("ef_search", efSearch);
             result.put("probes", probes);
-            result.put("extra_search", new HashMap<>(extraSearch));
+            result.put("extra_search", new LinkedHashMap<>(extraSearch));
         }
         return finalizeDict(result, stage);
     }

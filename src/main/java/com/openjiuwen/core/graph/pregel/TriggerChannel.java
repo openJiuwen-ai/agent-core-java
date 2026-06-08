@@ -8,9 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Channel that triggers when any message is received.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.TriggerChannel}.
+ * Mirrors Python's {@code TriggerChannel} in
+ * {@code openjiuwen/core/graph/pregel/channels.py}.
  */
 public class TriggerChannel extends Channel {
 
@@ -26,17 +25,16 @@ public class TriggerChannel extends Channel {
     }
 
     @Override
-    public boolean accept(Message msg) {
-        if (msg instanceof TriggerMessage triggerMsg) {
-            messages.add(triggerMsg);
-            return true;
+    public void accept(Message msg) {
+        if (msg instanceof TriggerMessage triggerMessage) {
+            messages.add(triggerMessage);
         }
-        return false;
     }
 
     @Override
-    public void consume() {
+    public Object consume() {
         messages.clear();
+        return null;
     }
 
     @Override
@@ -45,13 +43,12 @@ public class TriggerChannel extends Channel {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public void restore(Object snapshotData) {
-        if (snapshotData instanceof List<?> list) {
+    public void restore(Object snapshot) {
+        if (snapshot instanceof List<?> list) {
             messages.clear();
             for (Object item : list) {
-                if (item instanceof TriggerMessage msg) {
-                    messages.add(msg);
+                if (item instanceof TriggerMessage message) {
+                    messages.add(message);
                 }
             }
         }

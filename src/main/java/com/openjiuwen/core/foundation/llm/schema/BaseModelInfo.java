@@ -4,92 +4,67 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.LinkedHashMap;
-import java.util.HashMap;
-import java.util.Map;
-
 /**
- * Base model information — a simplified configuration used by higher-level components.
- * <p>
- * Mirrors Python's {@code BaseModelInfo} model.
+ * Mirrors Python's {@code BaseModelInfo} in
+ * {@code openjiuwen/core/foundation/llm/schema/mode_info.py}.
  */
 @Data
+@Builder
 @NoArgsConstructor
+@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseModelInfo {
 
-    private static final String GREATER_THAN_ZERO_MESSAGE =
-            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
-
     @JsonProperty("api_key")
+    @Builder.Default
     private String apiKey = "";
 
     @JsonProperty("api_base")
     private String apiBase;
 
-    @JsonProperty("model")
+    @JsonProperty("model_name")
+    @JsonAlias("model")
+    @Builder.Default
     private String modelName = "";
 
-    private Double temperature = 0.95;
+    @Builder.Default
+    private double temperature = 0.95d;
 
     @JsonProperty("top_p")
-    private Double topP = 0.1;
+    @Builder.Default
+    private double topP = 0.1d;
 
-    @JsonProperty("stream")
+    @JsonProperty("streaming")
+    @JsonAlias("stream")
+    @Builder.Default
     private boolean streaming = false;
 
+    @Builder.Default
     private int timeout = 60;
-    @JsonProperty("http_version")
-    private ModelHttpVersion httpVersion;
-    @JsonProperty("verify_ssl")
-    private boolean verifySsl = true;
-    @JsonProperty("ssl_cert")
-    private String sslCert;
-    private Map<String, String> headers = new LinkedHashMap<>();
 
-    private Map<String, Object> extraFields = new HashMap<>();
+    @JsonProperty("custom_headers")
+    private Map<String, Object> customHeaders;
 
-    /**
-     * Creates a BaseModelInfo with the specified configuration.
-     *
-     * @param apiKey      the API key for authentication
-     * @param apiBase     the base URL for API requests
-     * @param modelName   the model name to use
-     * @param temperature the sampling temperature
-     * @param topP        the top-p sampling parameter
-     * @param streaming   whether to enable streaming
-     * @param timeout     the request timeout in seconds
-     * @param httpVersion the preferred HTTP version for requests
-     * @param verifySsl   whether to verify SSL certificates
-     * @param sslCert     the SSL certificate path
-     * @param headers     additional HTTP headers
-     * @param extraFields additional extra fields
-     */
-    @Builder
-    public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
-                         Boolean streaming, Integer timeout, ModelHttpVersion httpVersion, Boolean verifySsl,
-                         String sslCert,
-                         Map<String, String> headers, Map<String, Object> extraFields) {
-        this.apiKey = apiKey == null ? "" : apiKey;
-        this.apiBase = apiBase;
-        this.modelName = modelName == null ? "" : modelName;
-        this.temperature = temperature == null ? 0.95 : temperature;
-        this.topP = topP == null ? 0.1 : topP;
-        this.streaming = streaming != null && streaming;
-        this.timeout = timeout == null ? 60 : validatePositive(timeout);
-        this.httpVersion = httpVersion;
-        this.verifySsl = verifySsl == null || verifySsl;
-        this.sslCert = sslCert;
-        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
-        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
+    @Builder.Default
+    private Map<String, Object> extraFields = new LinkedHashMap<>();
+
+    @JsonAnySetter
+    public void putExtraField(String key, Object value) {
+        if (!isDeclaredField(key)) {
+            extraFields.put(key, value);
+        }
     }
 
     @JsonAnyGetter
@@ -97,54 +72,16 @@ public class BaseModelInfo {
         return extraFields;
     }
 
-    @JsonAnySetter
-    public void setExtraField(String key, Object value) {
-        if (extraFields == null) {
-            extraFields = new HashMap<>();
-        }
-        extraFields.put(key, value);
-    }
-
-    /**
-     * Sets the request timeout.
-     *
-     * @param timeout the timeout in seconds, must be greater than 0
-     */
-    public void setTimeout(int timeout) {
-        this.timeout = validatePositive(timeout);
-    }
-
-    /**
-     * Sets the extra fields.
-     *
-     * @param extraFields the extra fields map
-     */
-    public void setExtraFields(Map<String, Object> extraFields) {
-        this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
-    }
-
-    /**
-     * Gets the HTTP headers.
-     *
-     * @return a copy of the headers map
-     */
-    public Map<String, String> getHeaders() {
-        return new LinkedHashMap<>(headers);
-    }
-
-    /**
-     * Sets the HTTP headers.
-     *
-     * @param headers the headers map
-     */
-    public void setHeaders(Map<String, String> headers) {
-        this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
-    }
-
-    private static int validatePositive(int value) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
-        }
-        return value;
+    private boolean isDeclaredField(String key) {
+        return "api_key".equals(key)
+                || "api_base".equals(key)
+                || "model_name".equals(key)
+                || "model".equals(key)
+                || "temperature".equals(key)
+                || "top_p".equals(key)
+                || "streaming".equals(key)
+                || "stream".equals(key)
+                || "timeout".equals(key)
+                || "custom_headers".equals(key);
     }
 }

@@ -4,54 +4,56 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import lombok.Getter;
-import lombok.Setter;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Raw search result.
- *
- * <p>Mirrors Python's {@code SearchResult} in
- * {@code openjiuwen.core.retrieval.common.retrieval_result}.</p>
+ * Mirrors Python's {@code SearchResult} in
+ * {@code openjiuwen/core/retrieval/common/retrieval_result.py}.
  */
-@Getter
-@Setter
 public class SearchResult {
 
     private String id;
     private String text;
-    private Double score;
+    private double score;
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public SearchResult() {
     }
 
-    public SearchResult(String id, String text, Double score) {
-        this(id, text, score, null);
-    }
-
-    public SearchResult(String id, String text, Double score, Map<String, Object> metadata) {
-        setId(id);
-        setText(text);
-        setScore(score);
+    public SearchResult(String id, String text, double score, Map<String, Object> metadata) {
+        this.id = id;
+        this.text = text;
+        this.score = score;
         setMetadata(metadata);
     }
 
+    public String getId() {
+        return id;
+    }
+
     public void setId(String id) {
-        RetrievalValidation.requireNonBlank(id, "SearchResult.id");
         this.id = id;
     }
 
+    public String getText() {
+        return text;
+    }
+
     public void setText(String text) {
-        RetrievalValidation.requireNonNull(text, "SearchResult.text");
         this.text = text;
     }
 
-    public void setScore(Double score) {
-        RetrievalValidation.requireNonNull(score, "SearchResult.score");
+    public double getScore() {
+        return score;
+    }
+
+    public void setScore(double score) {
         this.score = score;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
     }
 
     public void setMetadata(Map<String, Object> metadata) {

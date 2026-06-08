@@ -7,7 +7,8 @@ package com.openjiuwen.extensions.context_evolver.schema;
 import java.util.*;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.trajectory.TrajectoryBatch}.
+ * Mirrors Python's {@code TrajectoryBatch} in
+ * {@code openjiuwen/extensions/context_evolver/schema/trajectory.py}.
  * 
  * Batch of trajectories for processing.
  */

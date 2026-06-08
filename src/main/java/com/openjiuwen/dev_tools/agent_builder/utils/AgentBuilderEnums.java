@@ -8,7 +8,7 @@ package com.openjiuwen.dev_tools.agent_builder.utils;
  * Agent builder enums.
  * <p>
  * Mirrors Python's {@code enums} in
- * {@code openjiuwen.dev_tools.agent_builder.utils.enums}.
+ * {@code openjiuwen/dev_tools/agent_builder/utils/enums.py}.
  */
 public final class AgentBuilderEnums {
 

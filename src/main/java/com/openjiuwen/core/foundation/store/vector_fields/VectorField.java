@@ -4,15 +4,12 @@
 
 package com.openjiuwen.core.foundation.store.vector_fields;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Base class for configuring Approximate Nearest Neighbor (ANN) search in vector databases.
- * <p>
- * Provides a common interface for configuring vector field indexes across different
- * database backends. Supports stage-based field filtering to separate construction
- * and search parameters.
+ * Mirrors Python's {@code VectorField} in
+ * {@code openjiuwen/core/foundation/store/vector_fields/base.py}.
  */
 public abstract class VectorField {
 
@@ -21,57 +18,38 @@ public abstract class VectorField {
 
     private String vectorField = "embedding";
 
-    protected VectorField() {
-    }
-
     public String getVectorField() {
         return vectorField;
     }
 
     public void setVectorField(String vectorField) {
-        this.vectorField = vectorField;
+        this.vectorField = vectorField == null ? "embedding" : vectorField;
     }
 
     public abstract String getDatabaseType();
 
     public abstract String getIndexType();
 
-    /**
-     * Get the quantization variant for this index.
-     * Returns null if no variant is specified.
-     *
-     * @return the variant string, or null if not applicable
-     */
     public String getVariant() {
         return null;
     }
 
-    /**
-     * Convert the vector field configuration to a dictionary for a specific stage.
-     * Filters fields based on the specified stage and merges extra arguments.
-     *
-     * @param stage "search" or "construct"
-     * @return map containing only the relevant fields for the stage
-     */
     public abstract Map<String, Object> toDict(String stage);
 
-    /**
-     * Merge extra params into the result map and remove internal keys.
-     */
-    protected Map<String, Object> finalizeDict(Map<String, Object> result, String stage) {
+    protected Map<String, Object> finalizeDict(Map<String, Object> raw, String stage) {
+        Map<String, Object> result = new LinkedHashMap<>(raw);
         result.remove("database_type");
         result.remove("index_type");
         result.remove("vector_field");
         result.remove("variant");
 
-        Map<String, Object> extra = new HashMap<>();
-        Object extraObj = result.remove("extra_" + stage);
-        if (extraObj instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> typed = (Map<String, Object>) extraObj;
-            extra = typed;
+        Object extra = result.remove("extra_" + stage);
+        if (extra instanceof Map<?, ?> extraMap) {
+            for (Map.Entry<?, ?> entry : extraMap.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
         }
-        result.putAll(extra);
+        result.entrySet().removeIf(entry -> entry.getValue() == null);
         return result;
     }
 }

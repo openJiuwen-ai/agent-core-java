@@ -16,12 +16,13 @@ import java.util.Map;
  * Lightweight in-memory trajectory sample store.
  * <p>
  * Mirrors Python's {@code InMemoryTrajectoryStore} in
- * {@code openjiuwen.agent_evolving.agent_rl.storage.trajectory_store}.
+ * {@code openjiuwen/agent_evolving/agent_rl/storage/trajectory_store.py}.
  */
 public class InMemoryTrajectoryStore implements TrajectorySampleStore {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
     private static final String DEFAULT_USER_ID = "online";
 
     private final Map<String, Map<String, Object>> samples = new LinkedHashMap<>();
@@ -49,9 +50,7 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
 
     @Override
     public synchronized int getPendingCount(String userId) {
-        return statusIndex.getOrDefault(userId, Map.of())
-                .getOrDefault("pending", List.of())
-                .size();
+        return statusIndex.getOrDefault(userId, Map.of()).getOrDefault("pending", List.of()).size();
     }
 
     @Override
@@ -146,10 +145,9 @@ public class InMemoryTrajectoryStore implements TrajectorySampleStore {
 
     private void removeFromStatusIndex(String sampleId, String userId, String status) {
         List<String> bucket = statusIndex.getOrDefault(userId, Map.of()).get(status);
-        if (bucket == null) {
-            return;
+        if (bucket != null) {
+            bucket.remove(sampleId);
         }
-        bucket.remove(sampleId);
     }
 
     private static String pythonOrString(Object first, Object... fallbacks) {

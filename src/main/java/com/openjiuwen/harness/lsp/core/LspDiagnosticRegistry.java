@@ -5,23 +5,17 @@
 package com.openjiuwen.harness.lsp.core;
 
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
-import com.openjiuwen.harness.lsp.query.LspDiagnostic;
-import com.openjiuwen.harness.lsp.query.LspDiagnosticFile;
-import com.openjiuwen.harness.lsp.query.LspLocation;
-
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Minimal LSP diagnostic registry.
- *
- * <p>Mirrors Python's diagnostic registry in {@code openjiuwen.harness.lsp.core.diagnostic_registry}.
+ * Mirrors Python's {@code LspDiagnosticRegistry} in
+ * {@code openjiuwen/harness/lsp/core/diagnostic_registry.py}.
  */
 public final class LspDiagnosticRegistry {
 
@@ -30,9 +24,8 @@ public final class LspDiagnosticRegistry {
 
     private static LspDiagnosticRegistry instance;
 
-    private final Map<String, List<LspDiagnostic>> pending = new LinkedHashMap<>();
+    private final Map<String, PendingBatch> pending = new LinkedHashMap<>();
     private final Map<String, Set<String>> delivered = new LinkedHashMap<>();
-    private final Map<String, String> serverNames = new LinkedHashMap<>();
 
     private LspDiagnosticRegistry() {
     }
@@ -48,139 +41,168 @@ public final class LspDiagnosticRegistry {
         instance = null;
     }
 
-    public synchronized void push(String filePath, List<LspDiagnostic> diagnostics) {
-        if (filePath == null || diagnostics == null || diagnostics.isEmpty()) {
-            return;
-        }
-        pending.computeIfAbsent(filePath, ignored -> new ArrayList<>()).addAll(diagnostics);
+    public int getPendingCount() {
+        return pending.size();
     }
 
-    public synchronized String register(String serverName, String uri, List<Map<String, Object>> rawDiagnostics) {
-        List<LspDiagnostic> diagnostics = parseRaw(uri, rawDiagnostics);
-        if (diagnostics.isEmpty()) {
+    public String register(String serverName, String uri, List<?> rawDiagnostics) {
+        List<LspDiagnosticItem> items = parseRaw(rawDiagnostics);
+        if (items.isEmpty()) {
             return "";
         }
-        String filePath = FileUriUtils.fileUriToPath(uri);
         String batchId = UUID.randomUUID().toString();
-        pending.computeIfAbsent(filePath, ignored -> new ArrayList<>()).addAll(diagnostics);
-        if (serverName != null && !serverName.isBlank()) {
-            serverNames.put(filePath, serverName);
-        }
+        pending.put(batchId, new PendingBatch(serverName == null ? "" : serverName, uri, items));
         return batchId;
     }
 
-    public synchronized List<LspDiagnosticFile> getAndClear(int maxPerFile, int maxTotal) {
-        List<LspDiagnosticFile> result = new ArrayList<>();
-        int remaining = maxTotal > 0 ? maxTotal : MAX_DIAG_TOTAL;
-        int perFileLimit = maxPerFile > 0 ? maxPerFile : MAX_DIAG_PER_FILE;
+    public List<LspDiagnosticFile> getAndClear(int maxPerFile, int maxTotal) {
+        if (pending.isEmpty() || maxPerFile <= 0 || maxTotal <= 0) {
+            pending.clear();
+            return List.of();
+        }
 
-        for (Map.Entry<String, List<LspDiagnostic>> entry : pending.entrySet()) {
-            if (remaining <= 0) {
-                break;
+        Map<String, UriBuffer> byUri = new LinkedHashMap<>();
+        for (PendingBatch batch : pending.values()) {
+            UriBuffer buffer = byUri.computeIfAbsent(
+                    batch.uri(),
+                    ignored -> new UriBuffer(batch.serverName(), new LinkedHashMap<>())
+            );
+            for (LspDiagnosticItem item : batch.items()) {
+                String key = diagKey(item);
+                buffer.uniqueByKey().putIfAbsent(key, item);
             }
-            List<LspDiagnostic> diagnostics = dedup(entry.getKey(), entry.getValue());
-            diagnostics.sort(Comparator.comparingInt(this::severityRank));
-            int limit = Math.min(perFileLimit, Math.min(remaining, diagnostics.size()));
-            if (limit <= 0) {
-                continue;
-            }
-            List<LspDiagnostic> slice = new ArrayList<>(diagnostics.subList(0, limit));
-            remaining -= slice.size();
-            delivered.computeIfAbsent(entry.getKey(), ignored -> new HashSet<>())
-                    .addAll(slice.stream().map(this::diagKey).toList());
-            result.add(new LspDiagnosticFile(
-                    entry.getKey(),
-                    FileUriUtils.pathToFileUri(entry.getKey()),
-                    serverNames.getOrDefault(entry.getKey(), ""),
-                    slice
-            ));
         }
         pending.clear();
+
+        Map<String, FreshDiagnostics> freshByUri = new LinkedHashMap<>();
+        for (Map.Entry<String, UriBuffer> entry : byUri.entrySet()) {
+            String uri = entry.getKey();
+            UriBuffer buffer = entry.getValue();
+            Set<String> deliveredKeys = delivered.getOrDefault(uri, Set.of());
+            List<LspDiagnosticItem> freshItems = new ArrayList<>();
+            for (Map.Entry<String, LspDiagnosticItem> diagnosticEntry : buffer.uniqueByKey().entrySet()) {
+                if (!deliveredKeys.contains(diagnosticEntry.getKey())) {
+                    freshItems.add(diagnosticEntry.getValue());
+                }
+            }
+            if (!freshItems.isEmpty()) {
+                freshItems.sort((left, right) -> Integer.compare(left.getSeverity(), right.getSeverity()));
+                if (freshItems.size() > maxPerFile) {
+                    freshItems = new ArrayList<>(freshItems.subList(0, maxPerFile));
+                }
+                freshByUri.put(uri, new FreshDiagnostics(buffer.serverName(), freshItems));
+            }
+        }
+
+        if (freshByUri.isEmpty()) {
+            return List.of();
+        }
+
+        List<LspDiagnosticFile> result = new ArrayList<>();
+        int total = 0;
+        for (Map.Entry<String, FreshDiagnostics> entry : freshByUri.entrySet()) {
+            if (total >= maxTotal) {
+                break;
+            }
+            List<LspDiagnosticItem> items = entry.getValue().items();
+            int remaining = maxTotal - total;
+            List<LspDiagnosticItem> clipped = items.size() > remaining
+                    ? new ArrayList<>(items.subList(0, remaining))
+                    : new ArrayList<>(items);
+            if (clipped.isEmpty()) {
+                continue;
+            }
+            String uri = entry.getKey();
+            result.add(new LspDiagnosticFile(
+                    uri,
+                    clipped,
+                    entry.getValue().serverName(),
+                    FileUriUtils.fileUriToPath(uri)
+            ));
+            Set<String> seen = delivered.computeIfAbsent(uri, ignored -> new LinkedHashSet<>());
+            for (LspDiagnosticItem item : clipped) {
+                seen.add(diagKey(item));
+            }
+            total += clipped.size();
+        }
+
         return result;
     }
 
-    private List<LspDiagnostic> parseRaw(String uri, List<Map<String, Object>> rawDiagnostics) {
-        if (rawDiagnostics == null || rawDiagnostics.isEmpty()) {
-            return List.of();
-        }
-        String filePath = FileUriUtils.fileUriToPath(uri);
-        List<LspDiagnostic> diagnostics = new ArrayList<>();
-        for (Map<String, Object> item : rawDiagnostics) {
-            if (item == null) {
-                continue;
-            }
-            String message = item.get("message") != null ? String.valueOf(item.get("message")) : "";
-            if (message.isBlank()) {
-                continue;
-            }
-            String severity = mapSeverity(item.get("severity"));
-            Map<String, Object> range = item.get("range") instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
-            Map<String, Object> start = range.get("start") instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
-            int line = intValue(start.get("line")) + 1;
-            int character = intValue(start.get("character")) + 1;
-            diagnostics.add(new LspDiagnostic(severity, message, new LspLocation(filePath, line, character)));
-        }
-        return diagnostics;
+    public void clearAll() {
+        pending.clear();
+        delivered.clear();
     }
 
-    private String mapSeverity(Object rawSeverity) {
-        int severity = intValue(rawSeverity);
-        return switch (severity) {
-            case 1 -> "error";
-            case 2 -> "warning";
-            case 4 -> "hint";
-            default -> "information";
-        };
+    public static List<LspDiagnosticItem> parseRaw(List<?> rawList) {
+        List<LspDiagnosticItem> items = new ArrayList<>();
+        if (rawList == null) {
+            return items;
+        }
+        for (Object entry : rawList) {
+            if (!(entry instanceof Map<?, ?> rawMap)) {
+                continue;
+            }
+            Object rawMessage = rawMap.get("message");
+            String message = rawMessage == null ? "" : String.valueOf(rawMessage);
+            if (message.isEmpty()) {
+                continue;
+            }
+            int severity = intValue(rawMap.get("severity"), 3);
+            Map<String, Object> range = mapValue(rawMap.get("range"));
+            Object rawSource = rawMap.get("source");
+            String source = rawSource == null ? null : String.valueOf(rawSource);
+            if (source != null && source.isEmpty()) {
+                source = null;
+            }
+            items.add(new LspDiagnosticItem(message, severity, range, source, rawMap.get("code")));
+        }
+        return items;
     }
 
-    private int intValue(Object value) {
+    public static String diagKey(LspDiagnosticItem item) {
+        if (item == null) {
+            return "";
+        }
+        Map<String, Object> start = mapValue(item.getRange().get("start"));
+        int line = intValue(start.get("line"), 0);
+        int character = intValue(start.get("character"), 0);
+        return item.getMessage() + "|" + item.getSeverity() + "|" + line + ":" + character + "|" + item.getCode();
+    }
+
+    private static Map<String, Object> mapValue(Object value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (!(value instanceof Map<?, ?> map)) {
+            return result;
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private static int intValue(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
         }
+        if (value == null) {
+            return fallback;
+        }
         try {
-            return value != null ? Integer.parseInt(String.valueOf(value)) : 0;
-        } catch (NumberFormatException e) {
-            return 0;
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
         }
     }
 
-    private List<LspDiagnostic> dedup(String filePath, List<LspDiagnostic> diagnostics) {
-        Map<String, LspDiagnostic> unique = new LinkedHashMap<>();
-        Set<String> alreadyDelivered = delivered.getOrDefault(filePath, Set.of());
-        for (LspDiagnostic diagnostic : diagnostics) {
-            String key = diagKey(diagnostic);
-            if (alreadyDelivered.contains(key)) {
-                continue;
-            }
-            unique.putIfAbsent(key, diagnostic);
-        }
-        return new ArrayList<>(unique.values());
+    private record PendingBatch(String serverName, String uri, List<LspDiagnosticItem> items) {
     }
 
-    private String diagKey(LspDiagnostic diagnostic) {
-        if (diagnostic == null) {
-            return "";
-        }
-        LspLocationLike location = new LspLocationLike(diagnostic.getLocation());
-        return diagnostic.getMessage() + "|" + diagnostic.getSeverity() + "|"
-                + location.line() + ":" + location.character();
+    private record UriBuffer(String serverName, Map<String, LspDiagnosticItem> uniqueByKey) {
     }
 
-    private int severityRank(LspDiagnostic diagnostic) {
-        if (diagnostic == null || diagnostic.getSeverity() == null) {
-            return 3;
-        }
-        return switch (diagnostic.getSeverity().toLowerCase()) {
-            case "error" -> 1;
-            case "warning" -> 2;
-            case "hint" -> 4;
-            default -> 3;
-        };
-    }
-
-    private record LspLocationLike(int line, int character) {
-        private LspLocationLike(com.openjiuwen.harness.lsp.query.LspLocation location) {
-            this(location != null ? location.getLine() : 0, location != null ? location.getCharacter() : 0);
-        }
+    private record FreshDiagnostics(String serverName, List<LspDiagnosticItem> items) {
     }
 }

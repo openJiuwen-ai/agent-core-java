@@ -8,16 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Static router that sends trigger messages to fixed targets (1→N).
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.router.StaticRouter}.
+ * Mirrors Python's {@code StaticRouter} in
+ * {@code openjiuwen/core/graph/pregel/router.py}.
  */
 public class StaticRouter implements IRouter {
 
     private final List<String> targets;
 
     public StaticRouter(List<String> targets) {
-        this.targets = targets != null ? new ArrayList<>(targets) : new ArrayList<>();
+        this.targets = targets == null ? List.of() : List.copyOf(targets);
+    }
+
+    public List<String> getTargets() {
+        return targets;
     }
 
     @Override

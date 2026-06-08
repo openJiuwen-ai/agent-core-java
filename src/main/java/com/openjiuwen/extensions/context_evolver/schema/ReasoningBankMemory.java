@@ -13,8 +13,9 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ReasoningBankMemory}.
+ * {@code openjiuwen/extensions/context_evolver/schema/io_schema.py}.
  */
-public class ReasoningBankMemory {
+public class ReasoningBankMemory implements BaseMemory {
 
     private String workspaceId = "default";
     private String query;

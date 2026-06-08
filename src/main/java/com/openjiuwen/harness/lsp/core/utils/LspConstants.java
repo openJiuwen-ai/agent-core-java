@@ -5,9 +5,8 @@
 package com.openjiuwen.harness.lsp.core.utils;
 
 /**
- * Constants for the Java harness LSP subsystem.
- *
- * <p>Mirrors Python's {@code constants.py} in {@code openjiuwen.harness.lsp.core.utils}.
+ * Mirrors Python's constants in
+ * {@code openjiuwen/harness/lsp/core/utils/constants.py}.
  */
 public final class LspConstants {
 

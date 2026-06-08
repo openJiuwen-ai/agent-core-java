@@ -4,56 +4,56 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import lombok.Getter;
-import lombok.Setter;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Knowledge triple.
- *
- * <p>Mirrors Python's {@code Triple} in
- * {@code openjiuwen.core.retrieval.common.triple}.
+ * Mirrors Python's {@code Triple} in
+ * {@code openjiuwen/core/retrieval/common/triple.py}.
  */
-@Getter
-@Setter
 public class Triple {
 
     private String subject;
     private String predicate;
     private String object;
-    private Double confidence;
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public Triple() {
     }
 
-    public Triple(String subject, String predicate, String object) {
-        this(subject, predicate, object, null, null);
-    }
-
-    public Triple(String subject, String predicate, String object, Double confidence, Map<String, Object> metadata) {
-        setSubject(subject);
-        setPredicate(predicate);
-        setObject(object);
-        setConfidence(confidence);
+    public Triple(String subject, String predicate, String object, Map<String, Object> metadata) {
+        this.subject = subject;
+        this.predicate = predicate;
+        this.object = object;
         setMetadata(metadata);
     }
 
+    public String getSubject() {
+        return subject;
+    }
+
     public void setSubject(String subject) {
-        RetrievalValidation.requireNonNull(subject, "Triple.subject");
         this.subject = subject;
     }
 
+    public String getPredicate() {
+        return predicate;
+    }
+
     public void setPredicate(String predicate) {
-        RetrievalValidation.requireNonNull(predicate, "Triple.predicate");
         this.predicate = predicate;
     }
 
+    public String getObject() {
+        return object;
+    }
+
     public void setObject(String object) {
-        RetrievalValidation.requireNonNull(object, "Triple.object");
         this.object = object;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
     }
 
     public void setMetadata(Map<String, Object> metadata) {

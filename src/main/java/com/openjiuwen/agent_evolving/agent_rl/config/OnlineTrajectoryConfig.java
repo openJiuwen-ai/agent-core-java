@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Trajectory configuration for online RL.
  * <p>
  * Mirrors Python's {@code TrajectoryConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.online_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/online_config.py}.
  */
 public class OnlineTrajectoryConfig {
 

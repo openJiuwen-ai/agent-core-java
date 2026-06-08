@@ -17,8 +17,8 @@ import java.util.Map;
 /**
  * CLI agent configuration loader.
  * <p>
- * Mirrors Python's {@code load_config} in
- * {@code openjiuwen.harness.cli.agent.config}.
+ * Mirrors Python's {@code CLIConfig}, settings helpers, and {@code load_config} in
+ * {@code openjiuwen/harness/cli/agent/config.py}.
  */
 public final class CliAgentConfig {
 

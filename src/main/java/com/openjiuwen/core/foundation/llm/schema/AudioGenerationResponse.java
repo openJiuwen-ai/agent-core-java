@@ -16,7 +16,8 @@ import lombok.experimental.SuperBuilder;
 /**
  * Audio/Speech generation response.
  * <p>
- * Mirrors Python's {@code AudioGenerationResponse} model.
+ * Mirrors Python's {@code AudioGenerationResponse} in
+ * {@code openjiuwen/core/foundation/llm/schema/generation_response.py}.
  */
 @Data
 @SuperBuilder

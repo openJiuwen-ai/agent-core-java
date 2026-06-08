@@ -1,16 +1,19 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.operator;
 
 /**
- * Describes a single tunable parameter of an operator.
+ * Describes one tunable operator parameter.
+ *
+ * <p>Mirrors Python's {@code TunableSpec} in
+ * {@code openjiuwen/core/operator/base.py}.
  *
  * @param name parameter name
- * @param kind tunable kind, for example prompt or discrete
- * @param path path of the parameter inside the operator
- * @param constraint optional constraint metadata
+ * @param kind tunable kind
+ * @param path parameter path inside the operator
+ * @param constraint optional parameter constraint metadata
  */
 public record TunableSpec(String name, String kind, String path, Object constraint) {
 

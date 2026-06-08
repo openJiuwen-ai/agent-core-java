@@ -1,17 +1,15 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.store.vector_fields;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * FLAT index configuration for Milvus.
- * <p>
- * Performs exact nearest neighbor search without approximation.
- * Highest accuracy but higher memory usage and slower search.
+ * Mirrors Python's {@code MilvusFLAT} in
+ * {@code openjiuwen/core/foundation/store/vector_fields/milvus_fields.py}.
  */
 public class MilvusFLAT extends MilvusVectorField {
 
@@ -22,6 +20,6 @@ public class MilvusFLAT extends MilvusVectorField {
 
     @Override
     public Map<String, Object> toDict(String stage) {
-        return new HashMap<>();
+        return new LinkedHashMap<>();
     }
 }

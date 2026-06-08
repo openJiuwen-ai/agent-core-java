@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Verl Actor Rollout Reference Hydra overlay configuration.
  * <p>
  * Mirrors Python's {@code VerlActorRolloutRefHydraOverlay} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class VerlActorRolloutRefHydraOverlay {
 

@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Verl Actor FSDP Hydra overlay configuration.
  * <p>
  * Mirrors Python's {@code VerlActorFsdpHydraOverlay} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class VerlActorFsdpHydraOverlay {
 

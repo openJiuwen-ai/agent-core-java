@@ -1,13 +1,11 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agent_evolving.signal;
 
 /**
- * Evolution type that determines which handler processes the signal.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.signal.base.EvolutionCategory}.
+ * Mirrors Python's {@code openjiuwen/agent_evolving/signal/base.py}.
  */
 public enum EvolutionCategory {
     SKILL_EXPERIENCE("skill_experience"),
@@ -29,6 +27,6 @@ public enum EvolutionCategory {
                 return category;
             }
         }
-        return SKILL_EXPERIENCE; // Default fallback
+        return SKILL_EXPERIENCE;
     }
 }

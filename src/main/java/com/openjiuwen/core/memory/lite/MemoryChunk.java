@@ -4,25 +4,25 @@
 
 package com.openjiuwen.core.memory.lite;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
  * A chunk of memory content.
- * <p>
- * Mirrors Python's {@code MemoryChunk} dataclass from
- * <code>memory/lite/types.py</code>.
+ *
+ * <p>Mirrors Python's {@code MemoryChunk} in {@code openjiuwen/core/memory/lite/types.py}.</p>
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class MemoryChunk {
 
-    private final String text;
-    private final int startLine;
-    private final int endLine;
+    private String text;
 
-    public MemoryChunk(String text, int startLine, int endLine) {
-        this.text = text;
-        this.startLine = startLine;
-        this.endLine = endLine;
-    }
+    private int startLine;
 
-    public String getText() { return text; }
-    public int getStartLine() { return startLine; }
-    public int getEndLine() { return endLine; }
+    private int endLine;
 }

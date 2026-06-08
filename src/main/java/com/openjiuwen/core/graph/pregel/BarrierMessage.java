@@ -5,9 +5,8 @@
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Barrier message for N→1 fan-in synchronization.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.BarrierMessage}.
+ * Mirrors Python's {@code BarrierMessage} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public class BarrierMessage extends Message {
 

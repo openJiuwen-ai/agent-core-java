@@ -10,7 +10,8 @@ import java.util.Objects;
 /**
  * Update key type: (operator_id, target).
  *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.types.UpdateKey}.
+ * <p>Mirrors Python's {@code UpdateKey} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.
  */
 public final class UpdateKey {
 

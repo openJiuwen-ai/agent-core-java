@@ -4,47 +4,32 @@
 
 package com.openjiuwen.agent_evolving.agent_rl.offline.store;
 
+import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
+
 import java.util.List;
 import java.util.Map;
 
 /**
- * Abstract interface for persisting rollout trajectories
- * and per-step summaries to local file storage.
+ * Abstract interface for persisting rollout trajectories and per-step summaries to local storage.
  * <p>
  * Mirrors Python's {@code RolloutPersistence} in
- * {@code openjiuwen.agent_evolving.agent_rl.offline.store.base}.
+ * {@code openjiuwen/agent_evolving/agent_rl/offline/store/base.py}.
  */
 public interface RolloutPersistence {
 
-    /**
-     * Persist a single rollout with its complete trajectory.
-     * 
-     * @param step Current training step
-     * @param taskId Task identifier
-     * @param rollout The rollout message to persist
-     * @param phase "train" or "val" -- determines output sub-directory
-     */
-    void saveRollout(int step, String taskId, Object rollout, String phase);
+    default void saveRollout(int step, String taskId, RolloutMessage rollout) {
+        saveRollout(step, taskId, rollout, "train");
+    }
 
-    /**
-     * Persist per-step training summary metrics.
-     * 
-     * @param step Current training step
-     * @param metrics Metrics to persist
-     */
+    void saveRollout(int step, String taskId, RolloutMessage rollout, String phase);
+
     void saveStepSummary(int step, Map<String, Object> metrics);
 
-    /**
-     * Query historical rollouts by filters (for analysis/debugging).
-     * 
-     * @param filters Query filters
-     * @param limit Maximum results to return
-     * @return List of matching rollouts
-     */
+    default List<Map<String, Object>> queryRollouts(Map<String, Object> filters) {
+        return queryRollouts(filters, 100);
+    }
+
     List<Map<String, Object>> queryRollouts(Map<String, Object> filters, int limit);
 
-    /**
-     * Release connections and clean up resources.
-     */
     void close();
 }

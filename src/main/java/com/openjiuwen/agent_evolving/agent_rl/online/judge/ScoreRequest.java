@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.online.judge;
  * Judge score request payload.
  * <p>
  * Mirrors Python's {@code ScoreRequest} in
- * {@code openjiuwen.agent_evolving.agent_rl.online.judge.judge_server}.
+ * {@code openjiuwen/agent_evolving/agent_rl/online/judge/judge_server.py}.
  */
 public record ScoreRequest(
         String responseText,
@@ -17,11 +17,4 @@ public record ScoreRequest(
         String sessionId,
         int turnNum
 ) {
-
-    public ScoreRequest {
-        responseText = responseText != null ? responseText : "";
-        instructionText = instructionText != null ? instructionText : "";
-        followupUserFeedback = followupUserFeedback != null ? followupUserFeedback : "";
-        sessionId = sessionId != null ? sessionId : "";
-    }
 }

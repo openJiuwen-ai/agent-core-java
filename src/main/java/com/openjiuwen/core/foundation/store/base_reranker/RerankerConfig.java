@@ -4,54 +4,58 @@
 
 package com.openjiuwen.core.foundation.store.base_reranker;
 
-import java.util.HashMap;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Reranker model configuration.
  * <p>
- * Mirrors Python's {@code RerankerConfig} model from
- * <code>foundation/store/base_reranker.py</code>.
+ * Mirrors Python's {@code RerankerConfig} in
+ * {@code openjiuwen/core/foundation/store/base_reranker.py}.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class RerankerConfig {
 
+    @JsonProperty("api_key")
+    @Builder.Default
     private String apiKey = "";
+
+    @JsonProperty("api_base")
     private String apiBase;
+
+    @JsonProperty("model_name")
+    @JsonAlias("model")
+    @Builder.Default
     private String modelName = "";
-    private double timeout = 10.0;
-    private double temperature = 0.95;
-    private double topP = 0.1;
-    private int[] yesNoIds = null;
-    private Map<String, Object> extraBody = new HashMap<>();
 
-    public RerankerConfig() {
-    }
+    @Builder.Default
+    private double timeout = 10.0d;
 
-    public RerankerConfig(String apiBase) {
-        this.apiBase = apiBase;
-    }
+    @JsonProperty("temperature")
+    @Builder.Default
+    private double temperature = 0.95d;
 
-    public String getApiKey() { return apiKey; }
-    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+    @JsonProperty("top_p")
+    @Builder.Default
+    private double topP = 0.1d;
 
-    public String getApiBase() { return apiBase; }
-    public void setApiBase(String apiBase) { this.apiBase = apiBase; }
+    @JsonProperty("yes_no_ids")
+    private List<Integer> yesNoIds;
 
-    public String getModelName() { return modelName; }
-    public void setModelName(String modelName) { this.modelName = modelName; }
-
-    public double getTimeout() { return timeout; }
-    public void setTimeout(double timeout) { this.timeout = timeout; }
-
-    public double getTemperature() { return temperature; }
-    public void setTemperature(double temperature) { this.temperature = temperature; }
-
-    public double getTopP() { return topP; }
-    public void setTopP(double topP) { this.topP = topP; }
-
-    public int[] getYesNoIds() { return yesNoIds; }
-    public void setYesNoIds(int[] yesNoIds) { this.yesNoIds = yesNoIds; }
-
-    public Map<String, Object> getExtraBody() { return extraBody; }
-    public void setExtraBody(Map<String, Object> extraBody) { this.extraBody = extraBody; }
+    @JsonProperty("extra_body")
+    @Builder.Default
+    private Map<String, Object> extraBody = new LinkedHashMap<>();
 }

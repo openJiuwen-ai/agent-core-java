@@ -1,52 +1,41 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.schema;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Plan mode session-scoped state.
- * <p>
- * Mirrors Python's {@code PlanModeState} in {@code openjiuwen.harness.schema.state}.
- * <p>
- * Attributes:
- * <ul>
- *   <li>mode: Current agent mode — "normal" or "plan"</li>
- *   <li>prePlanMode: Mode that was active before</li>
- *   <li>planSlug: Short identifier for the active plan file</li>
- * </ul>
+ * Plan-mode session-scoped state.
+ *
+ * <p>Mirrors Python's {@code PlanModeState} in
+ * {@code openjiuwen/harness/schema/state.py}.</p>
  */
-public class PlanModeState {
+public final class PlanModeState {
 
-    /** Current agent mode — "normal" or "plan". */
     private String mode = "normal";
-    
-    /** Mode that was active before. */
     private String prePlanMode = "normal";
-    
-    /** Short identifier for the active plan file (e.g. "gleaming-brewing-phoenix"). */
-    private String planSlug = null;
+    private String planSlug;
+    private String promptContext;
 
     public PlanModeState() {
-        // Default constructor with default values
     }
 
-    public PlanModeState(String mode, String prePlanMode, String planSlug) {
-        this.mode = mode != null ? mode : "normal";
-        this.prePlanMode = prePlanMode != null ? prePlanMode : "normal";
+    public PlanModeState(String mode, String prePlanMode, String planSlug, String promptContext) {
+        this.mode = mode == null ? "normal" : mode;
+        this.prePlanMode = prePlanMode == null ? "normal" : prePlanMode;
         this.planSlug = planSlug;
+        this.promptContext = promptContext;
     }
 
-    // Getters and setters
     public String getMode() {
         return mode;
     }
 
     public void setMode(String mode) {
-        this.mode = mode;
+        this.mode = mode == null ? "normal" : mode;
     }
 
     public String getPrePlanMode() {
@@ -54,7 +43,7 @@ public class PlanModeState {
     }
 
     public void setPrePlanMode(String prePlanMode) {
-        this.prePlanMode = prePlanMode;
+        this.prePlanMode = prePlanMode == null ? "normal" : prePlanMode;
     }
 
     public String getPlanSlug() {
@@ -65,46 +54,41 @@ public class PlanModeState {
         this.planSlug = planSlug;
     }
 
-    /**
-     * Serialize to a JSON-friendly map.
-     * <p>
-     * Mirrors Python's {@code to_dict()}.
-     *
-     * @return Map with mode, prePlanMode, and planSlug fields
-     */
+    public String getPromptContext() {
+        return promptContext;
+    }
+
+    public void setPromptContext(String promptContext) {
+        this.promptContext = promptContext;
+    }
+
     public Map<String, Object> toMap() {
-        Map<String, Object> map = new HashMap<>();
+        Map<String, Object> map = new LinkedHashMap<>();
         map.put("mode", mode);
         map.put("pre_plan_mode", prePlanMode);
         map.put("plan_slug", planSlug);
+        map.put("prompt_context", promptContext);
         return map;
     }
 
-    /**
-     * Restore from a serialized map.
-     * <p>
-     * Mirrors Python's {@code from_dict()}.
-     *
-     * @param data Map previously produced by toMap(); null is treated as empty snapshot
-     * @return Reconstructed PlanModeState
-     */
     public static PlanModeState fromMap(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
             return new PlanModeState();
         }
         return new PlanModeState(
-            (String) data.getOrDefault("mode", "normal"),
-            (String) data.getOrDefault("pre_plan_mode", "normal"),
-            (String) data.get("plan_slug")
+                stringValue(data.get("mode"), "normal"),
+                stringValue(data.get("pre_plan_mode"), "normal"),
+                stringOrNull(data.get("plan_slug")),
+                stringOrNull(data.get("prompt_context"))
         );
     }
 
-    @Override
-    public String toString() {
-        return "PlanModeState{" +
-                "mode='" + mode + '\'' +
-                ", prePlanMode='" + prePlanMode + '\'' +
-                ", planSlug='" + planSlug + '\'' +
-                '}';
+    private static String stringValue(Object value, String fallback) {
+        String text = stringOrNull(value);
+        return text == null || text.isBlank() ? fallback : text;
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

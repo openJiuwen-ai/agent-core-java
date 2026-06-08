@@ -4,26 +4,24 @@
 
 package com.openjiuwen.core.session.stream;
 
-import com.openjiuwen.core.workflow.WorkflowChunk;
-
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Custom stream schema allowing arbitrary properties.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.stream.base.CustomSchema}.
+ * Mirrors Python's {@code CustomSchema} in
+ * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class CustomSchema implements WorkflowChunk {
+public class CustomSchema {
 
-    private final Map<String, Object> properties;
+    private final Map<String, Object> properties = new LinkedHashMap<>();
 
     public CustomSchema() {
-        this.properties = new HashMap<>();
     }
 
     public CustomSchema(Map<String, Object> properties) {
-        this.properties = properties != null ? new HashMap<>(properties) : new HashMap<>();
+        if (properties != null) {
+            this.properties.putAll(properties);
+        }
     }
 
     public Object get(String key) {
@@ -36,15 +34,5 @@ public class CustomSchema implements WorkflowChunk {
 
     public Map<String, Object> getProperties() {
         return properties;
-    }
-
-    /**
-     * Validate data from a map.
-     *
-     * @param data the data map
-     * @return a validated CustomSchema instance
-     */
-    public static CustomSchema fromMap(Map<String, Object> data) {
-        return new CustomSchema(data);
     }
 }

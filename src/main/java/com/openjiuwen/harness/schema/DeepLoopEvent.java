@@ -22,7 +22,7 @@ import java.util.UUID;
  * - seq: FIFO within same priority
  *
  * <p>Mirrors Python's {@code DeepLoopEvent} in
- * {@code openjiuwen.harness.schema.loop_event}.
+ * {@code openjiuwen/harness/schema/loop_event.py}.
  */
 @Data
 @Builder

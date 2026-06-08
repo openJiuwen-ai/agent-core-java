@@ -4,35 +4,33 @@
 
 package com.openjiuwen.core.foundation.tool.auth;
 
-import java.util.Collections;
-import java.util.HashMap;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Tool authentication configuration.
- * <p>
- * Mirrors Python's {@code ToolAuthConfig} dataclass from
- * <code>foundation/tool/auth/auth.py</code>.
  *
- * @param authType  authentication type: ssl, header_and_query, etc.
- * @param config    authentication configuration parameters
- * @param toolType  tool type: restful_api, mcp, etc.
- * @param toolId    optional tool identifier
+ * <p>Mirrors Python's {@code ToolAuthConfig} in
+ * {@code openjiuwen/core/foundation/tool/auth/auth.py}.
  */
-public class ToolAuthConfig {
+public final class ToolAuthConfig {
 
     private final String authType;
     private final Map<String, Object> config;
     private final String toolType;
     private final String toolId;
 
-    public ToolAuthConfig(String authType, Map<String, Object> config, String toolType) {
-        this(authType, config, toolType, null);
-    }
-
-    public ToolAuthConfig(String authType, Map<String, Object> config, String toolType, String toolId) {
+    @JsonCreator
+    public ToolAuthConfig(
+            @JsonProperty("auth_type") String authType,
+            @JsonProperty("config") Map<String, Object> config,
+            @JsonProperty("tool_type") String toolType,
+            @JsonProperty("tool_id") String toolId
+    ) {
         this.authType = authType;
-        this.config = config != null ? new HashMap<>(config) : new HashMap<>();
+        this.config = config == null ? Map.of() : Map.copyOf(config);
         this.toolType = toolType;
         this.toolId = toolId;
     }
@@ -42,7 +40,7 @@ public class ToolAuthConfig {
     }
 
     public Map<String, Object> getConfig() {
-        return Collections.unmodifiableMap(config);
+        return config;
     }
 
     public String getToolType() {
@@ -51,5 +49,24 @@ public class ToolAuthConfig {
 
     public String getToolId() {
         return toolId;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof ToolAuthConfig that)) {
+            return false;
+        }
+        return Objects.equals(authType, that.authType)
+                && Objects.equals(config, that.config)
+                && Objects.equals(toolType, that.toolType)
+                && Objects.equals(toolId, that.toolId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(authType, config, toolType, toolId);
     }
 }

@@ -4,246 +4,180 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import com.openjiuwen.harness.schema.CompletionPromiseEvaluator;
 import com.openjiuwen.harness.schema.StopConditionEvaluator;
 import com.openjiuwen.harness.schema.StopEvaluationContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * LoopCoordinator — controls the DeepAgent outer task loop.
- *
- * <p>Tracks round count, token usage, wall-clock time, and abort
- * flag. {@code shouldContinue()} evaluates a chain of
- * StopConditionEvaluator objects with OR semantics.
+ * Controls the DeepAgent outer task loop.
  *
  * <p>Mirrors Python's {@code LoopCoordinator} in
- * {@code openjiuwen.harness.task_loop.loop_coordinator}.
+ * {@code openjiuwen/harness/task_loop/loop_coordinator.py}.</p>
  */
-public class LoopCoordinator {
+public final class LoopCoordinator {
 
-    private static final Logger LOG = LoggerFactory.getLogger(LoopCoordinator.class);
+    private static final Logger LOGGER = Logger.getLogger(LoopCoordinator.class.getName());
 
     private final List<StopConditionEvaluator> evaluators;
-    private final AtomicInteger iteration = new AtomicInteger(0);
-    private final AtomicInteger tokenUsage = new AtomicInteger(0);
-    private final AtomicBoolean aborted = new AtomicBoolean(false);
-    private final AtomicReference<Double> startTime = new AtomicReference<>(0.0);
-    private final AtomicReference<String> stopReason = new AtomicReference<>(null);
-    private final AtomicReference<Map<String, Object>> lastResult = new AtomicReference<>(null);
+    private int iteration;
+    private int tokenUsage;
+    private boolean aborted;
+    private long startNanoTime;
+    private String stopReason;
+    private Map<String, Object> lastResult;
 
-    /**
-     * Construct with evaluators list.
-     */
-    public LoopCoordinator(List<StopConditionEvaluator> evaluators) {
-        this.evaluators = evaluators != null ? new ArrayList<>(evaluators) : new ArrayList<>();
-    }
-
-    /**
-     * Default constructor.
-     */
     public LoopCoordinator() {
-        this(null);
+        this(List.of());
     }
 
-    // -- read-only properties --
+    public LoopCoordinator(List<StopConditionEvaluator> evaluators) {
+        this.evaluators = evaluators == null ? new ArrayList<>() : new ArrayList<>(evaluators);
+    }
 
-    /**
-     * Number of completed rounds.
-     */
     public int getCurrentIteration() {
-        return iteration.get();
+        return iteration;
     }
 
-    /**
-     * Whether abort has been requested.
-     */
     public boolean isAborted() {
-        return aborted.get();
+        return aborted;
     }
 
-    /**
-     * Name of the evaluator that stopped the loop.
-     */
     public String getStopReason() {
-        return stopReason.get();
+        return stopReason;
     }
 
-    /**
-     * Total token usage so far.
-     */
-    public int getTokenUsage() {
-        return tokenUsage.get();
-    }
-
-    /**
-     * Elapsed time in seconds since start.
-     */
-    public double getElapsedSeconds() {
-        double start = startTime.get();
-        if (start <= 0) {
-            return 0.0;
-        }
-        return (System.nanoTime() / 1_000_000_000.0) - start;
-    }
-
-    // -- mutation --
-
-    /**
-     * Reset for a new invoke cycle.
-     */
     public void reset() {
-        iteration.set(0);
-        tokenUsage.set(0);
-        aborted.set(false);
-        startTime.set(System.nanoTime() / 1_000_000_000.0);
-        stopReason.set(null);
-        lastResult.set(null);
-        for (StopConditionEvaluator ev : evaluators) {
-            ev.reset();
+        iteration = 0;
+        tokenUsage = 0;
+        aborted = false;
+        startNanoTime = System.nanoTime();
+        stopReason = null;
+        lastResult = null;
+        for (StopConditionEvaluator evaluator : evaluators) {
+            evaluator.reset();
         }
     }
 
-    /**
-     * Record one completed round.
-     */
     public void incrementIteration() {
-        iteration.incrementAndGet();
+        iteration += 1;
     }
 
-    /**
-     * Accumulate token consumption.
-     */
     public void addTokenUsage(int tokens) {
         if (tokens > 0) {
-            tokenUsage.addAndGet(tokens);
+            tokenUsage += tokens;
         }
     }
 
-    /**
-     * Store the most recent round result.
-     */
     public void setLastResult(Map<String, Object> result) {
-        lastResult.set(result);
+        lastResult = result == null ? null : new LinkedHashMap<>(result);
     }
 
-    /**
-     * Signal the loop to stop immediately.
-     */
     public void requestAbort() {
-        aborted.set(true);
+        aborted = true;
     }
 
-    // -- stop evaluation --
-
-    /**
-     * Return true if the loop may proceed.
-     *
-     * <p>Evaluates all evaluators with OR semantics — the first
-     * evaluator that returns true from shouldStop()
-     * terminates the loop and records the stop reason.
-     */
     public boolean shouldContinue() {
-        if (aborted.get()) {
-            stopReason.set("Aborted");
+        if (aborted) {
+            stopReason = "Aborted";
             return false;
         }
-
-        StopEvaluationContext ctx = buildEvalContext();
-        for (StopConditionEvaluator ev : evaluators) {
+        StopEvaluationContext context = buildEvalContext();
+        for (StopConditionEvaluator evaluator : evaluators) {
             try {
-                if (ev.shouldStop(ctx)) {
-                    stopReason.set(ev.getName());
-                    LOG.info("Stop condition met: {}", ev.getName());
+                if (evaluator.shouldStop(context)) {
+                    stopReason = evaluator.getName();
+                    LOGGER.log(Level.INFO, "Stop condition met: {0}", stopReason);
                     return false;
                 }
-            } catch (Exception e) {
-                LOG.warn("Evaluator {} raised an error", ev.getName(), e);
+            } catch (RuntimeException ex) {
+                LOGGER.log(Level.WARNING, "Evaluator " + evaluator.getName() + " raised an error", ex);
             }
         }
         return true;
     }
 
-    /**
-     * Build evaluation context from current state.
-     */
-    private StopEvaluationContext buildEvalContext() {
-        return StopEvaluationContext.builder()
-                .iteration(iteration.get())
-                .tokenUsage(tokenUsage.get())
-                .elapsedSeconds(getElapsedSeconds())
-                .lastResult(lastResult.get())
-                .extra(new HashMap<>())
-                .build();
+    public CompletionPromiseEvaluator getCompletionPromiseEvaluator() {
+        for (StopConditionEvaluator evaluator : evaluators) {
+            if (evaluator instanceof CompletionPromiseEvaluator completionPromiseEvaluator) {
+                return completionPromiseEvaluator;
+            }
+        }
+        return null;
     }
 
-    // -- state persistence --
-
-    /**
-     * Export a JSON-safe snapshot for checkpointing.
-     */
     public Map<String, Object> getState() {
-        Map<String, Object> evStates = new LinkedHashMap<>();
-        for (StopConditionEvaluator ev : evaluators) {
-            Map<String, Object> s = ev.getState();
-            if (s != null) {
-                evStates.put(ev.getName(), s);
+        Map<String, Object> evaluatorStates = new LinkedHashMap<>();
+        for (StopConditionEvaluator evaluator : evaluators) {
+            Map<String, Object> state = evaluator.getState();
+            if (state != null) {
+                evaluatorStates.put(evaluator.getName(), state);
             }
         }
         Map<String, Object> state = new LinkedHashMap<>();
-        state.put("iteration", iteration.get());
-        state.put("token_usage", tokenUsage.get());
-        state.put("stop_reason", stopReason.get());
-        state.put("evaluator_states", evStates);
+        state.put("iteration", iteration);
+        state.put("token_usage", tokenUsage);
+        state.put("stop_reason", stopReason);
+        state.put("evaluator_states", evaluatorStates);
         return state;
     }
 
-    /**
-     * Restore state from a persisted snapshot.
-     */
     public void loadState(Map<String, Object> data) {
-        if (data == null) return;
-        Object iterObj = data.get("iteration");
-        if (iterObj instanceof Number) {
-            iteration.set(((Number) iterObj).intValue());
+        if (data == null || data.isEmpty()) {
+            return;
         }
-        Object tokensObj = data.get("token_usage");
-        if (tokensObj instanceof Number) {
-            tokenUsage.set(((Number) tokensObj).intValue());
-        }
-        Object reasonObj = data.get("stop_reason");
-        if (reasonObj instanceof String) {
-            stopReason.set((String) reasonObj);
-        }
-        Object evStatesObj = data.get("evaluator_states");
-        if (evStatesObj instanceof Map) {
-            Map<String, Object> evStates = (Map<String, Object>) evStatesObj;
-            for (StopConditionEvaluator ev : evaluators) {
-                Object evData = evStates.get(ev.getName());
-                if (evData instanceof Map) {
-                    ev.loadState((Map<String, Object>) evData);
-                }
+        iteration = intValue(data.get("iteration"), 0);
+        tokenUsage = intValue(data.get("token_usage"), 0);
+        stopReason = data.get("stop_reason") == null ? null : String.valueOf(data.get("stop_reason"));
+        startNanoTime = System.nanoTime();
+        Map<String, Object> evaluatorStates = castMap(data.get("evaluator_states"));
+        for (StopConditionEvaluator evaluator : evaluators) {
+            if (evaluatorStates != null && evaluatorStates.containsKey(evaluator.getName())) {
+                evaluator.loadState(castMap(evaluatorStates.get(evaluator.getName())));
             }
         }
     }
 
-    /**
-     * Add an evaluator.
-     */
-    public void addEvaluator(StopConditionEvaluator evaluator) {
-        if (evaluator != null) {
-            evaluators.add(evaluator);
-        }
+    private StopEvaluationContext buildEvalContext() {
+        double elapsedSeconds = startNanoTime == 0L ? 0.0 : (System.nanoTime() - startNanoTime) / 1_000_000_000.0;
+        return new StopEvaluationContext(
+                iteration,
+                tokenUsage,
+                elapsedSeconds,
+                lastResult == null ? null : Map.copyOf(lastResult),
+                Map.of()
+        );
     }
 
-    /**
-     * Get evaluators list.
-     */
-    public List<StopConditionEvaluator> getEvaluators() {
-        return new ArrayList<>(evaluators);
+    private static Map<String, Object> castMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return normalized;
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
     }
 }

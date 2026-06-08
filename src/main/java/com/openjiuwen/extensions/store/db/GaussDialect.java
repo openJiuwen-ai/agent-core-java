@@ -7,7 +7,7 @@ package com.openjiuwen.extensions.store.db;
 /**
  * GaussDB dialect configuration.
  *
- * <p>Mirrors Python's {@code openjiuwen.extensions.store.db.gauss_dialect}.
+ * <p>Mirrors Python's {@code openjiuwen/extensions/store/db/gauss_dialect.py}.
  *
  * Provides GaussDB-specific SQL dialect settings and type mappings.
  */

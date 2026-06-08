@@ -4,134 +4,140 @@
 
 package com.openjiuwen.agent_teams.schema.events;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_teams.schema.BaseEventMessage;
+import com.openjiuwen.agent_teams.schema.BroadcastEvent;
 import com.openjiuwen.agent_teams.schema.MemberCanceledEvent;
 import com.openjiuwen.agent_teams.schema.MemberExecutionChangedEvent;
 import com.openjiuwen.agent_teams.schema.MemberRestartedEvent;
 import com.openjiuwen.agent_teams.schema.MemberShutdownEvent;
 import com.openjiuwen.agent_teams.schema.MemberSpawnedEvent;
 import com.openjiuwen.agent_teams.schema.MemberStatusChangedEvent;
+import com.openjiuwen.agent_teams.schema.MessageEvent;
+import com.openjiuwen.agent_teams.schema.PlanApprovalEvent;
+import com.openjiuwen.agent_teams.schema.TaskCancelledEvent;
+import com.openjiuwen.agent_teams.schema.TaskClaimedEvent;
+import com.openjiuwen.agent_teams.schema.TaskCompletedEvent;
+import com.openjiuwen.agent_teams.schema.TaskCreatedEvent;
+import com.openjiuwen.agent_teams.schema.TaskListDrainedEvent;
+import com.openjiuwen.agent_teams.schema.TaskPlanRequestEvent;
+import com.openjiuwen.agent_teams.schema.TaskPlanResponseEvent;
+import com.openjiuwen.agent_teams.schema.TaskUnblockedEvent;
+import com.openjiuwen.agent_teams.schema.TaskUpdatedEvent;
 import com.openjiuwen.agent_teams.schema.TeamCleanedEvent;
+import com.openjiuwen.agent_teams.schema.TeamCompletedEvent;
 import com.openjiuwen.agent_teams.schema.TeamCreatedEvent;
 import com.openjiuwen.agent_teams.schema.TeamEvent;
 import com.openjiuwen.agent_teams.schema.TeamStandbyEvent;
+import com.openjiuwen.agent_teams.schema.ToolApprovalResultEvent;
+import com.openjiuwen.agent_teams.schema.WorkspaceArtifactEvent;
+import com.openjiuwen.agent_teams.schema.WorkspaceConflictEvent;
+import com.openjiuwen.agent_teams.schema.WorkspaceLockRequestEvent;
+import com.openjiuwen.agent_teams.schema.WorkspaceLockResponseEvent;
+import com.openjiuwen.agent_teams.schema.WorktreeCreatedEvent;
+import com.openjiuwen.agent_teams.schema.WorktreeRemovedEvent;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Minimal event envelope for team messager transports.
- *
- * <p>Mirrors Python's {@code EventMessage} in
- * {@code openjiuwen.agent_teams.schema.events}.</p>
+ * Event envelope that pairs an event type with its payload.
+ * <p>
+ * Mirrors Python's {@code EventMessage} in
+ * {@code openjiuwen/agent_teams/schema/events.py}.
  */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class EventMessage {
 
-    private final String eventType;
-    private final Map<String, Object> payload;
-    private final Object payloadObject;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Map<String, Class<? extends BaseEventMessage>> EVENT_TYPE_MAP = new LinkedHashMap<>();
+    private static final Map<Class<? extends BaseEventMessage>, String> EVENT_CLASS_MAP = new LinkedHashMap<>();
+
+    static {
+        register(TeamEvent.CREATED, TeamCreatedEvent.class);
+        register(TeamEvent.CLEANED, TeamCleanedEvent.class);
+        register(TeamEvent.STANDBY, TeamStandbyEvent.class);
+        register(TeamEvent.TEAM_COMPLETED, TeamCompletedEvent.class);
+        register(TeamEvent.MEMBER_SPAWNED, MemberSpawnedEvent.class);
+        register(TeamEvent.MEMBER_RESTARTED, MemberRestartedEvent.class);
+        register(TeamEvent.MEMBER_STATUS_CHANGED, MemberStatusChangedEvent.class);
+        register(TeamEvent.MEMBER_EXECUTION_CHANGED, MemberExecutionChangedEvent.class);
+        register(TeamEvent.MEMBER_SHUTDOWN, MemberShutdownEvent.class);
+        register(TeamEvent.MEMBER_CANCELED, MemberCanceledEvent.class);
+        register(TeamEvent.PLAN_APPROVAL, PlanApprovalEvent.class);
+        register(TeamEvent.TOOL_APPROVAL_RESULT, ToolApprovalResultEvent.class);
+        register(TeamEvent.MESSAGE, MessageEvent.class);
+        register(TeamEvent.BROADCAST, BroadcastEvent.class);
+        register(TeamEvent.TASK_CREATED, TaskCreatedEvent.class);
+        register(TeamEvent.TASK_PLAN_REQUEST, TaskPlanRequestEvent.class);
+        register(TeamEvent.TASK_PLAN_RESPONSE, TaskPlanResponseEvent.class);
+        register(TeamEvent.TASK_UPDATED, TaskUpdatedEvent.class);
+        register(TeamEvent.TASK_CLAIMED, TaskClaimedEvent.class);
+        register(TeamEvent.TASK_COMPLETED, TaskCompletedEvent.class);
+        register(TeamEvent.TASK_CANCELLED, TaskCancelledEvent.class);
+        register(TeamEvent.TASK_UNBLOCKED, TaskUnblockedEvent.class);
+        register(TeamEvent.TASK_LIST_DRAINED, TaskListDrainedEvent.class);
+        register(TeamEvent.WORKTREE_CREATED, WorktreeCreatedEvent.class);
+        register(TeamEvent.WORKTREE_REMOVED, WorktreeRemovedEvent.class);
+        register(TeamEvent.WORKSPACE_ARTIFACT_UPDATED, WorkspaceArtifactEvent.class);
+        register(TeamEvent.WORKSPACE_CONFLICT, WorkspaceConflictEvent.class);
+        register(TeamEvent.WORKSPACE_LOCK_REQUEST, WorkspaceLockRequestEvent.class);
+        register(TeamEvent.WORKSPACE_LOCK_RESPONSE, WorkspaceLockResponseEvent.class);
+    }
+
+    private String eventType;
+    @JsonProperty("payload")
+    private Map<String, Object> payloadData = new LinkedHashMap<>();
     private String senderId = "";
 
-    public EventMessage(String eventType, Map<String, Object> payload) {
-        this(eventType, payload, null);
-    }
-
-    private EventMessage(String eventType, Map<String, Object> payload, Object payloadObject) {
-        this.eventType = eventType != null ? eventType : "";
-        this.payload = payload != null ? new LinkedHashMap<>(payload) : new LinkedHashMap<>();
-        this.payloadObject = payloadObject;
-    }
-
-    public String getEventType() {
-        return eventType;
-    }
-
-    public Map<String, Object> getPayload() {
-        return new LinkedHashMap<>(payload);
-    }
-
-    public Object getPayloadObject() {
-        return payloadObject;
-    }
-
-    public String getSenderId() {
-        return senderId;
-    }
-
-    public void setSenderId(String senderId) {
-        this.senderId = senderId != null ? senderId : "";
-    }
-
     public static EventMessage fromEvent(BaseEventMessage event) {
-        if (event == null) {
-            throw new IllegalArgumentException("event is required");
+        String eventType = EVENT_CLASS_MAP.get(event.getClass());
+        if (eventType == null) {
+            throw new IllegalArgumentException("Unknown event class: " + event.getClass().getName());
         }
-        return new EventMessage(inferEventType(event), serializeEventPayload(event), event);
+        Map<String, Object> payload = OBJECT_MAPPER.convertValue(event, new TypeReference<>() {
+        });
+        return new EventMessage(eventType, payload, "");
     }
 
-    private static String inferEventType(BaseEventMessage event) {
-        if (event instanceof TeamCreatedEvent) {
-            return TeamEvent.CREATED;
+    @JsonIgnore
+    public BaseEventMessage getPayload() {
+        Class<? extends BaseEventMessage> payloadClass = EVENT_TYPE_MAP.get(eventType);
+        if (payloadClass == null) {
+            throw new IllegalArgumentException("Unknown event_type: " + eventType);
         }
-        if (event instanceof TeamCleanedEvent) {
-            return TeamEvent.CLEANED;
-        }
-        if (event instanceof TeamStandbyEvent) {
-            return TeamEvent.STANDBY;
-        }
-        if (event instanceof MemberSpawnedEvent) {
-            return TeamEvent.MEMBER_SPAWNED;
-        }
-        if (event instanceof MemberRestartedEvent) {
-            return TeamEvent.MEMBER_RESTARTED;
-        }
-        if (event instanceof MemberStatusChangedEvent) {
-            return TeamEvent.MEMBER_STATUS_CHANGED;
-        }
-        if (event instanceof MemberExecutionChangedEvent) {
-            return TeamEvent.MEMBER_EXECUTION_CHANGED;
-        }
-        if (event instanceof MemberShutdownEvent) {
-            return TeamEvent.MEMBER_SHUTDOWN;
-        }
-        if (event instanceof MemberCanceledEvent) {
-            return TeamEvent.MEMBER_CANCELED;
-        }
-        return event.getClass().getSimpleName();
+        return OBJECT_MAPPER.convertValue(payloadData, payloadClass);
     }
 
-    private static Map<String, Object> serializeEventPayload(BaseEventMessage event) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (Method method : event.getClass().getMethods()) {
-            if (method.getParameterCount() != 0 || method.getDeclaringClass() == Object.class) {
-                continue;
-            }
-            String name = method.getName();
-            if (!name.startsWith("get") || "getClass".equals(name)) {
-                continue;
-            }
-            try {
-                Object value = method.invoke(event);
-                if (value != null) {
-                    values.put(toSnakeCase(name.substring(3)), value);
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Best-effort payload extraction for lightweight transport envelopes.
-            }
+    public byte[] serialize() {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(this).getBytes(StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to serialize EventMessage", exception);
         }
-        return values;
     }
 
-    private static String toSnakeCase(String text) {
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
-            if (Character.isUpperCase(ch) && i > 0) {
-                builder.append('_');
-            }
-            builder.append(Character.toLowerCase(ch));
+    public static EventMessage deserialize(byte[] data) {
+        try {
+            return OBJECT_MAPPER.readValue(new String(data, StandardCharsets.UTF_8), EventMessage.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to deserialize EventMessage", exception);
         }
-        return builder.toString();
+    }
+
+    private static void register(String eventType, Class<? extends BaseEventMessage> eventClass) {
+        EVENT_TYPE_MAP.put(eventType, eventClass);
+        EVENT_CLASS_MAP.put(eventClass, eventType);
     }
 }

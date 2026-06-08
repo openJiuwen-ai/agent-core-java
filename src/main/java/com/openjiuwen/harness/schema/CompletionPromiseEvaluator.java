@@ -4,22 +4,18 @@
 
 package com.openjiuwen.harness.schema;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Stop evaluator fulfilled by {@code TaskCompletionRail} after a promise tag
- * has been observed.
- *
- * <p>Mirrors Python's {@code CompletionPromiseEvaluator} in
- * {@code openjiuwen.harness.schema.stop_condition}.
+ * Mirrors Python's {@code CompletionPromiseEvaluator} in
+ * {@code openjiuwen/harness/schema/stop_condition.py}.
  */
-public class CompletionPromiseEvaluator implements StopConditionEvaluator {
+public final class CompletionPromiseEvaluator implements StopConditionEvaluator {
 
     private final String promise;
-    private int requiredConfirmations;
     private boolean fulfilled;
-    private String matchedText = "";
+    private String matchedText;
+    private int requiredConfirmations;
     private int confirmationCount;
 
     public CompletionPromiseEvaluator(String promise) {
@@ -29,17 +25,17 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     public CompletionPromiseEvaluator(String promise, int requiredConfirmations) {
         this.promise = promise;
         this.requiredConfirmations = Math.max(1, requiredConfirmations);
+        this.matchedText = "";
     }
 
-    @Override
-    public String getName() {
-        return getClass().getSimpleName();
+    public String getPromise() {
+        return promise;
     }
 
     public void notifyFulfilled(String matchedText) {
-        confirmationCount++;
+        confirmationCount += 1;
         fulfilled = confirmationCount >= requiredConfirmations;
-        this.matchedText = matchedText != null ? matchedText : "";
+        this.matchedText = matchedText == null ? "" : matchedText;
     }
 
     public void notifyAbsent() {
@@ -55,47 +51,44 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
 
     @Override
     public void reset() {
-        notifyAbsent();
+        fulfilled = false;
+        matchedText = "";
+        confirmationCount = 0;
     }
 
     @Override
     public Map<String, Object> getState() {
-        Map<String, Object> state = new LinkedHashMap<>();
-        state.put("fulfilled", fulfilled);
-        state.put("matched_text", matchedText);
-        state.put("required_confirmations", requiredConfirmations);
-        state.put("confirmation_count", confirmationCount);
-        return state;
+        return Map.of(
+                "fulfilled", fulfilled,
+                "matched_text", matchedText,
+                "required_confirmations", requiredConfirmations,
+                "confirmation_count", confirmationCount
+        );
     }
 
     @Override
     public void loadState(Map<String, Object> data) {
-        if (data == null) {
+        if (data == null || data.isEmpty()) {
             return;
         }
-        fulfilled = Boolean.parseBoolean(String.valueOf(data.getOrDefault("fulfilled", false)));
+        fulfilled = Boolean.TRUE.equals(data.get("fulfilled"));
         matchedText = String.valueOf(data.getOrDefault("matched_text", ""));
         requiredConfirmations = Math.max(1, intValue(data.get("required_confirmations"), requiredConfirmations));
         confirmationCount = Math.max(0, intValue(data.get("confirmation_count"), 0));
         fulfilled = fulfilled || confirmationCount >= requiredConfirmations;
     }
 
-    public String getPromise() {
-        return promise;
-    }
-
-    public int getRequiredConfirmations() {
-        return requiredConfirmations;
-    }
-
-    private static int intValue(Object value, int fallback) {
+    private int intValue(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
         }
-        try {
-            return value != null ? Integer.parseInt(String.valueOf(value)) : fallback;
-        } catch (NumberFormatException e) {
-            return fallback;
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
         }
+        return fallback;
     }
 }

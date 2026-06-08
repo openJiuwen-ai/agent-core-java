@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,8 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for trajectory stores.
- *
- * <p>Mirrors Python's {@code tests/unit_tests/agent_evolving/trajectory/test_store.py}.
+ * <p>
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/trajectory/test_store.py}.
+ * </p>
  */
 class TrajectoryStoreTest {
 
@@ -44,9 +46,12 @@ class TrajectoryStoreTest {
     }
 
     private static TrajectoryStep makeLlmStep(String operatorId, List<Map<String, Object>> messages) {
+        List<Object> normalizedMessages = messages != null
+                ? new ArrayList<>(messages)
+                : new ArrayList<>(List.of(Map.of("role", "user", "content", "hello")));
         LLMCallDetail detail = LLMCallDetail.builder()
                 .model("gpt-4")
-                .messages(messages != null ? messages : List.of(Map.of("role", "user", "content", "hello")))
+                .messages(normalizedMessages)
                 .build();
         return makeStep("llm", detail, null, Map.of("operator_id", operatorId));
     }

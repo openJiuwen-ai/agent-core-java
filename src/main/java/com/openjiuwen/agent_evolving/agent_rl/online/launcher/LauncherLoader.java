@@ -22,12 +22,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Configuration loader for online RL runtime.
+ * Runtime launcher config merge: built-in defaults + optional YAML + CLI overrides.
  * <p>
- * Mirrors Python's {@code loader} module in
- * {@code openjiuwen.agent_evolving.agent_rl.online.launcher.loader}.
+ * Mirrors Python's {@code load_runtime_config} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/launcher/loader.py}.
  */
-public class LauncherLoader {
+public final class LauncherLoader {
 
     private static final ObjectMapper CONFIG_MAPPER = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
@@ -35,6 +35,9 @@ public class LauncherLoader {
     private static final String DEFAULT_CONFIG_FILENAME = "online_config.py (built-in)";
     private static final String BUILTIN_ONLINE_CONFIG_PATH =
             "openjiuwen/agent_evolving/agent_rl/config/online_config.py";
+
+    private LauncherLoader() {
+    }
 
     public record RuntimeConfigResult(Map<String, Object> config, Path resolvedPath, OnlineRLConfig validatedConfig) {
         public RuntimeConfigResult {
@@ -44,15 +47,6 @@ public class LauncherLoader {
         }
     }
 
-    /**
-     * Load configuration from YAML file with CLI overrides.
-     * <p>
-     * Mirrors Python's load_runtime_config using OmegaConf.
-     * 
-     * @param configFile YAML config file path (optional)
-     * @param cliOverrides CLI argument overrides
-     * @return Loaded configuration map
-     */
     public static Map<String, Object> loadConfig(String configFile, Map<String, Object> cliOverrides) {
         try {
             return loadRuntimeConfig(configFile, cliOverrides).config();
@@ -61,7 +55,8 @@ public class LauncherLoader {
         }
     }
 
-    public static RuntimeConfigResult loadRuntimeConfig(String configFile, Map<String, Object> cliOverrides) throws IOException {
+    public static RuntimeConfigResult loadRuntimeConfig(String configFile, Map<String, Object> cliOverrides)
+            throws IOException {
         Map<String, Object> config = getDefaultConfig();
         Path resolvedPath;
         if (configFile != null && !configFile.isBlank()) {
@@ -78,10 +73,7 @@ public class LauncherLoader {
         validatedConfig.validate();
         return new RuntimeConfigResult(config, resolvedPath, validatedConfig);
     }
-    
-    /**
-     * Load YAML configuration file.
-     */
+
     private static Map<String, Object> loadYamlConfig(Path configPath) throws IOException {
         Yaml yaml = new Yaml();
         try (InputStream inputStream = Files.newInputStream(configPath)) {
@@ -96,15 +88,9 @@ public class LauncherLoader {
         }
     }
 
-    /**
-     * Get default configuration.
-     * 
-     * @return Default config map
-     */
     public static Map<String, Object> getDefaultConfig() {
         Map<String, Object> config = new LinkedHashMap<>();
-        
-        // Inference defaults
+
         Map<String, Object> inference = new LinkedHashMap<>();
         inference.put("model_path", "/path/to/your/model");
         inference.put("model_name", "Qwen3-4B-Thinking-2507");
@@ -151,8 +137,7 @@ public class LauncherLoader {
                 "16"
         ));
         config.put("judge", judge);
-        
-        // Gateway defaults
+
         Map<String, Object> gateway = new LinkedHashMap<>();
         gateway.put("host", "127.0.0.1");
         gateway.put("port", null);
@@ -163,8 +148,7 @@ public class LauncherLoader {
         gateway.put("disable_trajectory_collection", true);
         gateway.put("env", new LinkedHashMap<>());
         config.put("gateway", gateway);
-        
-        // Training defaults
+
         Map<String, Object> training = new LinkedHashMap<>();
         training.put("gpu_ids", "4,5");
         training.put("threshold", 4);
@@ -172,14 +156,12 @@ public class LauncherLoader {
         training.put("ppo_config", null);
         training.put("lora_repo", null);
         config.put("training", training);
-        
-        // Trajectory defaults
+
         Map<String, Object> trajectory = new LinkedHashMap<>();
         trajectory.put("batch_size", 4);
         trajectory.put("mode", "feedback_level");
         config.put("trajectory", trajectory);
-        
-        // Jiuwen defaults
+
         Map<String, Object> jiuwen = new LinkedHashMap<>();
         jiuwen.put("enabled", true);
         jiuwen.put("agent_server_port", null);
@@ -187,25 +169,17 @@ public class LauncherLoader {
         jiuwen.put("ws_port", null);
         jiuwen.put("web_host", "127.0.0.1");
         jiuwen.put("web_port", null);
-        config.put("jiwen", jiuwen);
         config.put("jiuwen", jiuwen);
-        
+        config.put("jiwen", jiuwen);
+
         config.put("demo", false);
-        
         return deepCopyMap(config);
     }
 
-    /**
-     * Deep merge two maps.
-     * 
-     * @param base Base map to merge into
-     * @param overlay Overlay map
-     */
     private static void deepMerge(Map<String, Object> base, Map<String, Object> overlay) {
         for (Map.Entry<String, Object> entry : overlay.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-            
             if (value instanceof Map<?, ?> overlayMap && base.get(key) instanceof Map<?, ?> baseMap) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> typedBase = (Map<String, Object>) baseMap;

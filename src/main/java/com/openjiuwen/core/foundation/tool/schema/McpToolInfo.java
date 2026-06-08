@@ -17,7 +17,8 @@ import java.util.Map;
 /**
  * MCP (Model Context Protocol) tool information extending base {@link ToolInfo}.
  * <p>
- * Mirrors Python's {@code McpToolInfo} model.
+ * Mirrors Python's {@code McpToolInfo} in
+ * {@code openjiuwen/core/foundation/tool/schema.py}.
  */
 @Data
 @SuperBuilder

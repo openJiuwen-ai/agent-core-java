@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Verl Rollout Multi-turn Hydra overlay configuration.
  * <p>
  * Mirrors Python's {@code VerlRolloutMultiTurnHydraOverlay} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class VerlRolloutMultiTurnHydraOverlay {
 

@@ -1,12 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.runner.mq;
 
 /**
  * Abstract message queue supporting pub-sub topics.
- * Mirrors Python's {@code MessageQueueBase} in {@code message_queue_base.py}.
+ *
+ * <p>Mirrors Python's {@code MessageQueueBase} in
+ * {@code openjiuwen/core/runner/message_queue_base.py}.
  */
 public abstract class MessageQueueBase {
 

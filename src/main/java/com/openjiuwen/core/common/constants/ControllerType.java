@@ -8,12 +8,10 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Controller type enumeration.
- *
- * <p>Defines the supported controller types for agent orchestration.</p>
+ * Mirrors Python's {@code ControllerType} in
+ * {@code openjiuwen/core/common/constants/enums.py}.
  */
 public enum ControllerType {
-
     REACT_CONTROLLER("react"),
     WORKFLOW_CONTROLLER("workflow"),
     UNDEFINED("undefined");
@@ -29,12 +27,6 @@ public enum ControllerType {
         return value;
     }
 
-    /**
-     * Parse a string value into the corresponding {@link ControllerType}.
-     *
-     * @param value the string representation
-     * @return the matching enum constant, or {@link #UNDEFINED} if no match
-     */
     @JsonCreator
     public static ControllerType fromValue(String value) {
         for (ControllerType type : values()) {

@@ -4,25 +4,36 @@
 
 package com.openjiuwen.harness.lsp.core;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal scoped config for one Java harness LSP server instance.
- *
- * <p>Mirrors Python's {@code ScopedLspServerConfig} in
- * {@code openjiuwen.harness.lsp.core.types}.
+ * Mirrors Python's {@code ScopedLspServerConfig} in
+ * {@code openjiuwen/harness/lsp/core/types.py}.
  */
 public class ScopedLspServerConfig {
 
+    @JsonProperty("server_id")
     private String serverId;
+
     private String command;
+
+    @JsonProperty("workspace_folder")
     private String workspaceFolder;
-    private List<String> args = List.of();
+
+    private List<String> args = new ArrayList<>();
     private Map<String, String> env = new LinkedHashMap<>();
-    private Map<String, Object> initializationOptions = new LinkedHashMap<>();
+
+    @JsonProperty("initialization_options")
+    private Map<String, Object> initializationOptions;
+
+    @JsonProperty("startup_timeout")
     private int startupTimeout = 45_000;
+
+    @JsonProperty("extension_to_language")
     private Map<String, String> extensionToLanguage = new LinkedHashMap<>();
 
     public String getServerId() {
@@ -54,7 +65,7 @@ public class ScopedLspServerConfig {
     }
 
     public void setArgs(List<String> args) {
-        this.args = args != null ? List.copyOf(args) : List.of();
+        this.args = args == null ? new ArrayList<>() : new ArrayList<>(args);
     }
 
     public Map<String, String> getEnv() {
@@ -62,7 +73,7 @@ public class ScopedLspServerConfig {
     }
 
     public void setEnv(Map<String, String> env) {
-        this.env = env != null ? new LinkedHashMap<>(env) : new LinkedHashMap<>();
+        this.env = env == null ? new LinkedHashMap<>() : new LinkedHashMap<>(env);
     }
 
     public Map<String, Object> getInitializationOptions() {
@@ -70,8 +81,7 @@ public class ScopedLspServerConfig {
     }
 
     public void setInitializationOptions(Map<String, Object> initializationOptions) {
-        this.initializationOptions = initializationOptions != null
-                ? new LinkedHashMap<>(initializationOptions) : new LinkedHashMap<>();
+        this.initializationOptions = initializationOptions == null ? null : new LinkedHashMap<>(initializationOptions);
     }
 
     public int getStartupTimeout() {
@@ -87,7 +97,8 @@ public class ScopedLspServerConfig {
     }
 
     public void setExtensionToLanguage(Map<String, String> extensionToLanguage) {
-        this.extensionToLanguage = extensionToLanguage != null
-                ? new LinkedHashMap<>(extensionToLanguage) : new LinkedHashMap<>();
+        this.extensionToLanguage = extensionToLanguage == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(extensionToLanguage);
     }
 }

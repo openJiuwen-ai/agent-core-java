@@ -26,7 +26,7 @@ import java.util.Objects;
  * File-based JSONL trajectory store.
  * <p>
  * Mirrors Python's {@code FileTrajectoryStore} in
- * {@code openjiuwen.agent_evolving.trajectory.store}.
+ * {@code openjiuwen/agent_evolving/trajectory/store.py}.
  * </p>
  */
 public class FileTrajectoryStore implements TrajectoryStore {
@@ -43,7 +43,7 @@ public class FileTrajectoryStore implements TrajectoryStore {
     /**
      * Create a file-backed trajectory store.
      *
-     * @param baseDir Directory containing trajectory JSONL files
+     * @param baseDir directory containing trajectory JSONL files
      */
     public FileTrajectoryStore(Path baseDir) {
         this.baseDir = Objects.requireNonNull(baseDir, "baseDir must not be null");
@@ -208,7 +208,7 @@ public class FileTrajectoryStore implements TrajectoryStore {
     private static LLMCallDetail toLlmCallDetail(Map<?, ?> detailMap) {
         return new LLMCallDetail(
                 stringValue(first(detailMap, "model")),
-                listOfStringObjectMaps(first(detailMap, "messages")),
+                listOfObjects(first(detailMap, "messages")),
                 stringObjectMap(first(detailMap, "response")),
                 listOfStringObjectMaps(first(detailMap, "tools")),
                 stringObjectMap(first(detailMap, "usage")),
@@ -256,5 +256,12 @@ public class FileTrajectoryStore implements TrajectoryStore {
             }
         }
         return output;
+    }
+
+    private static List<Object> listOfObjects(Object value) {
+        if (!(value instanceof List<?> input)) {
+            return null;
+        }
+        return new ArrayList<>(input);
     }
 }

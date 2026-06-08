@@ -8,7 +8,7 @@ package com.openjiuwen.agent_evolving.agent_rl.config;
  * Runtime hyper-parameters for the agent / inference.
  * <p>
  * Mirrors Python's {@code AgentRuntimeConfig} in
- * {@code openjiuwen.agent_evolving.agent_rl.config.offline_config}.
+ * {@code openjiuwen/agent_evolving/agent_rl/config/offline_config.py}.
  */
 public class AgentRuntimeConfig {
 

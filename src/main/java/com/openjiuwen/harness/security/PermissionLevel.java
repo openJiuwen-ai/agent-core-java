@@ -4,11 +4,12 @@
 
 package com.openjiuwen.harness.security;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Minimal permission levels for Java harness tool checks.
- *
- * <p>Mirrors Python's {@code PermissionLevel} in
- * {@code openjiuwen.harness.security.models}.
+ * Mirrors Python's {@code PermissionLevel} in
+ * {@code openjiuwen/harness/security/models.py}.
  */
 public enum PermissionLevel {
     ALLOW("allow"),
@@ -21,20 +22,18 @@ public enum PermissionLevel {
         this.value = value;
     }
 
-    public String getValue() {
+    @JsonValue
+    public String value() {
         return value;
     }
 
-    /**
-     * Parse from string value.
-     */
+    @JsonCreator
     public static PermissionLevel fromValue(String value) {
-        if (value == null || value.isEmpty()) {
+        if (value == null || value.isBlank()) {
             return ASK;
         }
-        String lower = value.toLowerCase();
         for (PermissionLevel level : values()) {
-            if (level.value.equals(lower)) {
+            if (level.value.equalsIgnoreCase(value)) {
                 return level;
             }
         }

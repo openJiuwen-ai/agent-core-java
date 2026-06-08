@@ -4,65 +4,35 @@
 
 package com.openjiuwen.harness.security;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 /**
- * User confirmation response for permission ASK scenario.
- *
- * <p>When {@code approved} and {@code autoConfirm} are both true, the rail follows
- * the path of merging permissions, updating memory, and writing to disk
- * (consistent with {@code PermissionInterruptRail._persist_allow_always}).
- * Only {@code approved} means one-time approval.
- *
- * <p>Mirrors Python's {@code PermissionConfirmResponse} in
- * {@code openjiuwen.harness.security.models}.
+ * Mirrors Python's {@code PermissionConfirmResponse} in
+ * {@code openjiuwen/harness/security/models.py}.
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PermissionConfirmResponse {
+public final class PermissionConfirmResponse {
 
-    /** Whether the user approved the operation. */
-    private boolean approved;
+    private final boolean approved;
+    private final String feedback;
+    private final boolean autoConfirm;
 
-    /** User feedback or reason for rejection. */
-    @Builder.Default
-    private String feedback = "";
-
-    /** Whether to persist the approval (remember for future). */
-    @Builder.Default
-    private boolean autoConfirm = false;
-
-    /**
-     * Create an approved response.
-     */
-    public static PermissionConfirmResponse approved() {
-        return PermissionConfirmResponse.builder()
-                .approved(true)
-                .build();
+    public PermissionConfirmResponse(boolean approved) {
+        this(approved, "", false);
     }
 
-    /**
-     * Create an approved response with auto-confirm.
-     */
-    public static PermissionConfirmResponse approvedAlways() {
-        return PermissionConfirmResponse.builder()
-                .approved(true)
-                .autoConfirm(true)
-                .build();
+    public PermissionConfirmResponse(boolean approved, String feedback, boolean autoConfirm) {
+        this.approved = approved;
+        this.feedback = feedback == null ? "" : feedback;
+        this.autoConfirm = autoConfirm;
     }
 
-    /**
-     * Create a rejected response.
-     */
-    public static PermissionConfirmResponse rejected(String feedback) {
-        return PermissionConfirmResponse.builder()
-                .approved(false)
-                .feedback(feedback != null ? feedback : "[PERMISSION_REJECTED] User rejected the request.")
-                .build();
+    public boolean isApproved() {
+        return approved;
+    }
+
+    public String getFeedback() {
+        return feedback;
+    }
+
+    public boolean isAutoConfirm() {
+        return autoConfirm;
     }
 }

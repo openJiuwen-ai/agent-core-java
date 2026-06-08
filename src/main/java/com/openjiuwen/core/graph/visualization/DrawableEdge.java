@@ -5,24 +5,22 @@
 package com.openjiuwen.core.graph.visualization;
 
 /**
- * Represents an edge in a drawable graph for visualization.
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_edge.DrawableEdge}.</p>
+ * Mirrors Python's {@code DrawableEdge} in
+ * {@code openjiuwen/core/graph/visualization/drawable_edge.py}.
  */
 public class DrawableEdge {
 
     private final String source;
     private final String target;
-    private Object data;
+    private Stringifiable data;
     private boolean conditional;
     private boolean streaming;
 
     public DrawableEdge(String source, String target) {
-        this.source = source;
-        this.target = target;
+        this(source, target, null, false, false);
     }
 
-    public DrawableEdge(String source, String target, Object data, boolean conditional, boolean streaming) {
+    public DrawableEdge(String source, String target, Stringifiable data, boolean conditional, boolean streaming) {
         this.source = source;
         this.target = target;
         this.data = data;
@@ -38,11 +36,11 @@ public class DrawableEdge {
         return target;
     }
 
-    public Object getData() {
+    public Stringifiable getData() {
         return data;
     }
 
-    public void setData(Object data) {
+    public void setData(Stringifiable data) {
         this.data = data;
     }
 

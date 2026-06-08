@@ -4,45 +4,55 @@
 
 package com.openjiuwen.harness.schema;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Runtime context passed to each StopConditionEvaluator.
- *
- * <p>Decoupled from AgentCallbackContext so evaluators do not
- * depend on the agent callback system.
- *
- * <p>Mirrors Python's {@code StopEvaluationContext} in
- * {@code openjiuwen.harness.schema.stop_condition}.
+ * Mirrors Python's {@code StopEvaluationContext} in
+ * {@code openjiuwen/harness/schema/stop_condition.py}.
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class StopEvaluationContext {
+public final class StopEvaluationContext {
 
-    /** Number of completed outer-loop rounds. */
-    @Builder.Default
-    private int iteration = 0;
+    private final int iteration;
+    private final int tokenUsage;
+    private final double elapsedSeconds;
+    private final Map<String, Object> lastResult;
+    private final Map<String, Object> extra;
 
-    /** Cumulative token usage across all rounds. */
-    @Builder.Default
-    private int tokenUsage = 0;
+    public StopEvaluationContext() {
+        this(0, 0, 0.0, null, Map.of());
+    }
 
-    /** Wall-clock seconds since loop start. */
-    @Builder.Default
-    private double elapsedSeconds = 0.0;
+    public StopEvaluationContext(
+            int iteration,
+            int tokenUsage,
+            double elapsedSeconds,
+            Map<String, Object> lastResult,
+            Map<String, Object> extra
+    ) {
+        this.iteration = iteration;
+        this.tokenUsage = tokenUsage;
+        this.elapsedSeconds = elapsedSeconds;
+        this.lastResult = lastResult == null ? null : Map.copyOf(lastResult);
+        this.extra = extra == null ? Map.of() : Map.copyOf(extra);
+    }
 
-    /** Result dict from the most recent round. */
-    private Map<String, Object> lastResult;
+    public int getIteration() {
+        return iteration;
+    }
 
-    /** Arbitrary extra data for custom evaluators. */
-    @Builder.Default
-    private Map<String, Object> extra = new HashMap<>();
+    public int getTokenUsage() {
+        return tokenUsage;
+    }
+
+    public double getElapsedSeconds() {
+        return elapsedSeconds;
+    }
+
+    public Map<String, Object> getLastResult() {
+        return lastResult;
+    }
+
+    public Map<String, Object> getExtra() {
+        return extra;
+    }
 }

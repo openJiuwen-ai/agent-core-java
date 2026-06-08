@@ -4,43 +4,45 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
 /**
- * Generic base class for resource managers that use provider-based registration.
- * <p>
- * Mirrors Python's {@code AbstractManager} in {@code resources_manager/abstract_manager.py}.
+ * Generic resource-provider registry.
  *
- * @param <T> the type of resource this manager handles
+ * <p>Mirrors Python's {@code AbstractManager} in
+ * {@code openjiuwen/core/runner/resources_manager/abstract_manager.py}.</p>
+ *
+ * @param <T> resource type
  */
-public abstract class AbstractManager<T> {
+public class AbstractManager<T> {
 
-    protected final ConcurrentHashMap<String, Supplier<? extends T>> providers = new ConcurrentHashMap<>();
+    private final ThreadSafeDict<String, Supplier<?>> providers = new ThreadSafeDict<>();
 
-    protected void registerResourceProvider(String resourceId, Supplier<? extends T> resource) {
-        if (providers.containsKey(resourceId)) {
+    protected void registerResourceProvider(String resourceId, Supplier<?> resource) {
+        if (providers.get(resourceId) != null) {
             throw new IllegalArgumentException("add resource failed, " + resourceId + " is already exist");
         }
         providers.put(resourceId, resource);
     }
 
-    protected T getResource(String resourceId) {
-        Supplier<? extends T> provider = providers.get(resourceId);
+    @SuppressWarnings("unchecked")
+    protected CompletionStage<T> getResource(String resourceId) {
+        Supplier<?> provider = providers.get(resourceId);
         if (provider == null) {
-            return null;
+            return CompletableFuture.completedFuture(null);
         }
-        return provider.get();
+        Object value = provider.get();
+        if (value instanceof CompletionStage<?> stage) {
+            return stage.thenApply(item -> (T) item);
+        }
+        return CompletableFuture.completedFuture((T) value);
     }
 
-    protected Supplier<? extends T> unregisterResourceProvider(String resourceId) {
-        return providers.remove(resourceId);
-    }
-
-    /**
-     * Clear all registered providers.
-     */
-    protected void clearProviders() {
-        providers.clear();
+    @SuppressWarnings("unchecked")
+    protected Supplier<?> unregisterResourceProvider(String resourceId) {
+        return providers.pop(resourceId, null);
     }
 }

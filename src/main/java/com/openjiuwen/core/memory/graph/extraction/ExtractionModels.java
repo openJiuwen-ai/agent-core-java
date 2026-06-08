@@ -14,12 +14,13 @@ import java.util.Map;
 /**
  * Extraction models for entity/relation extraction output.
  * <p>
- * Mirrors Python's extraction model classes from
- * <code>memory/graph/extraction/extraction_models.py</code>.
+ * Mirrors Python's {@code openjiuwen.core.memory.graph.extraction.extraction_models} in
+ * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
  */
 public final class ExtractionModels {
 
-    private ExtractionModels() {}
+    private ExtractionModels() {
+    }
 
     private static <T> T requireField(T value, String fieldName) {
         if (value == null) {
@@ -63,11 +64,13 @@ public final class ExtractionModels {
     }
 
     /**
-     * Represents a datetime payload.
+     * Representing Datetime (Unused).
      * <p>
-     * Mirrors Python's {@code Datetime} extraction model.
+     * Mirrors Python's {@code Datetime} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class Datetime extends MultilingualBaseModel {
+
         @JsonProperty("year")
         private Integer year;
         @JsonProperty("month")
@@ -81,7 +84,8 @@ public final class ExtractionModels {
         @JsonProperty("second")
         private Integer second;
 
-        public Datetime() {}
+        public Datetime() {
+        }
 
         public Datetime(Integer year, Integer month, Integer day, Integer hour, Integer minute, Integer second) {
             this.year = requireField(year, "year");
@@ -119,18 +123,21 @@ public final class ExtractionModels {
     }
 
     /**
-     * Entity declaration output item.
+     * Entity Declaration.
      * <p>
-     * Mirrors Python's {@code EntityDeclaration} extraction model.
+     * Mirrors Python's {@code EntityDeclaration} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class EntityDeclaration extends MultilingualBaseModel {
+
         @JsonProperty("name")
         private String name;
         @JsonProperty("entity_type_id")
         @JsonAlias("entityTypeId")
         private Integer entityTypeId;
 
-        public EntityDeclaration() {}
+        public EntityDeclaration() {
+        }
 
         public EntityDeclaration(String name, Integer entityTypeId) {
             this.name = requireField(name, "name");
@@ -140,9 +147,7 @@ public final class ExtractionModels {
         public String getName() { return requireField(name, "name"); }
         public void setName(String name) { this.name = requireField(name, "name"); }
         public int getEntityTypeId() { return requireField(entityTypeId, "entity_type_id"); }
-        public void setEntityTypeId(Integer entityTypeId) {
-            this.entityTypeId = requireField(entityTypeId, "entity_type_id");
-        }
+        public void setEntityTypeId(Integer entityTypeId) { this.entityTypeId = requireField(entityTypeId, "entity_type_id"); }
 
         @Override
         public Map<String, Object> responseFormat() {
@@ -154,11 +159,13 @@ public final class ExtractionModels {
     }
 
     /**
-     * Entity duplication output item.
+     * Entity De-duplication.
      * <p>
-     * Mirrors Python's {@code Duplication} extraction model.
+     * Mirrors Python's {@code Duplication} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class Duplication extends MultilingualBaseModel {
+
         @JsonProperty("name")
         private String name;
         @JsonProperty("id")
@@ -167,7 +174,8 @@ public final class ExtractionModels {
         @JsonAlias("duplicateIds")
         private List<Integer> duplicateIds;
 
-        public Duplication() {}
+        public Duplication() {
+        }
 
         public Duplication(String name, Integer id, List<Integer> duplicateIds) {
             this.name = requireField(name, "name");
@@ -180,9 +188,7 @@ public final class ExtractionModels {
         public int getId() { return requireField(id, "id"); }
         public void setId(Integer id) { this.id = requireField(id, "id"); }
         public List<Integer> getDuplicateIds() { return requireField(duplicateIds, "duplicate_ids"); }
-        public void setDuplicateIds(List<Integer> duplicateIds) {
-            this.duplicateIds = requireField(duplicateIds, "duplicate_ids");
-        }
+        public void setDuplicateIds(List<Integer> duplicateIds) { this.duplicateIds = requireField(duplicateIds, "duplicate_ids"); }
 
         @Override
         public Map<String, Object> responseFormat() {
@@ -195,11 +201,13 @@ public final class ExtractionModels {
     }
 
     /**
-     * Factual relation output item.
+     * Factual Relation.
      * <p>
-     * Mirrors Python's {@code Fact} extraction model.
+     * Mirrors Python's {@code Fact} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class Fact extends MultilingualBaseModel {
+
         @JsonProperty("name")
         private String name;
         @JsonProperty("fact")
@@ -217,7 +225,8 @@ public final class ExtractionModels {
         @JsonAlias("targetId")
         private Integer targetId;
 
-        public Fact() {}
+        public Fact() {
+        }
 
         public Fact(String name, String fact, String validSince, String validUntil, Integer sourceId, Integer targetId) {
             this.name = requireField(name, "name");
@@ -255,11 +264,13 @@ public final class ExtractionModels {
     }
 
     /**
-     * Timezone prediction output item.
+     * Possible Timezone Guess.
      * <p>
-     * Mirrors Python's {@code PossibleTimezone} extraction model.
+     * Mirrors Python's {@code PossibleTimezone} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class PossibleTimezone extends MultilingualBaseModel {
+
         @JsonProperty("name")
         private String name;
         @JsonProperty("offset_from_utc")
@@ -268,7 +279,8 @@ public final class ExtractionModels {
         @JsonProperty("reasoning")
         private String reasoning;
 
-        public PossibleTimezone() {}
+        public PossibleTimezone() {
+        }
 
         public PossibleTimezone(String name, String offsetFromUtc, String reasoning) {
             this.name = requireField(name, "name");
@@ -279,9 +291,7 @@ public final class ExtractionModels {
         public String getName() { return requireField(name, "name"); }
         public void setName(String name) { this.name = requireField(name, "name"); }
         public String getOffsetFromUtc() { return requireField(offsetFromUtc, "offset_from_utc"); }
-        public void setOffsetFromUtc(String offsetFromUtc) {
-            this.offsetFromUtc = requireField(offsetFromUtc, "offset_from_utc");
-        }
+        public void setOffsetFromUtc(String offsetFromUtc) { this.offsetFromUtc = requireField(offsetFromUtc, "offset_from_utc"); }
         public String getReasoning() { return requireField(reasoning, "reasoning"); }
         public void setReasoning(String reasoning) { this.reasoning = requireField(reasoning, "reasoning"); }
 
@@ -298,25 +308,24 @@ public final class ExtractionModels {
     /**
      * Output for entity declaration extraction.
      * <p>
-     * Mirrors Python's {@code EntityExtraction} extraction model.
+     * Mirrors Python's {@code EntityExtraction} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class EntityExtraction extends MultilingualBaseModel {
+
         @JsonProperty("extracted_entities")
         @JsonAlias("extractedEntities")
         private List<EntityDeclaration> extractedEntities;
 
-        public EntityExtraction() {}
+        public EntityExtraction() {
+        }
 
         public EntityExtraction(List<EntityDeclaration> extractedEntities) {
             this.extractedEntities = requireField(extractedEntities, "extracted_entities");
         }
 
-        public List<EntityDeclaration> getExtractedEntities() {
-            return requireField(extractedEntities, "extracted_entities");
-        }
-        public void setExtractedEntities(List<EntityDeclaration> extractedEntities) {
-            this.extractedEntities = requireField(extractedEntities, "extracted_entities");
-        }
+        public List<EntityDeclaration> getExtractedEntities() { return requireField(extractedEntities, "extracted_entities"); }
+        public void setExtractedEntities(List<EntityDeclaration> extractedEntities) { this.extractedEntities = requireField(extractedEntities, "extracted_entities"); }
 
         @Override
         public Map<String, Object> responseFormat() {
@@ -333,15 +342,18 @@ public final class ExtractionModels {
     /**
      * Output for entity summary and attribute extraction.
      * <p>
-     * Mirrors Python's {@code EntitySummary} extraction model.
+     * Mirrors Python's {@code EntitySummary} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class EntitySummary extends MultilingualBaseModel {
+
         @JsonProperty("summary")
         private String summary;
         @JsonProperty("attributes")
         private Map<String, Object> attributes;
 
-        public EntitySummary() {}
+        public EntitySummary() {
+        }
 
         public EntitySummary(String summary, Map<String, Object> attributes) {
             this.summary = requireField(summary, "summary");
@@ -351,9 +363,7 @@ public final class ExtractionModels {
         public String getSummary() { return requireField(summary, "summary"); }
         public void setSummary(String summary) { this.summary = requireField(summary, "summary"); }
         public Map<String, Object> getAttributes() { return requireField(attributes, "attributes"); }
-        public void setAttributes(Map<String, Object> attributes) {
-            this.attributes = requireField(attributes, "attributes");
-        }
+        public void setAttributes(Map<String, Object> attributes) { this.attributes = requireField(attributes, "attributes"); }
 
         @Override
         public Map<String, Object> responseFormat() {
@@ -367,25 +377,24 @@ public final class ExtractionModels {
     /**
      * Output for entity de-duplication.
      * <p>
-     * Mirrors Python's {@code EntityDuplication} extraction model.
+     * Mirrors Python's {@code EntityDuplication} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class EntityDuplication extends MultilingualBaseModel {
+
         @JsonProperty("duplicated_entities")
         @JsonAlias("duplicatedEntities")
         private List<Duplication> duplicatedEntities;
 
-        public EntityDuplication() {}
+        public EntityDuplication() {
+        }
 
         public EntityDuplication(List<Duplication> duplicatedEntities) {
             this.duplicatedEntities = requireField(duplicatedEntities, "duplicated_entities");
         }
 
-        public List<Duplication> getDuplicatedEntities() {
-            return requireField(duplicatedEntities, "duplicated_entities");
-        }
-        public void setDuplicatedEntities(List<Duplication> duplicatedEntities) {
-            this.duplicatedEntities = requireField(duplicatedEntities, "duplicated_entities");
-        }
+        public List<Duplication> getDuplicatedEntities() { return requireField(duplicatedEntities, "duplicated_entities"); }
+        public void setDuplicatedEntities(List<Duplication> duplicatedEntities) { this.duplicatedEntities = requireField(duplicatedEntities, "duplicated_entities"); }
 
         @Override
         public Map<String, Object> responseFormat() {
@@ -398,23 +407,24 @@ public final class ExtractionModels {
     /**
      * Output for relation extraction.
      * <p>
-     * Mirrors Python's {@code RelationExtraction} extraction model.
+     * Mirrors Python's {@code RelationExtraction} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class RelationExtraction extends MultilingualBaseModel {
+
         @JsonProperty("extracted_relations")
         @JsonAlias({"extractedRelations", "facts"})
         private List<Fact> extractedRelations;
 
-        public RelationExtraction() {}
+        public RelationExtraction() {
+        }
 
         public RelationExtraction(List<Fact> extractedRelations) {
             this.extractedRelations = requireField(extractedRelations, "extracted_relations");
         }
 
         public List<Fact> getExtractedRelations() { return requireField(extractedRelations, "extracted_relations"); }
-        public void setExtractedRelations(List<Fact> extractedRelations) {
-            this.extractedRelations = requireField(extractedRelations, "extracted_relations");
-        }
+        public void setExtractedRelations(List<Fact> extractedRelations) { this.extractedRelations = requireField(extractedRelations, "extracted_relations"); }
         public List<Fact> getFacts() { return getExtractedRelations(); }
         public void setFacts(List<Fact> facts) { setExtractedRelations(facts); }
 
@@ -429,9 +439,11 @@ public final class ExtractionModels {
     /**
      * Output for fact/relation filtering.
      * <p>
-     * Mirrors Python's {@code RelevantFacts} extraction model.
+     * Mirrors Python's {@code RelevantFacts} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class RelevantFacts extends MultilingualBaseModel {
+
         @JsonProperty("brief_reasoning")
         @JsonAlias("briefReasoning")
         private String briefReasoning;
@@ -439,7 +451,8 @@ public final class ExtractionModels {
         @JsonAlias({"relevantRelations", "relevantFacts"})
         private List<Integer> relevantRelations;
 
-        public RelevantFacts() {}
+        public RelevantFacts() {
+        }
 
         public RelevantFacts(String briefReasoning, List<Integer> relevantRelations) {
             this.briefReasoning = requireField(briefReasoning, "brief_reasoning");
@@ -447,15 +460,9 @@ public final class ExtractionModels {
         }
 
         public String getBriefReasoning() { return requireField(briefReasoning, "brief_reasoning"); }
-        public void setBriefReasoning(String briefReasoning) {
-            this.briefReasoning = requireField(briefReasoning, "brief_reasoning");
-        }
-        public List<Integer> getRelevantRelations() {
-            return requireField(relevantRelations, "relevant_relations");
-        }
-        public void setRelevantRelations(List<Integer> relevantRelations) {
-            this.relevantRelations = requireField(relevantRelations, "relevant_relations");
-        }
+        public void setBriefReasoning(String briefReasoning) { this.briefReasoning = requireField(briefReasoning, "brief_reasoning"); }
+        public List<Integer> getRelevantRelations() { return requireField(relevantRelations, "relevant_relations"); }
+        public void setRelevantRelations(List<Integer> relevantRelations) { this.relevantRelations = requireField(relevantRelations, "relevant_relations"); }
         public List<Integer> getRelevantFacts() { return getRelevantRelations(); }
         public void setRelevantFacts(List<Integer> relevantFacts) { setRelevantRelations(relevantFacts); }
 
@@ -471,25 +478,24 @@ public final class ExtractionModels {
     /**
      * Output for timezone prediction.
      * <p>
-     * Mirrors Python's {@code TimezonePredictions} extraction model.
+     * Mirrors Python's {@code TimezonePredictions} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class TimezonePredictions extends MultilingualBaseModel {
+
         @JsonProperty("extracted_relations")
         @JsonAlias({"extractedRelations", "timezones"})
         private List<PossibleTimezone> extractedRelations;
 
-        public TimezonePredictions() {}
+        public TimezonePredictions() {
+        }
 
         public TimezonePredictions(List<PossibleTimezone> extractedRelations) {
             this.extractedRelations = requireField(extractedRelations, "extracted_relations");
         }
 
-        public List<PossibleTimezone> getExtractedRelations() {
-            return requireField(extractedRelations, "extracted_relations");
-        }
-        public void setExtractedRelations(List<PossibleTimezone> extractedRelations) {
-            this.extractedRelations = requireField(extractedRelations, "extracted_relations");
-        }
+        public List<PossibleTimezone> getExtractedRelations() { return requireField(extractedRelations, "extracted_relations"); }
+        public void setExtractedRelations(List<PossibleTimezone> extractedRelations) { this.extractedRelations = requireField(extractedRelations, "extracted_relations"); }
         public List<PossibleTimezone> getTimezones() { return getExtractedRelations(); }
         public void setTimezones(List<PossibleTimezone> timezones) { setExtractedRelations(timezones); }
 
@@ -504,9 +510,11 @@ public final class ExtractionModels {
     /**
      * Output for relation merging.
      * <p>
-     * Mirrors Python's {@code MergeRelations} extraction model.
+     * Mirrors Python's {@code MergeRelations} in
+     * {@code openjiuwen/core/memory/graph/extraction/extraction_models.py}.
      */
     public static class MergeRelations extends MultilingualBaseModel {
+
         @JsonProperty("need_merging")
         @JsonAlias("needMerging")
         private Boolean needMerging;
@@ -526,10 +534,16 @@ public final class ExtractionModels {
         @JsonAlias("validUntil")
         private String validUntil;
 
-        public MergeRelations() {}
+        public MergeRelations() {
+        }
 
-        public MergeRelations(Boolean needMerging, String shortReasoning, String combinedContent,
-                List<Integer> duplicateIds, String validSince, String validUntil) {
+        public MergeRelations(
+                Boolean needMerging,
+                String shortReasoning,
+                String combinedContent,
+                List<Integer> duplicateIds,
+                String validSince,
+                String validUntil) {
             this.needMerging = requireField(needMerging, "need_merging");
             this.shortReasoning = requireField(shortReasoning, "short_reasoning");
             this.combinedContent = requireField(combinedContent, "combined_content");
@@ -540,21 +554,13 @@ public final class ExtractionModels {
 
         public Boolean getNeedMerging() { return requireField(needMerging, "need_merging"); }
         public boolean isNeedMerging() { return getNeedMerging(); }
-        public void setNeedMerging(Boolean needMerging) {
-            this.needMerging = requireField(needMerging, "need_merging");
-        }
+        public void setNeedMerging(Boolean needMerging) { this.needMerging = requireField(needMerging, "need_merging"); }
         public String getShortReasoning() { return requireField(shortReasoning, "short_reasoning"); }
-        public void setShortReasoning(String shortReasoning) {
-            this.shortReasoning = requireField(shortReasoning, "short_reasoning");
-        }
+        public void setShortReasoning(String shortReasoning) { this.shortReasoning = requireField(shortReasoning, "short_reasoning"); }
         public String getCombinedContent() { return requireField(combinedContent, "combined_content"); }
-        public void setCombinedContent(String combinedContent) {
-            this.combinedContent = requireField(combinedContent, "combined_content");
-        }
+        public void setCombinedContent(String combinedContent) { this.combinedContent = requireField(combinedContent, "combined_content"); }
         public List<Integer> getDuplicateIds() { return requireField(duplicateIds, "duplicate_ids"); }
-        public void setDuplicateIds(List<Integer> duplicateIds) {
-            this.duplicateIds = requireField(duplicateIds, "duplicate_ids");
-        }
+        public void setDuplicateIds(List<Integer> duplicateIds) { this.duplicateIds = requireField(duplicateIds, "duplicate_ids"); }
         public String getValidSince() { return requireField(validSince, "valid_since"); }
         public void setValidSince(String validSince) { this.validSince = requireField(validSince, "valid_since"); }
         public String getValidUntil() { return requireField(validUntil, "valid_until"); }

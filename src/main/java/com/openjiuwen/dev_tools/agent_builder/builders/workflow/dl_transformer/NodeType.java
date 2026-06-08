@@ -8,7 +8,7 @@ package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
  * Node type enumeration.
  * <p>
  * Mirrors Python's {@code NodeType} in
- * {@code openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer.models}.
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
  */
 public enum NodeType {
     Start("Start", "1"),

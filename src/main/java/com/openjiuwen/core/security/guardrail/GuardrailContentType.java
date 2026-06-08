@@ -4,10 +4,12 @@
 
 package com.openjiuwen.core.security.guardrail;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Types of content that can be checked by guardrails.
- * 
- * Mirrors Python's openjiuwen.core.security.guardrail.enums.GuardrailContentType
+ * Mirrors Python's {@code GuardrailContentType} in
+ * {@code openjiuwen/core/security/guardrail/enums.py}.
  */
 public enum GuardrailContentType {
     TEXT("text"),
@@ -21,7 +23,18 @@ public enum GuardrailContentType {
         this.value = value;
     }
 
-    public String getValue() {
+    @JsonValue
+    public String value() {
         return value;
+    }
+
+    @JsonCreator
+    public static GuardrailContentType fromValue(String value) {
+        for (GuardrailContentType contentType : values()) {
+            if (contentType.value.equals(value)) {
+                return contentType;
+            }
+        }
+        throw new IllegalArgumentException("Unknown guardrail content type: " + value);
     }
 }

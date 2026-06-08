@@ -8,12 +8,10 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * Stream mode definition.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.stream.base.StreamMode / BaseStreamMode}.
+ * Mirrors Python's {@code StreamMode / BaseStreamMode} in
+ * {@code openjiuwen/core/session/stream/base.py}.
  */
 public enum StreamMode {
-
     OUTPUT("output", "Standard stream data defined by the framework"),
     TRACE("trace", "Trace stream data produced by the graph"),
     CUSTOM("custom", "Custom stream data defined by the runnable");
@@ -29,7 +27,7 @@ public enum StreamMode {
     StreamMode(String mode, String desc, Map<String, Object> options) {
         this.mode = mode;
         this.desc = desc;
-        this.options = options != null ? options : Collections.emptyMap();
+        this.options = options == null ? Collections.emptyMap() : options;
     }
 
     public String getMode() {
