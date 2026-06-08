@@ -498,8 +498,7 @@ public class DeepAgent {
         if (config.isEnableTaskLoop()) {
             Thread streamThread = new Thread(() -> {
                 try {
-                    Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-                    writeTopLevelStreamResult(effectiveSession, 0, result);
+                    runTaskLoop(normalized, effectiveSession);
                 } catch (RuntimeException ex) {
                     effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
                             "output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
@@ -1043,7 +1042,13 @@ public class DeepAgent {
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
         List<Object> streamItems = new ArrayList<>();
-        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT)).forEachRemaining(streamItems::add);
+        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT))
+             .forEachRemaining(chunk -> {
+                 streamItems.add(chunk);
+                 if (chunk instanceof OutputSchema outputSchema) {
+                    session.writeStream(outputSchema);
+                 }
+             });
         copySessionState(innerSession, session);
         Map<String, Object> result = extractFinalStreamResult(streamItems);
         List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
