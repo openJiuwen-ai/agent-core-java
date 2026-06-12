@@ -19,6 +19,7 @@ public class DataConfig {
     private OutputsField outputs;
     private List<Map<String, Object>> branches;
     private Map<String, Object> exceptionConfig;
+    private String outputFormat;
 
     public DataConfig() {
         this("");
@@ -66,5 +67,13 @@ public class DataConfig {
 
     public void setExceptionConfig(Map<String, Object> exceptionConfig) {
         this.exceptionConfig = exceptionConfig;
+    }
+
+    public String getOutputFormat() {
+        return outputFormat;
+    }
+
+    public void setOutputFormat(String outputFormat) {
+        this.outputFormat = outputFormat;
     }
 }

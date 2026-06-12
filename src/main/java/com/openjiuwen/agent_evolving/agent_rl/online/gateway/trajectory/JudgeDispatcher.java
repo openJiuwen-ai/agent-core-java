@@ -68,7 +68,7 @@ public class JudgeDispatcher {
         Map<String, Object> judge;
         if (judgeScorer != null) {
             try {
-                judge = judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum);
+                judge = judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum).join();
             } catch (Exception exception) {
                 String error = exception.getMessage() != null ? exception.getMessage() : exception.toString();
                 judge = Map.of("score", 0.0, "votes", List.of("fail"), "details", Map.of(), "error", error);

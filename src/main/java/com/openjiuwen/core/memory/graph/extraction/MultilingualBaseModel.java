@@ -23,6 +23,14 @@ public abstract class MultilingualBaseModel {
     /** Multilingual description registry, populated by prompt files. */
     protected static final Map<String, Map<String, String>> MULTILINGUAL_DESCRIPTION = new HashMap<>();
 
+    public static Map<String, Map<String, String>> getMultilingualDescription() {
+        return MULTILINGUAL_DESCRIPTION;
+    }
+
+    public static void registerMultilingualDescription(String language, Map<String, String> descriptions) {
+        MULTILINGUAL_DESCRIPTION.put(language, new LinkedHashMap<>(descriptions));
+    }
+
     /** Java equivalent of Python's {@code readable_schema} tuple. */
     public record ReadableSchema(String outputSchema, Map<String, Object> refs) {
     }

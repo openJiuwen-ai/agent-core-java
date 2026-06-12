@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * JDK HttpClient-backed gateway transport.
@@ -26,7 +28,18 @@ public class JavaNetGatewayHttpTransport implements GatewayHttpTransport, AutoCl
     @Override
     public GatewayHttpResponse send(HttpRequest request) throws IOException, InterruptedException {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        return new GatewayHttpResponse(response.statusCode(), response.body());
+        Map<String, String> headers = new LinkedHashMap<>();
+        response.headers().map().forEach((name, values) -> {
+            if (!values.isEmpty()) {
+                headers.put(name, values.getFirst());
+            }
+        });
+        return new GatewayHttpResponse(
+            response.statusCode(),
+            response.body(),
+            headers,
+            response.headers().firstValue("content-type").orElse(null)
+        );
     }
 
     @Override

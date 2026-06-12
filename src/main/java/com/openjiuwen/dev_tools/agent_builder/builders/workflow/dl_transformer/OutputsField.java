@@ -32,6 +32,18 @@ public class OutputsField {
         this.type = type;
     }
 
+    public OutputsField(String type, String description) {
+        this.type = type;
+        this.description = description;
+    }
+
+    public void putProperty(String name, OutputsField property) {
+        if (properties == null) {
+            properties = new LinkedHashMap<>();
+        }
+        properties.put(name, property);
+    }
+
     public void addProperty(OutputPropertySpec spec) {
         List<String> variableNames = spec.getVariableNames();
         if (variableNames == null || variableNames.isEmpty()) {
@@ -90,6 +102,10 @@ public class OutputsField {
 
     public List<String> getRequired() {
         return required;
+    }
+
+    public void setRequired(List<String> required) {
+        this.required = required != null ? new ArrayList<>(required) : null;
     }
 
     public String getDescription() {

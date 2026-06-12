@@ -24,6 +24,14 @@ public class GraphStoreIndexConfig {
     private BM25Config bm25Config;
     private Map<String, Object> bm25AnalyzerSettings;
 
+    public GraphStoreIndexConfig() {
+        this.indexType = null;
+        this.distanceMetric = "cosine";
+        this.extraConfigs = new LinkedHashMap<>();
+        this.bm25Config = new BM25Config();
+        this.bm25AnalyzerSettings = null;
+    }
+
     public GraphStoreIndexConfig(VectorField indexType, String distanceMetric) {
         this(indexType, distanceMetric, null, null, null);
     }
