@@ -24,6 +24,7 @@ public class TeamMember {
     private String memberName;
     private String displayName;
     private String description;
+    private String prompt;
     @Builder.Default
     private TeamRole role = TeamRole.MEMBER;
     @Builder.Default

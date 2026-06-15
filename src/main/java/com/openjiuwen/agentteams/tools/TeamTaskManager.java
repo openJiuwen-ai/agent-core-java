@@ -10,6 +10,7 @@ import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.agentteams.tools.database.TaskMutationResult;
 import com.openjiuwen.agentteams.tools.database.TaskRecord;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,6 +67,9 @@ public class TeamTaskManager {
                 .dependencies(new ArrayList<>(dependencies != null ? dependencies : List.of()))
                 .build();
         if (db != null) {
+            Loggers.TOOL.info("TeamTaskManager.add: creating task {} team={} db={} session={}",
+                resolvedTaskId, teamName, Integer.toHexString(System.identityHashCode(db)),
+                com.openjiuwen.agentteams.spawn.SpawnContext.getSessionId());
             db.task.createTask(resolvedTaskId, teamName, title, content, task.getStatus());
             if (dependencies != null) {
                 for (String dependency : dependencies) {
@@ -115,6 +119,30 @@ public class TeamTaskManager {
     /**
      * Auto-generated for codecheck compliance.
      */
+    public CompletableFuture<TeamTask> addWithPriority(
+            String title, String content, String taskId,
+            List<String> dependsOn, List<String> dependedBy) {
+        String resolvedId = taskId != null ? taskId : UUID.randomUUID().toString();
+        List<String> allDeps = new ArrayList<>();
+        if (dependsOn != null) {
+            allDeps.addAll(dependsOn);
+        }
+        // dependedBy: other tasks that depend on this new task
+        // (mirrors Python add_with_priority depended_by parameter)
+        if (dependedBy != null && !dependedBy.isEmpty()) {
+            for (String depTaskId : dependedBy) {
+                // Add dependency edges: depTaskId -> this task
+                if (db != null) {
+                    db.task.addDependency(depTaskId, resolvedId);
+                }
+            }
+        }
+        return add(title, content, resolvedId, allDeps);
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CompletableFuture<TeamTask> addAsTopPriority(String title, String content) {
         return addAsTopPriority(title, content, null);
     }
@@ -152,6 +180,10 @@ public class TeamTaskManager {
     public CompletableFuture<TaskOpResult> claimResult(String taskId) {
         TeamTask task = get(taskId);
         if (task == null) {
+            Loggers.TOOL.info("claimResult: task {} not found, db={} member={} team={}",
+                taskId,
+                db != null ? Integer.toHexString(System.identityHashCode(db)) : "null",
+                memberName, teamName);
             return CompletableFuture.completedFuture(TaskOpResult.fail("Task " + taskId + " not found"));
         }
         if (db != null && shouldValidateMembers() && db.member.getMember(memberName, teamName) == null) {
@@ -170,6 +202,14 @@ public class TeamTaskManager {
             return CompletableFuture.completedFuture(TaskOpResult.fail(
                     "Task " + taskId + " cannot be claimed from status '" + task.getStatus()
                             + "' (only pending tasks are claimable)"));
+        }
+        // Prevent task hogging: a member can only hold one claimed task at a time.
+        // They must complete their current task before claiming another.
+        long myClaimedCount = getTasksByAssignee(memberName, "claimed").size();
+        if (myClaimedCount > 0) {
+            return CompletableFuture.completedFuture(TaskOpResult.fail(
+                    "Member " + memberName + " already has an active claimed task."
+                            + " Complete it before claiming another."));
         }
         task.setStatus("claimed");
         task.setAssignee(memberName);
@@ -217,6 +257,12 @@ public class TeamTaskManager {
                     "Task " + taskId + " cannot be completed from status '" + task.getStatus()
                             + "' (must be claimed or plan_approved)"));
         }
+        // Only the member who owns the task can complete it
+        if (task.getAssignee() != null && !memberName.equals(task.getAssignee())) {
+            return CompletableFuture.completedFuture(TaskOpResult.fail(
+                    "Task " + taskId + " is owned by " + task.getAssignee()
+                            + ", " + memberName + " cannot complete it"));
+        }
         TaskMutationResult mutation = db != null ? db.task.completeTaskResult(taskId) : null;
         if (db != null && mutation == null) {
             TeamTask current = get(taskId);
@@ -254,12 +300,25 @@ public class TeamTaskManager {
      * Auto-generated for codecheck compliance.
      */
     public CompletableFuture<List<TeamTask>> cancelAllTasks() {
+        return cancelAllTasks(List.of());
+    }
+
+    /**
+     * Cancel all tasks, optionally skipping tasks assigned to specific members.
+     * Mirrors Python cancel_all_tasks(skip_assignees).
+     *
+     * @param skipAssignees member names whose claimed tasks should NOT be cancelled
+     */
+    public CompletableFuture<List<TeamTask>> cancelAllTasks(List<String> skipAssignees) {
         if (db == null) {
             return CompletableFuture.completedFuture(List.of());
         }
         TaskMutationResult mutation = db.task.cancelAllTasksResult(teamName);
         List<TeamTask> cancelled = mutation.getCancelledTasks().stream()
                 .map(record -> get(record.getTaskId()))
+                .filter(task -> task != null)
+                .filter(task -> skipAssignees == null || skipAssignees.isEmpty()
+                        || !skipAssignees.contains(task.getAssignee()))
                 .toList();
         CompletableFuture<Void> published = CompletableFuture.completedFuture(null);
         for (TeamTask task : cancelled) {
@@ -450,6 +509,8 @@ public class TeamTaskManager {
         if (db != null) {
             TaskRecord record = db.task.getTask(taskId);
             if (record == null) {
+                Loggers.TOOL.info("TeamTaskManager.get: task {} not found in db={} team={}",
+                    taskId, Integer.toHexString(System.identityHashCode(db)), teamName);
                 return null;
             }
             return TeamTask.builder()
@@ -471,9 +532,10 @@ public class TeamTaskManager {
      */
     public List<TeamTask> list() {
         if (db == null) {
+            Loggers.TOOL.debug("TeamTaskManager.list(): db is null for team={}", teamName);
             return List.of();
         }
-        return db.getTeamTasks(teamName).stream().map(record -> TeamTask.builder()
+        List<TeamTask> tasks = db.getTeamTasks(teamName).stream().map(record -> TeamTask.builder()
                 .taskId(record.getTaskId())
                 .teamName(record.getTeamName())
                 .title(record.getTitle())
@@ -483,6 +545,11 @@ public class TeamTaskManager {
                 .updatedAt(record.getUpdatedAt())
                 .dependencies(new ArrayList<>(record.getDependencies()))
                 .build()).toList();
+        Loggers.TOOL.debug("TeamTaskManager.list(): team={} db={} session={} returned {} task(s)",
+            teamName, Integer.toHexString(System.identityHashCode(db)),
+            com.openjiuwen.agentteams.spawn.SpawnContext.getSessionId(),
+            tasks.size());
+        return tasks;
     }
 
     /**
@@ -515,6 +582,84 @@ public class TeamTaskManager {
             return List.of();
         }
         return db.task.getDependencies(taskId);
+    }
+
+    /**
+     * List tasks with dependency information.
+     * Mirrors Python list_tasks_with_deps(status).
+     *
+     * @param status optional status filter
+     * @return list of task maps with depends_on and depended_by info
+     */
+    public List<Map<String, Object>> listTasksWithDeps(String status) {
+        List<TeamTask> tasks = list();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (TeamTask task : tasks) {
+            if (status != null && !status.equals(task.getStatus())) {
+                continue;
+            }
+            Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("task_id", task.getTaskId());
+            entry.put("title", task.getTitle());
+            entry.put("status", task.getStatus());
+            entry.put("assignee", task.getAssignee());
+            entry.put("content", task.getContent());
+            // depends_on: what this task depends on
+            List<String> deps = getDependencies(task.getTaskId());
+            entry.put("depends_on", deps);
+            // depended_by: tasks that depend on this task
+            List<String> dependedBy = db != null
+                    ? db.task.getTasksDependingOn(task.getTaskId()).stream()
+                            .map(com.openjiuwen.agentteams.tools.database.TaskRecord::getTaskId)
+                            .toList()
+                    : List.of();
+            entry.put("depended_by", dependedBy);
+            result.add(entry);
+        }
+        return result;
+    }
+
+    /**
+     * Get detailed task information including dependency graph.
+     * Mirrors Python get_task_detail(task_id).
+     *
+     * @param taskId the task ID
+     * @return detailed task map or null if not found
+     */
+    public Map<String, Object> getTaskDetail(String taskId) {
+        TeamTask task = get(taskId);
+        if (task == null) {
+            return null;
+        }
+        Map<String, Object> detail = new java.util.LinkedHashMap<>();
+        detail.put("task_id", task.getTaskId());
+        detail.put("team_name", task.getTeamName());
+        detail.put("title", task.getTitle());
+        detail.put("content", task.getContent());
+        detail.put("status", task.getStatus());
+        detail.put("assignee", task.getAssignee());
+        detail.put("updated_at", task.getUpdatedAt());
+        // depends_on details
+        List<String> deps = getDependencies(taskId);
+        List<String> depStatuses = new ArrayList<>();
+        for (String depId : deps) {
+            TeamTask dep = get(depId);
+            if (dep != null) {
+                depStatuses.add(depId + ":" + dep.getStatus());
+            } else {
+                depStatuses.add(depId + ":unknown");
+            }
+        }
+        detail.put("depends_on", deps);
+        detail.put("depends_on_statuses", depStatuses);
+        // tasks that depend on this (blocks)
+        List<String> blocks = db != null
+                ? db.task.getTasksDependingOn(taskId).stream()
+                        .map(com.openjiuwen.agentteams.tools.database.TaskRecord::getTaskId)
+                        .toList()
+                : List.of();
+        detail.put("blocks", blocks);
+        return detail;
     }
 
     private static String stringValue(Object value) {

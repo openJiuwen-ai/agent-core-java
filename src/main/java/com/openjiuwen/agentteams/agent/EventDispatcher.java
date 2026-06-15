@@ -5,10 +5,14 @@
 package com.openjiuwen.agentteams.agent;
 
 import com.openjiuwen.agentteams.TeamConstants;
+import com.openjiuwen.agentteams.interaction.MentionRoute;
+import com.openjiuwen.agentteams.interaction.Router;
+import com.openjiuwen.agentteams.interaction.UserInbox;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.tools.TeamMessage;
 import com.openjiuwen.agentteams.tools.TeamTask;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -116,17 +121,62 @@ public class EventDispatcher {
     }
     if (event.getEventType() == InnerEventType.USER_INPUT) {
       Object content = event.getPayload() != null ? event.getPayload().get("content") : null;
-      host.deliverInput(content != null ? String.valueOf(content) : "");
+      String text = content != null ? String.valueOf(content) : "";
+      // @mention resolution: route @member_name message directly to target
+      if (resolveMention(text)) {
+        return;
+      }
+      host.deliverInput(text);
       return;
     }
     if (event.getEventType() == InnerEventType.POLL_MAILBOX) {
-      processUnreadMessages(host.resolveLocalMemberName());
+      String memberName = host.resolveLocalMemberName();
+      Loggers.AGENT.debug("EventDispatcher: POLL_MAILBOX for member={} role={}", memberName, host.getContext().getRole());
+      processUnreadMessages(memberName);
       return;
     }
     if (event.getEventType() == InnerEventType.POLL_TASK) {
       checkStaleClaimedTasks();
       checkStalePendingTasks();
     }
+  }
+
+  /**
+   * Parse {@code @member_name message} and send as a direct message
+   * to the target member.
+   *
+   * @return true if the content was routed as a mention
+   */
+  private boolean resolveMention(String content) {
+    Optional<MentionRoute> parsed = Router.parseMention(content);
+    if (parsed.isEmpty()) {
+      return false;
+    }
+    MentionRoute route = parsed.get();
+    String target = route.target();
+    String body = route.body();
+
+    // Check if target exists in the team
+    var member = host.getTeamBackend().getMember(target);
+    if (member == null) {
+      Loggers.AGENT.warn("@mention target '{}' not found in database, falling through", target);
+      return false;
+    }
+
+    sendUserDirectMessage(target, body);
+    return true;
+  }
+
+  private void sendUserDirectMessage(String toMemberName, String content) {
+    var mm = host.getMessageManager();
+    if (mm == null) {
+      Loggers.AGENT.warn("messageManager unavailable, cannot send user direct message");
+      return;
+    }
+    UserInbox inbox = new UserInbox(mm);
+    inbox.direct(toMemberName, content)
+            .thenAccept(msgId -> Loggers.AGENT.info(
+                    "user direct message sent to {}: {}", toMemberName, msgId));
   }
 
   /** Auto-generated for codecheck compliance. */
@@ -148,6 +198,7 @@ public class EventDispatcher {
       return;
     }
     if (EVENT_MESSAGE.equals(type) || EVENT_BROADCAST.equals(type)) {
+      Loggers.AGENT.debug("EventDispatcher: {} for member={} role={}", type, host.resolveLocalMemberName(), host.getContext().getRole());
       if (EVENT_MESSAGE.equals(type) && host.getContext().getRole() == TeamRole.LEADER) {
         ackUserBoundMessage(event);
       }
@@ -295,6 +346,11 @@ public class EventDispatcher {
           host.deliverInput("All tasks are complete. Stay available for the next user request.");
         } else {
           host.deliverInput("All tasks are complete. Wrap up the team run.");
+          // Stop the coordinator loop for temporary teams. Matches Python's
+          // finalize_round which calls self.stop() for temporary lifecycles.
+          if (host.getCoordinatorLoop() != null && host.getCoordinatorLoop().isRunning()) {
+            host.getCoordinatorLoop().stop();
+          }
         }
         return incomplete;
       }
@@ -325,12 +381,17 @@ public class EventDispatcher {
     long now = System.currentTimeMillis();
     String ownName = host.resolveLocalMemberName();
     boolean isLeader = host.getContext().getRole() == TeamRole.LEADER;
+    List<TeamTask> allTasks = host.getTaskManager().list();
     List<TeamTask> relevant =
-        host.getTaskManager().list().stream()
+        allTasks.stream()
             .filter(task -> "claimed".equals(task.getStatus()))
             .filter(task -> task.getAssignee() != null && !task.getAssignee().isBlank())
             .filter(task -> isLeader || task.getAssignee().equals(ownName))
             .toList();
+    Loggers.AGENT.debug("checkStaleClaimedTasks: member={} role={} dbHash={} totalTasks={} claimedRelevant={}",
+        ownName, host.getContext().getRole(),
+        Integer.toHexString(System.identityHashCode(host.getTeamBackend().getDb())),
+        allTasks.size(), relevant.size());
     Set<String> currentIds =
         relevant.stream().map(TeamTask::getTaskId).collect(java.util.stream.Collectors.toSet());
     lastStaleNudgeMillis.keySet().removeIf(taskId -> !currentIds.contains(taskId));
@@ -352,7 +413,10 @@ public class EventDispatcher {
               + ": "
               + task.getContent();
       if (task.getAssignee().equals(ownName)) {
-        host.deliverInput(content);
+        // Only leader processes stale-claimed nudges to avoid endless member ReAct loops
+        if (isLeader) {
+          host.deliverInput(content);
+        }
       } else if (isLeader) {
         host.getMessageManager().sendMessage(content, task.getAssignee()).join();
       }
@@ -475,6 +539,7 @@ public class EventDispatcher {
   /** Auto-generated for codecheck compliance. */
   public List<TeamMessage> processUnreadMessages(String memberName, boolean isUseSteer) {
     if (memberName == null || memberName.isBlank() || host.hasPendingInterrupt()) {
+      Loggers.AGENT.debug("processUnreadMessages: skipped member={} hasPendingInterrupt={}", memberName, host.hasPendingInterrupt());
       return List.of();
     }
     Set<String> seenIds = ConcurrentHashMap.newKeySet();
@@ -484,6 +549,7 @@ public class EventDispatcher {
           readAllUnread(memberName).stream()
               .filter(message -> seenIds.add(message.getMessageId()))
               .toList();
+      Loggers.AGENT.debug("processUnreadMessages: member={} found {} unread message(s)", memberName, unread.size());
       if (unread.isEmpty()) {
         break;
       }

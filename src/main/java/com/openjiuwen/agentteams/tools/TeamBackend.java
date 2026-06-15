@@ -17,6 +17,7 @@ import com.openjiuwen.agentteams.tools.database.DatabaseConfig;
 import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.agentteams.tools.database.TeamRecord;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * Public class TeamBackend used by the Java parity implementation.
@@ -41,10 +44,11 @@ public class TeamBackend {
   private final String displayName;
   private final String description;
   private final long created;
-  private final TeamDatabase db;
-  private final TeamMessageManager messageManager;
-  private final TeamTaskManager taskManager;
-  private final List<TeamMember> members = new ArrayList<>();
+  private TeamDatabase db;
+  private TeamMessageManager messageManager;
+  private TeamTaskManager taskManager;
+  private List<TeamMember> members = new ArrayList<>();
+  private BiConsumer<String, String> onAutoLaunch;
 
   /** Auto-generated for codecheck compliance. */
   public TeamBackend(String teamName, String memberName, boolean isLeader, Messager messager) {
@@ -57,6 +61,8 @@ public class TeamBackend {
     this.created = System.currentTimeMillis();
     this.db = new TeamDatabase(DatabaseConfig.builder().build());
     this.db.initialize();
+    Loggers.TOOL.info("TeamBackend created: db={} team={} member={}",
+        Integer.toHexString(System.identityHashCode(this.db)), teamName, memberName);
     this.db.team.createTeam(teamName, teamName, memberName, description, null);
     this.db.member.createMember(
         memberName,
@@ -79,6 +85,24 @@ public class TeamBackend {
             .role(isLeader ? TeamRole.LEADER : TeamRole.MEMBER)
             .status(MemberStatus.READY)
             .build());
+  }
+
+  /**
+   * Share only the database reference with another TeamBackend.
+   * Unlike the previous shareState(), this does NOT share messageManager,
+   * members, or taskManager — each member keeps its own per-member identity
+   * for correct self-message filtering and ownership checks. Matches Python's
+   * design where TeamBackend is created independently per member with only
+   * the DB handle shared.
+   */
+  public void shareDb(TeamBackend other) {
+    this.db = other.db;
+    // Re-create taskManager with shared DB but member's own memberName.
+    this.taskManager = new TeamTaskManager(this.teamName, this.memberName, this.db, this.messager);
+    Loggers.TOOL.info("shareDb: db={} memberName={} taskManager={}",
+        Integer.toHexString(System.identityHashCode(this.db)),
+        this.memberName,
+        Integer.toHexString(System.identityHashCode(this.taskManager)));
   }
 
   /** Auto-generated for codecheck compliance. */
@@ -107,6 +131,7 @@ public class TeamBackend {
             .memberName(memberName)
             .displayName(displayName)
             .description(agentCard != null ? agentCard.getDescription() : "")
+            .prompt(prompt)
             .role(role != null ? role : TeamRole.MEMBER)
             .status(MemberStatus.UNSTARTED)
             .build());
@@ -172,6 +197,69 @@ public class TeamBackend {
   }
 
   /** Auto-generated for codecheck compliance. */
+  public void setOnAutoLaunch(BiConsumer<String, String> handler) {
+    this.onAutoLaunch = handler;
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public boolean launchMemberIfUnstarted(String memberName) {
+    return launchMemberIfUnstarted(memberName, null);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public boolean launchMemberIfUnstarted(String memberName, String initialMessage) {
+    if (onAutoLaunch == null) {
+      return false;
+    }
+    TeamMember member = getMember(memberName);
+    if (member == null || member.getStatus() != MemberStatus.UNSTARTED) {
+      Loggers.TOOL.info("launchMemberIfUnstarted: member={} not found or not UNSTARTED (status={})",
+          memberName, member != null ? member.getStatus() : "null");
+      return false;
+    }
+    try {
+      Loggers.TOOL.info("launchMemberIfUnstarted: launching member={}", memberName);
+      // Mark member as BUSY before spawning to prevent duplicate launches
+      // when the leader sends multiple broadcasts in quick succession.
+      forceUpdateMemberStatus(memberName, MemberStatus.READY);
+      onAutoLaunch.accept(member.getMemberName(), initialMessage);
+      return true;
+    } catch (Exception e) {
+      Loggers.TOOL.error("launchMemberIfUnstarted: failed to launch member={}", memberName, e);
+      return false;
+    }
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public int launchUnstartedMembers() {
+    return launchUnstartedMembers(null);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public int launchUnstartedMembers(String initialMessage) {
+    if (onAutoLaunch == null) {
+      Loggers.TOOL.warn("launchUnstartedMembers: onAutoLaunch is null, cannot launch");
+      return 0;
+    }
+    List<TeamMember> unstarted = members.stream()
+        .filter(member -> member.getStatus() == MemberStatus.UNSTARTED)
+        .toList();
+    Loggers.TOOL.info("launchUnstartedMembers: found {} UNSTARTED member(s) out of {} total",
+        unstarted.size(), members.size());
+    for (TeamMember member : unstarted) {
+      try {
+        Loggers.TOOL.info("launchUnstartedMembers: launching member={} status={}",
+            member.getMemberName(), member.getStatus());
+        forceUpdateMemberStatus(member.getMemberName(), MemberStatus.READY);
+        onAutoLaunch.accept(member.getMemberName(), initialMessage);
+      } catch (Exception e) {
+        Loggers.TOOL.error("launchUnstartedMembers: failed to launch member={}", member.getMemberName(), e);
+      }
+    }
+    return unstarted.size();
+  }
+
+  /** Auto-generated for codecheck compliance. */
   public TeamRecord getTeamInfo() {
     return db.team.getTeam(teamName);
   }
@@ -189,6 +277,27 @@ public class TeamBackend {
   /** Auto-generated for codecheck compliance. */
   public boolean hasMember(String memberName) {
     return members.stream().anyMatch(member -> member.getMemberName().equals(memberName));
+  }
+
+  /**
+   * Resolve a name to member_name. First tries exact member_name match,
+   * then falls back to display_name lookup.
+   * Returns the member_name if found, null otherwise.
+   */
+  public String resolveMemberName(String name) {
+    if (name == null || name.isBlank()) {
+      return null;
+    }
+    // Try exact member_name match
+    if (hasMember(name)) {
+      return name;
+    }
+    // Try display_name match
+    return members.stream()
+        .filter(member -> name.equals(member.getDisplayName()))
+        .map(TeamMember::getMemberName)
+        .findFirst()
+        .orElse(null);
   }
 
   /** Auto-generated for codecheck compliance. */

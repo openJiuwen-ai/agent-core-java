@@ -254,7 +254,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         private final Map<String, Map<String, Object>> stateBlobs = new ConcurrentHashMap<>();
 
         void save(BaseSession session) {
-            String agentId = session.sessionId();
+            String agentId = getAgentId(session);
             Map<String, Object> state = session.state().getState();
             if (state != null) {
                 stateBlobs.put(agentId, new HashMap<>(state));
@@ -262,7 +262,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
 
         void recover(BaseSession session) {
-            String agentId = session.sessionId();
+            String agentId = getAgentId(session);
             Map<String, Object> state = stateBlobs.get(agentId);
             if (state != null) {
                 session.state().setState(new HashMap<>(state));
@@ -271,6 +271,14 @@ public class InMemoryCheckpointer extends Checkpointer {
 
         void clear(String agentId) {
             stateBlobs.remove(agentId);
+        }
+
+        private static String getAgentId(BaseSession session) {
+            try {
+                return (String) session.getClass().getMethod("agentId").invoke(session);
+            } catch (Exception e) {
+                return session.sessionId();
+            }
         }
     }
 
