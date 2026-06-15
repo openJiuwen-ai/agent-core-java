@@ -6,11 +6,16 @@ package com.openjiuwen.core.singleagent.skills;
 
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Manages skill registration and retrieval.
@@ -18,10 +23,15 @@ import java.util.Map;
  * <p>Maintains a registry of skills and provides methods to register,
  * unregister, and query skills. Skills are loaded from YAML files containing
  * metadata such as name and description.</p>
+ *
+ * <p>Supports incremental refresh: only loads new or mtime-changed skills,
+ * removes stale skills, and maintains directory traversal order.</p>
  */
 public class SkillManager {
 
     private final Map<String, Skill> registry = new LinkedHashMap<>();
+    private final Map<String, Long> updateAtCache = new LinkedHashMap<>();
+    private final List<String> skillOrder = new ArrayList<>();
     private String sysOperationId;
     private String description = "";
 
@@ -133,6 +143,149 @@ public class SkillManager {
     }
 
     /**
+     * Incrementally refresh skills from given root directories.
+     *
+     * <p>Only loads new or mtime-changed skills, removes stale skills
+     * (directories that no longer exist), and maintains traversal order.</p>
+     *
+     * @param roots list of skill root directories to scan
+     */
+    public void refreshIncrementally(List<Path> roots) {
+        long startTime = System.currentTimeMillis();
+        Set<String> discoveredKeys = new LinkedHashSet<>();
+        List<String> orderedKeys = new ArrayList<>();
+
+        for (Path root : roots) {
+            if (!root.toFile().isDirectory()) {
+                continue;
+            }
+            File[] subdirs = root.toFile().listFiles(File::isDirectory);
+            if (subdirs == null) {
+                continue;
+            }
+            Arrays.sort(subdirs, Comparator.comparing(File::getName));
+
+            for (File subdir : subdirs) {
+                File skillMd = new File(subdir, "SKILL.md");
+                if (!skillMd.exists()) {
+                    skillMd = new File(subdir, "Skill.md");
+                }
+                if (!skillMd.exists()) {
+                    continue;
+                }
+
+                String key = subdir.toPath().toAbsolutePath().normalize().toString();
+                long mtime = skillMd.lastModified();
+
+                discoveredKeys.add(key);
+                orderedKeys.add(key);
+
+                Long cachedMtime = updateAtCache.get(key);
+                if (cachedMtime == null || cachedMtime != mtime) {
+                    Skill skill = createSkillFromPath(skillMd.toPath());
+                    if (skill != null) {
+                        skill.setUpdateAt(mtime);
+                        registry.put(skill.getName(), skill);
+                        updateAtCache.put(key, mtime);
+                    }
+                }
+            }
+        }
+
+        Set<String> staleKeys = new LinkedHashSet<>(updateAtCache.keySet());
+        staleKeys.removeAll(discoveredKeys);
+        for (String key : staleKeys) {
+            Skill stale = findSkillByDirectory(key);
+            if (stale != null) {
+                registry.remove(stale.getName());
+            }
+            updateAtCache.remove(key);
+        }
+
+        skillOrder.clear();
+        skillOrder.addAll(orderedKeys);
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        Loggers.AGENT.debug("refreshIncrementally completed in {} ms, skills count: {}", elapsed, registry.size());
+    }
+
+    /**
+     * Get all registered skills in directory traversal order, deduplicated by name.
+     */
+    public List<Skill> getAllInOrder() {
+        List<Skill> result = new ArrayList<>();
+        Set<String> seenNames = new LinkedHashSet<>();
+        for (String key : skillOrder) {
+            Skill skill = findSkillByDirectory(key);
+            if (skill != null && !seenNames.contains(skill.getName())) {
+                seenNames.add(skill.getName());
+                result.add(skill);
+            }
+        }
+        for (Skill skill : registry.values()) {
+            if (!seenNames.contains(skill.getName())) {
+                seenNames.add(skill.getName());
+                result.add(skill);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Build a snapshot signature of all visible skill directories and their SKILL.md mtimes.
+     *
+     * <p>Used for fast comparison to detect whether skills have changed
+     * without actually reloading them.</p>
+     *
+     * @param roots list of skill root directories to scan
+     * @return list of (directory-path, mtime) entries
+     */
+    public List<Map.Entry<String, Long>> buildSnapshotSignature(List<Path> roots) {
+        List<Map.Entry<String, Long>> entries = new ArrayList<>();
+        for (Path root : roots) {
+            if (!root.toFile().isDirectory()) {
+                continue;
+            }
+            File[] subdirs = root.toFile().listFiles(File::isDirectory);
+            if (subdirs == null) {
+                continue;
+            }
+            Arrays.sort(subdirs, Comparator.comparing(File::getName));
+            for (File subdir : subdirs) {
+                File skillMd = new File(subdir, "SKILL.md");
+                if (!skillMd.exists()) {
+                    skillMd = new File(subdir, "Skill.md");
+                }
+                if (!skillMd.exists()) {
+                    continue;
+                }
+                String key = subdir.toPath().toAbsolutePath().normalize().toString();
+                entries.add(Map.entry(key, skillMd.lastModified()));
+            }
+        }
+        return entries;
+    }
+
+    /**
+     * Clear all registered skills, mtime cache, and traversal order.
+     */
+    public void clearAll() {
+        registry.clear();
+        updateAtCache.clear();
+        skillOrder.clear();
+    }
+
+    /**
+     * Find a registered skill by its directory path.
+     */
+    Skill findSkillByDirectory(String directoryPath) {
+        return registry.values().stream()
+                .filter(s -> s.getDirectory() != null && s.getDirectory().equals(directoryPath))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
      * Register skill directory by scanning for Skill.md files.
      */
     private void registerRoot(Path root, String sessionId, boolean overwrite) {
@@ -148,12 +301,14 @@ public class SkillManager {
                         throw new IllegalStateException("Skill already exists: " + directSkill.getName());
                     }
                     registry.put(directSkill.getName(), directSkill);
+                    String key = root.toAbsolutePath().normalize().toString();
+                    updateAtCache.put(key, directSkillFile.toFile().lastModified());
+                    skillOrder.add(key);
                     return;
                 }
             }
         }
 
-        // Try to create skill from the file directly
         Skill skill = createSkillFromPath(root);
         if (skill != null) {
             if (!overwrite && registry.containsKey(skill.getName())) {
@@ -163,15 +318,14 @@ public class SkillManager {
             return;
         }
 
-        // Scan subdirectories for Skill.md
-        java.io.File dir = root.toFile();
+        File dir = root.toFile();
         if (dir.isDirectory()) {
-            java.io.File[] subdirs = dir.listFiles(java.io.File::isDirectory);
+            File[] subdirs = dir.listFiles(File::isDirectory);
             if (subdirs != null) {
-                for (java.io.File subdir : subdirs) {
-                    java.io.File skillMd = new java.io.File(subdir, "Skill.md");
+                for (File subdir : subdirs) {
+                    File skillMd = new File(subdir, "Skill.md");
                     if (!skillMd.exists()) {
-                        skillMd = new java.io.File(subdir, "SKILL.md");
+                        skillMd = new File(subdir, "SKILL.md");
                     }
                     if (skillMd.exists()) {
                         Skill s = createSkillFromPath(skillMd.toPath());
@@ -180,6 +334,9 @@ public class SkillManager {
                                 throw new IllegalStateException("Skill already exists: " + s.getName());
                             }
                             registry.put(s.getName(), s);
+                            String key = subdir.toPath().toAbsolutePath().normalize().toString();
+                            updateAtCache.put(key, skillMd.lastModified());
+                            skillOrder.add(key);
                         }
                     }
                 }
@@ -213,11 +370,15 @@ public class SkillManager {
     private String loadDescription(Path path) {
         try {
             String content = java.nio.file.Files.readString(path);
+            // Strip UTF-8 BOM and leading/trailing whitespace
+            content = content.trim();
+            if (content.startsWith("\uFEFF")) {
+                content = content.substring(1);
+            }
             if (content.startsWith("---")) {
                 String[] parts = content.split("---", 3);
                 if (parts.length >= 2) {
                     String yamlBlock = parts[1];
-                    // Simple YAML parsing for description field
                     for (String line : yamlBlock.split("\n")) {
                         line = line.trim();
                         if (line.startsWith("description:")) {
