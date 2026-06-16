@@ -28,6 +28,7 @@
         <lombok.version>1.18.32</lombok.version>
         <bouncy-castle.version>1.77</bouncy-castle.version>
         <jeromq.version>0.6.0</jeromq.version>
+        <jedis.version>5.2.0</jedis.version>
         <milvus.version>2.6.13</milvus.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.7</postgresql.version>
@@ -107,6 +108,11 @@
             <groupId>org.zeromq</groupId>
             <artifactId>jeromq</artifactId>
             <version>${jeromq.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${jedis.version}</version>
         </dependency>
 
         <!-- Object Storage: AWS S3 SDK -->

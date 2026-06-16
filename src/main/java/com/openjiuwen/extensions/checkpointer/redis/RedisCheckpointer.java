@@ -18,7 +18,9 @@ import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.extensions.checkpointer.redis.storage.AgentStorage;
 import com.openjiuwen.extensions.checkpointer.redis.storage.GraphStore;
 import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;
+import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
 import com.openjiuwen.extensions.store.kv.RedisStore;
+import redis.clients.jedis.JedisCluster;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -263,7 +265,10 @@ public class RedisCheckpointer extends Checkpointer {
                         : new UrlBackedRedisClient(connectionUrl, connection.getConnectionArgs());
             }
 
-            return new RedisCheckpointer(new RedisStore(redisClient), config.getTtlMap());
+            RedisStore redisStore = redisClient instanceof JedisCluster jedisCluster
+                    ? new JedisClusterRedisStore(jedisCluster)
+                    : new RedisStore(redisClient);
+            return new RedisCheckpointer(redisStore, config.getTtlMap());
         }
     }
 

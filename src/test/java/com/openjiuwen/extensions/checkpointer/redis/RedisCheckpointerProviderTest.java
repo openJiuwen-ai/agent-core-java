@@ -2,7 +2,9 @@ package com.openjiuwen.extensions.checkpointer.redis;
 
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
 import org.junit.jupiter.api.Test;
+import redis.clients.jedis.JedisCluster;
 
 import java.lang.reflect.Field;
 import java.util.List;
@@ -15,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 class RedisCheckpointerProviderTest {
 
@@ -31,6 +34,19 @@ class RedisCheckpointerProviderTest {
         redisCheckpointer.getRedisStore().set("session-1:agent:key", "value");
 
         assertTrue(redisCheckpointer.sessionExists("session-1"));
+    }
+
+    @Test
+    void providerUsesJedisClusterRedisStoreForJedisClusterClient() {
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        JedisCluster jedisCluster = mock(JedisCluster.class);
+
+        Checkpointer checkpointer = provider.create(Map.of(
+                "connection", Map.of("redis_client", jedisCluster)
+        ));
+
+        RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
+        assertInstanceOf(JedisClusterRedisStore.class, redisCheckpointer.getRedisStore());
     }
 
     @Test
