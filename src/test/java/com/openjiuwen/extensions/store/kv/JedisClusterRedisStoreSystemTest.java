@@ -9,10 +9,12 @@ import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.MountableFile;
+import redis.clients.jedis.CommandArguments;
 import redis.clients.jedis.ConnectionPool;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.Protocol;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
 
@@ -71,6 +73,7 @@ class JedisClusterRedisStoreSystemTest {
         assertEquals(3, RedisClusterFixture.MAX_START_ATTEMPTS);
         assertTrue(ports.stream().noneMatch(RedisClusterFixture::isFixedRedisClusterPort));
         assertTrue(busPorts.stream().noneMatch(RedisClusterFixture::isFixedRedisClusterPort));
+        assertTrue(ports.stream().allMatch(RedisClusterFixture::isValidClusterDataPort));
         try (Jedis jedis = new Jedis("127.0.0.1", ports.iterator().next())) {
             assertTrue(jedis.clusterInfo().contains("cluster_state:ok"));
         }
@@ -212,6 +215,7 @@ class JedisClusterRedisStoreSystemTest {
         private static final int NODE_COUNT = 6;
         private static final int MAX_START_RETRIES = 2;
         private static final int MAX_START_ATTEMPTS = 1 + MAX_START_RETRIES;
+        private static final int MAX_CLUSTER_DATA_PORT = 55535;
         private static final String IMAGE = "redis:7.2-alpine";
         private static final Set<Integer> FIXED_REDIS_CLUSTER_PORTS = Set.of(7000, 7001, 7002, 7003, 7004, 7005);
         private final RedisClusterContainer container;
@@ -228,10 +232,10 @@ class JedisClusterRedisStoreSystemTest {
         static RedisClusterFixture start() {
             Throwable lastFailure = null;
             for (int attempt = 1; attempt <= MAX_START_ATTEMPTS; attempt++) {
-                List<Integer> dataPorts = allocatePorts(NODE_COUNT, FIXED_REDIS_CLUSTER_PORTS);
+                List<Integer> dataPorts = allocatePorts(NODE_COUNT, FIXED_REDIS_CLUSTER_PORTS, MAX_CLUSTER_DATA_PORT);
                 Set<Integer> excludedBusPorts = new LinkedHashSet<>(FIXED_REDIS_CLUSTER_PORTS);
                 excludedBusPorts.addAll(dataPorts);
-                List<Integer> busPorts = allocatePorts(NODE_COUNT, excludedBusPorts);
+                List<Integer> busPorts = allocatePorts(NODE_COUNT, excludedBusPorts, 65535);
                 RedisClusterContainer container = new RedisClusterContainer(IMAGE, dataPorts, busPorts);
                 try {
                     container.start();
@@ -264,6 +268,10 @@ class JedisClusterRedisStoreSystemTest {
             return FIXED_REDIS_CLUSTER_PORTS.contains(port);
         }
 
+        static boolean isValidClusterDataPort(int port) {
+            return port > 0 && port <= MAX_CLUSTER_DATA_PORT;
+        }
+
         private void startRedisServers() {
             for (int index = 0; index < NODE_COUNT; index++) {
                 int dataPort = dataPorts.get(index);
@@ -278,7 +286,7 @@ class JedisClusterRedisStoreSystemTest {
         private void createCluster() {
             try (Jedis first = jedis(0)) {
                 for (int index = 1; index < NODE_COUNT; index++) {
-                    first.clusterMeet("127.0.0.1", dataPorts.get(index));
+                    clusterMeet(first, dataPorts.get(index), busPorts.get(index));
                 }
             }
             waitForKnownNodes();
@@ -288,6 +296,21 @@ class JedisClusterRedisStoreSystemTest {
             replicate(3, 0);
             replicate(4, 1);
             replicate(5, 2);
+        }
+
+        private void clusterMeet(Jedis jedis, int dataPort, int busPort) {
+            Object rawReply = jedis.getConnection().executeCommand(
+                    new CommandArguments(Protocol.Command.CLUSTER)
+                            .add("MEET")
+                            .add("127.0.0.1")
+                            .add(dataPort)
+                            .add(busPort));
+            String reply = rawReply instanceof byte[] bytes
+                    ? new String(bytes, StandardCharsets.UTF_8)
+                    : String.valueOf(rawReply);
+            if (!"OK".equals(reply)) {
+                throw new IllegalStateException("Unexpected CLUSTER MEET reply: " + reply);
+            }
         }
 
         private void waitUntilReady() {
@@ -308,11 +331,11 @@ class JedisClusterRedisStoreSystemTest {
                     + " seconds. Cluster info:\n" + clusterInfo);
         }
 
-        private static List<Integer> allocatePorts(int count, Set<Integer> excludedPorts) {
+        private static List<Integer> allocatePorts(int count, Set<Integer> excludedPorts, int maxPort) {
             Set<Integer> ports = new LinkedHashSet<>();
             while (ports.size() < count) {
                 int port = allocatePort();
-                if (!excludedPorts.contains(port)) {
+                if (port <= maxPort && !excludedPorts.contains(port)) {
                     ports.add(port);
                 }
             }

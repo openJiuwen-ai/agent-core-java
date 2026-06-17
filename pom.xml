@@ -32,7 +32,8 @@
         <milvus.version>2.6.13</milvus.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.7</postgresql.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <commons-lang3.version>3.14.0</commons-lang3.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
@@ -147,6 +148,11 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons-lang3.version}</version>
         </dependency>
         <!-- HTML Parsing: Jsoup -->
         <dependency>
