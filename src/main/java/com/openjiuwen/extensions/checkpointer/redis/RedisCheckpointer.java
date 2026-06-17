@@ -268,7 +268,7 @@ public class RedisCheckpointer extends Checkpointer {
             RedisStore redisStore = redisClient instanceof JedisCluster jedisCluster
                     ? new JedisClusterRedisStore(jedisCluster)
                     : new RedisStore(redisClient);
-            return new RedisCheckpointer(redisStore, config.getTtlMap());
+            return new RedisCheckpointer(redisStore, config.getStorageConfigMap());
         }
     }
 

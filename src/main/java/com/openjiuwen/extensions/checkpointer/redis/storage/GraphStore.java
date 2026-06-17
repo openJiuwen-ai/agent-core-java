@@ -46,7 +46,7 @@ public class GraphStore extends BaseRedisStorage {
             if (results == null || results.size() != KEY_NUMS) {
                 return CompletableFuture.completedFuture(null);
             }
-            if (results.get(0) == null || results.get(1) == null) {
+            if (results.get(0) == null && results.get(1) == null) {
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -55,7 +55,7 @@ public class GraphStore extends BaseRedisStorage {
                 if (state instanceof GraphStoreState) {
                     return CompletableFuture.completedFuture(state);
                 }
-                return CompletableFuture.completedFuture(null);
+                throw new IllegalArgumentException("Redis graph state must be a GraphStoreState");
             } finally {
                 refreshTtl(List.of(keyType, keyValue), "graph", sessionId + ":" + ns).join();
             }

@@ -80,10 +80,13 @@ public class AgentStorage extends BaseRedisStorage {
             if (results == null || results.size() != KEY_NUMS) {
                 return CompletableFuture.completedFuture(null);
             }
+            if (results.get(0) == null && results.get(1) == null) {
+                return CompletableFuture.completedFuture(null);
+            }
 
             Object state = deserializeState(results.get(0), results.get(1));
             if (!(state instanceof Map<?, ?>)) {
-                return CompletableFuture.completedFuture(null);
+                throw new IllegalArgumentException("Redis agent state must be a Map");
             }
 
             try {

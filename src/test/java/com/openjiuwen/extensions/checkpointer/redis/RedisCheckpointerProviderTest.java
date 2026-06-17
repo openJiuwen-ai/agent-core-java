@@ -1,7 +1,10 @@
 package com.openjiuwen.extensions.checkpointer.redis;
 
+import com.openjiuwen.core.graph.store.GraphStoreState;
+import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
 import org.junit.jupiter.api.Test;
 import redis.clients.jedis.JedisCluster;
@@ -47,6 +50,43 @@ class RedisCheckpointerProviderTest {
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertInstanceOf(JedisClusterRedisStore.class, redisCheckpointer.getRedisStore());
+    }
+
+    @Test
+    void providerPropagatesJsonDumpTypeToStorages() {
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        FakeRedisClient redisClient = new FakeRedisClient();
+
+        Checkpointer checkpointer = provider.create(Map.of(
+                "connection", Map.of("redis_client", redisClient),
+                "dump_type", "json"
+        ));
+
+        RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
+        AgentSession session = new AgentSession("session-1", config, redisCheckpointer);
+        session.state().updateGlobal(Map.of("sentinel", "provider-json"));
+        redisCheckpointer.postAgentExecute(session);
+        redisCheckpointer.graphStore().save("session-1", "workflow-1", GraphStoreState.create(
+                "workflow-1", 1, Map.of("sentinel", "provider-json"), List.of(), Map.of(), Map.of()));
+
+        assertEquals("json", redisClient.get("session-1:agent:agent-1:agent_state_blobs_dump_type"));
+        assertEquals("json", redisClient.get("session-1:workflow-graph:workflow-1:checkpoint_data_type"));
+    }
+
+    @Test
+    void providerRejectsUnsupportedDumpType() {
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        FakeRedisClient redisClient = new FakeRedisClient();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> provider.create(Map.of(
+                        "connection", Map.of("redis_client", redisClient),
+                        "dump_type", "yaml"
+                )));
+
+        assertTrue(error.getMessage().contains("dump_type"));
     }
 
     @Test
