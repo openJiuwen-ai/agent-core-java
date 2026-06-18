@@ -6,8 +6,9 @@ package com.openjiuwen.extensions.checkpointer.redis;
 
 /**
  * Package marker for Redis checkpointer support.
- * <p>
- * Mirrors Python's {@code openjiuwen/extensions/checkpointer/redis/__init__.py}.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis} in
+ * {@code openjiuwen/extensions/checkpointer/redis/__init__.py}.</p>
  */
 public final class RedisCheckpointerPackage {
     public static final String PYTHON_MODULE = "openjiuwen/extensions/checkpointer/redis/__init__.py";

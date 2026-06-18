@@ -50,11 +50,12 @@ class TaskManagerTest {
     @Test
     void waitGroupAndRemoveCompletedMirrorRegistryFlow() {
         TaskManager manager = TaskManager.getInstance();
-        manager.createTask(() -> "alpha", "task-a", "alpha", "workers", null, Map.of(), false);
-        manager.createTask(() -> "beta", "task-b", "beta", "workers", null, Map.of(), false);
+        Task first = manager.createTask(() -> "alpha", "task-a", "alpha", "workers", null, Map.of(), false);
+        Task second = manager.createTask(() -> "beta", "task-b", "beta", "workers", null, Map.of(), false);
 
         List<Object> results = manager.waitGroup("workers", Duration.ofSeconds(2), false).join();
 
+        assertThat(List.of(first, second)).hasSize(2);
         assertThat(results).containsExactlyInAnyOrder("alpha", "beta");
         assertThat(manager.getStats()).containsEntry("completed", 2);
         assertThat(manager.removeCompleted()).isEqualTo(2);

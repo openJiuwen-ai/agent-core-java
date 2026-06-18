@@ -5,8 +5,6 @@
 package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-
 /**
  * Delayed-judge scorer seam for gateway trajectory flow.
  * <p>
@@ -15,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface JudgeScorer {
 
-    CompletableFuture<Map<String, Object>> score(
+    Object score(
             String responseText,
             String instructionText,
             String followupUserFeedback,

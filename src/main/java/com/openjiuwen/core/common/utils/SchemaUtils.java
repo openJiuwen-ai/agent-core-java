@@ -134,6 +134,9 @@ public final class SchemaUtils {
                 }
 
                 Object value = data.get(fieldName);
+                if (value == null && !required.contains(fieldName)) {
+                    continue;
+                }
                 Map<String, Object> fieldSchema = (Map<String, Object>) entry.getValue();
                 validateField(fieldName, value, fieldSchema);
             }

@@ -9,6 +9,7 @@ import com.openjiuwen.agent_teams.runtime.TeamRuntimeManager;
 import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
 import com.openjiuwen.agent_teams.tools.database.DatabaseEngine;
 import com.openjiuwen.agent_teams.tools.database.DatabaseType;
+import com.openjiuwen.agent_teams.tools.database.MemberDao;
 import com.openjiuwen.agent_teams.tools.database.MessageDao;
 import com.openjiuwen.agent_teams.tools.database.TaskDao;
 import com.openjiuwen.agent_teams.tools.database.TeamDao;
@@ -125,6 +126,7 @@ public final class SharedResources {
         private final SharedDbConfig config;
         private final DatabaseEngine engine;
         private final TeamDao team;
+        private final MemberDao member;
         private final TaskDao task;
         private final MessageDao message;
 
@@ -132,6 +134,7 @@ public final class SharedResources {
             this.config = Objects.requireNonNull(config, "config");
             this.engine = new DatabaseEngine(toDatabaseConfig(config));
             this.team = new TeamDao(engine);
+            this.member = new MemberDao(engine);
             this.task = new TaskDao(engine);
             this.message = new MessageDao(engine);
         }
@@ -147,6 +150,10 @@ public final class SharedResources {
 
         public TeamDao team() {
             return team;
+        }
+
+        public MemberDao member() {
+            return member;
         }
 
         public TaskDao task() {

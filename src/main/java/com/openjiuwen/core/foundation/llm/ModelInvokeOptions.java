@@ -19,7 +19,7 @@ import java.util.Map;
  * {@code openjiuwen/core/foundation/llm/model.py}.</p>
  */
 @Value
-@Builder
+@Builder(toBuilder = true)
 public class ModelInvokeOptions {
 
     List<?> tools;

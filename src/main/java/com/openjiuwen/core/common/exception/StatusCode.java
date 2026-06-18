@@ -242,8 +242,10 @@ public enum StatusCode {
     // =============================================================================================================
 
     AGENT_GROUP_ADD_RUNTIME_ERROR(132000, "agent group_add runtime error, reason: {error_msg}"),
+    AGENT_TEAM_ADD_RUNTIME_ERROR(132000, "agent team_add runtime error, reason: {error_msg}"),
     AGENT_GROUP_CREATE_RUNTIME_ERROR(132001, "agent group_create runtime error, reason: {error_msg}"),
     AGENT_GROUP_EXECUTION_ERROR(132002, "agent group execution error, reason: {error_msg}"),
+    AGENT_TEAM_AGENT_NOT_FOUND(132003, "agent team agent not found error, reason: {error_msg}"),
     AGENT_TEAM_EXECUTION_ERROR(132003, "agent team execution error, reason: {error_msg}"),
     AGENT_TEAM_CREATE_RUNTIME_ERROR(132004, "agent team create runtime error, reason: {error_msg}"),
     AGENT_TEAM_CONFIG_INVALID(132004, "agent team config invalid, reason: {reason}"),
@@ -302,6 +304,8 @@ public enum StatusCode {
 
     RETRIEVAL_VECTOR_STORE_PATH_NOT_FOUND(155400, "retrieval vector_store_path not found, reason: {error_msg}"),
     RETRIEVAL_VECTOR_STORE_QUERY_INVALID(155400, "retrieval vector_store_query not valid, reason: {error_msg}"),
+    RETRIEVAL_VECTOR_STORE_PROVIDER_INVALID(155402,
+            "retrieval vector_store_provider is not supported, reason: {error_msg}"),
 
     RETRIEVAL_KB_PARSER_NOT_FOUND(155500, "retrieval kb_parser not found, reason: {error_msg}"),
     RETRIEVAL_KB_CHUNKER_NOT_FOUND(155501, "retrieval kb_chunker not found, reason: {error_msg}"),
@@ -338,6 +342,28 @@ public enum StatusCode {
     MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010, "failed to register operation for entity {entity_key} with schema_version {schema_version}, reason: {error_msg}"),
     MEMORY_INIT_ERROR(158011, "memory initialization failed, reason: {error_msg}"),
     MEMORY_GRAPH_LANGUAGE_INVALID(158200, "graph memory language invalid: {error_msg}"),
+    MEMORY_GRAPH_EMBEDDING_CALL_FAILED(158201, "graph memory embedding call failed, reason: {error_msg}"),
+    MEMORY_GRAPH_EMBED_MODEL_NOT_FOUND(158202, "graph memory embedder not configured: {error_msg}"),
+    MEMORY_GRAPH_INVOKE_LLM_FAILED(158203, "graph memory LLM invoke failed, reason: {error_msg}"),
+    MEMORY_GRAPH_PROMPT_FILES_MISSING(158204, "graph memory prompt files not found in directory {prompt_dir}"),
+
+    // =============================================================================================================
+    // DevTools / AgentBuilder 140000 - 140099
+    // =============================================================================================================
+
+    AGENT_BUILDER_RESOURCE_PARSE_ERROR(140000,
+            "agent builder resource parse error, resource_type=''{resource_type}'', error=''{reason}''"),
+    AGENT_BUILDER_LLM_SERVICE_ERROR(140001, "agent builder llm service error, error=''{reason}''"),
+    AGENT_BUILDER_GENERATOR_PARSE_ERROR(140030, "agent builder generator parse error, error=''{reason}''"),
+    AGENT_BUILDER_RESOURCE_RETRIEVE_ERROR(140031,
+            "agent builder resource retrieve failed, error=''{reason}''"),
+    AGENT_BUILDER_AGENT_TYPE_NOT_SUPPORTED(140032,
+            "agent builder agent_type is not supported, agent_type=''{agent_type}'', "
+                    + "supported_types=''{supported_types}''"),
+    AGENT_BUILDER_TRANSFORMER_ERROR(140060, "agent builder transformer error, error=''{reason}''"),
+    WORKFLOW_DL_GENERATION_ERROR(140061, "workflow dl generation error, reason: {error_msg}"),
+    WORKFLOW_INTENTION_DETECT_ERROR(140062, "workflow intention detect error, reason: {error_msg}"),
+    LLM_AGENT_STATE_ERROR(140063, "llm agent state error, reason: {error_msg}"),
 
     // =============================================================================================================
     // Optimization Toolchain 170000 - 179999
@@ -351,8 +377,17 @@ public enum StatusCode {
     TOOLCHAIN_TRAINER_EXECUTION_ERROR(170005, "toolchain trainer execution error, reason: {error_msg}"),
     AGENT_RL_PROXY_SERVER_START_FAILED(172001,
             "agent_rl proxy server failed to start, host='{host}', port='{port}'"),
+    AGENT_RL_PROXY_NOT_INITIALIZED(172002, "agent_rl proxy is not initialized, reason: {error_msg}"),
+    AGENT_RL_DEPENDENCY_INIT_FAILED(172030,
+            "agent_rl required dependency initialization failed, reason: {error_msg}"),
+    AGENT_RL_STRATEGY_NOT_SUPPORTED(172050,
+            "agent_rl training strategy is not supported, strategy='{strategy}'"),
+    AGENT_RL_TRAINER_NOT_INITIALIZED(172051,
+            "agent_rl trainer not initialized, reason: {error_msg}"),
     AGENT_RL_PROCESSOR_NOT_FOUND(172020,
             "agent_rl {processor_type} processor not found, name='{name}', available='{available}'"),
+    AGENT_RL_VALIDATION_DATASET_INVALID(172060,
+            "agent_rl validation dataset is invalid, reason: {error_msg}"),
     AGENT_RL_REWARD_NAME_INVALID(172070, "agent_rl reward name is invalid, reason: {error_msg}"),
     AGENT_RL_REWARD_NOT_FOUND(172071, "agent_rl reward function not found, name='{name}'"),
 

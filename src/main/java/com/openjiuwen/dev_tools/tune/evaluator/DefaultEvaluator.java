@@ -1,0 +1,177 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.dev_tools.tune.evaluator;
+
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.dev_tools.tune.Case;
+import com.openjiuwen.dev_tools.tune.EvaluatedCase;
+import com.openjiuwen.dev_tools.tune.TuneUtils;
+
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
+
+/**
+ * LLM-as-judge evaluator for comparing model output with expected answers.
+ *
+ * <p>Mirrors Python's {@code DefaultEvaluator} in
+ * {@code openjiuwen/dev_tools/tune/evaluator/evaluator.py}.</p>
+ */
+public class DefaultEvaluator extends BaseEvaluator {
+
+    private final Model model;
+    private final PromptTemplate metricTemplate;
+
+    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        this(modelConfig, modelClientConfig, "");
+    }
+
+    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig, String metric) {
+        this(new Model(modelClientConfig, modelConfig), metric);
+    }
+
+    DefaultEvaluator(Model model, String metric) {
+        this.model = Objects.requireNonNull(model, "model");
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("user_metrics", metric == null ? "" : metric);
+        this.metricTemplate = EvaluatorTemplates.LLM_METRIC_TEMPLATE.format(keywords);
+    }
+
+    @Override
+    public EvaluatedCase evaluate(Case caseValue, Map<String, Object> predict) {
+        List<BaseMessage> messages = metricTemplate.format(metricKeywords(caseValue, predict)).toMessages();
+        EvaluatedCase evaluatedCase = new EvaluatedCase(caseValue, predict, 0.0d, "");
+        String response;
+        try {
+            response = invokeModel(messages);
+        } catch (RuntimeException exception) {
+            evaluatedCase.setReason("Failed to evaluate case due to model error");
+            return evaluatedCase;
+        }
+
+        Map<String, Object> evaluatedResult = extractEvaluateResult(response, caseValue, predict);
+        if (evaluatedResult == null || evaluatedResult.isEmpty()) {
+            evaluatedCase.setReason("Failed to evaluate case due to parsing error");
+            return evaluatedCase;
+        }
+        evaluatedCase.setReason(stringValue(evaluatedResult.get("reason")));
+        if (isPassResult(evaluatedResult.getOrDefault("result", false))) {
+            evaluatedCase.setScore(1.0d);
+            return evaluatedCase;
+        }
+        return evaluatedCase;
+    }
+
+    Map<String, Object> extractEvaluateResult(String response, Case caseValue, Map<String, Object> predict) {
+        Map<String, Object> parsed = TuneUtils.parseJsonFromLlmResponse(response);
+        if (parsed != null && parsed.containsKey("result") && parsed.containsKey("reason")) {
+            return parsed;
+        }
+
+        List<BaseMessage> messages = EvaluatorTemplates.LLM_METRIC_RETRY_TEMPLATE
+                .format(retryKeywords(caseValue, predict, response))
+                .toMessages();
+        String retryResponse;
+        try {
+            retryResponse = invokeModel(messages);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+        return TuneUtils.parseJsonFromLlmResponse(retryResponse);
+    }
+
+    boolean isPassResult(Object result) {
+        if (Boolean.TRUE.equals(result)) {
+            return true;
+        }
+        if (result instanceof String text) {
+            return "true".equalsIgnoreCase(text.strip());
+        }
+        return false;
+    }
+
+    private String invokeModel(List<BaseMessage> messages) {
+        CompletionStage<AssistantMessage> stage = model.invoke(messages);
+        AssistantMessage assistantMessage = stage.toCompletableFuture().join();
+        return assistantMessage == null ? "" : assistantMessage.getContentAsString();
+    }
+
+    private static Map<String, Object> metricKeywords(Case caseValue, Map<String, Object> predict) {
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("question", pythonString(caseValue.getInputs()));
+        keywords.put("expected_answer", pythonString(caseValue.getLabel()));
+        keywords.put("model_answer", pythonString(predict));
+        return keywords;
+    }
+
+    private static Map<String, Object> retryKeywords(Case caseValue, Map<String, Object> predict, String response) {
+        Map<String, Object> keywords = metricKeywords(caseValue, predict);
+        keywords.put("nonstandard_evaluated_result", response);
+        return keywords;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Character character) {
+            return character.toString();
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .map(entry -> pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()))
+                    .collect(Collectors.joining(", ", "{", "}"));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<String> parts = new ArrayList<>();
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                parts.add(pythonRepr(iterator.next()));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            List<String> parts = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                parts.add(pythonRepr(Array.get(value, index)));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Character character) {
+            String text = character.toString();
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        return pythonString(value);
+    }
+}

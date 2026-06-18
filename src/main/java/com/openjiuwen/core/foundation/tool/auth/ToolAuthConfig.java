@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.tool.auth;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,7 +32,7 @@ public final class ToolAuthConfig {
             @JsonProperty("tool_id") String toolId
     ) {
         this.authType = authType;
-        this.config = config == null ? Map.of() : Map.copyOf(config);
+        this.config = config == null ? Map.of() : immutableCopyAllowingNullValues(config);
         this.toolType = toolType;
         this.toolId = toolId;
     }
@@ -68,5 +70,9 @@ public final class ToolAuthConfig {
     @Override
     public int hashCode() {
         return Objects.hash(authType, config, toolType, toolId);
+    }
+
+    private static Map<String, Object> immutableCopyAllowingNullValues(Map<String, Object> source) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 }

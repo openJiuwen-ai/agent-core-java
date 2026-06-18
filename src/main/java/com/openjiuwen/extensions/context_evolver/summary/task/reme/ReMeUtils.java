@@ -10,8 +10,11 @@ import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -88,6 +91,115 @@ public final class ReMeUtils {
         }
     }
 
+    public static String compactWhitespace(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("\\s+", " ").trim();
+    }
+
+    public static List<String> extractPrefixedLines(String text, String prefix) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.isBlank() || prefix == null || prefix.isBlank()) {
+            return lines;
+        }
+        for (String rawLine : text.split("\\R")) {
+            String line = rawLine.trim();
+            if (line.startsWith(prefix)) {
+                lines.add(line.substring(prefix.length()).trim());
+            }
+        }
+        return lines;
+    }
+
+    public static List<String> extractObservationKeys(String text) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (text == null || text.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        Pattern quotedKey = Pattern.compile("[\"']([A-Za-z0-9_]+)[\"']\\s*:");
+        for (String observation : extractPrefixedLines(text, "OBSERVATION:")) {
+            Matcher matcher = quotedKey.matcher(observation);
+            while (matcher.find() && keys.size() < 6) {
+                keys.add(matcher.group(1));
+            }
+            if (keys.size() >= 6) {
+                break;
+            }
+        }
+        if (keys.isEmpty()) {
+            Matcher matcher = quotedKey.matcher(text);
+            while (matcher.find() && keys.size() < 6) {
+                keys.add(matcher.group(1));
+            }
+        }
+        return new ArrayList<>(keys);
+    }
+
+    public static List<String> extractToolNames(String trajectory) {
+        Set<String> tools = new LinkedHashSet<>();
+        for (String action : extractPrefixedLines(trajectory, "ACTION:")) {
+            int bracketIndex = action.indexOf('(');
+            String candidate = bracketIndex >= 0 ? action.substring(0, bracketIndex) : action;
+            candidate = compactWhitespace(candidate);
+            if (!candidate.isBlank()) {
+                tools.add(candidate);
+            }
+        }
+        return new ArrayList<>(tools);
+    }
+
+    public static String lastPrefixedLine(String text, String prefix) {
+        if (text == null || text.isBlank() || prefix == null || prefix.isBlank()) {
+            return "";
+        }
+        String last = "";
+        for (String rawLine : text.split("\\R")) {
+            String line = rawLine.trim();
+            if (line.startsWith(prefix)) {
+                last = line.substring(prefix.length()).trim();
+            }
+        }
+        return last;
+    }
+
+    public static String extractFeedbackSignal(String trajectory) {
+        String feedback = compactWhitespace(lastPrefixedLine(trajectory, "FEEDBACK:")).toLowerCase(Locale.ROOT);
+        if (feedback.isBlank()) {
+            String normalized = normalizeSignalSource(trajectory);
+            if (normalized.contains(" feedback helpful ")
+                    || normalized.contains(" status success ")
+                    || normalized.contains(" successful ")
+                    || normalized.contains(" correct ")) {
+                return "helpful";
+            }
+            if (normalized.contains(" feedback harmful ")
+                    || normalized.contains(" status failure ")
+                    || normalized.contains(" failed ")
+                    || normalized.contains(" incorrect ")
+                    || normalized.contains(" error ")) {
+                return "harmful";
+            }
+            return "";
+        }
+        if (feedback.contains("helpful")
+                || feedback.contains("success")
+                || feedback.contains("positive")
+                || feedback.contains("correct")) {
+            return "helpful";
+        }
+        if (feedback.contains("harmful")
+                || feedback.contains("failure")
+                || feedback.contains("failed")
+                || feedback.contains("negative")
+                || feedback.contains("incorrect")
+                || feedback.contains("error")) {
+            return "harmful";
+        }
+        return "";
+    }
+
     private static boolean isValidExperience(Object data) {
         if (!(data instanceof Map<?, ?> mapValue)) {
             return false;
@@ -112,5 +224,12 @@ public final class ReMeUtils {
             normalized.put(String.valueOf(entry.getKey()), entry.getValue());
         }
         return normalized;
+    }
+
+    private static String normalizeSignalSource(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return " " + value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim() + " ";
     }
 }

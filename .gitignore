@@ -43,3 +43,6 @@ logs/run/run.log
 /logs/run/run.2026-03-15.1.log.gz
 /javaify-project/tests
 /javaify-project
+/.idea
+/notes
+/store

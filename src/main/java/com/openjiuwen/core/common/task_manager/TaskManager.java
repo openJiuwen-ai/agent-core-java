@@ -105,9 +105,8 @@ public class TaskManager {
             registry.add(task);
         }
 
-        CompletableFuture<Object> future = CompletableFuture.supplyAsync(
-                () -> executeTask(callable, task, catchExceptions), executorService);
-        task.setExecutionFuture(future);
+        CompletableFuture<Object> future = task.execute(callable, this::triggerStatusEvent, catchExceptions,
+                executorService);
         scheduleTimeout(task, future);
         trackInCurrentGroup(task, future);
         triggerEvent(TaskManagerEvents.TASK_CREATED, task);
@@ -376,34 +375,6 @@ public class TaskManager {
         return getInstance().cancelAll();
     }
 
-    private Object executeTask(Callable<?> callable, Task task, boolean catchExceptions) {
-        TaskContext.ContextToken<String> token = TaskContext.setCurrentTaskId(task.getTaskId());
-        task.start();
-        triggerEvent(TaskManagerEvents.TASK_RUNNING, task);
-        try {
-            Object result = callable.call();
-            task.complete(result);
-            triggerEvent(TaskManagerEvents.TASK_COMPLETED, task);
-            return result;
-        } catch (CancellationException cancellation) {
-            task.markCancelled(task.getCancelReason(), task.getCancelledBy());
-            triggerEvent(TaskManagerEvents.TASK_CANCELLED, task);
-            if (catchExceptions) {
-                return null;
-            }
-            throw cancellation;
-        } catch (Exception exception) {
-            task.fail(exception);
-            triggerEvent(TaskManagerEvents.TASK_FAILED, task);
-            if (catchExceptions) {
-                return null;
-            }
-            throw new CompletionException(exception);
-        } finally {
-            TaskContext.resetCurrentTaskId(token);
-        }
-    }
-
     private void scheduleTimeout(Task task, CompletableFuture<?> future) {
         Double timeout = task.getTimeout();
         if (timeout == null || timeout <= 0) {
@@ -537,6 +508,18 @@ public class TaskManager {
                 callback.accept(task);
             } catch (RuntimeException exception) {
                 LOGGER.fine(() -> "Task callback failed for event " + eventType + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private void triggerStatusEvent(Task task, String status) {
+        switch (status) {
+            case "running" -> triggerEvent(TaskManagerEvents.TASK_RUNNING, task);
+            case "completed" -> triggerEvent(TaskManagerEvents.TASK_COMPLETED, task);
+            case "cancelled" -> triggerEvent(TaskManagerEvents.TASK_CANCELLED, task);
+            case "timeout" -> triggerEvent(TaskManagerEvents.TASK_TIMEOUT, task);
+            case "failed" -> triggerEvent(TaskManagerEvents.TASK_FAILED, task);
+            default -> {
             }
         }
     }

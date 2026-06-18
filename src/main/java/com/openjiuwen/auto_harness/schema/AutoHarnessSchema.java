@@ -1132,6 +1132,8 @@ public final class AutoHarnessSchema {
         @JsonProperty("pipeline_preference")
         private String pipelinePreference = PIPELINE_PREFERENCE_AUTO;
         @Builder.Default
+        private String competitor = "";
+        @Builder.Default
         @JsonProperty("session_budget_secs")
         private double sessionBudgetSecs = 900000.0;
         @Builder.Default

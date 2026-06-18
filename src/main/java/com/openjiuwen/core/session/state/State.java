@@ -10,7 +10,7 @@ import java.util.Map;
  * Mirrors Python's {@code State} in
  * {@code openjiuwen/core/session/state/base.py}.
  */
-public interface State extends RecoverableState {
+public interface State extends RecoverableState, SessionStateAccess {
     String IO_STATE_KEY = "io_state";
     String IO_STATE_UPDATES_KEY = "io_state_updates";
     String GLOBAL_STATE_KEY = "global_state";
@@ -32,6 +32,10 @@ public interface State extends RecoverableState {
     void update(Map<String, Object> data);
 
     Object get(Object key);
+
+    Map<String, Object> getState();
+
+    void setState(Map<String, Object> state);
 
     Map<String, Object> dump();
 }

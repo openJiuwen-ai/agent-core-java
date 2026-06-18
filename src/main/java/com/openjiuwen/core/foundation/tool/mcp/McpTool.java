@@ -1,0 +1,143 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.foundation.tool.mcp;
+
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.SchemaUtils;
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.runner.callback.ToolCallEvents;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+
+/**
+ * MCP tool wrapper.
+ *
+ * <p>Mirrors Python's {@code MCPTool} in
+ * {@code openjiuwen/core/foundation/tool/mcp/base.py}.</p>
+ */
+public class McpTool extends Tool {
+
+    private final Object mcpClient;
+
+    public McpTool(Object mcpClient, McpToolCard toolInfo) {
+        super(toolInfo);
+        if (mcpClient == null) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED,
+                    "card", String.valueOf(getCard()));
+        }
+        this.mcpClient = mcpClient;
+    }
+
+    public Object getMcpClient() {
+        return mcpClient;
+    }
+
+    @Override
+    protected Iterator<Object> streamInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", String.valueOf(getCard()));
+    }
+
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        try {
+            Map<String, Object> arguments = inputs != null ? new LinkedHashMap<>(inputs) : new LinkedHashMap<>();
+            Map<String, Object> inputParams = getCard().getInputParams();
+            if (inputParams != null) {
+                triggerCallback(ToolCallEvents.TOOL_PARSE_STARTED, parseStartedKwargs(inputs, inputParams));
+                boolean skipNoneValue = !kwargsContains(kwargs, "skip_none_value")
+                        || Boolean.TRUE.equals(kwargs.get("skip_none_value"));
+                boolean skipValidate = Boolean.TRUE.equals(kwargs != null ? kwargs.get("skip_inputs_validate") : null);
+                arguments = SchemaUtils.formatWithSchema(arguments, inputParams, false, skipValidate);
+                if (skipNoneValue) {
+                    Map<String, Object> cleaned = SchemaUtils.removeNoneValues(arguments);
+                    arguments = cleaned != null ? cleaned : new LinkedHashMap<>();
+                }
+                triggerCallback(ToolCallEvents.TOOL_PARSE_FINISHED, parseFinishedKwargs(arguments));
+            }
+            Object result = awaitIfNeeded(callTool(arguments));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("result", result);
+            return payload;
+        } catch (Exception error) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("reason", error.getMessage());
+            params.put("method", "invoke");
+            params.put("card", String.valueOf(getCard()));
+            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_EXECUTION_ERROR, null, null, error, params);
+        }
+    }
+
+    private Object callTool(Map<String, Object> arguments) throws Exception {
+        String toolName = getCard().getName();
+        for (Method method : mcpClient.getClass().getMethods()) {
+            if (!("callTool".equals(method.getName()) || "call_tool".equals(method.getName()))) {
+                continue;
+            }
+            try {
+                if (method.getParameterCount() == 2) {
+                    return method.invoke(mcpClient, toolName, arguments);
+                }
+                if (method.getParameterCount() == 3) {
+                    return method.invoke(mcpClient, toolName, arguments, McpBase.NO_TIMEOUT);
+                }
+            } catch (InvocationTargetException error) {
+                Throwable cause = error.getCause();
+                if (cause instanceof Exception exception) {
+                    throw exception;
+                }
+                throw new RuntimeException(Objects.requireNonNullElse(cause, error));
+            }
+        }
+        throw new NoSuchMethodException("callTool(String, Map) or call_tool(String, Map)");
+    }
+
+    private Map<String, Object> parseStartedKwargs(Map<String, Object> inputs, Map<String, Object> inputParams) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tool_name", getCard().getName());
+        values.put("tool_id", getCard().getId());
+        values.put("raw_inputs", inputs);
+        values.put("schema", inputParams);
+        return values;
+    }
+
+    private Map<String, Object> parseFinishedKwargs(Map<String, Object> arguments) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tool_name", getCard().getName());
+        values.put("tool_id", getCard().getId());
+        values.put("formatted_inputs", arguments);
+        return values;
+    }
+
+    private static boolean kwargsContains(Map<String, Object> kwargs, String key) {
+        return kwargs != null && kwargs.containsKey(key);
+    }
+
+    private static Object awaitIfNeeded(Object value) throws Exception {
+        if (!(value instanceof CompletionStage<?> stage)) {
+            return value;
+        }
+        try {
+            return stage.toCompletableFuture().get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } catch (ExecutionException | CompletionException executionError) {
+            Throwable cause = executionError.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(Objects.requireNonNullElse(cause, executionError));
+        }
+    }
+}

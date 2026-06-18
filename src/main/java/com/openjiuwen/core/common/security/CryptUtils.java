@@ -16,6 +16,12 @@ import java.util.Map;
  */
 public final class CryptUtils {
 
+    public static final int NONCE_LENGTH = AesGcmCrypt.NONCE_LENGTH;
+
+    public static final int AES_KEY_LENGTH = AesGcmCrypt.AES_KEY_LENGTH;
+
+    public static final int TAG_LENGTH = AesGcmCrypt.TAG_LENGTH;
+
     public static final String AES_GCM_CRYPT_NAME = "aes_gcm";
 
     private static final Map<String, BaseCrypt> CRYPT_REGISTRY = new LinkedHashMap<>();

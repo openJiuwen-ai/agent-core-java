@@ -8,7 +8,7 @@ package com.openjiuwen.core.session.stream;
  * Mirrors Python's {@code OutputSchema} in
  * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class OutputSchema {
+public class OutputSchema implements StreamSchema {
 
     private String type;
     private int index;

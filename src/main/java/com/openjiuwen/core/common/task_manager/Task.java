@@ -9,8 +9,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 
 /**
  * Coroutine task data model.
@@ -89,15 +94,37 @@ public class Task {
         if (isTerminal()) {
             return false;
         }
-        TaskManager.getInstance().cancelTask(taskId, reason == null ? "manual_cancel" : reason, cancelledBy);
-        if (cascade) {
+        boolean cancelled = TaskManager.getInstance().cancelTask(taskId, reason == null ? "manual_cancel" : reason,
+                cancelledBy);
+        if (cancelled && cascade) {
             TaskManager.getInstance().cascadeCancel(taskId, "parent_cancelled");
         }
-        return true;
+        return cancelled;
     }
 
     public boolean abort(String reason) {
+        if (executionFuture == null || executionFuture.isDone()) {
+            return false;
+        }
         return markCancelled(reason == null ? "manual_cancel" : reason, cancelledBy);
+    }
+
+    public CompletableFuture<Object> execute(Callable<?> callable,
+                                             BiConsumer<Task, String> callbackTrigger,
+                                             boolean catchExceptions) {
+        return execute(callable, callbackTrigger, catchExceptions, ForkJoinPool.commonPool());
+    }
+
+    public CompletableFuture<Object> execute(Callable<?> callable,
+                                             BiConsumer<Task, String> callbackTrigger,
+                                             boolean catchExceptions,
+                                             Executor executor) {
+        Objects.requireNonNull(callable, "callable");
+        Executor actualExecutor = executor == null ? ForkJoinPool.commonPool() : executor;
+        CompletableFuture<Object> future = CompletableFuture.supplyAsync(
+                () -> executeCore(callable, callbackTrigger, catchExceptions), actualExecutor);
+        setExecutionFuture(future);
+        return future;
     }
 
     void start() {
@@ -162,6 +189,87 @@ public class Task {
             return completionException.getCause();
         }
         return throwable;
+    }
+
+    private Object executeCore(Callable<?> callable, BiConsumer<Task, String> callbackTrigger, boolean catchExceptions) {
+        TaskContext.ContextToken<String> token = TaskContext.setCurrentTaskId(taskId);
+        start();
+        trigger(callbackTrigger, "running");
+        try {
+            Object value = callable.call();
+            completeFromExecute(value, callbackTrigger);
+            return value;
+        } catch (CancellationException cancellation) {
+            cancelFromExecute(callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw cancellation;
+        } catch (TimeoutException timeoutException) {
+            timeoutFromExecute(callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw new CompletionException(timeoutException);
+        } catch (Exception exception) {
+            failFromExecute(exception, callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw new CompletionException(exception);
+        } finally {
+            TaskContext.resetCurrentTaskId(token);
+        }
+    }
+
+    private void completeFromExecute(Object value, BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        result = value;
+        status = TaskStatus.COMPLETED;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "completed");
+        doneFuture.complete(value);
+    }
+
+    private void failFromExecute(Throwable throwable, BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        exception = throwable;
+        status = TaskStatus.FAILED;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "failed");
+        doneFuture.completeExceptionally(throwable);
+    }
+
+    private void cancelFromExecute(BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        status = TaskStatus.CANCELLED;
+        cancelReason = cancelReason == null ? "manual_cancel" : cancelReason;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "cancelled");
+        doneFuture.completeExceptionally(new CancellationException(cancelReason));
+    }
+
+    private void timeoutFromExecute(BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        status = TaskStatus.TIMEOUT;
+        exception = new TimeoutException("Task timeout");
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "timeout");
+        doneFuture.completeExceptionally(exception);
+    }
+
+    private void trigger(BiConsumer<Task, String> callbackTrigger, String status) {
+        if (callbackTrigger != null) {
+            callbackTrigger.accept(this, status);
+        }
     }
 
     public String getTaskId() {

@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Delayed-judge dispatch for pending rail-v1 samples.
@@ -68,7 +69,7 @@ public class JudgeDispatcher {
         Map<String, Object> judge;
         if (judgeScorer != null) {
             try {
-                judge = judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum).join();
+                judge = normalizeJudge(judgeScorer.score(responseText, instructionText, feedback, sessionId, turnNum));
             } catch (Exception exception) {
                 String error = exception.getMessage() != null ? exception.getMessage() : exception.toString();
                 judge = Map.of("score", 0.0, "votes", List.of("fail"), "details", Map.of(), "error", error);
@@ -95,6 +96,12 @@ public class JudgeDispatcher {
             raw = prevFeedback.get("feedback");
         }
         return pythonStr(firstTruthy(raw, ""));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeJudge(Object value) {
+        Object resolved = value instanceof CompletionStage<?> stage ? stage.toCompletableFuture().join() : value;
+        return resolved instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
     @SuppressWarnings("unchecked")

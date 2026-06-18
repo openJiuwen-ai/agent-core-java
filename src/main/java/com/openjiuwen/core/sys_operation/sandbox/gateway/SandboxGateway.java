@@ -291,7 +291,7 @@ public class SandboxGateway {
     }
 
     private CompletableFuture<GatewayResponse> invokeRequest(Object provider, GatewayInvokeRequest request) {
-        Method handler = findHandler(provider.getClass(), request.getMethod());
+        Method handler = findHandler(provider.getClass(), request.getMethod(), request.getParams());
         if (handler == null) {
             return CompletableFuture.completedFuture(errorResponse(
                     "Method '" + request.getMethod() + "' not found on provider",
@@ -314,7 +314,7 @@ public class SandboxGateway {
     }
 
     private CompletableFuture<Flow.Publisher<?>> invokeStreamRequest(Object provider, GatewayInvokeRequest request) {
-        Method handler = findHandler(provider.getClass(), request.getMethod());
+        Method handler = findHandler(provider.getClass(), request.getMethod(), request.getParams());
         if (handler == null) {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("Method '" + request.getMethod() + "' not found on provider"));
@@ -337,17 +337,70 @@ public class SandboxGateway {
         throw new IllegalStateException("Method '" + methodName + "' did not return a Flow.Publisher");
     }
 
-    private static Method findHandler(Class<?> providerClass, String methodName) {
+    private static Method findHandler(Class<?> providerClass, String methodName, Map<String, Object> params) {
         Method selected = null;
+        int selectedScore = Integer.MAX_VALUE;
         for (Method method : providerClass.getMethods()) {
             if (!method.getName().equals(methodName)) {
                 continue;
             }
-            if (selected == null || method.getParameterCount() > selected.getParameterCount()) {
+            int score = methodScore(method, params);
+            if (selected == null
+                    || method.getParameterCount() > selected.getParameterCount()
+                    || method.getParameterCount() == selected.getParameterCount() && score < selectedScore) {
                 selected = method;
+                selectedScore = score;
             }
         }
         return selected;
+    }
+
+    private static int methodScore(Method method, Map<String, Object> params) {
+        Parameter[] parameters = method.getParameters();
+        Map<String, Object> safeParams = params == null ? Map.of() : params;
+        int score = 0;
+        for (Parameter parameter : parameters) {
+            score += conversionScore(safeParams.get(parameter.getName()), parameter.getType());
+        }
+        return score;
+    }
+
+    private static int conversionScore(Object value, Class<?> targetType) {
+        if (value == null) {
+            return targetType.isPrimitive() ? 3 : 1;
+        }
+        if (targetType.isInstance(value)) {
+            return 0;
+        }
+        if (targetType.isPrimitive()) {
+            return primitiveConversionScore(value, targetType);
+        }
+        if (targetType == String.class) {
+            return value instanceof CharSequence ? 0 : 8;
+        }
+        if (Number.class.isAssignableFrom(targetType) && value instanceof Number) {
+            return 1;
+        }
+        if (targetType == Boolean.class && value instanceof Boolean) {
+            return 0;
+        }
+        if (targetType.isEnum() && value instanceof String) {
+            return 2;
+        }
+        if (targetType == byte[].class) {
+            return value instanceof byte[] ? 0 : 20;
+        }
+        return 10;
+    }
+
+    private static int primitiveConversionScore(Object value, Class<?> targetType) {
+        if (targetType == boolean.class) {
+            return value instanceof Boolean ? 0 : 8;
+        }
+        if (targetType == char.class) {
+            return value instanceof Character ? 0 : 8;
+        }
+        return value instanceof Number ? 1 : 8;
     }
 
     private static Object invokeHandler(Object provider, Method handler, Map<String, Object> params) {

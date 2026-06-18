@@ -11,7 +11,7 @@ import java.util.Map;
  * Mirrors Python's {@code CustomSchema} in
  * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class CustomSchema {
+public class CustomSchema implements StreamSchema {
 
     private final Map<String, Object> properties = new LinkedHashMap<>();
 
