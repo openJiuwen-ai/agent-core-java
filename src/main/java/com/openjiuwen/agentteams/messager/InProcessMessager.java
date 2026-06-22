@@ -5,6 +5,7 @@
 package com.openjiuwen.agentteams.messager;
 
 import com.openjiuwen.agentteams.schema.events.EventMessage;
+import com.openjiuwen.core.common.logging.Loggers;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -103,6 +104,9 @@ public class InProcessMessager implements Messager {
       effectiveMessage = effectiveMessage.toBuilder().senderId(config.getNodeId()).build();
     }
     final EventMessage finalMessage = effectiveMessage;
+    int handlerCount = inProcessBus.topicHandlers(topicId).size();
+    Loggers.AGENT.info("[InProcessMessager] publish topic={} type={} sender={} handlers={}",
+        topicId, finalMessage.getEventType(), finalMessage.getSenderId(), handlerCount);
     List<CompletableFuture<Void>> futures =
         inProcessBus.topicHandlers(topicId).stream()
             .map(handler -> handler.handle(finalMessage).exceptionally(ignored -> null))
@@ -114,6 +118,7 @@ public class InProcessMessager implements Messager {
   @Override
   /** Auto-generated for codecheck compliance. */
   public CompletableFuture<Void> subscribe(String topicId, MessagerHandler handler) {
+    Loggers.AGENT.info("[InProcessMessager] subscribe topic={} agentId={}", topicId, config.getNodeId());
     inProcessBus.subscribe(config.getNodeId(), topicId, handler);
     subscribedTopics.add(topicId);
     return CompletableFuture.completedFuture(null);

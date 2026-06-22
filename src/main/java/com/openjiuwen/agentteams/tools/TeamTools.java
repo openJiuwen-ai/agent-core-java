@@ -349,6 +349,29 @@ public final class TeamTools {
          * Auto-generated for codecheck compliance.
          */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            // Guard: don't allow cleanup while there are incomplete tasks.
+            // Also reject if any leader-assigned task was cancelled (should be completed).
+            var tasks = backend.getTaskManager().list();
+            var incomplete = tasks.stream()
+                .filter(t -> !"completed".equals(t.getStatus()) && !"cancelled".equals(t.getStatus()))
+                .toList();
+            if (!incomplete.isEmpty()) {
+                List<String> titles = incomplete.stream()
+                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
+                    .toList();
+                return error("Cannot clean team while " + incomplete.size()
+                    + " task(s) remain incomplete. Complete them first: " + titles);
+            }
+            var cancelled = tasks.stream()
+                .filter(t -> "cancelled".equals(t.getStatus()))
+                .toList();
+            if (!cancelled.isEmpty()) {
+                List<String> titles = cancelled.stream()
+                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
+                    .toList();
+                return error("Cannot clean team while " + cancelled.size()
+                    + " task(s) were cancelled. The leader must complete them: " + titles);
+            }
             boolean success = backend.cleanTeam().join();
             if (!success) {
                 return error("Active members remain. Use shutdown_member to close all members first.");
@@ -651,8 +674,16 @@ public final class TeamTools {
         private final TeamTaskManager taskManager;
 
         TaskCreateTool(TeamTaskManager taskManager) {
-            super("create_task", "Create team tasks.", objectSchema(Map.of(
-                    "tasks", Map.of("type", "array", "items", Map.of("type", "object"))
+            super("create_task", "Create team tasks. Each task MUST have a title, content, and assignee (member name).", objectSchema(Map.of(
+                    "tasks", Map.of("type", "array",
+                        "items", objectSchema(Map.of(
+                            "title", stringSchema("Task title"),
+                            "content", stringSchema("Task description or instructions"),
+                            "assignee", stringSchema("Member name who should work on this task (e.g. 'fundamental-analyst')"),
+                            "task_id", stringSchema("Optional custom task ID"),
+                            "dependencies", Map.of("type", "array", "items", Map.of("type", "string"),
+                                "description", "List of task IDs this task depends on")
+                        ), List.of("title", "content", "assignee")))
             ), List.of("tasks")));
             this.taskManager = taskManager;
         }

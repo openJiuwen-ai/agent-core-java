@@ -57,6 +57,14 @@ public class TeamTaskManager {
      * Auto-generated for codecheck compliance.
      */
     public CompletableFuture<TeamTask> add(String title, String content, String taskId, List<String> dependencies) {
+        return add(title, content, taskId, dependencies, null);
+    }
+
+    /**
+     * Create a task with an optional assignee.
+     */
+    public CompletableFuture<TeamTask> add(String title, String content, String taskId,
+                                           List<String> dependencies, String assignee) {
         String resolvedTaskId = taskId != null ? taskId : UUID.randomUUID().toString();
         TeamTask task = TeamTask.builder()
                 .taskId(resolvedTaskId)
@@ -65,6 +73,7 @@ public class TeamTaskManager {
                 .content(content)
                 .status(dependencies != null && !dependencies.isEmpty() ? "blocked" : "pending")
                 .dependencies(new ArrayList<>(dependencies != null ? dependencies : List.of()))
+                .assignee(assignee)
                 .build();
         if (db != null) {
             Loggers.TOOL.info("TeamTaskManager.add: creating task {} team={} db={} session={}",
@@ -105,7 +114,11 @@ public class TeamTaskManager {
                 }
                 String taskId = stringValue(taskSpec.get("task_id"));
                 List<String> dependencies = stringList(taskSpec.get("dependencies"));
-                return add(title, content, taskId, dependencies).thenApply(task -> {
+                String assignee = stringValue(taskSpec.get("assignee"));
+                if (assignee != null && assignee.isBlank()) {
+                    assignee = null;
+                }
+                return add(title, content, taskId, dependencies, assignee).thenApply(task -> {
                     if (task != null) {
                         created.add(task);
                     }
@@ -284,6 +297,18 @@ public class TeamTaskManager {
      * Auto-generated for codecheck compliance.
      */
     public CompletableFuture<TeamTask> cancel(String taskId) {
+        TeamTask task = get(taskId);
+        if (task == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        // Only the assignee (or leader when unassigned) can cancel.
+        // This prevents non-leader members from cancelling leader tasks
+        // and creating a cancel/recreate loop.
+        if (task.getAssignee() != null && !memberName.equals(task.getAssignee())) {
+            Loggers.AGENT.info("TeamTaskManager.cancel: member={} is not assignee={} of task [{}], rejecting",
+                memberName, task.getAssignee(), taskId);
+            return CompletableFuture.completedFuture(null);
+        }
         TaskMutationResult mutation = db != null ? db.task.cancelTaskResult(taskId) : null;
         if (db == null || mutation == null) {
             return CompletableFuture.completedFuture(null);

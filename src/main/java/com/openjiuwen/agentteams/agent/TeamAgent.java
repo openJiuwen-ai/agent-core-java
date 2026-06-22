@@ -11,6 +11,7 @@ import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntries;
+import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
@@ -38,6 +39,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 import lombok.Getter;
@@ -278,6 +280,11 @@ public class TeamAgent {
         streamController.setStreamQueue(queue);
         streamController.requestCloseStreamAfterCurrentRound();
         startCoordination(pendingUserQuery);
+        // Ensure transport subscriptions are active before starting the loop.
+        // invokeForSpawn() does this via coordinationManager.start(), but stream()
+        // (used by the leader) was skipping it, causing the leader to never receive
+        // task/message/broadcast events from spawned members.
+        coordinationManager.subscribeTransport();
         coordinatorLoop.start();
         coordinatorLoop.enqueue(InnerEventMessage.builder()
                 .eventType(InnerEventType.USER_INPUT)
@@ -401,6 +408,20 @@ public class TeamAgent {
                 streamController.getPendingInputs().clear();
             }
             finalizeRound();
+        }
+        // Log task status at completion to help diagnose stuck claimed tasks
+        if (teamBackend != null && teamBackend.getTaskManager() != null) {
+            var tasks = teamBackend.getTaskManager().list();
+            var claimedByMe = tasks.stream()
+                .filter(t -> "claimed".equals(t.getStatus()))
+                .filter(t -> resolveLocalMemberName().equals(t.getAssignee()))
+                .toList();
+            if (!claimedByMe.isEmpty()) {
+                Loggers.AGENT.warn("invokeForSpawn: member={} finished but has {} claimed task(s) still not completed: {}",
+                    resolveLocalMemberName(), claimedByMe.size(),
+                    claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")")
+                        .toList());
+            }
         }
         Loggers.AGENT.info("invokeForSpawn: completed for member={}", resolveLocalMemberName());
         return lastResult;
@@ -704,9 +725,13 @@ public class TeamAgent {
     private void bootstrapCoordinationHost() {
         String leaderName = resolveLeaderMemberName();
         String localMemberName = resolveLocalMemberName();
+        // Use localMemberName (not leaderName) as nodeId so each member gets a
+        // unique subscription key in the messager's topic map. Previously all
+        // members shared "team_leader", causing the last subscriber to overwrite
+        // earlier ones — the leader never received "message" events from analysts.
         Messager messager = MessagerFactory.createMessager(MessagerTransportConfig.builder()
                 .teamName(context.getTeamId())
-                .nodeId(leaderName)
+                .nodeId(localMemberName)
                 .build());
         // Use resolveLocalMemberName() so spawned members get their own memberName
         // (not the leader's name) in TeamBackend / TeamTaskManager.
@@ -755,7 +780,12 @@ public class TeamAgent {
                 status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status),
                 ignored -> { },
                 () -> agentSession,
-                () -> dispatcher.processUnreadMessages(resolveLocalMemberName()),
+                () -> {
+                    dispatcher.processUnreadMessages(resolveLocalMemberName());
+                    // Auto-complete any claimed tasks the member forgot to mark completed.
+                    // This prevents the leader summary from being blocked forever.
+                    dispatcher.tryAutoCompleteMemberTasks();
+                },
                 null
         );
         this.dispatcher = new EventDispatcher(this);
@@ -784,13 +814,60 @@ public class TeamAgent {
             com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, context.getTeamId() + "." + leaderName);
         }
 
+        // Register standard harness tools (file I/O, shell) for team agents.
+        // Team agents only get team tools by default, but they also need
+        // file_io (read/write files within workspace sandbox).
+        String workspaceRoot = workspace.root().toString();
+        var fsBackend = new com.openjiuwen.harness.tools.FilesystemTool(workspaceRoot);
+        Tool fileIoTool = new com.openjiuwen.core.foundation.tool.function.LocalFunction(
+                com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                        .id("team.file_io")
+                        .name("file_io")
+                        .description("Read or write files within the team workspace. "
+                                + "Use action='read' to read a file, action='write' to write content to a file.")
+                        .inputParams(Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "action", Map.of("type", "string", "enum", List.of("read", "write"),
+                                                "description", "Action: 'read' to read a file, 'write' to create/overwrite a file"),
+                                        "file_path", Map.of("type", "string", "description",
+                                                "Absolute path to the file within the workspace"),
+                                        "content", Map.of("type", "string", "description",
+                                                "Content to write (required for action='write')")),
+                                "required", List.of("action", "file_path")))
+                        .build(),
+                inputs -> {
+                    String action = inputs.get("action") instanceof String s ? s : "";
+                    String filePath = inputs.get("file_path") instanceof String s ? s : "";
+                    if (filePath.isBlank()) {
+                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                .success(false).error("file_path is required").build());
+                    }
+                    if ("read".equals(action)) {
+                        return java.util.List.of(fsBackend.readFile(filePath));
+                    }
+                    if ("write".equals(action)) {
+                        String content = inputs.get("content") instanceof String s ? s : "";
+                        if (content.isBlank()) {
+                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                    .success(false).error("content is required for write action").build());
+                        }
+                        return java.util.List.of(fsBackend.writeFile(filePath, content));
+                    }
+                    return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                            .success(false).error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
+                });
+        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool,
+                context.getTeamId() + "." + leaderName);
+        teamTools.add(fileIoTool);
+
         Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}",
             resolveLocalMemberName(),
             context.getMemberName(),
             context.getRole());
 
         String localName = resolveLocalMemberName();
-        this.deepAgent = new DeepAgent(
+        this.deepAgent = HarnessFactory.createDeepAgent(
                 com.openjiuwen.core.singleagent.schema.AgentCard.builder()
                         .id(context.getTeamId() + "." + localName)
                         .name(localName)
@@ -802,6 +879,14 @@ public class TeamAgent {
                         .model(resolveConfiguredModel())
                         .backend(resolveConfiguredBackend())
                         .isTaskLoopEnabled(true)
+                        .enableSkillDiscovery(true)
+                        .skillDirectories(List.of(
+                                workspace.getNodePath("skills").toString(),
+                                System.getProperty("user.dir"),
+                                System.getProperty("user.home") + "/.openjiuwen/workspace/skills",
+                                System.getProperty("user.home") + "/.claude/skills"
+                        ))
+                        .skillMode("all")
                         .sysOperation(sysOperation)
                         .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
                         .rails(List.of(new TeamRail(
@@ -1167,9 +1252,22 @@ public class TeamAgent {
      * Auto-generated for codecheck compliance.
      */
     public void shutdownSelf() {
+        String memberName = resolveLocalMemberName();
+        Loggers.AGENT.info("shutdownSelf: requested for member={}", memberName);
         if (streamController != null) {
             streamController.cancelAgent();
             streamController.closeStream();
+        }
+        // Match Python: update DB status to SHUTDOWN so clean_team can succeed.
+        // Python: await self._team_member.update_status(MemberStatus.SHUTDOWN)
+        if (teamBackend != null) {
+            try {
+                teamBackend.updateMemberStatus(memberName, MemberStatus.SHUTDOWN);
+                Loggers.AGENT.info("shutdownSelf: member={} status updated to SHUTDOWN", memberName);
+            } catch (Exception e) {
+                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}",
+                    memberName, e.getMessage());
+            }
         }
         if (context != null) {
             context.setLifecycle(TeamLifecycle.COMPLETED);
