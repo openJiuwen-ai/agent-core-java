@@ -114,7 +114,15 @@ public final class OperationRegistry {
                 };
         for (String className : classNames) {
             try {
-                Class.forName(className);
+                Class<?> loadedClass = Class.forName(className);
+                if (BaseOperation.class.isAssignableFrom(loadedClass)) {
+                    @SuppressWarnings("unchecked")
+                    Class<? extends BaseOperation> operationClass = (Class<? extends BaseOperation>) loadedClass;
+                    OperationDef operationDef = readClassOperationDef(operationClass);
+                    if (operationDef != null && operationDef.mode() == mode) {
+                        REPOSITORY.get(mode).putIfAbsent(operationDef.name(), operationDef);
+                    }
+                }
             } catch (ClassNotFoundException ignored) {
                 // Built-in operation implementation is owned by its own translation task.
             }

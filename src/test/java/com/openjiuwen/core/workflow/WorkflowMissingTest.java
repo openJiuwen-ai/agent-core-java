@@ -247,7 +247,7 @@ class WorkflowMissingTest {
         flow.addStreamConnection("B", "end");
         flow.autoCompleteAbilities();
 
-        assertEquals(List.of(List.of("A-STREAM", "B-STREAM")),
+        assertEquals(List.of(List.of("A-stream", "B-stream")),
                 spec(flow).getStreamSourceGroups().get("end"));
     }
 
@@ -567,7 +567,7 @@ class WorkflowMissingTest {
         flow.addStreamConnection("C", "D");
         flow.autoCompleteAbilities();
 
-        assertEquals(List.of(List.of("B-STREAM", "C-TRANSFORM")),
+        assertEquals(List.of(List.of("B-stream", "C-transform")),
                 spec(flow).getStreamSourceGroups().get("D"));
     }
 

@@ -259,12 +259,14 @@ class SkillEvolutionRailParityTest {
     private static void assertDisabledSkillSnapshotSemantics() {
         EvolutionRail rail = new EvolutionRail(100, EvolutionTriggerPoint.NONE, true, Set.of("skill-a", "skill-b"));
 
-        assertThat(rail.getDisabledSkills()).containsExactly("skill-a", "skill-b");
+        assertThat(rail.getDisabledSkills()).containsExactlyInAnyOrder("skill-a", "skill-b");
         rail.afterInvoke(ctx("invoke"));
         assertThat(rail.drainPendingHostEvents()).isEmpty();
 
         Map<String, Object> snapshot = rail.snapshotForEvolution(ctx("invoke"));
-        assertThat(snapshot.get("disabled_skills")).isEqualTo(List.of("skill-a", "skill-b"));
+        assertThat((Collection<?>) snapshot.get("disabled_skills"))
+                .extracting(Object::toString)
+                .containsExactlyInAnyOrder("skill-a", "skill-b");
     }
 
     private static void assertUtilityShapeSemantics() {

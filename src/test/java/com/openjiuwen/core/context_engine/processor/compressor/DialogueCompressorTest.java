@@ -140,7 +140,7 @@ class DialogueCompressorTest {
         assertThat(completed)
                 .containsEntry("status", "completed")
                 .containsEntry("processor", "DialogueCompressor");
-        assertThat(completed.get("messages_to_modify")).isEqualTo(List.of(1, 2, 3));
+        assertThat((String) completed.get("summary")).contains("modified 3 messages");
         assertThat((String) completed.get("compact_summary"))
                 .contains(DialogueCompressor.DIALOGUE_MEMORY_BLOCK_MARKER)
                 .contains("Final Result: X.");

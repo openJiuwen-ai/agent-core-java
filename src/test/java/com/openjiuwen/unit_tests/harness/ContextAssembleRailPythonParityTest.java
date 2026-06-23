@@ -438,7 +438,7 @@ class ContextAssembleRailPythonParityTest {
 
             assertThat(rail.getPriority()).isEqualTo(85);
             assertThat(rail.getSystemPromptBuilder()).isSameAs(harness.reactAgent.getSystemPromptBuilder());
-            assertThat(rail.getAbilityManager()).isSameAs(harness.reactAgent.getAbilityManager());
+            assertThat(rail.getAbilityManager()).isSameAs(harness.agent.getAbilityManager());
         });
     }
 
@@ -450,7 +450,7 @@ class ContextAssembleRailPythonParityTest {
         rail.init(agent);
 
         assertThat(rail.getSystemPromptBuilder()).isNull();
-        assertThat(rail.getAbilityManager()).isNull();
+        assertThat(rail.getAbilityManager()).isSameAs(agent.getAbilityManager());
     }
 
     private static void testRailPriority() {
@@ -491,7 +491,7 @@ class ContextAssembleRailPythonParityTest {
     private static void testBeforeModelCallAddsToolsSection() throws Exception {
         withWorkspace("adds-tools", root -> {
             AgentHarness harness = harness(root, "cn");
-            harness.reactAgent.getAbilityManager().add(
+            harness.agent.getAbilityManager().add(
                     ToolCard.builder().name("test_tool").description("A test tool").build());
             ContextAssembleRail rail = initializedRail(harness.agent);
 

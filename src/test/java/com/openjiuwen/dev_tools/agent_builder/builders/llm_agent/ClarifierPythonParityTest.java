@@ -7,7 +7,6 @@ package com.openjiuwen.dev_tools.agent_builder.builders.llm_agent;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -25,9 +24,9 @@ class ClarifierPythonParityTest {
 
         assertThat(plugin).isNotNull();
         assertThat(component(plugin, "label")).isEqualTo("插件");
-        assertThat(component(plugin, "idKey")).isEqualTo("tool_id");
-        assertThat(component(plugin, "nameKey")).isEqualTo("tool_name");
-        assertThat(component(plugin, "descKey")).isEqualTo("tool_desc");
+        assertThat(component(plugin, "id_key")).isEqualTo("tool_id");
+        assertThat(component(plugin, "name_key")).isEqualTo("tool_name");
+        assertThat(component(plugin, "desc_key")).isEqualTo("tool_desc");
     }
 
     @Test
@@ -132,9 +131,8 @@ class ClarifierPythonParityTest {
         return (Map<String, Object>) field.get(null);
     }
 
-    private static Object component(Object record, String accessor) throws Exception {
-        Method method = record.getClass().getDeclaredMethod(accessor);
-        method.setAccessible(true);
-        return method.invoke(record);
+    private static Object component(Object config, String key) {
+        assertThat(config).isInstanceOf(Map.class);
+        return ((Map<?, ?>) config).get(key);
     }
 }

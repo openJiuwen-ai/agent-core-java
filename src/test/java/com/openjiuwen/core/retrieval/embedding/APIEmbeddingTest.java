@@ -220,13 +220,15 @@ class APIEmbeddingTest {
     @Test
     void embedDocumentsRespectsMaxBatchSizeAndPreservesOrder() {
         StubAPIEmbedding model = new StubAPIEmbedding(config(), 60, 3, null, 2, 10);
-        model.enqueueResponse("{\"embeddings\":[[0.1,0.2],[0.3,0.4]]}");
-        model.enqueueResponse("{\"embeddings\":[[0.5,0.6],[0.7,0.8]]}");
-        model.enqueueResponse("{\"embeddings\":[[0.9,1.0]]}");
+        model.enqueueResponseForInput(List.of("a", "b"), "{\"embeddings\":[[0.1,0.2],[0.3,0.4]]}");
+        model.enqueueResponseForInput(List.of("c", "d"), "{\"embeddings\":[[0.5,0.6],[0.7,0.8]]}");
+        model.enqueueResponseForInput(List.of("e"), "{\"embeddings\":[[0.9,1.0]]}");
 
         List<List<Double>> embeddings = model.embedDocumentsSync(List.of("a", "b", "c", "d", "e"), 5, Map.of());
 
-        assertEquals(List.of(2, 2, 1), model.batchSizes);
+        List<Integer> sortedBatchSizes = new ArrayList<>(model.batchSizes);
+        sortedBatchSizes.sort(Integer::compareTo);
+        assertEquals(List.of(1, 2, 2), sortedBatchSizes);
         assertEquals(5, embeddings.size());
         assertEquals(List.of(0.1d, 0.2d), embeddings.get(0));
         assertEquals(List.of(0.9d, 1.0d), embeddings.get(4));
@@ -331,6 +333,7 @@ class APIEmbeddingTest {
     private static class StubAPIEmbedding extends APIEmbedding {
 
         private final List<Object> responses = new CopyOnWriteArrayList<>();
+        private final Map<List<String>, ApiResponse> responsesByInput = new java.util.concurrent.ConcurrentHashMap<>();
         private final AtomicInteger requestAttempts = new AtomicInteger();
         private final AtomicInteger activeRequests = new AtomicInteger();
         private final AtomicInteger maxConcurrentSeen = new AtomicInteger();
@@ -352,6 +355,10 @@ class APIEmbeddingTest {
 
         void enqueueResponse(String body) {
             responses.add(new ApiResponse(200, body));
+        }
+
+        void enqueueResponseForInput(List<String> input, String body) {
+            responsesByInput.put(List.copyOf(input), new ApiResponse(200, body));
         }
 
         void enqueueFailure(Exception exception) {
@@ -376,6 +383,12 @@ class APIEmbeddingTest {
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
                         throw new IOException("interrupted", exception);
+                    }
+                }
+                if (input instanceof List<?> list) {
+                    ApiResponse response = responsesByInput.get(List.copyOf(list));
+                    if (response != null) {
+                        return response;
                     }
                 }
                 Object next = responses.removeFirst();

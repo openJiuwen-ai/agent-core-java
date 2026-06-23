@@ -101,13 +101,13 @@ public class TaskExecutorPool {
                 }
             }
 
-            if (firstError != null || interrupt != null) {
+            if (firstError != null) {
                 cancelRemaining();
-                if (firstError != null) {
-                    throw firstError;
-                }
-                throw interrupt;
+                throw firstError;
             }
+        }
+        if (interrupt != null) {
+            throw interrupt;
         }
     }
 

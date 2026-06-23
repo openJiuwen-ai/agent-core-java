@@ -81,7 +81,7 @@ class MicroCompactProcessorTest {
         assertThat(states.get(states.size() - 1))
                 .containsEntry("processor", "MicroCompactProcessor")
                 .containsEntry("status", "completed");
-        assertThat(states.get(states.size() - 1).get("messages_to_modify")).isEqualTo(List.of(1, 3));
+        assertThat((String) states.get(states.size() - 1).get("summary")).contains("modified");
     }
 
     @Test

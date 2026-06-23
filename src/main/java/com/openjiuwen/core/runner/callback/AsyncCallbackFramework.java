@@ -1089,8 +1089,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             Map<String, Object> kwargs,
             Double timeout
     ) throws Exception {
-        kwargs.putIfAbsent("session", null);
         Map<String, Object> callKwargs = safeKwargs(kwargs);
+        callKwargs.putIfAbsent("session", null);
         callKwargs.put("_args", safeArgs(args));
         Object rawResult = callback.apply(callKwargs);
         if (!(rawResult instanceof CompletionStage<?> stage)) {
