@@ -116,11 +116,13 @@ public class WorkflowStorage extends BaseRedisStorage {
                 return CompletableFuture.completedFuture(null);
             }
 
-            if (results.get(0) != null && results.get(1) != null) {
+            if (results.get(0) != null || results.get(1) != null) {
                 try {
                     Object state = deserializeState(results.get(0), results.get(1));
                     if (state instanceof Map<?, ?> stateMap) {
                         baseSession.state().setState((Map<String, Object>) stateMap);
+                    } else {
+                        throw new IllegalArgumentException("Redis workflow state must be a Map");
                     }
                 } finally {
                     refreshTtl(List.of(stateDumpTypeKey, stateBlobKey), "workflow", workflowId).join();
@@ -131,12 +133,15 @@ public class WorkflowStorage extends BaseRedisStorage {
                 processInteractiveInputs(baseSession, interactiveInput);
             }
 
-            if (results.get(2) != null && results.get(3) != null) {
+            if (results.get(2) != null || results.get(3) != null) {
                 try {
                     Object updatesState = deserializeState(results.get(2), results.get(3));
-                    if (updatesState instanceof Map<?, ?> updatesMap
-                            && baseSession.state() instanceof WorkflowCommitState workflowState) {
-                        workflowState.setUpdates((Map<String, Object>) updatesMap);
+                    if (updatesState instanceof Map<?, ?> updatesMap) {
+                        if (baseSession.state() instanceof WorkflowCommitState workflowState) {
+                            workflowState.setUpdates((Map<String, Object>) updatesMap);
+                        }
+                    } else {
+                        throw new IllegalArgumentException("Redis workflow updates must be a Map");
                     }
                 } finally {
                     refreshTtl(List.of(updatesDumpTypeKey, updatesBlobKey), "workflow-updates", workflowId).join();
