@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.core.runner.drunner.remote_client;
+package com.openjiuwen.core.runner.drunner.remoteclient;
 
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.DistributedRunner;
@@ -22,6 +22,12 @@ import java.util.concurrent.CancellationException;
 
 /**
  * MQ-backed remote client.
+ * <p>
+ * Implements the {@link RemoteClient} interface using message queue transport
+ * for distributed agent communication. Supports both synchronous invocation
+ * and streaming response modes.
+ *
+ * @since 0.1.12
  */
 public class MqRemoteClient implements RemoteClient {
 
@@ -33,16 +39,18 @@ public class MqRemoteClient implements RemoteClient {
     private boolean started;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Constructs an MqRemoteClient with the given configuration.
+     *
+     * @param config the remote client configuration
      */
     public MqRemoteClient(RemoteClientConfig config) {
         this.config = config;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Starts the MQ remote client by initializing the message queue connection.
      */
+    @Override
     public void start() {
         if (started) {
             return;
@@ -53,26 +61,33 @@ public class MqRemoteClient implements RemoteClient {
         this.started = true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Stops the MQ remote client.
      */
+    @Override
     public void stop() {
         started = false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Checks whether the MQ remote client has been started.
+     *
+     * @return {@code true} if the client is started, {@code false} otherwise
      */
+    @Override
     public boolean isStarted() {
         return started;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Invokes the remote agent synchronously via message queue.
+     *
+     * @param inputs         the input map to send to the remote agent
+     * @param timeoutSeconds optional timeout in seconds for the invocation
+     * @return the result of the remote invocation
+     * @throws Exception if the invocation fails, is cancelled, or times out
      */
+    @Override
     public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         String messageId = buildMessageId(inputs);
@@ -91,10 +106,15 @@ public class MqRemoteClient implements RemoteClient {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Streams responses from the remote agent via message queue.
+     *
+     * @param inputs         the input map to send to the remote agent
+     * @param timeoutSeconds optional timeout in seconds for the streaming operation
+     * @return an iterator over the streamed response objects
+     * @throws Exception if the streaming operation fails or is cancelled
      */
+    @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         String messageId = buildMessageId(inputs);

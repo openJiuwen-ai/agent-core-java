@@ -4,28 +4,37 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
-
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Factory and registry for checkpointer instances.
  * <p>
+ * Built-in types are discovered via {@link ServiceLoader} from
+ * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
+ * Service adapters can register additional types via
+ * {@link #register(String, CheckpointerProvider)} without modifying Core source.
+ * <p>
  * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerFactory}.
+ *
+ * @since 0.1.12
  */
 public final class CheckpointerFactory {
-
     private static final Map<String, CheckpointerProvider> REGISTRY = new ConcurrentHashMap<>();
     private static final Map<String, Checkpointer> TYPE_CHECKPOINTERS = new ConcurrentHashMap<>();
     private static Checkpointer defaultCheckpointer = null;
     private static final Checkpointer DEFAULT_INMEMORY_CHECKPOINTER = new InMemoryCheckpointer();
 
     static {
-        REGISTRY.put("in_memory", conf -> DEFAULT_INMEMORY_CHECKPOINTER);
-        REGISTRY.put("persistence", new PersistenceCheckpointerProvider());
-        REGISTRY.put("redis", new RedisCheckpointer.Provider());
-        REGISTRY.put("redis_checkpointer_cluster", new RedisCheckpointer.Provider());
+        // Discover and register providers via ServiceLoader
+        for (CheckpointerProvider provider : ServiceLoader.load(CheckpointerProvider.class)) {
+            REGISTRY.putIfAbsent(provider.typeName(), provider);
+        }
+        // Register redis_checkpointer_cluster as alias for redis
+        if (REGISTRY.containsKey("redis") && !REGISTRY.containsKey("redis_checkpointer_cluster")) {
+            REGISTRY.put("redis_checkpointer_cluster", REGISTRY.get("redis"));
+        }
     }
 
     private CheckpointerFactory() {

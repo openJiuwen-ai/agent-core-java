@@ -1,4 +1,4 @@
-package com.openjiuwen.core.runner.drunner.remote_client;
+package com.openjiuwen.core.runner.drunner.remoteclient;
 
 import com.openjiuwen.extensions.a2a.A2ARemoteClient;
 import org.junit.jupiter.api.Test;

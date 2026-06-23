@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.core.runner.drunner.remote_client;
+package com.openjiuwen.core.runner.drunner.remoteclient;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -14,6 +14,12 @@ import java.util.Map;
 
 /**
  * Remote-agent facade.
+ * <p>
+ * Provides a high-level interface for interacting with remote agents,
+ * handling client creation, lifecycle management, and error translation
+ * for both synchronous invocation and streaming modes.
+ *
+ * @since 0.1.12
  */
 public class RemoteAgent {
 
@@ -25,7 +31,14 @@ public class RemoteAgent {
     private final RemoteClient client;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Constructs a RemoteAgent with full configuration.
+     *
+     * @param agentId     the unique identifier of the remote agent
+     * @param version     the version of the remote agent, or null for default
+     * @param description the description of the remote agent
+     * @param topic       the message topic, or null for auto-generated
+     * @param protocol    the communication protocol, or null for MQ default
+     * @param config      additional configuration map, may contain "url" and "kwargs"
      */
     public RemoteAgent(String agentId, String version, String description, String topic,
                        ProtocolEnum protocol, Map<String, Object> config) {
@@ -54,14 +67,21 @@ public class RemoteAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Constructs a RemoteAgent with default MQ protocol and no additional config.
+     *
+     * @param agentId the unique identifier of the remote agent
      */
     public RemoteAgent(String agentId) {
         this(agentId, "", null, null, ProtocolEnum.MQ, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Invokes the remote agent synchronously with the given inputs.
+     *
+     * @param inputs         the input map to send to the remote agent
+     * @param timeoutSeconds optional timeout in seconds for the invocation
+     * @return the result of the remote invocation
+     * @throws Exception if the invocation is cancelled, times out, or fails
      */
     public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         try {
@@ -85,7 +105,12 @@ public class RemoteAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Streams responses from the remote agent with the given inputs.
+     *
+     * @param inputs         the input map to send to the remote agent
+     * @param timeoutSeconds optional timeout in seconds for the streaming operation
+     * @return an iterator over the streamed response objects
+     * @throws Exception if the streaming is cancelled, times out, or fails
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         try {
@@ -109,21 +134,25 @@ public class RemoteAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Stops the remote agent's client connection.
      */
     public void stop() {
         client.stop();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Checks whether the remote agent's client has been started.
+     *
+     * @return {@code true} if the client is started, {@code false} otherwise
      */
     public boolean isStarted() {
         return client.isStarted();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Checks whether the remote agent's client has been stopped.
+     *
+     * @return {@code true} if the client is stopped, {@code false} otherwise
      */
     public boolean isStopped() {
         return client.isStopped();
@@ -145,9 +174,9 @@ public class RemoteAgent {
 
     private static String extractString(Map<String, Object> config, String key) {
         if (config == null) {
-            return null;
+            return "";
         }
         Object value = config.get(key);
-        return value != null ? String.valueOf(value) : null;
+        return value != null ? String.valueOf(value) : "";
     }
 }

@@ -21,13 +21,30 @@ import java.util.Map;
  *   "db_path": "checkpointer.db"       // Optional, database file path
  * }
  * </pre>
+ *
+ * @since 0.1.12
  */
 public class PersistenceCheckpointerProvider implements CheckpointerProvider {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Returns the persistence checkpointer type name.
+     *
+     * @return the type name "persistence"
      */
+    @Override
+    public String typeName() {
+        return "persistence";
+    }
+
+    /**
+     * Creates a persistence-based checkpointer from the given configuration.
+     * <p>
+     * If a {@code kv_store} instance is provided in the configuration, it will be used
+     * directly. Otherwise, falls back to an in-memory checkpointer.
+     *
+     * @param conf the configuration map, may contain "kv_store" (BaseKVStore), "db_type", and "db_path"
+     * @return a Checkpointer instance backed by the provided KV store or an in-memory fallback
+     */
+    @Override
     public Checkpointer create(Map<String, Object> conf) {
         // First, check if kv_store is directly provided
         Object kvStoreObj = conf != null ? conf.get("kv_store") : null;
