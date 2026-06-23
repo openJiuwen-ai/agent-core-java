@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 public class StreamWriterManager {
 
     private static final long DEFAULT_FRAME_TIMEOUT = -1L;
+    private static final long DEFAULT_CLOSE_TIMEOUT = AsyncStreamQueue.DEFAULT_CLOSE_TIMEOUT_MS;
 
     private final StreamEmitter streamEmitter;
     private final List<Object> defaultModes;
@@ -80,7 +81,7 @@ public class StreamWriterManager {
 
             if (StreamEmitter.END_FRAME.equals(data)) {
                 if (needClose) {
-                    streamEmitter.getStreamQueue().close(timeoutMs);
+                    streamEmitter.getStreamQueue().close(closeTimeout(timeoutMs));
                 }
                 break;
             }
@@ -112,7 +113,7 @@ public class StreamWriterManager {
                 firstFrame = false;
                 if (StreamEmitter.END_FRAME.equals(nextItem)) {
                     if (needClose) {
-                        streamEmitter.getStreamQueue().close(timeoutMs);
+                        streamEmitter.getStreamQueue().close(closeTimeout(timeoutMs));
                     }
                     done = true;
                     nextItem = null;
@@ -199,6 +200,10 @@ public class StreamWriterManager {
                 "timeout", formatTimeoutSeconds(timeoutMs),
                 "reason", ""
         );
+    }
+
+    private static long closeTimeout(long frameTimeoutMs) {
+        return frameTimeoutMs > 0 ? frameTimeoutMs : DEFAULT_CLOSE_TIMEOUT;
     }
 
     private void addDefaultWriters() {

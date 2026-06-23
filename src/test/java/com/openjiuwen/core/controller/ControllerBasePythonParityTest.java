@@ -23,6 +23,7 @@ import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.single_agent.AbilityManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -48,6 +49,16 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * {@code tests/unit_tests/core/controller/test_controller_base.py}.</p>
  */
 class ControllerBasePythonParityTest {
+
+    private final List<Harness> harnesses = new ArrayList<>();
+
+    @AfterEach
+    void stopHarnesses() {
+        for (int i = harnesses.size() - 1; i >= 0; i--) {
+            harnesses.get(i).stop();
+        }
+        harnesses.clear();
+    }
 
     @Test
     void pauseTaskInEventHandlerLeavesSiblingTaskCompleting() {
@@ -304,7 +315,7 @@ class ControllerBasePythonParityTest {
 
         Thread.sleep(80L);
         drainIterator(stream, Duration.ofMillis(400));
-        harness.controller.stop();
+        harness.stop();
 
         assertThat(harness.controller.getTaskScheduler().getSessions()).isEmpty();
     }
@@ -421,9 +432,9 @@ class ControllerBasePythonParityTest {
         assertThat(handler.interactionHandled).isTrue();
     }
 
-    private static Harness harness(String sessionId, EventHandler eventHandler,
-                                   Map<String, Function<TaskExecutorDependencies, TaskExecutor>> executors,
-                                   boolean enablePersistence) {
+    private Harness harness(String sessionId, EventHandler eventHandler,
+                            Map<String, Function<TaskExecutorDependencies, TaskExecutor>> executors,
+                            boolean enablePersistence) {
         ControllerConfig config = new ControllerConfig();
         config.setScheduleInterval(0.1D);
         config.setMaxConcurrentTasks(5);
@@ -435,7 +446,9 @@ class ControllerBasePythonParityTest {
                 new ContextEngine());
         controller.setEventHandler(eventHandler);
         executors.forEach(controller::addTaskExecutor);
-        return new Harness(controller, new LiveSession(sessionId));
+        Harness harness = new Harness(controller, new LiveSession(sessionId));
+        harnesses.add(harness);
+        return harness;
     }
 
     private static InputEvent input(String query) {
@@ -504,9 +517,26 @@ class ControllerBasePythonParityTest {
         return items;
     }
 
-    private record Harness(Controller controller, LiveSession session) {
+    private static final class Harness {
+        private final Controller controller;
+        private final LiveSession session;
+        private boolean stopped;
+
+        private Harness(Controller controller, LiveSession session) {
+            this.controller = controller;
+            this.session = session;
+        }
+
         private List<String> collectStreamOutput(String query) {
             return collectText(controller.stream(input(query), session, List.of()));
+        }
+
+        private void stop() {
+            if (stopped) {
+                return;
+            }
+            stopped = true;
+            controller.stop();
         }
     }
 
