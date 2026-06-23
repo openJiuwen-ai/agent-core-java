@@ -10,7 +10,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.extensions.a2a.A2AClient;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AClientTransport;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AEventStream;

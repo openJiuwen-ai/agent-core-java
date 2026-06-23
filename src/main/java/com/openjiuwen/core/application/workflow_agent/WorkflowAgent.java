@@ -7,8 +7,8 @@ package com.openjiuwen.core.application.workflow_agent;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.agent.ControllerAgent;
-import com.openjiuwen.core.single_agent.legacy.config.WorkflowAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.agent.ControllerAgent;
+import com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig;
 
 import java.util.Iterator;
 import java.util.List;

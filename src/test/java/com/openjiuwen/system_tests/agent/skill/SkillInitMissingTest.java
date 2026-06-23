@@ -4,10 +4,10 @@
 
 package com.openjiuwen.system_tests.agent.skill;
 
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
-import com.openjiuwen.core.single_agent.skills.SkillUtil;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.skills.SkillUtil;
 
 import org.junit.jupiter.api.Test;
 

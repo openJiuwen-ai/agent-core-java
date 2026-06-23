@@ -8,7 +8,7 @@ import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.CycleResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.harness.DeepAgent;
 import org.junit.jupiter.api.Test;

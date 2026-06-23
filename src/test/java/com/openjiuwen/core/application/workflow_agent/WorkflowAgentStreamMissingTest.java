@@ -7,7 +7,7 @@ package com.openjiuwen.core.application.workflow_agent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.config.WorkflowAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig;
 
 import org.junit.jupiter.api.Test;
 

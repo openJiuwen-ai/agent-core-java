@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.rails.memory;
 
 import com.openjiuwen.harness.DeepAgent;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.CodingMemorySection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;

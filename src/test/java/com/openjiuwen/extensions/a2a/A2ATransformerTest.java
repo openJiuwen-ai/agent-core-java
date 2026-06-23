@@ -5,8 +5,8 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
-import com.openjiuwen.core.single_agent.schema.Part;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.Part;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aArtifact;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aMessage;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aPart;

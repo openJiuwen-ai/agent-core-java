@@ -5,7 +5,7 @@
 package com.openjiuwen.core.multi_agent.teams.handoff;
 
 import com.openjiuwen.core.multi_agent.TeamConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;

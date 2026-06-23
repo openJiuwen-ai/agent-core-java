@@ -6,8 +6,8 @@ package com.openjiuwen.auto_harness.rails;
 
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.context_engine.context.SessionMemoryConfig;
-import com.openjiuwen.core.single_agent.BaseAgent;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.context_engineer.ContextProcessorRail;
 
 import java.util.List;

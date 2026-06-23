@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.TodoSection;
 import com.openjiuwen.harness.schema.DeepAgentConfig;

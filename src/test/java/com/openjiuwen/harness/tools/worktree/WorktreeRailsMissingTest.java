@@ -4,10 +4,9 @@
 
 package com.openjiuwen.harness.tools.worktree;
 
-import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sys_operation.Cwd;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;

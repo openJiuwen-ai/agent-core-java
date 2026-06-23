@@ -6,8 +6,8 @@ package com.openjiuwen.unit_tests.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.infra.SessionBudgetController;
 import com.openjiuwen.auto_harness.rails.BudgetRail;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

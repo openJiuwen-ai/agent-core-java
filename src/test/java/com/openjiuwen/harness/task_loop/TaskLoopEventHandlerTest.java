@@ -17,7 +17,7 @@ import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 
 import java.util.ArrayList;

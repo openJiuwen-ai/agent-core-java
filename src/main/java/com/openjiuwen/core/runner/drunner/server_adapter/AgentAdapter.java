@@ -4,10 +4,9 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.lang.reflect.Method;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;

@@ -4,11 +4,11 @@
 
 package com.openjiuwen.system_tests.rail;
 
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackEvent;
-import com.openjiuwen.core.single_agent.rail.ForceFinishRequest;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
-import com.openjiuwen.core.single_agent.rail.Rails;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.Rails;
 
 import org.junit.jupiter.api.Test;
 

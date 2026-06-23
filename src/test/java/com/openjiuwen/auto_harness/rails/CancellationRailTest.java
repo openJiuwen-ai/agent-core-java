@@ -6,7 +6,7 @@ package com.openjiuwen.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.orchestrator.AutoHarnessOrchestrator;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

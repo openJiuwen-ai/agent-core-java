@@ -8,7 +8,7 @@ import com.openjiuwen.core.runner.drunner.remote_client.RemoteClient;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory;
 import com.openjiuwen.core.runner.drunner.server_adapter.ServerAdapterRegistry;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AClientTransport;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AEventStream;
 import com.openjiuwen.extensions.a2a.A2AClient.CancelTaskRequest;

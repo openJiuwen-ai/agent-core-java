@@ -8,10 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sys_operation.Cwd;
 import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.SysOperation;

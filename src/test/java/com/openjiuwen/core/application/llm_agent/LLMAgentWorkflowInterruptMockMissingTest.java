@@ -11,7 +11,7 @@ import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;

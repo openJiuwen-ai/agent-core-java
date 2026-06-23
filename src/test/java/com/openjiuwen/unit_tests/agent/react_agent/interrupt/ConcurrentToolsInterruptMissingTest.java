@@ -7,9 +7,9 @@ package com.openjiuwen.unit_tests.agent.react_agent.interrupt;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
-import com.openjiuwen.core.single_agent.interrupt.ToolInterruptException;
-import com.openjiuwen.core.single_agent.interrupt.ToolInterruptHandler;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

@@ -8,8 +8,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.multi_agent.team_runtime.CommunicableAgent;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;

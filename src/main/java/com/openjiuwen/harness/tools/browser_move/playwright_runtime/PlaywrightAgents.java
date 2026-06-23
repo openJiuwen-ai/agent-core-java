@@ -8,7 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

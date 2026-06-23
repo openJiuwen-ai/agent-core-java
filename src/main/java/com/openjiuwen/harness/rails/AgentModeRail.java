@@ -7,6 +7,7 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.AgentModeSection;
@@ -325,7 +326,7 @@ public class AgentModeRail extends DeepAgentRail {
         return Set.copyOf(result);
     }
 
-    private record PromptSectionHolder(com.openjiuwen.core.single_agent.prompts.PromptSection section) {
+    private record PromptSectionHolder(PromptSection section) {
     }
 
     private static final class PlanModeTaskTool extends Tool {

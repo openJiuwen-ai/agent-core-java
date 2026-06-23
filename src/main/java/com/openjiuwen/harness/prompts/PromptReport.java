@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;

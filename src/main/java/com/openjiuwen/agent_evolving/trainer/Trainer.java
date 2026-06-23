@@ -22,7 +22,7 @@ import com.openjiuwen.agent_evolving.updater.Updater;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.BaseAgent;
+import com.openjiuwen.core.singleagent.BaseAgent;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;

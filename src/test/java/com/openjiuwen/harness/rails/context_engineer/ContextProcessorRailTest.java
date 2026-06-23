@@ -8,10 +8,10 @@ import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressorConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.BaseAgent;
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;

@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.prompts.tools;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 
 import java.util.LinkedHashMap;

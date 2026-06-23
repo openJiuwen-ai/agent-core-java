@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AClientTransport;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AEventStream;
 import com.openjiuwen.extensions.a2a.A2AClient.CancelTaskRequest;

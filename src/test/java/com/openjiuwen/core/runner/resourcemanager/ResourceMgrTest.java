@@ -14,7 +14,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.multi_agent.schema.TeamCard;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.SysOperationCard;
 import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;

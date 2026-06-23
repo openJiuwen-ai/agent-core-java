@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.prompts.tools;
 
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,7 +36,7 @@ public interface ToolMetadataProvider {
 
     static void validateProvider(ToolMetadataProvider provider) {
         String name = provider.getName();
-        for (String language : com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder.SUPPORTED_LANGUAGES) {
+        for (String language : SystemPromptBuilder.SUPPORTED_LANGUAGES) {
             String description = provider.getDescription(language);
             if (description == null || description.trim().isEmpty()) {
                 throw new IllegalArgumentException("[" + name + "] " + language + " description is empty");

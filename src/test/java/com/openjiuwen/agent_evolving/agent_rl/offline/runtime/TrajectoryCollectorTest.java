@@ -4,8 +4,8 @@ import com.openjiuwen.agent_evolving.agent_rl.RLRail;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.BaseAgent;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 
 import java.util.ArrayList;
@@ -15,7 +15,7 @@ import java.util.Set;
  * Mirrors Python's {@code SystemPromptBuilder} in
  * {@code openjiuwen/harness/prompts/builder.py}.
  */
-public class SystemPromptBuilder extends com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder {
+public class SystemPromptBuilder extends com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder {
 
     private static final Set<String> MINIMAL_SECTIONS = Set.of(
             SectionName.IDENTITY,

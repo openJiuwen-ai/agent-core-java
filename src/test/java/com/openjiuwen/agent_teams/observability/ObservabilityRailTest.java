@@ -6,8 +6,8 @@ package com.openjiuwen.agent_teams.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.TaskIterationInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 
 import java.util.Map;
 

@@ -20,7 +20,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

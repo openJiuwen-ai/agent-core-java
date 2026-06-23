@@ -7,7 +7,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.runner.drunner.server_adapter.AgentAdapter;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;

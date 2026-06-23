@@ -6,8 +6,8 @@ package com.openjiuwen.dev_tools.tune.chat_agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.single_agent.legacy.config.AgentConfig;
-import com.openjiuwen.core.single_agent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

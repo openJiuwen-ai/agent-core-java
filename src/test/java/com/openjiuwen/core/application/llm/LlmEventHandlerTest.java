@@ -6,7 +6,7 @@ package com.openjiuwen.core.application.llm;
 
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 
 import org.junit.jupiter.api.Test;
 

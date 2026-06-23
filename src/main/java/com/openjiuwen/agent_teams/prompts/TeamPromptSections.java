@@ -5,8 +5,8 @@
 package com.openjiuwen.agent_teams.prompts;
 
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 
 import java.util.ArrayList;
 import java.util.Collection;

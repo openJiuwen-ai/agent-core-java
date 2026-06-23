@@ -6,9 +6,9 @@ package com.openjiuwen.agent_teams.observability;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
-import com.openjiuwen.core.single_agent.rail.TaskIterationInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 
 import java.lang.reflect.Method;
 import java.util.Map;

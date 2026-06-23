@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.DeepAgentFactory;
 import com.openjiuwen.harness.schema.DeepAgentConfig;

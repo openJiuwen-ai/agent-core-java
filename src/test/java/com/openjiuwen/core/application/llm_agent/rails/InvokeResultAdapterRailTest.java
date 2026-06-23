@@ -5,8 +5,8 @@
 package com.openjiuwen.core.application.llm_agent.rails;
 
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 
 import org.junit.jupiter.api.Test;
 

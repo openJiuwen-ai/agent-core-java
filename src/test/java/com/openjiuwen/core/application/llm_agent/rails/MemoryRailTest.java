@@ -11,8 +11,8 @@ import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.memory.MemInfo;
 import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 
 import org.junit.jupiter.api.Test;
 

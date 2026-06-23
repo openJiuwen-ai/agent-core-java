@@ -12,7 +12,7 @@ import com.openjiuwen.core.runner.callback.AgentTeamEvents;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.SessionEvents;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.io.IOException;
 import java.nio.file.Files;

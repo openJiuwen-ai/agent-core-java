@@ -8,7 +8,7 @@ import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
