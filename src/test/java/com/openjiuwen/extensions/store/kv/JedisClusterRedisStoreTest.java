@@ -1,6 +1,6 @@
 package com.openjiuwen.extensions.store.kv;
 
-import com.openjiuwen.spi.store.KVStorePipeline;
+import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import redis.clients.jedis.Jedis;
@@ -46,13 +46,13 @@ class JedisClusterRedisStoreTest {
                 "tags", List.of("math", 42, false)
         );
 
-        store.set("profile", value);
+        store.set("profile", value).join();
 
         String rawValue = cluster.rawValue("profile");
         assertTrue(rawValue.startsWith("{"));
         assertTrue(rawValue.contains("\"name\":\"Ada\""));
         assertFalse(rawValue.contains("name=Ada"));
-        Object loaded = store.get("profile");
+        Object loaded = store.get("profile").join();
         Map<?, ?> loadedMap = assertInstanceOf(Map.class, loaded);
         assertEquals("Ada", loadedMap.get("name"));
         assertEquals(3, loadedMap.get("count"));
@@ -66,14 +66,14 @@ class JedisClusterRedisStoreTest {
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster.client());
         byte[] original = new byte[] {1, 2, 3, 4};
 
-        store.set("blob", original);
+        store.set("blob", original).join();
 
         String rawValue = cluster.rawValue("blob");
         assertTrue(rawValue.startsWith("{"));
         assertTrue(rawValue.contains("\"__openjiuwen_envelope\":true"));
         assertTrue(rawValue.contains("\"kind\":\"bytes\""));
         assertTrue(rawValue.contains("\"value\":\"AQIDBA==\""));
-        Object loaded = store.get("blob");
+        Object loaded = store.get("blob").join();
         assertInstanceOf(byte[].class, loaded);
         assertArrayEquals(original, (byte[]) loaded);
     }
@@ -89,9 +89,9 @@ class JedisClusterRedisStoreTest {
                 "meaning", "user-data"
         );
 
-        store.set("map", value);
+        store.set("map", value).join();
 
-        Object loaded = store.get("map");
+        Object loaded = store.get("map").join();
         Map<?, ?> loadedMap = assertInstanceOf(Map.class, loaded);
         assertEquals("user-data", loadedMap.get("meaning"));
         assertEquals("AQIDBA==", loadedMap.get("value"));
@@ -103,10 +103,10 @@ class JedisClusterRedisStoreTest {
     void mgetReturnsValuesInInputOrder() {
         MockJedisCluster cluster = mockCluster();
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster.client());
-        store.set("second", List.of(2));
-        store.set("first", Map.of("order", 1));
+        store.set("second", List.of(2)).join();
+        store.set("first", Map.of("order", 1)).join();
 
-        List<Object> values = store.mget(List.of("first", "missing", "second"));
+        List<Object> values = store.mget(List.of("first", "missing", "second")).join();
 
         assertEquals(Map.of("order", 1), values.get(0));
         assertNull(values.get(1));
@@ -117,14 +117,14 @@ class JedisClusterRedisStoreTest {
     void batchDeleteReturnsDeletedCount() {
         MockJedisCluster cluster = mockCluster();
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster.client());
-        store.set("a", "one");
-        store.set("b", "two");
+        store.set("a", "one").join();
+        store.set("b", "two").join();
 
-        int deleted = store.batchDelete(List.of("a", "missing", "b"), 2);
+        int deleted = store.batchDelete(List.of("a", "missing", "b"), 2).join();
 
         assertEquals(2, deleted);
-        assertFalse(store.exists("a"));
-        assertFalse(store.exists("b"));
+        assertFalse(store.exists("a").join());
+        assertFalse(store.exists("b").join());
     }
 
     @Test
@@ -132,14 +132,14 @@ class JedisClusterRedisStoreTest {
         MockJedisCluster cluster = mockCluster();
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster.client());
 
-        KVStorePipeline pipeline = store.pipeline();
-        pipeline.set("a", Map.of("step", 1));
-        pipeline.get("a");
-        pipeline.exists("a");
-        pipeline.set("b", "text");
-        pipeline.get("b");
+        BasedKVStorePipeline pipeline = store.pipeline();
+        pipeline.set("a", Map.of("step", 1), null).join();
+        pipeline.get("a").join();
+        pipeline.exists("a").join();
+        pipeline.set("b", "text", null).join();
+        pipeline.get("b").join();
 
-        assertEquals(Arrays.asList(null, Map.of("step", 1), true, null, "text"), pipeline.execute());
+        assertEquals(Arrays.asList(null, Map.of("step", 1), true, null, "text"), pipeline.execute().join());
         assertEquals(List.of("set:a", "get:a", "exists:a", "set:b", "get:b"), cluster.operations());
     }
 
@@ -149,7 +149,7 @@ class JedisClusterRedisStoreTest {
         when(cluster.set(eq("lock"), anyString(), any(SetParams.class))).thenReturn("OK");
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster);
 
-        assertTrue(store.exclusiveSet("lock", "value", 30));
+        assertTrue(store.exclusiveSet("lock", "value", 30).join());
 
         ArgumentCaptor<SetParams> paramsCaptor = ArgumentCaptor.forClass(SetParams.class);
         ArgumentCaptor<String> valueCaptor = ArgumentCaptor.forClass(String.class);
@@ -160,7 +160,7 @@ class JedisClusterRedisStoreTest {
 
         JedisCluster rejectingCluster = mock(JedisCluster.class);
         when(rejectingCluster.set(eq("lock"), anyString(), any(SetParams.class))).thenReturn(null);
-        assertFalse(new JedisClusterRedisStore(rejectingCluster).exclusiveSet("lock", "value", 30));
+        assertFalse(new JedisClusterRedisStore(rejectingCluster).exclusiveSet("lock", "value", 30).join());
     }
 
     @Test
@@ -169,7 +169,9 @@ class JedisClusterRedisStoreTest {
         when(cluster.set(eq("ttl"), anyString(), any(SetParams.class))).thenReturn("OK");
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster);
 
-        store.pipeline().set("ttl", "value", 30).execute();
+        BasedKVStorePipeline pipeline = store.pipeline();
+        pipeline.set("ttl", "value", 30).join();
+        pipeline.execute().join();
 
         ArgumentCaptor<SetParams> paramsCaptor = ArgumentCaptor.forClass(SetParams.class);
         verify(cluster).set(eq("ttl"), anyString(), paramsCaptor.capture());
@@ -181,8 +183,8 @@ class JedisClusterRedisStoreTest {
     void refreshTtlExpiresEachKey() {
         MockJedisCluster cluster = mockCluster();
         JedisClusterRedisStore store = new JedisClusterRedisStore(cluster.client());
-        store.set("a", "one");
-        store.set("b", "two");
+        store.set("a", "one").join();
+        store.set("b", "two").join();
 
         store.refreshTtl(List.of("a", "b"), 60);
 

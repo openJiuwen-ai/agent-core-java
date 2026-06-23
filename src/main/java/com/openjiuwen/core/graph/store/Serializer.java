@@ -49,8 +49,8 @@ public abstract class Serializer {
         if ("json".equals(typeName)) {
             return new JsonSerializer();
         }
-        if ("pickle".equals(typeName)) {
-            return new PickleSerializer();
+        if ("java".equals(typeName)) {
+            return new JavaSerializer();
         }
         throw new IllegalArgumentException("Unknown serializer type: " + typeName);
     }
@@ -581,11 +581,7 @@ public abstract class Serializer {
         }
     }
 
-    /**
-     * Mirrors Python's {@code PickleSerializer} in
-     * {@code openjiuwen/core/graph/store/serde.py}.
-     */
-    public static final class PickleSerializer extends Serializer {
+    public static final class JavaSerializer extends Serializer {
 
         @Override
         public TypedBytes dumpsTyped(Object obj) {
@@ -593,22 +589,22 @@ public abstract class Serializer {
                  ObjectOutputStream oos = new ObjectOutputStream(bos)) {
                 oos.writeObject(obj);
                 oos.flush();
-                return new TypedBytes("pickle", bos.toByteArray());
+                return new TypedBytes("java", bos.toByteArray());
             } catch (IOException e) {
-                throw new IllegalStateException("Failed to serialize pickle payload", e);
+                throw new IllegalStateException("Failed to serialize Java payload", e);
             }
         }
 
         @Override
         public Object loadsTyped(TypedBytes data) {
-            if (data == null || !"pickle".equals(data.type())) {
+            if (data == null || !"java".equals(data.type())) {
                 return null;
             }
             try (ByteArrayInputStream bis = new ByteArrayInputStream(data.data());
                  ObjectInputStream ois = new ObjectInputStream(bis)) {
                 return ois.readObject();
             } catch (IOException | ClassNotFoundException e) {
-                throw new IllegalStateException("Failed to deserialize pickle payload", e);
+                throw new IllegalStateException("Failed to deserialize Java payload", e);
             }
         }
     }

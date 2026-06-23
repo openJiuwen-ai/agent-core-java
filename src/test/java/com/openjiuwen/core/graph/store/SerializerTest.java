@@ -100,6 +100,41 @@ class SerializerTest {
     }
 
     @Test
+    void javaSerializerUsesJavaTypeNameAndRejectsPickleAlias() {
+        Serializer serializer = Serializer.create("java");
+
+        Serializer.TypedBytes typedBytes = serializer.dumpsTyped(Map.of("name", "checkpoint"));
+        Object restored = serializer.loadsTyped(typedBytes);
+
+        assertEquals("java", typedBytes.type());
+        assertEquals(Map.of("name", "checkpoint"), restored);
+        assertThrows(IllegalArgumentException.class, () -> Serializer.create("pickle"));
+    }
+
+    @Test
+    void javaSerializerRoundTripsGraphStoreStateWithPendingNode() {
+        Serializer serializer = Serializer.create("java");
+        GraphStoreState state = GraphStoreState.create(
+                "workflow-1",
+                3,
+                Map.of(),
+                List.of(),
+                Map.of("node-b", new PendingNode("node-b", "interrupted",
+                        List.of(new IllegalStateException("boom")))),
+                Map.of("node-a", 1)
+        );
+
+        Object restored = serializer.loadsTyped(serializer.dumpsTyped(state));
+
+        GraphStoreState restoredState = assertInstanceOf(GraphStoreState.class, restored);
+        PendingNode pendingNode = restoredState.getPendingNode().get("node-b");
+        assertEquals("node-b", pendingNode.getNodeName());
+        assertEquals("interrupted", pendingNode.getStatus());
+        assertEquals(1, pendingNode.getExceptions().size());
+        assertEquals("boom", pendingNode.getExceptions().get(0).getMessage());
+    }
+
+    @Test
     void jsonSerializerRejectsReservedTypeFieldInPlainMap() {
         Serializer serializer = Serializer.create("json");
 

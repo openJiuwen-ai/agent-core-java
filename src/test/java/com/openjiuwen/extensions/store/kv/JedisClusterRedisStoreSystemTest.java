@@ -85,26 +85,26 @@ class JedisClusterRedisStoreSystemTest {
             JedisClusterRedisStore store = new JedisClusterRedisStore(jedisCluster);
             String prefix = "cluster-system:" + System.nanoTime() + ":";
             try {
-                store.set(prefix + "alpha", Map.of("name", "Ada", "count", 1));
-                store.set(prefix + "beta", List.of("two", 2));
-                store.set(prefix + "delete-one", "first");
-                store.set(prefix + "delete-two", "second");
-                store.set(prefix + "ttl", "expires");
+                store.set(prefix + "alpha", Map.of("name", "Ada", "count", 1)).join();
+                store.set(prefix + "beta", List.of("two", 2)).join();
+                store.set(prefix + "delete-one", "first").join();
+                store.set(prefix + "delete-two", "second").join();
+                store.set(prefix + "ttl", "expires").join();
                 List<String> crossMasterKeys = keysAcrossMasters(jedisCluster, prefix, 2);
                 Set<String> crossMasterOwners = mastersContainingKeys(jedisCluster, crossMasterKeys);
                 assertTrue(crossMasterOwners.size() >= 2,
                         "Expected selected prefix keys on at least two cluster masters, but found "
                                 + crossMasterOwners.size() + " masters for " + crossMasterKeys);
 
-                assertEquals(Map.of("name", "Ada", "count", 1), store.get(prefix + "alpha"));
-                assertEquals(List.of("two", 2), store.get(prefix + "beta"));
+                assertEquals(Map.of("name", "Ada", "count", 1), store.get(prefix + "alpha").join());
+                assertEquals(List.of("two", 2), store.get(prefix + "beta").join());
                 assertEquals(Arrays.asList(
                         Map.of("name", "Ada", "count", 1),
                         null,
                         List.of("two", 2)
-                ), store.mget(List.of(prefix + "alpha", prefix + "missing", prefix + "beta")));
+                ), store.mget(List.of(prefix + "alpha", prefix + "missing", prefix + "beta")).join());
 
-                Map<String, Object> byPrefix = store.getByPrefix(prefix);
+                Map<String, Object> byPrefix = store.getByPrefix(prefix).join();
                 assertEquals(Map.of("name", "Ada", "count", 1), byPrefix.get(prefix + "alpha"));
                 assertEquals(List.of("two", 2), byPrefix.get(prefix + "beta"));
                 assertEquals("first", byPrefix.get(prefix + "delete-one"));
@@ -114,21 +114,21 @@ class JedisClusterRedisStoreSystemTest {
                 }
                 assertFalse(byPrefix.containsKey(prefix + "missing"));
 
-                store.deleteByPrefix(prefix + "delete-", 2);
-                assertNull(store.get(prefix + "delete-one"));
-                assertNull(store.get(prefix + "delete-two"));
-                assertTrue(store.exists(prefix + "alpha"));
+                store.deleteByPrefix(prefix + "delete-", 2).join();
+                assertNull(store.get(prefix + "delete-one").join());
+                assertNull(store.get(prefix + "delete-two").join());
+                assertTrue(store.exists(prefix + "alpha").join());
 
                 String specialPrefix = prefix + "literal[1]?*\\:";
-                store.set(specialPrefix + "keep", "special");
-                store.set(prefix + "literal1X-other", "unrelated");
+                store.set(specialPrefix + "keep", "special").join();
+                store.set(prefix + "literal1X-other", "unrelated").join();
 
-                Map<String, Object> specialByPrefix = store.getByPrefix(specialPrefix);
+                Map<String, Object> specialByPrefix = store.getByPrefix(specialPrefix).join();
                 assertEquals(Map.of(specialPrefix + "keep", "special"), specialByPrefix);
 
-                store.deleteByPrefix(specialPrefix, 100);
-                assertNull(store.get(specialPrefix + "keep"));
-                assertEquals("unrelated", store.get(prefix + "literal1X-other"));
+                store.deleteByPrefix(specialPrefix, 100).join();
+                assertNull(store.get(specialPrefix + "keep").join());
+                assertEquals("unrelated", store.get(prefix + "literal1X-other").join());
 
                 store.refreshTtl(List.of(prefix + "ttl"), 30);
                 assertTrue(jedisCluster.ttl(prefix + "ttl") > 0);

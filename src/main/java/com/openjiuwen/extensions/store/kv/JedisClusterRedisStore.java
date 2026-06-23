@@ -6,7 +6,7 @@ package com.openjiuwen.extensions.store.kv;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.spi.store.KVStorePipeline;
+import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
 import redis.clients.jedis.ConnectionPool;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * RedisStore wrapper for Jedis cluster clients.
@@ -49,101 +50,109 @@ public class JedisClusterRedisStore extends RedisStore {
     }
 
     @Override
-    public void set(String key, Object value) {
-        jedisCluster.set(key, serialize(value));
-    }
-
-    @Override
-    public boolean exclusiveSet(String key, Object value, Integer expiry) {
-        SetParams params = SetParams.setParams().nx();
-        if (expiry != null && expiry > 0) {
-            params.ex(expiry);
+    public CompletableFuture<Void> set(String key, Object value) {
+        try {
+            setSync(key, value, null);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
         }
-        return OK.equalsIgnoreCase(jedisCluster.set(key, serialize(value), params));
     }
 
     @Override
-    public Object get(String key) {
-        String value = jedisCluster.get(key);
-        return value == null ? null : deserialize(value);
-    }
-
-    @Override
-    public boolean exists(String key) {
-        return jedisCluster.exists(key);
-    }
-
-    @Override
-    public void delete(String key) {
-        jedisCluster.del(key);
-    }
-
-    @Override
-    public Map<String, Object> getByPrefix(String prefix) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (String key : scanKeysByPrefix(prefix)) {
-            Object value = get(key);
-            if (value != null) {
-                result.put(key, value);
-            }
+    public CompletableFuture<Boolean> exclusiveSet(String key, Object value, Integer expiry) {
+        try {
+            return CompletableFuture.completedFuture(exclusiveSetSync(key, value, expiry));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
         }
-        return result;
     }
 
     @Override
-    public void deleteByPrefix(String prefix, Integer batchSize) {
-        batchDelete(new ArrayList<>(scanKeysByPrefix(prefix)), batchSize);
+    public CompletableFuture<Object> get(String key) {
+        try {
+            return CompletableFuture.completedFuture(getSync(key));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
     }
 
     @Override
-    public List<Object> mget(List<String> keys) {
-        if (keys == null || keys.isEmpty()) {
-            return new ArrayList<>();
+    public CompletableFuture<Boolean> exists(String key) {
+        try {
+            return CompletableFuture.completedFuture(existsSync(key));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
         }
-        List<Object> values = new ArrayList<>(keys.size());
-        for (String key : keys) {
-            values.add(get(key));
-        }
-        return values;
     }
 
     @Override
-    public int batchDelete(List<String> keys, Integer batchSize) {
-        if (keys == null || keys.isEmpty()) {
-            return 0;
+    public CompletableFuture<Void> delete(String key) {
+        try {
+            deleteSync(key);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
         }
-        // Redis Cluster cross-slot deletes are executed key-by-key for correctness; batchSize is intentionally ignored.
-        int deleted = 0;
-        for (String key : keys) {
-            deleted += jedisCluster.del(key);
-        }
-        return deleted;
     }
 
     @Override
-    public KVStorePipeline pipeline() {
-        return new KVStorePipeline(operations -> {
-            List<Object> results = new ArrayList<>(operations.size());
-            for (Object[] operation : operations) {
-                String action = String.valueOf(operation[0]);
-                String key = String.valueOf(operation[1]);
-                switch (action) {
+    public CompletableFuture<Map<String, Object>> getByPrefix(String prefix) {
+        try {
+            return CompletableFuture.completedFuture(getByPrefixSync(prefix));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteByPrefix(String prefix, Integer batchSize) {
+        try {
+            deleteByPrefixSync(prefix, batchSize);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<Object>> mget(List<String> keys) {
+        try {
+            return CompletableFuture.completedFuture(mgetSync(keys));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Integer> batchDelete(List<String> keys, Integer batchSize) {
+        try {
+            return CompletableFuture.completedFuture(batchDeleteSync(keys, batchSize));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    @Override
+    public BasedKVStorePipeline pipeline() {
+        return new BasedKVStorePipeline(operations -> {
+            try {
+                List<Object> results = new ArrayList<>(operations.size());
+                for (BasedKVStorePipeline.PipelineOperation operation : operations) {
+                    switch (operation.kind()) {
                     case "set" -> {
-                        Integer expiry = extractExpiry(operation);
-                        if (expiry != null && expiry > 0) {
-                            jedisCluster.set(key, serialize(operation.length > 2 ? operation[2] : null),
-                                    SetParams.setParams().ex(expiry));
-                        } else {
-                            set(key, operation.length > 2 ? operation[2] : null);
-                        }
+                        setSync(operation.key(), operation.value(), operation.ttl());
                         results.add(null);
                     }
-                    case "get" -> results.add(get(key));
-                    case "exists" -> results.add(exists(key));
-                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
+                    case "get" -> results.add(getSync(operation.key()));
+                    case "exists" -> results.add(existsSync(operation.key()));
+                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+                    }
                 }
+                return CompletableFuture.completedFuture(results);
+            } catch (Throwable throwable) {
+                return CompletableFuture.failedFuture(throwable);
             }
-            return results;
         });
     }
 
@@ -166,6 +175,73 @@ public class JedisClusterRedisStore extends RedisStore {
     @Override
     public boolean isCluster() {
         return true;
+    }
+
+    private void setSync(String key, Object value, Integer expiry) {
+        if (expiry != null && expiry > 0) {
+            jedisCluster.set(key, serialize(value), SetParams.setParams().ex(expiry));
+            return;
+        }
+        jedisCluster.set(key, serialize(value));
+    }
+
+    private boolean exclusiveSetSync(String key, Object value, Integer expiry) {
+        SetParams params = SetParams.setParams().nx();
+        if (expiry != null && expiry > 0) {
+            params.ex(expiry);
+        }
+        return OK.equalsIgnoreCase(jedisCluster.set(key, serialize(value), params));
+    }
+
+    private Object getSync(String key) {
+        String value = jedisCluster.get(key);
+        return value == null ? null : deserialize(value);
+    }
+
+    private boolean existsSync(String key) {
+        return jedisCluster.exists(key);
+    }
+
+    private void deleteSync(String key) {
+        jedisCluster.del(key);
+    }
+
+    private Map<String, Object> getByPrefixSync(String prefix) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (String key : scanKeysByPrefix(prefix)) {
+            Object value = getSync(key);
+            if (value != null) {
+                result.put(key, value);
+            }
+        }
+        return result;
+    }
+
+    private void deleteByPrefixSync(String prefix, Integer batchSize) {
+        batchDeleteSync(new ArrayList<>(scanKeysByPrefix(prefix)), batchSize);
+    }
+
+    private List<Object> mgetSync(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Object> values = new ArrayList<>(keys.size());
+        for (String key : keys) {
+            values.add(getSync(key));
+        }
+        return values;
+    }
+
+    private int batchDeleteSync(List<String> keys, Integer batchSize) {
+        if (keys == null || keys.isEmpty()) {
+            return 0;
+        }
+        // Redis Cluster cross-slot deletes are executed key-by-key for correctness; batchSize is intentionally ignored.
+        int deleted = 0;
+        for (String key : keys) {
+            deleted += jedisCluster.del(key);
+        }
+        return deleted;
     }
 
     private static String serialize(Object value) {
@@ -204,17 +280,6 @@ public class JedisClusterRedisStore extends RedisStore {
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize Redis value", e);
         }
-    }
-
-    private static Integer extractExpiry(Object[] operation) {
-        if (operation.length <= 3 || operation[3] == null) {
-            return null;
-        }
-        Object expiry = operation[3];
-        if (expiry instanceof Number number) {
-            return number.intValue();
-        }
-        return Integer.parseInt(String.valueOf(expiry));
     }
 
     private LinkedHashSet<String> scanKeysByPrefix(String prefix) {

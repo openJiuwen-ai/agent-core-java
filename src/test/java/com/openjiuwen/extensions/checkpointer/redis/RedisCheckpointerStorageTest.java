@@ -2,6 +2,8 @@ package com.openjiuwen.extensions.checkpointer.redis;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
@@ -20,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +39,7 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
         Config config = agentConfig("agent-1");
-        AgentSession session = new AgentSession("session-1", config, checkpointer);
+        AgentSession session = agentSession("session-1", config, checkpointer);
         session.state().updateGlobal(Map.of("messages", List.of(
                 new UserMessage("remember maple-742"),
                 new AssistantMessage("stored")
@@ -49,7 +52,7 @@ class RedisCheckpointerStorageTest {
         assertEquals("json", redisClient.get(typeKey));
         assertTrue(asText(redisClient.get(blobKey)).contains("__jiuwenType"));
 
-        AgentSession restored = new AgentSession("session-1", config, checkpointer);
+        AgentSession restored = agentSession("session-1", config, checkpointer);
         checkpointer.preAgentExecute(restored, null);
 
         List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
@@ -65,19 +68,108 @@ class RedisCheckpointerStorageTest {
         RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
         Config config = agentConfig("agent-1");
         Map<String, Object> legacyState = agentState(Map.of(
-                "messages", List.of(new SerializableUserMessage("legacy java checkpoint"))
+                "messages", List.of(new UserMessage("legacy java checkpoint"))
         ));
         Serializer.TypedBytes javaBytes = Serializer.create("java").dumpsTyped(legacyState);
 
         redisClient.set("session-1:agent:agent-1:agent_state_blobs_dump_type", javaBytes.type());
         redisClient.set("session-1:agent:agent-1:agent_state_blobs", javaBytes.data());
 
-        AgentSession restored = new AgentSession("session-1", config, checkpointer);
+        AgentSession restored = agentSession("session-1", config, checkpointer);
         checkpointer.preAgentExecute(restored, null);
 
         List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
         UserMessage userMessage = assertInstanceOf(UserMessage.class, messages.get(0));
         assertEquals("legacy java checkpoint", userMessage.getContentAsString());
+    }
+
+    @Test
+    void defaultJavaDumpTypePersistsNormalSdkMessages() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = new RedisCheckpointer(
+                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                null);
+        Config config = agentConfig("agent-1");
+        AgentSession session = agentSession("session-1", config, checkpointer);
+        session.state().updateGlobal(Map.of("messages", List.of(
+                new UserMessage("default java user"),
+                new AssistantMessage("default java assistant")
+        )));
+
+        checkpointer.postAgentExecute(session);
+
+        assertEquals("java", redisClient.get("session-1:agent:agent-1:agent_state_blobs_dump_type"));
+
+        AgentSession restored = agentSession("session-1", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+
+        List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
+        UserMessage userMessage = assertInstanceOf(UserMessage.class, messages.get(0));
+        AssistantMessage assistantMessage = assertInstanceOf(AssistantMessage.class, messages.get(1));
+        assertEquals("default java user", userMessage.getContentAsString());
+        assertEquals("default java assistant", assistantMessage.getContentAsString());
+    }
+
+    @Test
+    void defaultJavaDumpTypePersistsAssistantUsageMetadata() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = new RedisCheckpointer(
+                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                null);
+        Config config = agentConfig("agent-1");
+        AssistantMessage assistant = new AssistantMessage("answer with usage");
+        assistant.setUsageMetadata(UsageMetadata.builder()
+                .modelName("unit-model")
+                .totalTokens(42)
+                .build());
+        AgentSession session = agentSession("session-1", config, checkpointer);
+        session.state().updateGlobal(Map.of("messages", List.of(assistant)));
+
+        checkpointer.postAgentExecute(session);
+
+        AgentSession restored = agentSession("session-1", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+
+        List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
+        AssistantMessage restoredAssistant = assertInstanceOf(AssistantMessage.class, messages.get(0));
+        UsageMetadata usageMetadata = restoredAssistant.getUsageMetadata();
+        assertNotNull(usageMetadata);
+        assertEquals("unit-model", usageMetadata.getModelName());
+        assertEquals(42, usageMetadata.getTotalTokens());
+    }
+
+    @Test
+    void defaultJavaDumpTypePersistsAssistantToolCalls() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = new RedisCheckpointer(
+                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                null);
+        Config config = agentConfig("agent-1");
+        AssistantMessage assistant = new AssistantMessage("answer with tool");
+        assistant.setToolCalls(List.of(ToolCall.builder()
+                .id("call-1")
+                .type("function")
+                .name("search")
+                .arguments("{\"query\":\"java\"}")
+                .build()));
+        AgentSession session = agentSession("session-1", config, checkpointer);
+        session.state().updateGlobal(Map.of("messages", List.of(assistant)));
+
+        checkpointer.postAgentExecute(session);
+
+        AgentSession restored = agentSession("session-1", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+
+        List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
+        AssistantMessage restoredAssistant = assertInstanceOf(AssistantMessage.class, messages.get(0));
+        List<ToolCall> toolCalls = restoredAssistant.getToolCalls();
+        assertNotNull(toolCalls);
+        assertEquals(1, toolCalls.size());
+        ToolCall toolCall = toolCalls.get(0);
+        assertEquals("call-1", toolCall.getId());
+        assertEquals("function", toolCall.getType());
+        assertEquals("search", toolCall.getName());
+        assertEquals("{\"query\":\"java\"}", toolCall.getArguments());
     }
 
     @Test
@@ -92,14 +184,14 @@ class RedisCheckpointerStorageTest {
                 Map.of(),
                 Map.of());
 
-        checkpointer.graphStore().save("session-1", "workflow-1", state);
+        saveGraphState(checkpointer, "session-1", "workflow-1", state);
 
         String typeKey = "session-1:workflow-graph:workflow-1:checkpoint_data_type";
         String blobKey = "session-1:workflow-graph:workflow-1:checkpoint_data_value";
         assertEquals("json", redisClient.get(typeKey));
         assertTrue(asText(redisClient.get(blobKey)).contains("graph.storeState"));
 
-        GraphStoreState restored = checkpointer.graphStore().get("session-1", "workflow-1").orElseThrow();
+        GraphStoreState restored = getGraphState(checkpointer, "session-1", "workflow-1");
         List<?> messages = assertInstanceOf(List.class, restored.getChannelValues().get("messages"));
         UserMessage userMessage = assertInstanceOf(UserMessage.class, messages.get(0));
         assertEquals("inside graph", userMessage.getContentAsString());
@@ -114,7 +206,7 @@ class RedisCheckpointerStorageTest {
         redisClient.set("session-1:agent:agent-1:agent_state_blobs", "{}".getBytes(StandardCharsets.UTF_8));
 
         RuntimeException error = assertThrows(RuntimeException.class,
-                () -> checkpointer.preAgentExecute(new AgentSession("session-1", config, checkpointer), null));
+                () -> checkpointer.preAgentExecute(agentSession("session-1", config, checkpointer), null));
 
         assertTrue(error.getMessage().contains("Unsupported Redis checkpoint dump type: yaml"));
     }
@@ -124,7 +216,7 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
         Config config = agentConfig("agent-1");
-        AgentSession session = new AgentSession("session-1", config, checkpointer);
+        AgentSession session = agentSession("session-1", config, checkpointer);
         session.state().updateGlobal(Map.of("unsupported", new Object()));
 
         RuntimeException error = assertThrows(RuntimeException.class,
@@ -144,7 +236,7 @@ class RedisCheckpointerStorageTest {
                 """.getBytes(StandardCharsets.UTF_8));
 
         RuntimeException error = assertThrows(RuntimeException.class,
-                () -> checkpointer.preAgentExecute(new AgentSession("session-1", config, checkpointer), null));
+                () -> checkpointer.preAgentExecute(agentSession("session-1", config, checkpointer), null));
 
         assertTrue(error.getMessage().contains("message.unknown"));
     }
@@ -158,7 +250,7 @@ class RedisCheckpointerStorageTest {
         redisClient.set("session-1:agent:agent-1:agent_state_blobs", "[]".getBytes(StandardCharsets.UTF_8));
 
         RuntimeException error = assertThrows(RuntimeException.class,
-                () -> checkpointer.preAgentExecute(new AgentSession("session-1", config, checkpointer), null));
+                () -> checkpointer.preAgentExecute(agentSession("session-1", config, checkpointer), null));
 
         assertTrue(error.getMessage().contains("agent state"));
         assertTrue(error.getMessage().contains("Map"));
@@ -172,10 +264,10 @@ class RedisCheckpointerStorageTest {
         redisClient.set("session-1:workflow-graph:workflow-1:checkpoint_data_value", "[]".getBytes(StandardCharsets.UTF_8));
 
         RuntimeException error = assertThrows(RuntimeException.class,
-                () -> checkpointer.graphStore().get("session-1", "workflow-1"));
+                () -> getGraphState(checkpointer, "session-1", "workflow-1"));
 
-        assertTrue(error.getMessage().contains("graph state"));
-        assertTrue(error.getMessage().contains("GraphStoreState"));
+        assertTrue(errorMessage(error).contains("graph state"));
+        assertTrue(errorMessage(error).contains("GraphStoreState"));
     }
 
     @Test
@@ -185,9 +277,9 @@ class RedisCheckpointerStorageTest {
         missingBlobRedis.set("session-1:workflow-graph:workflow-1:checkpoint_data_type", "json");
 
         RuntimeException missingBlob = assertThrows(RuntimeException.class,
-                () -> missingBlobCheckpointer.graphStore().get("session-1", "workflow-1"));
+                () -> getGraphState(missingBlobCheckpointer, "session-1", "workflow-1"));
 
-        assertTrue(missingBlob.getMessage().contains("incomplete"));
+        assertTrue(errorMessage(missingBlob).contains("incomplete"));
 
         FakeRedisClient missingDumpTypeRedis = new FakeRedisClient();
         RedisCheckpointer missingDumpTypeCheckpointer = jsonCheckpointer(missingDumpTypeRedis);
@@ -195,9 +287,9 @@ class RedisCheckpointerStorageTest {
                 "{}".getBytes(StandardCharsets.UTF_8));
 
         RuntimeException missingDumpType = assertThrows(RuntimeException.class,
-                () -> missingDumpTypeCheckpointer.graphStore().get("session-1", "workflow-1"));
+                () -> getGraphState(missingDumpTypeCheckpointer, "session-1", "workflow-1"));
 
-        assertTrue(missingDumpType.getMessage().contains("incomplete"));
+        assertTrue(errorMessage(missingDumpType).contains("incomplete"));
     }
 
     @Test
@@ -287,12 +379,12 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+                Map.of("default_ttl", 1, "refresh_on_read", true, "dump_type", "json"));
 
         Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
+        config.setAgentConfig(agentMetadata("agent-1"));
 
-        AgentSession session = new AgentSession("session-1", config, checkpointer);
+        AgentSession session = agentSession("session-1", config, checkpointer);
         checkpointer.preAgentExecute(session, null);
         session.state().updateGlobal(Map.of("persisted", "value"));
         checkpointer.interruptAgentExecute(session);
@@ -300,7 +392,7 @@ class RedisCheckpointerStorageTest {
         String ttlKey = "session-1:agent:agent-1:agent_state_blobs_dump_type";
         Thread.sleep(20L);
 
-        AgentSession restored = new AgentSession("session-1", config, checkpointer);
+        AgentSession restored = agentSession("session-1", config, checkpointer);
         checkpointer.preAgentExecute(restored, "hello");
 
         assertEquals("value", restored.state().getGlobal("persisted"));
@@ -317,7 +409,7 @@ class RedisCheckpointerStorageTest {
         checkpointer.preWorkflowExecute(session, null);
         WorkflowCommitState state = (WorkflowCommitState) session.state();
         state.updateGlobal(Map.of("messages", List.of(new UserMessage("workflow json state"))));
-        state.updateWorkflow(Map.of("step", 2));
+        state.updateAndCommitWorkflowState(Map.of("step", 2));
         state.commit();
         state.update(Map.of("afterCommit", List.of(new AssistantMessage("workflow json update"))));
 
@@ -340,7 +432,7 @@ class RedisCheckpointerStorageTest {
         WorkflowCommitState restoredState = (WorkflowCommitState) restored.state();
         List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
         assertInstanceOf(UserMessage.class, messages.get(0));
-        assertEquals(2, restoredState.getWorkflow("step"));
+        assertEquals(2, restoredState.getWorkflowState("step"));
         restoredState.commit();
         List<?> afterCommit = assertInstanceOf(List.class, restoredState.get("afterCommit"));
         AssistantMessage assistantMessage = assertInstanceOf(AssistantMessage.class, afterCommit.get(0));
@@ -352,17 +444,18 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+                Map.of("default_ttl", 1, "refresh_on_read", true, "dump_type", "json"));
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(session, null);
         WorkflowCommitState state = (WorkflowCommitState) session.state();
         state.updateGlobal(Map.of("persisted", "value"));
-        state.updateWorkflow(Map.of("step", 1));
+        state.updateAndCommitWorkflowState(Map.of("step", 1));
         state.update(Map.of("ask", "pending"));
         state.commit();
         state.update(Map.of("afterCommit", "still-pending"));
-        checkpointer.graphStore().save(
+        saveGraphState(
+                checkpointer,
                 "session-1",
                 "workflow-1:sub:1",
                 GraphStoreState.create("workflow-1:sub:1", 1, Map.of("k", "v"), List.of(), Map.of(), Map.of()));
@@ -377,7 +470,7 @@ class RedisCheckpointerStorageTest {
 
         WorkflowCommitState restoredState = (WorkflowCommitState) restored.state();
         assertEquals("value", restored.state().getGlobal("persisted"));
-        assertEquals(1, restoredState.getWorkflow("step"));
+        assertEquals(1, restoredState.getWorkflowState("step"));
         restoredState.commit();
         assertEquals("still-pending", restoredState.get("afterCommit"));
 
@@ -386,7 +479,7 @@ class RedisCheckpointerStorageTest {
 
         checkpointer.postWorkflowExecute(restored, Map.of("ok", true), null);
         assertFalse(checkpointer.sessionExists("session-1"));
-        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1:sub:1").isEmpty());
+        assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1:sub:1"));
     }
 
     @Test
@@ -394,7 +487,7 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                null);
+                Map.of("dump_type", "json"));
 
         WorkflowSession initial = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(initial, null);
@@ -402,7 +495,8 @@ class RedisCheckpointerStorageTest {
         state.updateGlobal(Map.of("persisted", "value"));
         state.commit();
         checkpointer.postWorkflowExecute(initial, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-        checkpointer.graphStore().save(
+        saveGraphState(
+                checkpointer,
                 "session-1",
                 "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
@@ -413,7 +507,7 @@ class RedisCheckpointerStorageTest {
         checkpointer.preWorkflowExecute(fresh, null);
 
         assertFalse(checkpointer.sessionExists("session-1"));
-        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isEmpty());
+        assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1"));
     }
 
     @Test
@@ -421,7 +515,7 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                null);
+                Map.of("dump_type", "json"));
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(session, null);
@@ -441,7 +535,7 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+                Map.of("default_ttl", 1, "refresh_on_read", true, "dump_type", "json"));
 
         GraphStoreState parent = GraphStoreState.create(
                 "workflow-1", 1, Map.of("a", 1), List.of(), Map.of(), Map.of());
@@ -450,23 +544,23 @@ class RedisCheckpointerStorageTest {
         GraphStoreState other = GraphStoreState.create(
                 "workflow-2", 3, Map.of("c", 3), List.of(), Map.of(), Map.of());
 
-        checkpointer.graphStore().save("session-1", "workflow-1", parent);
-        checkpointer.graphStore().save("session-1", "workflow-1:sub:1", child);
-        checkpointer.graphStore().save("session-1", "workflow-2", other);
+        saveGraphState(checkpointer, "session-1", "workflow-1", parent);
+        saveGraphState(checkpointer, "session-1", "workflow-1:sub:1", child);
+        saveGraphState(checkpointer, "session-1", "workflow-2", other);
 
         String ttlKey = "session-1:workflow-graph:workflow-1:checkpoint_data_type";
         Thread.sleep(20L);
 
-        GraphStoreState loaded = checkpointer.graphStore().get("session-1", "workflow-1").orElse(null);
+        GraphStoreState loaded = getGraphStateOrNull(checkpointer, "session-1", "workflow-1");
         assertNotNull(loaded);
         assertEquals(1, loaded.getStep());
         assertTrue(redisClient.ttl(ttlKey) >= 59L, "graph read should refresh TTL");
 
-        checkpointer.graphStore().delete("session-1", "workflow-1");
+        checkpointer.graphStore().delete("session-1", "workflow-1").toCompletableFuture().join();
 
-        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isEmpty());
-        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1:sub:1").isEmpty());
-        assertEquals(3, checkpointer.graphStore().get("session-1", "workflow-2").orElseThrow().getStep());
+        assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1"));
+        assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1:sub:1"));
+        assertEquals(3, getGraphState(checkpointer, "session-1", "workflow-2").getStep());
     }
 
     private static RedisCheckpointer jsonCheckpointer(FakeRedisClient redisClient) {
@@ -477,8 +571,12 @@ class RedisCheckpointerStorageTest {
 
     private static Config agentConfig(String agentId) {
         Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike(agentId, "agent", "invoke"));
+        config.setAgentConfig(agentMetadata(agentId));
         return config;
+    }
+
+    private static Map<String, Object> agentMetadata(String agentId) {
+        return Map.of("id", agentId, "type", "agent", "invoke", "invoke");
     }
 
     private static Map<String, Object> agentState(Map<String, Object> globalState) {
@@ -487,31 +585,41 @@ class RedisCheckpointerStorageTest {
                 "agent_state", Map.of());
     }
 
+    private static AgentSession agentSession(String sessionId, Config config, RedisCheckpointer checkpointer) {
+        return new AgentSession(sessionId, config, checkpointer, null, null);
+    }
+
+    private static void saveGraphState(
+            RedisCheckpointer checkpointer, String sessionId, String namespace, GraphStoreState state) {
+        checkpointer.graphStore().save(sessionId, namespace, state).toCompletableFuture().join();
+    }
+
+    private static GraphStoreState getGraphState(RedisCheckpointer checkpointer, String sessionId, String namespace) {
+        return checkpointer.graphStore().get(sessionId, namespace).toCompletableFuture().join().orElseThrow();
+    }
+
+    private static GraphStoreState getGraphStateOrNull(
+            RedisCheckpointer checkpointer, String sessionId, String namespace) {
+        return checkpointer.graphStore().get(sessionId, namespace).toCompletableFuture().join().orElse(null);
+    }
+
+    private static boolean isGraphStateMissing(RedisCheckpointer checkpointer, String sessionId, String namespace) {
+        return checkpointer.graphStore().get(sessionId, namespace).toCompletableFuture().join().isEmpty();
+    }
+
+    private static String errorMessage(RuntimeException error) {
+        Throwable current = error;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage();
+    }
+
     private static String asText(Object value) {
         if (value instanceof byte[] bytes) {
             return new String(bytes, StandardCharsets.UTF_8);
         }
         return String.valueOf(value);
-    }
-
-    private static final class SerializableUserMessage extends UserMessage implements java.io.Serializable {
-        @java.io.Serial
-        private static final long serialVersionUID = 1L;
-
-        private SerializableUserMessage(String content) {
-            super(content);
-        }
-
-        @java.io.Serial
-        private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-            out.writeUTF(getContentAsString());
-        }
-
-        @java.io.Serial
-        private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-            setRole("user");
-            setContent(in.readUTF());
-        }
     }
 
     static class FakeRedisClient {

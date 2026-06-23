@@ -59,7 +59,7 @@ class RedisCheckpointerJsonSystemTest {
                 assertTrue(agentJson.contains("real redis assistant"));
                 assertFalse(agentJson.contains("\"__jiuwenType\":\"java.lang.String\""));
 
-                AgentSession recoveredAgent = new AgentSession("real-redis-session", agentConfig(), checkpointer);
+                AgentSession recoveredAgent = agentSession(checkpointer);
                 checkpointer.preAgentExecute(recoveredAgent, null);
                 List<?> messages = assertInstanceOf(List.class, recoveredAgent.state().getGlobal("messages"));
                 UserMessage userMessage = assertInstanceOf(UserMessage.class, messages.get(0));
@@ -87,6 +87,8 @@ class RedisCheckpointerJsonSystemTest {
 
                 GraphStoreState recoveredGraph = checkpointer.graphStore()
                         .get("real-redis-session", "workflow-json")
+                        .toCompletableFuture()
+                        .join()
                         .orElseThrow();
                 assertEquals(9, recoveredGraph.getStep());
                 List<?> graphMessages = assertInstanceOf(List.class, recoveredGraph.getChannelValues().get("messages"));
@@ -98,7 +100,7 @@ class RedisCheckpointerJsonSystemTest {
                 checkpointer.preWorkflowExecute(workflow, null);
                 WorkflowCommitState workflowState = (WorkflowCommitState) workflow.state();
                 workflowState.updateGlobal(Map.of("messages", List.of(new UserMessage("workflow state"))));
-                workflowState.updateWorkflow(Map.of("step", 3));
+                workflowState.updateAndCommitWorkflowState(Map.of("step", 3));
                 workflowState.commit();
                 workflowState.update(Map.of("afterCommit", List.of(new AssistantMessage("workflow update"))));
                 checkpointer.postWorkflowExecute(
@@ -129,7 +131,7 @@ class RedisCheckpointerJsonSystemTest {
                         List.class, recoveredWorkflow.state().getGlobal("messages"));
                 UserMessage workflowMessage = assertInstanceOf(UserMessage.class, workflowMessages.get(0));
                 assertEquals("workflow state", workflowMessage.getContentAsString());
-                assertEquals(3, recoveredWorkflowState.getWorkflow("step"));
+                assertEquals(3, recoveredWorkflowState.getWorkflowState("step"));
                 recoveredWorkflowState.commit();
                 List<?> workflowUpdates = assertInstanceOf(List.class, recoveredWorkflowState.get("afterCommit"));
                 AssistantMessage workflowUpdate = assertInstanceOf(AssistantMessage.class, workflowUpdates.get(0));
@@ -139,7 +141,7 @@ class RedisCheckpointerJsonSystemTest {
     }
 
     private static void saveAgentState(RedisCheckpointer checkpointer) {
-        AgentSession session = new AgentSession("real-redis-session", agentConfig(), checkpointer);
+        AgentSession session = agentSession(checkpointer);
         session.state().updateGlobal(Map.of("messages", List.of(
                 new UserMessage("real redis user"),
                 new AssistantMessage("real redis assistant"))));
@@ -149,8 +151,12 @@ class RedisCheckpointerJsonSystemTest {
 
     private static Config agentConfig() {
         Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike("agent-json", "agent", "invoke"));
+        config.setAgentConfig(Map.of("id", "agent-json", "type", "agent", "invoke", "invoke"));
         return config;
+    }
+
+    private static AgentSession agentSession(RedisCheckpointer checkpointer) {
+        return new AgentSession("real-redis-session", agentConfig(), checkpointer, null, null);
     }
 
     private static String readUtf8(JedisPooled jedis, String key) {

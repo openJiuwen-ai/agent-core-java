@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,7 +24,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class UsageMetadata {
+public class UsageMetadata implements Serializable {
+
+    @java.io.Serial
+    private static final long serialVersionUID = 1L;
 
     @Builder.Default
     private int code = 0;

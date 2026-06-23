@@ -3,6 +3,7 @@ package com.openjiuwen.extensions.checkpointer.redis;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
@@ -30,7 +31,8 @@ class RedisCheckpointerProviderTest {
         FakeRedisClient redisClient = new FakeRedisClient();
 
         Checkpointer checkpointer = provider.create(Map.of(
-                "connection", Map.of("redis_client", redisClient)
+                "connection", Map.of("redis_client", redisClient),
+                "dump_type", "json"
         ));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
@@ -45,7 +47,8 @@ class RedisCheckpointerProviderTest {
         JedisCluster jedisCluster = mock(JedisCluster.class);
 
         Checkpointer checkpointer = provider.create(Map.of(
-                "connection", Map.of("redis_client", jedisCluster)
+                "connection", Map.of("redis_client", jedisCluster),
+                "dump_type", "json"
         ));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
@@ -64,12 +67,14 @@ class RedisCheckpointerProviderTest {
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
-        AgentSession session = new AgentSession("session-1", config, redisCheckpointer);
+        config.setAgentConfig(agentMetadata("agent-1"));
+        AgentSession session = agentSession("session-1", config, redisCheckpointer);
         session.state().updateGlobal(Map.of("sentinel", "provider-json"));
         redisCheckpointer.postAgentExecute(session);
         redisCheckpointer.graphStore().save("session-1", "workflow-1", GraphStoreState.create(
-                "workflow-1", 1, Map.of("sentinel", "provider-json"), List.of(), Map.of(), Map.of()));
+                "workflow-1", 1, Map.of("sentinel", "provider-json"), List.of(), Map.of(), Map.of()))
+                .toCompletableFuture()
+                .join();
 
         assertEquals("json", redisClient.get("session-1:agent:agent-1:agent_state_blobs_dump_type"));
         assertEquals("json", redisClient.get("session-1:workflow-graph:workflow-1:checkpoint_data_type"));
@@ -95,7 +100,8 @@ class RedisCheckpointerProviderTest {
 
         Checkpointer checkpointer = provider.create(Map.of(
                 "connection", Map.of("url", "redis://127.0.0.1:6379"),
-                "ttl", Map.of("default_ttl", 5, "refresh_on_read", true)
+                "ttl", Map.of("default_ttl", 5, "refresh_on_read", true),
+                "dump_type", "json"
         ));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
@@ -115,9 +121,11 @@ class RedisCheckpointerProviderTest {
         assertTrue(connection.isClusterMode());
         assertEquals("redis://127.0.0.1:7000", connection.getConnectionUrl());
 
-        Checkpointer checkpointer = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")
-        ));
+        CheckpointerFactory.register("redis", new RedisCheckpointer.Provider());
+        Checkpointer checkpointer = CheckpointerFactory.create(new CheckpointerConfig("redis", Map.of(
+                "connection", Map.of("url", "redis://127.0.0.1:6379"),
+                "dump_type", "json"
+        )));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertNotNull(redisCheckpointer.graphStore());
@@ -137,6 +145,14 @@ class RedisCheckpointerProviderTest {
         Field field = target.getClass().getSuperclass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(target);
+    }
+
+    private static Map<String, Object> agentMetadata(String agentId) {
+        return Map.of("id", agentId, "type", "agent", "invoke", "invoke");
+    }
+
+    private static AgentSession agentSession(String sessionId, Config config, Checkpointer checkpointer) {
+        return new AgentSession(sessionId, config, checkpointer, null, null);
     }
 
     static class FakeRedisClient {

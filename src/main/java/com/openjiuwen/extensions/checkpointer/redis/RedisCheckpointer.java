@@ -54,7 +54,7 @@ public class RedisCheckpointer extends Checkpointer {
      * Initialize RedisCheckpointer with a RedisStore instance.
      *
      * @param redisStore The RedisStore instance for all Redis operations
-     * @param ttl        Optional TTL configuration for stored data
+     * @param ttl        Optional storage configuration, including TTL and dump type
      */
     public RedisCheckpointer(RedisStore redisStore, Map<String, Object> ttl) {
         this.redisStore = redisStore;
