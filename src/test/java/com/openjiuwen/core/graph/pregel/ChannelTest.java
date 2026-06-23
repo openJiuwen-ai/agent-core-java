@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link ChannelManager}, {@link TriggerChannel}, and {@link BarrierChannel}.
  *
- * <p>Mirrors Python's {@code test_channel.py} in
- * {@code tests/unit_tests/core/graph/pregel}.</p>
+ * <p>Mirrors Python's {@code TestChannelManager} in
+ * {@code tests/unit_tests/core/graph/test_channel.py}.</p>
  */
 class ChannelTest {
 

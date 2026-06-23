@@ -19,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code patterns} contract in
  * {@code openjiuwen/harness/security/patterns.py}.
+ *
+ * <p>Mirrors Python's {@code test_patterns} in
+ * {@code tests/unit_tests/harness/security/test_patterns.py}.</p>
  */
 class PermissionPatternsTest {
 
@@ -27,6 +30,23 @@ class PermissionPatternsTest {
         assertTrue(PermissionPatterns.matchWildcard("ls", "ls *"));
         assertTrue(PermissionPatterns.matchWildcard("ls -la", "ls *"));
         assertFalse(PermissionPatterns.matchWildcard("ls; rm -rf /", "ls *"));
+    }
+
+    @Test
+    void matchWildcardRejectsTrailingNewline() {
+        assertTrue(PermissionPatterns.matchWildcard("git status", "git status"));
+        assertFalse(PermissionPatterns.matchWildcard("git status\n", "git status"));
+
+        assertTrue(PermissionPatterns.matchWildcard("git status", "git status *"));
+        assertTrue(PermissionPatterns.matchWildcard("git status -sb", "git status *"));
+        assertFalse(PermissionPatterns.matchWildcard("git status\n", "git status *"));
+        assertFalse(PermissionPatterns.matchWildcard("git status -sb\n", "git status *"));
+    }
+
+    @Test
+    void matchWildcardStillRejectsCommandInjection() {
+        assertFalse(PermissionPatterns.matchWildcard("git status; rm -rf /", "git status *"));
+        assertFalse(PermissionPatterns.matchWildcard("git status\nrm -rf /", "git status *"));
     }
 
     @Test

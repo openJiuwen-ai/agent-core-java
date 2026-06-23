@@ -20,20 +20,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Focused parity tests for {@link ReActAgentEvolve}.
+ * Focused missing-test parity coverage for {@link ReActAgentEvolve}.
  *
- * <p>Mirrors Python's tests for
- * {@code openjiuwen/core/single_agent/agents/react_agent_evolve.py}.</p>
+ * <p>Mirrors Python's {@code tests/unit_tests/agent/react_agent/test_react_agent_evolve_mock.py}.</p>
  */
 class ReActAgentEvolveTest {
 
     @Test
-    void creationInitializesOperators() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "test_agent_evolve",
-                "Test ReActAgentEvolve"));
+    void agentCreationWithCardStoresCardFields() {
+        ReActAgentEvolve agent = newAgent("test_agent_evolve", "Test ReActAgentEvolve");
 
         assertEquals("test_agent_evolve", agent.getCard().getName());
         assertEquals("Test ReActAgentEvolve", agent.getCard().getDescription());
+        assertNotNull(agent.getLlmOperator());
+        assertNotNull(agent.getToolOperator());
+    }
+
+    @Test
+    void operatorsInitializedOnCreation() {
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
+
         assertNotNull(agent.getLlmOperator());
         assertNotNull(agent.getToolOperator());
         assertInstanceOf(LLMCallOperator.class, agent.getLlmOperator());
@@ -44,7 +50,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void getOperatorsReturnsBothOperatorsInPythonOrder() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+        ReActAgentEvolve agent = newAgent("test_agent_evolve", "Test agent");
 
         Map<String, Operator> operators = agent.getOperators();
 
@@ -55,7 +61,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void getOperatorsReturnsEmptyWhenOperatorsAreNull() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+        ReActAgentEvolve agent = newAgent("test_agent_evolve", "Test agent");
 
         agent.setLlmOperatorForTest(null);
         agent.setToolOperatorForTest(null);
@@ -64,13 +70,18 @@ class ReActAgentEvolveTest {
     }
 
     @Test
-    void llmParameterUpdateSyncsListAndStringSystemPromptToConfig() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+    void llmParameterUpdateSyncsListSystemPromptToConfig() {
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
         List<Map<String, Object>> prompt = List.of(Map.of("role", "system", "content", "Updated prompt"));
 
         agent.onLlmParameterUpdated("system_prompt", prompt);
 
         assertEquals(prompt, agent.getConfig().getPromptTemplate());
+    }
+
+    @Test
+    void llmParameterUpdateHandlesStringPrompt() {
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
 
         agent.onLlmParameterUpdated("system_prompt", "String prompt");
 
@@ -80,7 +91,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void llmParameterUpdateIgnoresNonSystemPromptTarget() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
         List<Map<String, Object>> prompt = List.of(Map.of("role", "system", "content", "Original"));
         agent.getConfig().setPromptTemplate(prompt);
 
@@ -91,7 +102,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void toolParameterUpdateSyncsDescriptionsToAbilityManager() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
         ToolCard card = ToolCard.builder().name("tool1").description("Original desc").build();
         agent.getAbilityManager().add(card);
 
@@ -102,11 +113,15 @@ class ReActAgentEvolveTest {
 
     @Test
     void toolParameterUpdateIgnoresInvalidInputs() {
-        ReActAgentEvolve agent = new ReActAgentEvolve(new AgentCard(null, "agent", "desc"));
+        ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
 
         agent.onToolParameterUpdated("wrong_param", Map.of("tool1", "desc"));
         agent.onToolParameterUpdated("tool_description", "not a dict");
 
         assertTrue(agent.getOperators().containsKey("react_tool"));
+    }
+
+    private static ReActAgentEvolve newAgent(String name, String description) {
+        return new ReActAgentEvolve(new AgentCard(null, name, description));
     }
 }

@@ -20,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors focused adapter coverage from Python's external CLI tests.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_teams.external.test_cli_adapter_injection} in
+ * {@code tests/unit_tests/agent_teams/external/test_cli_adapter_injection.py}.</p>
  */
 class CliAgentAdapterTest {
 
@@ -172,6 +175,22 @@ class CliAgentAdapterTest {
         CliAgentAdapter openclaw = CliAgentAdapter.buildAdapter("openclaw");
         assertEquals(List.of(), openclaw.mcpLaunchArgs("t", List.of("openjiuwen-team-mcp")));
         assertNull(openclaw.mcpRegisterCommand("t", List.of("openjiuwen-team-mcp")));
+    }
+
+    @Test
+    void testClaudeHasNoRegisterCommandAndUsesMcpLaunchArgs() {
+        CliAgentAdapter adapter = CliAgentAdapter.buildAdapter("claude");
+
+        assertNull(adapter.mcpRegisterCommand("t", List.of("openjiuwen-team-mcp")));
+        assertFalse(adapter.mcpLaunchArgs("t", List.of("openjiuwen-team-mcp")).isEmpty());
+    }
+
+    @Test
+    void testCodexHasNoRegisterCommandAndUsesMcpLaunchArgs() {
+        CliAgentAdapter adapter = CliAgentAdapter.buildAdapter("codex");
+
+        assertNull(adapter.mcpRegisterCommand("t", List.of("openjiuwen-team-mcp")));
+        assertFalse(adapter.mcpLaunchArgs("t", List.of("openjiuwen-team-mcp")).isEmpty());
     }
 
     @Test

@@ -57,6 +57,37 @@ class DLTransformerTest {
     }
 
     @Test
+    @DisplayName("collect plugin returns mapped plugin info without optional code")
+    void collectPluginReturnsMappedPluginInfoWithoutOptionalCode() {
+        Map<String, Object> tool = mapOf(
+                "tool_name", "Tool 1",
+                "ori_inputs", List.of(),
+                "ori_outputs", List.of());
+        Map<String, Map<String, Object>> pluginDict = Map.of(
+                "plugin_1",
+                mapOf(
+                        "plugin_name", "Test Plugin",
+                        "plugin_version", "1.0",
+                        "tools", Map.of("tool_1", tool)));
+
+        List<Map<String, Object>> result = DLTransformer.collectPlugin(
+                List.of("tool_1", "tool_2"),
+                pluginDict,
+                Map.of("tool_1", "plugin_1"));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst())
+                .containsEntry("plugin_id", "plugin_1")
+                .containsEntry("plugin_name", "Test Plugin")
+                .containsEntry("plugin_version", "1.0")
+                .containsEntry("tool_id", "tool_1")
+                .containsEntry("tool_name", "Tool 1")
+                .doesNotContainKeys("language", "code");
+        assertThat(result.getFirst().get("inputs")).asList().isEmpty();
+        assertThat(result.getFirst().get("outputs")).asList().isEmpty();
+    }
+
+    @Test
     @DisplayName("collect plugin skips missing tools")
     void collectPluginSkipsMissingTools() {
         assertThat(DLTransformer.collectPlugin(List.of("tool_missing"), Map.of(), Map.of())).isEmpty();
@@ -72,6 +103,13 @@ class DLTransformerTest {
                 "Code", "Plugin", "Output", "Branch");
         registry.remove("Start");
         assertThat(DLTransformer.getDslConverterRegistry()).containsKey("Start");
+    }
+
+    @Test
+    @DisplayName("registry values are converter classes")
+    void registryValuesAreConverterClasses() {
+        assertThat(DLTransformer.getDslConverterRegistry().values())
+                .allSatisfy(converterClass -> assertThat(BaseConverter.class).isAssignableFrom(converterClass));
     }
 
     @Test

@@ -23,6 +23,7 @@ import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,8 +32,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code SingleDimUpdater} in
  * {@code openjiuwen/agent_evolving/updater/single_dim.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_single_dim} in
+ * {@code tests/unit_tests/agent_evolving/updater/test_single_dim.py}.</p>
  */
 class SingleDimUpdaterTest {
+
+    @Test
+    void updaterProtocolDefinesRequiredMethods() throws NoSuchMethodException {
+        assertNotNull(Updater.class.getMethod("bind", Map.class, List.class, Map.class));
+        assertNotNull(Updater.class.getMethod("update", List.class, List.class, Map.class));
+        assertNotNull(Updater.class.getMethod("process", List.class, List.class, Map.class));
+        assertNotNull(Updater.class.getMethod("getState"));
+        assertNotNull(Updater.class.getMethod("loadState", Map.class));
+    }
 
     @Test
     void bindDelegatesToOptimizerWithExplicitTargets() {

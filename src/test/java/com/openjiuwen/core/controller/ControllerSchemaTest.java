@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ControllerSchemaTest {
@@ -38,7 +39,9 @@ class ControllerSchemaTest {
 
         assertThatThrownBy(() -> config.setScheduleInterval(0.09))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> config.setTaskTimeout(599.0))
+        assertThatCode(() -> config.setTaskTimeout(599.0))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> config.setTaskTimeout(0.0))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> config.setEventQueueSize(0))
                 .isInstanceOf(IllegalArgumentException.class);

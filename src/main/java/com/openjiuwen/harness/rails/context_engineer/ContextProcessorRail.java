@@ -6,6 +6,7 @@ package com.openjiuwen.harness.rails.context_engineer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.context_engine.context.SessionMemoryConfig;
 import com.openjiuwen.core.context_engine.context.SessionMemoryManager;
 import com.openjiuwen.core.context_engine.processor.compressor.CurrentRoundCompressorConfig;
@@ -15,10 +16,17 @@ import com.openjiuwen.core.context_engine.processor.compressor.MicroCompactProce
 import com.openjiuwen.core.context_engine.processor.compressor.RoundLevelCompressorConfig;
 import com.openjiuwen.core.context_engine.processor.offloader.MessageSummaryOffloaderConfig;
 import com.openjiuwen.core.context_engine.processor.offloader.ToolResultBudgetProcessorConfig;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.single_agent.BaseAgent;
 import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
 import com.openjiuwen.core.single_agent.rail.AgentRail;
 
@@ -29,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
@@ -48,6 +57,7 @@ public class ContextProcessorRail extends AgentRail {
     private SessionMemoryConfig sessionMemoryConfig;
     private SessionMemoryManager sessionMemoryManager;
     private List<ContextEngine.ProcessorSpec> allProcessors = new ArrayList<>();
+    private SystemPromptBuilder systemPromptBuilder;
 
     public ContextProcessorRail() {
         this(null, true, null);
@@ -101,6 +111,9 @@ public class ContextProcessorRail extends AgentRail {
             sessionMemoryManager.shutdown();
         }
         readReactConfig(agent).ifPresent(config -> writeContextProcessors(config, List.of()));
+        if (systemPromptBuilder != null) {
+            systemPromptBuilder.removeSection("offload");
+        }
         allProcessors = new ArrayList<>();
     }
 
@@ -140,6 +153,18 @@ public class ContextProcessorRail extends AgentRail {
         return new ArrayList<>(allProcessors);
     }
 
+    public boolean isSessionMemoryEnabled() {
+        return sessionMemoryEnabled;
+    }
+
+    public SessionMemoryConfig getSessionMemoryConfig() {
+        return sessionMemoryConfig;
+    }
+
+    public SessionMemoryManager getSessionMemoryManager() {
+        return sessionMemoryManager;
+    }
+
     static List<ContextEngine.ProcessorSpec> mergeProcessors(
             List<ContextEngine.ProcessorSpec> base,
             List<ContextEngine.ProcessorSpec> overrides,
@@ -164,6 +189,7 @@ public class ContextProcessorRail extends AgentRail {
                         buildMergedConfig(baseSpec.processorType(), overrideMap.get(baseSpec.processorType()),
                                 baseSpec.config(), modelConfig, modelClientConfig)));
             } else {
+                assignModelDefaults(baseSpec.config(), modelConfig, modelClientConfig);
                 result.add(baseSpec);
             }
         }
@@ -248,7 +274,10 @@ public class ContextProcessorRail extends AgentRail {
         return mergedConfig;
     }
 
-    private static Object mergeConfigWithOverrides(Object baseConfig, Map<?, ?> overrides) {
+    static Object mergeConfigWithOverrides(Object baseConfig, Map<?, ?> overrides) {
+        if (overrides == null || overrides.isEmpty()) {
+            return baseConfig;
+        }
         Object copy = OBJECT_MAPPER.convertValue(baseConfig, baseConfig.getClass());
         Map<String, Object> normalized = new LinkedHashMap<>();
         overrides.forEach((key, value) -> normalized.put(String.valueOf(key), value));
@@ -297,11 +326,95 @@ public class ContextProcessorRail extends AgentRail {
         }
     }
 
-    private static void fixIncompleteToolContext(AgentCallbackContext context) {
+    public static void fixIncompleteToolContext(AgentCallbackContext context) {
+        if (context == null) {
+            return;
+        }
         context.getExtra().put("incomplete_tool_context_checked", true);
+        ModelContext modelContext = context.getContext();
+        if (modelContext == null) {
+            return;
+        }
+        List<BaseMessage> messages = modelContext.getMessages(null, true);
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        List<BaseMessage> popped = modelContext.popMessages(messages.size(), true);
+        List<BaseMessage> repaired = repairToolContext(popped == null || popped.isEmpty() ? messages : popped);
+        if (!repaired.isEmpty()) {
+            modelContext.addMessages(repaired).toCompletableFuture().join();
+        }
+    }
+
+    public static String ensureJsonArguments(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            try {
+                return pythonStyleJson(OBJECT_MAPPER.writeValueAsString(map));
+            } catch (Exception ignored) {
+                return "{}";
+            }
+        }
+        if (!(value instanceof String text) || text.isBlank()) {
+            return "{}";
+        }
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(text, Object.class);
+            return parsed instanceof Map<?, ?> ? text : "{}";
+        } catch (Exception ignored) {
+            return "{}";
+        }
+    }
+
+    private static String pythonStyleJson(String compactJson) {
+        return compactJson == null ? "{}" : compactJson.replace(":", ": ").replace(",", ", ");
+    }
+
+    private static List<BaseMessage> repairToolContext(List<BaseMessage> messages) {
+        List<BaseMessage> repaired = new ArrayList<>();
+        Map<String, ToolCall> pendingToolCalls = new LinkedHashMap<>();
+        for (BaseMessage message : messages) {
+            if (message instanceof ToolMessage toolMessage) {
+                pendingToolCalls.remove(Objects.toString(toolMessage.getToolCallId(), ""));
+                repaired.add(toolMessage);
+                continue;
+            }
+            flushMissingToolMessages(repaired, pendingToolCalls);
+            if (message instanceof AssistantMessage assistantMessage) {
+                sanitizeToolCalls(assistantMessage);
+                repaired.add(assistantMessage);
+                if (assistantMessage.getToolCalls() != null) {
+                    for (ToolCall toolCall : assistantMessage.getToolCalls()) {
+                        pendingToolCalls.put(Objects.toString(toolCall.getId(), ""), toolCall);
+                    }
+                }
+                continue;
+            }
+            repaired.add(message);
+        }
+        flushMissingToolMessages(repaired, pendingToolCalls);
+        return repaired;
+    }
+
+    private static void sanitizeToolCalls(AssistantMessage assistantMessage) {
+        if (assistantMessage.getToolCalls() == null) {
+            return;
+        }
+        for (ToolCall toolCall : assistantMessage.getToolCalls()) {
+            toolCall.setArguments(ensureJsonArguments(toolCall.getArguments()));
+        }
+    }
+
+    private static void flushMissingToolMessages(List<BaseMessage> repaired, Map<String, ToolCall> pendingToolCalls) {
+        for (String toolCallId : new ArrayList<>(pendingToolCalls.keySet())) {
+            repaired.add(new ToolMessage("[Tool execution interrupted]", toolCallId));
+        }
+        pendingToolCalls.clear();
     }
 
     private static void refreshTaskStateRuntime(AgentCallbackContext context) {
+        if (context == null) {
+            return;
+        }
         Object session = context.getSession();
         if (session == null) {
             return;
@@ -315,6 +428,15 @@ public class ContextProcessorRail extends AgentRail {
             if (iteration != null) {
                 context.getExtra().put("iteration", iteration);
             }
+            Map<String, Object> update = new LinkedHashMap<>(state);
+            if (state.get("plan_mode") instanceof Map<?, ?> planModeRaw) {
+                Map<String, Object> planMode = new LinkedHashMap<>();
+                planModeRaw.forEach((key, value) -> planMode.put(String.valueOf(key), value));
+                Object mode = planMode.getOrDefault("mode", "normal");
+                planMode.putIfAbsent("pre_plan_mode", mode);
+                update.put("plan_mode", planMode);
+            }
+            invokeUpdateState(session, update);
         });
     }
 
@@ -326,6 +448,9 @@ public class ContextProcessorRail extends AgentRail {
     }
 
     private static Optional<Map<String, Object>> readSessionState(Object session) {
+        if (session instanceof AgentSessionApi sessionApi) {
+            return asStringObjectMap(sessionApi.getState(null));
+        }
         try {
             Method method = session.getClass().getMethod("getState");
             Object value = method.invoke(session);
@@ -341,8 +466,47 @@ public class ContextProcessorRail extends AgentRail {
         }
     }
 
-    private static void maybeInjectOffloadSection(AgentCallbackContext context) {
+    private static void invokeUpdateState(Object session, Map<String, Object> update) {
+        if (session instanceof AgentSessionApi sessionApi) {
+            sessionApi.updateState(update);
+            return;
+        }
+        try {
+            Method method = session.getClass().getMethod("updateState", Map.class);
+            method.invoke(session, update);
+            return;
+        } catch (ReflectiveOperationException ignored) {
+            // Fall through to Python-style snake_case.
+        }
+        try {
+            Method method = session.getClass().getMethod("update_state", Map.class);
+            method.invoke(session, update);
+        } catch (ReflectiveOperationException ignored) {
+            // Dynamic sessions may expose read-only state.
+        }
+    }
+
+    private void maybeInjectOffloadSection(AgentCallbackContext context) {
         if (context != null && context.getExtra() != null) {
+            Object builder = context.getExtra().get("system_prompt_builder");
+            boolean shouldInject = builder instanceof SystemPromptBuilder && !allProcessors.isEmpty();
+            if (builder instanceof SystemPromptBuilder systemPromptBuilder) {
+                this.systemPromptBuilder = systemPromptBuilder;
+                if (shouldInject) {
+                    systemPromptBuilder.addSection(new PromptSection(
+                            "offload",
+                            Map.of(
+                                    "cn", "上下文压缩提示: 如需查看已卸载内容, 调用 reload_original_context_messages。",
+                                    "en", "Context Compression: call reload_original_context_messages for offloaded content."
+                            ),
+                            90
+                    ));
+                } else {
+                    systemPromptBuilder.removeSection("offload");
+                }
+                context.getExtra().put("offload_section_enabled", shouldInject);
+                return;
+            }
             context.getExtra().put("offload_section_enabled", true);
         }
     }

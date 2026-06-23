@@ -15,6 +15,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code openjiuwen.harness.cli.prompts.builder} in
+ * {@code openjiuwen/harness/cli/prompts/builder.py}.
+ *
+ * <p>Mirrors Python's {@code tests.cli.unit.test_memory} in
+ * {@code tests/cli/unit/test_memory.py}.</p>
+ */
 class CliPromptBuilderTest {
 
     @TempDir

@@ -69,6 +69,38 @@ class RuntimeExtensionMergerTest {
     }
 
     @Test
+    void conflictingHelperFilesAreRenamedForEachExtension() throws Exception {
+        RuntimeExtensionArtifact extA = writeMinimalExtension(
+                tempDir,
+                "ext_a",
+                Map.of("tools/helper.py", "VALUE = \"from_a\"\n"),
+                false,
+                false
+        );
+        RuntimeExtensionArtifact extB = writeMinimalExtension(
+                tempDir,
+                "ext_b",
+                Map.of("tools/helper.py", "VALUE = \"from_b\"\n"),
+                false,
+                false
+        );
+
+        MergeRuntimeExtensionsResult result = RuntimeExtensionMerger.mergeRuntimeExtensions(List.of(extA, extB), tempDir);
+
+        Path mergedRoot = Path.of(result.runtimeExt().getRuntimePath());
+        assertThat(mergedRoot.resolve("tools").resolve("helper__ext_a.py")).isRegularFile();
+        assertThat(mergedRoot.resolve("tools").resolve("helper__ext_b.py")).isRegularFile();
+        assertThat(result.renameMap()).containsEntry(
+                new SourcePathKey("ext_a", "tools/helper.py"),
+                "tools/helper__ext_a.py"
+        );
+        assertThat(result.renameMap()).containsEntry(
+                new SourcePathKey("ext_b", "tools/helper.py"),
+                "tools/helper__ext_b.py"
+        );
+    }
+
+    @Test
     void conflictingSourceFilesAreRenamedAndManifestTracksRenames() throws Exception {
         RuntimeExtensionArtifact extA = writeSharedToolExtension("ext_a", "ToolFromExtA");
         RuntimeExtensionArtifact extB = writeSharedToolExtension("ext_b", "ToolFromExtB");

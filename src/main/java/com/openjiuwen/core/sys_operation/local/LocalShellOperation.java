@@ -26,11 +26,13 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
@@ -57,6 +59,27 @@ public class LocalShellOperation extends BaseShellOperation {
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     private static final int DEFAULT_STREAM_CHUNK_SIZE = 1024;
     private static final String DEFAULT_ENCODING = "utf-8";
+    private static final List<String> POWERSHELL_TOKENS = List.of(
+            "powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ",
+            "get-childitem", "set-location", "remove-item", "test-path",
+            "join-path", "select-object", "where-object", "foreach-object",
+            "invoke-webrequest", "invoke-restmethod", "out-file", "start-process",
+            "$env:", "$psversiontable", "$null", "$true", "$false"
+    );
+    private static final Pattern PS_VARIABLE_PATTERN = Pattern.compile("(^|[\\s;(])\\$[A-Za-z_][A-Za-z0-9_]*");
+    private static final Pattern POWERSHELL_EXECUTABLE_PATTERN = Pattern.compile(
+            "^\\s*(?:powershell(?:\\.exe)?|pwsh(?:\\.exe)?)\\b",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern POWERSHELL_COMMAND_ARG_PATTERN = Pattern.compile(
+            "(?is)(?:^|\\s)-(?:command|c)\\s+(?<script>.+)\\s*$");
+    private static final Set<String> POSIX_COMMANDS = Set.of(
+            "ls", "grep", "egrep", "fgrep", "cat", "head", "tail", "find", "rm",
+            "cp", "mv", "touch", "chmod", "chown", "sed", "awk", "gawk", "cut",
+            "sort", "uniq", "wc", "du", "df", "pwd", "which", "mkdir"
+    );
+    private static final Pattern QUOTED_WINDOWS_PATH_PATTERN = Pattern.compile("(['\"])([A-Za-z]:\\\\[^'\"]+)\\1");
+    private static final Pattern UNQUOTED_WINDOWS_PATH_PATTERN = Pattern.compile(
+            "(?<![\\w/])([A-Za-z]:\\\\[^\\s|&;]+)");
     private static final List<DangerousPattern> DEFAULT_DANGEROUS_PATTERNS = List.of(
             new DangerousPattern(Pattern.compile("\\brm\\s+-rf\\b", Pattern.CASE_INSENSITIVE), "rm -rf"),
             new DangerousPattern(Pattern.compile("\\bdel\\s+/[a-z]*[fsq][a-z]*\\b", Pattern.CASE_INSENSITIVE),
@@ -395,15 +418,46 @@ public class LocalShellOperation extends BaseShellOperation {
         return builder;
     }
 
+    List<String> resolveExecutionArgsForTest(String command, ShellType shellType, boolean stream, boolean windows,
+                                             String powerShellPath, String bashPath, String shPath) throws IOException {
+        return resolveExecutionArgs(command, shellType, stream, windows, powerShellPath, bashPath, shPath);
+    }
+
     private List<String> resolveExecutionArgs(String command, ShellType shellType, boolean stream) throws IOException {
-        boolean windows = isWindows();
+        return resolveExecutionArgs(command, shellType, stream, isWindows(), null, null, null);
+    }
+
+    private List<String> resolveExecutionArgs(String command, ShellType shellType, boolean stream, boolean windows,
+                                              String powerShellPath, String bashPath, String shPath)
+            throws IOException {
         if (windows) {
+            if (shellType == ShellType.AUTO) {
+                String powerShellCommand = unwrapPowerShellCommand(command);
+                if (powerShellCommand != null) {
+                    return powerShellArgs(powerShellPath, powerShellCommand);
+                }
+                if (looksLikePowerShell(command)) {
+                    return powerShellArgs(powerShellPath, command);
+                }
+                if (looksLikePosix(command)) {
+                    String bash = availableBash(false, bashPath);
+                    if (bash != null) {
+                        return List.of(bash, "-lc", normalizeWindowsPathsForBash(command));
+                    }
+                }
+                return List.of("cmd.exe", "/c", command);
+            }
             if (shellType == ShellType.POWERSHELL) {
-                return List.of(availablePowerShell(), "-NoProfile", "-NonInteractive", "-Command", command);
+                return powerShellArgs(powerShellPath, Optional.ofNullable(unwrapPowerShellCommand(command))
+                        .orElse(command));
             }
             if (shellType == ShellType.BASH || shellType == ShellType.SH) {
-                String shell = availableUnixShell(shellType);
-                return List.of(shell, shellType == ShellType.BASH ? "-lc" : "-c", command);
+                String shell = shellType == ShellType.BASH ? availableBash(true, bashPath) : availableSh(shPath);
+                if (shell == null) {
+                    throw new IOException("shell '" + shellType.value() + "' is not available on this system");
+                }
+                return List.of(shell, shellType == ShellType.BASH ? "-lc" : "-c",
+                        normalizeWindowsPathsForBash(command));
             }
             return List.of("cmd.exe", "/c", command);
         }
@@ -427,6 +481,157 @@ public class LocalShellOperation extends BaseShellOperation {
         return List.of("/bin/sh", "-c", resolvedCommand);
     }
 
+    private List<String> powerShellArgs(String powerShellPath, String command) {
+        return List.of(availablePowerShell(powerShellPath), "-NoProfile", "-NonInteractive", "-Command", command);
+    }
+
+    private boolean looksLikePowerShell(String command) {
+        String lowered = command == null ? "" : command.strip().toLowerCase(Locale.ROOT);
+        if (lowered.isBlank()) {
+            return false;
+        }
+        for (String token : POWERSHELL_TOKENS) {
+            if (lowered.contains(token)) {
+                return true;
+            }
+        }
+        return command.contains("@'") || command.contains("@\"") || PS_VARIABLE_PATTERN.matcher(command).find();
+    }
+
+    private String unwrapPowerShellCommand(String command) {
+        if (command == null || !POWERSHELL_EXECUTABLE_PATTERN.matcher(command).find()) {
+            return null;
+        }
+        String remainder = POWERSHELL_EXECUTABLE_PATTERN.matcher(command).replaceFirst("").strip();
+        java.util.regex.Matcher matcher = POWERSHELL_COMMAND_ARG_PATTERN.matcher(remainder);
+        if (!matcher.find()) {
+            return null;
+        }
+        String script = stripMatchingQuotes(matcher.group("script"));
+        return script.isBlank() ? null : script;
+    }
+
+    private String stripMatchingQuotes(String value) {
+        String stripped = value == null ? "" : value.strip();
+        if (stripped.length() >= 2
+                && stripped.charAt(0) == stripped.charAt(stripped.length() - 1)
+                && (stripped.charAt(0) == '"' || stripped.charAt(0) == '\'')) {
+            return stripped.substring(1, stripped.length() - 1);
+        }
+        return stripped;
+    }
+
+    private boolean looksLikePosix(String command) {
+        for (String segment : splitShellSegments(command == null ? "" : command)) {
+            if (POSIX_COMMANDS.contains(segmentBaseCommand(segment))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> splitShellSegments(String command) {
+        List<String> segments = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        Character quote = null;
+        int index = 0;
+        while (index < command.length()) {
+            char currentChar = command.charAt(index);
+            if (currentChar == '"' || currentChar == '\'') {
+                if (quote == null) {
+                    quote = currentChar;
+                } else if (quote == currentChar) {
+                    quote = null;
+                }
+            }
+            if (quote == null && index + 1 < command.length()) {
+                String pair = command.substring(index, index + 2);
+                if ("&&".equals(pair) || "||".equals(pair)) {
+                    addSegment(segments, current);
+                    index += 2;
+                    continue;
+                }
+            }
+            if (quote == null && (currentChar == '|' || currentChar == ';'
+                    || currentChar == '\n' || currentChar == '\r')) {
+                addSegment(segments, current);
+                index += 1;
+                continue;
+            }
+            current.append(currentChar);
+            index += 1;
+        }
+        addSegment(segments, current);
+        return segments;
+    }
+
+    private void addSegment(List<String> segments, StringBuilder current) {
+        String segment = current.toString().strip();
+        if (!segment.isBlank()) {
+            segments.add(segment);
+        }
+        current.setLength(0);
+    }
+
+    private String segmentBaseCommand(String segment) {
+        String trimmed = segment.strip();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        String firstToken = firstShellToken(trimmed);
+        String unquoted = stripMatchingQuotes(firstToken);
+        int slash = Math.max(unquoted.lastIndexOf('/'), unquoted.lastIndexOf('\\'));
+        String base = (slash >= 0 ? unquoted.substring(slash + 1) : unquoted).toLowerCase(Locale.ROOT);
+        return base.endsWith(".exe") ? base.substring(0, base.length() - 4) : base;
+    }
+
+    private String firstShellToken(String value) {
+        char quote = 0;
+        StringBuilder token = new StringBuilder();
+        for (int index = 0; index < value.length(); index += 1) {
+            char currentChar = value.charAt(index);
+            if ((currentChar == '"' || currentChar == '\'') && quote == 0) {
+                quote = currentChar;
+                token.append(currentChar);
+                continue;
+            }
+            if (currentChar == quote) {
+                quote = 0;
+                token.append(currentChar);
+                continue;
+            }
+            if (quote == 0 && Character.isWhitespace(currentChar)) {
+                break;
+            }
+            token.append(currentChar);
+        }
+        return token.toString();
+    }
+
+    private String normalizeWindowsPathsForBash(String command) {
+        java.util.regex.Matcher quotedMatcher = QUOTED_WINDOWS_PATH_PATTERN.matcher(command);
+        StringBuffer quotedBuffer = new StringBuffer();
+        while (quotedMatcher.find()) {
+            String replacement = quotedMatcher.group(1) + quotedMatcher.group(2).replace("\\", "/")
+                    + quotedMatcher.group(1);
+            quotedMatcher.appendReplacement(quotedBuffer, java.util.regex.Matcher.quoteReplacement(replacement));
+        }
+        quotedMatcher.appendTail(quotedBuffer);
+
+        java.util.regex.Matcher unquotedMatcher = UNQUOTED_WINDOWS_PATH_PATTERN.matcher(quotedBuffer.toString());
+        StringBuffer unquotedBuffer = new StringBuffer();
+        while (unquotedMatcher.find()) {
+            unquotedMatcher.appendReplacement(unquotedBuffer,
+                    java.util.regex.Matcher.quoteReplacement(unquotedMatcher.group(1).replace("\\", "/")));
+        }
+        unquotedMatcher.appendTail(unquotedBuffer);
+        return unquotedBuffer.toString();
+    }
+
+    private String availablePowerShell(String override) {
+        return override == null ? availablePowerShell() : override;
+    }
+
     private String availablePowerShell() {
         String pwsh = which("pwsh");
         return pwsh == null ? "powershell" : pwsh;
@@ -439,6 +644,82 @@ public class LocalShellOperation extends BaseShellOperation {
             throw new IOException("shell '" + shellType.value() + "' is not available on this system");
         }
         return shell;
+    }
+
+    private String availableBash(boolean allowWsl, String override) {
+        if (override != null) {
+            return override;
+        }
+        String gitBash = availableGitBash();
+        if (gitBash != null) {
+            return gitBash;
+        }
+        String resolved = which("bash");
+        if (resolved != null && (allowWsl || !isWslBashPath(resolved))) {
+            return resolved;
+        }
+        return null;
+    }
+
+    private String availableSh(String override) {
+        if (override != null) {
+            return override;
+        }
+        String gitBash = availableGitBash();
+        if (gitBash != null) {
+            Path shPath = Path.of(gitBash).getParent().getParent().resolve("usr").resolve("bin").resolve("sh.exe");
+            if (Files.isRegularFile(shPath)) {
+                return shPath.toString();
+            }
+        }
+        return which("sh");
+    }
+
+    private String availableGitBash() {
+        if (!isWindows()) {
+            return null;
+        }
+        for (Path candidate : gitBashCandidates()) {
+            if (Files.isRegularFile(candidate)) {
+                return candidate.toString();
+            }
+        }
+        return null;
+    }
+
+    private List<Path> gitBashCandidates() {
+        List<Path> candidates = new ArrayList<>();
+        for (String envName : List.of("GIT_BASH", "GIT_BASH_PATH")) {
+            String envValue = System.getenv(envName);
+            if (envValue != null && !envValue.isBlank()) {
+                candidates.add(Path.of(envValue));
+            }
+        }
+        for (String root : new HashSet<>(List.of(
+                Optional.ofNullable(System.getenv("ProgramFiles")).orElse(""),
+                Optional.ofNullable(System.getenv("ProgramFiles(x86)")).orElse(""),
+                Optional.ofNullable(System.getenv("LocalAppData"))
+                        .map(value -> Path.of(value).resolve("Programs").toString()).orElse("")
+        ))) {
+            if (!root.isBlank()) {
+                candidates.add(Path.of(root).resolve("Git").resolve("bin").resolve("bash.exe"));
+            }
+        }
+        String gitPath = which("git");
+        if (gitPath != null) {
+            Path gitExe = Path.of(gitPath);
+            candidates.add(gitExe.getParent().getParent().resolve("bin").resolve("bash.exe"));
+        }
+        return candidates;
+    }
+
+    private boolean isWslBashPath(String path) {
+        String normalized = Path.of(path).toAbsolutePath().normalize().toString().toLowerCase(Locale.ROOT);
+        String systemRoot = Optional.ofNullable(System.getenv("SystemRoot")).orElse("C:\\Windows")
+                .toLowerCase(Locale.ROOT);
+        String systemBash = Path.of(systemRoot).resolve("System32").resolve("bash.exe")
+                .normalize().toString().toLowerCase(Locale.ROOT);
+        return normalized.equals(systemBash) || normalized.contains("\\microsoft\\windowsapps\\bash.exe");
     }
 
     private String which(String executable) {

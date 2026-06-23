@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.rails.security;
 
 import com.openjiuwen.harness.rails.CallbackContext;
+import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail.ConfirmPayload;
 import com.openjiuwen.harness.security.PermissionConfirmResponse;
 import com.openjiuwen.harness.security.PermissionEngine;
 import com.openjiuwen.harness.security.PermissionLevel;
@@ -343,6 +344,7 @@ public class PermissionInterruptRail extends BaseSecurityRail {
         request.put("tool_args", new LinkedHashMap<>(toolArgs));
         request.put("matched_rule", result.getMatchedRule());
         request.put("reason", result.getReason());
+        request.put("payload_schema", ConfirmPayload.toSchema());
         request.put("auto_confirm_key", autoConfirmKey);
         return request;
     }
@@ -402,6 +404,9 @@ public class PermissionInterruptRail extends BaseSecurityRail {
     private static PermissionConfirmResponse parseConfirmPayload(Object userInput) {
         if (userInput instanceof PermissionConfirmResponse response) {
             return response;
+        }
+        if (userInput instanceof ConfirmPayload payload) {
+            return new PermissionConfirmResponse(payload.approved(), payload.feedback(), payload.autoConfirm());
         }
         if (!(userInput instanceof Map<?, ?> map)) {
             return null;

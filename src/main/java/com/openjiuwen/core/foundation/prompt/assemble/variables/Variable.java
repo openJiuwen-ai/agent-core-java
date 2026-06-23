@@ -23,7 +23,7 @@ public abstract class Variable {
         this.inputKeys = inputKeys;
     }
 
-    public abstract void update(Map<String, Object> kwargs);
+    public abstract Object update(Map<String, Object> kwargs);
 
     public Object eval(Map<String, Object> kwargs) {
         Map<String, Object> inputKwargs = prepareInputs(kwargs);

@@ -30,12 +30,11 @@ public final class Stage05Generate {
                     continue;
                 }
                 Path path = pathValue instanceof Path actualPath ? actualPath : Path.of(String.valueOf(pathValue));
-                String relative;
-                try {
-                    relative = skillDir.relativize(path).toString().replace('\\', '/');
-                } catch (Exception exception) {
-                    relative = path.getFileName().toString();
-                }
+                Path normalizedSkillDir = skillDir.normalize();
+                Path normalizedPath = path.normalize();
+                String relative = normalizedPath.startsWith(normalizedSkillDir)
+                        ? normalizedSkillDir.relativize(normalizedPath).toString().replace('\\', '/')
+                        : normalizedPath.getFileName().toString();
                 Map<String, Object> image = new LinkedHashMap<>();
                 image.put("type", "image");
                 image.put("path", relative);

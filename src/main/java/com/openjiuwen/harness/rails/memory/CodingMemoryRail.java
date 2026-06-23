@@ -5,11 +5,14 @@
 package com.openjiuwen.harness.rails.memory;
 
 import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.single_agent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.CodingMemorySection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -81,14 +84,16 @@ public class CodingMemoryRail extends DeepAgentRail {
         Object runKind = ctx.getValues().getOrDefault("run_kind", "");
         boolean readOnly = "cron".equals(String.valueOf(runKind)) || "heartbeat".equals(String.valueOf(runKind));
         String resolvedLanguage = String.valueOf(ctx.getValues().getOrDefault("language", language));
-        ctx.put("memory_section", CodingMemorySection.buildCodingMemorySection(
+        PromptSection section = CodingMemorySection.buildCodingMemorySection(
                 resolvedLanguage,
                 readOnly,
                 codingMemoryDir
-        ));
+        );
         if (recalledContent != null && !recalledContent.isBlank()) {
+            section = appendRecalledContent(section, resolvedLanguage);
             ctx.put("coding_memory_recalled_content", recalledContent);
         }
+        ctx.put("memory_section", section);
         ctx.put("coding_memory_total", totalMemories);
     }
 
@@ -117,6 +122,17 @@ public class CodingMemoryRail extends DeepAgentRail {
             return raw;
         }
         return new String(bytes, 0, MAX_RECALL_TOTAL_BYTES, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private PromptSection appendRecalledContent(PromptSection section, String resolvedLanguage) {
+        Map<String, String> content = new LinkedHashMap<>(section.getContent());
+        String base = section.render(resolvedLanguage);
+        String header = "cn".equals(resolvedLanguage) ? "## 已加载的相关记忆\n\n" : "## Loaded relevant memories\n\n";
+        String footer = "cn".equals(resolvedLanguage)
+                ? "\n\n（共 " + totalMemories + " 条记忆，用 coding_memory_read 读取其他。）"
+                : "\n\n(" + totalMemories + " total. Use coding_memory_read for others.)";
+        content.put(resolvedLanguage, base + "\n\n" + header + recalledContent + footer);
+        return new PromptSection(section.getName(), content, section.getPriority());
     }
 
     private void registerToolNames(DeepAgent agent) {

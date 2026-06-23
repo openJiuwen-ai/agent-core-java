@@ -111,12 +111,12 @@ public class APICallToExampleMethod extends BaseMethod {
         double evalScore = 1.0d;
         double weight = getDouble("score_eval_weight", 0.0d);
         if (weight > 0.0d && !instructions.isEmpty() && !answers.isEmpty()) {
-            List<Object> examples = List.of(new Object[]{
+            List<Object> examples = List.of(List.of(
                     instructions.get(instructions.size() - 1).trim(),
                     fnCall,
                     toolRes,
                     answers.get(answers.size() - 1).trim()
-            });
+            ));
             Map<String, Object> eval = invokeEval(tool, description, examples, 1);
             evalScore = getDouble(eval, "score_avg", 100.0d) / 100.0d;
         }

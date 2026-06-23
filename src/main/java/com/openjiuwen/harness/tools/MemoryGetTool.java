@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class MemoryGetTool extends MemoryOperationTool {
     public MemoryGetTool(MemoryOperation operation) {
-        super("memory_get", "MemoryGetTool", "Read indexed memory by path.", operation);
+        super("memory_get", "memory_get", "Read indexed memory by path.", operation);
     }
 
     @Override

@@ -94,8 +94,26 @@ class MilvusConnectorTest {
         connector.saveToDb("ns_skip", data);
         assertTrue(connector.loadFromDb("ns_skip").containsKey("node_with_emb"));
         assertFalse(connector.loadFromDb("ns_skip").containsKey("node_no_emb"));
+        assertEquals(Map.of(), connector.loadFromDb("non_existent_ns"));
         assertEquals(List.of(), connector.search("ghost_ns", List.of(0.1d, 0.2d, 0.3d, 0.4d), 5));
-        assertTrue(connector.deleteNodes("ghost_ns", List.of()));
+    }
+
+    @Test
+    void deleteNodesEmptyListIsNoop() {
+        InMemoryCollectionAdapter adapter = new InMemoryCollectionAdapter();
+        MilvusConnector connector = mockConnector(adapter, 2);
+        connector.saveToDb("ns", Map.of(
+                "keep_me",
+                Map.of(
+                        "id", "keep_me",
+                        "content", "x",
+                        "embedding", List.of(1.0d, 0.0d),
+                        "metadata", Map.of()
+                )
+        ));
+
+        assertTrue(connector.deleteNodes("ns", List.of()));
+        assertEquals(1, connector.count("ns"));
     }
 
     @Test
@@ -115,7 +133,7 @@ class MilvusConnectorTest {
     }
 
     @Test
-    @Disabled("Skipped in Python source unless Milvus is reachable at localhost:19530.")
+    @Disabled("Skipped in Python source: Milvus not reachable at localhost:19530 - skipping live test.")
     void liveMilvusIntegrationRequiresExternalServer() {
         // Mirrors the Python skip-if-live-availability test gate.
     }

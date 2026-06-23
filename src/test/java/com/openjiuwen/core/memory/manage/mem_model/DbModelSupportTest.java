@@ -26,6 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's table bootstrap behavior in
  * {@code openjiuwen/core/memory/manage/mem_model/db_model.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestCreateTablesSchemaVersion} in
+ * {@code tests/unit_tests/core/memory/migration/migrator/test_db_model.py}.</p>
  */
 class DbModelSupportTest {
 
@@ -35,11 +38,13 @@ class DbModelSupportTest {
     }
 
     @Test
-    void createTablesCreatesExpectedTablesAndSchemaRows() throws Exception {
-        MigrationPlan.getSqlRegistry().register("user_messages", new TestOperation(2, "user-messages-v2"));
-        MigrationPlan.getSqlRegistry().register("scope_user_mapping", new TestOperation(1, "scope-user-v1"));
+    void createTablesCreatesExpectedTablesAndRegisteredSchemaRows() throws Exception {
+        MigrationPlan.getSqlRegistry().register("user_messages", new TestOperation(5, "user-messages-v5"));
+        MigrationPlan.getSqlRegistry().register("scope_user_mapping", new TestOperation(3, "scope-user-v3"));
 
         JdbcDataSource dataSource = sqliteDataSource("create-all");
+        assertThat(tableNames(dataSource)).isEmpty();
+
         DbModelSupport.createTables(new DefaultDbStore<>(dataSource)).join();
 
         try (Connection connection = dataSource.getConnection()) {
@@ -47,8 +52,8 @@ class DbModelSupportTest {
                     .contains("MEMORY_META", "USER_MESSAGE", "SCOPE_USER_MAPPING");
             assertThat(readSchemaRows(connection))
                     .containsExactlyInAnyOrder(
-                            "user_message=2",
-                            "scope_user_mapping=1"
+                            "user_message=5",
+                            "scope_user_mapping=3"
                     );
         }
     }
@@ -124,7 +129,8 @@ class DbModelSupportTest {
 
     private static List<String> tableNames(Connection connection) throws Exception {
         List<String> result = new ArrayList<>();
-        try (ResultSet resultSet = connection.getMetaData().getTables(connection.getCatalog(), null, null, new String[]{"TABLE"})) {
+        try (ResultSet resultSet = connection.getMetaData()
+                .getTables(connection.getCatalog(), connection.getSchema(), null, new String[]{"TABLE"})) {
             while (resultSet.next()) {
                 result.add(resultSet.getString("TABLE_NAME"));
             }

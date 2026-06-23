@@ -6,6 +6,7 @@ package com.openjiuwen.harness.cli;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
@@ -72,6 +73,8 @@ public final class AutoHarnessCliSupport {
         if (!isBlank(request.getCompetitor())) {
             effectiveConfig.setCompetitor(request.getCompetitor());
         }
+        effectiveConfig.setPipelinePreference(AutoHarnessSchema.normalizePipelinePreference(
+                isBlank(request.getPipeline()) ? AutoHarnessPipelineNames.META_EVOLVE_PIPELINE : request.getPipeline()));
         return effectiveConfig;
     }
 

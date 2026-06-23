@@ -15,7 +15,6 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Three-stage workflow designer.
@@ -30,7 +29,7 @@ public class WorkflowDesigner {
     private final Model llm;
 
     public WorkflowDesigner(Model llm) {
-        this.llm = Objects.requireNonNull(llm, "llm");
+        this.llm = llm;
     }
 
     public String basicDesign(String userInput, String toolList) {

@@ -63,6 +63,7 @@ public final class TrajectoryGenerator {
 
         public String getQuery() { return query; }
         public Object getTrajectory() { return trajectory; }
+        public String getMattsMode() { return mattsMode; }
         public String getMattssMode() { return mattsMode; }
         public String getGroundTruth() { return groundTruth; }
         public Object getFeedback() { return feedback; }
@@ -91,29 +92,29 @@ public final class TrajectoryGenerator {
      * @return Formatted string representation of messages.
      */
     public static String formatTrajectory(List<Map<String, Object>> messages) {
-        StringBuilder output = new StringBuilder();
+        List<String> transcript = new ArrayList<>();
         for (Map<String, Object> message : messages) {
-            String role = (String) message.get("role");
-            String content = (String) message.get("content");
+            String role = String.valueOf(message.get("role"));
+            String content = stringValue(message.get("content"));
 
             switch (role) {
-                case "system":
-                    output.append("SYSTEM:\n").append(content).append("\n");
-                    break;
                 case "assistant":
-                    output.append("ASSISTANT:\n").append(content).append("\n");
+                    if (!content.isBlank()) {
+                        transcript.add("THOUGHT: " + content);
+                    }
+                    appendToolCalls(transcript, message.get("tool_calls"));
                     break;
                 case "user":
-                    output.append("USER:\n").append(content).append("\n");
+                    transcript.add("USER: " + cleanUserContent(content));
                     break;
                 case "tool":
-                    output.append("TOOL:\n").append(content).append("\n");
+                    transcript.add("OBSERVATION: " + content);
                     break;
                 default:
-                    output.append(role.toUpperCase()).append(":\n").append(content).append("\n");
+                    break;
             }
         }
-        return output.toString().trim();
+        return String.join("\n", transcript);
     }
 
     /**
@@ -129,27 +130,19 @@ public final class TrajectoryGenerator {
             String userId,
             SummarizeTrajectoriesInput input) {
 
-        // Determine algorithm name from mattsMode
-        String algoName = ALGO_TO_NAME.getOrDefault(input.getMattssMode(), "default");
-
-        // Format trajectory for summarization
-        String trajectoryText;
-        if (input.getTrajectory() instanceof String) {
-            trajectoryText = (String) input.getTrajectory();
-        } else if (input.getTrajectory() instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> messages = (List<Map<String, Object>>) input.getTrajectory();
-            trajectoryText = formatTrajectory(messages);
-        } else {
-            trajectoryText = String.valueOf(input.getTrajectory());
+        String mattsMode = input.getMattsMode() == null || input.getMattsMode().isBlank()
+                ? "none"
+                : input.getMattsMode();
+        List<String> trajectories = normalizeTrajectories(input.getTrajectory());
+        if ("sequential".equals(mattsMode) && !trajectories.isEmpty()) {
+            trajectories = List.of(trajectories.getLast());
         }
 
-        // Call memory service for summarization
         return memoryService.summarize(
             userId,
-            algoName,
+            mattsMode,
             input.getQuery(),
-            List.of(trajectoryText),
+            trajectories,
             null,
             input.getScores()
         );
@@ -252,5 +245,83 @@ public final class TrajectoryGenerator {
             batches.add(list.subList(i, Math.min(i + size, list.size())));
         }
         return batches;
+    }
+
+    private static List<String> normalizeTrajectories(Object trajectory) {
+        if (trajectory == null) {
+            return List.of();
+        }
+        if (trajectory instanceof String text) {
+            return List.of(text);
+        }
+        if (trajectory instanceof List<?> list) {
+            if (list.isEmpty()) {
+                return List.of();
+            }
+            if (list.getFirst() instanceof Map<?, ?>) {
+                List<Map<String, Object>> messages = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        Map<String, Object> copy = new HashMap<>();
+                        map.forEach((key, value) -> copy.put(String.valueOf(key), value));
+                        messages.add(copy);
+                    }
+                }
+                return List.of(formatTrajectory(messages));
+            }
+            List<String> values = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) {
+                    values.add(String.valueOf(item));
+                }
+            }
+            return values;
+        }
+        return List.of(String.valueOf(trajectory));
+    }
+
+    private static String cleanUserContent(String content) {
+        String result = content == null ? "" : content;
+        if (result.startsWith("Task:")) {
+            result = result.substring("Task:".length()).stripLeading();
+        }
+        String relatedExperience = "Some Related Experience to help you complete the task";
+        int relatedIndex = result.indexOf(relatedExperience);
+        if (relatedIndex >= 0) {
+            result = result.substring(0, relatedIndex).trim();
+        }
+        String questionMarker = "Question: ";
+        int questionIndex = result.lastIndexOf(questionMarker);
+        if (questionIndex >= 0) {
+            result = result.substring(questionIndex + questionMarker.length());
+        }
+        return result.trim();
+    }
+
+    private static void appendToolCalls(List<String> transcript, Object value) {
+        if (!(value instanceof List<?> calls)) {
+            return;
+        }
+        for (Object call : calls) {
+            Object name = readValue(call, "name");
+            Object arguments = readValue(call, "arguments");
+            transcript.add("ACTION: " + stringValue(name) + "(" + stringValue(arguments) + ")");
+        }
+    }
+
+    private static Object readValue(Object value, String key) {
+        if (value instanceof Map<?, ?> map) {
+            return map.get(key);
+        }
+        String methodName = "get" + Character.toUpperCase(key.charAt(0)) + key.substring(1);
+        try {
+            return value.getClass().getMethod(methodName).invoke(value);
+        } catch (ReflectiveOperationException exception) {
+            return null;
+        }
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }

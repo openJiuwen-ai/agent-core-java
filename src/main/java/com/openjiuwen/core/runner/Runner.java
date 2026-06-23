@@ -19,6 +19,7 @@ import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.multi_agent.BaseTeam;
 import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
@@ -29,6 +30,13 @@ import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
+import com.openjiuwen.core.runner.spawn.SpawnAgentConfigs;
+import com.openjiuwen.core.runner.spawn.SpawnConfig;
+import com.openjiuwen.core.runner.spawn.SpawnMessage;
+import com.openjiuwen.core.runner.spawn.SpawnMessageType;
+import com.openjiuwen.core.runner.spawn.SpawnProcesses;
+import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
@@ -45,6 +53,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -177,7 +186,8 @@ public final class Runner {
     public static CompletionStage<Object> spawnAgent(Object agentConfig, Object inputs, Object session,
                                                      ModelContext context, Map<String, Object> envs,
                                                      Object spawnConfig) {
-        return GLOBAL_RUNNER.spawnDependencyPending("spawn_agent");
+        return GLOBAL_RUNNER.spawnAgent(agentConfig, inputs, session, spawnConfig)
+                .thenApply(handle -> handle);
     }
 
     public static CompletionStage<Iterator<Object>> spawnAgentStreaming(Object agentConfig, Object inputs,
@@ -185,8 +195,7 @@ public final class Runner {
                                                                         List<StreamMode> streamModes,
                                                                         Map<String, Object> envs,
                                                                         Object spawnConfig) {
-        return failedFuture(new UnsupportedOperationException(
-                "Runner.spawn_agent_streaming depends on pending spawn process-manager translation."));
+        return GLOBAL_RUNNER.spawnAgentStreaming(agentConfig, inputs, session, streamModes, spawnConfig);
     }
 
     public static CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs) {
@@ -424,6 +433,44 @@ public final class Runner {
                 }
                 throw new IllegalArgumentException("unsupported agent type: " + prepared.agent());
             });
+        }
+
+        private CompletionStage<SpawnedProcessHandle> spawnAgent(
+                Object agentConfig,
+                Object inputs,
+                Object session,
+                Object spawnConfig) {
+            if (!(agentConfig instanceof SpawnAgentConfig config)) {
+                return failedFuture(new IllegalArgumentException("Runner.spawn_agent now requires SpawnAgentConfig."));
+            }
+            Map<String, Object> normalizedInputs = normalizeSpawnInputs(inputs);
+            String sessionId = String.valueOf(normalizedInputs.getOrDefault(
+                    AGENT_CONVERSATION_ID,
+                    session instanceof String value ? value : DEFAULT_AGENT_SESSION_ID
+            ));
+            SpawnAgentConfig spawnPayload = SpawnAgentConfigs.parseSpawnAgentConfig(config.toMap());
+            spawnPayload.setSessionId(sessionId);
+            if (spawnPayload.getLoggingConfig() == null) {
+                spawnPayload.setLoggingConfig(LoggingDefaults.getLogConfigSnapshot());
+            }
+            SpawnConfig resolvedConfig = spawnConfig instanceof SpawnConfig value ? value : null;
+            return SpawnProcesses.spawnProcess(spawnPayload.toMap(), normalizedInputs, resolvedConfig)
+                    .thenCompose(handle -> {
+                        if (resolvedConfig != null) {
+                            return handle.startHealthCheck().thenApply(ignored -> handle);
+                        }
+                        return CompletableFuture.completedFuture(handle);
+                    });
+        }
+
+        private CompletionStage<Iterator<Object>> spawnAgentStreaming(
+                Object agentConfig,
+                Object inputs,
+                Object session,
+                List<StreamMode> streamModes,
+                Object spawnConfig) {
+            return spawnAgent(agentConfig, inputs, session, spawnConfig)
+                    .thenApply(SpawnAgentIterator::new);
         }
 
         private CompletionStage<Void> release(String sessionId, boolean force) {
@@ -1050,6 +1097,7 @@ public final class Runner {
                     case PAUSED -> com.openjiuwen.agent_teams.schema.status.MemberStatus.PAUSED;
                     case SHUTDOWN -> com.openjiuwen.agent_teams.schema.status.MemberStatus.SHUTDOWN;
                     case SHUTDOWN_REQUESTED -> com.openjiuwen.agent_teams.schema.status.MemberStatus.SHUTDOWN_REQUESTED;
+                    default -> null;
                 };
             }
         }
@@ -1173,6 +1221,7 @@ public final class Runner {
                 }
                 if (resolvedAgent instanceof RemoteAgent) {
                     inputMap.putIfAbsent(AGENT_CONVERSATION_ID, sessionId);
+                    syncStringObjectMap(inputs, inputMap);
                     return new PreparedAgent(resolvedAgent, null, null);
                 }
             }
@@ -1184,6 +1233,7 @@ public final class Runner {
             }
             if (resolvedAgent instanceof RemoteAgent) {
                 inputMap.putIfAbsent(AGENT_CONVERSATION_ID, sessionId);
+                syncStringObjectMap(inputs, inputMap);
                 return new PreparedAgent(resolvedAgent, null, null);
             }
             throw new IllegalArgumentException("unsupported agent type: " + resolvedAgent);
@@ -1215,6 +1265,15 @@ public final class Runner {
             return kwargs;
         }
 
+        private static Map<String, Object> normalizeSpawnInputs(Object inputs) {
+            if (inputs instanceof Map<?, ?> rawMap) {
+                return copyStringMap(rawMap);
+            }
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put("data", inputs);
+            return wrapped;
+        }
+
         @SuppressWarnings("unchecked")
         private static Map<String, Object> asStringObjectMap(Object value) {
             if (!(value instanceof Map<?, ?> rawMap)) {
@@ -1222,15 +1281,21 @@ public final class Runner {
             }
             Map<String, Object> result = new LinkedHashMap<>();
             rawMap.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
-            if (value instanceof Map<?, ?>) {
-                try {
-                    ((Map<Object, Object>) value).clear();
-                    result.forEach(((Map<Object, Object>) value)::put);
-                } catch (UnsupportedOperationException ignored) {
-                    // Immutable inputs are normalized for use inside Runner without mutating the caller.
-                }
-            }
+            syncStringObjectMap(value, result);
             return result;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static void syncStringObjectMap(Object value, Map<String, Object> normalized) {
+            if (!(value instanceof Map<?, ?>)) {
+                return;
+            }
+            try {
+                ((Map<Object, Object>) value).clear();
+                normalized.forEach(((Map<Object, Object>) value)::put);
+            } catch (UnsupportedOperationException ignored) {
+                // Immutable inputs are normalized for use inside Runner without mutating the caller.
+            }
         }
 
         private static <T> T await(CompletionStage<T> stage) {
@@ -1245,6 +1310,41 @@ public final class Runner {
                     throw runtimeException;
                 }
                 throw new CompletionException(cause);
+            }
+        }
+
+        private static final class SpawnAgentIterator implements Iterator<Object> {
+            private final SpawnedProcessHandle handle;
+            private boolean first = true;
+            private boolean finished;
+
+            private SpawnAgentIterator(SpawnedProcessHandle handle) {
+                this.handle = handle;
+            }
+
+            @Override
+            public boolean hasNext() {
+                return !finished && (first || handle.isAlive());
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                if (first) {
+                    first = false;
+                    return handle;
+                }
+                SpawnMessage message = handle.receiveMessage().toCompletableFuture().join();
+                if (message == null) {
+                    finished = true;
+                    throw new NoSuchElementException();
+                }
+                if (message.getType() == SpawnMessageType.DONE || message.getType() == SpawnMessageType.ERROR) {
+                    finished = true;
+                }
+                return message.getPayload();
             }
         }
     }

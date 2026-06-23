@@ -67,6 +67,7 @@ public final class FoundationStorePackage {
 
     private static final Logger LOGGER = Logger.getLogger(FoundationStorePackage.class.getName());
     private static final Map<String, VectorStoreFactory> CUSTOM_VECTOR_STORES = new LinkedHashMap<>();
+    private static List<VectorStoreProvider> vectorStoreProvidersForTest;
     private static final Map<String, String> BUILTIN_CLASS_NAMES = Map.of(
             "chroma", "com.openjiuwen.core.foundation.store.vector.ChromaVectorStore",
             "milvus", "com.openjiuwen.core.foundation.store.vector.MilvusVectorStore",
@@ -167,6 +168,11 @@ public final class FoundationStorePackage {
 
     static void clearCustomVectorStoresForTest() {
         CUSTOM_VECTOR_STORES.clear();
+        vectorStoreProvidersForTest = null;
+    }
+
+    static void setVectorStoreProvidersForTest(List<VectorStoreProvider> providers) {
+        vectorStoreProvidersForTest = providers == null ? null : List.copyOf(providers);
     }
 
     private static BaseVectorStore resolveBuiltin(String storeType, Map<String, Object> kwargs) {
@@ -176,7 +182,10 @@ public final class FoundationStorePackage {
 
     private static BaseVectorStore resolveServiceProvider(String storeType, Map<String, Object> kwargs) {
         try {
-            for (VectorStoreProvider provider : ServiceLoader.load(VectorStoreProvider.class)) {
+            Iterable<VectorStoreProvider> providers = vectorStoreProvidersForTest == null
+                    ? ServiceLoader.load(VectorStoreProvider.class)
+                    : vectorStoreProvidersForTest;
+            for (VectorStoreProvider provider : providers) {
                 if (!provider.name().equals(storeType)) {
                     continue;
                 }

@@ -13,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call} in
  * {@code openjiuwen/agent_evolving/optimizer/tool_call/__init__.py}.
+ *
+ * <p>Mirrors Python's {@code test_init_exports_and_default_configs} export checks in
+ * {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_init_and_default_configs.py}.</p>
  */
 class ToolCallOptimizerPackageTest {
 

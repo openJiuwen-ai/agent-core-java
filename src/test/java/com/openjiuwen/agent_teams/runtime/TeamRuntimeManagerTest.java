@@ -23,6 +23,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code TeamRuntimeManager} tests for
  * {@code openjiuwen/agent_teams/runtime/manager.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_teams.runtime.test_manager} in
+ * {@code tests/unit_tests/agent_teams/runtime/test_manager.py}.</p>
  */
 class TeamRuntimeManagerTest {
 
@@ -160,6 +163,137 @@ class TeamRuntimeManagerTest {
     }
 
     @Test
+    void finalizeMemberShutdownRequestedTransitionsToShutdown() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.SHUTDOWN_REQUESTED);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isEqualTo(1);
+        assertThat(agent.pauseCalls).isZero();
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.SHUTDOWN);
+    }
+
+    @Test
+    void finalizeMemberReadyPausesAndMarksReady() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.READY);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
+    void finalizeMemberBusyPausesAndMarksReady() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.BUSY);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
+    void finalizeMemberAlreadyShutdownSkipsStatusWrite() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.SHUTDOWN);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isEqualTo(1);
+        assertThat(agent.pauseCalls).isZero();
+        assertThat(agent.member.updated).isEmpty();
+    }
+
+    @Test
+    void finalizeMemberAlreadyStoppedSkipsStatusWrite() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.STOPPED);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isEqualTo(1);
+        assertThat(agent.pauseCalls).isZero();
+        assertThat(agent.member.updated).isEmpty();
+    }
+
+    @Test
+    void finalizeMemberAlreadyPausedSkipsStatusWrite() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.PAUSED);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isEqualTo(1);
+        assertThat(agent.pauseCalls).isZero();
+        assertThat(agent.member.updated).isEmpty();
+    }
+
+    @Test
+    void finalizeMemberNoTeamMemberPausesDefaultPath() {
+        FakeAgent agent = new FakeAgent();
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+    }
+
+    @Test
+    void finalizeMemberNoTeamMemberPausesOnOtherStatus() {
+        FakeAgent agent = new FakeAgent();
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+    }
+
+    @Test
+    void finalizeMemberStatusReadFailureFallsBackToPause() {
+        FakeAgent agent = new FakeAgent();
+        agent.member = new FailingMember();
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
+    void finalizeMemberUnstartedStatusPausesAndMarksReady() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.UNSTARTED);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
+    void finalizeMemberErrorStatusPausesAndMarksReady() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.ERROR);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
+    void finalizeMemberRestartingStatusPausesAndMarksReady() {
+        FakeAgent agent = agentWithMember(TeamRuntimeManager.MemberStatus.RESTARTING);
+
+        TeamRuntimeManager.finalizeMember(agent).toCompletableFuture().join();
+
+        assertThat(agent.stopCalls).isZero();
+        assertThat(agent.pauseCalls).isEqualTo(1);
+        assertThat(agent.member.updated).containsExactly(TeamRuntimeManager.MemberStatus.READY);
+    }
+
+    @Test
     void interactRoutesGodViewAndRejectsInactiveOrClosedGate() {
         TeamRuntimeManager manager = new TeamRuntimeManager();
         FakeAgent agent = new FakeAgent();
@@ -261,6 +395,12 @@ class TeamRuntimeManagerTest {
         assertThat(manager.getMonitor("team-a", "s1", false).toCompletableFuture().join()).isEqualTo("visible");
         assertThat(manager.getMonitor("team-a", "s1", true).toCompletableFuture().join()).isEqualTo("hidden");
         assertThat(manager.getMonitor("team-a", "other", false).toCompletableFuture().join()).isNull();
+    }
+
+    private static FakeAgent agentWithMember(TeamRuntimeManager.MemberStatus status) {
+        FakeAgent agent = new FakeAgent();
+        agent.member = new FakeMember(status);
+        return agent;
     }
 
     /**
@@ -397,9 +537,9 @@ class TeamRuntimeManagerTest {
      * <p>Mirrors Python's member status interactions exercised by
      * {@code openjiuwen/agent_teams/runtime/manager.py} tests.</p>
      */
-    private static final class FakeMember implements TeamRuntimeManager.TeamMemberRuntime {
+    private static class FakeMember implements TeamRuntimeManager.TeamMemberRuntime {
+        protected final List<TeamRuntimeManager.MemberStatus> updated = new ArrayList<>();
         private final TeamRuntimeManager.MemberStatus status;
-        private final List<TeamRuntimeManager.MemberStatus> updated = new ArrayList<>();
 
         private FakeMember(TeamRuntimeManager.MemberStatus status) {
             this.status = status;
@@ -414,6 +554,23 @@ class TeamRuntimeManagerTest {
         public CompletionStage<Void> updateStatus(TeamRuntimeManager.MemberStatus status) {
             updated.add(status);
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    /**
+     * Fake member whose status lookup fails.
+     *
+     * <p>Mirrors Python's status read failure path in
+     * {@code tests/unit_tests/agent_teams/runtime/test_manager.py}.</p>
+     */
+    private static final class FailingMember extends FakeMember {
+        private FailingMember() {
+            super(TeamRuntimeManager.MemberStatus.ERROR);
+        }
+
+        @Override
+        public CompletionStage<TeamRuntimeManager.MemberStatus> status() {
+            return CompletableFuture.failedFuture(new RuntimeException("db error"));
         }
     }
 

@@ -38,6 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code ResourceMgr} in
  * {@code openjiuwen/core/runner/resources_manager/resource_manager.py}.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.runner.test_resource_manager} in
+ * {@code tests/unit_tests/core/runner/test_resource_manager.py}.</p>
  */
 class ResourceMgrTest {
 

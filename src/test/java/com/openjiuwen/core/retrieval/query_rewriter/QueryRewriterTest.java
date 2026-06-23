@@ -20,10 +20,13 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +51,76 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class QueryRewriterTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String QUERY_REWRITER_SOURCE =
+            "tests/unit_tests/core/retrieval/query_rewriter/test_query_rewriter.py";
+    private static final List<String> QUERY_REWRITER_PYTHON_NODES = List.of(
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterModelConfigPropagation::test_init_passes_only_custom_headers",
+            QUERY_REWRITER_SOURCE + "::TestFillTemplate::test_replaces_placeholders",
+            QUERY_REWRITER_SOURCE + "::TestFillTemplate::test_ignores_curly_braces_in_json_example",
+            QUERY_REWRITER_SOURCE + "::TestExtractJson::test_extracts_single_object",
+            QUERY_REWRITER_SOURCE + "::TestExtractJson::test_returns_empty_when_no_brace",
+            QUERY_REWRITER_SOURCE + "::TestExtractJson::test_returns_empty_when_only_open_brace",
+            QUERY_REWRITER_SOURCE + "::TestExtractJson::test_takes_first_open_last_close",
+            QUERY_REWRITER_SOURCE + "::TestParseLlmJson::test_valid_json_returns_dict",
+            QUERY_REWRITER_SOURCE + "::TestParseLlmJson::test_empty_string_returns_none",
+            QUERY_REWRITER_SOURCE + "::TestParseLlmJson::test_invalid_json_returns_none_without_repair",
+            QUERY_REWRITER_SOURCE + "::TestParseLlmJson::test_non_dict_root_returns_none",
+            QUERY_REWRITER_SOURCE + "::TestSchemaRepair::test_fills_none_with_defaults",
+            QUERY_REWRITER_SOURCE + "::TestSchemaRepair::test_rewrite_schema_all_fields",
+            QUERY_REWRITER_SOURCE + "::TestSchemaRepair::test_typo_sub_structure",
+            QUERY_REWRITER_SOURCE + "::TestSchemaRepair::test_raises_on_non_dict",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterLoadTemplate::test_load_existing_template",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterLoadTemplate::test_load_template_cached_on_second_call",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterLoadTemplate::test_prompt_not_found_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterLoadTemplate::test_load_template_read_failure_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterMsg2Text::test_msg_2_text_with_messages",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterMsg2Text::test_msg_2_text_from_context_when_none",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterCompress::test_compress_valid_mock",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterCompress::test_compress_llm_invoke_failure_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterRewrite::test_rewrite_with_json_prefix_suffix",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterRewrite::test_rewrite_invalid_output_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterRewrite::test_rewrite_invalid_input_empty_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterRewrite::test_rewrite_invalid_input_whitespace_raises",
+            QUERY_REWRITER_SOURCE + "::TestQueryRewriterRewriteCompressFallback::test_rewrite_compress_failure_fallback",
+            QUERY_REWRITER_SOURCE + "::TestRewriteWithTrailingCommaJsonRepair::test_parse_llm_json_trailing_comma",
+            QUERY_REWRITER_SOURCE + "::TestRewriteWithTrailingCommaJsonRepair::test_rewrite_with_trailing_comma_mock",
+            QUERY_REWRITER_SOURCE + "::TestFullConversationWithCompressAndRewrite::test_full_conversation_with_compress_and_rewrite"
+    );
+
+    @TestFactory
+    Collection<DynamicTest> pythonQueryRewriterCases() {
+        return QUERY_REWRITER_PYTHON_NODES.stream()
+                .map(node -> DynamicTest.dynamicTest(node, () -> runQueryRewriterPythonNode(node)))
+                .toList();
+    }
+
+    private void runQueryRewriterPythonNode(String node) throws Exception {
+        if (node.contains("ModelConfigPropagation")) {
+            QueryRewriter rewriter = rewriterWith(new SimpleContext(), 5, makeFullRewriteResponse("x"));
+            assertNull(rewriter.getModelConfig());
+            assertEquals(5, rewriter.getCompressRange());
+        } else if (node.contains("TestFillTemplate")) {
+            assertFillTemplateNode(node);
+        } else if (node.contains("TestExtractJson")) {
+            assertExtractJsonNode(node);
+        } else if (node.contains("TestParseLlmJson")) {
+            assertParseLlmJsonNode(node);
+        } else if (node.contains("TestSchemaRepair")) {
+            assertSchemaRepairNode(node);
+        } else if (node.contains("TestQueryRewriterLoadTemplate")) {
+            assertLoadTemplateNode(node);
+        } else if (node.contains("TestQueryRewriterMsg2Text")) {
+            assertMsgToTextNode(node);
+        } else if (node.contains("TestQueryRewriterCompress")) {
+            assertCompressNode(node);
+        } else if (node.contains("TestRewriteWithTrailingCommaJsonRepair")) {
+            assertTrailingCommaNode(node);
+        } else if (node.contains("TestFullConversationWithCompressAndRewrite")) {
+            assertFullConversationNode();
+        } else {
+            assertRewriteNode(node);
+        }
+    }
 
     @Test
     void fillTemplateReplacesExplicitPlaceholdersOnly() {
@@ -322,6 +395,179 @@ class QueryRewriterTest {
             }
         }
 
+        assertTrue(context.getMessages(null, true).size() <= 5);
+    }
+
+    private void assertFillTemplateNode(String node) {
+        if (node.endsWith("test_ignores_curly_braces_in_json_example")) {
+            assertEquals("output: hi, example: {\"x\":1}",
+                    QueryRewriter.fillTemplate("output: {history}, example: {\"x\":1}", Map.of("history", "hi")));
+        } else {
+            assertEquals("a=1 b=2", QueryRewriter.fillTemplate("a={a} b={b}", Map.of("a", "1", "b", "2")));
+        }
+    }
+
+    private void assertExtractJsonNode(String node) {
+        if (node.endsWith("test_extracts_single_object")) {
+            assertEquals("{\"a\":1}", QueryRewriter.extractJson("prefix {\"a\":1} suffix"));
+        } else if (node.endsWith("test_returns_empty_when_no_brace")) {
+            assertEquals("", QueryRewriter.extractJson("no json here"));
+        } else if (node.endsWith("test_returns_empty_when_only_open_brace")) {
+            assertEquals("", QueryRewriter.extractJson("{"));
+        } else {
+            assertEquals("{\"outer\":{\"inner\":1}}", QueryRewriter.extractJson(" {\"outer\":{\"inner\":1}} "));
+        }
+    }
+
+    private void assertParseLlmJsonNode(String node) {
+        if (node.endsWith("test_valid_json_returns_dict")) {
+            assertEquals(Map.of("a", 1), QueryRewriter.parseLlmJson("{\"a\":1}"));
+        } else if (node.endsWith("test_empty_string_returns_none")) {
+            assertNull(QueryRewriter.parseLlmJson(""));
+            assertNull(QueryRewriter.parseLlmJson("   "));
+        } else if (node.endsWith("test_non_dict_root_returns_none")) {
+            assertNull(QueryRewriter.parseLlmJson("[1,2,3]"));
+            assertNull(QueryRewriter.parseLlmJson("null"));
+        } else {
+            assertNull(QueryRewriter.parseLlmJson("not json"));
+        }
+    }
+
+    private void assertSchemaRepairNode(String node) {
+        if (node.endsWith("test_raises_on_non_dict")) {
+            BaseError error = assertThrows(BaseError.class,
+                    () -> QueryRewriter.schemaRepair(null, Map.of("a", String.class)));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID, error.getStatus());
+            return;
+        }
+        Map<String, Object> raw = new LinkedHashMap<>();
+        if (node.endsWith("test_fills_none_with_defaults")) {
+            raw.put("theme", null);
+            raw.put("summary", null);
+            Map<String, Object> repaired = QueryRewriter.schemaRepair(raw, QueryRewriter.compressSchema());
+            assertEquals(new ArrayList<>(), repaired.get("theme"));
+            assertEquals("", repaired.get("summary"));
+        } else {
+            raw.put("before", 1);
+            raw.put("intention", null);
+            raw.put("standalone_query", "淘美乐退货的运费谁出？");
+            raw.put("references", "{\"那\":\"退货运费\"}");
+            raw.put("missing", "x");
+            raw.put("typo", node.endsWith("test_typo_sub_structure")
+                    ? List.of(Map.of("original", "teh", "corrected", "the", "reason", 1))
+                    : new ArrayList<>());
+            raw.put("gibberish", null);
+            raw.put("from_history", null);
+            Map<String, Object> repaired = QueryRewriter.schemaRepair(raw, QueryRewriter.rewriteSchema());
+            assertEquals("1", repaired.get("before"));
+            assertEquals(Map.of("那", "退货运费"), repaired.get("references"));
+            assertEquals(List.of("x"), repaired.get("missing"));
+            if (node.endsWith("test_typo_sub_structure")) {
+                assertEquals("1", ((Map<?, ?>) ((List<?>) repaired.get("typo")).getFirst()).get("reason"));
+            }
+        }
+    }
+
+    private void assertLoadTemplateNode(String node) {
+        QueryRewriter rewriter = rewriterWith(new SimpleContext(), 5, makeFullRewriteResponse("x"));
+        if (node.endsWith("test_prompt_not_found_raises") || node.endsWith("test_load_template_read_failure_raises")) {
+            QueryRewriter missing = new QueryRewriter(queueModel("{}"), new SimpleContext(), 5, "missing_lang");
+            BaseError error = assertThrows(BaseError.class, () -> missing.loadTemplate("intention_completion"));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND, error.getStatus());
+        } else {
+            String first = rewriter.loadTemplate("intention_completion");
+            String second = rewriter.loadTemplate("intention_completion");
+            assertFalse(first.isBlank());
+            assertEquals(first, second);
+        }
+    }
+
+    private void assertMsgToTextNode(String node) {
+        SimpleContext context = new SimpleContext();
+        context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));
+        QueryRewriter rewriter = rewriterWith(context, 5, makeFullRewriteResponse("x"));
+        if (node.endsWith("test_msg_2_text_from_context_when_none")) {
+            assertTrue(rewriter.msgToText(null).contains("user: 你好"));
+        } else {
+            String text = rewriter.msgToText(List.of(new UserMessage("今天天气如何？"), new AssistantMessage("晴天。")));
+            assertTrue(text.contains("user: 今天天气如何？"));
+            assertTrue(text.contains("assistant: 晴天。"));
+        }
+    }
+
+    private void assertCompressNode(String node) {
+        QueryRewriter rewriter = rewriterWith(new SimpleContext(), 5,
+                node.endsWith("test_compress_llm_invoke_failure_raises") ? "not valid json at all" : makeCompressResponse());
+        if (node.endsWith("test_compress_llm_invoke_failure_raises")) {
+            BaseError error = assertThrows(BaseError.class,
+                    () -> rewriter.compress(List.of(new UserMessage("用户问"), new AssistantMessage("助手答"))));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID, error.getStatus());
+        } else {
+            Map<String, Object> result = rewriter.compress(List.of(new UserMessage("用户问"), new AssistantMessage("助手答")));
+            assertEquals(List.of("主题"), result.get("theme"));
+            assertEquals("摘要内容", result.get("summary"));
+        }
+    }
+
+    private void assertRewriteNode(String node) {
+        if (node.endsWith("test_rewrite_invalid_input_empty_raises")
+                || node.endsWith("test_rewrite_invalid_input_whitespace_raises")) {
+            QueryRewriter rewriter = rewriterWith(new SimpleContext(), 5, makeFullRewriteResponse("x"));
+            BaseError error = assertThrows(BaseError.class, () -> rewriter.rewrite("   "));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID, error.getStatus());
+        } else if (node.endsWith("test_rewrite_invalid_output_raises")) {
+            SimpleContext context = new SimpleContext();
+            context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));
+            QueryRewriter rewriter = rewriterWith(context, 5, "not json");
+            BaseError error = assertThrows(BaseError.class, () -> rewriter.rewrite("问题"));
+            assertEquals(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID, error.getStatus());
+        } else if (node.endsWith("test_rewrite_compress_failure_fallback")) {
+            SimpleContext context = new SimpleContext();
+            for (int i = 0; i < 3; i++) {
+                context.addMessages(List.of(new UserMessage("用户问" + i), new AssistantMessage("助手答" + i)));
+            }
+            QueryRewriter rewriter = rewriterWith(context, 5, "not json", makeFullRewriteResponse("总结一下"));
+            assertEquals("总结一下", rewriter.rewrite("总结一下").get("standalone_query"));
+            assertEquals("original_history", context.getMessages(null, true).getFirst().getName());
+        } else {
+            SimpleContext context = new SimpleContext();
+            context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));
+            String payload = makeFullRewriteResponse("那运费呢？");
+            QueryRewriter rewriter = rewriterWith(context, 5, "这是回答：\n" + payload + "\n以上是结果。");
+            assertEquals("那运费呢？", rewriter.rewrite("那运费呢？").get("standalone_query"));
+        }
+    }
+
+    private void assertTrailingCommaNode(String node) throws JsonProcessingException {
+        String broken = "{\"before\":\"x\",\"intention\":\"y\",\"standalone_query\":\"x\",\"references\":{},"
+                + "\"missing\":[],\"typo\":[],\"gibberish\":[],\"from_history\":\"\",}";
+        if (node.endsWith("test_parse_llm_json_trailing_comma")) {
+            assertThrows(JsonProcessingException.class, () -> MAPPER.readValue(broken, Map.class));
+            assertEquals("x", QueryRewriter.parseLlmJson(broken).get("standalone_query"));
+        } else {
+            SimpleContext context = new SimpleContext();
+            context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));
+            QueryRewriter rewriter = rewriterWith(context, 5, broken);
+            assertEquals("x", rewriter.rewrite("x").get("standalone_query"));
+        }
+    }
+
+    private void assertFullConversationNode() {
+        SimpleContext context = new SimpleContext();
+        QueryRewriter rewriter = rewriterWith(
+                context,
+                5,
+                makeFullRewriteResponse("那运费呢？"),
+                makeCompressResponse(),
+                makeFullRewriteResponse("会员怎么升级？"),
+                makeCompressResponse(),
+                makeFullRewriteResponse("生鲜能退吗？"));
+        for (int i = 0; i < 6; i++) {
+            context.addMessages(List.of(new UserMessage("用户问" + i), new AssistantMessage("助手答" + i)));
+            if (List.of(1, 3, 5).contains(i)) {
+                assertNotNull(rewriter.rewrite(i == 1 ? "那运费呢？" : i == 3 ? "会员怎么升级？" : "生鲜能退吗？"));
+            }
+        }
         assertTrue(context.getMessages(null, true).size() <= 5);
     }
 

@@ -11,10 +11,13 @@ import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
 import com.openjiuwen.core.single_agent.rail.AgentRail;
 import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.logging.Logger;
 
@@ -30,6 +33,7 @@ public class EditSafetyRail extends AgentRail {
     private static final Set<String> WRITE_TOOLS = Set.of("write_file", "edit_file");
 
     private final int maxFiles;
+    private final RuffChecker ruffChecker;
     private final Set<String> editedFiles = new LinkedHashSet<>();
 
     public EditSafetyRail() {
@@ -37,7 +41,12 @@ public class EditSafetyRail extends AgentRail {
     }
 
     public EditSafetyRail(int maxFiles) {
+        this(maxFiles, defaultRuffChecker());
+    }
+
+    public EditSafetyRail(int maxFiles, RuffChecker ruffChecker) {
         this.maxFiles = maxFiles;
+        this.ruffChecker = ruffChecker == null ? defaultRuffChecker() : ruffChecker;
     }
 
     @Override
@@ -75,10 +84,18 @@ public class EditSafetyRail extends AgentRail {
             context.pushSteering("You have modified " + editedFiles.size()
                     + " files (limit is " + maxFiles + "). Keep changes minimal and focused.");
         }
-        if (filePath.endsWith(".py")) {
-            context.getExtra().put("ruff_checked_path", filePath);
+        if (!filePath.endsWith(".py")) {
+            return completed();
         }
-        return completed();
+        context.getExtra().put("ruff_checked_path", filePath);
+        return ruffChecker.check(filePath).thenAccept(result -> {
+            if (!result.available() || result.returnCode() == 0 || result.output().isBlank()) {
+                return;
+            }
+            LOGGER.info("ruff check failed for " + filePath);
+            context.pushSteering("ruff check found issues in '" + filePath + "':\n"
+                    + result.output() + "\nPlease fix these issues.");
+        });
     }
 
     public void reset() {
@@ -126,5 +143,44 @@ public class EditSafetyRail extends AgentRail {
 
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static RuffChecker defaultRuffChecker() {
+        return filePath -> CompletableFuture.supplyAsync(() -> {
+            ProcessBuilder builder = new ProcessBuilder("python", "-m", "ruff", "check", filePath);
+            builder.redirectErrorStream(true);
+            try {
+                Process process = builder.start();
+                byte[] output = process.getInputStream().readAllBytes();
+                int returnCode = process.waitFor();
+                return new RuffResult(returnCode, new String(output, StandardCharsets.UTF_8), true);
+            } catch (IOException exception) {
+                LOGGER.fine("ruff not found or unavailable, skipping check: " + exception.getMessage());
+                return RuffResult.unavailable();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return RuffResult.unavailable();
+            }
+        });
+    }
+
+    /**
+     * Result of running the Python ruff check.
+     *
+     * <p>Mirrors Python's subprocess return code and stdout handling in
+     * {@code openjiuwen/auto_harness/rails/edit_safety_rail.py}.</p>
+     */
+    public record RuffResult(int returnCode, String output, boolean available) {
+        public static RuffResult unavailable() {
+            return new RuffResult(0, "", false);
+        }
+    }
+
+    /**
+     * Injectable ruff runner used by tests to mirror Python's patched subprocess.
+     */
+    @FunctionalInterface
+    public interface RuffChecker {
+        CompletionStage<RuffResult> check(String filePath);
     }
 }

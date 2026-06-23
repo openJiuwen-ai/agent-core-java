@@ -25,6 +25,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 /**
  * Mirrors Python's {@code SslUtils} in
@@ -33,6 +34,7 @@ import java.util.Locale;
 public final class SslUtils {
 
     private static final long MAX_CERT_SIZE = 1024L * 1024L;
+    private static volatile Function<String, String> envReader = System::getenv;
 
     private SslUtils() {
     }
@@ -46,7 +48,7 @@ public final class SslUtils {
                 Path certPath = Path.of(sslCertPath);
                 if (Files.isRegularFile(certPath, LinkOption.NOFOLLOW_LINKS)) {
                     Path realCertPath = certPath.toRealPath();
-                    String safeCertDir = System.getenv("SAFE_CERT_DIR");
+                    String safeCertDir = envReader.apply("SAFE_CERT_DIR");
                     if (safeCertDir == null || safeCertDir.isBlank()) {
                         throw ErrorHelper.buildError(
                                 StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
@@ -140,7 +142,7 @@ public final class SslUtils {
             return new Object[]{false, false};
         }
 
-        String sslCert = System.getenv(sslCertEnv);
+        String sslCert = envReader.apply(sslCertEnv);
         if (sslCert == null) {
             throw ErrorHelper.buildError(
                     StatusCode.COMMON_SSL_CERT_INVALID,
@@ -152,7 +154,7 @@ public final class SslUtils {
     }
 
     private static boolean boolEnv(String name, List<String> triggerValues) {
-        String value = System.getenv(name);
+        String value = envReader.apply(name);
         if (value == null) {
             return false;
         }
@@ -163,6 +165,14 @@ public final class SslUtils {
             }
         }
         return false;
+    }
+
+    static void setEnvReaderForTests(Function<String, String> reader) {
+        envReader = reader != null ? reader : System::getenv;
+    }
+
+    static void resetEnvReaderForTests() {
+        envReader = System::getenv;
     }
 
     private static void secureLoadCert(SSLContext context, Path certPath) throws Exception {

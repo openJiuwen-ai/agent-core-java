@@ -30,8 +30,10 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for the non-interactive external-member CLI.
  *
- * <p>Mirrors Python's {@code test_cli.py} for
- * {@code openjiuwen/agent_teams/skill/cli.py}.</p>
+ * <p>Mirrors Python's external CLI tests in
+ * {@code tests/unit_tests/agent_teams/external/test_cli.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code openjiuwen/agent_teams/skill/cli.py} behavior.</p>
  */
 class TeamMemberCliTest {
 

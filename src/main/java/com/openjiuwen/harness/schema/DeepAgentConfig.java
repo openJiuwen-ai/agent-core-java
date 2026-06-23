@@ -367,23 +367,28 @@ public class DeepAgentConfig {
         private int maxRetries = 3;
 
         public static VisionModelConfig fromEnv() {
+            return fromEnvironment(System.getenv());
+        }
+
+        public static VisionModelConfig fromEnvironment(Map<String, String> env) {
             VisionModelConfig config = new VisionModelConfig();
-            config.apiKey = firstEnv("VISION_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY");
-            config.baseUrl = firstEnvOrDefault(
+            config.apiKey = firstValue(env, "VISION_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY");
+            config.baseUrl = firstValueOrDefault(
+                    env,
                     DEFAULT_OPENAI_BASE_URL,
                     "VISION_BASE_URL",
                     "VISION_API_BASE",
                     "OPENROUTER_BASE_URL",
                     "OPENAI_BASE_URL"
             );
-            String modelName = firstEnv("VISION_MODEL", "VISION_MODEL_NAME");
+            String modelName = firstValue(env, "VISION_MODEL", "VISION_MODEL_NAME");
             if (modelName == null || modelName.isBlank()) {
                 modelName = config.baseUrl.contains("openrouter.ai")
                         ? DEFAULT_OPENROUTER_VISION_MODEL
                         : DEFAULT_OPENAI_VISION_MODEL;
             }
             config.model = modelName;
-            config.maxRetries = parseIntFromEnv("VISION_MAX_RETRIES", 3);
+            config.maxRetries = parseIntFromMap(env, "VISION_MAX_RETRIES", 3);
             return config;
         }
 
@@ -441,29 +446,36 @@ public class DeepAgentConfig {
         private String acrBaseUrl = DEFAULT_ACR_BASE_URL;
 
         public static AudioModelConfig fromEnv() {
+            return fromEnvironment(System.getenv());
+        }
+
+        public static AudioModelConfig fromEnvironment(Map<String, String> env) {
             AudioModelConfig config = new AudioModelConfig();
-            config.apiKey = firstEnv("AUDIO_API_KEY", "OPENAI_API_KEY");
-            config.baseUrl = firstEnvOrDefault(
+            config.apiKey = firstValue(env, "AUDIO_API_KEY", "OPENAI_API_KEY");
+            config.baseUrl = firstValueOrDefault(
+                    env,
                     DEFAULT_OPENAI_BASE_URL,
                     "AUDIO_BASE_URL",
                     "AUDIO_API_BASE",
                     "OPENAI_BASE_URL"
             );
-            config.transcriptionModel = firstEnvOrDefault(
+            config.transcriptionModel = firstValueOrDefault(
+                    env,
                     DEFAULT_OPENAI_AUDIO_TRANSCRIPTION_MODEL,
                     "AUDIO_TRANSCRIPTION_MODEL",
                     "AUDIO_MODEL_NAME"
             );
-            config.questionAnsweringModel = firstEnvOrDefault(
+            config.questionAnsweringModel = firstValueOrDefault(
+                    env,
                     DEFAULT_OPENAI_AUDIO_QA_MODEL,
                     "AUDIO_QUESTION_ANSWERING_MODEL"
             );
-            config.maxRetries = parseIntFromEnv("AUDIO_MAX_RETRIES", 3);
-            config.httpTimeout = parseIntFromEnv("AUDIO_HTTP_TIMEOUT", DEFAULT_AUDIO_HTTP_TIMEOUT);
-            config.maxAudioBytes = parseIntFromEnv("AUDIO_MAX_AUDIO_BYTES", DEFAULT_MAX_AUDIO_BYTES);
-            config.acrAccessKey = blankDefault(System.getenv("ACR_ACCESS_KEY"), "");
-            config.acrAccessSecret = blankDefault(System.getenv("ACR_ACCESS_SECRET"), "");
-            config.acrBaseUrl = blankDefault(System.getenv("ACR_BASE_URL"), DEFAULT_ACR_BASE_URL);
+            config.maxRetries = parseIntFromMap(env, "AUDIO_MAX_RETRIES", 3);
+            config.httpTimeout = parseIntFromMap(env, "AUDIO_HTTP_TIMEOUT", DEFAULT_AUDIO_HTTP_TIMEOUT);
+            config.maxAudioBytes = parseIntFromMap(env, "AUDIO_MAX_AUDIO_BYTES", DEFAULT_MAX_AUDIO_BYTES);
+            config.acrAccessKey = blankDefault(mapValue(env, "ACR_ACCESS_KEY"), "");
+            config.acrAccessSecret = blankDefault(mapValue(env, "ACR_ACCESS_SECRET"), "");
+            config.acrBaseUrl = blankDefault(mapValue(env, "ACR_BASE_URL"), DEFAULT_ACR_BASE_URL);
             return config;
         }
 
@@ -827,6 +839,33 @@ public class DeepAgentConfig {
 
     private static int parseIntFromEnv(String name, int defaultValue) {
         String value = System.getenv(name);
+        return parseInt(value, defaultValue);
+    }
+
+    private static String firstValue(Map<String, String> values, String... names) {
+        for (String name : names) {
+            String value = mapValue(values, name);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private static String firstValueOrDefault(Map<String, String> values, String defaultValue, String... names) {
+        String value = firstValue(values, names);
+        return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private static int parseIntFromMap(Map<String, String> values, String name, int defaultValue) {
+        return parseInt(mapValue(values, name), defaultValue);
+    }
+
+    private static String mapValue(Map<String, String> values, String name) {
+        return values == null ? null : values.get(name);
+    }
+
+    private static int parseInt(String value, int defaultValue) {
         if (value == null || value.isBlank()) {
             return defaultValue;
         }

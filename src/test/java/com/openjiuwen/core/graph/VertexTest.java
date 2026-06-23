@@ -31,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code Vertex} in
  * {@code openjiuwen/core/graph/vertex.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.graph.test_vertex_retry} in
+ * {@code tests/unit_tests/core/graph/test_vertex_retry.py}.</p>
  */
 class VertexTest {
 

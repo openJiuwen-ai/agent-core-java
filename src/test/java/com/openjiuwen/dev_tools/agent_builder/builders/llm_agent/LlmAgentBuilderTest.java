@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's {@code LlmAgentBuilder} in
  * {@code openjiuwen/dev_tools/agent_builder/builders/llm_agent/builder.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.dev_tools.agent_builder.builders.llm_agent.test_builder} in
+ * {@code tests/unit_tests/dev_tools/agent_builder/builders/llm_agent/test_builder.py}.</p>
  */
 class LlmAgentBuilderTest {
     private static final String LOCAL_ADD_TOOL_ID = "4aebb55e-1571-4a98-b353-41793b4434e3";
@@ -43,6 +46,15 @@ class LlmAgentBuilderTest {
         assertThat(builder.getProgressReporter()).isNull();
         assertThat(builder.getResource()).isEmpty();
         assertThat(LlmAgentBuilder.RESOURCE_UNIQUE_KEY).containsEntry("plugins", "tool_id");
+    }
+
+    @Test
+    void statePropertyCanBeUpdated() {
+        LlmAgentBuilder builder = new LlmAgentBuilder(modelReturning("{\"tool_id_list\": []}"), new HistoryManager());
+
+        assertThat(builder.getState()).isEqualTo(AgentBuilderEnums.BuildState.INITIAL);
+        builder.setState(AgentBuilderEnums.BuildState.PROCESSING);
+        assertThat(builder.getState()).isEqualTo(AgentBuilderEnums.BuildState.PROCESSING);
     }
 
     @Test

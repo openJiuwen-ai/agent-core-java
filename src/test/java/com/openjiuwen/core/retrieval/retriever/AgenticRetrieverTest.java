@@ -29,8 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Mirrors Python's {@code TestAgenticRetriever} in
- * {@code openjiuwen/core/retrieval/retriever/agentic_retriever.py}.
+ * <p>Mirrors Python's {@code TestAgenticRetriever} in
+ * {@code tests/unit_tests/core/retrieval/retriever/test_agentic_retriever.py}.</p>
+ *
+ * <p>Also exercises Python's {@code AgenticRetriever} in
+ * {@code openjiuwen/core/retrieval/retriever/agentic_retriever.py}.</p>
  */
 class AgenticRetrieverTest {
 

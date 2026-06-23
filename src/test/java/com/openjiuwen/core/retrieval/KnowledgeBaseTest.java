@@ -5,19 +5,31 @@
 package com.openjiuwen.core.retrieval;
 
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.retrieval.common.Triple;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
+import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
+import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,14 +38,66 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code KnowledgeBase} in
  * {@code openjiuwen/core/retrieval/knowledge_base.py}.
+ *
+ * <p>Scenarios also mirror Python's {@code TestKnowledgeBase} in
+ * {@code tests/unit_tests/core/retrieval/test_knowledge_base.py}.</p>
  */
 class KnowledgeBaseTest {
+
+    @Test
+    void initializesWithConfigAndNoOptionalComponents() {
+        KnowledgeBaseConfig config = config();
+
+        TestKnowledgeBase kb = new TestKnowledgeBase(config);
+
+        assertSame(config, kb.getConfig());
+        assertNull(kb.getVectorStore());
+        assertNull(kb.getEmbedModel());
+        assertNull(kb.getParser());
+        assertNull(kb.getChunker());
+        assertNull(kb.getExtractor());
+        assertNull(kb.getIndexManager());
+        assertNull(kb.getLlmClient());
+    }
+
+    @Test
+    void initializesWithInjectedComponents() {
+        KnowledgeBaseConfig config = config();
+        FakeVectorStore vectorStore = new FakeVectorStore("db");
+        FakeEmbedding embedding = new FakeEmbedding();
+        SelectiveParser parser = new SelectiveParser();
+        FakeChunker chunker = new FakeChunker();
+        FakeExtractor extractor = new FakeExtractor();
+        FakeIndexer indexer = new FakeIndexer("db");
+        FakeModelClient llmClient = new FakeModelClient();
+
+        TestKnowledgeBase kb = new TestKnowledgeBase(
+                config,
+                vectorStore,
+                embedding,
+                parser,
+                chunker,
+                extractor,
+                indexer,
+                llmClient
+        );
+
+        assertSame(vectorStore, kb.getVectorStore());
+        assertSame(embedding, kb.getEmbedModel());
+        assertSame(parser, kb.getParser());
+        assertSame(chunker, kb.getChunker());
+        assertSame(extractor, kb.getExtractor());
+        assertSame(indexer, kb.getIndexManager());
+        assertSame(llmClient, kb.getLlmClient());
+    }
 
     @Test
     void parseFilesDelegatesToParserAndContinuesAfterFailures() {
@@ -112,6 +176,14 @@ class KnowledgeBaseTest {
     }
 
     @Test
+    void mismatchedVectorStoreAndIndexerDistanceMetricFailsValidation() {
+        TestKnowledgeBase kb = new TestKnowledgeBase(config());
+        kb.setVectorStore(new FakeVectorStore("db", "cosine"));
+
+        assertThrows(BaseError.class, () -> kb.setIndexManager(new FakeIndexer("db", "ip")));
+    }
+
+    @Test
     void closeInvokesVectorStoreClose() {
         TestKnowledgeBase kb = new TestKnowledgeBase(config());
         FakeVectorStore vectorStore = new FakeVectorStore("db");
@@ -120,6 +192,27 @@ class KnowledgeBaseTest {
         kb.close().join();
 
         assertTrue(vectorStore.closed);
+    }
+
+    @Test
+    void closeInvokesIndexManagerClose() {
+        TestKnowledgeBase kb = new TestKnowledgeBase(config());
+        FakeVectorStore vectorStore = new FakeVectorStore("db");
+        FakeIndexer indexer = new FakeIndexer("db");
+        kb.setVectorStore(vectorStore);
+        kb.setIndexManager(indexer);
+
+        kb.close().join();
+
+        assertTrue(vectorStore.closed);
+        assertTrue(indexer.closed);
+    }
+
+    @Test
+    void closeWithNoComponentsDoesNotThrow() {
+        TestKnowledgeBase kb = new TestKnowledgeBase(config());
+
+        assertDoesNotThrow(() -> kb.close().join());
     }
 
     @Test
@@ -143,6 +236,19 @@ class KnowledgeBaseTest {
 
         private TestKnowledgeBase(KnowledgeBaseConfig config) {
             super(config);
+        }
+
+        private TestKnowledgeBase(
+                KnowledgeBaseConfig config,
+                VectorStore vectorStore,
+                Embedding embedModel,
+                Parser parser,
+                Chunker chunker,
+                Extractor extractor,
+                Indexer indexManager,
+                BaseModelClient llmClient
+        ) {
+            super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient);
         }
 
         @Override
@@ -175,6 +281,127 @@ class KnowledgeBaseTest {
         }
     }
 
+    private static final class FakeEmbedding extends Embedding {
+        @Override
+        public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(List.of(0.1d));
+        }
+
+        @Override
+        public CompletableFuture<List<List<Double>>> embedDocuments(
+                List<String> texts,
+                Integer batchSize,
+                Map<String, Object> kwargs
+        ) {
+            return CompletableFuture.completedFuture(List.of(List.of(0.1d)));
+        }
+
+        @Override
+        public int getDimension() {
+            return 1;
+        }
+    }
+
+    private static final class FakeChunker extends Chunker {
+        @Override
+        public List<String> chunkText(String text) {
+            return List.of(text);
+        }
+    }
+
+    private static final class FakeExtractor extends Extractor {
+        @Override
+        public CompletableFuture<List<Triple>> extract(List<TextChunk> chunks) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+    }
+
+    private static final class FakeModelClient extends BaseModelClient {
+        private FakeModelClient() {
+            super(null, null);
+        }
+
+        @Override
+        protected void validateConfig() {
+        }
+
+        @Override
+        public AssistantMessage invoke(
+                Object messages,
+                Object tools,
+                Float temperature,
+                Float topP,
+                String model,
+                Integer maxTokens,
+                String stop,
+                BaseOutputParser outputParser,
+                Float timeout,
+                Map<String, Object> kwargs
+        ) {
+            return null;
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(
+                Object messages,
+                Object tools,
+                Float temperature,
+                Float topP,
+                String model,
+                Integer maxTokens,
+                String stop,
+                BaseOutputParser outputParser,
+                Float timeout,
+                Map<String, Object> kwargs
+        ) {
+            return List.<AssistantMessageChunk>of().iterator();
+        }
+
+        @Override
+        public ImageGenerationResponse generateImage(
+                List<UserMessage> messages,
+                String model,
+                String size,
+                String negativePrompt,
+                int n,
+                boolean promptExtend,
+                boolean watermark,
+                int seed,
+                Map<String, Object> kwargs
+        ) {
+            return null;
+        }
+
+        @Override
+        public AudioGenerationResponse generateSpeech(
+                List<UserMessage> messages,
+                String model,
+                String voice,
+                String languageType,
+                Map<String, Object> kwargs
+        ) {
+            return null;
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(
+                List<UserMessage> messages,
+                String imgUrl,
+                String audioUrl,
+                String model,
+                String size,
+                String resolution,
+                int duration,
+                boolean promptExtend,
+                boolean watermark,
+                String negativePrompt,
+                Integer seed,
+                Map<String, Object> kwargs
+        ) {
+            return null;
+        }
+    }
+
     private static final class SelectiveParser extends Parser {
         private final List<String> fileNamesSeen = new ArrayList<>();
 
@@ -201,13 +428,19 @@ class KnowledgeBaseTest {
         }
     }
 
-    private static final class FakeVectorStore implements VectorStore {
+    static final class FakeVectorStore implements VectorStore {
         private final String databaseName;
+        private final String distanceMetric;
         private boolean closed;
         private boolean throwOnClose;
 
         private FakeVectorStore(String databaseName) {
+            this(databaseName, "cosine");
+        }
+
+        private FakeVectorStore(String databaseName, String distanceMetric) {
             this.databaseName = databaseName;
+            this.distanceMetric = distanceMetric;
         }
 
         public String getDatabaseName() {
@@ -215,7 +448,7 @@ class KnowledgeBaseTest {
         }
 
         public String getDistanceMetric() {
-            return "cosine";
+            return distanceMetric;
         }
 
         public String getTextField() {
@@ -303,11 +536,18 @@ class KnowledgeBaseTest {
         }
     }
 
-    private static final class FakeIndexer extends Indexer {
+    static final class FakeIndexer extends Indexer {
         private final String databaseName;
+        private final String distanceMetric;
+        private boolean closed;
 
         private FakeIndexer(String databaseName) {
+            this(databaseName, "cosine");
+        }
+
+        private FakeIndexer(String databaseName, String distanceMetric) {
             this.databaseName = databaseName;
+            this.distanceMetric = distanceMetric;
         }
 
         public String getDatabaseName() {
@@ -315,7 +555,7 @@ class KnowledgeBaseTest {
         }
 
         public String getDistanceMetric() {
-            return "cosine";
+            return distanceMetric;
         }
 
         public String getTextField() {
@@ -372,6 +612,11 @@ class KnowledgeBaseTest {
         @Override
         public CompletableFuture<Map<String, Object>> getIndexInfo(String indexName) {
             return CompletableFuture.completedFuture(Map.of());
+        }
+
+        public CompletableFuture<Void> close() {
+            closed = true;
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

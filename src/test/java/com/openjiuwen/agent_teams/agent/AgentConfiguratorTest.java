@@ -43,6 +43,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's spawn payload contract in
  * {@code openjiuwen/agent_teams/agent/payload.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_worktree_event_bridge} module in
+ * {@code tests/unit_tests/agent_teams/agent/test_worktree_event_bridge.py}.</p>
  */
 class AgentConfiguratorTest {
 
@@ -157,6 +160,19 @@ class AgentConfiguratorTest {
     }
 
     @Test
+    void createWorktreeManagerLeavesHandlerNullWithoutWorkspaceManager() {
+        TeamAgentSpec spec = minimalSpec();
+        WorktreeConfig worktreeConfig = new WorktreeConfig();
+        worktreeConfig.setEnabled(true);
+        spec.setWorktree(worktreeConfig);
+        AgentConfigurator configurator = new AgentConfigurator(new AgentCard("card", "card", "d"));
+
+        WorktreeManager manager = configurator.createWorktreeManager(spec);
+
+        assertNull(worktreeEventHandler(manager));
+    }
+
+    @Test
     void setupAgentAdoptsProvidedRuntimeWithoutBuildingMemory() {
         TeamAgentSpec spec = minimalSpec();
         TeamRuntimeContext ctx = memberContext("dev", TeamRole.TEAMMATE, null);
@@ -165,6 +181,10 @@ class AgentConfiguratorTest {
                 new DeepAgentSpec(),
                 ctx,
                 new WorkspaceSpec("root", "cn", false),
+                null,
+                null,
+                null,
+                null,
                 null,
                 null
         );

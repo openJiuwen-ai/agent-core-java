@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -44,6 +45,7 @@ public class DashscopeEmbedding extends APIEmbedding {
     private final Semaphore limiter;
     private final ExecutorService asyncExecutor;
     private final Map<String, Object> requestParams;
+    private volatile Integer inferredDimension;
 
     public DashscopeEmbedding(EmbeddingConfig config) {
         this(config, 60, 3, null, 8, 50, null, null);
@@ -74,7 +76,11 @@ public class DashscopeEmbedding extends APIEmbedding {
 
     @Override
     public int getDimension() {
-        return configuredDimension != null ? configuredDimension : super.getDimension();
+        if (configuredDimension != null) {
+            return configuredDimension;
+        }
+        Integer cachedDimension = inferredDimension;
+        return cachedDimension != null ? cachedDimension : super.getDimension();
     }
 
     public Map<String, Object> getRequestParams() {
@@ -103,7 +109,7 @@ public class DashscopeEmbedding extends APIEmbedding {
     public List<List<Double>> embedDocumentsSync(List<String> texts,
                                                  Integer batchSize,
                                                  Map<String, Object> kwargs) {
-        List<Object> nonEmpty = validateEmbedDocs(texts);
+        List<Object> nonEmpty = normalizeInputs(validateEmbedDocs(texts));
         int effectiveBatchSize = batchSize != null ? batchSize : (maxBatchSize > 0 ? maxBatchSize : 1);
         if (maxBatchSize > 0) {
             effectiveBatchSize = Math.min(effectiveBatchSize, maxBatchSize);
@@ -119,12 +125,26 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     public List<Double> embedMultimodalSync(MultimodalDocument document, Map<String, Object> kwargs) {
+        if (document == null) {
+            throw invalidMultimodalInput();
+        }
         List<List<Double>> embeddings = getEmbeddingsSync(List.of(document.getDashscopeInput()), kwargs);
         return embeddings.getFirst();
     }
 
+    public List<Double> embedMultimodalSync(Object document, Map<String, Object> kwargs) {
+        if (!(document instanceof MultimodalDocument multimodalDocument)) {
+            throw invalidMultimodalInput();
+        }
+        return embedMultimodalSync(multimodalDocument, kwargs);
+    }
+
     public CompletableFuture<List<Double>> embedMultimodal(MultimodalDocument document,
                                                            Map<String, Object> kwargs) {
+        return CompletableFuture.supplyAsync(() -> embedMultimodalSync(document, kwargs), asyncExecutor);
+    }
+
+    public CompletableFuture<List<Double>> embedMultimodal(Object document, Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> embedMultimodalSync(document, kwargs), asyncExecutor);
     }
 
@@ -144,8 +164,17 @@ public class DashscopeEmbedding extends APIEmbedding {
                             .timeout(Duration.ofSeconds(timeout))
                             .build();
                     HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() == 200) {
-                        return parseDashscopeEmbeddings(MAPPER.readTree(response.body()));
+                    JsonNode root = MAPPER.readTree(response.body());
+                    JsonNode output = root.has("output") ? root.get("output") : root;
+                    List<List<Double>> embeddings = handleDashscopeApiResponse(
+                            response.statusCode(),
+                            root.path("code").asText(null),
+                            root.path("message").asText("HTTP " + response.statusCode()),
+                            output,
+                            attempt
+                    );
+                    if (embeddings != null) {
+                        return embeddings;
                     }
                     LOGGER.warning(
                             "DashscopeEmbedding request failed (attempt {}/{}): HTTP {}",
@@ -164,6 +193,8 @@ public class DashscopeEmbedding extends APIEmbedding {
                 } finally {
                     limiter.release();
                 }
+            } catch (BaseError error) {
+                throw error;
             } catch (Exception exception) {
                 LOGGER.warning(
                         "DashscopeEmbedding request error (attempt {}/{}): {}",
@@ -207,12 +238,27 @@ public class DashscopeEmbedding extends APIEmbedding {
                     "No output in DashScope response"
             );
         }
-        JsonNode embeddingItems = root.path("output").path("embeddings");
+        return handleDashscopeApiResponse(200, null, null, root.path("output"), 0);
+    }
+
+    protected List<List<Double>> handleDashscopeApiResponse(int statusCode,
+                                                            String errorCode,
+                                                            String errorMessage,
+                                                            JsonNode output,
+                                                            int attempt) {
+        if (statusCode != 200 && attempt >= maxRetries - 1) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                    "error_msg",
+                    "Failed to get embedding after " + maxRetries + " attempts: " + errorMessage
+            );
+        }
+        JsonNode embeddingItems = output == null ? null : output.path("embeddings");
         if (!embeddingItems.isArray()) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "error_msg",
-                    "No embeddings in DashScope output"
+                    "No embeddings in response: " + output
             );
         }
 
@@ -236,8 +282,12 @@ public class DashscopeEmbedding extends APIEmbedding {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "error_msg",
-                    "The embeddings field in response is empty: " + root
+                    "The embeddings field in response is empty: " + output
             );
+        }
+        if (inferredDimension == null && !embeddings.getFirst().isEmpty()) {
+            inferredDimension = embeddings.getFirst().size();
+            LOGGER.debug("Determined embedding dimension: {}", inferredDimension);
         }
         return embeddings;
     }
@@ -311,6 +361,14 @@ public class DashscopeEmbedding extends APIEmbedding {
 
     public boolean isMatryoshkaDimension() {
         return matryoshkaDimension;
+    }
+
+    private static BaseError invalidMultimodalInput() {
+        return ErrorHelper.buildError(
+                StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                "error_msg",
+                "input provided for multimodal embedding is not a MultimodalDocument"
+        );
     }
 
     @Override

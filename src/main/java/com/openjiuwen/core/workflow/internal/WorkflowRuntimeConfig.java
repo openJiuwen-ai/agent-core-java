@@ -47,6 +47,16 @@ public class WorkflowRuntimeConfig implements ActorManagerSession.ConfigView, Se
         }
     }
 
+    public void addWorkflowConfigs(Map<String, Object> configs) {
+        if (configs != null) {
+            workflowConfigs.putAll(configs);
+        }
+    }
+
+    public Map<String, Object> getWorkflowConfigs() {
+        return new LinkedHashMap<>(workflowConfigs);
+    }
+
     public Object getWorkflowConfig(String workflowId) {
         return workflowId == null ? null : workflowConfigs.get(workflowId);
     }

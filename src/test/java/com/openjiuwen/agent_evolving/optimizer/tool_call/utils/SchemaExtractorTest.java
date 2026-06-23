@@ -8,6 +8,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Mirrors Python's {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_schema_extractor.py}.
+ */
 class SchemaExtractorTest {
 
     @Test

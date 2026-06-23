@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class WriteMemoryTool extends MemoryOperationTool {
     public WriteMemoryTool(MemoryOperation operation) {
-        super("write_memory", "WriteMemoryTool", "Write memory file content.", operation);
+        super("write_memory", "write_memory", "Write memory file content.", operation);
     }
 
     @Override

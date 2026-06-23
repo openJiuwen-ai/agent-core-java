@@ -19,6 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's tracer decorator helpers in
+ * {@code openjiuwen/core/session/tracer/decorator.py}.
+ *
+ * <p>Mirrors Python's {@code TestDecator} in
+ * {@code tests/unit_tests/core/session/tracer/test_decorator.py}.</p>
+ */
 class TracerDecoratorTest {
 
     @Test

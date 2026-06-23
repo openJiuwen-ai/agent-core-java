@@ -17,6 +17,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's tests for
  * {@code openjiuwen/agent_teams/prompts/policy.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental missing-test coverage in
+ * {@code tests/unit_tests/agent_teams/test_policy.py}.</p>
  */
 class PromptPolicyTest {
 
@@ -33,6 +36,31 @@ class PromptPolicyTest {
                 .isEqualTo(PromptLoader.loadTemplate("teammate_policy", "en").getContent());
         assertThat(PromptPolicy.rolePolicy(TeamRole.HUMAN_AGENT, "en"))
                 .isEqualTo(PromptLoader.loadTemplate("teammate_policy", "en").getContent());
+    }
+
+    @Test
+    void leaderPolicyMentionsKeyResponsibilities() {
+        String policy = PromptPolicy.rolePolicy(TeamRole.LEADER);
+
+        assertThat(policy)
+                .contains("DAG")
+                .contains("create_task");
+    }
+
+    @Test
+    void teammatePolicyMentionsTaskWorkflow() {
+        String policy = PromptPolicy.rolePolicy(TeamRole.TEAMMATE);
+
+        assertThat(policy).contains("view_task");
+    }
+
+    @Test
+    void buildSystemPromptIncludesAllParts() {
+        String prompt = PromptPolicy.buildSystemPrompt(TeamRole.LEADER, "PM Expert");
+
+        assertThat(prompt)
+                .contains("PM Expert")
+                .contains("create_task");
     }
 
     @Test

@@ -24,7 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python tests for {@code openjiuwen/core/runner/resources_manager/tag_manager.py}.
+ * <p>Mirrors Python's {@code TestTagMgr} in
+ * {@code tests/unit_tests/core/runner/test_tag_manager.py}.</p>
+ *
+ * <p>Also exercises Python's {@code TagMgr} in
+ * {@code openjiuwen/core/runner/resources_manager/tag_manager.py}.</p>
  */
 class TagManagerTest {
 

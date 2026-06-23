@@ -124,6 +124,18 @@ public class Reflector {
         return availableNodeOutputs;
     }
 
+    public Set<String> getAvailableNodeTypes() {
+        return availableNodeTypes;
+    }
+
+    public Set<String> getAvailableVariableTypes() {
+        return availableVariableTypes;
+    }
+
+    public Set<String> getAvailableConditionOperators() {
+        return availableConditionOperators;
+    }
+
     public List<String> getNodeIds() {
         return nodeIds;
     }

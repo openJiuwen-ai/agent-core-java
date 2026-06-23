@@ -9,6 +9,8 @@ import com.openjiuwen.core.context_engine.context.SessionModelContext;
 import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.context_engine.schema.OffloadMessage;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -33,6 +35,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's related tests in
  * {@code tests/unit_tests/core/context_engine/test_message_summary_offloader.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental tests in
+ * {@code tests/unit_tests/core/context_engine/test_new_message_summary_offloader.py}.</p>
  */
 class MessageSummaryOffloaderTest {
 
@@ -54,6 +59,46 @@ class MessageSummaryOffloaderTest {
     }
 
     @Test
+    void initWithDefaultConfigRetainsConfig() {
+        MessageSummaryOffloaderConfig config = new MessageSummaryOffloaderConfig();
+
+        MessageSummaryOffloader offloader = new MessageSummaryOffloader(config, failingModel());
+
+        assertThat(offloader.getSummaryConfig()).isSameAs(config);
+        assertThat(config.getLargeMessageThreshold()).isEqualTo(1000);
+        assertThat(config.getOffloadMessageType()).containsExactly("tool");
+        assertThat(config.getModel()).isNull();
+        assertThat(config.getModelClient()).isNull();
+    }
+
+    @Test
+    void initWithCustomConfigRetainsModelConfigs() {
+        ModelRequestConfig modelConfig = ModelRequestConfig.builder()
+                .modelName("test-model")
+                .temperature(0.7d)
+                .build();
+        ModelClientConfig modelClientConfig = ModelClientConfig.builder()
+                .clientId("test-client")
+                .clientProvider("OpenAI")
+                .apiKey("test-key")
+                .apiBase("http://test.api.com")
+                .build();
+        MessageSummaryOffloaderConfig config = new MessageSummaryOffloaderConfig();
+        config.setLargeMessageThreshold(500);
+        config.setOffloadMessageType(List.of("user", "assistant"));
+        config.setModel(modelConfig);
+        config.setModelClient(modelClientConfig);
+
+        MessageSummaryOffloader offloader = new MessageSummaryOffloader(config, failingModel());
+
+        assertThat(offloader.getSummaryConfig()).isSameAs(config);
+        assertThat(config.getModel()).isSameAs(modelConfig);
+        assertThat(config.getModelClient()).isSameAs(modelClientConfig);
+        assertThat(config.getOffloadMessageType()).containsExactly("user", "assistant");
+        assertThat(config.getLargeMessageThreshold()).isEqualTo(500);
+    }
+
+    @Test
     void assistantWithToolCallsIsNeverOffloaded() {
         MessageSummaryOffloaderConfig config = baseConfig();
         config.setOffloadMessageType(List.of("assistant"));
@@ -67,6 +112,71 @@ class MessageSummaryOffloaderTest {
 
         assertThat(context.getMessages()).containsExactly(assistant);
         assertThat(context.getMessages().get(0)).isNotInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void offloadMessageWithDifferentRolesPreservesRoleAndOriginal() {
+        List<OffloadCase> cases = List.of(
+                new OffloadCase(new UserMessage("User message"), "user", "Summarized user message"),
+                new OffloadCase(new AssistantMessage("Assistant message"), "assistant", "Summarized assistant message"),
+                new OffloadCase(new ToolMessage("Tool message", "tool-call-1"), "tool", "Summarized tool message")
+        );
+
+        for (OffloadCase item : cases) {
+            List<List<BaseMessage>> calls = new ArrayList<>();
+            MessageSummaryOffloader offloader = new MessageSummaryOffloader(
+                    configForRoles(List.of(item.role())),
+                    modelReturning(calls, jsonSummary(item.summary()))
+            );
+            SessionModelContext context = contextWith(offloader);
+
+            BaseMessage result = offloader.offloadMessageAdaptive(item.message(), context, Map.of())
+                    .toCompletableFuture()
+                    .join();
+
+            assertThat(result).isInstanceOf(OffloadMessage.class);
+            assertThat(result.getRole()).isEqualTo(item.role());
+            assertThat(result.getContentAsString()).contains(item.summary());
+            assertThat(calls).hasSize(1);
+            assertThat(calls.get(0).get(0).getContentAsString()).contains(item.message().getContentAsString());
+            assertThat(reloadOriginal(context, (OffloadMessage) result))
+                    .contains(item.message().getContentAsString());
+        }
+    }
+
+    @Test
+    void offloadMessageEmptyContentUsesSummaryAndStoresOriginal() {
+        MessageSummaryOffloader offloader = new MessageSummaryOffloader(
+                configForRoles(List.of("user")),
+                modelReturning(new ArrayList<>(), jsonSummary("Empty message summary"))
+        );
+        SessionModelContext context = contextWith(offloader);
+        UserMessage original = new UserMessage("");
+
+        BaseMessage result = offloader.offloadMessageAdaptive(original, context, Map.of())
+                .toCompletableFuture()
+                .join();
+
+        assertThat(result).isInstanceOf(OffloadMessage.class);
+        assertThat(result.getContentAsString()).contains("Empty message summary");
+        assertThat(reloadOriginal(context, (OffloadMessage) result)).contains("\"content\":\"\"");
+    }
+
+    @Test
+    void offloadMessagePreservesOriginalMessagesForReload() {
+        MessageSummaryOffloader offloader = new MessageSummaryOffloader(
+                configForRoles(List.of("user")),
+                modelReturning(new ArrayList<>(), jsonSummary("Summary"))
+        );
+        SessionModelContext context = contextWith(offloader);
+        UserMessage original = new UserMessage("Original message content");
+
+        BaseMessage result = offloader.offloadMessageAdaptive(original, context, Map.of())
+                .toCompletableFuture()
+                .join();
+
+        assertThat(result).isInstanceOf(OffloadMessage.class);
+        assertThat(reloadOriginal(context, (OffloadMessage) result)).contains("Original message content");
     }
 
     @Test
@@ -216,8 +326,23 @@ class MessageSummaryOffloaderTest {
         return config;
     }
 
+    private static MessageSummaryOffloaderConfig configForRoles(List<String> roles) {
+        MessageSummaryOffloaderConfig config = baseConfig();
+        config.setOffloadMessageType(roles);
+        return config;
+    }
+
     private static SessionModelContext contextWith(MessageSummaryOffloader offloader) {
         return new SessionModelContext("ctx", "session", new ContextEngineConfig(), List.of(), List.of(offloader), null);
+    }
+
+    private static String reloadOriginal(SessionModelContext context, OffloadMessage message) {
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        return reloader.reloadOriginalContextMessages(message.getOffloadHandle(), message.getOffloadType());
+    }
+
+    private static String jsonSummary(String summary) {
+        return "{\"summary\":\"" + summary + "\",\"offload_data_explanation\":{}}";
     }
 
     private static Model modelReturning(List<List<BaseMessage>> calls, String content) {
@@ -244,5 +369,8 @@ class MessageSummaryOffloaderTest {
                         .arguments(arguments)
                         .build()))
                 .build();
+    }
+
+    private record OffloadCase(BaseMessage message, String role, String summary) {
     }
 }

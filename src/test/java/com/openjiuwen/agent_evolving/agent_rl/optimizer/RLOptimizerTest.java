@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Mirrors Python's {@code BaseRLOptimizer}, {@code OfflineRLOptimizer}, and
  * {@code OnlineRLOptimizer} in
  * {@code openjiuwen/agent_evolving/agent_rl/optimizer/rl_optimizer.py}.</p>
+ *
+ * <p>Mirrors Python's online optimizer setup tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/optimizer/test_online_rl_optimizer.py}.</p>
  */
 class RLOptimizerTest {
 
@@ -101,6 +105,31 @@ class RLOptimizerTest {
         assertEquals(2, optimizer.getNprocPerNode());
         assertTrue(started.get());
         assertTrue(optimizer.isRayInitialized());
+    }
+
+    @Test
+    void setupGatewayRejectsLegacyHttpGatewayUrl() {
+        OnlineRLOptimizer optimizer = new OnlineRLOptimizer(config(tempDir.resolve("gateway-http-model")));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> optimizer.setupGateway("http://127.0.0.1:18080/v1")
+        );
+
+        assertTrue(exception.getMessage().contains("setup_gateway() no longer accepts HTTP Gateway URLs"));
+        assertTrue(exception.getMessage().contains("setup_redis()"));
+    }
+
+    @Test
+    void setupGatewayAcceptsRedisUrlForTransition() {
+        OnlineRLOptimizer optimizer = new OnlineRLOptimizer(config(tempDir.resolve("gateway-redis-model")));
+
+        OnlineRLOptimizer returned = optimizer.setupGateway("redis://127.0.0.1:6379/0", 15.0, 8);
+
+        assertSame(optimizer, returned);
+        assertEquals("redis://127.0.0.1:6379/0", optimizer.getRedisUrl());
+        assertEquals(15.0d, optimizer.getPollInterval());
+        assertEquals(8, optimizer.getMinSamples());
     }
 
     @Disabled("Skipped in Python baseline: tests/unit_tests/agent_evolving/agent_rl/optimizer/test_rl_optimizer.py "

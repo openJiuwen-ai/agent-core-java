@@ -14,8 +14,10 @@ import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.PlanModeState;
+import com.openjiuwen.harness.subagents.PlanAgent;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -24,8 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Tests the team.plan prompt overlay rail.
  *
- * <p>Mirrors Python's tests for
- * {@code openjiuwen/agent_teams/rails/team_plan_mode_rail.py}.</p>
+ * <p>Mirrors Python's {@code tests/unit_tests/agent_teams/test_team_plan_mode_rail.py}.</p>
  */
 class TeamPlanModeRailTest {
 
@@ -61,6 +62,9 @@ class TeamPlanModeRailTest {
         assertThat(section.getPriority()).isEqualTo(85);
         assertThat(section.render("en"))
                 .contains("Team.plan mode is active")
+                .contains("Mandatory Team Execution Semantics")
+                .contains("build_team")
+                .contains("Leader can implement directly")
                 .contains("enter_plan_mode has been called")
                 .contains(planPath.toString());
     }
@@ -106,6 +110,27 @@ class TeamPlanModeRailTest {
     }
 
     @Test
+    void languageOverrideUsesChineseOverPromptBuilderLanguage(@TempDir Path tempDir) {
+        FakeAgent agent = new FakeAgent(
+                "en",
+                tempDir.resolve("plan.md"),
+                new DeepAgentState(0, null, null, List.of(), new PlanModeState("plan", "normal", null, null)),
+                List.of()
+        );
+        TeamPlanModeRail rail = new TeamPlanModeRail("zh");
+        rail.init(agent);
+
+        rail.beforeModelCall(new TeamPlanModeRail.PlanModeCallbackContext(new TeamPlanMode.PlanSession()))
+                .toCompletableFuture()
+                .join();
+
+        PromptSection section = agent.getSystemPromptBuilder()
+                .getSection(SectionName.MODE_INSTRUCTIONS)
+                .orElseThrow();
+        assertThat(section.render("en")).contains("Team.plan 模式已激活");
+    }
+
+    @Test
     void uninitRemovesOverlayAndClearsCachedBuilder(@TempDir Path tempDir) {
         FakeAgent agent = new FakeAgent(
                 "en",
@@ -128,7 +153,7 @@ class TeamPlanModeRailTest {
     @Test
     void nonBuiltinPlanAgentPromptIsNotSpecialized() {
         TeamPlanAgent.PlanSubAgentConfig subagent = new TeamPlanAgent.PlanSubAgentConfig(
-                new AgentCard(null, "plan_agent", "original"),
+                new AgentCard(null, "plan_agent", PlanAgent.PLAN_AGENT_DESC.get("en")),
                 "custom prompt"
         );
         FakeAgent agent = new FakeAgent("en", null, DeepAgentState.fromSessionMap(null), List.of(subagent));
@@ -137,7 +162,49 @@ class TeamPlanModeRailTest {
         rail.init(agent);
 
         assertThat(subagent.getSystemPrompt()).isEqualTo("custom prompt");
-        assertThat(subagent.getAgentCard().getDescription()).isEqualTo("original");
+        assertThat(subagent.getSystemPrompt()).isNotEqualTo(PlanAgent.PLAN_AGENT_SYSTEM_PROMPT_EN);
+        assertThat(subagent.getAgentCard().getDescription()).isEqualTo(PlanAgent.PLAN_AGENT_DESC.get("en"));
+    }
+
+    @Test
+    void defaultPlanAgentPromptIsSpecializedOnInit() {
+        TeamPlanAgent.PlanSubAgentConfig subagent = defaultPlanSubagent("en");
+        FakeAgent agent = new FakeAgent("en", null, DeepAgentState.fromSessionMap(null), List.of(subagent));
+        TeamPlanModeRail rail = new TeamPlanModeRail();
+
+        rail.init(agent);
+
+        assertThat(subagent.getAgentCard().getDescription()).isEqualTo(TeamPlanAgent.TEAM_PLAN_AGENT_DESC.get("en"));
+        assertThat(subagent.getSystemPrompt()).isEqualTo(TeamPlanAgent.TEAM_PLAN_AGENT_SYSTEM_PROMPT_EN);
+    }
+
+    @Test
+    void lateDefaultPlanAgentPromptUsesLanguageOverride(@TempDir Path tempDir) {
+        List<TeamPlanAgent.PlanSubAgentConfig> subagents = new ArrayList<>();
+        FakeAgent agent = new FakeAgent(
+                "en",
+                tempDir.resolve("plan.md"),
+                new DeepAgentState(0, null, null, List.of(), new PlanModeState("plan", "normal", null, null)),
+                subagents
+        );
+        TeamPlanModeRail rail = new TeamPlanModeRail("zh");
+        rail.init(agent);
+        TeamPlanAgent.PlanSubAgentConfig subagent = defaultPlanSubagent("en");
+        subagents.add(subagent);
+
+        rail.beforeModelCall(new TeamPlanModeRail.PlanModeCallbackContext(new TeamPlanMode.PlanSession()))
+                .toCompletableFuture()
+                .join();
+
+        assertThat(subagent.getAgentCard().getDescription()).isEqualTo(TeamPlanAgent.TEAM_PLAN_AGENT_DESC.get("cn"));
+        assertThat(subagent.getSystemPrompt()).isEqualTo(TeamPlanAgent.TEAM_PLAN_AGENT_SYSTEM_PROMPT_CN);
+    }
+
+    private static TeamPlanAgent.PlanSubAgentConfig defaultPlanSubagent(String language) {
+        return new TeamPlanAgent.PlanSubAgentConfig(
+                new AgentCard(null, "plan_agent", PlanAgent.PLAN_AGENT_DESC.get(language)),
+                PlanAgent.DEFAULT_PLAN_AGENT_SYSTEM_PROMPT.get(language)
+        );
     }
 
     private static final class FakeAgent implements TeamPlanModeRail.PlanModeAgent {

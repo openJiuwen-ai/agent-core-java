@@ -26,9 +26,9 @@ public class WeightedRankConfig extends BaseRankConfig {
 
     public WeightedRankConfig(double nameDense, double contentDense, double contentSparse) {
         this();
-        this.nameDense = nameDense;
-        this.contentDense = contentDense;
-        this.contentSparse = contentSparse;
+        setNameDense(nameDense);
+        setContentDense(contentDense);
+        setContentSparse(contentSparse);
     }
 
     @Override
@@ -58,6 +58,7 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     public void setNameDense(double nameDense) {
+        validateWeight("name_dense", nameDense);
         this.nameDense = nameDense;
     }
 
@@ -66,6 +67,7 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     public void setContentDense(double contentDense) {
+        validateWeight("content_dense", contentDense);
         this.contentDense = contentDense;
     }
 
@@ -74,6 +76,13 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     public void setContentSparse(double contentSparse) {
+        validateWeight("content_sparse", contentSparse);
         this.contentSparse = contentSparse;
+    }
+
+    private static void validateWeight(String fieldName, double value) {
+        if (!Double.isFinite(value) || value < 0.0d || value > 1.0d) {
+            throw new IllegalArgumentException(fieldName + " must be between 0.0 and 1.0");
+        }
     }
 }

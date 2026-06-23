@@ -75,7 +75,7 @@ public class SessionModelContext implements ModelContext {
     private final Integer defaultDialogueRound;
     private final TokenCounterPort tokenCounter;
     private final List<ContextProcessorPort> processors;
-    private final ProcessorStateRecorder processorStateRecorder;
+    private final ContextProcessorStateRecorder processorStateRecorder;
     private final ReentrantLock processorLock = new ReentrantLock();
     private final KvCacheManagerPort kvCacheManager;
     private final ToolInfo reloaderToolCard;
@@ -116,7 +116,8 @@ public class SessionModelContext implements ModelContext {
         this.defaultDialogueRound = safeConfig.getDefaultWindowRoundNum();
         this.tokenCounter = tokenCounter;
         this.processors = processors == null ? new ArrayList<>() : new ArrayList<>(processors);
-        this.processorStateRecorder = new ProcessorStateRecorder(sessionId, contextId);
+        this.processorStateRecorder = new ContextProcessorStateRecorder(
+                sessionId, contextId, this::getSessionRef, adaptStateTokenCounter(tokenCounter), 100, null);
         this.kvCacheManager = safeConfig.isEnableKvCacheRelease() ? kvCacheManager : null;
         this.offloadMessageBuffer = new OffloadMessageBuffer();
         this.offloadMessageBuffer.setSysOperation(sysOperation);
@@ -315,15 +316,62 @@ public class SessionModelContext implements ModelContext {
         Map<String, Object> effectiveKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
         effectiveKwargs.put("window_size", windowSize);
 
+        String trigger = stringValue(effectiveKwargs.get("compression_trigger"), "passive");
+        int contextMax = resolveContextMax(resolveContextModelName(effectiveKwargs), contextWindowTokens,
+                modelContextWindowTokens);
         for (ContextProcessorPort processor : processors) {
+            String operationId = null;
+            Double startedAt = null;
+            List<BaseMessage> beforeMessages = null;
             try {
                 if (await(processor.triggerGetContextWindow(this, window, effectiveKwargs))) {
+                    operationId = UUID.randomUUID().toString().replace("-", "");
+                    startedAt = Instant.now().toEpochMilli() / 1000.0d;
+                    beforeMessages = window.getContextMessages();
+                    emitCompressionState(new ContextProcessorStateInput(operationId, "started", "get_context_window",
+                            trigger, processor, "processor_triggered", beforeMessages, null, startedAt, null, null,
+                            List.of(), false, contextMax, "", null));
                     ProcessResult result = await(processor.onGetContextWindow(this, window, effectiveKwargs));
+                    ContextProcessorEventPort event = result == null ? null : result.event();
                     if (result != null && result.contextWindow() != null) {
                         window = result.contextWindow();
                     }
+                    emitCompressionState(new ContextProcessorStateInput(operationId,
+                            event == null ? "noop" : "completed",
+                            "get_context_window",
+                            trigger,
+                            processor,
+                            event == null ? "processor_noop" : "processor_completed",
+                            beforeMessages,
+                            window.getContextMessages(),
+                            startedAt,
+                            Instant.now().toEpochMilli() / 1000.0d,
+                            null,
+                            event == null ? List.of() : event.messagesToModify(),
+                            false,
+                            contextMax,
+                            event == null ? "" : stringValue(event.compactSummary(), ""),
+                            event == null ? null : event.compressionUsage()));
                 }
             } catch (RuntimeException ignored) {
+                emitCompressionState(new ContextProcessorStateInput(
+                        operationId == null ? UUID.randomUUID().toString().replace("-", "") : operationId,
+                        "failed",
+                        "get_context_window",
+                        trigger,
+                        processor,
+                        "processor_error",
+                        beforeMessages == null ? window.getContextMessages() : beforeMessages,
+                        window.getContextMessages(),
+                        startedAt == null ? Instant.now().toEpochMilli() / 1000.0d : startedAt,
+                        Instant.now().toEpochMilli() / 1000.0d,
+                        ignored.getMessage(),
+                        List.of(),
+                        false,
+                        contextMax,
+                        "",
+                        null
+                ));
                 // Python logs and continues when a context processor fails.
             }
         }
@@ -464,7 +512,26 @@ public class SessionModelContext implements ModelContext {
     }
 
     private void emitCompressionState(ContextProcessorStateInput input) {
-        Map<String, Object> state = processorStateRecorder.buildState(input);
+        com.openjiuwen.core.context_engine.context.ContextProcessorStateInput stateInput =
+                new com.openjiuwen.core.context_engine.context.ContextProcessorStateInput(
+                        input.operationId(),
+                        input.status(),
+                        input.phase(),
+                        input.trigger(),
+                        input.processor(),
+                        input.reason(),
+                        input.beforeMessages(),
+                        input.afterMessages(),
+                        input.startedAt(),
+                        input.endedAt(),
+                        input.error(),
+                        input.messagesToModify(),
+                        input.force(),
+                        input.contextMax(),
+                        input.compactSummary(),
+                        asStringObjectMap(input.compressionUsage())
+                );
+        ContextProcessorStateRecorder.ContextCompressionState state = processorStateRecorder.buildState(stateInput);
         processorStateRecorder.emit(this, state);
     }
 
@@ -794,6 +861,24 @@ public class SessionModelContext implements ModelContext {
         return value != null;
     }
 
+    private static ContextProcessorStateRecorder.TokenCounterPort adaptStateTokenCounter(
+            ModelContext.TokenCounterPort tokenCounter) {
+        if (tokenCounter == null) {
+            return null;
+        }
+        return new ContextProcessorStateRecorder.TokenCounterPort() {
+            @Override
+            public Integer countMessages(List<BaseMessage> messages) {
+                return tokenCounter.countTokens(messages == null ? List.of() : messages);
+            }
+
+            @Override
+            public Integer count(Object content) {
+                return tokenCounter.countTokens(List.of(new BaseMessage("user", content == null ? "" : content)));
+            }
+        };
+    }
+
     private static String stringValue(Object value, String defaultValue) {
         return value == null ? defaultValue : String.valueOf(value);
     }
@@ -1019,7 +1104,8 @@ public class SessionModelContext implements ModelContext {
      * <p>Mirrors Python's {@code ContextProcessor} collaborator in
      * {@code openjiuwen/core/context_engine/context/context.py}.</p>
      */
-    public interface ContextProcessorPort {
+    public interface ContextProcessorPort
+            extends com.openjiuwen.core.context_engine.context.ContextProcessorStateInput.ContextProcessorPort {
         String processorType();
 
         default boolean compressionProcessor() {

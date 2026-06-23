@@ -68,6 +68,12 @@ class EntityExtractionPromptBaseTest {
     }
 
     @Test
+    @DisplayName("format source description returns empty for null")
+    void formatSourceDescriptionReturnsEmptyForNull() {
+        assertEquals("", EntityExtractionPromptBase.formatSourceDescription(null, "cn"));
+    }
+
+    @Test
     @DisplayName("get formatting kwargs assembles history content source and schema")
     void getFormattingKwargsAssemblesContext() {
         EntityExtractionPromptBase.MARK_HISTORY_MSG.put("cn", "History: {history}");
@@ -91,12 +97,36 @@ class EntityExtractionPromptBaseTest {
     }
 
     @Test
+    @DisplayName("get formatting kwargs includes formatted source description")
+    void getFormattingKwargsIncludesSourceDescription() {
+        EntityExtractionPromptBase.SOURCE_DESCRIPTION.put("cn", "Desc: {source_description}");
+
+        Map<String, String> result = EntityExtractionPromptBase.getFormattingKwargs(
+                "src",
+                null,
+                2,
+                null,
+                null,
+                "cn");
+
+        assertEquals("Desc: src", result.get("source_description"));
+    }
+
+    @Test
     @DisplayName("format relation definitions returns no relation text for null or empty input")
     void formatRelationDefinitionsReturnsFallbackForMissingInput() {
         EntityExtractionPromptBase.NO_RELATION_GIVEN.put("cn", "No relations");
 
         assertEquals("No relations", EntityExtractionPromptBase.formatRelationDefinitions(null, "cn"));
         assertEquals("No relations", EntityExtractionPromptBase.formatRelationDefinitions(List.of(), "cn"));
+    }
+
+    @Test
+    @DisplayName("format relation definitions returns fallback for null input")
+    void formatRelationDefinitionsReturnsFallbackForNullInput() {
+        EntityExtractionPromptBase.NO_RELATION_GIVEN.put("cn", "No relations");
+
+        assertEquals("No relations", EntityExtractionPromptBase.formatRelationDefinitions(null, "cn"));
     }
 
     @Test
@@ -139,6 +169,12 @@ class EntityExtractionPromptBaseTest {
     }
 
     @Test
+    @DisplayName("format existing relations returns empty for empty list")
+    void formatExistingRelationsReturnsEmptyForEmptyList() {
+        assertEquals("", EntityExtractionPromptBase.formatExistingRelations(List.of(), 1, true));
+    }
+
+    @Test
     @DisplayName("format existing entities renders template for every entity")
     void formatExistingEntitiesRendersTemplate() {
         EntityExtractionPromptBase.DISPLAY_ENTITY.put("cn", "{i}. {name}: {content}");
@@ -149,28 +185,55 @@ class EntityExtractionPromptBaseTest {
     }
 
     @Test
-    @DisplayName("ensure valid language returns strings and converts non-string values")
-    void ensureValidLanguageConvertsAndValidates() {
+    @DisplayName("ensure valid language returns registered strings")
+    void ensureValidLanguageReturnsRegisteredLanguage() {
         EntityExtractionPromptBase.REGISTERED_LANGUAGE.add("cn");
 
         assertEquals("cn", EntityExtractionPromptBase.ensureValidLanguage("cn", 10));
+    }
+
+    @Test
+    @DisplayName("ensure valid language converts non-string values")
+    void ensureValidLanguageConvertsNonStringValue() {
+        EntityExtractionPromptBase.REGISTERED_LANGUAGE.add("cn");
+
         assertEquals("cn", EntityExtractionPromptBase.ensureValidLanguage(new LanguageValue("cn"), 10));
     }
 
     @Test
-    @DisplayName("ensure valid language raises BaseError for invalid or too long values")
-    void ensureValidLanguageRaisesBaseError() {
+    @DisplayName("ensure valid language raises BaseError for invalid values")
+    void ensureValidLanguageRaisesForInvalidLanguage() {
         EntityExtractionPromptBase.REGISTERED_LANGUAGE.add("cn");
 
         BaseError invalid = assertThrows(BaseError.class,
                 () -> EntityExtractionPromptBase.ensureValidLanguage("xx", 10));
-        BaseError tooLong = assertThrows(BaseError.class,
-                () -> EntityExtractionPromptBase.ensureValidLanguage("cn", 1));
 
         assertEquals(StatusCode.MEMORY_GRAPH_LANGUAGE_INVALID, invalid.getStatus());
         assertTrue(invalid.getMessage().contains("does not support language"));
+    }
+
+    @Test
+    @DisplayName("ensure valid language raises BaseError for too long values")
+    void ensureValidLanguageRaisesForTooLongLanguage() {
+        EntityExtractionPromptBase.REGISTERED_LANGUAGE.add("cn");
+
+        BaseError tooLong = assertThrows(BaseError.class,
+                () -> EntityExtractionPromptBase.ensureValidLanguage("cn", 1));
+
         assertEquals(StatusCode.MEMORY_GRAPH_LANGUAGE_INVALID, tooLong.getStatus());
         assertTrue(tooLong.getMessage().contains("exceeds max length"));
+    }
+
+    @Test
+    @DisplayName("ensure valid language raises BaseError for opaque non-string values")
+    void ensureValidLanguageRaisesForOpaqueNonStringValue() {
+        EntityExtractionPromptBase.REGISTERED_LANGUAGE.add("cn");
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> EntityExtractionPromptBase.ensureValidLanguage(new Object(), 100));
+
+        assertEquals(StatusCode.MEMORY_GRAPH_LANGUAGE_INVALID, error.getStatus());
+        assertTrue(error.getMessage().contains("does not support language"));
     }
 
     private static void clearRegistries() {

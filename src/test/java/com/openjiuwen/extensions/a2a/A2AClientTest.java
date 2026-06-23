@@ -17,6 +17,7 @@ import com.openjiuwen.extensions.a2a.A2ATransformer.A2aTaskState;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aTaskStatus;
 import com.openjiuwen.extensions.a2a.A2ATransformer.SendMessageRequest;
 import com.openjiuwen.extensions.a2a.A2ATransformer.StreamResponse;
+import com.openjiuwen.extensions.a2a.A2ATransformer.TaskStatusUpdateEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -33,6 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 /**
  * Mirrors Python's {@code A2AClient} in
  * {@code openjiuwen/extensions/a2a/a2a_client.py}.
+ *
+ * <p>Also mirrors Python's {@code TestA2AClient} in
+ * {@code tests/unit_tests/extensions/a2a/test_a2a_client.py}.</p>
  */
 class A2AClientTest {
 
@@ -72,6 +76,26 @@ class A2AClientTest {
         assertThat(result.getSessionId()).isEqualTo("local-session");
         assertThat(result.getArtifacts().getFirst().getParts().getFirst().getText()).isEqualTo("first");
         assertThat(transport.lastRequest.getMessage().getContextId()).isEqualTo("local-session");
+        assertThat(transport.lastStream.closed).isTrue();
+        assertThat(transport.lastStream.nextCount).isEqualTo(1);
+    }
+
+    @Test
+    void invokeWithPollingEnabledStillReturnsFirstEventOnly() {
+        RecordingTransport transport = new RecordingTransport(List.of(
+                statusUpdateResponse("sdk-task-3", "sdk-context-3", A2aTaskState.TASK_STATE_WORKING),
+                response("sdk-task-3", "sdk-context-3", "final result")));
+        A2AClient client = new A2AClient(null, true, (config, card) -> transport);
+
+        AgentResult result = client.invoke(Map.of("query", "hello invoke", "sessionId", "conv-invoke-2"))
+                .toCompletableFuture()
+                .join();
+
+        assertThat(client.isPolling()).isTrue();
+        assertThat(result.getTaskId()).isEqualTo("sdk-task-3");
+        assertThat(result.getSessionId()).isEqualTo("conv-invoke-2");
+        assertThat(result.getStatus()).isEqualTo(TaskStatus.WORKING);
+        assertThat(result.getArtifacts()).isEmpty();
         assertThat(transport.lastStream.closed).isTrue();
         assertThat(transport.lastStream.nextCount).isEqualTo(1);
     }
@@ -142,6 +166,16 @@ class A2AClientTest {
         message.setParts(List.of(part));
         StreamResponse response = new StreamResponse();
         response.setMessage(message);
+        return response;
+    }
+
+    private static StreamResponse statusUpdateResponse(String taskId, String contextId, A2aTaskState state) {
+        TaskStatusUpdateEvent event = new TaskStatusUpdateEvent();
+        event.setTaskId(taskId);
+        event.setContextId(contextId);
+        event.setStatus(new A2aTaskStatus(state));
+        StreamResponse response = new StreamResponse();
+        response.setStatusUpdate(event);
         return response;
     }
 

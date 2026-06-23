@@ -256,7 +256,7 @@ public class DatabaseEngine {
     }
 
     static long getCurrentTime() {
-        return Math.round(System.currentTimeMillis());
+        return System.currentTimeMillis();
     }
 
     static String sanitizeSessionIdForTable(String sessionId) {

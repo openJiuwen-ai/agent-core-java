@@ -42,8 +42,12 @@ public class ResourceRetriever {
     private final Map<String, String> toolPluginIdMap;
 
     public ResourceRetriever(Model llm) {
+        this(llm, loadResources());
+    }
+
+    ResourceRetriever(Model llm, List<Map<String, Object>> rawPlugins) {
         this.llm = Objects.requireNonNull(llm, "llm");
-        PluginProcessor.PreprocessResult result = PluginProcessor.preprocess(loadResources());
+        PluginProcessor.PreprocessResult result = PluginProcessor.preprocess(rawPlugins);
         this.pluginDict = result.pluginDict();
         this.toolPluginIdMap = result.toolPluginIdMap();
         LOGGER.debug("Resource retriever initialized, plugin_count={}, tool_count={}",

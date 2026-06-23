@@ -33,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code FeedbackPromptBuilder} in
  * {@code openjiuwen/dev_tools/prompt_builder/builder/feedback_prompt_builder.py}.
+ *
+ * <p>Mirrors Python's {@code test_feedback_prompt_builder} in
+ * {@code tests/unit_tests/agent_builder/prompt_builder/test_feedback_prompt_builder.py}.</p>
  */
 class FeedbackPromptBuilderTest {
     private static final String MOCK_INTENT = "```json{\"intent\": \"true\","

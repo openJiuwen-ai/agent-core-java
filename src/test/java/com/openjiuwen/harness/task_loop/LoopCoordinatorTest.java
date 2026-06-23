@@ -12,20 +12,39 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * <p>Mirrors Python's {@code LoopCoordinator} in
+ * {@code openjiuwen/harness/task_loop/loop_coordinator.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.harness.test_loop_coordinator} in
+ * {@code tests/unit_tests/harness/test_loop_coordinator.py}.</p>
+ */
 class LoopCoordinatorTest {
 
     @Test
     void testDefaults() {
         LoopCoordinator coordinator = new LoopCoordinator();
-        coordinator.reset();
+        assertEquals(0, coordinator.getCurrentIteration());
+        assertFalse(coordinator.isAborted());
         assertTrue(coordinator.shouldContinue());
     }
 
     @Test
-    void testMaxRoundsStop() {
+    void testIncrementIteration() {
+        LoopCoordinator coordinator = new LoopCoordinator();
+        coordinator.reset();
+        coordinator.incrementIteration();
+        coordinator.incrementIteration();
+
+        assertEquals(2, coordinator.getCurrentIteration());
+    }
+
+    @Test
+    void testMaxIterationsStop() {
         LoopCoordinator coordinator = new LoopCoordinator(List.of(new MaxRoundsEvaluator(2)));
         coordinator.reset();
         assertTrue(coordinator.shouldContinue());
@@ -36,7 +55,7 @@ class LoopCoordinatorTest {
     }
 
     @Test
-    void testTokenBudgetStop() {
+    void testMaxTokenUsageStop() {
         LoopCoordinator coordinator = new LoopCoordinator(List.of(new TokenBudgetEvaluator(100)));
         coordinator.reset();
         coordinator.addTokenUsage(50);
@@ -46,25 +65,61 @@ class LoopCoordinatorTest {
     }
 
     @Test
-    void testAbortAndTimeout() {
-        LoopCoordinator aborted = new LoopCoordinator();
-        aborted.reset();
-        aborted.requestAbort();
-        assertFalse(aborted.shouldContinue());
+    void testAbortStopsImmediately() {
+        LoopCoordinator coordinator = new LoopCoordinator();
+        coordinator.reset();
+        coordinator.requestAbort();
 
-        LoopCoordinator timedOut = new LoopCoordinator(List.of(new TimeoutEvaluator(0.0)));
-        timedOut.reset();
-        assertFalse(timedOut.shouldContinue());
+        assertTrue(coordinator.isAborted());
+        assertFalse(coordinator.shouldContinue());
     }
 
     @Test
-    void testCustomPredicate() {
-        LoopCoordinator stop = new LoopCoordinator(List.of(new CustomPredicateEvaluator(ctx -> true)));
-        stop.reset();
-        assertFalse(stop.shouldContinue());
+    void testTimeoutStop() {
+        LoopCoordinator coordinator = new LoopCoordinator(List.of(new TimeoutEvaluator(0.0)));
+        coordinator.reset();
 
-        LoopCoordinator cont = new LoopCoordinator(List.of(new CustomPredicateEvaluator(ctx -> false)));
-        cont.reset();
-        assertTrue(cont.shouldContinue());
+        assertFalse(coordinator.shouldContinue());
+    }
+
+    @Test
+    void testCustomPredicateStop() {
+        LoopCoordinator coordinator = new LoopCoordinator(List.of(new CustomPredicateEvaluator(ctx -> true)));
+        coordinator.reset();
+
+        assertFalse(coordinator.shouldContinue());
+    }
+
+    @Test
+    void testCustomPredicateContinue() {
+        LoopCoordinator coordinator = new LoopCoordinator(List.of(new CustomPredicateEvaluator(ctx -> false)));
+        coordinator.reset();
+
+        assertTrue(coordinator.shouldContinue());
+    }
+
+    @Test
+    void testResetClearsState() {
+        LoopCoordinator coordinator = new LoopCoordinator(List.of(new MaxRoundsEvaluator(10)));
+        coordinator.reset();
+        coordinator.incrementIteration();
+        coordinator.addTokenUsage(999);
+        coordinator.requestAbort();
+
+        coordinator.reset();
+
+        assertEquals(0, coordinator.getCurrentIteration());
+        assertFalse(coordinator.isAborted());
+        assertTrue(coordinator.shouldContinue());
+    }
+
+    @Test
+    void testNegativeTokensIgnored() {
+        LoopCoordinator coordinator = new LoopCoordinator(List.of(new TokenBudgetEvaluator(100)));
+        coordinator.reset();
+        coordinator.addTokenUsage(-50);
+        coordinator.addTokenUsage(0);
+
+        assertTrue(coordinator.shouldContinue());
     }
 }

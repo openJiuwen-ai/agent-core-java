@@ -29,7 +29,7 @@ public final class HandoffInterrupts {
 
     public static Optional<TeamInterruptSignal> extractInterruptSignal(Object result, Throwable exception) {
         if (result instanceof Map<?, ?> rawMap && "interrupt".equals(rawMap.get("result_type"))) {
-            return Optional.of(new TeamInterruptSignal(stringObjectMap(rawMap)));
+            return Optional.of(new TeamInterruptSignal(result));
         }
         if (exception instanceof AgentInterrupt interrupt) {
             String message = interrupt.message != null ? interrupt.message : String.valueOf(interrupt);
@@ -52,14 +52,9 @@ public final class HandoffInterrupts {
             Loggers.MULTI_AGENT.warning(
                     "[flush_team_session] checkpointer flush failed after interrupt; "
                             + "interrupt state may not be persisted: {}",
-                    exception.toString()
+                    exception.toString(),
+                    exception
             );
         }
-    }
-
-    private static Map<String, Object> stringObjectMap(Map<?, ?> source) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        source.forEach((key, value) -> result.put(String.valueOf(key), value));
-        return result;
     }
 }

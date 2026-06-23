@@ -369,11 +369,28 @@ public final class PermissionPatterns {
     ) {
         Map<String, Object> tools = castMap(permissions.get("tools"));
         Object raw = tools.get(toolName);
+        PermissionLevel direct = permissionLevelFromToolConfig(raw);
+        if (direct != null) {
+            return direct;
+        }
         if (raw == null) {
             Map<String, Object> defaults = castMap(permissions.get("defaults"));
             raw = defaults.get("*");
         }
         return raw == null ? PermissionLevel.ASK : PermissionLevel.fromValue(String.valueOf(raw));
+    }
+
+    private static PermissionLevel permissionLevelFromToolConfig(Object raw) {
+        if (raw instanceof String value) {
+            return PermissionLevel.fromValue(value);
+        }
+        if (raw instanceof Map<?, ?> map) {
+            Object wildcard = map.get("*");
+            if (wildcard instanceof String value) {
+                return PermissionLevel.fromValue(value);
+            }
+        }
+        return null;
     }
 
     private static boolean persistTieredApprovalOverrideSuggestions(
@@ -422,7 +439,7 @@ public final class PermissionPatterns {
                     map.get("action") == null ? "" : String.valueOf(map.get("action")).strip().toLowerCase()
             );
             if (isSameAllowOverride(signature)) {
-                return true;
+                return false;
             }
         }
 

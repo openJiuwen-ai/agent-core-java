@@ -92,6 +92,19 @@ public class CliRepl {
         return new LinkedHashMap<>(SKILL_COMMANDS);
     }
 
+    public static List<SlashCompletion> slashCompletions(String textBeforeCursor) {
+        String text = textBeforeCursor == null ? "" : textBeforeCursor;
+        if (text.contains(" ") || !text.startsWith("/")) {
+            return List.of();
+        }
+        return SLASH_COMMANDS.keySet().stream()
+                .sorted()
+                .filter(command -> !"/quit".equals(command))
+                .filter(command -> command.startsWith(text))
+                .map(command -> new SlashCompletion(command, SLASH_DESCRIPTIONS.getOrDefault(command, "")))
+                .toList();
+    }
+
     public static List<String> defaultSkillDirs() {
         return new ArrayList<>(DEFAULT_SKILL_DIRS);
     }
@@ -571,6 +584,13 @@ public class CliRepl {
             Double budget,
             String goal,
             String pipeline) {
+    }
+
+    /**
+     * Mirrors Python's {@code Completion} values yielded by {@code SlashCompleter} in
+     * {@code openjiuwen/harness/cli/ui/repl.py}.
+     */
+    public record SlashCompletion(String text, String displayMeta) {
     }
 
     public record PreparedRun(

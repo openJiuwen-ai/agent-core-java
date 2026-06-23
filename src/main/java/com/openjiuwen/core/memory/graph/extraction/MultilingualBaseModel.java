@@ -122,30 +122,32 @@ public abstract class MultilingualBaseModel {
     /**
      * Recursively replace values in a nested map structure.
      */
-    @SuppressWarnings("unchecked")
-    protected static void recursiveReplace(Map<String, Object> schema, Map<String, String> lookup, String fromKey) {
-        recursiveReplace(schema, lookup, fromKey, fromKey);
+    protected static boolean recursiveReplace(Map<String, Object> schema, Map<String, String> lookup, String fromKey) {
+        return recursiveReplace(schema, lookup, fromKey, fromKey);
     }
 
     @SuppressWarnings("unchecked")
-    protected static void recursiveReplace(Map<String, Object> schema, Map<String, String> lookup, String fromKey, String toKey) {
-        if (schema.containsKey(fromKey) && schema.get(fromKey) instanceof String value) {
-            schema.remove(fromKey);
-            if (toKey != null) {
-                schema.put(toKey, lookup.getOrDefault(value, value));
-            }
-        }
-        for (Object value : new ArrayList<>(schema.values())) {
-            if (value instanceof Map<?, ?> child) {
-                recursiveReplace((Map<String, Object>) child, lookup, fromKey, toKey);
-            } else if (value instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> child) {
-                        recursiveReplace((Map<String, Object>) child, lookup, fromKey, toKey);
+    protected static boolean recursiveReplace(Object schema, Map<String, String> lookup, String fromKey, String toKey) {
+        boolean replaced = false;
+        List<Object> toVisit = new ArrayList<>();
+        toVisit.add(schema);
+        for (int i = 0; i < toVisit.size(); i++) {
+            Object current = toVisit.get(i);
+            if (current instanceof Map<?, ?> currentMap) {
+                Map<String, Object> map = (Map<String, Object>) currentMap;
+                if (map.containsKey(fromKey)) {
+                    Object value = map.remove(fromKey);
+                    if (toKey != null) {
+                        map.put(toKey, lookup.getOrDefault(String.valueOf(value), String.valueOf(value)));
                     }
+                    replaced = true;
                 }
+                toVisit.addAll(map.values());
+            } else if (current instanceof List<?> list) {
+                toVisit.addAll(list);
             }
         }
+        return replaced;
     }
 
     @SuppressWarnings("unchecked")
@@ -172,11 +174,11 @@ public abstract class MultilingualBaseModel {
      */
     public static String toJsonTypes(Type type) {
         if (type instanceof Class<?> clazz) {
-            return clazz.getSimpleName();
+            return pythonTypeName(clazz);
         }
         if (type instanceof ParameterizedType parameterizedType) {
             Type raw = parameterizedType.getRawType();
-            String rawName = raw instanceof Class<?> clazz ? clazz.getSimpleName() : raw.getTypeName();
+            String rawName = raw instanceof Class<?> clazz ? pythonTypeName(clazz) : raw.getTypeName();
             Type[] args = parameterizedType.getActualTypeArguments();
             if (args.length == 0) {
                 return rawName;
@@ -188,6 +190,32 @@ public abstract class MultilingualBaseModel {
             return rawName + "[" + String.join(",", argNames) + "]";
         }
         return type.getTypeName();
+    }
+
+    private static String pythonTypeName(Class<?> clazz) {
+        if (String.class.equals(clazz)) {
+            return "str";
+        }
+        if (Integer.class.equals(clazz) || Integer.TYPE.equals(clazz)
+                || Long.class.equals(clazz) || Long.TYPE.equals(clazz)
+                || Short.class.equals(clazz) || Short.TYPE.equals(clazz)
+                || Byte.class.equals(clazz) || Byte.TYPE.equals(clazz)) {
+            return "int";
+        }
+        if (Boolean.class.equals(clazz) || Boolean.TYPE.equals(clazz)) {
+            return "bool";
+        }
+        if (Double.class.equals(clazz) || Double.TYPE.equals(clazz)
+                || Float.class.equals(clazz) || Float.TYPE.equals(clazz)) {
+            return "float";
+        }
+        if (List.class.isAssignableFrom(clazz)) {
+            return "list";
+        }
+        if (Map.class.isAssignableFrom(clazz)) {
+            return "dict";
+        }
+        return clazz.getSimpleName();
     }
 
     private static String schemaType(Map<String, Object> property) {

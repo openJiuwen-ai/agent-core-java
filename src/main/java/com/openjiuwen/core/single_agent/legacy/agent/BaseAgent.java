@@ -15,6 +15,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -138,7 +139,7 @@ public abstract class BaseAgent {
                 appendObjectToList(agentConfig, "workflows", "getWorkflows", workflowCard);
             }
             workflows.add(workflow);
-            registerGlobalWorkflow(workflowCard, providerFor(workflow));
+            registerGlobalWorkflow(scopedResourceCard(workflowCard), providerFor(workflow), agentTag());
         }
     }
 
@@ -223,8 +224,16 @@ public abstract class BaseAgent {
                 });
     }
 
+    public CompletionStage<Void> clearSession() {
+        return clearSession("default_session");
+    }
+
     public CompletionStage<Void> clear_session(String sessionId) {
         return clearSession(sessionId);
+    }
+
+    public CompletionStage<Void> clear_session() {
+        return clearSession();
     }
 
     public abstract CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session);
@@ -488,7 +497,7 @@ public abstract class BaseAgent {
         }
     }
 
-    private static void registerGlobalWorkflow(WorkflowCard card, Supplier<?> provider) {
+    private static void registerGlobalWorkflow(WorkflowCard card, Supplier<?> provider, Collection<String> tag) {
         if (card == null || provider == null) {
             return;
         }
@@ -496,9 +505,27 @@ public abstract class BaseAgent {
             Object resourceManager = Class.forName("com.openjiuwen.core.runner.Runner")
                     .getMethod("getResourceMgr")
                     .invoke(null);
-            invokeCompatible(resourceManager, "addWorkflow", card, provider);
+            invokeCompatible(resourceManager, "addWorkflow", card, provider, tag);
         } catch (ReflectiveOperationException | LinkageError ignored) {
         }
+    }
+
+    private WorkflowCard scopedResourceCard(WorkflowCard card) {
+        if (card == null) {
+            return null;
+        }
+        return new WorkflowCard(
+                workflowKey(card),
+                card.getName(),
+                card.getDescription(),
+                card.getVersion(),
+                card.getInputParams()
+        );
+    }
+
+    private Collection<String> agentTag() {
+        String agentId = readString(agentConfig, "id", "getId");
+        return agentId == null || agentId.isBlank() ? null : List.of(agentId);
     }
 
     private static CompletionStage<Void> invokeRunnerRelease(String sessionId) {

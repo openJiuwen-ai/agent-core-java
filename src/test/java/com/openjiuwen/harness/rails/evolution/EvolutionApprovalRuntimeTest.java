@@ -25,6 +25,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Mirrors Python's {@code EvolutionApprovalRuntime} in
  * {@code openjiuwen/harness/rails/evolution/approval_runtime.py}.
+ *
+ * <p>Also mirrors Python's {@code TestEvolutionApprovalRuntime} in
+ * {@code tests/unit_tests/harness/rails/evolution/test_evolution_approval_runtime.py}.</p>
  */
 class EvolutionApprovalRuntimeTest {
 
@@ -73,6 +76,27 @@ class EvolutionApprovalRuntimeTest {
 
         assertNull(outcome.getPending());
         assertNull(outcome.getResult());
+    }
+
+    @Test
+    void approvePartialFailureReturnsResultForCallerRetry() {
+        FakeApprovalManager manager = new FakeApprovalManager();
+        manager.approveResult = Map.of("pending_count", 2, "applied_count", 1);
+        PendingChange pending = pending("skill-a");
+        EvolutionApprovalRuntime runtime = new EvolutionApprovalRuntime(
+                manager,
+                new PendingApprovalSnapshotStore(Map.of("req-partial", pending))
+        );
+
+        EvolutionApprovalRuntime.PendingRequestResult outcome = runtime.approvePendingRequest(
+                "req-partial",
+                "rail",
+                "approve"
+        ).toCompletableFuture().join();
+
+        assertSame(pending, outcome.getPending());
+        assertSame(manager.approveResult, outcome.getResult());
+        assertEquals("req-partial", manager.approvedRequestId);
     }
 
     @Test
@@ -162,12 +186,13 @@ class EvolutionApprovalRuntimeTest {
         private String approvedRequestId;
         private List<String> approvedRecordIds;
         private String rejectedRequestId;
+        private Object approveResult = Map.of("pending_count", 0, "applied_count", 1);
 
         @Override
         public CompletionStage<Object> approveRequest(String requestId, List<String> approvedRecordIds) {
             this.approvedRequestId = requestId;
             this.approvedRecordIds = approvedRecordIds;
-            return CompletableFuture.completedFuture(Map.of("pending_count", 0, "applied_count", 1));
+            return CompletableFuture.completedFuture(approveResult);
         }
 
         @Override

@@ -19,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code openjiuwen.dev_tools.agent_builder.resource.prompt} in
  * {@code openjiuwen/dev_tools/agent_builder/resource/prompt.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code tests.system_tests.dev_tools.agent_builder.resource.test_resource_integration}
+ * in {@code tests/system_tests/dev_tools/agent_builder/resource/test_resource_integration.py}.</p>
  */
 class AgentBuilderResourcePromptTest {
 

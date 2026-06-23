@@ -17,6 +17,10 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * <p>Mirrors Python's {@code tests.unit_tests.harness.tools.browser_move.test_file_uploads} in
+ * {@code tests/unit_tests/harness/tools/browser_move/test_file_uploads.py}.</p>
+ */
 class ActionControllerFileUploadTest {
 
     @TempDir

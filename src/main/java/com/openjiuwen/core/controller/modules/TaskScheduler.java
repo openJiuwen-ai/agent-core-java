@@ -474,9 +474,9 @@ public class TaskScheduler {
         if (task.getStatus() == TaskStatus.CANCELED
                 || task.getStatus() == TaskStatus.COMPLETED
                 || task.getStatus() == TaskStatus.FAILED) {
-            Loggers.CONTROLLER.info("Task {} already in terminal state {}, cancel is idempotent",
+            Loggers.CONTROLLER.info("Task {} already in terminal state {}, cannot cancel",
                     taskId, task.getStatus());
-            return true;
+            return false;
         }
 
         RunningTaskEntry entry;
@@ -675,6 +675,7 @@ public class TaskScheduler {
         } finally {
             lock.unlock();
         }
+        sessions.clear();
 
         Loggers.CONTROLLER.info("TaskScheduler stopped");
     }

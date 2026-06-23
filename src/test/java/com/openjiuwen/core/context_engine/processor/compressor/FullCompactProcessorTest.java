@@ -32,6 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's tests for
  * {@code openjiuwen/core/context_engine/processor/compressor/full_compact_processor.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental unit tests in
+ * {@code tests/unit_tests/core/context_engine/test_full_compact_processor.py}.</p>
  */
 class FullCompactProcessorTest {
 

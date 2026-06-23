@@ -98,6 +98,7 @@ public class WorktreeManager {
             session.setHookBased(result.isHookBased());
             session.setCreationDurationMs(durationMs);
             session.setUsedSparsePaths(config.getSparsePaths() != null && !config.getSparsePaths().isEmpty());
+            session.setExisted(result.isExisted());
 
             WorktreeSessionContext.setCurrentSession(session);
 

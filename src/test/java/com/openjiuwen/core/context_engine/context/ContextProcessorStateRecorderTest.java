@@ -188,7 +188,6 @@ class ContextProcessorStateRecorderTest {
             return "compact";
         }
 
-        @Override
         public Object config() {
             return new ProcessorConfig();
         }

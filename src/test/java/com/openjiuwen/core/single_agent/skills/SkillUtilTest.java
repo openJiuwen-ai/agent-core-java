@@ -38,6 +38,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's {@code SkillUtil} in
  * {@code openjiuwen/core/single_agent/skills/skill_util.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/system_tests/agent/skill/test_skill_real_system.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/unit_tests/agent/skill/test_skill_system_mock.py}.</p>
  */
 class SkillUtilTest {
     private static final String SYS_OPERATION_ID = "sys-op";

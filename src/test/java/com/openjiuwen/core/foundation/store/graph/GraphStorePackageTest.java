@@ -12,6 +12,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's package facade in
  * {@code openjiuwen/core/foundation/store/graph/__init__.py}.
+ *
+ * <p>Mirrors Python's {@code TestExports.test_exports} in
+ * {@code tests/unit_tests/core/foundation/store/graph/test_init.py}.</p>
  */
 class GraphStorePackageTest {
 

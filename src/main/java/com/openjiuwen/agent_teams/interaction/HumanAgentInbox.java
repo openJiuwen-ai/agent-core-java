@@ -139,7 +139,7 @@ public final class HumanAgentInbox {
     public interface TeamBackendView {
         CompletionStage<List<String>> humanAgentNames();
 
-        CompletionStage<Object> getMember(String name);
+        CompletionStage<?> getMember(String name);
     }
 
     /**

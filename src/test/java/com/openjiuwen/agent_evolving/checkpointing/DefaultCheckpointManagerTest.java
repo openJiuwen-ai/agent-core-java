@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agent_evolving.checkpointing;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_evolving.experience.PendingChange;
 import org.junit.jupiter.api.Test;
 
@@ -21,10 +23,64 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests for the default checkpoint manager.
  *
+ * <p>Mirrors Python's {@code tests/unit_tests/agent_evolving/checkpointing/test_manager.py}.</p>
+ *
  * <p>Mirrors Python's {@code DefaultCheckpointManager} in
  * {@code openjiuwen/agent_evolving/checkpointing/manager.py}.</p>
  */
 class DefaultCheckpointManagerTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Test
+    void evolveCheckpointFullCreation() {
+        EvolveCheckpoint checkpoint = makeCheckpoint(
+                Map.of("epoch", 5, "batch", 100),
+                Map.of("best_score", 0.9d),
+                42,
+                Map.of("op1", Map.of("param", "value")),
+                Map.of("key", "value"),
+                Map.of("score", 0.85d));
+
+        assertEquals("v1", checkpoint.getVersion());
+        assertEquals("test_run", checkpoint.getRunId());
+        assertEquals(5, checkpoint.getStep().get("epoch"));
+        assertEquals(0.9d, (Double) checkpoint.getBest().get("best_score"), 1.0e-9);
+        assertEquals(42, checkpoint.getSeed());
+    }
+
+    @Test
+    void evolveCheckpointMinimalCreationAllowsNullSeed() {
+        EvolveCheckpoint checkpoint = makeCheckpoint(
+                Map.of("epoch", 1),
+                Map.of("best_score", 0.5d),
+                null,
+                Map.of(),
+                Map.of(),
+                Map.of());
+
+        assertEquals("v1", checkpoint.getVersion());
+        assertNull(checkpoint.getSeed());
+    }
+
+    @Test
+    void evolveCheckpointSerializesToPythonDictShape() throws Exception {
+        EvolveCheckpoint checkpoint = makeCheckpoint(
+                Map.of("epoch", 1),
+                Map.of("best_score", 0.5d),
+                null,
+                Map.of(),
+                Map.of(),
+                Map.of());
+
+        Map<String, Object> data = OBJECT_MAPPER.readValue(
+                OBJECT_MAPPER.writeValueAsString(checkpoint),
+                new TypeReference<>() {
+                });
+
+        assertEquals("v1", data.get("version"));
+        assertEquals("test_run", data.get("run_id"));
+    }
 
     @Test
     void defaultInitUsesGeneratedRunIdAndSavesEpochZero() {
@@ -338,5 +394,25 @@ class DefaultCheckpointManagerTest {
     }
 
     private static final class NoOperatorsAgent {
+    }
+
+    private static EvolveCheckpoint makeCheckpoint(
+            Map<String, Integer> step,
+            Map<String, Object> best,
+            Integer seed,
+            Map<String, Map<String, Object>> operatorsState,
+            Map<String, Object> updaterState,
+            Map<String, Object> lastMetrics) {
+        return EvolveCheckpoint.builder()
+                .version("v1")
+                .runId("test_run")
+                .step(step)
+                .best(best)
+                .seed(seed)
+                .operatorsState(operatorsState)
+                .updaterState(updaterState)
+                .searcherState(Map.of())
+                .lastMetrics(lastMetrics)
+                .build();
     }
 }

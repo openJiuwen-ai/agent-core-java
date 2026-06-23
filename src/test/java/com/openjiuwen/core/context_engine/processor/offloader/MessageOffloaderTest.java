@@ -155,11 +155,18 @@ class MessageOffloaderTest {
         )).toCompletableFuture().join();
 
         List<Map<String, Object>> states = context.compressionHistory();
-        assertThat(states).hasSizeGreaterThanOrEqualTo(2);
-        assertThat(states.get(states.size() - 1))
+        assertThat(states).hasSize(2);
+        assertThat(states.get(0))
                 .containsEntry("processor", "MessageOffloader")
+                .containsEntry("phase", "add_messages")
+                .containsEntry("status", "started");
+        assertThat(states.get(0).get("before")).isNotNull();
+        assertThat(states.get(1))
+                .containsEntry("processor", "MessageOffloader")
+                .containsEntry("phase", "add_messages")
                 .containsEntry("status", "completed");
-        assertThat(states.get(states.size() - 1).get("messages_to_modify")).isEqualTo(List.of(0));
+        assertThat(states.get(1).get("duration_ms")).isNotNull();
+        assertThat(String.valueOf(states.get(1).get("summary"))).contains("modified 1 messages");
     }
 
     @Test

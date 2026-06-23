@@ -22,8 +22,13 @@ import com.openjiuwen.agent_teams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agent_teams.agent.coordination.CoordinationKernel.EventListener;
 import com.openjiuwen.agent_teams.agent.coordination.handlers.MessageHandler;
 import com.openjiuwen.agent_teams.interaction.DeliverResult;
+import com.openjiuwen.agent_teams.interaction.GodViewMessage;
+import com.openjiuwen.agent_teams.interaction.InteractPayload;
+import com.openjiuwen.agent_teams.interaction.InteractionRouter;
 import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
 import com.openjiuwen.agent_teams.runtime.TeamRuntimeMetadata;
+import com.openjiuwen.agent_teams.runtime.TeamRuntimeManager;
+import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
 import com.openjiuwen.agent_teams.schema.status.ExecutionStatus;
 import com.openjiuwen.agent_teams.schema.status.MemberStatus;
 import java.util.ArrayList;
@@ -34,6 +39,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -413,13 +419,82 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
             Object session,
             Object streamModes
     ) {
+        return runInputRound(inputs, session);
+    }
+
+    public CompletionStage<List<Object>> stream(Object inputs) {
+        return stream(inputs, null, null);
+    }
+
+    public CompletionStage<Object> invoke(Object inputs, Object session) {
+        return runInputRound(inputs, session)
+                .thenApply(chunks -> chunks.isEmpty() ? null : chunks.get(chunks.size() - 1));
+    }
+
+    public CompletionStage<Object> invoke(Object inputs) {
+        return invoke(inputs, null);
+    }
+
+    private CompletionStage<List<Object>> runInputRound(Object inputs, Object session) {
+        streamController.clearStreamQueue();
         String rawQuery = rawQuery(inputs);
         state.setPendingUserQuery(rawQuery);
-        return coordination.start(session)
-                .thenCompose(ignored -> coordination.enqueueUserInput(inputs))
-                .thenCompose(ignored -> coordination.enqueueMailboxAfterFirstIteration())
-                .thenCompose(ignored -> coordination.finalizeRound())
-                .thenApply(ignored -> drainStreamQueueSnapshot());
+        List<InteractPayload> routedPayloads = initialLeaderRoutePayloads(rawQuery);
+        CompletionStage<Void> roundStage = coordination.start(session)
+                .thenCompose(ignored -> {
+                    if (routedPayloads != null) {
+                        return dispatchInitialLeaderRoute(routedPayloads);
+                    }
+                    return coordination.enqueueUserInput(inputs)
+                            .thenCompose(next -> coordination.enqueueMailboxAfterFirstIteration());
+                });
+        return roundStage.handle((ignored, throwable) -> throwable)
+                .thenCompose(throwable -> coordination.finalizeRound()
+                        .handle((ignored, finalizeThrowable) -> {
+                            if (throwable != null) {
+                                throw new CompletionException(unwrapCompletion(throwable));
+                            }
+                            if (finalizeThrowable != null) {
+                                throw new CompletionException(unwrapCompletion(finalizeThrowable));
+                            }
+                            return drainStreamQueueSnapshot();
+                        }));
+    }
+
+    protected CompletionStage<Void> dispatchInitialLeaderRoute(List<InteractPayload> payloads) {
+        return TeamRuntimeManager.dispatchPayloads(new InitialRouteRuntimeAdapter(this), payloads)
+                .thenCompose(result -> {
+                    if (result.ok()) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return emitInteractFailed(result.reason()).thenRun(streamController::closeStream);
+                });
+    }
+
+    protected CompletionStage<Void> emitInteractFailed(String reason) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event_type", "team.interact.failed");
+        payload.put("reason", reason);
+        streamController.getRawStreamQueue().offer(new TeamOutputSchema(
+                "message",
+                0,
+                payload,
+                getMemberName(),
+                getRole()
+        ));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    protected List<InteractPayload> initialLeaderRoutePayloads(String rawQuery) {
+        if (rawQuery == null || rawQuery.isEmpty() || getRole() != TeamRole.LEADER || getTeamBackend() == null) {
+            return null;
+        }
+        List<InteractPayload> parsed = InteractionRouter.parseInteractStr(rawQuery);
+        if (parsed.isEmpty()) {
+            return null;
+        }
+        boolean routed = parsed.stream().anyMatch(payload -> !(payload instanceof GodViewMessage));
+        return routed ? parsed : null;
     }
 
     public CompletionStage<Void> interact(String message) {
@@ -523,12 +598,17 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
                                 .thenApply(ignored -> null);
                     }
                     return teamBackend.getMember(teammateId)
-                            .thenCompose(member -> spawnManager.spawnTeammate(
-                                    ctx,
-                                    member == null ? null : member.prompt(),
-                                    getSessionId(),
-                                    new SpawnManager.SpawnOptions(30, 50)
-                            ))
+                            .thenCompose(rawMember -> {
+                                SpawnManager.MemberRow member = rawMember instanceof SpawnManager.MemberRow row
+                                        ? row
+                                        : null;
+                                return spawnManager.spawnTeammate(
+                                        ctx,
+                                        member == null ? null : member.prompt(),
+                                        getSessionId(),
+                                        new SpawnManager.SpawnOptions(30, 50)
+                                );
+                            })
                             .thenApply(ignored -> null);
                 });
     }
@@ -739,6 +819,85 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
             chunks.add(chunk);
         }
         return chunks;
+    }
+
+    private static Throwable unwrapCompletion(Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static final class InitialRouteRuntimeAdapter implements TeamRuntimeManager.TeamAgentRuntime {
+        private final TeamAgent agent;
+
+        private InitialRouteRuntimeAdapter(TeamAgent agent) {
+            this.agent = agent;
+        }
+
+        @Override
+        public CompletionStage<Void> deliverInput(String body) {
+            return agent.deliverInput(body);
+        }
+
+        @Override
+        public CompletionStage<Void> pauseCoordination() {
+            return agent.pauseCoordination();
+        }
+
+        @Override
+        public CompletionStage<Void> stopCoordination() {
+            return agent.stopCoordination();
+        }
+
+        @Override
+        public CompletionStage<Boolean> isShutdownRequested() {
+            return agent.isShutdownRequested();
+        }
+
+        @Override
+        public String lifecycle() {
+            return agent.getLifecycle();
+        }
+
+        @Override
+        public TeamRuntimeManager.TeamBackendRuntime teamBackend() {
+            return agent.getTeamBackend();
+        }
+
+        @Override
+        public boolean hasPendingInterrupt() {
+            return agent.hasPendingInterrupt();
+        }
+
+        @Override
+        public CompletionStage<Void> autoStartAll() {
+            return agent.autoStartAll().thenApply(ignored -> (Void) null);
+        }
+
+        @Override
+        public CompletionStage<Void> autoStartMember(String memberName) {
+            return agent.autoStartMember(memberName).thenApply(ignored -> (Void) null);
+        }
+
+        @Override
+        public CompletionStage<TeamRuntimeManager.TeamAgentRuntime> lookupHumanAgentRuntime(String memberName) {
+            return agent.lookupHumanAgentRuntime(memberName).thenApply(runtime -> {
+                if (runtime instanceof TeamRuntimeManager.TeamAgentRuntime teamRuntime) {
+                    return teamRuntime;
+                }
+                if (runtime instanceof TeamAgent teamAgent) {
+                    return new InitialRouteRuntimeAdapter(teamAgent);
+                }
+                return null;
+            });
+        }
+
+        @Override
+        public CompletionStage<Void> recoverTeam() {
+            return agent.recoverTeam();
+        }
     }
 
     private static CompletionStage<Void> updateLiveTeammates(

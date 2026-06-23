@@ -11,6 +11,8 @@ import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.Task;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,7 +26,86 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * <p>Mirrors Python's {@code TestSkillsBenchAdapter*} in
+ * {@code tests/unit_tests/agent_evolving/evaluator/evaluator_pipeline/adapters/benchmarks/test_skillsbench.py}.</p>
+ * <p>Also exercises Python's {@code SkillsBenchAdapter} in
+ * {@code openjiuwen/agent_evolving/evaluator/evaluator_pipeline/adapters/benchmarks/skillsbench.py}.</p>
+ */
 class SkillsBenchAdapterTest {
+
+    @Test
+    void defaultInitUsesPythonDefaults() throws Exception {
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter();
+
+        assertEquals("", fieldValue(adapter, "repoUrl"));
+        assertEquals(Path.of("./skillsbench"), fieldValue(adapter, "repoPath"));
+        assertEquals(Path.of("tasks"), fieldValue(adapter, "tasksDir"));
+        assertEquals("/workspace", fieldValue(adapter, "workspaceDir"));
+        assertEquals("with_skills", fieldValue(adapter, "skillsMode"));
+    }
+
+    @Test
+    void initWithConfigOverridesDefaults() throws Exception {
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of(
+                "repo_url", "https://example.com/repo.git",
+                "repo_path", "./custom_repo",
+                "tasks_dir", "custom_tasks",
+                "workspace_dir", "/custom/workspace",
+                "skills_mode", "without_skills"));
+
+        assertEquals("https://example.com/repo.git", fieldValue(adapter, "repoUrl"));
+        assertEquals(Path.of("./custom_repo"), fieldValue(adapter, "repoPath"));
+        assertEquals(Path.of("custom_tasks"), fieldValue(adapter, "tasksDir"));
+        assertEquals("/custom/workspace", fieldValue(adapter, "workspaceDir"));
+        assertEquals("without_skills", fieldValue(adapter, "skillsMode"));
+    }
+
+    @Test
+    void nameReturnsSkillsBench() {
+        assertEquals("skillsbench", new SkillsBenchAdapter().name());
+    }
+
+    @Test
+    void cloneRepoReturnsTrueWhenNoRepoUrlConfigured() {
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter();
+
+        assertTrue(adapter.cloneRepo());
+    }
+
+    @Test
+    void cloneRepoReturnsTrueWhenRepoPathAlreadyExists(@TempDir Path tempDir) throws Exception {
+        Path repoPath = tempDir.resolve("repo");
+        Files.createDirectories(repoPath);
+        runGit(tempDir, "init", repoPath.toString());
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of(
+                "repo_url", tempDir.resolve("origin.git").toString(),
+                "repo_path", repoPath.toString()));
+
+        assertTrue(adapter.cloneRepo());
+    }
+
+    @Test
+    void cloneRepoReturnsTrueWhenLocalRepoCanBeCloned(@TempDir Path tempDir) throws Exception {
+        Path originPath = tempDir.resolve("origin.git");
+        Path clonePath = tempDir.resolve("clone");
+        runGit(tempDir, "init", "--bare", originPath.toString());
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of(
+                "repo_url", originPath.toString(),
+                "repo_path", clonePath.toString()));
+
+        assertTrue(adapter.cloneRepo());
+        assertTrue(Files.isDirectory(clonePath.resolve(".git")));
+    }
+
+    @Test
+    void cloneRepoReturnsFalseWhenCloneFails(@TempDir Path tempDir) {
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of(
+                "repo_url", tempDir.resolve("missing-origin").toString(),
+                "repo_path", tempDir.resolve("clone").toString()));
+
+        assertFalse(adapter.cloneRepo());
+    }
 
     @Test
     void loadTasksReadsInstructionAndSkillsMetadata(@TempDir Path tempDir) throws Exception {
@@ -47,6 +128,13 @@ class SkillsBenchAdapterTest {
         assertIterableEquals(List.of("alpha", "beta"), task.getSkills());
         assertEquals("docker", task.getEnvironmentSpec().get("type"));
         assertEquals("cd /workspace && bash tests/test.sh", task.getEnvironmentSpec().get("test_command"));
+    }
+
+    @Test
+    void loadTasksReturnsEmptyWhenTasksDirectoryDoesNotExist(@TempDir Path tempDir) {
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of("tasks_dir", tempDir.resolve("missing").toString()));
+
+        assertEquals(List.of(), adapter.loadTasks());
     }
 
     @Test
@@ -121,6 +209,93 @@ class SkillsBenchAdapterTest {
         assertEquals(2.0 / 3.0, result.getPassRate(), 1.0e-9);
         assertFalse(result.isPassed());
         assertEquals(List.of("tests/test_outputs.py::test_case"), result.getFailedTests());
+    }
+
+    @Test
+    void calculatePassRateReturnsOneWhenAllTestsPassed() throws Exception {
+        String output = "test1 passed\ntest2 passed\n2 passed";
+
+        assertEquals(1.0, calculatePassRate(output));
+    }
+
+    @Test
+    void calculatePassRateCountsFailedTests() throws Exception {
+        String output = "test_example.py::test1 PASSED\ntest_example.py::test2 FAILED\n1 passed, 1 failed";
+
+        assertEquals(0.5, calculatePassRate(output));
+    }
+
+    @Test
+    void calculatePassRateCountsErrors() throws Exception {
+        String output = "test_example.py::test1 PASSED\ntest_example.py::test2 ERROR\n1 passed, 1 error";
+
+        assertEquals(0.5, calculatePassRate(output));
+    }
+
+    @Test
+    void calculatePassRateReturnsZeroWhenNoTestsFound() throws Exception {
+        assertEquals(0.0, calculatePassRate("No tests found"));
+    }
+
+    @Test
+    void extractFailedTestsReturnsFailuresOnly() throws Exception {
+        String output = """
+                FAILED test_example.py::test_func1 - AssertionError
+                PASSED test_example.py::test_func2
+                FAILED test_example.py::test_func3 - ValueError
+                """;
+
+        List<String> result = extractFailedTests(output);
+
+        assertTrue(result.contains("test_example.py::test_func1"));
+        assertTrue(result.contains("test_example.py::test_func3"));
+        assertFalse(result.contains("test_example.py::test_func2"));
+    }
+
+    @Test
+    void extractFailedTestsReturnsErrors() throws Exception {
+        String output = """
+                ERROR test_example.py::test_setup - Exception
+                PASSED test_example.py::test_func
+                """;
+
+        assertEquals(List.of("test_example.py::test_setup"), extractFailedTests(output));
+    }
+
+    @Test
+    void extractFailedTestsReturnsEmptyWhenAllPassed() throws Exception {
+        assertEquals(List.of(), extractFailedTests("All tests passed\n2 passed"));
+    }
+
+    private static Object fieldValue(SkillsBenchAdapter adapter, String name) throws Exception {
+        Field field = SkillsBenchAdapter.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(adapter);
+    }
+
+    private static double calculatePassRate(String output) throws Exception {
+        Method method = SkillsBenchAdapter.class.getDeclaredMethod("calculatePassRate", String.class);
+        method.setAccessible(true);
+        return (double) method.invoke(null, output);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> extractFailedTests(String output) throws Exception {
+        Method method = SkillsBenchAdapter.class.getDeclaredMethod("extractFailedTests", String.class);
+        method.setAccessible(true);
+        return (List<String>) method.invoke(null, output);
+    }
+
+    private static void runGit(Path workdir, String... args) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command)
+                .directory(workdir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        int exitCode = process.waitFor();
+        assertEquals(0, exitCode, "git command failed: " + String.join(" ", command));
     }
 
     private static final class RecordingDockerEnvironment extends DockerEnvironment {

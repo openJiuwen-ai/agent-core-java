@@ -36,21 +36,31 @@ public class WorkflowRuntimeState extends WorkflowCommitState
     }
 
     public static WorkflowRuntimeState create() {
+        return create("", DEFAULT_NODE_ID);
+    }
+
+    public static WorkflowRuntimeState create(String parentId, String nodeId) {
         return new WorkflowRuntimeState(
                 new InMemoryCommitState(new InMemoryStateLike()),
                 new InMemoryCommitState(new InMemoryStateLike()),
                 new InMemoryCommitState(new InMemoryStateLike()),
                 new InMemoryCommitState(new InMemoryStateLike()),
                 new HashMap<>(),
-                "",
-                DEFAULT_NODE_ID);
+                parentId,
+                nodeId);
     }
 
     public static WorkflowRuntimeState from(WorkflowCommitState state) {
+        return from(state, "", DEFAULT_NODE_ID);
+    }
+
+    public static WorkflowRuntimeState from(WorkflowCommitState state, String parentId, String nodeId) {
         if (state instanceof WorkflowRuntimeState runtimeState) {
             return runtimeState;
         }
-        WorkflowRuntimeState runtimeState = create();
+        WorkflowRuntimeState runtimeState = create(
+                parentId != null ? parentId : "",
+                nodeId != null && !nodeId.isBlank() ? nodeId : DEFAULT_NODE_ID);
         if (state != null) {
             runtimeState.setState(state.getState());
             runtimeState.setUpdates(state.getUpdates());

@@ -21,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's tests for
  * {@code openjiuwen/core/foundation/llm/output_parsers/markdown_output_parser.py}.
+ *
+ * <p>Mirrors Python's {@code TestMarkdownOutputParser} in
+ * {@code tests/unit_tests/core/foundation/output_parser/test_markdown_output_parser.py}.</p>
  */
 class MarkdownOutputParserTest {
 

@@ -512,6 +512,7 @@ public class ChromaVectorStore extends BaseVectorStore {
         return newSchema;
     }
 
+    @SuppressWarnings("unchecked")
     private Function<Map<String, Object>, Map<String, Object>> buildTransformFunctionForOperations(
             List<BaseOperation> operations) {
         return doc -> {
@@ -533,7 +534,20 @@ public class ChromaVectorStore extends BaseVectorStore {
                 } else if ("UpdateEmbeddingDimensionOperation".equals(kind)) {
                     String fieldName = stringProperty(operation, "fieldName", "field_name");
                     int newDimension = intValue(property(operation, "newDimension", "new_dimension"), 0);
-                    transformed.put(fieldName, zeroVector(newDimension));
+                    Object rawFunc = property(operation, "recomputeEmbeddingFunc", "recompute_embedding_func");
+                    Function<Object, Object> recomputeFunc = rawFunc instanceof Function<?, ?>
+                            ? (Function<Object, Object>) rawFunc
+                            : null;
+                    Object newVector = recomputeFunc == null ? zeroVector(newDimension) : recomputeFunc.apply(transformed);
+                    List<Double> normalizedVector = doubleList(newVector);
+                    int actualDimension = newVector instanceof List<?> rawList ? rawList.size() : normalizedVector.size();
+                    if (actualDimension != newDimension || normalizedVector.size() != newDimension) {
+                        throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+                                "error_msg",
+                                "Generated vector length " + actualDimension + " does not match new_dim "
+                                        + newDimension);
+                    }
+                    transformed.put(fieldName, normalizedVector);
                 }
             }
             return transformed;

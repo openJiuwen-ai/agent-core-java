@@ -224,12 +224,44 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         return CallbackDecorators.createTransformIoDecorator(inputTransform, outputTransform);
     }
 
+    public Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> transformIo(
+            Function<Map<String, Object>, Map<String, Object>> inputTransform,
+            Function<Object, Object> outputTransform,
+            String outputMode
+    ) {
+        return CallbackDecorators.createTransformIoDecorator(inputTransform, outputTransform, outputMode);
+    }
+
+    public Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> transformIo(
+            String inputEvent,
+            String outputEvent,
+            String resultKey,
+            Function<Map<String, Object>, Map<String, Object>> inputTransform,
+            Function<Object, Object> outputTransform,
+            String outputMode
+    ) {
+        if (inputEvent != null || outputEvent != null) {
+            return transformIoByEvents(inputEvent, outputEvent, resultKey, outputMode);
+        }
+        return transformIo(inputTransform, outputTransform, outputMode);
+    }
+
     public Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> transformIoByEvents(
             String inputEvent,
             String outputEvent,
             String resultKey
     ) {
         return CallbackDecorators.createTransformIoByEventsDecorator(this, inputEvent, outputEvent, resultKey);
+    }
+
+    public Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> transformIoByEvents(
+            String inputEvent,
+            String outputEvent,
+            String resultKey,
+            String outputMode
+    ) {
+        return CallbackDecorators.createTransformIoByEventsDecorator(this, inputEvent, outputEvent, resultKey,
+                outputMode);
     }
 
     public Function<WrapHandler, WrapHandler> onWrap(String event, int priority) {
@@ -658,6 +690,9 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                         ? filterResult.getModifiedKwargs() : safeKwargs;
                 Object result = invokeCallback(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
                 if (condition.test(result)) {
+                    if (enableLogging) {
+                        LOGGER.info("Condition satisfied by {}: {}", callbackName(callback), result);
+                    }
                     if (callbackInfo.isOnce()) {
                         callbackInfo.setEnabled(false);
                     }
@@ -709,14 +744,21 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         if (inputStream == null) {
             return output.iterator();
         }
-        while (inputStream.hasNext()) {
-            Object item = inputStream.next();
-            Object[] finalArgs = prepend(item, safeArgs(args));
-            for (Object result : triggerResults(event, finalArgs, kwargs)) {
-                appendFlattened(output, result);
+        try {
+            while (inputStream.hasNext()) {
+                Object item = inputStream.next();
+                Object[] finalArgs = prepend(item, safeArgs(args));
+                for (Object result : triggerResults(event, finalArgs, kwargs)) {
+                    appendFlattened(output, result);
+                }
             }
+            return output.iterator();
+        } catch (RuntimeException error) {
+            if (enableLogging) {
+                LOGGER.error("Stream processing error: {}", error.getMessage());
+            }
+            throw error;
         }
-        return output.iterator();
     }
 
     public Iterator<Object> triggerGenerator(String event, Object[] args, Map<String, Object> kwargs) {
@@ -734,9 +776,16 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 try {
                     FilterResult filterResult = applyFilters(event, callback, safeArgs, safeKwargs);
                     if (filterResult.getAction() == FilterAction.STOP) {
+                        if (enableLogging) {
+                            LOGGER.info("Filter stopped processing for {}", event);
+                        }
                         break;
                     }
                     if (filterResult.getAction() == FilterAction.SKIP) {
+                        if (enableLogging) {
+                            LOGGER.debug("Filter skipped callback {}: {}", callbackName(callback),
+                                    filterResult.getReason());
+                        }
                         continue;
                     }
                     Object[] finalArgs = filterResult.getModifiedArgs() != null
@@ -759,9 +808,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 }
             }
             executeHooks(event, HookType.AFTER, safeArgs, safeKwargs);
-            return output.iterator();
-        } finally {
+            return cleanupIterator(output.iterator(), event, safeArgs, safeKwargs);
+        } catch (RuntimeException error) {
             executeHooks(event, HookType.CLEANUP, safeArgs, safeKwargs);
+            throw error;
         }
     }
 
@@ -949,7 +999,16 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
         try {
             FilterResult filterResult = applyFilters(event, callback, safeArgs(args), safeKwargs(kwargs));
-            if (filterResult.getAction() == FilterAction.STOP || filterResult.getAction() == FilterAction.SKIP) {
+            if (filterResult.getAction() == FilterAction.STOP) {
+                if (enableLogging) {
+                    LOGGER.info("Filter stopped processing for {}", event);
+                }
+                return null;
+            }
+            if (filterResult.getAction() == FilterAction.SKIP) {
+                if (enableLogging) {
+                    LOGGER.debug("Filter skipped {}: {}", callbackName(callback), filterResult.getReason());
+                }
                 return null;
             }
             Object[] finalArgs = filterResult.getModifiedArgs() != null
@@ -1030,6 +1089,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             Map<String, Object> kwargs,
             Double timeout
     ) throws Exception {
+        kwargs.putIfAbsent("session", null);
         Map<String, Object> callKwargs = safeKwargs(kwargs);
         callKwargs.put("_args", safeArgs(args));
         Object rawResult = callback.apply(callKwargs);
@@ -1182,8 +1242,41 @@ public class AsyncCallbackFramework implements DecoratorFramework {
 
     private static Map<String, Object> mergeError(Map<String, Object> kwargs, Exception error) {
         Map<String, Object> merged = safeKwargs(kwargs);
+        merged.putIfAbsent("session", null);
         merged.put("error", error);
         return merged;
+    }
+
+    private Iterator<Object> cleanupIterator(
+            Iterator<Object> delegate,
+            String event,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        return new Iterator<>() {
+            private boolean cleanupDone;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    runCleanup();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public Object next() {
+                return delegate.next();
+            }
+
+            private void runCleanup() {
+                if (!cleanupDone) {
+                    cleanupDone = true;
+                    executeHooks(event, HookType.CLEANUP, args, kwargs);
+                }
+            }
+        };
     }
 
     private static Object[] prepend(Object first, Object[] rest) {

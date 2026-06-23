@@ -286,7 +286,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         if (framework == null) {
             return iterator;
         }
-        return new CallbackIterator(iterator, framework, request);
+        return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig);
     }
 
     @Override
@@ -614,12 +614,17 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         private final Iterator<AssistantMessageChunk> delegate;
         private final DecoratorFramework framework;
         private final InvocationRequest request;
+        private final ModelRequestConfig modelConfig;
+        private final ModelClientConfig modelClientConfig;
 
         private CallbackIterator(Iterator<AssistantMessageChunk> delegate, DecoratorFramework framework,
-                                 InvocationRequest request) {
+                                 InvocationRequest request, ModelRequestConfig modelConfig,
+                                 ModelClientConfig modelClientConfig) {
             this.delegate = delegate;
             this.framework = framework;
             this.request = request;
+            this.modelConfig = modelConfig;
+            this.modelClientConfig = modelClientConfig;
         }
 
         @Override
@@ -632,6 +637,8 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             AssistantMessageChunk chunk = delegate.next();
             Map<String, Object> outKwargs = new LinkedHashMap<>();
             outKwargs.put("result", chunk);
+            outKwargs.put("model_config", modelConfig);
+            outKwargs.put("model_client_config", modelClientConfig);
             Object transformed = framework.triggerTransform(LLMCallEvents.LLM_STREAM_OUTPUT, new Object[0],
                     outKwargs);
             AssistantMessageChunk effectiveChunk = transformed instanceof AssistantMessageChunk messageChunk
@@ -640,6 +647,8 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             Map<String, Object> afterKwargs = new LinkedHashMap<>();
             afterKwargs.put("messages", request.messages());
             afterKwargs.put("result", effectiveChunk);
+            afterKwargs.put("model_config", modelConfig);
+            afterKwargs.put("model_client_config", modelClientConfig);
             framework.trigger(LLMCallEvents.LLM_STREAM_OUTPUT, new Object[]{request.messages()}, afterKwargs);
             return effectiveChunk;
         }

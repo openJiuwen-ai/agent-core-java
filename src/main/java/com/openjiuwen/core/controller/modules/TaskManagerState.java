@@ -7,6 +7,7 @@ package com.openjiuwen.core.controller.modules;
 import com.openjiuwen.core.controller.schema.Task;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -108,47 +109,80 @@ public class TaskManagerState {
     /**
      * Deserialize state from a plain map.
      */
-    @SuppressWarnings("unchecked")
     public static TaskManagerState fromMap(Map<String, Object> map) {
         TaskManagerState state = new TaskManagerState();
 
-        Map<String, Object> tasksRaw = (Map<String, Object>) map.get("tasks");
-        if (tasksRaw != null) {
+        Object tasksRaw = map.get("tasks");
+        if (tasksRaw instanceof Map<?, ?> tasksMapRaw) {
             Map<String, Task> tasks = new HashMap<>();
-            for (var entry : tasksRaw.entrySet()) {
-                tasks.put(entry.getKey(), Task.fromMap((Map<String, Object>) entry.getValue()));
+            for (var entry : tasksMapRaw.entrySet()) {
+                String taskId = String.valueOf(entry.getKey());
+                Object rawTask = entry.getValue();
+                if (rawTask instanceof Task task) {
+                    tasks.put(taskId, task.copy());
+                } else if (rawTask instanceof Map<?, ?> taskMap) {
+                    tasks.put(taskId, Task.fromMap(toStringObjectMap(taskMap)));
+                } else {
+                    throw new IllegalArgumentException("Task state for " + taskId + " must be a task or map");
+                }
             }
             state.setTasks(tasks);
         }
 
-        Map<String, Object> priorityRaw = (Map<String, Object>) map.get("priority_index");
-        if (priorityRaw != null) {
+        Object priorityRaw = map.get("priority_index");
+        if (priorityRaw instanceof Map<?, ?> priorityMapRaw) {
             Map<Integer, List<String>> pi = new HashMap<>();
-            for (var entry : priorityRaw.entrySet()) {
-                pi.put(Integer.parseInt(entry.getKey().toString()), (List<String>) entry.getValue());
+            for (var entry : priorityMapRaw.entrySet()) {
+                pi.put(Integer.parseInt(String.valueOf(entry.getKey())), toStringList(entry.getValue()));
             }
             state.setPriorityIndex(pi);
         }
 
-        Map<String, Object> p2cRaw = (Map<String, Object>) map.get("parent_to_children");
-        if (p2cRaw != null) {
+        Object p2cRaw = map.get("parent_to_children");
+        if (p2cRaw instanceof Map<?, ?> p2cMapRaw) {
             Map<String, Set<String>> p2c = new HashMap<>();
-            for (var entry : p2cRaw.entrySet()) {
-                p2c.put(entry.getKey(), new HashSet<>((List<String>) entry.getValue()));
+            for (var entry : p2cMapRaw.entrySet()) {
+                p2c.put(String.valueOf(entry.getKey()), new HashSet<>(toStringList(entry.getValue())));
             }
             state.setParentToChildren(p2c);
         }
 
-        Map<String, String> c2p = (Map<String, String>) map.get("children_to_parent");
-        if (c2p != null) {
-            state.setChildrenToParent(new HashMap<>(c2p));
+        Object c2pRaw = map.get("children_to_parent");
+        if (c2pRaw instanceof Map<?, ?> c2pMapRaw) {
+            Map<String, String> c2p = new HashMap<>();
+            for (var entry : c2pMapRaw.entrySet()) {
+                c2p.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+            state.setChildrenToParent(c2p);
         }
 
-        List<String> rootRaw = (List<String>) map.get("root_tasks");
+        Object rootRaw = map.get("root_tasks");
         if (rootRaw != null) {
-            state.setRootTasks(new HashSet<>(rootRaw));
+            state.setRootTasks(new HashSet<>(toStringList(rootRaw)));
         }
 
         return state;
+    }
+
+    private static Map<String, Object> toStringObjectMap(Map<?, ?> rawMap) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (var entry : rawMap.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private static List<String> toStringList(Object value) {
+        if (value == null) {
+            return new ArrayList<>();
+        }
+        if (!(value instanceof Collection<?> collection)) {
+            throw new IllegalArgumentException("Expected collection but got " + value.getClass().getName());
+        }
+        List<String> result = new ArrayList<>(collection.size());
+        for (Object item : collection) {
+            result.add(String.valueOf(item));
+        }
+        return result;
     }
 }

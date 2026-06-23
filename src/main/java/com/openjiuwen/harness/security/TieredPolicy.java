@@ -365,6 +365,11 @@ public final class TieredPolicy {
         if (toolLevel instanceof String value) {
             return new PermissionDecision(PermissionLevel.fromValue(value), MATCHED_RULE_PREFIX + ":tools." + toolName);
         }
+        if (toolLevel instanceof Map<?, ?> map && map.get("*") instanceof String value) {
+            return new PermissionDecision(
+                    PermissionLevel.fromValue(value),
+                    MATCHED_RULE_PREFIX + ":tools." + toolName + ".*");
+        }
         Object fallback = defaultsConfig.get("*");
         if (fallback instanceof String value) {
             return new PermissionDecision(PermissionLevel.fromValue(value), MATCHED_RULE_PREFIX + ":defaults.*");

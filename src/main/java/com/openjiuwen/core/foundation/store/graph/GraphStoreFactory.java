@@ -25,8 +25,9 @@ public final class GraphStoreFactory {
 
     private static final Map<String, Class<?>> CLASS_MAP = new LinkedHashMap<>();
     private static final ReentrantLock THREAD_LOCK = new ReentrantLock();
-    private static final String MILVUS_SUPPORT_CLASS =
+    private static final String DEFAULT_MILVUS_SUPPORT_CLASS =
             "com.openjiuwen.core.foundation.store.graph.milvus.MilvusGraphStorePackage";
+    private static String milvusSupportClass = DEFAULT_MILVUS_SUPPORT_CLASS;
 
     private GraphStoreFactory() {
         throw ErrorHelper.buildError(
@@ -127,6 +128,18 @@ public final class GraphStoreFactory {
         THREAD_LOCK.lock();
         try {
             CLASS_MAP.clear();
+            milvusSupportClass = DEFAULT_MILVUS_SUPPORT_CLASS;
+        } finally {
+            THREAD_LOCK.unlock();
+        }
+    }
+
+    static void setMilvusSupportClassForTest(String className) {
+        THREAD_LOCK.lock();
+        try {
+            milvusSupportClass = className == null || className.isBlank()
+                    ? DEFAULT_MILVUS_SUPPORT_CLASS
+                    : className;
         } finally {
             THREAD_LOCK.unlock();
         }
@@ -204,7 +217,7 @@ public final class GraphStoreFactory {
 
     private static void registerMilvusSupport() {
         try {
-            Class<?> supportClass = Class.forName(MILVUS_SUPPORT_CLASS);
+            Class<?> supportClass = Class.forName(milvusSupportClass);
             Method method = supportClass.getMethod("registerMilvusSupport");
             method.invoke(null);
         } catch (ClassNotFoundException ignored) {

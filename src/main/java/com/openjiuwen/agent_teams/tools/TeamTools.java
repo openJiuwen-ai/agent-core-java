@@ -210,6 +210,11 @@ public final class TeamTools {
         }
 
         @Override
+        public String toString() {
+            return card.name();
+        }
+
+        @Override
         public final CompletionStage<ToolOutput> invoke(Map<String, ?> inputs) {
             Map<String, ?> safeInputs = inputs == null ? Map.of() : inputs;
             TEAM_LOGGER.debug("[%s] invoke start, inputs=%s", card.name(), safeInputs);
@@ -1354,7 +1359,103 @@ public final class TeamTools {
     }
 
     private static ToolCard card(String id, String name, Translator translator) {
-        return new ToolCard(id, name, safeTranslate(translator, name), Map.of());
+        return new ToolCard(id, name, safeTranslate(translator, name), inputParamsFor(name, translator));
+    }
+
+    private static Map<String, Object> inputParamsFor(String name, Translator translator) {
+        return switch (name) {
+            case "build_team" -> objectSchema(Map.of(
+                    "display_name", stringParam(translator, name, "display_name"),
+                    "team_desc", stringParam(translator, name, "team_desc"),
+                    "leader_display_name", stringParam(translator, name, "leader_display_name"),
+                    "leader_desc", stringParam(translator, name, "leader_desc"),
+                    "enable_hitt", typedParam("boolean", translator, name, "enable_hitt")
+            ), List.of("display_name", "team_desc", "leader_display_name", "leader_desc"));
+            case "clean_team", "list_members" -> objectSchema(Map.of(), List.of());
+            case "spawn_member" -> objectSchema(Map.of(
+                    "member_name", stringParam(translator, name, "member_name"),
+                    "display_name", stringParam(translator, name, "display_name"),
+                    "desc", stringParam(translator, name, "desc"),
+                    "role_type", enumParam(translator, name, "role_type",
+                            List.of("teammate", "human_agent", "bridge_agent", "external_cli")),
+                    "cli_agent", stringParam(translator, name, "cli_agent"),
+                    "prompt", stringParam(translator, name, "prompt"),
+                    "model_name", stringParam(translator, name, "model_name"),
+                    "mailbox_inject_mode", enumParam(translator, name, "mailbox_inject_mode",
+                            List.of("passthrough", "rephrase")),
+                    "protocol", stringParam(translator, name, "protocol"),
+                    "adapter_config", typedParam("object", translator, name, "adapter_config")
+            ), List.of("member_name", "display_name", "desc"));
+            case "shutdown_member" -> objectSchema(Map.of(
+                    "member_name", stringParam(translator, name, "member_name"),
+                    "force", typedParam("boolean", translator, name, "force")
+            ), List.of("member_name"));
+            case "approve_plan", "approve_tool" -> objectSchema(Map.of(
+                    "plan_id", stringParam(translator, name, "plan_id"),
+                    "approved", typedParam("boolean", translator, name, "approved"),
+                    "reason", stringParam(translator, name, "reason")
+            ), List.of("approved"));
+            case "create_task" -> objectSchema(Map.of(
+                    "tasks", typedParam("array", translator, name, "tasks")
+            ), List.of("tasks"));
+            case "view_task" -> objectSchema(Map.of(
+                    "action", enumParam(translator, name, "action", List.of("list", "get", "claimable")),
+                    "task_id", stringParam(translator, name, "task_id"),
+                    "status", stringParam(translator, name, "status")
+            ), List.of());
+            case "update_task" -> objectSchema(Map.of(
+                    "task_id", stringParam(translator, name, "task_id"),
+                    "status", stringParam(translator, name, "status"),
+                    "title", stringParam(translator, name, "title"),
+                    "content", stringParam(translator, name, "content"),
+                    "assignee", stringParam(translator, name, "assignee"),
+                    "add_blocked_by", typedParam("array", translator, name, "add_blocked_by")
+            ), List.of("task_id"));
+            case "submit_plan" -> objectSchema(Map.of(
+                    "plan_id", stringParam(translator, name, "plan_id"),
+                    "summary", stringParam(translator, name, "summary")
+            ), List.of("plan_id"));
+            case "claim_task", "member_complete_task" -> objectSchema(Map.of(
+                    "task_id", stringParam(translator, name, "task_id"),
+                    "status", enumParam(translator, name, "status", List.of("claimed", "completed")),
+                    "note", stringParam(translator, name, "note")
+            ), List.of("task_id", "status"));
+            case "send_message" -> objectSchema(Map.of(
+                    "to", typedParam("string", translator, name, "to"),
+                    "content", stringParam(translator, name, "content"),
+                    "summary", stringParam(translator, name, "summary")
+            ), List.of("to", "content"));
+            default -> objectSchema(Map.of(), List.of());
+        };
+    }
+
+    private static Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
+        return linkedMap(
+                "type", "object",
+                "properties", properties == null ? Map.of() : properties,
+                "required", required == null ? List.of() : required
+        );
+    }
+
+    private static Map<String, Object> stringParam(Translator translator, String tool, String key) {
+        return typedParam("string", translator, tool, key);
+    }
+
+    private static Map<String, Object> typedParam(String type, Translator translator, String tool, String key) {
+        return linkedMap(
+                "type", type,
+                "description", safeTranslate(translator, tool, key)
+        );
+    }
+
+    private static Map<String, Object> enumParam(
+            Translator translator,
+            String tool,
+            String key,
+            List<String> values) {
+        Map<String, Object> param = new LinkedHashMap<>(stringParam(translator, tool, key));
+        param.put("enum", values);
+        return param;
     }
 
     private static String safeTranslate(Translator translator, String name) {
@@ -1362,6 +1463,14 @@ public final class TeamTools {
             return translator.translate(name);
         } catch (RuntimeException exception) {
             return name;
+        }
+    }
+
+    private static String safeTranslate(Translator translator, String tool, String key) {
+        try {
+            return translator.translate(tool, key);
+        } catch (RuntimeException exception) {
+            return key;
         }
     }
 

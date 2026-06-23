@@ -26,7 +26,7 @@ public class SimpleApiWrapper {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     protected final Map<String, Object> functions = new LinkedHashMap<>();
-    protected final String fnCallName;
+    protected String fnCallName;
     protected Object module;
 
     public SimpleApiWrapper(String fnCallName, Map<String, Object> customFunctions) {
@@ -57,6 +57,10 @@ public class SimpleApiWrapper {
 
     public void addFunction(String name, Object func) {
         functions.put(name, func);
+    }
+
+    public void setFnCallName(String fnCallName) {
+        this.fnCallName = fnCallName;
     }
 
     public Object[] call(Map<String, Object> tool, Map<String, Object> toolInput) {

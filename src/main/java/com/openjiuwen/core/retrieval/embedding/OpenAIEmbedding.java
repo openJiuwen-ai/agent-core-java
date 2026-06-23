@@ -45,6 +45,10 @@ public class OpenAIEmbedding extends APIEmbedding {
                            Integer dimension,
                            HttpClient httpClient) {
         super(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, httpClient);
+        if (this.apiKey == null || this.apiKey.isBlank()) {
+            throw new IllegalArgumentException("OpenAI API key is required");
+        }
+        this.apiUrl = stripEmbeddingsSuffix(this.apiUrl);
         this.configuredDimension = dimension;
     }
 
@@ -129,6 +133,20 @@ public class OpenAIEmbedding extends APIEmbedding {
             result.add(value == null ? null : value.doubleValue());
         }
         return result;
+    }
+
+    private static String stripEmbeddingsSuffix(String url) {
+        if (url == null || url.isBlank()) {
+            return "";
+        }
+        String normalized = url;
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.endsWith("/embeddings")) {
+            return normalized.substring(0, normalized.length() - "/embeddings".length());
+        }
+        return normalized;
     }
 
     private static List<Double> parseEmbeddingVector(JsonNode embeddingNode) {

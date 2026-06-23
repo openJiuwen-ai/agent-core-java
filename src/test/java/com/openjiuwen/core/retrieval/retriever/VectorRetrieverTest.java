@@ -21,10 +21,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Mirrors Python's {@code VectorRetriever} behavior in
- * {@code openjiuwen/core/retrieval/retriever/vector_retriever.py}.
+ * Mirrors Python's {@code TestVectorRetriever} in
+ * {@code tests/unit_tests/core/retrieval/retriever/test_vector_retriever.py}.
  */
 class VectorRetrieverTest {
+
+    @Test
+    void retrieveSuccessReturnsVectorResults() {
+        FakeEmbedding embedding = new FakeEmbedding(List.of(0.1d));
+        FakeVectorStore vectorStore = new FakeVectorStore();
+        vectorStore.vectorResults = List.of(
+                result("1", "Result 1", 0.95d, Map.of("doc_id", "doc_1")),
+                result("2", "Result 2", 0.85d, Map.of("doc_id", "doc_2"))
+        );
+        VectorRetriever retriever = new VectorRetriever(vectorStore, embedding);
+
+        List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "vector", Map.of());
+
+        assertThat(results).hasSize(2);
+        assertThat(results.getFirst().getText()).isEqualTo("Result 1");
+        assertThat(results.getFirst().getScore()).isEqualTo(0.95d);
+        assertThat(embedding.queries).containsExactly("test query");
+        assertThat(vectorStore.vectorCalls).isEqualTo(1);
+    }
 
     @Test
     void retrieveUsesVectorSearchAndMetadataChunkId() {
@@ -82,6 +101,30 @@ class VectorRetrieverTest {
     }
 
     @Test
+    void batchRetrieveReturnsOneResultListPerQuery() {
+        FakeEmbedding embedding = new FakeEmbedding(List.of(0.1d));
+        FakeVectorStore vectorStore = new FakeVectorStore();
+        vectorStore.vectorResults = List.of(
+                result("1", "Result 1", 0.95d, Map.of("doc_id", "doc_1")),
+                result("2", "Result 2", 0.85d, Map.of("doc_id", "doc_2"))
+        );
+        VectorRetriever retriever = new VectorRetriever(vectorStore, embedding);
+
+        List<List<RetrievalResult>> resultsList = retriever.batchRetrieve(
+                List.of("query 1", "query 2"),
+                5,
+                "vector",
+                Map.of()
+        );
+
+        assertThat(resultsList).hasSize(2);
+        assertThat(resultsList.get(0)).hasSize(2);
+        assertThat(resultsList.get(1)).hasSize(2);
+        assertThat(embedding.queries).containsExactly("query 1", "query 2");
+        assertThat(vectorStore.vectorCalls).isEqualTo(2);
+    }
+
+    @Test
     void retrieveSearchResultsKeepsPythonModeAgnosticBehavior() {
         FakeEmbedding embedding = new FakeEmbedding(List.of(0.7d));
         FakeVectorStore vectorStore = new FakeVectorStore();
@@ -99,6 +142,10 @@ class VectorRetrieverTest {
         return new RetrievalResult(text, score, metadata, null, chunkId);
     }
 
+    /**
+     * Mirrors Python's {@code mock_embed_model} fixture in
+     * {@code tests/unit_tests/core/retrieval/retriever/test_vector_retriever.py}.
+     */
     private static final class FakeEmbedding extends Embedding {
         private final List<Double> vector;
         private final List<String> queries = new ArrayList<>();
@@ -128,6 +175,10 @@ class VectorRetrieverTest {
         }
     }
 
+    /**
+     * Mirrors Python's {@code mock_vector_store} fixture in
+     * {@code tests/unit_tests/core/retrieval/retriever/test_vector_retriever.py}.
+     */
     private static final class FakeVectorStore implements VectorStore {
         private List<RetrievalResult> vectorResults = List.of();
         private List<RetrievalResult> sparseResults = List.of();

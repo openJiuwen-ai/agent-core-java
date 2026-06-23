@@ -84,7 +84,7 @@ public class InMemoryTeamDatabase {
     }
 
     public static long getCurrentTime() {
-        return Math.round(System.currentTimeMillis());
+        return System.currentTimeMillis();
     }
 
     public CompletableFuture<Void> initialize() {

@@ -29,8 +29,20 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>Mirrors Python's {@code IntentionDetector} in
  * {@code openjiuwen/dev_tools/agent_builder/builders/llm_agent/intention_detector.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestIntentionDetectorIntegration} and
+ * {@code TestIntentionDetectorDetectRefineIntent} in
+ * {@code tests/system_tests/dev_tools/agent_builder/builders/llm_agent/test_intention_detector_integration.py}.</p>
  */
 class IntentionDetectorTest {
+
+    @Test
+    void initializesWithProvidedModel() {
+        Model llm = modelReturning(new ArrayList<>(), "{\"need_refined\": false}");
+        IntentionDetector detector = new IntentionDetector(llm);
+
+        assertSame(llm, detector.getLlm());
+    }
 
     @Test
     void extractIntentParsesMarkdownJsonBlock() {
@@ -44,11 +56,27 @@ class IntentionDetectorTest {
     }
 
     @Test
+    void extractIntentParsesPlainJsonObject() {
+        Map<String, Object> result = IntentionDetector.extractIntent("{\"need_refined\": false}");
+
+        assertEquals(Boolean.FALSE, result.get("need_refined"));
+    }
+
+    @Test
     void detectRefineIntentReturnsFalseForEmptyQueryWithoutCallingModel() {
         List<List<BaseMessage>> captured = new ArrayList<>();
         IntentionDetector detector = new IntentionDetector(modelReturning(captured, "{\"need_refined\": true}"));
 
         assertFalse(detector.detectRefineIntent("", "config"));
+        assertTrue(captured.isEmpty());
+    }
+
+    @Test
+    void detectRefineIntentReturnsFalseForNullQueryWithoutCallingModel() {
+        List<List<BaseMessage>> captured = new ArrayList<>();
+        IntentionDetector detector = new IntentionDetector(modelReturning(captured, "{\"need_refined\": true}"));
+
+        assertFalse(detector.detectRefineIntent(null, "config"));
         assertTrue(captured.isEmpty());
     }
 

@@ -8,6 +8,8 @@ import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.session.AgentSessionApi;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
@@ -70,8 +72,13 @@ public class TaskLoopController extends Controller {
         roundCompletion.complete(result == null ? Map.of("status", "completed") : new LinkedHashMap<>(result));
     }
 
-    public String drainFollowUp() {
-        return followUps.poll();
+    public List<String> drainFollowUp() {
+        List<String> messages = new ArrayList<>();
+        String next;
+        while ((next = followUps.poll()) != null) {
+            messages.add(next);
+        }
+        return messages;
     }
 
     public void enqueueFollowUp(String message) {

@@ -15,9 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's tests for
  * {@code openjiuwen/core/retrieval/embedding/api_embedding.py}.
+ * <p>
+ * Mirrors Python's {@code TestAPIEmbedding} in
+ * {@code tests/unit_tests/core/retrieval/embedding/test_api_embedding.py}.
  */
 class APIEmbeddingTest {
 
@@ -42,6 +47,71 @@ class APIEmbeddingTest {
     }
 
     @Test
+    void initWithApiKeyKeepsConfiguredFields() {
+        APIEmbedding model = new StubAPIEmbedding(config());
+
+        assertEquals("test-model", model.modelName);
+        assertEquals("test-api-key", model.apiKey);
+        assertEquals("https://api.example.com/v1/embeddings", model.apiUrl);
+        assertEquals("Bearer test-api-key", model.headers.get("Authorization"));
+    }
+
+    @Test
+    void initWithoutApiKeyLeavesAuthorizationHeaderUnset() {
+        EmbeddingConfig config = EmbeddingConfig.builder()
+                .modelName("test-model")
+                .baseUrl("https://api.example.com/v1/embeddings")
+                .build();
+
+        APIEmbedding model = new StubAPIEmbedding(config);
+
+        assertEquals(null, model.apiKey);
+        assertFalse(model.headers.containsKey("Authorization"));
+    }
+
+    @Test
+    void initWithExtraHeadersMergesCustomValues() {
+        APIEmbedding model = new StubAPIEmbedding(config(), 60, 3, Map.of("X-Custom-Header", "custom-value"), 8, 50);
+
+        assertEquals("application/json", model.headers.get("Content-Type"));
+        assertEquals("custom-value", model.headers.get("X-Custom-Header"));
+    }
+
+    @Test
+    void initWithCustomParamsAppliesTimeoutRetriesAndBatchSize() {
+        APIEmbedding model = new StubAPIEmbedding(config(), 120, 5, null, 16, 25);
+
+        assertEquals(120, model.timeout);
+        assertEquals(5, model.maxRetries);
+        assertEquals(16, model.maxBatchSize);
+        assertEquals(25, model.getMaxConcurrent());
+    }
+
+    @Test
+    void initSemaphoreUsesConfiguredMaxConcurrent() {
+        APIEmbedding model = new StubAPIEmbedding(config(), 60, 3, null, 8, 25);
+
+        assertEquals(25, model.getLimiter().availablePermits());
+    }
+
+    @Test
+    void initSemaphoreUsesDefaultMaxConcurrent() {
+        APIEmbedding model = new StubAPIEmbedding(config());
+
+        assertEquals(50, model.getLimiter().availablePermits());
+    }
+
+    @Test
+    void executorIsCreatedWithConfiguredWorkersAndPrefix() throws Exception {
+        APIEmbedding model = new StubAPIEmbedding(config(), 60, 3, null, 8, 10);
+
+        Future<String> threadName = model.executor.submit(() -> Thread.currentThread().getName());
+
+        assertEquals(10, model.executor.getMaximumPoolSize());
+        assertTrue(threadName.get().startsWith("openjiuwen_embed-"));
+    }
+
+    @Test
     void validateEmbedDocsRejectsEmptyAndBlankTexts() {
         APIEmbedding model = new StubAPIEmbedding(config());
 
@@ -56,6 +126,16 @@ class APIEmbeddingTest {
 
         assertEquals(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, emptyList.getStatus());
         assertEquals(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, blankChunk.getStatus());
+    }
+
+    @Test
+    void embedQueryRejectsBlankText() {
+        APIEmbedding model = new StubAPIEmbedding(config());
+
+        BaseError error = assertThrows(BaseError.class, () -> model.embedQuerySync("   "));
+
+        assertEquals(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, error.getStatus());
+        assertTrue(error.getMessage().contains("Empty text provided"));
     }
 
     @Test
@@ -91,6 +171,17 @@ class APIEmbeddingTest {
     }
 
     @Test
+    void embedQueryRejectsInvalidResponseFormat() {
+        StubAPIEmbedding model = new StubAPIEmbedding(config());
+        model.enqueueResponse("{\"invalid\":\"format\"}");
+
+        BaseError error = assertThrows(BaseError.class, () -> model.embedQuerySync("query"));
+
+        assertEquals(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, error.getStatus());
+        assertTrue(error.getMessage().contains("No embeddings in response"));
+    }
+
+    @Test
     void embedQueryRetriesThenSucceeds() {
         StubAPIEmbedding model = new StubAPIEmbedding(config());
         model.enqueueFailure(new IOException("boom"));
@@ -115,6 +206,18 @@ class APIEmbeddingTest {
     }
 
     @Test
+    void embedDocumentsSuccessParsesOneResponsePerDocument() {
+        StubAPIEmbedding model = new StubAPIEmbedding(config());
+        model.enqueueResponse("{\"embeddings\":[[0.1,0.2],[0.3,0.4],[0.5,0.6]]}");
+
+        List<List<Double>> embeddings = model.embedDocumentsSync(List.of("text 1", "text 2", "text 3"));
+
+        assertEquals(3, embeddings.size());
+        assertEquals(List.of(0.1d, 0.2d), embeddings.get(0));
+        assertEquals(List.of(0.5d, 0.6d), embeddings.get(2));
+    }
+
+    @Test
     void embedDocumentsRespectsMaxBatchSizeAndPreservesOrder() {
         StubAPIEmbedding model = new StubAPIEmbedding(config(), 60, 3, null, 2, 10);
         model.enqueueResponse("{\"embeddings\":[[0.1,0.2],[0.3,0.4]]}");
@@ -127,6 +230,32 @@ class APIEmbeddingTest {
         assertEquals(5, embeddings.size());
         assertEquals(List.of(0.1d, 0.2d), embeddings.get(0));
         assertEquals(List.of(0.9d, 1.0d), embeddings.get(4));
+    }
+
+    @Test
+    void embedDocumentsWithBatchSizeOneCallsOncePerText() {
+        StubAPIEmbedding model = new StubAPIEmbedding(config(), 60, 3, null, 1, 10);
+        model.enqueueResponse("{\"embeddings\":[[0.1,0.2]]}");
+        model.enqueueResponse("{\"embeddings\":[[0.3,0.4]]}");
+        model.enqueueResponse("{\"embeddings\":[[0.5,0.6]]}");
+        model.enqueueResponse("{\"embeddings\":[[0.7,0.8]]}");
+
+        List<List<Double>> embeddings = model.embedDocumentsSync(List.of("text 1", "text 2", "text 3", "text 4"), 1, Map.of());
+
+        assertEquals(4, model.requestAttempts.get());
+        assertEquals(4, embeddings.size());
+    }
+
+    @Test
+    void embedDocumentsRejectsAllEmptyTexts() {
+        APIEmbedding model = new StubAPIEmbedding(config());
+
+        BaseError error = assertThrows(
+                BaseError.class,
+                () -> model.embedDocumentsSync(List.of("   ", "  ", ""), 1, Map.of())
+        );
+
+        assertEquals(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, error.getStatus());
     }
 
     @Test

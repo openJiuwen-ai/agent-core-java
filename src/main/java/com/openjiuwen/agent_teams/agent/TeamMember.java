@@ -251,6 +251,17 @@ public class TeamMember {
      * <p>Mirrors Python's persisted member row status fields read in
      * {@code openjiuwen/agent_teams/agent/member.py}.</p>
      */
-    public record MemberSnapshot(String status, String executionStatus) {
+    public record MemberSnapshot(
+            String status,
+            String executionStatus,
+            String memberName,
+            String role,
+            String desc,
+            String prompt,
+            String modelRefJson
+    ) {
+        public MemberSnapshot(String status, String executionStatus) {
+            this(status, executionStatus, null, null, null, null, null);
+        }
     }
 }

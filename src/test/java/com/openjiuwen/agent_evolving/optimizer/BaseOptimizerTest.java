@@ -7,6 +7,7 @@ package com.openjiuwen.agent_evolving.optimizer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -25,6 +26,10 @@ import java.util.concurrent.CompletionStage;
 
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code BaseOptimizer} and {@code TextualParameter} tests in
+ * {@code tests/unit_tests/agent_evolving/optimizer/test_base_optimizer.py}.
+ */
 class BaseOptimizerTest {
 
     @Test
@@ -55,6 +60,33 @@ class BaseOptimizerTest {
     }
 
     @Test
+    void bindFiltersNonMatchingOperators() {
+        TestOptimizer optimizer = new TestOptimizer();
+
+        int count = optimizer.bind(Map.of(
+                        "op1", new FakeOperator("op1", Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system"))),
+                        "op2", new FakeOperator("op2", Map.of("other", new TunableSpec("other", "value", "other")))
+                ),
+                List.of("system_prompt"),
+                Map.of()
+        );
+
+        assertEquals(1, count);
+        assertTrue(optimizer.parameters().containsKey("op1"));
+        assertFalse(optimizer.parameters().containsKey("op2"));
+    }
+
+    @Test
+    void bindWithNullOperatorsReturnsZero() {
+        TestOptimizer optimizer = new TestOptimizer();
+
+        int count = optimizer.bind(null, null, Map.of());
+
+        assertEquals(0, count);
+        assertTrue(optimizer.parameters().isEmpty());
+    }
+
+    @Test
     void bindUsesDefaultTargetsWhenTargetsEmpty() {
         TestOptimizer optimizer = new TestOptimizer();
 
@@ -66,6 +98,45 @@ class BaseOptimizerTest {
 
         assertEquals(1, count);
         assertTrue(optimizer.parameters().containsKey("op1"));
+    }
+
+    @Test
+    void filterOperatorsReturnsEmptyForEmptyTargets() {
+        Map<String, Operator> operators = Map.of(
+                "op1", new FakeOperator("op1", Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system")))
+        );
+
+        Map<String, Operator> result = BaseOptimizer.filterOperators(operators, List.of());
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void filterOperatorsMatchesAnyRequestedTarget() {
+        Map<String, Operator> operators = Map.of(
+                "op1", new FakeOperator("op1", Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system"))),
+                "op2", new FakeOperator("op2", Map.of("user_prompt", new TunableSpec("user_prompt", "prompt", "user")))
+        );
+
+        Map<String, Operator> result = BaseOptimizer.filterOperators(
+                operators,
+                List.of("system_prompt", "user_prompt")
+        );
+
+        assertEquals(2, result.size());
+        assertTrue(result.containsKey("op1"));
+        assertTrue(result.containsKey("op2"));
+    }
+
+    @Test
+    void filterOperatorsSkipsOperatorsWithoutTunables() {
+        Map<String, Operator> operators = Map.of(
+                "op1", new FakeOperator("op1", Map.of())
+        );
+
+        Map<String, Operator> result = BaseOptimizer.filterOperators(operators, List.of("system_prompt"));
+
+        assertTrue(result.isEmpty());
     }
 
     @Test
@@ -83,6 +154,34 @@ class BaseOptimizerTest {
         List<Trajectory> trajectories = optimizer.getTrajectories();
         assertEquals(1, trajectories.size());
         assertNotSame(trajectories, optimizer.getTrajectories());
+    }
+
+    @Test
+    void clearTrajectoriesRemovesCachedItems() {
+        TestOptimizer optimizer = new TestOptimizer();
+        optimizer.addTrajectory(Trajectory.builder().caseId("c1").executionId("e1").steps(List.of()).build());
+        optimizer.addTrajectory(Trajectory.builder().caseId("c2").executionId("e2").steps(List.of()).build());
+
+        optimizer.clearTrajectories();
+
+        assertTrue(optimizer.getTrajectories().isEmpty());
+    }
+
+    @Test
+    void parametersReturnsShallowCopy() {
+        TestOptimizer optimizer = new TestOptimizer();
+        optimizer.bind(
+                Map.of("op1", new FakeOperator("op1", Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system")))),
+                List.of("system_prompt"),
+                Map.of()
+        );
+
+        Map<String, TextualParameter> first = optimizer.parameters();
+        first.clear();
+
+        assertTrue(first.isEmpty());
+        assertTrue(optimizer.parameters().containsKey("op1"));
+        assertNotSame(first, optimizer.parameters());
     }
 
     @Test
@@ -130,6 +229,26 @@ class BaseOptimizerTest {
         assertEquals("text gradient", parameter.getGradient("system_prompt"));
         assertEquals(List.of("a", "b"), parameter.getGradient("examples"));
         assertEquals("demo", parameter.getDescription());
+    }
+
+    @Test
+    void textualParameterInitialStateAndMissingGradientMirrorPython() {
+        TextualParameter parameter = new TextualParameter("test_op");
+
+        assertEquals("test_op", parameter.getOperatorId());
+        assertNull(parameter.getGradient("anything"));
+        assertEquals("", parameter.getDescription());
+    }
+
+    @Test
+    void textualParameterStoresMultipleGradientNames() {
+        TextualParameter parameter = new TextualParameter("op1");
+
+        parameter.setGradient("system_prompt", "sys grad");
+        parameter.setGradient("user_prompt", "usr grad");
+
+        assertEquals("sys grad", parameter.getGradient("system_prompt"));
+        assertEquals("usr grad", parameter.getGradient("user_prompt"));
     }
 
     @Test

@@ -76,14 +76,13 @@ public final class MessageChunkMerge {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
-    public static <T> T mergePydanticModels(T left, Object right) {
+    public static Object mergePydanticModels(Object left, Object right) {
         if (right == null || left == null || left.getClass() != right.getClass()) {
-            return (T) right;
+            return right;
         }
         try {
             Class<?> type = left.getClass();
-            T merged = (T) type.getDeclaredConstructor().newInstance();
+            Object merged = type.getDeclaredConstructor().newInstance();
             for (PropertyDescriptor descriptor : Introspector.getBeanInfo(type, Object.class).getPropertyDescriptors()) {
                 Method getter = descriptor.getReadMethod();
                 Method setter = descriptor.getWriteMethod();
@@ -96,7 +95,7 @@ public final class MessageChunkMerge {
             }
             return merged;
         } catch (Exception ignored) {
-            return (T) right;
+            return right;
         }
     }
 

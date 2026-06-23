@@ -5,6 +5,7 @@
 package com.openjiuwen.core.common.logging.defaults;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
@@ -60,6 +61,7 @@ public class DefaultLogger implements LoggerProtocol {
         this.julLogger = java.util.logging.Logger.getLogger(logType + ".jul");
         this.julLogger.setUseParentHandlers(false);
         this.julLogger.setFilter(record -> filters.stream().allMatch(filter -> filter.isLoggable(record)));
+        applyConfiguredLevel(this.config);
     }
 
     // ==================== LoggerProtocol Implementation ====================
@@ -187,6 +189,7 @@ public class DefaultLogger implements LoggerProtocol {
     public void reconfigure(Map<String, Object> newConfig) {
         this.config = newConfig != null ? new LinkedHashMap<>(newConfig) : Map.of();
         ensureLogDirectory(this.config);
+        applyConfiguredLevel(this.config);
     }
 
     // ==================== Structured Event Logging ====================
@@ -210,7 +213,10 @@ public class DefaultLogger implements LoggerProtocol {
             }
             eventObj.setModuleId(logType);
             eventObj.setModuleName(logType);
+        } else {
+            eventObj.setMessage(sanitize(msg));
         }
+        enrichEventContext(eventObj);
 
         String json;
         try {
@@ -229,6 +235,35 @@ public class DefaultLogger implements LoggerProtocol {
     }
 
     // ==================== Internal ====================
+
+    private void applyConfiguredLevel(Map<String, Object> currentConfig) {
+        if (currentConfig == null || !currentConfig.containsKey("level")) {
+            return;
+        }
+        setLevel(LogLevels.normalizeLogLevel(currentConfig.get("level"), LogLevels.INFO));
+    }
+
+    private void enrichEventContext(BaseLogEvent eventObj) {
+        String traceId = LoggingUtils.getSessionId();
+        if (!"default_trace_id".equals(traceId) && eventObj.getTraceId() == null) {
+            eventObj.setTraceId(traceId);
+        }
+        if (eventObj.getModuleId() == null) {
+            eventObj.setModuleId(logType);
+        }
+        if (eventObj.getModuleName() == null) {
+            eventObj.setModuleName(logType);
+        }
+
+        Map<String, Object> metadata = eventObj.getMetadata() == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(eventObj.getMetadata());
+        Map<String, Object> logContext = new LinkedHashMap<>();
+        logContext.put("log_type", logType);
+        logContext.put("trace_id", traceId);
+        metadata.put("_log_context", logContext);
+        eventObj.setMetadata(metadata);
+    }
 
     private void setMdc() {
         MDC.put("trace_id", LoggingUtils.getSessionId());
@@ -255,6 +290,9 @@ public class DefaultLogger implements LoggerProtocol {
             return Level.SEVERE;
         }
         if (level >= 40) {
+            return Level.SEVERE;
+        }
+        if (level >= 30) {
             return Level.WARNING;
         }
         if (level >= 20) {
@@ -268,6 +306,9 @@ public class DefaultLogger implements LoggerProtocol {
             return ch.qos.logback.classic.Level.ERROR;
         }
         if (level >= 40) {
+            return ch.qos.logback.classic.Level.ERROR;
+        }
+        if (level >= 30) {
             return ch.qos.logback.classic.Level.WARN;
         }
         if (level >= 20) {

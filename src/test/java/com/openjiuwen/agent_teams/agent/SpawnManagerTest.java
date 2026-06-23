@@ -33,6 +33,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code SpawnManager} in
  * {@code openjiuwen/agent_teams/agent/spawn_manager.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental missing-test coverage in
+ * {@code tests/unit_tests/agent_teams/test_spawn_manager_chunk_forward.py}.</p>
  */
 class SpawnManagerTest {
 
@@ -83,6 +86,37 @@ class SpawnManagerTest {
         assertThat(handle.stopCount).isEqualTo(1);
         assertThat(handle.killCount).isEqualTo(1);
         assertThat(manager.getTypedSpawnedHandles()).isEmpty();
+    }
+
+    @Test
+    void inprocessChunkForwardSkipsWhenLeaderOrAgentRefMissing() {
+        RecordingAgent teammate = new RecordingAgent();
+        RecordingInProcessHandle handleWithoutLeader = new RecordingInProcessHandle(teammate);
+        SpawnManager managerWithoutLeader = new SpawnManager(
+                new RecordingState(),
+                configurator("inprocess"),
+                () -> null,
+                new RecordingSpawnExecutor(handleWithoutLeader)
+        );
+
+        managerWithoutLeader.spawnTeammate(memberContext("dev")).toCompletableFuture().join();
+
+        assertThat(handleWithoutLeader.getChunkForward()).isNull();
+        assertThat(teammate.streamController.observers).isEmpty();
+
+        RecordingAgent leader = new RecordingAgent();
+        RecordingInProcessHandle handleWithoutAgentRef = new RecordingInProcessHandle(null);
+        SpawnManager managerWithoutAgentRef = new SpawnManager(
+                new RecordingState(),
+                configurator("inprocess"),
+                () -> leader,
+                new RecordingSpawnExecutor(handleWithoutAgentRef)
+        );
+
+        managerWithoutAgentRef.spawnTeammate(memberContext("dev")).toCompletableFuture().join();
+
+        assertThat(handleWithoutAgentRef.getChunkForward()).isNull();
+        assertThat(leader.streamController.queue.chunks).isEmpty();
     }
 
     @Test
@@ -352,7 +386,7 @@ class SpawnManagerTest {
         }
 
         @Override
-        public CompletionStage<MemberRow> getMember(String memberName) {
+        public CompletionStage<Object> getMember(String memberName) {
             return CompletableFuture.completedFuture(members.get(memberName));
         }
 

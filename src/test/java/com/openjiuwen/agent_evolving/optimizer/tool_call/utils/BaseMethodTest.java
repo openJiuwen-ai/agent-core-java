@@ -5,7 +5,9 @@
 package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -19,14 +21,26 @@ import java.util.function.Function;
  *
  * <p>Mirrors Python's {@code BaseMethod} and module helpers in
  * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/base_method.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_format_and_base_method} module in
+ * {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_format_and_base_method.py}.</p>
  */
 class BaseMethodTest {
 
     @Test
-    void parseJsonExtractsHeaderAndPythonLiteralFallback() {
-        assertEquals(Map.of("answer", "ok"), BaseMethod.parseJson("prefix {\"answer\":\"ok\"} suffix"));
-        assertEquals(Map.of("answer", "yes"), BaseMethod.parseJson("noise {'answer': 'yes'}"));
-        assertEquals(Map.of("target", Map.of("x", 1)), BaseMethod.parseJson("xx {\n\"target\":{\"x\":1}}", "target"));
+    void parseJsonPrefersHeaderAndFallbackLiteralEval() {
+        String text = "noise {\"answer\": \"ok\", \"x\": 1} tail";
+        assertEquals(Map.of("answer", "ok", "x", 1), FormatUtils.parseJson(text, "answer"));
+
+        String literal = "{'answer': 'ok', 'x': 2}";
+        assertEquals(Map.of("answer", "ok", "x", 2), BaseMethod.parseJson(literal));
+    }
+
+    @Test
+    void formatPromptLlamaAndPrintBoldNoop() {
+        assertEquals("sysuser", FormatUtils.formatPromptLlama("sys", "user"));
+        assertEquals("ab", BaseMethod.formatPromptLlama("a", "b"));
+        assertDoesNotThrow(() -> BaseMethod.printBold("hello"));
     }
 
     @Test
@@ -39,26 +53,38 @@ class BaseMethodTest {
     }
 
     @Test
-    void produceAnswerBuildsPromptAndVerifiesAnswer() {
-        RecordingBaseMethod method = new RecordingBaseMethod(Map.of(
+    void baseMethodProduceAnswerFromApiCallSuccess() {
+        RecordingBaseMethod method = new SuccessRecordingBaseMethod(Map.of(
                 "verbose", false,
-                "gen_model_id", "model-a",
-                "llm_api_key", "key-a"
+                "gen_model_id", "gpt-x",
+                "llm_api_key", "k"
         ));
 
-        String answer = method.produceAnswerFromApiCall("find status", "doc text", "{\"status\":\"ready\"}");
+        String answer = method.produceAnswerFromApiCall("inst", "doc", "api_result");
 
-        assertEquals("Ready", answer);
-        assertEquals("model-a", method.modelId);
-        assertEquals("key-a", method.llmApiKey);
-        assertTrue(method.prompt.contains("doc text"));
-        assertTrue(method.prompt.contains("find status"));
-        assertTrue(method.prompt.contains("{\"status\":\"ready\"}"));
+        assertEquals("final answer", answer);
+        assertEquals("gpt-x", method.modelId);
+        assertEquals("k", method.llmApiKey);
+        assertTrue(method.prompt.contains("inst"));
         assertEquals(15, method.kwargs.get("max_attempts"));
         assertEquals(List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"), method.kwargs.get("stop_sequences"));
     }
 
-    private static final class RecordingBaseMethod extends BaseMethod {
+    @Test
+    void baseMethodProduceAnswerFromApiCallVerifyError() {
+        RecordingBaseMethod method = new ErrorRecordingBaseMethod(Map.of(
+                "verbose", false,
+                "gen_model_id", "gpt-x",
+                "llm_api_key", "k"
+        ));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> method.produceAnswerFromApiCall("inst", "doc", "api_result")
+        );
+    }
+
+    private abstract static class RecordingBaseMethod extends BaseMethod {
         private String modelId;
         private String prompt;
         private String llmApiKey;
@@ -80,7 +106,31 @@ class BaseMethodTest {
             this.prompt = prompt;
             this.llmApiKey = llmApiKey;
             this.kwargs = kwargs;
-            return verifyFn.apply("{\"answer\":\" Ready \"}");
+            return verifyFn.apply(response());
+        }
+
+        protected abstract String response();
+    }
+
+    private static final class SuccessRecordingBaseMethod extends RecordingBaseMethod {
+        private SuccessRecordingBaseMethod(Map<String, Object> config) {
+            super(config);
+        }
+
+        @Override
+        protected String response() {
+            return "{\"answer\": \"final answer\"}";
+        }
+    }
+
+    private static final class ErrorRecordingBaseMethod extends RecordingBaseMethod {
+        private ErrorRecordingBaseMethod(Map<String, Object> config) {
+            super(config);
+        }
+
+        @Override
+        protected String response() {
+            return "{\"error\":\"bad\"}";
         }
     }
 }

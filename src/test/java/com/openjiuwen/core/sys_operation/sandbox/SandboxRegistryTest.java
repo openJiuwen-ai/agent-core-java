@@ -7,6 +7,7 @@ package com.openjiuwen.core.sys_operation.sandbox;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.sandbox.gateway.SandboxEndpoint;
@@ -19,6 +20,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Mirrors Python's {@code SandboxRegistry} in
  * {@code openjiuwen/core/sys_operation/sandbox/sandbox_registry.py}.
+ *
+ * <p>Mirrors Python's {@code TestSandboxRegistry} in
+ * {@code tests/unit_tests/core/sys_operation/sandbox/test_sandbox_registry.py}.</p>
  */
 class SandboxRegistryTest {
 
@@ -48,6 +52,30 @@ class SandboxRegistryTest {
         assertEquals("http://sandbox", typed.endpoint.baseUrl());
         SandboxRegistry.unregisterProvider("unit-sandbox", "shell");
         assertNull(SandboxRegistry.getProviderCls("unit-sandbox", "shell"));
+    }
+
+    @Test
+    void createLauncherUnknownTypeRaises() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> SandboxRegistry.createLauncher("_missing_launcher")
+        );
+
+        assertEquals("Unknown launcher_type: _missing_launcher", error.getMessage());
+    }
+
+    @Test
+    void createProviderUnknownTypeRaises() {
+        UnsupportedOperationException error = assertThrows(
+                UnsupportedOperationException.class,
+                () -> SandboxRegistry.createProvider(
+                        "_missing_sandbox",
+                        "fs",
+                        new SandboxEndpoint("http://localhost:8080", null),
+                        new SandboxGatewayConfig())
+        );
+
+        assertEquals("Sandbox type '_missing_sandbox' does not support operation 'fs'", error.getMessage());
     }
 
     static final class TestLauncher extends SandboxLauncher {

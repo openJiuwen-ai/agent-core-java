@@ -10,6 +10,7 @@ import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.single_agent.BaseAgent;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
 import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
 import com.openjiuwen.core.single_agent.schema.AgentCard;
@@ -27,6 +28,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code test_context_rail.py} for
  * {@code openjiuwen/auto_harness/rails/context_rail.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental missing-test coverage in
+ * {@code tests/unit_tests/auto_harness/rails/test_context_rail.py}.</p>
  */
 class AutoHarnessContextRailTest {
 
@@ -48,11 +52,14 @@ class AutoHarnessContextRailTest {
         TestAgent agent = new TestAgent();
         rail.init(agent);
         AgentCallbackContext context = new AgentCallbackContext(agent);
+        SystemPromptBuilder builder = new SystemPromptBuilder("cn");
+        context.getExtra().put("system_prompt_builder", builder);
 
         rail.beforeModelCall(context).toCompletableFuture().join();
 
         assertThat(context.getExtra()).doesNotContainKey("offload_section_enabled");
         assertThat(context.getExtra()).doesNotContainKey("task_state");
+        assertThat(builder.getAllSections()).isEmpty();
     }
 
     @Test

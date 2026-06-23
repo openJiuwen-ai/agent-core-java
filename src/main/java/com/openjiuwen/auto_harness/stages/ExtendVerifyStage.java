@@ -14,6 +14,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExtensionBuildArtifa
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact;
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.harness.DeepAgent;
 
@@ -243,9 +244,28 @@ public class ExtendVerifyStage extends VerifyStage {
             int toolsCount,
             int skillsCount
     ) {
+        return runAgentGeneratedExtAcceptance(
+                ctx,
+                build,
+                railsCount,
+                toolsCount,
+                skillsCount,
+                ExtendVerifyStage::runPytestFile
+        );
+    }
+
+    public static AcceptanceRun runAgentGeneratedExtAcceptance(
+            TaskContext ctx,
+            ExtensionBuildArtifact build,
+            int railsCount,
+            int toolsCount,
+            int skillsCount,
+            PytestFileRunner pytestFileRunner
+    ) {
         if (!(ctx.getRuntime() != null && ctx.getRuntime().getTaskAgent() instanceof DeepAgent agent)) {
             return new AcceptanceRun(List.of(), new CIResult(false, "acceptance_test_agent_missing"));
         }
+        PytestFileRunner runner = pytestFileRunner == null ? ExtendVerifyStage::runPytestFile : pytestFileRunner;
         Path testDir = Path.of(ctx.getRuntime().getWtPath(), ".auto_harness_verify", build.getExtensionName());
         Path testFile = testDir.resolve("test_runtime_extension_acceptance.py");
         String pythonExecutable = ctx.getOrchestrator().getConfig().resolveCiGatePythonExecutable();
@@ -281,7 +301,7 @@ public class ExtendVerifyStage extends VerifyStage {
             if (!testGenerated) {
                 continue;
             }
-            CIResult result = runPytestFile(pythonExecutable, testFile, Path.of(ctx.getRuntime().getWtPath()));
+            CIResult result = runner.run(pythonExecutable, testFile, Path.of(ctx.getRuntime().getWtPath()));
             if (result.passed()) {
                 events.add(ctx.message("[verify_ext] runtime extension 验收测试通过"));
                 return new AcceptanceRun(events, result);
@@ -308,7 +328,17 @@ public class ExtendVerifyStage extends VerifyStage {
         if (agent == null) {
             return List.of().iterator();
         }
-        return VerifyStageObjectIterator.of(agent.stream(Map.of("query", prompt)));
+        String sessionId = sessionIdPrefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        AgentSession session = new AgentSession(
+                sessionId,
+                null,
+                agent.getCard(),
+                null,
+                false,
+                null
+        );
+        session.preRun(Map.of("inputs", Map.of("query", prompt)));
+        return VerifyStageObjectIterator.of(agent.stream(Map.of("query", prompt), session), session);
     }
 
     public static String buildExtAcceptanceTestPrompt(
@@ -321,6 +351,7 @@ public class ExtendVerifyStage extends VerifyStage {
             String previousError
     ) {
         return "请为 runtime extension 生成验收测试。\n"
+                + "你正在执行 verify_ext 阶段。请严格遵循 verify_ext skill 规范生成 pytest 验收测试。\n"
                 + "扩展名称: " + build.getExtensionName() + "\n"
                 + "扩展根目录: " + build.getExtensionRoot() + "\n"
                 + "harness_config: " + build.getConfigPath() + "\n"
@@ -328,6 +359,16 @@ public class ExtendVerifyStage extends VerifyStage {
                 + "pytest 解释器: " + pythonExecutable + "\n"
                 + "组件数量: rails=" + railsCount + ", tools=" + toolsCount + ", skills=" + skillsCount + "\n"
                 + "必须覆盖 L1/L2/L3，禁止修改扩展实现以外的文件。\n"
+                + "路径动态解析: 禁止硬编码任何绝对路径，必须从 __file__ 或环境变量动态推断。\n"
+                + "动态导入: 必须从 harness_config.yaml 实际声明的 module/class 获取，"
+                + "禁止假设特定 module path。\n"
+                + "module 必须以 openjiuwen.extensions.harness.<extension_name> 开头。\n"
+                + "L3 运行时验收必须覆盖 ToolOutput.success、设计声明字段和可观测副作用。\n"
+                + "文件产物验收 (仅文件生成类 Tool): 传入 pytest tmp_path 下的 output_path，"
+                + "断言返回 success=true, path/absolute_path 存在, exists=true, size_bytes>0。\n"
+                + "PPTX: zipfile 校验 [Content_Types].xml + ppt/presentation.xml + slide*.xml；"
+                + "DOCX: zipfile 校验 [Content_Types].xml + word/document.xml；PDF: 文件头 %PDF；"
+                + "JSON: json.load 重解析 + 关键字段；禁止 JSON/Markdown 冒充 PPTX/DOCX/PDF。\n"
                 + (previousError == null || previousError.isBlank() ? "" : "上次失败:\n" + previousError);
     }
 
@@ -338,6 +379,9 @@ public class ExtendVerifyStage extends VerifyStage {
                 + "harness_config: " + build.getConfigPath() + "\n\n"
                 + "常见修复要求: harness_config.yaml 必须符合 schema；resources 只声明实际生成的 rails/tools/skills；"
                 + "Tool class 必须可无参构造；SKILL.md 必须有合法 frontmatter。\n\n"
+                + "rail/tool 条目必须使用 type: package，并同时包含 module 和 class；module 必须以 "
+                + "openjiuwen.extensions.harness.<extension_name>. 开头。所有自测 import 和实例化都必须以 "
+                + "harness_config.yaml 中实际声明的 module/class 为唯一来源，不要手写或猜测路径。\n\n"
                 + "失败信息:\n" + preview(staticErrors, 6000);
     }
 
@@ -355,6 +399,8 @@ public class ExtendVerifyStage extends VerifyStage {
                 + "pytest 解释器: " + pythonExecutable + "\n\n"
                 + (failureIds.isBlank() ? "" : "检测到的 failure_id:\n" + failureIds + "\n")
                 + "修复约束: 只允许修改扩展根目录内实现文件，不要修改测试文件绕过失败。\n\n"
+                + "文件产物修复: PPTX/DOCX/PDF/JSON 必须生成真实文件并可被对应格式校验，"
+                + "禁止 JSON/Markdown 冒充，禁止返回 JSON/Markdown 占位并标记 success=true。\n\n"
                 + "pytest 输出:\n" + preview(pytestOutput, 5000);
     }
 
@@ -502,6 +548,11 @@ public class ExtendVerifyStage extends VerifyStage {
         AcceptanceRun run(TaskContext ctx, ExtensionBuildArtifact build, int railsCount, int toolsCount, int skillsCount);
     }
 
+    @FunctionalInterface
+    public interface PytestFileRunner {
+        CIResult run(String pythonExecutable, Path testFile, Path cwd);
+    }
+
     public record InstallResult(boolean success, String error) {
     }
 
@@ -516,16 +567,39 @@ public class ExtendVerifyStage extends VerifyStage {
 
     private static final class VerifyStageObjectIterator {
         private static Iterator<Object> of(Iterator<?> iterator) {
+            return of(iterator, null);
+        }
+
+        private static Iterator<Object> of(Iterator<?> iterator, AgentSession session) {
             Iterator<?> source = iterator == null ? List.of().iterator() : iterator;
             return new Iterator<>() {
+                private boolean closed;
+
                 @Override
                 public boolean hasNext() {
-                    return source.hasNext();
+                    boolean hasNext = source.hasNext();
+                    if (!hasNext) {
+                        closeSession();
+                    }
+                    return hasNext;
                 }
 
                 @Override
                 public Object next() {
-                    return source.next();
+                    try {
+                        return source.next();
+                    } catch (RuntimeException e) {
+                        closeSession();
+                        throw e;
+                    }
+                }
+
+                private void closeSession() {
+                    if (closed || session == null) {
+                        return;
+                    }
+                    session.postRun();
+                    closed = true;
                 }
             };
         }

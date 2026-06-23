@@ -22,7 +22,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Tests readonly experience-search tool behavior.
  *
- * <p>Mirrors Python's {@code test_experience_search_tool.py} for
+ * <p>Mirrors Python's {@code TestExperienceSearchTool} in
+ * {@code tests/unit_tests/auto_harness/experience/test_experience_search_tool.py}.</p>
+ *
+ * <p>Also exercises Java's {@link ExperienceSearchTool}, which mirrors Python's implementation in
  * {@code openjiuwen/auto_harness/tools/experience_search_tool.py}.</p>
  */
 class ExperienceSearchToolTest {

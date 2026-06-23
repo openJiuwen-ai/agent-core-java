@@ -19,58 +19,102 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code Parser} in
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/base.py}.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.retrieval.indexing.processor.parser.test_base}
+ * in {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_base.py}.</p>
  */
 class ParserTest {
 
     @Test
-    void defaultParseReturnsNoDocumentsWhenParseContentIsEmpty() {
-        Parser parser = new Parser() {
-        };
+    void parseSuccess() {
+        Parser parser = new ConcreteParser();
 
-        assertTrue(parser.parse("missing.txt", "doc-1").join().isEmpty());
-    }
-
-    @Test
-    void parseWrapsContentInDocumentWithProvidedId() {
-        Parser parser = new ContentParser("parsed text");
-
-        List<Document> documents = parser.parse("file.txt", "doc-1").join();
+        List<Document> documents = parser.parse("test.txt", "doc_1").join();
 
         assertEquals(1, documents.size());
-        assertEquals("doc-1", documents.getFirst().getId_());
-        assertEquals("parsed text", documents.getFirst().getText());
-        assertTrue(documents.getFirst().getMetadata().isEmpty());
+        assertEquals("doc_1", documents.getFirst().getId_());
+        assertTrue(documents.getFirst().getText().contains("Content from test.txt"));
     }
 
     @Test
-    void lazyParseAndProcessDelegateToParse() {
-        Parser parser = new ContentParser("body");
+    void parseEmptyContent() {
+        Parser parser = new EmptyParser();
 
-        assertEquals("body", parser.lazyParse("file.txt", "doc-2", Map.of()).join().getFirst().getText());
-        assertEquals("body", parser.process("file.txt", "doc-3").join().getFirst().getText());
+        List<Document> documents = parser.parse("test.txt").join();
+
+        assertTrue(documents.isEmpty());
     }
 
     @Test
-    void supportsDefaultsToFalse() {
-        Parser parser = new ContentParser("body");
+    void parseWithKwargs() {
+        Parser parser = new ConcreteParser();
 
+        List<Document> documents = parser.parse("test.txt", "doc_1", null, Map.of("file_name", "test")).join();
+
+        assertEquals(1, documents.size());
+        assertEquals("doc_1", documents.getFirst().getId_());
+    }
+
+    @Test
+    void lazyParse() {
+        Parser parser = new ConcreteParser();
+
+        List<Document> documents = parser.lazyParse("test.txt", "doc_1", Map.of()).join();
+
+        assertEquals(1, documents.size());
+        assertEquals("doc_1", documents.getFirst().getId_());
+    }
+
+    @Test
+    void processDelegatesToParse() {
+        Parser parser = new ConcreteParser();
+
+        List<Document> documents = parser.process("test.txt", "doc_1").join();
+
+        assertEquals(1, documents.size());
+        assertEquals("doc_1", documents.getFirst().getId_());
+    }
+
+    @Test
+    void supportsUsesConcreteParserPredicate() {
+        Parser parser = new ConcreteParser();
+
+        assertTrue(parser.supports("file.test"));
         assertFalse(parser.supports("file.txt"));
     }
 
-    private static final class ContentParser extends Parser {
-        private final String content;
-
-        private ContentParser(String content) {
-            this.content = content;
-        }
-
+    /**
+     * Mirrors Python's {@code ConcreteParser} in
+     * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_base.py}.
+     */
+    private static final class ConcreteParser extends Parser {
         @Override
         protected CompletableFuture<String> parseContent(
                 String filePath,
                 BaseModelClient llmClient,
                 Map<String, Object> options
         ) {
-            return CompletableFuture.completedFuture(content);
+            return CompletableFuture.completedFuture("Content from " + filePath);
+        }
+
+        @Override
+        public boolean supports(String doc) {
+            return doc.endsWith(".test");
+        }
+    }
+
+    /**
+     * Mirrors Python's inline {@code EmptyParser} in
+     * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_base.py}.
+     */
+    private static final class EmptyParser extends Parser {
+        @Override
+        protected CompletableFuture<String> parseContent(
+                String filePath,
+                BaseModelClient llmClient,
+                Map<String, Object> options
+        ) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

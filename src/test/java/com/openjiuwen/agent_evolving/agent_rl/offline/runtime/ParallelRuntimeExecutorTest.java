@@ -21,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code ParallelRuntimeExecutor} in
  * {@code openjiuwen/agent_evolving/agent_rl/offline/runtime/parallel_executor.py}.
+ *
+ * <p>Mirrors Python's module-level tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/test_parallel_executor.py}.</p>
  */
 class ParallelRuntimeExecutorTest {
 

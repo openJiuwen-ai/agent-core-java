@@ -6,6 +6,8 @@ package com.openjiuwen.core.context_engine.context;
 
 import com.openjiuwen.core.context_engine.ContextStats;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
+import com.openjiuwen.core.runner.callback.ContextEvents;
 import com.openjiuwen.core.session.stream.OutputSchema;
 
 import java.lang.reflect.InvocationTargetException;
@@ -71,6 +73,7 @@ public class ContextProcessorStateRecorder {
 
     public void emit(Object context, ContextCompressionState state) {
         record(state);
+        triggerCallbackFramework(context, state);
         try {
             if (callbackPort != null) {
                 callbackPort.trigger("CONTEXT_COMPRESSION_STATE", context, getSessionRef.get(), sessionId, contextId,
@@ -89,10 +92,49 @@ public class ContextProcessorStateRecorder {
                 sessionStreamPort.writeStream(output);
                 return;
             }
-            Method method = session.getClass().getMethod("writeStream", OutputSchema.class);
-            method.invoke(session, output);
-        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignored) {
+            if (invokeWriteStream(session, "writeStream", output)) {
+                return;
+            }
+            invokeWriteStream(session, "write_stream", output);
+        } catch (RuntimeException ignored) {
             // Python logs stream failures and continues.
+        }
+    }
+
+    private void triggerCallbackFramework(Object context, ContextCompressionState state) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("context", context);
+        kwargs.put("session_ref", getSessionRef.get());
+        kwargs.put("session_id", sessionId);
+        kwargs.put("context_id", contextId);
+        kwargs.put("state", state);
+        try {
+            CallbackUtils.lazyCallbackFramework.trigger(ContextEvents.CONTEXT_COMPRESSION_STATE, new Object[0], kwargs);
+        } catch (RuntimeException ignored) {
+            // Python logs callback failures and still emits stream state.
+        }
+    }
+
+    private static boolean invokeWriteStream(Object session, String methodName, OutputSchema output) {
+        try {
+            Method method = session.getClass().getMethod(methodName, OutputSchema.class);
+            method.invoke(session, output);
+            return true;
+        } catch (IllegalAccessException ignored) {
+            return invokeDeclaredWriteStream(session, methodName, output);
+        } catch (InvocationTargetException | NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean invokeDeclaredWriteStream(Object session, String methodName, OutputSchema output) {
+        try {
+            Method method = session.getClass().getDeclaredMethod(methodName, OutputSchema.class);
+            method.setAccessible(true);
+            method.invoke(session, output);
+            return true;
+        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignored) {
+            return false;
         }
     }
 
@@ -282,7 +324,7 @@ public class ContextProcessorStateRecorder {
         if (processor == null) {
             return "";
         }
-        Object config = processor.config();
+        Object config = readProperty(processor, "config");
         Object modelConfig = readProperty(config, "model");
         if (modelConfig != null) {
             String fromModelName = readTextProperty(modelConfig, "modelName");
@@ -310,7 +352,12 @@ public class ContextProcessorStateRecorder {
             Method method = target.getClass().getMethod(getter);
             return method.invoke(target);
         } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignored) {
-            return null;
+            try {
+                Method method = target.getClass().getMethod(property);
+                return method.invoke(target);
+            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignoredAgain) {
+                return null;
+            }
         }
     }
 

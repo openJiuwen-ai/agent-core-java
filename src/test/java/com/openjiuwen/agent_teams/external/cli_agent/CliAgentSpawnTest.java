@@ -37,6 +37,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code spawn.py} helpers in
  * {@code openjiuwen/agent_teams/external/cli_agent/spawn.py}.</p>
+ *
+ * <p>Also mirrors Python's CLI spawn tests in
+ * {@code tests/unit_tests/agent_teams/external/test_external_cli_spawn.py}.</p>
  */
 class CliAgentSpawnTest {
 
@@ -137,6 +140,66 @@ class CliAgentSpawnTest {
     }
 
     @Test
+    void buildCliRuntimeOneShotReinvokesPerTurn() {
+        TeamRuntimeContext ctx = context("hermes");
+        CliAgentSpawn.BuildOptions options = new CliAgentSpawn.BuildOptions(
+                null,
+                fakeJavaCommand(FakeOneShotCli.class),
+                false,
+                "openjiuwen-team",
+                List.of("openjiuwen-team-mcp"),
+                null,
+                Map.of()
+        );
+
+        MemberRuntime memberRuntime = CliAgentSpawn.buildCliRuntime(ctx, options).toCompletableFuture().join();
+
+        assertThat(memberRuntime).isInstanceOf(ReinvokeCliRuntime.class);
+        ReinvokeCliRuntime runtime = (ReinvokeCliRuntime) memberRuntime;
+        try {
+            assertThat(drain(runtime, "first")).containsExactly("oneshot: first");
+            assertThat(drain(runtime, "second")).containsExactly("oneshot: second");
+        } finally {
+            runtime.aclose().toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void reinvokeRuntimeSurfacesChunksLiveDuringTurn() {
+        TeamRuntimeContext ctx = context("hermes");
+        CliAgentSpawn.BuildOptions options = new CliAgentSpawn.BuildOptions(
+                null,
+                fakeJavaCommand(FakeOneShotDribbleCli.class),
+                false,
+                "openjiuwen-team",
+                List.of("openjiuwen-team-mcp"),
+                null,
+                Map.of()
+        );
+
+        MemberRuntime memberRuntime = CliAgentSpawn.buildCliRuntime(ctx, options).toCompletableFuture().join();
+
+        assertThat(memberRuntime).isInstanceOf(ReinvokeCliRuntime.class);
+        ReinvokeCliRuntime runtime = (ReinvokeCliRuntime) memberRuntime;
+        List<String> contents = new ArrayList<>();
+        List<Long> arrivals = new ArrayList<>();
+        long start = System.nanoTime();
+        try {
+            Iterator<Object> stream = runtime.runStreaming(Map.of("query", "go"), "sess-1");
+            while (stream.hasNext()) {
+                contents.add(contentOf(stream.next()));
+                arrivals.add(System.nanoTime() - start);
+            }
+        } finally {
+            runtime.aclose().toCompletableFuture().join();
+        }
+
+        assertThat(contents).containsExactly("early", "late");
+        long gapMillis = (arrivals.get(1) - arrivals.get(0)) / 1_000_000L;
+        assertThat(gapMillis).isGreaterThanOrEqualTo(250L);
+    }
+
+    @Test
     void missingMemberNameOrCliAgentRaisesConfigError() {
         TeamRuntimeContext noMember = context("codex");
         noMember.setMemberName(null);
@@ -167,6 +230,15 @@ class CliAgentSpawnTest {
         return List.of(executable, "-cp", System.getProperty("java.class.path"), mainClass.getName());
     }
 
+    private static List<String> drain(MemberRuntime runtime, String query) {
+        Iterator<Object> stream = runtime.runStreaming(Map.of("query", query), "sess-1");
+        List<String> contents = new ArrayList<>();
+        while (stream.hasNext()) {
+            contents.add(contentOf(stream.next()));
+        }
+        return contents;
+    }
+
     @SuppressWarnings("unchecked")
     private static String contentOf(Object chunk) {
         Map<String, Object> payload = (Map<String, Object>) ((OutputSchema) chunk).getPayload();
@@ -190,6 +262,28 @@ class CliAgentSpawnTest {
             }
             System.out.println("echo: " + line.trim());
             System.out.println("<<END_OF_TURN>>");
+            System.out.flush();
+        }
+    }
+
+    public static final class FakeOneShotCli {
+        private FakeOneShotCli() {
+        }
+
+        public static void main(String[] args) {
+            System.out.println("oneshot: " + args[args.length - 1]);
+        }
+    }
+
+    public static final class FakeOneShotDribbleCli {
+        private FakeOneShotDribbleCli() {
+        }
+
+        public static void main(String[] args) throws Exception {
+            System.out.println("early");
+            System.out.flush();
+            Thread.sleep(400L);
+            System.out.println("late");
             System.out.flush();
         }
     }

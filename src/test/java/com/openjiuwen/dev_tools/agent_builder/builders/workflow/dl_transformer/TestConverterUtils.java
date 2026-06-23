@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.agent_builder.builders.workflow.dl_transformer;
 
+import com.openjiuwen.core.common.exception.ValidationError;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -15,8 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Mirrors Python's {@code test_converter_utils.py} in
- * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/dl_transformer/test_converter_utils.py}.
+ * Mirrors Python's {@code ConverterUtils} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/converter_utils.py}.
+ *
+ * <p>Also mirrors Python's {@code test_converter_utils_integration} in
+ * {@code tests/system_tests/dev_tools/agent_builder/builders/workflow/dl_transformer/test_converter_utils_integration.py}.</p>
  */
 class TestConverterUtils {
 
@@ -84,7 +88,7 @@ class TestConverterUtils {
     @Test
     void testConvertRefVariableInvalid() {
         assertThatThrownBy(() -> ConverterUtils.convertRefVariable("invalid"))
-                .isInstanceOf(RuntimeException.class);
+                .isInstanceOf(ValidationError.class);
     }
 
     @Test

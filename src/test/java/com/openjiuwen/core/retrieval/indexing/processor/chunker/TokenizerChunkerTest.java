@@ -14,37 +14,42 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's {@code TokenizerChunker} behavior in
  * {@code openjiuwen/core/retrieval/indexing/processor/chunker/tokenizer_chunker.py}.
+ *
+ * <p>Mirrors Python's {@code TestTokenizerChunker} in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_tokenizer_chunker.py}.</p>
  */
 class TokenizerChunkerTest {
 
     @Test
-    void emptyInputReturnsNoChunks() {
-        TokenizerChunker chunker = new TokenizerChunker(8, 2, new WhitespaceTokenizer());
+    void initStoresChunkerConfiguration() {
+        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
 
-        assertThat(chunker.chunkText(null)).isEmpty();
-        assertThat(chunker.chunkText("")).isEmpty();
-    }
-
-    @Test
-    void constructsSplitterFromTokenizerAndConfig() {
-        Map<String, Object> splitterConfig = Map.of("separator", " ");
-        TokenizerChunker chunker = new TokenizerChunker(8, 2, new WhitespaceTokenizer(), "en", splitterConfig);
-
-        assertThat(chunker.getChunkSize()).isEqualTo(8);
-        assertThat(chunker.getChunkOverlap()).isEqualTo(2);
-        assertThat(chunker.getLanguage()).isEqualTo("en");
-        assertThat(chunker.getSplitterConfig()).containsEntry("separator", " ");
+        assertThat(chunker.getChunkSize()).isEqualTo(512);
+        assertThat(chunker.getChunkOverlap()).isEqualTo(50);
         assertThat(chunker.getTokenizer()).isInstanceOf(WhitespaceTokenizer.class);
     }
 
     @Test
-    void splitsTextWithTokenizerBackedSentenceSplitter() {
+    void chunkTextSuccessReturnsChunkTexts() {
         TokenizerChunker chunker = new TokenizerChunker(4, 1, new WhitespaceTokenizer(), "en", null);
 
         List<String> chunks = chunker.chunkText("one two three four five six seven");
 
-        assertThat(chunks).isNotEmpty();
-        assertThat(String.join(" ", chunks)).contains("one").contains("seven");
+        assertThat(chunks).containsExactly("one two three four", "four five six seven");
+    }
+
+    @Test
+    void chunkTextEmptyReturnsNoChunks() {
+        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
+
+        assertThat(chunker.chunkText("")).isEmpty();
+    }
+
+    @Test
+    void chunkTextNullReturnsNoChunks() {
+        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
+
+        assertThat(chunker.chunkText(null)).isEmpty();
     }
 
     private static final class WhitespaceTokenizer implements IndexSentenceSplitter.TokenCodec {

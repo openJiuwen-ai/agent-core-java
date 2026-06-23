@@ -53,7 +53,8 @@ class ContextProcessorTest {
         ContextWindow window = new ContextWindow(List.of(), messages, List.of(), null);
 
         assertThat(processor.processorType()).isEqualTo("RecordingProcessor");
-        assertThat(processor.<Map<String, Object>>config()).containsEntry("threshold", 10);
+        Map<String, Object> config = processor.config();
+        assertThat(config).containsEntry("threshold", 10);
         assertThat(processor.triggerAddMessages(context, messages, Map.of()).toCompletableFuture().join()).isFalse();
         assertThat(processor.triggerGetContextWindow(context, window, Map.of()).toCompletableFuture().join())
                 .isFalse();

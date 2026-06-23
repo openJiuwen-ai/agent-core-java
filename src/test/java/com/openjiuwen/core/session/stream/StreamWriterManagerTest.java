@@ -17,6 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python tests for
  * {@code openjiuwen/core/session/stream/manager.py}.
+ *
+ * <p>Mirrors Python's {@code TestStreamOutput} in
+ * {@code tests/unit_tests/core/session/stream/test_stream_output.py}.</p>
  */
 class StreamWriterManagerTest {
 
@@ -27,14 +30,16 @@ class StreamWriterManagerTest {
 
         manager.getCustomWriter().write(Map.of("name", "Alice", "age", 30));
         manager.getCustomWriter().write(Map.of("name", "Bob", "age", 25));
+        manager.getCustomWriter().write(Map.of("name", "Charlie", "age", 35));
         emitter.close();
 
         List<Object> received = drain(manager);
 
-        assertEquals(2, received.size());
+        assertEquals(3, received.size());
         assertInstanceOf(CustomSchema.class, received.get(0));
         assertEquals("Alice", ((CustomSchema) received.get(0)).get("name"));
         assertEquals(25, ((CustomSchema) received.get(1)).get("age"));
+        assertEquals("Charlie", ((CustomSchema) received.get(2)).get("name"));
     }
 
     @Test
@@ -43,16 +48,20 @@ class StreamWriterManagerTest {
         StreamWriterManager manager = new StreamWriterManager(emitter);
 
         manager.getOutputWriter().write(Map.of("type", "nodeA", "index", 1, "payload", "nodeA_stream"));
-        manager.getOutputWriter().write(Map.of("type", "nodeB", "index", 2, "payload", "nodeB_stream"));
+        manager.getOutputWriter().write(Map.of("type", "nodeB", "index", 1, "payload", "nodeB_stream"));
+        manager.getOutputWriter().write(Map.of("type", "nodeC", "index", 1, "payload", "nodeC_stream"));
         emitter.close();
 
         List<Object> received = drain(manager);
 
-        assertEquals(2, received.size());
+        assertEquals(3, received.size());
         OutputSchema first = assertInstanceOf(OutputSchema.class, received.get(0));
         assertEquals("nodeA", first.getType());
         assertEquals(1, first.getIndex());
         assertEquals("nodeA_stream", first.getPayload());
+        OutputSchema third = assertInstanceOf(OutputSchema.class, received.get(2));
+        assertEquals("nodeC", third.getType());
+        assertEquals("nodeC_stream", third.getPayload());
     }
 
     @Test
@@ -62,14 +71,18 @@ class StreamWriterManagerTest {
 
         manager.getTraceWriter().write(Map.of("type", "on_chain_start", "payload", "nodeA_start"));
         manager.getTraceWriter().write(Map.of("type", "on_chain_end", "payload", "nodeA_end"));
+        manager.getTraceWriter().write(Map.of("type", "on_chain_error", "payload", "nodeA_error"));
         emitter.close();
 
         List<Object> received = drain(manager);
 
-        assertEquals(2, received.size());
+        assertEquals(3, received.size());
         TraceSchema first = assertInstanceOf(TraceSchema.class, received.get(0));
         assertEquals("on_chain_start", first.getType());
         assertEquals("nodeA_start", first.getPayload());
+        TraceSchema third = assertInstanceOf(TraceSchema.class, received.get(2));
+        assertEquals("on_chain_error", third.getType());
+        assertEquals("nodeA_error", third.getPayload());
     }
 
     @Test
@@ -81,14 +94,17 @@ class StreamWriterManagerTest {
 
         manager.getWriter(mockMode).write(Map.of("data", "nodeA_stream"));
         manager.getWriter(mockMode).write(Map.of("data", "nodeB_stream"));
+        manager.getWriter(mockMode).write(Map.of("data", "nodeC_stream"));
         emitter.close();
 
         List<Object> received = drain(manager);
 
         assertTrue(manager.getEnabledModes().contains(mockMode));
-        assertEquals(2, received.size());
+        assertEquals(3, received.size());
         MockSchema first = assertInstanceOf(MockSchema.class, received.get(0));
         assertEquals("nodeA_stream", first.data());
+        MockSchema third = assertInstanceOf(MockSchema.class, received.get(2));
+        assertEquals("nodeC_stream", third.data());
     }
 
     private static List<Object> drain(StreamWriterManager manager) {

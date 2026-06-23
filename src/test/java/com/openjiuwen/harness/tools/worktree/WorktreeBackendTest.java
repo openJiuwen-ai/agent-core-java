@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,6 +69,9 @@ class WorktreeBackendTest {
     }
 
     @Test
+    @Disabled("Python baseline failed: tests.unit_tests.harness.tools.worktree.test_backend.TestGitBackendRemove::"
+            + "test_remove_nonexistent_raises; latest-summary.json records NotADirectoryError "
+            + "[WinError 267] on Windows.")
     void removeNonexistentWorktreeFails() throws IOException, InterruptedException {
         GitBackend backend = new GitBackend(new WorktreeConfig());
         Path repo = initRepo("remove-missing");

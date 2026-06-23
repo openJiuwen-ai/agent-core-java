@@ -6,6 +6,9 @@ package com.openjiuwen.harness.subagents;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.single_agent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
@@ -61,20 +64,23 @@ public final class BrowserAgentFactory {
             int maxIterations
     ) {
         String resolvedLanguage = ExploreAgent.resolveLanguage(language);
-        RuntimeSettings resolvedSettings = settings == null ? BrowserRuntimeConfig.buildRuntimeSettings() : settings;
+        RuntimeSettings resolvedSettings = resolveRuntimeSettings(model, settings);
         AgentCard finalCard = card == null
                 ? new AgentCard(BROWSER_AGENT_FACTORY_NAME, BROWSER_AGENT_FACTORY_NAME,
                 DEFAULT_BROWSER_AGENT_DESCRIPTION.get(resolvedLanguage))
                 : card;
         DeepAgentConfig config = new DeepAgentConfig();
+        config.setCard(finalCard);
         config.setModel(model);
         config.setLanguage(resolvedLanguage);
         config.setSystemPrompt(systemPrompt == null
                 ? DEFAULT_BROWSER_AGENT_SYSTEM_PROMPT.get(resolvedLanguage)
                 : systemPrompt);
         config.setTools(tools == null ? List.of() : List.copyOf(tools));
+        config.setMcps(toObjectList(mcps));
         config.setRails(rails == null ? List.of() : List.copyOf(rails));
         config.setEnableTaskLoop(enableTaskLoop);
+        config.setMaxIterations(maxIterations);
 
         DeepAgentConfig.SubAgentConfig spec = new DeepAgentConfig.SubAgentConfig(
                 finalCard.getName(),
@@ -108,8 +114,21 @@ public final class BrowserAgentFactory {
             String language,
             RuntimeSettings settings
     ) {
+        return createBrowserAgent(model, tools, mcps, null, rails, card, language, settings);
+    }
+
+    public static DeepAgent createBrowserAgent(
+            Object model,
+            List<Tool> tools,
+            List<McpServerConfig> mcps,
+            List<DeepAgentConfig.SubAgentConfig> subagents,
+            List<DeepAgentRail> rails,
+            AgentCard card,
+            String language,
+            RuntimeSettings settings
+    ) {
         String resolvedLanguage = ExploreAgent.resolveLanguage(language);
-        RuntimeSettings resolvedSettings = settings == null ? BrowserRuntimeConfig.buildRuntimeSettings() : settings;
+        RuntimeSettings resolvedSettings = resolveRuntimeSettings(model, settings);
         BrowserAgentRuntime runtime = new BrowserAgentRuntime(
                 resolvedSettings.getProvider(),
                 resolvedSettings.getApiKey(),
@@ -133,6 +152,7 @@ public final class BrowserAgentFactory {
 
         DeepAgentConfig.SubAgentConfig spec = buildBrowserAgentConfig(
                 model, card, null, finalTools, mcps, finalRails, resolvedSettings, resolvedLanguage, false, 25);
+        spec.getConfig().setSubagents(toSubagentMap(subagents));
         DeepAgent agent = new DeepAgent(spec.getCard());
         agent.configure(spec.getConfig());
         return agent;
@@ -140,5 +160,40 @@ public final class BrowserAgentFactory {
 
     private static List<Object> toObjectList(List<?> values) {
         return values == null ? List.of() : new ArrayList<>(values);
+    }
+
+    private static Map<String, DeepAgentConfig.SubAgentConfig> toSubagentMap(
+            List<DeepAgentConfig.SubAgentConfig> subagents
+    ) {
+        Map<String, DeepAgentConfig.SubAgentConfig> result = new LinkedHashMap<>();
+        if (subagents == null) {
+            return result;
+        }
+        for (DeepAgentConfig.SubAgentConfig spec : subagents) {
+            if (spec != null && spec.getName() != null) {
+                result.put(spec.getName(), spec);
+            }
+        }
+        return result;
+    }
+
+    private static RuntimeSettings resolveRuntimeSettings(Object model, RuntimeSettings settings) {
+        if (settings != null) {
+            return settings;
+        }
+        if (model instanceof Model foundationModel && foundationModel.getModelClientConfig() != null) {
+            ModelClientConfig clientConfig = foundationModel.getModelClientConfig();
+            ModelRequestConfig requestConfig = foundationModel.getModelConfig();
+            String modelName = requestConfig == null ? "" : requestConfig.getModelName();
+            return new RuntimeSettings(
+                    clientConfig.getClientProvider(),
+                    clientConfig.getApiKey(),
+                    clientConfig.getApiBase() == null ? "" : clientConfig.getApiBase(),
+                    modelName == null ? "" : modelName,
+                    BrowserRuntimeConfig.buildPlaywrightMcpConfig(),
+                    BrowserRuntimeConfig.buildBrowserGuardrails()
+            );
+        }
+        return BrowserRuntimeConfig.buildRuntimeSettings();
     }
 }

@@ -11,6 +11,7 @@ import com.openjiuwen.harness.prompts.sections.TaskToolSection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.harness.tools.subagent.SessionTools;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -33,6 +34,7 @@ public class SubagentRail extends DeepAgentRail {
 
     private final boolean enableAsyncSubagent;
     private final Set<String> registeredToolNames = new LinkedHashSet<>();
+    private SessionTools.SessionToolkit toolkit;
     private String availableAgentsDescription = "";
     private String language = "cn";
 
@@ -55,10 +57,13 @@ public class SubagentRail extends DeepAgentRail {
         availableAgentsDescription = buildAvailableAgentsDescription(new ArrayList<>(agent.deepConfig().getSubagents().values()));
         registeredToolNames.clear();
         if (enableAsyncSubagent) {
+            toolkit = new EmptySessionToolkit();
+            agent.setSessionToolkit(toolkit);
+            registeredToolNames.add("sessions_list");
             registeredToolNames.add("sessions_spawn");
-            registeredToolNames.add("sessions_status");
             registeredToolNames.add("sessions_cancel");
         } else {
+            toolkit = null;
             registeredToolNames.add("task_tool");
         }
     }
@@ -70,6 +75,7 @@ public class SubagentRail extends DeepAgentRail {
         if (agent != null && enableAsyncSubagent) {
             agent.setSessionToolkit(null);
         }
+        toolkit = null;
     }
 
     @Override
@@ -99,12 +105,12 @@ public class SubagentRail extends DeepAgentRail {
         return availableAgentsDescription;
     }
 
-    public String buildAvailableAgentsDescription(List<DeepAgentConfig.SubAgentConfig> subagents) {
+    public String buildAvailableAgentsDescription(List<?> subagents) {
         if (subagents == null || subagents.isEmpty()) {
             return "";
         }
         List<String> lines = new ArrayList<>();
-        for (DeepAgentConfig.SubAgentConfig spec : subagents) {
+        for (Object spec : subagents) {
             String name = extractAgentName(spec);
             String description = extractAgentDescription(spec);
             String tools = extractAgentTools(spec, name);
@@ -113,24 +119,43 @@ public class SubagentRail extends DeepAgentRail {
         return String.join("\n", lines);
     }
 
-    private String extractAgentName(DeepAgentConfig.SubAgentConfig spec) {
-        if (spec == null || spec.getAgentCard() == null || spec.getAgentCard().getName() == null) {
+    private String extractAgentName(Object spec) {
+        if (spec instanceof DeepAgentConfig.SubAgentConfig subAgentSpec) {
+            if (subAgentSpec.getAgentCard() != null && subAgentSpec.getAgentCard().getName() != null) {
+                return subAgentSpec.getAgentCard().getName();
+            }
             return "general-purpose";
         }
-        return spec.getAgentCard().getName();
+        if (spec instanceof DeepAgent agent && agent.getCard() != null && agent.getCard().getName() != null) {
+            return agent.getCard().getName();
+        }
+        if (spec == null) {
+            return "general-purpose";
+        }
+        return "general-purpose";
     }
 
-    private String extractAgentDescription(DeepAgentConfig.SubAgentConfig spec) {
-        if (spec == null || spec.getAgentCard() == null || spec.getAgentCard().getDescription() == null) {
+    private String extractAgentDescription(Object spec) {
+        if (spec instanceof DeepAgentConfig.SubAgentConfig subAgentSpec) {
+            if (subAgentSpec.getAgentCard() != null && subAgentSpec.getAgentCard().getDescription() != null) {
+                return subAgentSpec.getAgentCard().getDescription();
+            }
             return "DeepAgent instance";
         }
-        return spec.getAgentCard().getDescription();
+        if (spec instanceof DeepAgent agent && agent.getCard() != null && agent.getCard().getDescription() != null) {
+            return agent.getCard().getDescription();
+        }
+        if (spec == null) {
+            return "DeepAgent instance";
+        }
+        return "DeepAgent instance";
     }
 
-    private String extractAgentTools(DeepAgentConfig.SubAgentConfig spec, String agentName) {
-        if (spec != null && spec.getTools() != null && !spec.getTools().isEmpty()) {
+    private String extractAgentTools(Object spec, String agentName) {
+        if (spec instanceof DeepAgentConfig.SubAgentConfig subAgentSpec
+                && subAgentSpec.getTools() != null && !subAgentSpec.getTools().isEmpty()) {
             List<String> names = new ArrayList<>();
-            for (Tool tool : spec.getTools()) {
+            for (Tool tool : subAgentSpec.getTools()) {
                 if (tool != null && tool.getCard() != null && tool.getCard().getName() != null) {
                     names.add(tool.getCard().getName());
                 }
@@ -139,6 +164,35 @@ public class SubagentRail extends DeepAgentRail {
                 return String.join(", ", names);
             }
         }
+        if (spec instanceof DeepAgent agent && !agent.getTools().isEmpty()) {
+            return String.join(", ", agent.getTools().keySet());
+        }
         return KNOWN_AGENT_TOOLS.getOrDefault(agentName, "All tools");
+    }
+
+    private static final class EmptySessionToolkit implements SessionTools.SessionToolkit {
+        @Override
+        public List<SessionTools.SessionTaskRow> listTasks(Map<String, Object> kwargs) {
+            return List.of();
+        }
+
+        @Override
+        public Map<String, Object> cancelTask(String taskId, Map<String, Object> kwargs) {
+            return Map.of("task_id", taskId == null ? "" : taskId, "status", "cancelled");
+        }
+
+        @Override
+        public Map<String, Object> spawnTask(
+                String title,
+                String prompt,
+                Map<String, Object> options,
+                Map<String, Object> kwargs
+        ) {
+            return Map.of(
+                    "title", title == null ? "" : title,
+                    "prompt", prompt == null ? "" : prompt,
+                    "status", "pending"
+            );
+        }
     }
 }

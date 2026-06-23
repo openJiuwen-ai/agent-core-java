@@ -97,6 +97,7 @@ public final class CliPromptBuilder {
         return "## Environment\n"
                 + "- CWD: " + cwd + "\n"
                 + "- Platform: " + System.getProperty("os.name") + " " + System.getProperty("os.arch") + "\n"
+                + "- Python: N/A\n"
                 + "- Java: " + System.getProperty("java.version") + "\n"
                 + "- Model: " + model + " (" + provider + ")\n"
                 + "- Git branch: " + gitBranch + "\n"

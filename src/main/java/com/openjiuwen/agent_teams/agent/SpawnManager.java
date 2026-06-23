@@ -163,14 +163,17 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
                         return CompletableFuture.completedFuture(false);
                     }
                     return teamBackend.getMember(memberName)
-                            .thenCompose(member -> restartWithRetries(
-                                    ctx,
-                                    member == null ? null : member.prompt(),
-                                    new SpawnOptions(30, 50),
-                                    memberName,
-                                    maxRetries,
-                                    1
-                            ));
+                            .thenCompose(rawMember -> {
+                                MemberRow member = rawMember instanceof MemberRow row ? row : null;
+                                return restartWithRetries(
+                                        ctx,
+                                        member == null ? null : member.prompt(),
+                                        new SpawnOptions(30, 50),
+                                        memberName,
+                                        maxRetries,
+                                        1
+                                );
+                            });
                 }));
     }
 
@@ -186,7 +189,8 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
         if (!(backend instanceof TeamBackendView teamBackend)) {
             return CompletableFuture.completedFuture(null);
         }
-        return teamBackend.getMember(memberName).thenApply(member -> {
+        return teamBackend.getMember(memberName).thenApply(rawMember -> {
+            MemberRow member = rawMember instanceof MemberRow row ? row : null;
             if (member == null) {
                 TEAM_LOGGER.error("Teammate %s not found in database", memberName);
                 return null;
@@ -549,7 +553,7 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
      * {@code openjiuwen/agent_teams/agent/spawn_manager.py}.</p>
      */
     public interface TeamBackendView {
-        CompletionStage<MemberRow> getMember(String memberName);
+        CompletionStage<Object> getMember(String memberName);
 
         CompletionStage<Boolean> updateMemberStatus(String memberName, String teamName, String status);
 

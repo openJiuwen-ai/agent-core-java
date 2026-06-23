@@ -14,6 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code ImageCaptioner} in
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
+ *
+ * <p>Mirrors Python's {@code TestImageCaptioner} in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_captioner.py}.</p>
  */
 class ImageCaptionerTest {
 
@@ -80,20 +85,38 @@ class ImageCaptionerTest {
     }
 
     @Test
-    void captionImagesPreservesOrderAndUsesEmptyCaptionForMissingFiles() throws Exception {
+    void captionImagesCallsLlmForEachImage() throws Exception {
         Path first = Files.writeString(tempDir.resolve("first.png"), "first");
         Path second = Files.writeString(tempDir.resolve("second.jpg"), "second");
-        RecordingModelClient client = new RecordingModelClient();
+        RecordingModelClient client = new RecordingModelClient("caption for first.png", "caption for second.jpg");
         ImageCaptioner captioner = new ImageCaptioner(new Model(client));
 
-        List<String> captions = captioner.captionImages(List.of(
-                first.toString(),
-                tempDir.resolve("missing.png").toString(),
-                second.toString()
-        )).join();
+        List<String> captions = captioner.captionImages(List.of(first.toString(), second.toString())).join();
 
-        assertThat(captions).containsExactly("caption text", "", "caption text");
+        assertThat(captions).containsExactly("caption for first.png", "caption for second.jpg");
         assertThat(client.invokeCount).isEqualTo(2);
+    }
+
+    @Test
+    void captionImagesHandlesLlmExceptionsAndContinues() throws Exception {
+        Path first = Files.writeString(tempDir.resolve("good.png"), "first");
+        Path bad = Files.writeString(tempDir.resolve("bad.png"), "bad");
+        Path third = Files.writeString(tempDir.resolve("good2.png"), "third");
+        RecordingModelClient client = new RecordingModelClient(
+                CompletableFuture.completedFuture(new AssistantMessage("ok:good.png")),
+                CompletableFuture.failedFuture(new RuntimeException("boom")),
+                CompletableFuture.completedFuture(new AssistantMessage("ok:good2.png"))
+        );
+        ImageCaptioner captioner = new ImageCaptioner(new Model(client));
+
+        List<String> captions = captioner.captionImages(List.of(first.toString(), bad.toString(), third.toString()))
+                .join();
+
+        assertThat(captions).hasSize(3);
+        assertThat(captions.get(0)).startsWith("ok:good.png");
+        assertThat(captions.get(1)).isEmpty();
+        assertThat(captions.get(2)).startsWith("ok:good2.png");
+        assertThat(client.invokeCount).isEqualTo(3);
     }
 
     /**
@@ -103,12 +126,30 @@ class ImageCaptionerTest {
     private static final class RecordingModelClient implements Model.ModelClient {
         private List<BaseMessage> messages = List.of();
         private int invokeCount;
+        private final Deque<CompletionStage<AssistantMessage>> responses = new ArrayDeque<>();
+
+        private RecordingModelClient() {
+        }
+
+        private RecordingModelClient(String... captions) {
+            for (String caption : captions) {
+                responses.add(CompletableFuture.completedFuture(new AssistantMessage(caption)));
+            }
+        }
+
+        @SafeVarargs
+        private RecordingModelClient(CompletionStage<AssistantMessage>... responses) {
+            this.responses.addAll(List.of(responses));
+        }
 
         @Override
         public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
             this.messages = messages;
             invokeCount++;
-            return CompletableFuture.completedFuture(new AssistantMessage("caption text"));
+            if (responses.isEmpty()) {
+                return CompletableFuture.completedFuture(new AssistantMessage("caption text"));
+            }
+            return responses.removeFirst();
         }
     }
 }

@@ -60,7 +60,7 @@ public final class ExploreAgent {
                 : card;
         DeepAgentConfig config = baseConfig(model, finalCard, systemPrompt == null
                 ? defaultSystemPrompt(resolvedLanguage)
-                : systemPrompt, tools, List.of(new SysOperationRail()), resolvedLanguage, enableTaskLoop);
+                : systemPrompt, tools, List.of(new SysOperationRail(false, true)), resolvedLanguage, enableTaskLoop);
         DeepAgentConfig.SubAgentConfig spec = new DeepAgentConfig.SubAgentConfig(
                 finalCard.getName(),
                 finalCard.getDescription(),

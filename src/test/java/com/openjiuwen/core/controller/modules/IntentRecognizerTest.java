@@ -38,6 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code IntentRecognizer} in
  * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestIntentRecognizer} in
+ * {@code tests/unit_tests/core/controller/test_intent_recognizer.py}.</p>
  */
 class IntentRecognizerTest {
 
@@ -180,6 +183,9 @@ class IntentRecognizerTest {
      *
      * <p>Mirrors Python's {@code Session.get_session_id} dependency in
      * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.</p>
+     *
+     * <p>Mirrors Python's {@code TestIntentRecognizer.setUp} helper context in
+     * {@code tests/unit_tests/core/controller/test_intent_recognizer.py}.</p>
      */
     private static final class FakeSession implements AgentSessionApi, ContextEngine.SessionPort {
 

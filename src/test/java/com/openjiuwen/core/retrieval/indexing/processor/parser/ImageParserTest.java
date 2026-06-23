@@ -18,8 +18,8 @@ import java.util.concurrent.CompletableFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Mirrors Python's {@code ImageParser} behavior covered from
- * {@code openjiuwen/core/retrieval/indexing/processor/parser/image_parser.py}.
+ * Mirrors Python's {@code TestImageParser} in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_image_parser.py}.
  */
 class ImageParserTest {
 
@@ -108,8 +108,8 @@ class ImageParserTest {
     }
 
     /**
-     * Mirrors Python's injected captioner test seam for {@code ImageParser} in
-     * {@code openjiuwen/core/retrieval/indexing/processor/parser/image_parser.py}.
+     * Mirrors Python's patched {@code ImageCaptioner} constructor seam in
+     * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_image_parser.py}.
      */
     private static final class TestableImageParser extends ImageParser {
         private final ImageCaptioner captioner;
@@ -132,8 +132,8 @@ class ImageParserTest {
     }
 
     /**
-     * Mirrors Python's patched {@code ImageCaptioner} collaborator for {@code ImageParser} in
-     * {@code openjiuwen/core/retrieval/indexing/processor/parser/image_parser.py}.
+     * Mirrors Python's patched {@code ImageCaptioner} collaborator in
+     * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_image_parser.py}.
      */
     private static final class StubCaptioner extends ImageCaptioner {
         private final List<String> captions;

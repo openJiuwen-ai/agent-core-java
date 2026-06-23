@@ -24,6 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's focused file-store coverage for
  * {@code openjiuwen/agent_evolving/agent_rl/offline/store/file_store.py}.
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.agent_rl.offline.store.test_file_store} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/store/test_file_store.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code tests/system_tests/agent_evolving/agent_rl/offline/store/test_file_store_e2e.py}.
+ * </p>
  */
 @DisplayName("FileRolloutStore Tests")
 class FileRolloutStoreTest {

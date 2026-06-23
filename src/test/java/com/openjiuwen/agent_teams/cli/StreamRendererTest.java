@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code stream_renderer} module in
  * {@code openjiuwen/agent_teams/cli/stream_renderer.py}.
+ *
+ * <p>Mirrors Python's {@code test_stream_renderer} module in
+ * {@code tests/unit_tests/agent_teams/cli/test_stream_renderer.py}.</p>
  */
 class StreamRendererTest {
 
@@ -126,6 +129,7 @@ class StreamRendererTest {
         spec.setTeamName("team-a");
         ByteArrayOutputStream terminal = new ByteArrayOutputStream();
         ByteArrayOutputStream console = new ByteArrayOutputStream();
+        List<String> callbackArgs = new ArrayList<>();
 
         StreamRenderer.StreamSource source = (teamSpec, inputs, sessionId) ->
                 CompletableFuture.completedFuture(chunks(
@@ -143,7 +147,10 @@ class StreamRendererTest {
                 Map.of("query", "hello"),
                 printStream(terminal),
                 printStream(console),
-                null,
+                (teamName, sessionId, payload) -> {
+                    callbackArgs.add(teamName + ":" + sessionId + ":" + payload.get("event_type"));
+                    return CompletableFuture.completedFuture(null);
+                },
                 true,
                 source,
                 new CliRenderer(),
@@ -153,6 +160,7 @@ class StreamRendererTest {
         handle.getTask().join();
 
         assertEquals("team-a", handle.getRuntimeReady().join().get("team_name"));
+        assertEquals(List.of("team-a:session-a:team.runtime_ready"), callbackArgs);
         assertTrue(console.toString(StandardCharsets.UTF_8).contains("[team-a] stream started"));
         assertTrue(terminal.toString(StandardCharsets.UTF_8).contains("hello"));
     }

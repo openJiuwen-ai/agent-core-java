@@ -27,7 +27,7 @@ public class RRFRankConfig extends BaseRankConfig {
 
     public RRFRankConfig(int k) {
         this();
-        this.k = k;
+        setK(k);
     }
 
     public RRFRankConfig(boolean nameDense, boolean contentDense, boolean contentSparse) {
@@ -63,6 +63,9 @@ public class RRFRankConfig extends BaseRankConfig {
     }
 
     public void setK(int k) {
+        if (k < 0) {
+            throw new IllegalArgumentException("k must be greater than or equal to 0");
+        }
         this.k = k;
     }
 

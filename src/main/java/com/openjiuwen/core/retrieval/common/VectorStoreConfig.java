@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Set;
 import java.util.regex.Pattern;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,8 @@ import lombok.NoArgsConstructor;
 public class VectorStoreConfig {
 
     private static final Pattern DATABASE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]*$");
+
+    private static final Set<String> VALID_DISTANCE_METRICS = Set.of("cosine", "euclidean", "dot");
 
     @JsonProperty("store_provider")
     private StoreType storeProvider;
@@ -40,8 +43,8 @@ public class VectorStoreConfig {
     public VectorStoreConfig(StoreType storeProvider, String databaseName, String collectionName, String distanceMetric) {
         this.storeProvider = storeProvider;
         setDatabaseName(databaseName == null ? "" : databaseName);
-        this.collectionName = collectionName;
-        this.distanceMetric = distanceMetric == null ? "cosine" : distanceMetric;
+        setCollectionName(collectionName);
+        setDistanceMetric(distanceMetric);
     }
 
     public void setDatabaseName(String databaseName) {
@@ -50,5 +53,20 @@ public class VectorStoreConfig {
             throw new IllegalArgumentException("database_name must match ^[A-Za-z0-9_]*$");
         }
         this.databaseName = value;
+    }
+
+    public void setCollectionName(String collectionName) {
+        if (collectionName == null) {
+            throw new IllegalArgumentException("collection_name is required");
+        }
+        this.collectionName = collectionName;
+    }
+
+    public void setDistanceMetric(String distanceMetric) {
+        String value = distanceMetric == null ? "cosine" : distanceMetric;
+        if (!VALID_DISTANCE_METRICS.contains(value)) {
+            throw new IllegalArgumentException("distance_metric must be one of cosine, euclidean, dot");
+        }
+        this.distanceMetric = value;
     }
 }

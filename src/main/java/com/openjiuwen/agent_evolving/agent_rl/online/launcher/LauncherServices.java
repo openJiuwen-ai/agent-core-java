@@ -323,8 +323,17 @@ public final class LauncherServices {
     }
 
     public static JiuwenClawProcesses startJiuwenClaw(JiuwenClawStartOptions options) {
+        return startJiuwenClaw(options, System.getenv(), LauncherServices::spawnProcess);
+    }
+
+    static JiuwenClawProcesses startJiuwenClaw(
+            JiuwenClawStartOptions options,
+            Map<String, String> baseEnvironment,
+            ProcessSpawner processSpawner
+    ) {
         Objects.requireNonNull(options, "options must not be null");
-        Map<String, String> env = new LinkedHashMap<>(System.getenv());
+        ProcessSpawner safeSpawner = Objects.requireNonNull(processSpawner, "processSpawner must not be null");
+        Map<String, String> env = new LinkedHashMap<>(baseEnvironment == null ? Map.of() : baseEnvironment);
         String trajectoryTenantId = firstNonBlank(
                 env.get("RL_ONLINE_TENANT_ID"),
                 env.get("WEB_USER_ID"),
@@ -342,7 +351,7 @@ public final class LauncherServices {
         env.put("WEB_HOST", options.appHost());
         env.put("WEB_PORT", String.valueOf(options.wsPort()));
 
-        Process appProc = spawnProcess(new ProcessLaunchSpec(
+        Process appProc = safeSpawner.spawn(new ProcessLaunchSpec(
                 List.of(pythonExecutable(), "-m", "jiuwenclaw.app"),
                 env,
                 options.jiuwenclawRepo(),
@@ -368,7 +377,7 @@ public final class LauncherServices {
                     "--proxy-target",
                     "http://" + urlHost(options.appHost()) + ":" + options.wsPort()
             );
-            webProc = spawnProcess(new ProcessLaunchSpec(webCmd, env, options.jiuwenclawRepo(), null));
+            webProc = safeSpawner.spawn(new ProcessLaunchSpec(webCmd, env, options.jiuwenclawRepo(), null));
         } else {
             LOGGER.warning("Web dist not found, skipping frontend.");
         }
@@ -457,5 +466,10 @@ public final class LauncherServices {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize JSON", exception);
         }
+    }
+
+    @FunctionalInterface
+    interface ProcessSpawner {
+        Process spawn(ProcessLaunchSpec spec);
     }
 }

@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.dreaming;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -116,13 +117,17 @@ public final class DreamingOrchestrator {
                 Throwable root = unwrap(throwable);
                 if (root == null) {
                     LOGGER.log(Level.INFO, "[{0}] sweep completed", name);
-                } else if (root instanceof java.util.concurrent.CancellationException) {
+                } else if (root instanceof CancellationException) {
                     LOGGER.log(Level.FINE, "[" + name + "] sweep cancelled", root);
+                    throw new CompletionException(root);
                 } else {
                     LOGGER.log(Level.SEVERE, "[" + name + "] sweep exception: " + root.getMessage(), root);
                 }
                 return null;
             });
+        } catch (CancellationException cancellationException) {
+            LOGGER.log(Level.FINE, "[" + name + "] sweep cancelled", cancellationException);
+            return CompletableFuture.failedFuture(cancellationException);
         } catch (Exception exception) {
             LOGGER.log(Level.SEVERE, "[" + name + "] sweep exception: " + exception.getMessage(), exception);
             return CompletableFuture.completedFuture(null);
@@ -140,6 +145,10 @@ public final class DreamingOrchestrator {
             Thread.currentThread().interrupt();
         } catch (CompletionException completionException) {
             Throwable root = unwrap(completionException);
+            if (root instanceof CancellationException) {
+                LOGGER.log(Level.FINE, "[" + name + "] loop cancelled", root);
+                throw completionException;
+            }
             if (!(root instanceof InterruptedException)) {
                 LOGGER.log(Level.SEVERE,
                         "[" + name + "] loop terminated by unexpected error (running=" + running

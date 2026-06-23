@@ -231,7 +231,9 @@ public final class TeamCliCommands {
             context.console().println("[red]no spec registered for " + args.get(0) + "[/red]");
             return completed();
         }
-        context.console().println(String.valueOf(entry.spec()));
+        context.console().println("team_name=" + entry.spec().getTeamName()
+                + " source=" + entry.source()
+                + " members=" + safeSize(entry.spec().getPredefinedMembers()));
         return completed();
     }
 

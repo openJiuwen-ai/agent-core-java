@@ -28,8 +28,11 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Unit tests for {@link MemberMemoryToolkit}.
  *
- * <p>Mirrors Python's {@code test_member_memory_toolkit.py} for
+ * <p>Mirrors Python's {@code MemberMemoryToolkit} in
  * {@code openjiuwen/agent_teams/memory/member_memory_toolkit.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.memory.team.test_member_memory_toolkit} in
+ * {@code tests/unit_tests/core/memory/team/test_member_memory_toolkit.py}.</p>
  */
 class MemberMemoryToolkitTest {
 
@@ -80,15 +83,24 @@ class MemberMemoryToolkitTest {
     }
 
     @Test
-    void getToolsAndToolCardsReturnLists() {
+    void getToolsReturnsList() {
         MemberMemoryToolkit toolkit = toolkit("eve", "team1", "general", false, new FakeProvider());
 
         assertThat(toolkit.getTools()).isEmpty();
-        assertThat(toolkit.getToolCards()).isEmpty();
 
         await(toolkit.initialize());
 
         assertThat(toolkit.getTools()).hasSize(5);
+    }
+
+    @Test
+    void getToolCardsReturnsList() {
+        MemberMemoryToolkit toolkit = toolkit("frank", "team1", "general", false, new FakeProvider());
+
+        assertThat(toolkit.getToolCards()).isEmpty();
+
+        await(toolkit.initialize());
+
         assertThat(toolkit.getToolCards()).extracting(ToolCard::name).contains("memory_search");
     }
 
@@ -122,6 +134,16 @@ class MemberMemoryToolkitTest {
     }
 
     @Test
+    void createGeneralToolsReturnsList() {
+        MemberMemoryToolkit toolkit = toolkit("iris", "team1", "general", false, new FakeProvider());
+        await(toolkit.initialize());
+
+        List<MemoryLocalFunction> tools = MemberMemoryToolkit.createGeneralTools(toolkit, false);
+
+        assertThat(tools).isNotEmpty();
+    }
+
+    @Test
     void createGeneralToolsReturnsFewerToolsInReadOnlyMode() {
         MemberMemoryToolkit readWrite = toolkit("jack", "team1", "general", false, new FakeProvider());
         MemberMemoryToolkit readOnly = toolkit("jack_ro", "team1", "general", true, new FakeProvider());
@@ -135,6 +157,16 @@ class MemberMemoryToolkitTest {
         assertThat(toolsReadOnly).hasSize(3);
         assertThat(toolsReadOnly).extracting(tool -> tool.card().name())
                 .doesNotContain("write_memory", "edit_memory");
+    }
+
+    @Test
+    void createCodingToolsReturnsList() {
+        MemberMemoryToolkit toolkit = toolkit("kate", "team1", "coding", false, new FakeProvider());
+        await(toolkit.initialize());
+
+        List<MemoryLocalFunction> tools = MemberMemoryToolkit.createCodingTools(toolkit, false);
+
+        assertThat(tools).isNotEmpty();
     }
 
     @Test

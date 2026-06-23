@@ -33,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code TestA2ATransformer} in
  * {@code tests/unit_tests/extensions/a2a/test_a2a_transformer.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestA2AClient} request construction in
+ * {@code tests/unit_tests/extensions/a2a/test_a2a_client.py}.</p>
  */
 class A2ATransformerTest {
     @Test
@@ -87,6 +90,7 @@ class A2ATransformerTest {
                 "media_type", "text/csv",
                 "filename", "data.csv",
                 "metadata", Map.of("file_size", 10245))));
+        request.put("reference_task_ids", List.of("task-reference-1"));
         request.put("city", null);
         request.put("extensions", List.of("https://example.com/extensions/typing-indicator"));
 
@@ -95,7 +99,29 @@ class A2ATransformerTest {
         assertThat(result.getMessage().getContextId()).isEqualTo("context-file-1");
         assertThat(result.getMessage().getParts().get(0).getText()).isEqualTo("please analyze this file");
         assertThat(result.getMessage().getMetadata()).containsKeys("files", "extensions");
+        assertThat(result.getMessage().getMetadata()).containsEntry("reference_task_ids", List.of("task-reference-1"));
         assertThat(result.getMessage().getMetadata()).doesNotContainKey("city");
+    }
+
+    @Test
+    void toA2aRequestBuildsFileRequestMetadata() {
+        Map<String, Object> file = Map.of(
+                "url", "https://example.com/data.csv",
+                "media_type", "text/csv",
+                "filename", "data.csv",
+                "metadata", Map.of("file_size", 10245));
+        Map<String, Object> request = Map.of(
+                "query", "please analyze this file",
+                "sessionId", "context-file-1",
+                "files", List.of(file));
+
+        SendMessageRequest result = A2ATransformer.toA2aRequest(request);
+
+        A2aMessage message = result.getMessage();
+        assertThat(message.getContextId()).isEqualTo("context-file-1");
+        assertThat(message.getParts()).hasSize(1);
+        assertThat(message.getParts().get(0).getText()).isEqualTo("please analyze this file");
+        assertThat(message.getMetadata()).containsEntry("files", List.of(file));
     }
 
     @Test
@@ -231,9 +257,14 @@ class A2ATransformerTest {
             assertThat(result.getStatus()).as(String.valueOf(entry.getKey())).isEqualTo(entry.getValue());
         }
 
-        TaskStatusUpdateEvent numeric = new TaskStatusUpdateEvent();
-        numeric.setStatus(new A2aTaskStatus(3));
-        assertThat(A2ATransformer.fromA2aResponse(numeric).getStatus()).isEqualTo(TaskStatus.COMPLETED);
+    }
+
+    @Test
+    void fromA2aStatusUpdateReturnsCompletedAgentResultFromNumericState() {
+        TaskStatusUpdateEvent event = new TaskStatusUpdateEvent();
+        event.setStatus(new A2aTaskStatus(3));
+
+        assertThat(A2ATransformer.fromA2aResponse(event).getStatus()).isEqualTo(TaskStatus.COMPLETED);
     }
 
     @Test
@@ -259,7 +290,7 @@ class A2ATransformerTest {
     }
 
     @Test
-    void fromClientEventReturnsAgentResultAndFallsBackToTaskWhenNoPayload() {
+    void fromClientEventReturnsAgentResult() {
         A2aTask task = new A2aTask();
         task.setId("task-event-1");
         task.setContextId("context-event-1");
@@ -272,7 +303,11 @@ class A2ATransformerTest {
         assertThat(result.getTaskId()).isEqualTo("task-event-1");
         assertThat(result.getSessionId()).isEqualTo("context-event-1");
         assertThat(result.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+    }
 
+    @Test
+    void fromClientEventFallsBackToTaskWhenStreamResponseHasNoPayload() {
+        A2aTask task = new A2aTask();
         StreamResponse empty = new StreamResponse();
         task.setId("task-fallback-1");
         task.setContextId("context-fallback-1");

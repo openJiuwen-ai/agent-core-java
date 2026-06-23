@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agent_teams.messager;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -15,9 +16,12 @@ import java.util.Map;
  */
 public class SubscriptionHandle {
 
+    @JsonProperty("subscription_id")
     private String subscriptionId;
     private String topic;
+    @JsonProperty("agent_id")
     private String agentId;
+    @JsonProperty("backend_metadata")
     private Map<String, Object> backendMetadata = new LinkedHashMap<>();
 
     public SubscriptionHandle() {

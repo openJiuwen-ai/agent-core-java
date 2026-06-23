@@ -20,6 +20,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code test_router.py} for
  * {@code openjiuwen/agent_teams/interaction/router.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_teams.interaction.test_router} in
+ * {@code tests/unit_tests/agent_teams/interaction/test_router.py}.</p>
  */
 class InteractionRouterTest {
 

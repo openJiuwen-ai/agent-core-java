@@ -195,7 +195,7 @@ public class Controller {
         if (controllerState == null) {
             Loggers.CONTROLLER.info("No saved state found for session {}, clearing task manager",
                     session.getSessionId());
-            taskManager.clearState();
+            clearTaskManagerStateForSession(session.getSessionId());
             return false;
         }
 
@@ -203,7 +203,7 @@ public class Controller {
             Map<String, Object> stateMap = (Map<String, Object>) controllerState;
             Object tmState = stateMap.get("task_manager_state");
             if (tmState == null) {
-                taskManager.clearState();
+                clearTaskManagerStateForSession(session.getSessionId());
                 return false;
             }
 
@@ -216,9 +216,17 @@ public class Controller {
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Failed to restore TaskManager state for session {}: {}, clearing instead",
                     session.getSessionId(), e.getMessage());
-            taskManager.clearState();
+            clearTaskManagerStateForSession(session.getSessionId());
             return false;
         }
+    }
+
+    private void clearTaskManagerStateForSession(String sessionId) {
+        List<Task> sessionTasks = taskManager.getTask(TaskFilter.bySessionId(sessionId));
+        if (sessionTasks.isEmpty()) {
+            return;
+        }
+        taskManager.removeTask(TaskFilter.bySessionId(sessionId));
     }
 
     private void saveTaskManagerState(AgentSessionApi session) {

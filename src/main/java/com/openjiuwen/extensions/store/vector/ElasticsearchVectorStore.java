@@ -341,14 +341,19 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
     public CompletableFuture<List<String>> listCollectionNames() {
         return CompletableFuture.supplyAsync(() -> {
             String prefix = indexPrefix + "__";
-            Map<String, Object> response = es.indices().get(prefix + "*");
-            List<String> names = new ArrayList<>();
-            for (String indexName : response.keySet()) {
-                if (indexName.startsWith(prefix)) {
-                    names.add(indexName.substring(prefix.length()));
+            try {
+                Map<String, Object> response = es.indices().get(prefix + "*");
+                List<String> names = new ArrayList<>();
+                for (String indexName : response.keySet()) {
+                    if (indexName.startsWith(prefix)) {
+                        names.add(indexName.substring(prefix.length()));
+                    }
                 }
+                return names;
+            } catch (RuntimeException exception) {
+                LOGGER.log(Level.WARNING, "Failed to list collection names", exception);
+                return List.of();
             }
-            return names;
         });
     }
 

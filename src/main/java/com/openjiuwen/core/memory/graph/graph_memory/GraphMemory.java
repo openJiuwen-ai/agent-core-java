@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.store.Embedding;
 import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
@@ -354,7 +355,7 @@ public class GraphMemory {
         try {
             LlmResponse response = invokeLlm(
                     Map.of("content", content, "src_type", srcType.name()),
-                    PromptTemplate.builder().name("extract_entity").content(content).build(),
+                    stringPrompt("extract_entity", content),
                     new ExtractionModels.EntityDeclaration().responseFormat(),
                     Map.of()).join();
             List<Map<String, Object>> declarationMaps = normalizeDeclarationMaps(parseJson(response.content()));
@@ -467,7 +468,7 @@ public class GraphMemory {
                     mergeInfo.getNewRelations().addAll(relationList);
                     CompletableFuture<LlmResponse> task = invokeLlm(
                             Map.of("target", mergeInfo.getTarget().getName()),
-                            PromptTemplate.builder().name("filter_relations").content("filter").build(),
+                            stringPrompt("filter_relations", "filter"),
                             state.getPrompting().getSchemaRelationFilter(),
                             Map.of());
                     state.getRelationFilterTasks().put(task,
@@ -578,7 +579,7 @@ public class GraphMemory {
                 }
                 state.getTasks().add(invokeLlm(
                         Map.of("entity", entity.getName()),
-                        PromptTemplate.builder().name("extract_entity_attributes").content(content).build(),
+                        stringPrompt("extract_entity_attributes", content),
                         state.getPrompting().getSchemaEntityExtraction(),
                         Map.of()));
             }
@@ -657,7 +658,7 @@ public class GraphMemory {
                 if (!currentRelations.isEmpty()) {
                     CompletableFuture<LlmResponse> future = invokeLlm(
                             Map.of("relation", relation.getContent()),
-                            PromptTemplate.builder().name("dedupe_relation_list").content(content).build(),
+                            stringPrompt("dedupe_relation_list", content),
                             state.getPrompting().getSchemaRelationMerge(),
                             Map.of());
                     dedupeTasks.add(new GraphMemoryPostProcessor.DedupeRelationTask(relation, currentRelations, future));
@@ -1036,6 +1037,13 @@ public class GraphMemory {
         copy.setRerank(source.isRerank());
         copy.setLanguage(source.getLanguage());
         return copy;
+    }
+
+    private static PromptTemplate stringPrompt(String name, String content) {
+        return PromptTemplate.builder()
+                .name(name)
+                .content(List.of(UserMessage.builder().content(content == null ? "" : content).build()))
+                .build();
     }
 
     private static BaseGraphObject graphObjectFromMap(String collection, Map<String, Object> row) {

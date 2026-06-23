@@ -5,6 +5,8 @@
 package com.openjiuwen.core.workflow.component;
 
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -95,10 +97,58 @@ public class TemplateUtils {
                                           String placeholder, String name) {
         if (inputs.containsKey(name)) {
             Object value = inputs.get(name);
-            result.append(value == null ? "None" : value);
+            result.append(stringifyTemplateValue(value));
         } else {
             result.append(placeholder);
         }
+    }
+
+    static String stringifyTemplateValue(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        return pythonRepr(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<?, ?> ordered = map instanceof LinkedHashMap<?, ?> ? map : new LinkedHashMap<>(map);
+            StringBuilder builder = new StringBuilder("{");
+            Iterator<? extends Map.Entry<?, ?>> iterator = ordered.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<?, ?> entry = iterator.next();
+                builder.append(pythonRepr(String.valueOf(entry.getKey()))).append(": ")
+                        .append(pythonRepr(entry.getValue()));
+                if (iterator.hasNext()) {
+                    builder.append(", ");
+                }
+            }
+            return builder.append("}").toString();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            StringBuilder builder = new StringBuilder("[");
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                builder.append(pythonRepr(iterator.next()));
+                if (iterator.hasNext()) {
+                    builder.append(", ");
+                }
+            }
+            return builder.append("]").toString();
+        }
+        return String.valueOf(value);
     }
 
     private static boolean isIdentifier(String value) {

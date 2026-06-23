@@ -21,6 +21,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code shared_resources} module in
  * {@code openjiuwen/agent_teams/spawn/shared_resources.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental missing-test coverage in
+ * {@code tests/unit_tests/agent_teams/test_shared_resources.py}.</p>
  */
 class SharedResourcesTest {
 

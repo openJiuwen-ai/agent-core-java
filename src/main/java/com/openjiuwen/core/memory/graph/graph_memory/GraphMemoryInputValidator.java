@@ -32,19 +32,19 @@ public final class GraphMemoryInputValidator {
     private GraphMemoryInputValidator() {
     }
 
-    public static void validateAddMemoryInput(int userIdMaxLength, EpisodeType srcType, String userId) {
+    public static void validateAddMemoryInput(int userIdMaxLength, Object srcType, Object userId) {
         validateAddMemoryInput(userIdMaxLength, srcType, userId, null);
     }
 
     public static void validateAddMemoryInput(int userIdMaxLength,
-                                              EpisodeType srcType,
-                                              String userId,
-                                              Map<?, ?> contentFmtKwargs) {
+                                              Object srcType,
+                                              Object userId,
+                                              Object contentFmtKwargs) {
         if (contentFmtKwargs != null) {
-            if (contentFmtKwargs.isEmpty()) {
+            if (!(contentFmtKwargs instanceof Map<?, ?> contentFmtKwargsMap) || contentFmtKwargsMap.isEmpty()) {
                 throw validationError("When supplied, content_fmt_kwargs must be of type dict[str, str] and not empty");
             }
-            for (Map.Entry<?, ?> entry : contentFmtKwargs.entrySet()) {
+            for (Map.Entry<?, ?> entry : contentFmtKwargsMap.entrySet()) {
                 if (!(entry.getKey() instanceof String key)
                         || !(entry.getValue() instanceof String value)
                         || key.isEmpty()
@@ -53,17 +53,19 @@ public final class GraphMemoryInputValidator {
                 }
             }
         }
-        if (srcType == null) {
+        if (!(srcType instanceof EpisodeType)) {
             throw validationError("src_type must be one of [EpisodeType.CONVERSATION, EpisodeType.DOCUMENT, "
                     + "EpisodeType.JSON]");
         }
-        if (userId == null || userId.trim().isEmpty() || userId.trim().length() > userIdMaxLength) {
+        if (!(userId instanceof String userIdText)
+                || userIdText.trim().isEmpty()
+                || userIdText.trim().length() > userIdMaxLength) {
             throw validationError("user_id must be a string of length <= " + userIdMaxLength + " (preferably UUID4)");
         }
     }
 
-    public static List<String> validateSearchInput(String query, Object userId, List<?> settings) {
-        if (query == null || query.trim().isEmpty()) {
+    public static List<String> validateSearchInput(Object query, Object userId, List<?> settings) {
+        if (!(query instanceof String queryText) || queryText.trim().isEmpty()) {
             throw validationError("query must be a non-empty string value");
         }
         List<?> rawUserIds;

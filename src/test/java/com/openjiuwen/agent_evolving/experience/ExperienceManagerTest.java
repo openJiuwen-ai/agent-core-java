@@ -6,11 +6,12 @@ package com.openjiuwen.agent_evolving.experience;
 
 import com.openjiuwen.agent_evolving.ApplyResult;
 import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.UpdateExecution;
+import com.openjiuwen.agent_evolving.UpdateValue;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionLog;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
 import com.openjiuwen.core.operator.skill_call.SkillExperienceOperator;
 
 import org.junit.jupiter.api.Test;
@@ -146,6 +147,25 @@ class ExperienceManagerTest {
     }
 
     @Test
+    void stageRecordsUsesManagerApplyUpdatesSemantics() {
+        CapturingPreviewManager manager = new CapturingPreviewManager(new FakeExperienceStore(), scorer(List.of()));
+        EvolutionRecord record = record("rec-1", "payload");
+
+        ExperienceApprovalRequest request = manager.stageRecords("skill-a", List.of(record));
+
+        assertEquals(List.of("skill_experience_skill-a"), new ArrayList<>(manager.capturedOperators.keySet()));
+        UpdateKey key = UpdateKey.of("skill_experience_skill-a", Protocols.EXPERIENCES_TARGET);
+        assertTrue(manager.capturedUpdates.containsKey(key));
+        UpdateValue update = manager.capturedUpdates.get(key);
+        assertEquals(List.of(record), update.getPayload());
+        assertEquals(Protocols.APPEND_MODE, update.getMode());
+        assertEquals(Protocols.PENDING_CHANGE_EFFECT, update.getEffect());
+        assertEquals(Protocols.SKILL_EXPERIENCE_ENTRY, update.getChangeType());
+        assertEquals(1, request.getApplyResults().size());
+        assertEquals(List.of(record), request.getApplyResults().get(0).getRecords());
+    }
+
+    @Test
     void stageApplyResultsReturnsRewrittenPendingWhenStageHelperRewritesSnapshot() {
         RewritingExperienceManager manager = new RewritingExperienceManager(new FakeExperienceStore(), scorer(List.of()));
         EvolutionRecord record = record("rec-1", "from-apply");
@@ -202,6 +222,35 @@ class ExperienceManagerTest {
 
         assertEquals(1, result.getAppliedCount());
         assertEquals(1, result.getRejectedCount());
+        assertEquals(List.of(recordOne), store.appendedRecords);
+        assertFalse(manager.getPendingApprovalSnapshots().containsKey(request.getRequestId()));
+    }
+
+    @Test
+    void approveRequestFailureRetriesOnlyApprovedRecordIds() {
+        ExperienceManager manager = manager();
+        FakeExperienceStore store = (FakeExperienceStore) managerStore(manager);
+        EvolutionRecord recordOne = record("rec-1", "one");
+        EvolutionRecord recordTwo = record("rec-2", "two");
+        ExperienceApprovalRequest request = manager.stageRecords("skill-a", List.of(recordOne, recordTwo));
+        store.failAppendAtIndex = 0;
+
+        ExperienceApplyResult first = manager.approveRequest(request.getRequestId(), List.of("rec-1"))
+                .toCompletableFuture()
+                .join();
+
+        assertEquals(0, first.getAppliedCount());
+        assertEquals(1, first.getRejectedCount());
+        assertEquals(1, first.getPendingCount());
+        assertEquals(List.of("disk full"), first.getErrors());
+        assertEquals(List.of(recordOne), manager.getPendingApprovalSnapshots().get(request.getRequestId()).getPayload());
+
+        store.failAppendAtIndex = -1;
+        ExperienceApplyResult retry = manager.retryRequest(request.getRequestId()).toCompletableFuture().join();
+
+        assertEquals(1, retry.getAppliedCount());
+        assertEquals(0, retry.getRejectedCount());
+        assertEquals(0, retry.getPendingCount());
         assertEquals(List.of(recordOne), store.appendedRecords);
         assertFalse(manager.getPendingApprovalSnapshots().containsKey(request.getRequestId()));
     }
@@ -460,6 +509,43 @@ class ExperienceManagerTest {
             getPendingApprovalSnapshots().remove(staged.getChangeId());
             getPendingApprovalSnapshots().put(clone.getChangeId(), clone);
             return clone;
+        }
+    }
+
+    private static final class CapturingPreviewManager extends ExperienceManager {
+
+        private final Map<String, SkillExperienceOperator> capturedOperators = new LinkedHashMap<>();
+        private final Map<UpdateKey, UpdateValue> capturedUpdates = new LinkedHashMap<>();
+
+        private CapturingPreviewManager(ExperienceStore store, ExperienceScorer scorer) {
+            super(store, scorer);
+        }
+
+        @Override
+        public List<ApplyResult> previewApplyResults(String skillName, SkillExperienceOperator operator, UpdateValue update) {
+            capturedOperators.put(operator.getOperatorId(), operator);
+            capturedUpdates.put(UpdateKey.of(operator.getOperatorId(), Protocols.EXPERIENCES_TARGET), update);
+            return List.of(ApplyResult.builder()
+                    .operatorId(operator.getOperatorId())
+                    .target(Protocols.EXPERIENCES_TARGET)
+                    .applied(true)
+                    .mode(update.getMode())
+                    .effect(update.getEffect())
+                    .value(update.getPayload())
+                    .records(asApplyRecords(update.getPayload()))
+                    .changeType(update.getChangeType())
+                    .lifecycleStage(Protocols.LOCAL_APPLY_COMPLETED)
+                    .build());
+        }
+
+        private static List<Object> asApplyRecords(Object payload) {
+            if (payload == null) {
+                return List.of();
+            }
+            if (payload instanceof List<?> list) {
+                return new ArrayList<>(list);
+            }
+            return List.of(payload);
         }
     }
 

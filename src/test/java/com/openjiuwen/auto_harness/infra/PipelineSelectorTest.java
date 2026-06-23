@@ -14,6 +14,11 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Pipeline selector routing parity tests.
+ *
+ * <p>Mirrors Python's {@code tests/unit_tests/auto_harness/test_pipeline_selector.py}.</p>
+ */
 class PipelineSelectorTest {
 
     @Test

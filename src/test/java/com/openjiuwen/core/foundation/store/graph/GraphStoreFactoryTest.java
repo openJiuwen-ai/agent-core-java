@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code GraphStoreFactory} in
  * {@code openjiuwen/core/foundation/store/graph/base.py}.
+ *
+ * <p>Mirrors Python's {@code TestGraphStoreFactoryCannotInstantiate},
+ * {@code TestRegisterBackend}, and {@code TestFromConfig} in
+ * {@code tests/unit_tests/core/foundation/store/graph/test_base.py}.</p>
  */
 class GraphStoreFactoryTest {
 
@@ -69,6 +73,14 @@ class GraphStoreFactoryTest {
     }
 
     @Test
+    void duplicateNameWithForceOverwritesExistingBackend() {
+        GraphStoreFactory.registerBackend("test_force", FakeGraphStore.class);
+        GraphStoreFactory.registerBackend("test_force", AlternateGraphStore.class, true);
+
+        assertSame(AlternateGraphStore.class, GraphStoreFactory.getBackendClass("test_force"));
+    }
+
+    @Test
     void registerBackendValidatesGraphStoreProtocolUnlessForced() {
         BaseError protocol = assertThrows(BaseError.class,
                 () -> GraphStoreFactory.registerBackend("bad", String.class));
@@ -78,6 +90,22 @@ class GraphStoreFactoryTest {
         GraphStoreFactory.registerBackend("bad", String.class, true);
         assertSame(String.class, GraphStoreFactory.getBackendClass("bad"));
         assertTrue(GraphStoreFactory.isRegistered("bad"));
+    }
+
+    @Test
+    void backendNotGraphStoreWithForceIsRegistered() {
+        GraphStoreFactory.registerBackend("bad_force", Object.class, true);
+
+        assertTrue(GraphStoreFactory.isRegistered("bad_force"));
+        assertSame(Object.class, GraphStoreFactory.getBackendClass("bad_force"));
+    }
+
+    @Test
+    void happyPathRegistersAndRetrievesBackend() {
+        GraphStoreFactory.registerBackend("happy_backend", FakeGraphStore.class);
+
+        assertTrue(GraphStoreFactory.isRegistered("happy_backend"));
+        assertSame(FakeGraphStore.class, GraphStoreFactory.getBackendClass("happy_backend"));
     }
 
     @Test
@@ -101,6 +129,21 @@ class GraphStoreFactoryTest {
     }
 
     @Test
+    void knownBackendReturnsFromConfigResult() {
+        GraphStoreFactory.registerBackend("known_test", FakeGraphStore.class);
+        GraphConfig config = GraphConfig.builder()
+                .uri("known.db")
+                .backend("known_test")
+                .build();
+
+        GraphStore result = GraphStoreFactory.fromConfig(config, null, Map.of("foo", "bar"));
+
+        assertTrue(result instanceof FakeGraphStore);
+        assertSame(config, FakeGraphStore.lastConfig);
+        assertEquals(Map.of("foo", "bar"), FakeGraphStore.lastKwargs);
+    }
+
+    @Test
     void fromConfigRaisesBackendNotFoundForUnknownName() {
         GraphConfig config = GraphConfig.builder()
                 .uri("graph-factory.db")
@@ -114,7 +157,23 @@ class GraphStoreFactoryTest {
         assertFalse(GraphStoreFactory.isRegistered("missing"));
     }
 
-    private static class FakeGraphStore implements GraphStore {
+    @Test
+    void milvusBackendRegistersSupportAndRetries() {
+        GraphStoreFactory.setMilvusSupportClassForTest(GraphStoreFactoryMilvusSupportTestHook.class.getName());
+        GraphConfig config = GraphConfig.builder()
+                .uri("http://localhost:19530")
+                .backend("milvus")
+                .build();
+
+        GraphStore result = GraphStoreFactory.fromConfig(config);
+
+        assertTrue(result instanceof FakeGraphStore);
+        assertTrue(GraphStoreFactory.isRegistered("milvus"));
+        assertSame(FakeGraphStore.class, GraphStoreFactory.getBackendClass("milvus"));
+        assertSame(config, FakeGraphStore.lastConfig);
+    }
+
+    static class FakeGraphStore implements GraphStore {
 
         static GraphConfig lastConfig;
         static Map<String, Object> lastKwargs;

@@ -25,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's {@code WorkflowBuilder} in
  * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/builder.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.dev_tools.agent_builder.builders.workflow.test_builder} in
+ * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/test_builder.py}.</p>
  */
 class WorkflowBuilderTest {
 
@@ -44,6 +47,15 @@ class WorkflowBuilderTest {
         assertThat(builder.getProgressReporter()).isNull();
         assertThat(builder.getResource()).isEmpty();
         assertThat(builder.isWorkflowBuilder()).isTrue();
+    }
+
+    @Test
+    void statePropertyCanBeUpdated() {
+        WorkflowBuilder builder = new WorkflowBuilder(modelReturning("{\"tool_id_list\": []}"), new HistoryManager());
+
+        assertThat(builder.getState()).isEqualTo(AgentBuilderEnums.BuildState.INITIAL);
+        builder.setState(AgentBuilderEnums.BuildState.PROCESSING);
+        assertThat(builder.getState()).isEqualTo(AgentBuilderEnums.BuildState.PROCESSING);
     }
 
     @Test

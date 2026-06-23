@@ -62,15 +62,28 @@ public class LocalCodeOperation extends BaseCodeOperation {
     public CompletableFuture<ExecuteCodeResult> executeCode(String code, CodeLanguage language, int timeout,
                                                             Map<String, String> environment, String cwd,
                                                             Map<String, Object> options) {
+        return executeCode(code, languageValue(language), timeout, environment, cwd, options);
+    }
+
+    public CompletableFuture<ExecuteCodeResult> executeCode(String code, String language, int timeout,
+                                                            Map<String, String> environment, String cwd,
+                                                            Map<String, Object> options) {
         return CompletableFuture.supplyAsync(() -> {
-            String effectiveLanguage = languageValue(language);
+            String effectiveLanguage = normalizeLanguage(language);
             if (code == null || code.isBlank()) {
                 return codeError("execute_code", "code can not be empty", ExecuteCodeResult.class, null);
+            }
+            if (languageConfig(effectiveLanguage) == null) {
+                return codeError("execute_code", effectiveLanguage + " is not supported", ExecuteCodeResult.class,
+                        ExecuteCodeData.builder()
+                                .codeContent(code)
+                                .language(effectiveLanguage)
+                                .build());
             }
 
             CommandSpec commandSpec = null;
             try {
-                commandSpec = buildSubprocessCommand(code, language, options);
+                commandSpec = buildSubprocessCommand(code, effectiveLanguage, options);
                 if (commandSpec == null || commandSpec.command() == null) {
                     return codeError("execute_code", "subprocess cmd can not be none", ExecuteCodeResult.class,
                             ExecuteCodeData.builder()
@@ -124,16 +137,29 @@ public class LocalCodeOperation extends BaseCodeOperation {
     public Flow.Publisher<ExecuteCodeStreamResult> executeCodeStream(String code, CodeLanguage language, int timeout,
                                                                      Map<String, String> environment, String cwd,
                                                                      Map<String, Object> options) {
-        return asyncPublisher(publisher -> emitCodeStream(code, language, timeout, environment, cwd, options, publisher));
+        return executeCodeStream(code, languageValue(language), timeout, environment, cwd, options);
     }
 
-    private void emitCodeStream(String code, CodeLanguage language, int timeout, Map<String, String> environment,
+    public Flow.Publisher<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
+                                                                     Map<String, String> environment, String cwd,
+                                                                     Map<String, Object> options) {
+        return asyncPublisher(publisher -> emitCodeStream(code, normalizeLanguage(language), timeout, environment, cwd,
+                options, publisher));
+    }
+
+    private void emitCodeStream(String code, String effectiveLanguage, int timeout, Map<String, String> environment,
                                 String cwd, Map<String, Object> options,
                                 SubmissionPublisher<ExecuteCodeStreamResult> publisher) {
         int chunkIndex = 0;
-        String effectiveLanguage = languageValue(language);
         if (code == null || code.isBlank()) {
             publisher.submit(codeStreamError("code can not be empty", ExecuteCodeChunkData.builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build()));
+            return;
+        }
+        if (languageConfig(effectiveLanguage) == null) {
+            publisher.submit(codeStreamError(effectiveLanguage + " is not supported", ExecuteCodeChunkData.builder()
                     .chunkIndex(chunkIndex)
                     .exitCode(-1)
                     .build()));
@@ -142,7 +168,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
         CommandSpec commandSpec = null;
         try {
-            commandSpec = buildSubprocessCommand(code, language, options);
+            commandSpec = buildSubprocessCommand(code, effectiveLanguage, options);
             if (commandSpec == null || commandSpec.command() == null) {
                 publisher.submit(codeStreamError("subprocess cmd can not be none", ExecuteCodeChunkData.builder()
                         .chunkIndex(chunkIndex)
@@ -189,14 +215,13 @@ public class LocalCodeOperation extends BaseCodeOperation {
         }
     }
 
-    private CommandSpec buildSubprocessCommand(String code, CodeLanguage language, Map<String, Object> options) {
-        CodeLanguage effectiveLanguage = language == null ? CodeLanguage.PYTHON : language;
+    private CommandSpec buildSubprocessCommand(String code, String effectiveLanguage, Map<String, Object> options) {
         boolean forceFile = booleanOption(options, "force_file", false);
         LanguageConfig config = languageConfig(effectiveLanguage);
         if (config == null) {
             return null;
         }
-        if (!forceFile && code.length() <= getDefaultCommandLimit()) {
+        if (!forceFile && code.length() <= getDefaultCommandLimit() && !requiresFileTransport(code)) {
             return new CommandSpec(config.cliCommand(code), null);
         }
         String tempPath = OperationUtils.createTmpFile(code, config.fileSuffix()).join();
@@ -253,15 +278,15 @@ public class LocalCodeOperation extends BaseCodeOperation {
         return codeError("execute_code_stream", message, ExecuteCodeStreamResult.class, data);
     }
 
-    private LanguageConfig languageConfig(CodeLanguage language) {
-        if (language == CodeLanguage.PYTHON) {
+    private LanguageConfig languageConfig(String language) {
+        if (CodeLanguage.PYTHON.value().equals(language)) {
             String executable = System.getenv().getOrDefault(PYTHON_EXECUTABLE_ENV, "python");
             return new LanguageConfig(
                     ".py",
                     code -> List.of(executable, "-u", "-c", code),
                     path -> List.of(executable, "-u", path));
         }
-        if (language == CodeLanguage.JAVASCRIPT) {
+        if (CodeLanguage.JAVASCRIPT.value().equals(language)) {
             return new LanguageConfig(
                     ".js",
                     code -> List.of("node", "-e", code),
@@ -274,6 +299,13 @@ public class LocalCodeOperation extends BaseCodeOperation {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
                 ? WINDOWS_CMD_LIMIT
                 : UNIX_CMD_LIMIT;
+    }
+
+    private boolean requiresFileTransport(String code) {
+        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+            return false;
+        }
+        return code.indexOf('"') >= 0 || code.chars().anyMatch(character -> character > 127);
     }
 
     private boolean booleanOption(Map<String, Object> options, String key, boolean defaultValue) {
@@ -303,6 +335,13 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
     private String languageValue(CodeLanguage language) {
         return (language == null ? CodeLanguage.PYTHON : language).value();
+    }
+
+    private String normalizeLanguage(String language) {
+        if (language == null || language.isBlank()) {
+            return CodeLanguage.PYTHON.value();
+        }
+        return language.trim().toLowerCase(Locale.ROOT);
     }
 
     private void deleteTempFile(CommandSpec commandSpec) {

@@ -4,6 +4,10 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -17,10 +21,38 @@ import java.util.Map;
 public class ListMcpResourcesTool extends AbstractHarnessTool {
 
     private final McpResourceLister resourceLister;
+    private final String language;
+    private final String agentId;
 
     public ListMcpResourcesTool(McpResourceLister resourceLister) {
-        super(toolCard("list_mcp_resources", "ListMcpResourcesTool", "List MCP resources for a server."));
+        this(toolCard("list_mcp_resources", "ListMcpResourcesTool", "List MCP resources for a server."),
+                resourceLister, "cn", null);
+    }
+
+    public ListMcpResourcesTool(String language, String agentId) {
+        this(HarnessPromptToolsPackage.buildToolCard(
+                        "list_mcp_resources",
+                        "ListMcpResourcesTool",
+                        normalizeLanguage(language),
+                        agentId),
+                serverId -> toList(Runner.resourceMgr().listMcpResources(serverId).toCompletableFuture().join()),
+                normalizeLanguage(language),
+                agentId);
+    }
+
+    private ListMcpResourcesTool(ToolCard card, McpResourceLister resourceLister, String language, String agentId) {
+        super(card);
         this.resourceLister = resourceLister;
+        this.language = normalizeLanguage(language);
+        this.agentId = agentId;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getAgentId() {
+        return agentId;
     }
 
     @Override
@@ -42,6 +74,27 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
         } catch (Exception exception) {
             return ToolOutput.failure(exception.getMessage());
         }
+    }
+
+    private static String normalizeLanguage(String language) {
+        return language == null || language.isBlank() ? "cn" : language;
+    }
+
+    private static List<?> toList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : iterable) {
+                result.add(item);
+            }
+            return result;
+        }
+        return List.of(value);
     }
 
     static Map<String, Object> resourceMap(Object value, String... keys) {

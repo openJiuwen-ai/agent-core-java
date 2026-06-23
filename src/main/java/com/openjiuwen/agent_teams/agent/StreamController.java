@@ -11,6 +11,8 @@ import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
 import com.openjiuwen.agent_teams.agent.coordination.CoordinationKernel.StreamControllerView;
 import com.openjiuwen.agent_teams.schema.status.ExecutionStatus;
 import com.openjiuwen.agent_teams.schema.status.MemberStatus;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -38,7 +40,7 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     private static final LoggerProtocol TEAM_LOGGER = Loggers.TEAM;
     private static final int MAX_RETRY_ATTEMPTS = 10;
     private static final int RETRYABLE_ERROR_CODE = 181001;
-    private static final String RETRY_QUERY = "鍒氭墠鏈夊紓甯哥姸鍐碉紝缁х画鎵ц";
+    private static final String RETRY_QUERY = "刚才有异常状况，继续执行";
     private static final String TASK_FAILED_PAYLOAD_TYPE = "task_failed";
     private static final Pattern ERROR_CODE_PATTERN = Pattern.compile("^\\[(\\d+)]");
 
@@ -49,7 +51,7 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     private final ExecutionUpdater executionUpdater;
     private final Supplier<CompletionStage<Void>> wakeMailboxCallback;
     private final Supplier<CompletionStage<Void>> requestCompletionPollCallback;
-    private final Queue<Object> streamQueue = new LinkedList<>();
+    private Queue<Object> streamQueue = new LinkedList<>();
     private final QueueChunkQueue chunkQueue = new QueueChunkQueue();
     private final List<Object> pendingInterruptResumes = new ArrayList<>();
     private final List<Object> pendingInputs = new ArrayList<>();
@@ -116,7 +118,7 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     }
 
     public CompletionStage<Void> startRound(Object content) {
-        if (resources.getHarness() == null) {
+        if (resources.getHarness() == null || streamQueue == null) {
             return CompletableFuture.completedFuture(null);
         }
         TEAM_LOGGER.info("[%s] start_agent: %.120s", memberNameOrQuestion(), String.valueOf(content));
@@ -146,15 +148,22 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
 
     @Override
     public void closeStream() {
-        streamQueue.offer(null);
+        if (streamQueue != null) {
+            streamQueue.offer(null);
+        }
     }
 
     @Override
     public void clearStreamQueue() {
-        streamQueue.clear();
+        if (streamQueue != null) {
+            streamQueue.clear();
+        }
     }
 
     public void emitCompletionAndClose(int memberCount, int taskCount) {
+        if (streamQueue == null) {
+            return;
+        }
         streamQueue.offer(new TeamOutputChunk(
                 "message",
                 0,
@@ -268,7 +277,9 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
                     continue;
                 }
                 Object tagged = tagChunk(chunk);
-                streamQueue.offer(tagged);
+                if (streamQueue != null) {
+                    streamQueue.offer(tagged);
+                }
                 fanOut(tagged);
             }
         } finally {
@@ -302,9 +313,17 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
                 currentQuery = RETRY_QUERY;
                 continue;
             }
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                    "streaming task failed after " + attempt + " retries, last error code="
-                            + outcome.errorCode() + ": " + outcome.errorText()
+            String errorMessage = "streaming task failed after " + attempt + " retries, last error code="
+                    + outcome.errorCode() + ": " + outcome.errorText();
+            TEAM_LOGGER.error(
+                    "DeepAgent round failed (code=%s, attempts=%d): %s",
+                    outcome.errorCode(),
+                    attempt,
+                    outcome.errorText()
+            );
+            return CompletableFuture.failedFuture(new BaseError(
+                    StatusCode.AGENT_TEAM_EXECUTION_ERROR,
+                    Map.of("error_msg", errorMessage)
             ));
         }
     }
@@ -517,7 +536,9 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     private final class QueueChunkQueue implements SpawnManager.ChunkQueue {
         @Override
         public CompletionStage<Void> put(Object chunk) {
-            streamQueue.offer(chunk);
+            if (streamQueue != null) {
+                streamQueue.offer(chunk);
+            }
             return CompletableFuture.completedFuture(null);
         }
     }

@@ -155,6 +155,25 @@ class ChromaVectorStoreTest {
     }
 
     @Test
+    void checkVectorFieldRejectsPartialConstructConfigMismatch() {
+        ChromaVectorField vectorField = chromaField(16, 200);
+        ChromaVectorStore partialMismatch = new ChromaVectorStore(
+                config("test_collection", "cosine"),
+                "/tmp/test_chroma",
+                "content",
+                vectorField,
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                new FixedClient(hnswConfig(Map.of("space", "cosine", "max_neighbors", 16, "ef_construction", 300)))
+        );
+
+        assertThatThrownBy(partialMismatch::checkVectorField)
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("database actual config differs from current knowledge base");
+    }
+
+    @Test
     void addBatchesAndConvertsMetadataSparseVector() {
         ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "cosine"), "/tmp/test_chroma");
 

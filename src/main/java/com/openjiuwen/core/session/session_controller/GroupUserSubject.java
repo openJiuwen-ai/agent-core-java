@@ -20,7 +20,7 @@ public record GroupUserSubject(String groupId, String userId) implements Subject
     }
 
     public static GroupUserSubject fromString(String subjectString) {
-        String[] parts = subjectString.split(":");
+        String[] parts = subjectString.split(":", -1);
         if (parts.length != 4 || !"group".equals(parts[0]) || !"user".equals(parts[2])) {
             throw new IllegalArgumentException(
                     "GroupUserSubject must have format 'group:{group_id}:user:{user_id}', got '"

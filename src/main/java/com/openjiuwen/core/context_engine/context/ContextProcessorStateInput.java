@@ -30,9 +30,5 @@ public record ContextProcessorStateInput(String operationId, String status, Stri
      */
     public interface ContextProcessorPort {
         String processorType();
-
-        default Object config() {
-            return null;
-        }
     }
 }

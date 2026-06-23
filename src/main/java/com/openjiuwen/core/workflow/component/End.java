@@ -332,7 +332,7 @@ public class End extends WorkflowComponent implements Vertex.MixConfigurable {
         while (frames.hasNext()) {
             Object data = frames.next().get("data");
             if (data != null) {
-                answer.append(data);
+                answer.append(TemplateUtils.stringifyTemplateValue(data));
             }
         }
         return answer.toString();

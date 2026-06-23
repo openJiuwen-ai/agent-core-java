@@ -25,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's {@code AutoHarnessOrchestrator} in
  * {@code openjiuwen/auto_harness/orchestrator.py}.
+ *
+ * <p>Mirrors Python's orchestrator unit tests in
+ * {@code tests/unit_tests/auto_harness/test_orchestrator.py}.</p>
  */
 class AutoHarnessOrchestratorTest {
 
@@ -44,6 +47,51 @@ class AutoHarnessOrchestratorTest {
                 AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE
         );
         assertThat(Path.of(orchestrator.getPaths().getRuntimeExtensionsDir())).isDirectory();
+    }
+
+    @Test
+    void factoryBuildsOrchestratorWithProvidedConfig() {
+        AutoHarnessConfig config = config();
+
+        AutoHarnessOrchestrator orchestrator = AutoHarnessOrchestrator.createAutoHarnessOrchestrator(config);
+
+        assertThat(orchestrator.getConfig()).isSameAs(config);
+        assertThat(orchestrator.getRuntime().getCurrentWorkspace()).isEqualTo("workspace-a");
+    }
+
+    @Test
+    void factoryAcceptsExplicitAgentAndRails() {
+        AutoHarnessConfig config = config();
+        DeepAgent agent = new DeepAgent();
+        RailWithDeepAgent rail = new RailWithDeepAgent(new DeepAgent());
+
+        AutoHarnessOrchestrator orchestrator = AutoHarnessOrchestrator.createAutoHarnessOrchestrator(
+                config,
+                agent,
+                List.of(rail)
+        );
+
+        assertThat(orchestrator.getAgent()).isSameAs(agent);
+        assertThat(orchestrator.getStreamRails()).contains(rail);
+    }
+
+    @Test
+    void inferredAgentUsesFirstRailDeepAgent() {
+        DeepAgent deepAgent = new DeepAgent();
+
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config(), null, List.of(new RailWithDeepAgent(deepAgent)));
+
+        assertThat(orchestrator.getAgent()).isSameAs(deepAgent);
+    }
+
+    @Test
+    void getStreamRailsReturnsDefensiveCopy() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+
+        List<AgentRail> rails = orchestrator.getStreamRails();
+        rails.clear();
+
+        assertThat(orchestrator.getStreamRails()).isNotEmpty();
     }
 
     @Test
@@ -74,6 +122,26 @@ class AutoHarnessOrchestratorTest {
     }
 
     @Test
+    void dispatchMessageIgnoresMissingInteractionId() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+
+        assertThat(orchestrator.dispatchMessage(Map.of("answer", "yes"))).isFalse();
+        assertThat(orchestrator.dispatchMessage(null)).isFalse();
+    }
+
+    @Test
+    void dispatchMessageCompletesPendingInteraction() throws Exception {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+        CompletableFuture<Object> future = orchestrator.createInteraction("confirm-2");
+        Map<String, Object> message = Map.of("interaction_id", "confirm-2", "answer", "ok");
+
+        assertThat(orchestrator.dispatchMessage(message)).isTrue();
+
+        assertThat(future.get()).isEqualTo(message);
+        assertThat(orchestrator.resolveInteraction("confirm-2", message)).isFalse();
+    }
+
+    @Test
     void runSessionStreamSelectsPipelineStoresArtifactsAndFinishes() {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
         OptimizationTask task = OptimizationTask.builder()
@@ -97,6 +165,49 @@ class AutoHarnessOrchestratorTest {
                 .isEqualTo(AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE);
         assertThat(orchestrator.getArtifacts().get("input_tasks")).isEqualTo(List.of(task));
         assertThat(orchestrator.getArtifacts().get("pipeline_selection")).isNotNull();
+    }
+
+    @Test
+    void runSessionStreamWithNullTasksStillStartsAndFinishes() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+
+        List<Object> chunks = toList(orchestrator.runSessionStream(null));
+
+        assertThat(chunks).isNotEmpty();
+        assertThat(((OutputSchema) chunks.get(0)).getPayload()).isEqualTo(Map.of("content", "会话启动"));
+        assertThat(((OutputSchema) chunks.get(chunks.size() - 1)).getType()).isEqualTo("harness_session_finished");
+        assertThat(orchestrator.getArtifacts().get("input_tasks")).isNull();
+    }
+
+    @Test
+    void defaultPipelineSelectionUsesMetaForEmptyTasks() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+
+        assertThat(orchestrator.selectSessionPipeline(List.of()).getPipelineName())
+                .isEqualTo(AutoHarnessPipelineNames.META_EVOLVE_PIPELINE);
+    }
+
+    @Test
+    void extendedPipelinePreferenceOverridesDefaultSelection() {
+        AutoHarnessConfig config = config();
+        config.setPipelinePreference(AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE);
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config);
+
+        assertThat(orchestrator.selectSessionPipeline(null).getPipelineName())
+                .isEqualTo(AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE);
+    }
+
+    @Test
+    void runPipelineStreamReturnsEmptyForObjectPlaceholderPipeline() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+        orchestrator.getPipelineRegistry().register(
+                com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PipelineSpec.builder()
+                        .name("placeholder")
+                        .pipelineCls(Object.class)
+                        .build()
+        );
+
+        assertThat(toList(orchestrator.runPipelineStream("placeholder"))).isEmpty();
     }
 
     @Test
@@ -128,6 +239,33 @@ class AutoHarnessOrchestratorTest {
         DeepAgent agent = new DeepAgent();
         assertThat(AutoHarnessOrchestrator.inferAgentFromRails(List.of(new RailWithDeepAgent(agent))))
                 .isSameAs(agent);
+    }
+
+    @Test
+    void emptyIteratorHasNoElements() {
+        assertThat(AutoHarnessOrchestrator.emptyIterator().hasNext()).isFalse();
+    }
+
+    @Test
+    void writeDebugArtifactCreatesNestedParentDirectories() {
+        String path = AutoHarnessOrchestrator.writeDebugArtifact(
+                tempDir.resolve("runs").toString(),
+                "nested/phase/debug.txt",
+                "debug"
+        );
+
+        assertThat(Path.of(path)).hasContent("debug");
+        assertThat(Path.of(path).getParent()).isDirectory();
+    }
+
+    @Test
+    void messageOutputWrapsContentPayload() {
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+
+        OutputSchema message = orchestrator.messageOutput("hello");
+
+        assertThat(message.getType()).isEqualTo("message");
+        assertThat(message.getPayload()).isEqualTo(Map.of("content", "hello"));
     }
 
     private AutoHarnessConfig config() {

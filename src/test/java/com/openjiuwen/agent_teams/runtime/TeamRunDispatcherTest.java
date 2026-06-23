@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code decide_run_action} truth table in
  * {@code openjiuwen/agent_teams/runtime/dispatch.py}.</p>
+ * <p>Mirrors Python's dispatch unit tests in
+ * {@code tests/unit_tests/agent_teams/runtime/test_dispatch.py}.</p>
  */
 class TeamRunDispatcherTest {
 
@@ -123,6 +125,72 @@ class TeamRunDispatcherTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("dispatch invariant violated: pool entry for 'team-a' on session "
                         + "'old-session' must be torn down before dispatching to session 's1'");
+    }
+
+    @Test
+    void pendingCreateSessionBucketIsRecreatedWithoutSpecLoss() {
+        RunAction action = decide(false, true, null, TeamRuntimeMetadata.TEAM_DB_STATE_PENDING_CREATE);
+
+        assertAction(action, RunActionKind.CREATE, true, null);
+    }
+
+    @Test
+    void cleanedSessionBucketIsRecreatedWithoutSpecLoss() {
+        RunAction action = decide(false, true, null, TeamRuntimeMetadata.TEAM_DB_STATE_CLEANED);
+
+        assertAction(action, RunActionKind.CREATE, true, null);
+    }
+
+    @Test
+    void truthTableCreateWhenNoDbNoSessionNoPool() {
+        RunAction action = decide(false, false, null, null);
+
+        assertAction(action, RunActionKind.CREATE, true, null);
+    }
+
+    @Test
+    void truthTableRejectInconsistentWhenNoDbButPoolPresent() {
+        RunAction action = decide(false, false, new PoolEntry("s1", "running"), null);
+
+        assertAction(action, RunActionKind.REJECT_INCONSISTENT, false,
+                "team 'team-a' present in pool but missing from DB");
+    }
+
+    @Test
+    void truthTableRejectOrphanedWhenSessionExistsWithoutDb() {
+        RunAction action = decide(false, true, null, null);
+
+        assertAction(action, RunActionKind.REJECT_ORPHANED, false,
+                "team 'team-a' not in DB but session bucket exists for 's1'");
+    }
+
+    @Test
+    void truthTableNewTeamInSessionWhenDbExistsWithoutBucketOrPool() {
+        RunAction action = decide(true, false, null, null);
+
+        assertAction(action, RunActionKind.NEW_TEAM_IN_SESSION, false, null);
+    }
+
+    @Test
+    void truthTableColdRecoverWhenDbAndBucketExistWithoutPool() {
+        RunAction action = decide(true, true, null, null);
+
+        assertAction(action, RunActionKind.COLD_RECOVER, false, null);
+    }
+
+    @Test
+    void truthTableRejectRunningWhenSameSessionPoolRunning() {
+        RunAction action = decide(true, true, new PoolEntry("s1", "running"), null);
+
+        assertAction(action, RunActionKind.REJECT_RUNNING, false,
+                "team 'team-a' already running on session 's1'; use interact");
+    }
+
+    @Test
+    void truthTableResumeFromPauseWhenSameSessionPoolPaused() {
+        RunAction action = decide(true, true, new PoolEntry("s1", "paused"), null);
+
+        assertAction(action, RunActionKind.RESUME_FROM_PAUSE, false, null);
     }
 
     private static RunAction decide(

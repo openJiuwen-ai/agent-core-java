@@ -11,8 +11,6 @@ import com.openjiuwen.core.single_agent.rail.AgentRail;
 import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
 import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
 
-import java.nio.file.FileSystems;
-import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,15 +96,39 @@ public class SecurityRail extends AgentRail {
     }
 
     private static boolean matchesAny(String path, List<String> patterns) {
+        String normalizedPath = normalizePath(path);
         for (String pattern : patterns) {
-            if (pattern.endsWith("/") && path.startsWith(pattern)) {
-                return true;
-            }
-            if (FileSystems.getDefault().getPathMatcher("glob:" + pattern).matches(java.nio.file.Path.of(path))) {
+            if (Pattern.compile(fnmatchRegex(normalizePath(pattern))).matcher(normalizedPath).matches()) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static String normalizePath(String path) {
+        return path == null ? "" : path.replace('\\', '/');
+    }
+
+    private static String fnmatchRegex(String pattern) {
+        StringBuilder regex = new StringBuilder("^");
+        for (int index = 0; index < pattern.length(); index++) {
+            char ch = pattern.charAt(index);
+            if (ch == '*') {
+                regex.append(".*");
+            } else if (ch == '?') {
+                regex.append('.');
+            } else {
+                appendEscapedRegexChar(regex, ch);
+            }
+        }
+        return regex.append('$').toString();
+    }
+
+    private static void appendEscapedRegexChar(StringBuilder regex, char ch) {
+        if ("\\.[]{}()+-^$|".indexOf(ch) >= 0) {
+            regex.append('\\');
+        }
+        regex.append(ch);
     }
 
     private static String extractModelText(ModelCallInputs inputs) {

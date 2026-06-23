@@ -14,6 +14,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Mirrors Python's {@code test_experience_store} in
+ * {@code tests/unit_tests/auto_harness/experience/test_experience_store.py}.
+ */
 class ExperienceStoreTest {
 
     @TempDir

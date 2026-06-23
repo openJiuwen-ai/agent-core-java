@@ -174,10 +174,15 @@ public final class CliAgentFactory {
     }
 
     public static DeepAgentConfig.VisionModelConfig loadVisionConfig(Map<String, Object> cfg) {
-        DeepAgentConfig.VisionModelConfig config = System.getenv("VISION_API_KEY") != null
-                ? DeepAgentConfig.VisionModelConfig.fromEnv()
+        return loadVisionConfig(cfg, System.getenv());
+    }
+
+    static DeepAgentConfig.VisionModelConfig loadVisionConfig(Map<String, Object> cfg, Map<String, String> env) {
+        Map<String, String> resolvedEnv = env == null ? Map.of() : env;
+        DeepAgentConfig.VisionModelConfig config = hasEnvValue(resolvedEnv, "VISION_API_KEY")
+                ? DeepAgentConfig.VisionModelConfig.fromEnvironment(resolvedEnv)
                 : new DeepAgentConfig.VisionModelConfig();
-        if (System.getenv("VISION_API_KEY") == null) {
+        if (!hasEnvValue(resolvedEnv, "VISION_API_KEY")) {
             config.setApiKey(stringValue(cfg.get("api_key"), ""));
             config.setBaseUrl(stringValue(cfg.get("api_base"), DeepAgentConfig.DEFAULT_OPENAI_BASE_URL));
         }
@@ -185,10 +190,15 @@ public final class CliAgentFactory {
     }
 
     public static DeepAgentConfig.AudioModelConfig loadAudioConfig(Map<String, Object> cfg) {
-        DeepAgentConfig.AudioModelConfig config = System.getenv("AUDIO_API_KEY") != null
-                ? DeepAgentConfig.AudioModelConfig.fromEnv()
+        return loadAudioConfig(cfg, System.getenv());
+    }
+
+    static DeepAgentConfig.AudioModelConfig loadAudioConfig(Map<String, Object> cfg, Map<String, String> env) {
+        Map<String, String> resolvedEnv = env == null ? Map.of() : env;
+        DeepAgentConfig.AudioModelConfig config = hasEnvValue(resolvedEnv, "AUDIO_API_KEY")
+                ? DeepAgentConfig.AudioModelConfig.fromEnvironment(resolvedEnv)
                 : new DeepAgentConfig.AudioModelConfig();
-        if (System.getenv("AUDIO_API_KEY") == null) {
+        if (!hasEnvValue(resolvedEnv, "AUDIO_API_KEY")) {
             config.setApiKey(stringValue(cfg.get("api_key"), ""));
             config.setBaseUrl(stringValue(cfg.get("api_base"), DeepAgentConfig.DEFAULT_OPENAI_BASE_URL));
         }
@@ -412,6 +422,10 @@ public final class CliAgentFactory {
 
     private static String firstNonBlank(String first, String second) {
         return first != null && !first.isBlank() ? first : second == null ? "" : second;
+    }
+
+    private static boolean hasEnvValue(Map<String, String> env, String name) {
+        return !stringValue(env.get(name), "").isBlank();
     }
 
     /**

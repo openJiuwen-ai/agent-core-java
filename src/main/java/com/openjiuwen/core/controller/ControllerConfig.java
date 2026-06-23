@@ -129,8 +129,8 @@ public class ControllerConfig {
     }
 
     public void setTaskTimeout(Double taskTimeout) {
-        if (taskTimeout != null && taskTimeout < 600) {
-            throw new IllegalArgumentException("taskTimeout must be >= 600 or null");
+        if (taskTimeout != null && taskTimeout <= 0) {
+            throw new IllegalArgumentException("taskTimeout must be positive or null");
         }
         this.taskTimeout = taskTimeout;
     }

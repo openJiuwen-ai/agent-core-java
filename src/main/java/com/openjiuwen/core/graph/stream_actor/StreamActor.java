@@ -83,12 +83,17 @@ public class StreamActor {
                         producerId, nodeId, abilityName);
                 return;
             }
-            if (!firstFrame || !vertex.isDone()) {
-                LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
+            if (hasActiveProcessorTasks()) {
+                LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
                         producerId, nodeId, abilityName);
-                return;
+            } else {
+                if (!firstFrame || !vertex.isDone()) {
+                    LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
+                            producerId, nodeId, abilityName);
+                    return;
+                }
+                startStreamCall();
             }
-            startStreamCall();
         }
 
         LOGGER.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, abilityName);
@@ -127,6 +132,16 @@ public class StreamActor {
         for (RunningTask runningTask : runningTasks) {
             awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
         }
+    }
+
+    private boolean hasActiveProcessorTasks() {
+        for (RunningTask runningTask : runningTasks) {
+            Future<?> future = runningTask.future();
+            if (future != null && !future.isDone() && !future.isCancelled()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

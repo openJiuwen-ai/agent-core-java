@@ -4,10 +4,14 @@
 
 package com.openjiuwen.harness.rails.subagent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.harness.prompts.sections.AgentModeSection;
+import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
+import com.openjiuwen.harness.schema.DeepAgentState;
+import com.openjiuwen.harness.workspace.Workspace;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -52,8 +56,11 @@ public class VerificationRail extends DeepAgentRail {
             4. Reading code is not verification; run commands and show actual output.
             """;
     private static final String REMINDER_CN = REMINDER_EN;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Set<String> allowedTools;
+    private DeepAgent agent;
+    private SystemPromptBuilder systemPromptBuilder;
 
     public VerificationRail() {
         this(VERIFICATION_ALLOWED_TOOLS);
@@ -65,9 +72,32 @@ public class VerificationRail extends DeepAgentRail {
     }
 
     @Override
+    public void init(DeepAgent agent) {
+        super.init(agent);
+        this.agent = agent;
+        String language = agent == null || agent.deepConfig() == null ? "cn" : agent.deepConfig().getLanguage();
+        this.systemPromptBuilder = new SystemPromptBuilder(language);
+    }
+
+    @Override
+    public void uninit(DeepAgent agent) {
+        if (systemPromptBuilder != null) {
+            systemPromptBuilder.removeSection(REMINDER_SECTION_NAME);
+        }
+        this.agent = null;
+        this.systemPromptBuilder = null;
+    }
+
+    @Override
     public void beforeModelCall(CallbackContext ctx) {
-        Object mode = ctx.get("mode");
-        if ("plan".equals(String.valueOf(mode))) {
+        if (ctx == null || systemPromptBuilder == null) {
+            return;
+        }
+        DeepAgent effectiveAgent = ctx.getAgent() != null ? ctx.getAgent() : agent;
+        if (!isTaskLoopEnabled(effectiveAgent)) {
+            return;
+        }
+        if ("plan".equals(String.valueOf(ctx.get("mode"))) || isPlanMode(effectiveAgent, ctx.get("session"))) {
             return;
         }
         PromptSection section = new PromptSection(
@@ -75,6 +105,8 @@ public class VerificationRail extends DeepAgentRail {
                 Map.of("en", REMINDER_EN, "cn", REMINDER_CN),
                 REMINDER_PRIORITY
         );
+        systemPromptBuilder.removeSection(REMINDER_SECTION_NAME);
+        systemPromptBuilder.addSection(section);
         ctx.put("verification_reminder_section", section);
     }
 
@@ -100,6 +132,14 @@ public class VerificationRail extends DeepAgentRail {
 
     public Set<String> getAllowedTools() {
         return Set.copyOf(allowedTools);
+    }
+
+    public SystemPromptBuilder getSystemPromptBuilder() {
+        return systemPromptBuilder;
+    }
+
+    void setSystemPromptBuilder(SystemPromptBuilder systemPromptBuilder) {
+        this.systemPromptBuilder = systemPromptBuilder;
     }
 
     private void enforceWorkspacePath(CallbackContext ctx, String toolName, String pathArgKey) {
@@ -137,6 +177,9 @@ public class VerificationRail extends DeepAgentRail {
         if (workspace == null) {
             return null;
         }
+        if (workspace instanceof Workspace workspaceValue) {
+            return Path.of(workspaceValue.getRootPath()).toAbsolutePath().normalize();
+        }
         if (workspace instanceof Path path) {
             return path.toAbsolutePath().normalize();
         }
@@ -147,7 +190,35 @@ public class VerificationRail extends DeepAgentRail {
         Map<String, Object> result = new LinkedHashMap<>();
         if (value instanceof Map<?, ?> map) {
             map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        } else if (value instanceof String text && !text.isBlank()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parsed = OBJECT_MAPPER.readValue(text, Map.class);
+                result.putAll(parsed);
+            } catch (Exception ignored) {
+                return Map.of();
+            }
         }
         return result;
+    }
+
+    private static boolean isTaskLoopEnabled(DeepAgent candidateAgent) {
+        return candidateAgent != null
+                && candidateAgent.deepConfig() != null
+                && candidateAgent.deepConfig().isEnableTaskLoop();
+    }
+
+    private static boolean isPlanMode(DeepAgent candidateAgent, Object session) {
+        if (candidateAgent == null || session == null) {
+            return false;
+        }
+        try {
+            DeepAgentState state = candidateAgent.loadState(session);
+            return state != null
+                    && state.getPlanMode() != null
+                    && "plan".equals(state.getPlanMode().getMode());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

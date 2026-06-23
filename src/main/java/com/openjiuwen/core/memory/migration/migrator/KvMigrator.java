@@ -134,7 +134,11 @@ public class KvMigrator {
                 });
             }
 
-            if (versionValue instanceof Number number) {
+            if (versionValue instanceof Byte
+                    || versionValue instanceof Short
+                    || versionValue instanceof Integer
+                    || versionValue instanceof Long) {
+                Number number = (Number) versionValue;
                 return CompletableFuture.completedFuture(number.intValue());
             }
             if (versionValue instanceof String text) {

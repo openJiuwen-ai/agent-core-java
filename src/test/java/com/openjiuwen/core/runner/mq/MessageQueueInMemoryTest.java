@@ -137,6 +137,73 @@ class MessageQueueInMemoryTest {
     }
 
     @Test
+    void nestedSendSupportsThreeLevelChain() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        AtomicInteger callCount = new AtomicInteger();
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("nested-three");
+            subscription.setMessageHandler(payload -> {
+                int currentCall = callCount.incrementAndGet();
+                if (currentCall == 1) {
+                    InvokeQueueMessage levelBMessage = new InvokeQueueMessage("level-b", "b");
+                    queue.produceMessage("nested-three", levelBMessage);
+                    return levelBMessage.getResponse().thenApply(result -> "A(" + result + ")");
+                }
+                if (currentCall == 2) {
+                    InvokeQueueMessage levelCMessage = new InvokeQueueMessage("level-c", "c");
+                    queue.produceMessage("nested-three", levelCMessage);
+                    return levelCMessage.getResponse().thenApply(result -> "B(" + result + ")");
+                }
+                return CompletableFutureFactory.completedValue("C");
+            });
+            subscription.activate();
+
+            InvokeQueueMessage rootMessage = new InvokeQueueMessage("level-a", "a");
+            queue.produceMessage("nested-three", rootMessage);
+
+            assertThat(rootMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("A(B(C))");
+            assertThat(callCount).hasValue(3);
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void nestedSendLeavesSubscriptionUsableAfterNestedCompletion() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        AtomicInteger callCount = new AtomicInteger();
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("nested-task-done");
+            subscription.setMessageHandler(payload -> {
+                int currentCall = callCount.incrementAndGet();
+                if (currentCall == 1) {
+                    InvokeQueueMessage innerMessage = new InvokeQueueMessage("inner", "inner");
+                    queue.produceMessage("nested-task-done", innerMessage);
+                    return innerMessage.getResponse().thenApply(result -> "ok(" + result + ")");
+                }
+                if ("after".equals(payload)) {
+                    return CompletableFutureFactory.completedValue("after_done");
+                }
+                return CompletableFutureFactory.completedValue("inner_result");
+            });
+            subscription.activate();
+
+            InvokeQueueMessage rootMessage = new InvokeQueueMessage("start", "start");
+            queue.produceMessage("nested-task-done", rootMessage);
+            assertThat(rootMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("ok(inner_result)");
+
+            InvokeQueueMessage afterMessage = new InvokeQueueMessage("after", "after");
+            queue.produceMessage("nested-task-done", afterMessage);
+            assertThat(afterMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("after_done");
+            assertThat(callCount).hasValue(3);
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
     void subscriptionAssignsMissingMessageIdAndDuplicateTopicFails() throws Exception {
         MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
         queue.start();

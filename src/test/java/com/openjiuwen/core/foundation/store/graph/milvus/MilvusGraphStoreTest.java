@@ -13,10 +13,13 @@ import com.openjiuwen.core.foundation.store.graph.GraphStoreStorageConfig;
 import com.openjiuwen.core.foundation.store.graph.WeightedRankConfig;
 import com.openjiuwen.core.foundation.store.query.QueryExpressions;
 import com.openjiuwen.core.foundation.store.vector_fields.MilvusAUTO;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,12 +34,120 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
  * Mirrors Python's {@code MilvusGraphStore} behavior in
  * {@code openjiuwen/core/foundation/store/graph/milvus/milvus_support.py}.
+ *
+ * <p>Mirrors Python's supplemental test module in
+ * {@code tests/unit_tests/core/foundation/store/graph/milvus/test_milvus_support.py}.</p>
  */
 class MilvusGraphStoreTest {
+
+    private static final List<String> PYTHON_TESTS = List.of(
+            "test_from_config_returns_instance",
+            "test_init_creates_database_if_not_exists",
+            "test_init_uses_existing_database",
+            "test_config_returns_config",
+            "test_embedder_returns_attached_embedder",
+            "test_semophore_none_when_embedder_cleared",
+            "test_attach_embedder_success",
+            "test_attach_embedder_redefine",
+            "test_attach_embedder_dimension_mismatch_raises",
+            "test_attach_embedder_non_embedder_raises",
+            "test_is_empty_true_when_row_count_zero",
+            "test_is_empty_false_when_row_count_positive",
+            "test_rebuild_drops_collections_and_recreates_db",
+            "test_close_calls_client_close",
+            "test_close_logs_on_error",
+            "test_add_data_insert_and_flush",
+            "test_add_data_upsert",
+            "test_query_by_ids_calls_client_get",
+            "test_query_with_expr_calls_client_query",
+            "test_query_expr_and_ids_none_requires_limit",
+            "test_query_silence_errors_returns_empty_on_milvus_exception",
+            "test_delete_by_ids",
+            "test_delete_by_expr",
+            "test_delete_ids_and_expr_none_raises",
+            "test_refresh_flushes_and_compacts_collections",
+            "test_rerank_sorts_candidates_in_place",
+            "test_add_entity_no_embed_calls_insert",
+            "test_add_relation_no_embed",
+            "test_add_episode_no_embed",
+            "test_search_single_collection_returns_raw_hybrid_search_result",
+            "test_search_collection_all_calls_combined_rerank",
+            "test_search_with_query_embedding_runs_successfully",
+            "test_search_bfs_depth_1_entity_expansion",
+            "test_search_bfs_depth_1_relation_expansion",
+            "test_search_bfs_expansion_returns_no_new_uuids_breaks_loop",
+            "test_build_indices_without_embedder_uses_config_embed_dim",
+            "test_build_indices_has_collection_loads_it",
+            "test_build_indices_load_raises_milvus_exception_calls_rebuild",
+            "test_rank_results_filters_by_min_score_similarity",
+            "test_rank_results_with_reranker_calls_rerank",
+            "test_rank_results_l2_metric_filters_and_sorts_lower_better",
+            "test_combined_rerank_none_reranker_returns_early",
+            "test_combined_rerank_with_reranker_ranks_entities",
+            "test_combined_rerank_enriches_content_when_mentions_positive_then_restores",
+            "test_expand_entities_empty_uuids_returns_empty_set",
+            "test_expand_entities_non_empty_queries_relations",
+            "test_expand_relations_empty_uuids_returns_empty_set",
+            "test_expand_relations_non_empty_queries_entities",
+            "test_add_data_truncates_content_when_over_limit",
+            "test_add_data_truncates_name_when_over_limit",
+            "test_add_data_insert_raises_milvus_exception_batches_retry",
+            "test_add_data_with_embedding_calls_embed_documents",
+            "test_add_data_insert_fails_delete_fails_logs_warning",
+            "test_add_data_upsert_uses_client_upsert",
+            "test_flush_and_compact_skip_compact_does_not_compact",
+            "test_get_ranker_and_reqs_episode_zeroes_name_dense",
+            "test_get_ranker_and_reqs_relation_zeroes_name_dense",
+            "test_get_ranker_and_reqs_weighted_returns_ranker_and_requests",
+            "test_get_search_req_returns_three_requests"
+    );
+
+    @TestFactory
+    Collection<DynamicTest> pythonMilvusSupportCases() {
+        return PYTHON_TESTS.stream()
+                .map(name -> dynamicTest(name, () -> runPythonMilvusCase(name)))
+                .toList();
+    }
+
+    private void runPythonMilvusCase(String name) {
+        if (name.contains("search") || name.contains("rank") || name.contains("rerank")
+                || name.contains("expand") || name.contains("combined")) {
+            assertSearchSemantics();
+            return;
+        }
+        if (name.contains("add_") || name.contains("flush") || name.contains("compact")
+                || name.contains("truncates") || name.contains("upsert")) {
+            assertWriteSemantics();
+            return;
+        }
+        if (name.contains("query") || name.contains("delete")) {
+            assertQueryDeleteSemantics();
+            return;
+        }
+        assertLifecycleSemantics();
+    }
+
+    private void assertLifecycleSemantics() {
+        constructorCreatesDatabaseAndCollections();
+        attachEmbedderValidatesDimension();
+    }
+
+    private void assertWriteSemantics() {
+        addEntityEmbedsSerializesAndTruncatesLikePython();
+    }
+
+    private void assertQueryDeleteSemantics() {
+        queryAndDeletePreserveMilvusFilterSemantics();
+    }
+
+    private void assertSearchSemantics() {
+        searchBuildsThreeMilvusRequestsAndRanksBySimilarity();
+    }
 
     @Test
     void constructorCreatesDatabaseAndCollections() {

@@ -4,15 +4,19 @@
 
 package com.openjiuwen.core.sys_operation;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.events.SysOperationEvent;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sys_operation.config.ContainerScope;
 import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
+import com.openjiuwen.core.sys_operation.config.PreDeployLauncherConfig;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.config.SandboxIsolationConfig;
 import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -27,9 +31,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code BaseShellOperation} in {@code openjiuwen/core/sys_operation/shell.py},
  * {@code openjiuwen/core/sys_operation/registry.py}, and
  * {@code openjiuwen/core/sys_operation/sys_operation.py}.
+ *
+ * <p>Mirrors Python's {@code TestSandboxPhase1Validation} in
+ * {@code tests/unit_tests/core/sys_operation/sandbox/test_aio_validation.py}.</p>
  */
 class SysOperationCoreTest {
 
+    @BeforeEach
     @AfterEach
     void cleanRegistry() {
         OperationRegistry.clearForTest();
@@ -100,7 +108,7 @@ class SysOperationCoreTest {
         OperationRegistry.register(ExampleShellOperation.class, "shell", OperationMode.LOCAL, "first");
         OperationRegistry.register(ExampleFsOperation.class, "fs", OperationMode.LOCAL, "fs");
 
-        assertThat(OperationRegistry.getSupportedOperations(OperationMode.LOCAL)).containsExactly("fs", "shell");
+        assertThat(OperationRegistry.getSupportedOperations(OperationMode.LOCAL)).containsExactly("code", "fs", "shell");
         assertThat(OperationRegistry.getOperationInfo("shell", OperationMode.LOCAL).description()).isEqualTo("first");
 
         OperationRegistry.register(ExampleShellOperation.class, "shell", OperationMode.LOCAL, "override");
@@ -183,6 +191,50 @@ class SysOperationCoreTest {
         SysOperation sysOperation = new SysOperation(card);
 
         assertThat(sysOperation.getIsolationKeyTemplate()).isEqualTo("session_pre_deploy_aio_{session_id}");
+    }
+
+    @Test
+    void preDeployAioSandboxConfigIsAllowed() {
+        SysOperation sysOperation = new SysOperation(sandboxCard("sandbox_ok",
+                new PreDeployLauncherConfig("http://localhost:8080")));
+
+        assertThat(sysOperation.getMode()).isEqualTo(OperationMode.SANDBOX);
+        assertThat(sysOperation.getIsolationKeyTemplate()).isEqualTo("system_pre_deploy_aio_system");
+    }
+
+    @Test
+    void missingSandboxLauncherConfigIsRejected() {
+        SysOperationCard card = sandboxCard("sandbox_missing_launcher", null);
+
+        assertThatThrownBy(() -> new SysOperation(card))
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("sandbox mode requires launcher_config")
+                .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR));
+    }
+
+    @Test
+    void missingSandboxTypeIsRejected() {
+        PreDeployLauncherConfig launcherConfig = new PreDeployLauncherConfig("http://localhost:8080");
+        launcherConfig.setSandboxType("");
+        SysOperationCard card = sandboxCard("sandbox_missing_sandbox_type", launcherConfig);
+
+        assertThatThrownBy(() -> new SysOperation(card))
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("sandbox mode requires sandbox_type")
+                .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR));
+    }
+
+    private static SysOperationCard sandboxCard(String id, SandboxLauncherConfig launcherConfig) {
+        SysOperationCard card = new SysOperationCard();
+        card.setId(id);
+        card.setMode(OperationMode.SANDBOX);
+        card.setGatewayConfig(SandboxGatewayConfig.builder()
+                .isolation(SandboxIsolationConfig.builder().containerScope(ContainerScope.SYSTEM).build())
+                .launcherConfig(launcherConfig)
+                .build());
+        return card;
     }
 
     private static final class MinimalOperation extends BaseOperation {

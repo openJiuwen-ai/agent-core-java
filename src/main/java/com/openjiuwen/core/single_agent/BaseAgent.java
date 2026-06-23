@@ -50,10 +50,14 @@ public abstract class BaseAgent {
             return;
         }
         if (skillUtil == null) {
-            skillUtil = new SkillUtil(sysOperationId);
+            skillUtil = createSkillUtil(sysOperationId);
         } else {
             skillUtil.setSysOperationId(sysOperationId);
         }
+    }
+
+    protected SkillUtil createSkillUtil(String sysOperationId) {
+        return new SkillUtil(sysOperationId);
     }
 
     public abstract BaseAgent configure(Object config);
@@ -65,7 +69,9 @@ public abstract class BaseAgent {
     public CompletionStage<Boolean> registerSkill(List<String> skillPaths) {
         lazyInitSkill();
         if (skillUtil == null) {
-            return CompletableFuture.completedFuture(false);
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("sys_operation_id is required before registering skills")
+            );
         }
         try {
             return CompletableFuture.completedFuture(skillUtil.registerSkills(skillPaths, this, null));

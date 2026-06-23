@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,8 +63,9 @@ public class DictableVariable extends Variable {
     }
 
     @Override
-    public void update(Map<String, Object> kwargs) {
+    public Object update(Map<String, Object> kwargs) {
         this.value = recursiveFormat(deepCopy(data), kwargs != null ? kwargs : Map.of());
+        return this.value;
     }
 
     private void scanPlaceholders(Object obj, LinkedHashSet<String> result) {
@@ -144,7 +146,7 @@ public class DictableVariable extends Variable {
                         placeholder
                 );
             }
-            formattedText = formattedText.replace(placeholderText, String.valueOf(value));
+            formattedText = formattedText.replace(placeholderText, pythonString(value));
         }
         return formattedText;
     }
@@ -221,5 +223,49 @@ public class DictableVariable extends Variable {
             return copy;
         }
         return obj;
+    }
+
+    private String pythonString(Object rawValue) {
+        if (rawValue == null) {
+            return "None";
+        }
+        if (rawValue instanceof Boolean bool) {
+            return Boolean.TRUE.equals(bool) ? "True" : "False";
+        }
+        if (rawValue instanceof Map<?, ?> || rawValue instanceof List<?>) {
+            return pythonRepr(rawValue);
+        }
+        return String.valueOf(rawValue);
+    }
+
+    private String pythonRepr(Object rawValue) {
+        if (rawValue == null) {
+            return "None";
+        }
+        if (rawValue instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (rawValue instanceof Boolean bool) {
+            return Boolean.TRUE.equals(bool) ? "True" : "False";
+        }
+        if (rawValue instanceof List<?> list) {
+            StringJoiner joiner = new StringJoiner(", ", "[", "]");
+            for (Object item : list) {
+                joiner.add(pythonRepr(item));
+            }
+            return joiner.toString();
+        }
+        if (rawValue instanceof Map<?, ?> map) {
+            StringJoiner joiner = new StringJoiner(", ", "{", "}");
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                joiner.add(pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()));
+            }
+            return joiner.toString();
+        }
+        return String.valueOf(rawValue);
+    }
+
+    public List<String> getPlaceholders() {
+        return List.copyOf(placeholders);
     }
 }

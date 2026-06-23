@@ -12,6 +12,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
+/**
+ * <p>Mirrors Python's {@code SkillBranchParsers} in
+ * {@code openjiuwen/harness/tools/mobile_gui/skill_branch/parsers.py}.</p>
+ *
+ * <p>Mirrors Python's parser test module in
+ * {@code tests/unit_tests/harness/tools/mobile_gui/test_skill_branch_parsers.py}.</p>
+ */
 class SkillBranchParsersTest {
 
     @Test

@@ -4,10 +4,12 @@
 
 package com.openjiuwen.agent_teams.team_workspace;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.harness.tools.worktree.Git;
@@ -19,9 +21,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_teams.team_workspace.test_manager} in
+ * {@code tests/unit_tests/agent_teams/team_workspace/test_manager.py}.</p>
+ */
 class TeamWorkspaceManagerTest {
 
     @TempDir
@@ -62,6 +69,94 @@ class TeamWorkspaceManagerTest {
         try (var stream = Files.list(workspaceRoot.resolve(".team"))) {
             assertEquals(1L, stream.filter(path -> path.getFileName().toString().startsWith("team-alpha.stale-")).count());
         }
+    }
+
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_teams.team_workspace.test_manager::"
+                    + "test_mount_into_workspace_falls_back_to_junction_on_windows_1314: "
+                    + "fake_run() got an unexpected keyword argument 'shell'. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
+    @Test
+    void mountIntoWorkspaceFallsBackToJunctionOnWindows1314() {
+        // Python source test failed in baseline; keep disabled until the Python baseline changes.
+    }
+
+    @Test
+    void mountIntoWorkspaceReraisesNonPrivilegeMountFailure() throws Exception {
+        TeamWorkspaceConfig config = new TeamWorkspaceConfig();
+        IOException expected = new IOException("unexpected failure");
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(config, tempDir.resolve("shared-workspace").toString(), "team-alpha") {
+            @Override
+            protected void mountDirectory(String targetPath, String linkPath) throws IOException {
+                throw expected;
+            }
+        };
+        Files.createDirectories(Path.of(manager.getWorkspacePath()));
+        Path workspaceRoot = tempDir.resolve("agent-workspace");
+        Files.createDirectories(workspaceRoot);
+
+        IOException actual = assertThrows(IOException.class, () -> manager.mountIntoWorkspace(workspaceRoot.toString()));
+
+        assertEquals("unexpected failure", actual.getMessage());
+    }
+
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_teams.team_workspace.test_manager::test_mount_worktree_creates_symlink: "
+                    + "os.path.islink returned false on the created worktree mount. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
+    @Test
+    void mountWorktreeCreatesSymlink() {
+        // Python source test failed in baseline; keep disabled until the Python baseline changes.
+    }
+
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_teams.team_workspace.test_manager::"
+                    + "test_mount_worktree_replaces_stale_symlink: stale target remained instead of fresh target. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
+    @Test
+    void mountWorktreeReplacesStaleSymlink() {
+        // Python source test failed in baseline; keep disabled until the Python baseline changes.
+    }
+
+    @Test
+    void mountWorktreeSkipsWhenCollisionIsNotSymlink() throws Exception {
+        RecordingManager manager = makeManager(new TeamWorkspaceConfig());
+        Path target = tempDir.resolve("worktrees").resolve("wt-collide");
+        Files.createDirectories(target);
+        Path worktreeDir = Path.of(manager.getWorkspacePath()).resolve(".worktree");
+        Files.createDirectories(worktreeDir);
+        Path realDirectory = worktreeDir.resolve("wt-collide");
+        Files.createDirectories(realDirectory);
+
+        manager.mountWorktree("wt-collide", target.toString());
+
+        assertTrue(Files.isDirectory(realDirectory));
+        assertFalse(Files.isSymbolicLink(realDirectory));
+        assertEquals(List.of(), manager.mountCalls);
+    }
+
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_teams.team_workspace.test_manager::"
+                    + "test_unmount_worktree_removes_symlink: os.path.lexists stayed true after unmount. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
+    @Test
+    void unmountWorktreeRemovesSymlink() {
+        // Python source test failed in baseline; keep disabled until the Python baseline changes.
+    }
+
+    @Test
+    void unmountWorktreeNoopWhenLinkMissing() {
+        RecordingManager manager = makeManager(new TeamWorkspaceConfig());
+
+        assertDoesNotThrow(() -> manager.unmountWorktree("never-mounted"));
     }
 
     @Test

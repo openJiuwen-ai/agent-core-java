@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 /**
  * Focused parity tests for IntelliRouter model client translation.
  *
- * <p>Mirrors Python's {@code IntelliRouterModelClient} in
- * {@code openjiuwen/core/foundation/llm/model_clients/intelli_router_model_client.py}.</p>
+ * <p>Mirrors Python's {@code tests.unit_tests.core.foundation.llm.test_intelli_router_model_client}
+ * in {@code tests/unit_tests/core/foundation/llm/test_intelli_router_model_client.py}.</p>
  */
 class IntelliRouterModelClientTest {
 
@@ -651,8 +651,8 @@ class IntelliRouterModelClientTest {
     /**
      * Test router for the IntelliRouter third-party boundary.
      *
-     * <p>Mirrors Python's injected {@code router} argument in
-     * {@code openjiuwen/core/foundation/llm/model_clients/intelli_router_model_client.py}.</p>
+     * <p>Mirrors Python's {@code FakeReliableRouter} in
+     * {@code tests/unit_tests/core/foundation/llm/test_intelli_router_model_client.py}.</p>
      */
     private static final class RecordingRouter implements IntelliRouterModelClient.ReliableRouter {
         private final Map<String, Object> response;
@@ -704,8 +704,8 @@ class IntelliRouterModelClientTest {
     /**
      * Parser used to verify invoke parser fallback behavior.
      *
-     * <p>Mirrors Python's {@code output_parser.parse} call in
-     * {@code openjiuwen/core/foundation/llm/model_clients/intelli_router_model_client.py}.</p>
+     * <p>Mirrors Python's {@code fake_parse} output-parser branch in
+     * {@code tests/unit_tests/core/foundation/llm/test_intelli_router_model_client.py}.</p>
      */
     private static final class PrefixParser extends BaseOutputParser {
         @Override
@@ -722,8 +722,8 @@ class IntelliRouterModelClientTest {
     /**
      * Functional test exception bridge.
      *
-     * <p>Mirrors Python's raised {@code build_error} paths in
-     * {@code openjiuwen/core/foundation/llm/model_clients/intelli_router_model_client.py}.</p>
+     * <p>Mirrors Python's raised exception assertions in
+     * {@code tests/unit_tests/core/foundation/llm/test_intelli_router_model_client.py}.</p>
      */
     @FunctionalInterface
     private interface ThrowingRunnable {

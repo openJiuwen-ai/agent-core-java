@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeoutException;
@@ -216,8 +217,8 @@ class A2ARemoteClientTest {
     }
 
     @Test
-    void streamShouldPropagateCancellationWithoutCancelTaskSideEffect() {
-        RecordingFactory factory = new RecordingFactory(List.of(response(
+    void streamShouldPropagateCancelledErrorWithoutCancelTaskSideEffect() {
+        RecordingFactory factory = new RecordingFactory(new CancelledAfterFirstChunkStream(workingResponse(
                 "task-stream-1",
                 "context-stream-1",
                 "chunk-1")));
@@ -229,8 +230,11 @@ class A2ARemoteClientTest {
         Iterator<Object> iterator = client.stream(Map.of("query", "stream please"), null);
 
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(map(iterator.next())).containsEntry("status", "completed");
-        client.stop().toCompletableFuture().join();
+        assertThat(map(iterator.next())).containsEntry("status", "working");
+        assertThatThrownBy(iterator::hasNext)
+                .isInstanceOf(CancellationException.class)
+                .hasMessageContaining("stream cancelled");
+        assertThat(factory.transport.closed).isTrue();
         assertThat(factory.transport.cancelRequest).isNull();
     }
 
@@ -267,6 +271,10 @@ class A2ARemoteClientTest {
     }
 
     private static StreamResponse response(String taskId, String contextId, String text) {
+        return response(taskId, contextId, text, A2aTaskState.TASK_STATE_COMPLETED);
+    }
+
+    private static StreamResponse response(String taskId, String contextId, String text, A2aTaskState state) {
         A2aPart part = new A2aPart();
         part.setText(text);
         A2aArtifact artifact = new A2aArtifact();
@@ -275,7 +283,7 @@ class A2ARemoteClientTest {
         A2aTask task = new A2aTask();
         task.setId(taskId);
         task.setContextId(contextId);
-        task.setStatus(new A2aTaskStatus(A2aTaskState.TASK_STATE_COMPLETED));
+        task.setStatus(new A2aTaskStatus(state));
         task.setArtifacts(List.of(artifact));
         A2aMessage message = new A2aMessage();
         message.setTaskId(taskId);
@@ -284,6 +292,22 @@ class A2ARemoteClientTest {
         StreamResponse response = new StreamResponse();
         response.setTask(task);
         response.setMessage(message);
+        return response;
+    }
+
+    private static StreamResponse workingResponse(String taskId, String contextId, String text) {
+        A2aPart part = new A2aPart();
+        part.setText(text);
+        A2aArtifact artifact = new A2aArtifact();
+        artifact.setArtifactId("artifact-1");
+        artifact.setParts(List.of(part));
+        A2aTask task = new A2aTask();
+        task.setId(taskId);
+        task.setContextId(contextId);
+        task.setStatus(new A2aTaskStatus(A2aTaskState.TASK_STATE_WORKING));
+        task.setArtifacts(List.of(artifact));
+        StreamResponse response = new StreamResponse();
+        response.setTask(task);
         return response;
     }
 
@@ -369,6 +393,40 @@ class A2ARemoteClientTest {
 
         @Override
         public void close() {
+        }
+    }
+
+    private static final class CancelledAfterFirstChunkStream implements A2AEventStream {
+        private final Object firstEvent;
+        private boolean firstReturned;
+        private boolean postFirstProbeReturned;
+        private boolean closed;
+
+        private CancelledAfterFirstChunkStream(Object firstEvent) {
+            this.firstEvent = firstEvent;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (!firstReturned) {
+                return true;
+            }
+            if (!postFirstProbeReturned) {
+                postFirstProbeReturned = true;
+                return true;
+            }
+            throw new CancellationException("stream cancelled");
+        }
+
+        @Override
+        public Object next() {
+            firstReturned = true;
+            return firstEvent;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 

@@ -13,19 +13,30 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's {@code CharChunker} behavior in
  * {@code openjiuwen/core/retrieval/indexing/processor/chunker/char_chunker.py}.
+ *
+ * <p>Mirrors Python's {@code TestCharChunker} in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_char_chunker.py}.</p>
  */
 class CharChunkerTest {
 
     @Test
-    void emptyInputReturnsNoChunks() {
+    void defaultsMatchPythonConstructor() {
         CharChunker chunker = new CharChunker();
 
-        assertThat(chunker.chunkText(null)).isEmpty();
-        assertThat(chunker.chunkText("")).isEmpty();
+        assertThat(chunker.getChunkSize()).isEqualTo(512);
+        assertThat(chunker.getChunkOverlap()).isEqualTo(50);
     }
 
     @Test
-    void splitsTextUsingConfiguredCharSplitter() {
+    void customConstructorStoresChunkSizeAndOverlap() {
+        CharChunker chunker = new CharChunker(256, 25);
+
+        assertThat(chunker.getChunkSize()).isEqualTo(256);
+        assertThat(chunker.getChunkOverlap()).isEqualTo(25);
+    }
+
+    @Test
+    void chunkTextSuccessUsesConfiguredCharSplitter() {
         CharChunker chunker = new CharChunker(5, 1);
 
         List<String> chunks = chunker.chunkText("abcdefghijk");
@@ -34,10 +45,16 @@ class CharChunkerTest {
     }
 
     @Test
-    void defaultsMatchPythonConstructor() {
+    void emptyTextReturnsNoChunks() {
         CharChunker chunker = new CharChunker();
 
-        assertThat(chunker.getChunkSize()).isEqualTo(512);
-        assertThat(chunker.getChunkOverlap()).isEqualTo(50);
+        assertThat(chunker.chunkText("")).isEmpty();
+    }
+
+    @Test
+    void nullTextReturnsNoChunks() {
+        CharChunker chunker = new CharChunker();
+
+        assertThat(chunker.chunkText(null)).isEmpty();
     }
 }

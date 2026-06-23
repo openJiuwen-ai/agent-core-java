@@ -13,6 +13,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
 /**
@@ -23,6 +26,9 @@ public final class CallbackDecorators {
 
     public static final Object TRANSFORM_NOOP = new Object();
     public static final String WRAP_EVENT_PREFIX = "__wrap__:";
+    private static final String OUTPUT_MODE_GENERATOR = "generator";
+    private static final String DEFAULT_OUTPUT_MODE = "frame";
+    private static final String DEFAULT_RESULT_KEY = "result";
 
     private CallbackDecorators() {
     }
@@ -130,6 +136,18 @@ public final class CallbackDecorators {
             framework.trigger(beforeEvent, passArgs ? internalArgs(kwargs) : new Object[0], passArgs ? new HashMap<>(kwargs) : new HashMap<>());
             try {
                 Object result = wrapped.apply(kwargs);
+                if (result instanceof Iterator<?> iterator) {
+                    List<Object> collected = new ArrayList<>();
+                    while (iterator.hasNext()) {
+                        collected.add(iterator.next());
+                    }
+                    Map<String, Object> afterKwargs = passArgs ? new HashMap<>(kwargs) : new HashMap<>();
+                    if (passResult) {
+                        afterKwargs.put("result", collected);
+                    }
+                    framework.trigger(afterEvent, passArgs ? internalArgs(kwargs) : new Object[0], afterKwargs);
+                    return collected.iterator();
+                }
                 Map<String, Object> afterKwargs = passArgs ? new HashMap<>(kwargs) : new HashMap<>();
                 if (passResult) {
                     afterKwargs.put("result", result);
@@ -148,13 +166,25 @@ public final class CallbackDecorators {
     }
 
     public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> createTransformIoDecorator(
-            Function<Map<String, Object>, Map<String, Object>> inputTransform,
+            Function<Map<String, Object>, ?> inputTransform,
             Function<Object, Object> outputTransform
     ) {
+        return createTransformIoDecorator(inputTransform, outputTransform, DEFAULT_OUTPUT_MODE);
+    }
+
+    public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> createTransformIoDecorator(
+            Function<Map<String, Object>, ?> inputTransform,
+            Function<Object, Object> outputTransform,
+            String outputMode
+    ) {
+        String normalizedOutputMode = normalizedOutputMode(outputMode);
         return wrapped -> kwargs -> {
-            Map<String, Object> finalKwargs = inputTransform != null ? inputTransform.apply(kwargs) : kwargs;
+            Map<String, Object> finalKwargs = applyInputTransform(kwargs, inputTransform);
             Object result = wrapped.apply(finalKwargs);
-            return outputTransform != null ? outputTransform.apply(result) : result;
+            if (OUTPUT_MODE_GENERATOR.equals(normalizedOutputMode)) {
+                return transformGeneratorResult(result, outputTransform);
+            }
+            return transformFrameResult(result, outputTransform);
         };
     }
 
@@ -165,6 +195,19 @@ public final class CallbackDecorators {
             String outputEvent,
             String resultKey
     ) {
+        return createTransformIoByEventsDecorator(framework, inputEvent, outputEvent, resultKey, DEFAULT_OUTPUT_MODE);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> createTransformIoByEventsDecorator(
+            DecoratorFramework framework,
+            String inputEvent,
+            String outputEvent,
+            String resultKey,
+            String outputMode
+    ) {
+        String outputKey = resultKey != null ? resultKey : DEFAULT_RESULT_KEY;
+        String normalizedOutputMode = normalizedOutputMode(outputMode);
         return wrapped -> kwargs -> {
             Map<String, Object> finalKwargs = kwargs;
             if (inputEvent != null) {
@@ -179,13 +222,16 @@ public final class CallbackDecorators {
 
             Object result = wrapped.apply(finalKwargs);
             if (outputEvent == null) {
+                if (OUTPUT_MODE_GENERATOR.equals(normalizedOutputMode)) {
+                    return transformGeneratorResult(result, null);
+                }
                 return result;
             }
 
-            Map<String, Object> outKwargs = new HashMap<>();
-            outKwargs.put(resultKey != null ? resultKey : "result", result);
-            Object transformed = framework.triggerTransform(outputEvent, new Object[0], outKwargs);
-            return transformed == TRANSFORM_NOOP ? result : transformed;
+            if (OUTPUT_MODE_GENERATOR.equals(normalizedOutputMode)) {
+                return transformGeneratorResultByEvent(framework, outputEvent, outputKey, result);
+            }
+            return transformFrameResultByEvent(framework, outputEvent, outputKey, result);
         };
     }
 
@@ -218,7 +264,9 @@ public final class CallbackDecorators {
             DecoratorFramework framework,
             String event
     ) {
-        return wrapped -> createWrapDecorator(getFrameworkWrapHandlers(framework, event)).apply(wrapped);
+        return wrapped -> kwargs -> createWrapDecorator(getFrameworkWrapHandlers(framework, event))
+                .apply(wrapped)
+                .apply(kwargs);
     }
 
     public static Function<Function<Map<String, Object>, Object>, Function<Map<String, Object>, Object>> createWrapDecorator(
@@ -292,6 +340,136 @@ public final class CallbackDecorators {
     private static Object[] internalArgs(Map<String, Object> kwargs) {
         Object args = kwargs != null ? kwargs.get("_args") : null;
         return args instanceof Object[] values ? values : new Object[0];
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> applyInputTransform(
+            Map<String, Object> kwargs,
+            Function<Map<String, Object>, ?> inputTransform
+    ) {
+        Map<String, Object> safeKwargs = kwargs != null ? kwargs : new HashMap<>();
+        if (inputTransform == null) {
+            return safeKwargs;
+        }
+        Object transformed = resolveCompletion(inputTransform.apply(safeKwargs));
+        if (transformed instanceof BoundArgs boundArgs) {
+            Map<String, Object> finalKwargs = new HashMap<>(boundArgs.getKwargs());
+            finalKwargs.put("_args", boundArgs.getArgs());
+            return finalKwargs;
+        }
+        if (transformed instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        throw new IllegalArgumentException("input_transform must return a Map or BoundArgs");
+    }
+
+    private static Object transformFrameResult(Object result, Function<Object, Object> outputTransform) {
+        if (outputTransform == null) {
+            return result;
+        }
+        Iterator<?> iterator = toIterator(result);
+        if (iterator == null) {
+            return resolveCompletion(outputTransform.apply(result));
+        }
+        List<Object> transformedItems = new ArrayList<>();
+        while (iterator.hasNext()) {
+            transformedItems.add(resolveCompletion(outputTransform.apply(iterator.next())));
+        }
+        return transformedItems.iterator();
+    }
+
+    private static Object transformGeneratorResult(Object result, Function<Object, Object> outputTransform) {
+        Iterator<?> source = toIterator(result);
+        if (source == null) {
+            throw new IllegalArgumentException("output_mode='generator' is only supported for generator results");
+        }
+        if (outputTransform == null) {
+            return source;
+        }
+        Object transformed = resolveCompletion(outputTransform.apply(source));
+        Iterator<?> iterator = toIterator(transformed);
+        if (iterator == null) {
+            throw new IllegalArgumentException("output_mode='generator' output_transform must return an Iterator or Iterable");
+        }
+        return iterator;
+    }
+
+    private static Object transformFrameResultByEvent(
+            DecoratorFramework framework,
+            String outputEvent,
+            String resultKey,
+            Object result
+    ) {
+        Iterator<?> iterator = toIterator(result);
+        if (iterator == null) {
+            return triggerOutputTransform(framework, outputEvent, resultKey, result);
+        }
+        List<Object> transformedItems = new ArrayList<>();
+        while (iterator.hasNext()) {
+            transformedItems.add(triggerOutputTransform(framework, outputEvent, resultKey, iterator.next()));
+        }
+        return transformedItems.iterator();
+    }
+
+    private static Object transformGeneratorResultByEvent(
+            DecoratorFramework framework,
+            String outputEvent,
+            String resultKey,
+            Object result
+    ) {
+        Iterator<?> source = toIterator(result);
+        if (source == null) {
+            throw new IllegalArgumentException("output_mode='generator' is only supported for generator results");
+        }
+        Object transformed = triggerOutputTransform(framework, outputEvent, resultKey, source);
+        if (transformed == source) {
+            return source;
+        }
+        Iterator<?> iterator = toIterator(transformed);
+        if (iterator == null) {
+            throw new IllegalArgumentException("output_mode='generator' output event must return an Iterator or Iterable");
+        }
+        return iterator;
+    }
+
+    private static Object triggerOutputTransform(
+            DecoratorFramework framework,
+            String outputEvent,
+            String resultKey,
+            Object value
+    ) {
+        Map<String, Object> outKwargs = new HashMap<>();
+        outKwargs.put(resultKey, value);
+        Object transformed = framework.triggerTransform(outputEvent, new Object[0], outKwargs);
+        return transformed == TRANSFORM_NOOP ? value : transformed;
+    }
+
+    private static Iterator<?> toIterator(Object value) {
+        if (value instanceof Iterator<?> iterator) {
+            return iterator;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            return iterable.iterator();
+        }
+        return null;
+    }
+
+    private static String normalizedOutputMode(String outputMode) {
+        return outputMode != null ? outputMode : DEFAULT_OUTPUT_MODE;
+    }
+
+    private static Object resolveCompletion(Object value) {
+        if (!(value instanceof CompletionStage<?> stage)) {
+            return value;
+        }
+        try {
+            return stage.toCompletableFuture().get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new CompletionException("Transform interrupted", interrupted);
+        } catch (ExecutionException error) {
+            throw new CompletionException(error.getCause());
+        }
     }
 
     /**

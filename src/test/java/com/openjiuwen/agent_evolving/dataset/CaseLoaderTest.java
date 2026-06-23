@@ -21,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code CaseLoader}, {@code shuffle_cases}, and {@code split_cases} in
  * {@code openjiuwen/agent_evolving/dataset/case_loader.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.dataset.test_case_loader} in
+ * {@code tests/unit_tests/agent_evolving/dataset/test_case_loader.py}.</p>
  */
 class CaseLoaderTest {
 

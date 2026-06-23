@@ -10,6 +10,7 @@ import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.stream_actor.ActorManagerSession;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.workflow.CompIOConfig;
 import com.openjiuwen.core.workflow.NodeSpec;
@@ -35,6 +36,7 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     private final WorkflowRuntimeConfig config = new WorkflowRuntimeConfig();
     private final String parentId;
     private final String executableId;
+    private final boolean subGraph;
     private String workflowId;
     private String nodeId;
     private String nodeType;
@@ -55,15 +57,25 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
                                   WorkflowCommitState state, Object callbackManager,
                                   String parentId, String executableId, String nodeId,
                                   String nodeType, int workflowNestingDepth) {
+        this(workflowId, parent, sessionId, state, callbackManager, parentId, executableId,
+                nodeId, nodeType, workflowNestingDepth, false);
+    }
+
+    public WorkflowRuntimeSession(String workflowId, BaseSession parent, String sessionId,
+                                  WorkflowCommitState state, Object callbackManager,
+                                  String parentId, String executableId, String nodeId,
+                                  String nodeType, int workflowNestingDepth, boolean subGraph) {
         this.workflowId = workflowId != null ? workflowId : "";
         this.parent = parent;
         this.sessionId = sessionId != null && !sessionId.isBlank()
                 ? sessionId
                 : UUID.randomUUID().toString().replace("-", "");
-        this.state = WorkflowRuntimeState.from(state);
         this.callbackManager = callbackManager;
         this.parentId = parentId != null ? parentId : "";
         this.executableId = executableId != null ? executableId : "";
+        String stateNodeId = this.executableId.isBlank() ? WorkflowRuntimeState.DEFAULT_NODE_ID : this.executableId;
+        this.state = WorkflowRuntimeState.from(state, this.parentId, stateNodeId);
+        this.subGraph = subGraph;
         this.nodeId = nodeId != null ? nodeId : "";
         this.nodeType = nodeType != null ? nodeType : "";
         this.mainWorkflowId = this.workflowId;
@@ -74,19 +86,34 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         WorkflowRuntimeSession runtimeParent = parent instanceof WorkflowRuntimeSession runtime
                 ? runtime
                 : new WorkflowRuntimeSession("", parent, null, WorkflowRuntimeState.create(), null);
+        String nodeParentId = runtimeParent.executableId();
+        String nodeExecutableId = nodeParentId == null || nodeParentId.isBlank()
+                ? nodeId
+                : nodeParentId + "." + nodeId;
         WorkflowRuntimeSession nodeSession = new WorkflowRuntimeSession(
                 runtimeParent.workflowId(),
                 runtimeParent,
                 runtimeParent.sessionId(),
-                runtimeParent.state().createNodeState(nodeId, runtimeParent.nodeId()),
+                runtimeParent.state().createNodeState(nodeExecutableId, nodeParentId),
                 runtimeParent.callbackManager(),
-                runtimeParent.nodeId(),
+                nodeParentId,
+                nodeExecutableId,
                 nodeId,
                 nodeId,
-                nodeId,
-                runtimeParent.workflowNestingDepth());
+                runtimeParent.workflowNestingDepth(),
+                runtimeParent.subGraph());
         nodeSession.config().setEnvs(runtimeParent.config().getEnvs());
+        nodeSession.config().addWorkflowConfigs(runtimeParent.config().getWorkflowConfigs());
+        nodeSession.setMainWorkflowId(runtimeParent.mainWorkflowId());
+        nodeSession.setActorManager(runtimeParent.runtimeActorManager());
+        nodeSession.setStreamWriterManager(runtimeParent.runtimeStreamWriterManager());
+        nodeSession.setCheckpointer(runtimeParent.checkpointer());
         return nodeSession;
+    }
+
+    @Override
+    public Vertex.VertexSession nodeSession(String nodeId) {
+        return WorkflowRuntimeSession.nodeSession(this, nodeId);
     }
 
     public BaseSession parent() {
@@ -123,6 +150,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     @Override
     public String parentId() {
         return parentId;
+    }
+
+    @Override
+    public boolean subGraph() {
+        return subGraph;
     }
 
     @Override
@@ -290,6 +322,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         @Override
         public void markProducerDone(String nodeId) {
             delegate.markProducerDone(nodeId);
+        }
+
+        @Override
+        public StreamEmitter subWorkflowStream() {
+            return new StreamEmitter(delegate.subWorkflowStream());
         }
 
         @Override

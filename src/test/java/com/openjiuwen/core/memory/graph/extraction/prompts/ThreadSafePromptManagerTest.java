@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code ThreadSafePromptManager} in
  * {@code openjiuwen/core/memory/graph/extraction/prompts/manager.py}.
+ *
+ * <p>Mirrors Python's manager tests in
+ * {@code tests/unit_tests/core/memory/graph/extraction/test_manager.py}.</p>
  */
 class ThreadSafePromptManagerTest {
 
@@ -58,6 +61,22 @@ class ThreadSafePromptManagerTest {
         assertThat(messages.get(1)).containsEntry("role", "user").containsEntry("content", "User line\n");
         assertThat(messages.get(2)).containsEntry("role", "assistant").containsEntry("content", "Assistant line\n");
         assertThat(messages.get(3)).containsEntry("role", "tool").containsEntry("content", "Tool line\n");
+    }
+
+    @Test
+    void loadPrContentParsesSingleUserRoleAndContent() {
+        List<Map<String, String>> messages = ThreadSafePromptManager.loadPrContent("`#user#`\nHello world.");
+
+        assertThat(messages).hasSize(1);
+        assertThat(messages.getFirst())
+                .containsEntry("role", "user")
+                .containsEntry("content", "\nHello world.");
+    }
+
+    @Test
+    void loadPrContentReturnsEmptyListForBlankContent() {
+        assertThat(ThreadSafePromptManager.loadPrContent("")).isEmpty();
+        assertThat(ThreadSafePromptManager.loadPrContent("   \n  ")).isEmpty();
     }
 
     @Test
@@ -101,5 +120,33 @@ class ThreadSafePromptManagerTest {
                 .isInstanceOf(BaseError.class)
                 .extracting("status")
                 .isEqualTo(StatusCode.MEMORY_GRAPH_PROMPT_FILES_MISSING);
+    }
+
+    @Test
+    void containsReturnsFalseForUnknownPromptName() {
+        ThreadSafePromptManager manager = new ThreadSafePromptManager(List.of());
+
+        assertThat(manager.contains("nonexistent_prompt_xyz_123")).isFalse();
+    }
+
+    @Test
+    void getReturnsTemplateWhenPromptWasRegistered() throws IOException {
+        Path promptDir = tempDir.resolve("get");
+        Files.createDirectories(promptDir);
+        Files.writeString(promptDir.resolve("get_test.pr.md"), "`#user#`\nContent.", StandardCharsets.UTF_8);
+        ThreadSafePromptManager manager = new ThreadSafePromptManager(List.of());
+        manager.registerInBulk(promptDir, "g");
+
+        PromptTemplate template = manager.get("get_test");
+
+        assertThat(template).isNotNull();
+        assertThat(template.getName()).isEqualTo("get_test");
+    }
+
+    @Test
+    void getReturnsNullForUnknownPromptName() {
+        ThreadSafePromptManager manager = new ThreadSafePromptManager(List.of());
+
+        assertThat(manager.get("unknown_name_xyz_456")).isNull();
     }
 }

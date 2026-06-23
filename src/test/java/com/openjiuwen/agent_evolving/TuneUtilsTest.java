@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code TuneUtils} and module helpers in
  * {@code openjiuwen/agent_evolving/utils.py}.</p>
+ *
+ * <p>Mirrors Python's test coverage in
+ * {@code tests/unit_tests/agent_evolving/test_utils.py}.</p>
  */
 class TuneUtilsTest {
 

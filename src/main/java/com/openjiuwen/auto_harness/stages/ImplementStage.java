@@ -332,14 +332,25 @@ public abstract class ImplementStage extends TaskStage {
         requirements.add("2. 严格按 ExtensionDesign.components 实现组件；不要为了完整性自动补充未声明的 Rail、Tool 或 Skill。");
         requirements.add("3. 实现必须贴合 extension_name 和 gap 语义，保留用户目标中的关键实体与产物类型。");
         requirements.add("4. 真实产物契约：" + artifactContractHint(effective.getExtensionName()));
+        requirements.add("Do not generalize PPT/document/office generation requests into requirements collection or structured requirement reports.");
+        requirements.add("For PPT/PPTX artifacts, validate a real .pptx zip with zipfile, [Content_Types].xml, ppt/presentation.xml, and ppt/slides/slide*.xml.");
+        requirements.add("Import checks must read the actual module and class values from harness_config.yaml; do not guess module paths.");
+        requirements.add("All rail/tool modules must start with openjiuwen.extensions.harness.<extension_name>. and point at real Python files.");
         int step = 5;
         if (components.contains("rail")) {
             requirements.add(step++ + ". 实现 rail 组件 (继承 DeepAgentRail)。");
         }
         if (components.contains("tool")) {
+            if (components.contains("skill")) {
+                requirements.add("Tool + Skill cooperation: ToolCard.description must state it should be used with the corresponding Skill.");
+            }
             requirements.add(step++ + ". 实现 tool 组件 (继承 Tool，包含 ToolCard)。");
         }
         if (components.contains("skill")) {
+            if (effective.getSkillSource() == null || effective.getSkillSource().isBlank()) {
+                requirements.add("Follow skill-creator guidance; keep domain rules, brand style, generation flow, examples, and acceptance criteria in SKILL.md.");
+                requirements.add("Place reusable templates, brand assets, or detailed references under assets/ or references/ and describe when to use them in SKILL.md.");
+            }
             if (effective.getSkillSource() != null && !effective.getSkillSource().isBlank()) {
                 requirements.add(step++ + ". Skill 部分已从社区 skill 复用；不要重新创建或修改 SKILL.md。");
             } else {

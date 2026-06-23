@@ -15,6 +15,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Mirrors Python's upstream HTTP client retry tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/gateway/test_upstream_client.py}.
+ */
 class HttpUpstreamGatewayClientTest {
 
     @Test

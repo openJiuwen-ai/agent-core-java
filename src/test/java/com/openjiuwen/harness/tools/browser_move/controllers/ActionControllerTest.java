@@ -16,6 +16,10 @@ import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.Test;
 
+/**
+ * <p>Mirrors Python's
+ * {@code tests/unit_tests/harness/tools/browser_move/test_controller.py}.</p>
+ */
 class ActionControllerTest {
 
     @Test
@@ -42,6 +46,7 @@ class ActionControllerTest {
         assertEquals(42, result.get("value"));
         assertEquals("session-1", result.get("handler_session_id"));
         assertEquals("request-1", result.get("handler_request_id"));
+        assertEquals(Map.of("source", "test"), result.get("meta"));
     }
 
     @Test
@@ -126,6 +131,8 @@ class ActionControllerTest {
         Map<String, Object> spec = details.get("browser_drag_and_drop");
         assertTrue(spec.get("summary") instanceof String);
         assertNotNull(spec.get("params"));
+        assertTrue(spec.get("params") instanceof Map<?, ?>);
+        assertFalse(((Map<?, ?>) spec.get("params")).isEmpty());
     }
 
     @Test

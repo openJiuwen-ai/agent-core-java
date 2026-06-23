@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +26,7 @@ public class SharedMemoryManager implements TeamMemoryManager.SharedMemoryManage
 
     public static final String TEAM_MEMORY_FILENAME = "TEAM_MEMORY.md";
     public static final int TEAM_MEMORY_MAX_READ_LINES = 200;
+    private static final ConcurrentHashMap<Path, Object> LOCAL_WRITE_LOCKS = new ConcurrentHashMap<>();
 
     private final Path directory;
     private final TeamMemoryExtractor.FileSystemView sysOperation;
@@ -135,6 +137,13 @@ public class SharedMemoryManager implements TeamMemoryManager.SharedMemoryManage
     }
 
     private CompletionStage<Void> writeLocalAtomic(String content) {
+        Object lock = LOCAL_WRITE_LOCKS.computeIfAbsent(targetPath(), ignored -> new Object());
+        synchronized (lock) {
+            return writeLocalAtomicLocked(content);
+        }
+    }
+
+    private CompletionStage<Void> writeLocalAtomicLocked(String content) {
         Path tmpPath = null;
         try {
             Files.createDirectories(directory);

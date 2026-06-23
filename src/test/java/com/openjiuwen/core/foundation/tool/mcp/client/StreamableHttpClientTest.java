@@ -5,7 +5,9 @@
 package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.openjiuwen.core.foundation.tool.auth.AuthHeaderAndQueryProvider;
+import com.openjiuwen.core.foundation.tool.mcp.McpBase;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
 import io.modelcontextprotocol.spec.McpSchema;
@@ -28,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code StreamableHttpClient} in
  * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+ *
+ * <p>Mirrors Python's streamable HTTP MCP client tests in
+ * {@code tests/unit_tests/core/foundation/tool/test_streamable_http_client.py}.</p>
  */
 class StreamableHttpClientTest {
 
@@ -163,6 +168,74 @@ class StreamableHttpClientTest {
         assertTrue(client.isDisconnected());
     }
 
+    @Test
+    void pythonParityMcpToolDropsMissingOptionalArguments() throws Exception {
+        FakeSession session = new FakeSession();
+        session.callResult = Map.of("content", List.of(Map.of("text", "typed")));
+        StreamableHttpClient client = new StreamableHttpClient(
+                new McpServerConfig("streamable-server", "http://127.0.0.1:8930/mcp"),
+                new CapturingFactory(session));
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        McpToolCard card = new McpToolCard(
+                "tool-id",
+                "browser_type",
+                "Type text",
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "ref", Map.of("type", "string"),
+                                "text", Map.of("type", "string"),
+                                "submit", Map.of("type", "boolean"),
+                                "slowly", Map.of("type", "boolean")),
+                        "required", List.of("ref", "text")),
+                "streamable-server",
+                "streamable-server");
+        McpTool tool = new McpTool(client, card);
+
+        Object result = tool.invoke(Map.of("ref", "q", "text", "wireless mouse"));
+
+        assertEquals(Map.of("result", "typed"), result);
+        assertEquals("browser_type", session.calledToolName);
+        assertEquals(Map.of("ref", "q", "text", "wireless mouse"), session.calledArguments);
+    }
+
+    @Test
+    void pythonParityMcpToolPreservesEmptyObjectArguments() throws Exception {
+        FakeSession session = new FakeSession();
+        session.callResult = Map.of("content", List.of(Map.of("text", "snapshotted")));
+        StreamableHttpClient client = new StreamableHttpClient(
+                new McpServerConfig("streamable-server", "http://127.0.0.1:8930/mcp"),
+                new CapturingFactory(session));
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        McpToolCard card = new McpToolCard(
+                "tool-id",
+                "browser_snapshot",
+                "Capture accessibility snapshot",
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "filename", Map.of("type", "string"),
+                                "depth", Map.of("type", "number")),
+                        "additionalProperties", false),
+                "streamable-server",
+                "streamable-server");
+        McpTool tool = new McpTool(client, card);
+
+        Object result = tool.invoke(Map.of());
+
+        assertEquals(Map.of("result", "snapshotted"), result);
+        assertEquals("browser_snapshot", session.calledToolName);
+        assertEquals(Map.of(), session.calledArguments);
+    }
+
+    @Test
+    void pythonParityImageContentReturnsCompactDescription() {
+        Object result = McpBase.extractMcpToolResultContent(Map.of(
+                "content", List.of(Map.of("mimeType", "image/png", "data", "abc123"))));
+
+        assertEquals("[image content: image/png, 6 base64 chars]", result);
+    }
+
     /**
      * Mirrors Python's injected streamable HTTP client context in
      * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
@@ -241,4 +314,5 @@ class StreamableHttpClientTest {
             closed = true;
         }
     }
+
 }

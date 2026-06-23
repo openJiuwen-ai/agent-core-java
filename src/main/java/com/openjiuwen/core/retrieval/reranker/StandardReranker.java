@@ -143,12 +143,19 @@ public class StandardReranker extends Reranker {
                 continue;
             }
             Object indexValue = map.get("index");
-            int index = indexValue instanceof Number number ? number.intValue() : -1;
+            if (!(indexValue instanceof Number indexNumber)) {
+                throw ErrorHelper.buildError(
+                        StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
+                        "error_msg",
+                        "Reranker response result missing index"
+                );
+            }
+            int index = indexNumber.intValue();
             if (index < 0 || index >= docIds.size()) {
                 continue;
             }
             Object scoreValue = map.get("relevance_score");
-            double score = scoreValue instanceof Number number ? number.doubleValue() : 0.0d;
+            double score = scoreValue instanceof Number scoreNumber ? scoreNumber.doubleValue() : 0.0d;
             result.put(docIds.get(index), score);
         }
     }

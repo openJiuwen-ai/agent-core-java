@@ -18,9 +18,11 @@ import com.openjiuwen.agent_teams.schema.TeamEvent;
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -28,6 +30,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's queue, lifecycle, poll pause/resume, and wake callback
  * behavior in {@code openjiuwen/agent_teams/agent/coordination/event_bus.py}.</p>
+ *
+ * <p>Also mirrors Python's EventBus lifecycle tests in
+ * {@code tests/unit_tests/agent_teams/test_coordination_lifecycle.py}.</p>
  */
 class EventBusTest {
 
@@ -47,6 +52,37 @@ class EventBusTest {
             assertFalse(bus.isPollsPaused());
             assertFalse(bus.hasMailboxPollTask());
             assertFalse(bus.hasTaskPollTask());
+        } finally {
+            bus.close();
+        }
+    }
+
+    @Test
+    void lifecycleStartStopSetsRunningFlag() {
+        EventBus bus = new EventBus(TeamRole.LEADER, 30.0, 30.0);
+        try {
+            assertFalse(bus.isRunning());
+
+            bus.start().toCompletableFuture().join();
+            assertTrue(bus.isRunning());
+
+            bus.stop().toCompletableFuture().join();
+            assertFalse(bus.isRunning());
+        } finally {
+            bus.close();
+        }
+    }
+
+    @Test
+    void lifecycleStopIsIdempotent() {
+        EventBus bus = new EventBus(TeamRole.LEADER, 30.0, 30.0);
+        try {
+            bus.start().toCompletableFuture().join();
+
+            bus.stop().toCompletableFuture().join();
+            bus.stop().toCompletableFuture().join();
+
+            assertFalse(bus.isRunning());
         } finally {
             bus.close();
         }
@@ -82,6 +118,58 @@ class EventBusTest {
             assertFalse(bus.isPollsPaused());
             assertTrue(bus.hasMailboxPollTask());
             assertTrue(bus.hasTaskPollTask());
+        } finally {
+            bus.close();
+        }
+    }
+
+    @Test
+    void lifecycleWakeCallbackInvokedOnEvent() throws InterruptedException {
+        EventBus bus = new EventBus(TeamRole.LEADER, 30.0, 30.0);
+        CountDownLatch latch = new CountDownLatch(1);
+        List<CoordinationEvent> woke = new ArrayList<>();
+        try {
+            bus.start(event -> {
+                woke.add(event);
+                latch.countDown();
+                return CompletableFuture.completedFuture(null);
+            }).toCompletableFuture().join();
+
+            bus.enqueue(new EventMessage(TeamEvent.MESSAGE, Map.of("msg", "hello"), ""))
+                    .toCompletableFuture().join();
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            bus.stop().toCompletableFuture().join();
+            assertEquals(1, woke.size());
+            assertEquals(TeamEvent.MESSAGE, woke.getFirst().eventKey());
+        } finally {
+            bus.close();
+        }
+    }
+
+    @Test
+    void lifecyclePollTimerFiresPeriodically() throws InterruptedException {
+        EventBus bus = new EventBus(TeamRole.LEADER, 0.05, 0.05);
+        CountDownLatch latch = new CountDownLatch(4);
+        AtomicInteger mailboxPolls = new AtomicInteger();
+        AtomicInteger taskPolls = new AtomicInteger();
+        try {
+            bus.start(event -> {
+                if (InnerEventType.POLL_MAILBOX.value().equals(event.eventKey())
+                        && mailboxPolls.incrementAndGet() <= 2) {
+                    latch.countDown();
+                }
+                if (InnerEventType.POLL_TASK.value().equals(event.eventKey())
+                        && taskPolls.incrementAndGet() <= 2) {
+                    latch.countDown();
+                }
+                return CompletableFuture.completedFuture(null);
+            }).toCompletableFuture().join();
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            bus.stop().toCompletableFuture().join();
+            assertTrue(mailboxPolls.get() >= 2);
+            assertTrue(taskPolls.get() >= 2);
         } finally {
             bus.close();
         }

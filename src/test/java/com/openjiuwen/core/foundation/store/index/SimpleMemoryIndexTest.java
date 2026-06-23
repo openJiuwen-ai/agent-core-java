@@ -44,6 +44,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's {@code SimpleMemoryIndex} test surface in
  * {@code openjiuwen/core/foundation/store/index/simple_memory_index.py}.
+ *
+ * <p>Also mirrors Python's {@code test_simple_memory_index} in
+ * {@code tests/unit_tests/core/foundation/store/test_simple_memory_index.py}.</p>
  */
 class SimpleMemoryIndexTest {
 
@@ -194,6 +197,215 @@ class SimpleMemoryIndexTest {
     }
 
     @Test
+    void getByIdReturnsNullWhenOldFrameworkDataIsMissing() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        MemoryDoc missing = index.getById(USER_ID, SCOPE_ID, makeId(99)).join();
+
+        assertThat(missing).isNull();
+    }
+
+    @Test
+    void searchFindsRelevantOldFrameworkMemory() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        List<BaseMemoryIndex.MemorySearchResult> results = index.search(
+                USER_ID,
+                SCOPE_ID,
+                "Alice likes Python",
+                null,
+                3
+        ).join();
+
+        assertThat(results).isNotEmpty();
+        assertThat(results.getFirst().document().getText()).contains("Alice");
+        assertThat(results.getFirst().score()).isPositive();
+    }
+
+    @Test
+    void searchWithMemTypeFilterReturnsOnlyThatType() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        List<BaseMemoryIndex.MemorySearchResult> results = index.search(
+                USER_ID,
+                SCOPE_ID,
+                "programming",
+                List.of(MEM_TYPE),
+                5
+        ).join();
+
+        assertThat(results).isNotEmpty();
+        assertThat(results).allSatisfy(result -> assertThat(result.document().getType()).isEqualTo(MEM_TYPE));
+    }
+
+    @Test
+    void listMemoriesReturnsEveryOldFrameworkRecord() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        List<MemoryDoc> docs = index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join();
+
+        assertThat(docs).hasSize(3);
+        assertThat(docs)
+                .extracting(MemoryDoc::getText)
+                .containsExactly("Alice likes Python", "Bob prefers Go", "Charlie works on AI");
+    }
+
+    @Test
+    void timestampStringIsConvertedToTypedTimestamp() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        MemoryDoc doc = index.getById(USER_ID, SCOPE_ID, makeId(1)).join();
+
+        assertThat(doc.getTimestamp()).isNotNull();
+        assertThat(doc.getTimestamp().getYear()).isEqualTo(2026);
+        assertThat(doc.getTimestamp().getOffset()).isEqualTo(ZoneOffset.UTC);
+    }
+
+    @Test
+    void addNewMemoryCanBeReadBack() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        MemoryDoc newDoc = new MemoryDoc(
+                makeId(4),
+                "Diana studies Rust",
+                MEM_TYPE,
+                ZonedDateTime.now(ZoneOffset.UTC),
+                Map.of("source_id", "msg_4")
+        );
+
+        index.addMemories(USER_ID, SCOPE_ID, List.of(newDoc)).join();
+        MemoryDoc added = index.getById(USER_ID, SCOPE_ID, makeId(4)).join();
+
+        assertThat(added).isNotNull();
+        assertThat(added.getText()).isEqualTo("Diana studies Rust");
+        assertThat(added.getFields()).containsEntry("source_id", "msg_4");
+    }
+
+    @Test
+    void addMemoryDoesNotCorruptExistingOldFrameworkRecords() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc(makeId(4), "New", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        MemoryDoc old = index.getById(USER_ID, SCOPE_ID, makeId(1)).join();
+
+        assertThat(old).isNotNull();
+        assertThat(old.getText()).isEqualTo("Alice likes Python");
+    }
+
+    @Test
+    void deleteSingleMemoryRemovesOnlyThatRecord() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.deleteMemories(USER_ID, SCOPE_ID, List.of(makeId(1))).join();
+        List<MemoryDoc> remaining = index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, makeId(1)).join()).isNull();
+        assertThat(remaining).hasSize(2);
+        assertThat(remaining).extracting(MemoryDoc::getId).doesNotContain(makeId(1));
+    }
+
+    @Test
+    void deleteMultipleMemoriesLeavesUntouchedRecords() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.deleteMemories(USER_ID, SCOPE_ID, List.of(makeId(1), makeId(2))).join();
+        List<MemoryDoc> remaining = index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join();
+
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.getFirst().getText()).isEqualTo("Charlie works on AI");
+    }
+
+    @Test
+    void deleteByUserRemovesKvRowsAndVectorCollections() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.deleteByUser(USER_ID).join();
+
+        assertThat(index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join()).isEmpty();
+        assertThat(vectorStore.listCollectionNames().join()).noneMatch(name -> name.contains(USER_ID));
+    }
+
+    @Test
+    void deleteByScopeRemovesKvRowsAndVectorCollections() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.deleteByScope(SCOPE_ID).join();
+
+        assertThat(index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join()).isEmpty();
+        assertThat(vectorStore.listCollectionNames().join()).noneMatch(name -> name.contains(SCOPE_ID));
+    }
+
+    @Test
+    void updateMemoryDeletesThenAddsWithoutChangingTotalCount() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        writeViaOldFramework(kvStore, vectorStore, embedding);
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        MemoryDoc updated = new MemoryDoc(
+                makeId(1),
+                "Alice now prefers Rust",
+                MEM_TYPE,
+                ZonedDateTime.now(ZoneOffset.UTC),
+                Map.of()
+        );
+
+        index.deleteMemories(USER_ID, SCOPE_ID, List.of(makeId(1))).join();
+        index.addMemories(USER_ID, SCOPE_ID, List.of(updated)).join();
+        List<MemoryDoc> allDocs = index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, makeId(1)).join().getText()).isEqualTo("Alice now prefers Rust");
+        assertThat(allDocs).hasSize(3);
+    }
+
+    @Test
     void codecEncryptsStoredTextButReturnsPlaintextOnRead() {
         InMemoryKVStore kvStore = new InMemoryKVStore();
         TestVectorStore vectorStore = new TestVectorStore();
@@ -212,6 +424,224 @@ class SimpleMemoryIndexTest {
         assertThat(rawEntry.get("mem")).isNotEqualTo("top secret");
         assertThat(rawEntry.get("mem_type")).isEqualTo(MEM_TYPE);
         assertThat(rawEntry.get("tag")).isEqualTo("keep");
+    }
+
+    @Test
+    void addThenSearchWithCodecReturnsPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "sensitive data", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        List<BaseMemoryIndex.MemorySearchResult> results = index.search(USER_ID, SCOPE_ID, "sensitive", null, 1).join();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().document().getText()).isEqualTo("sensitive data");
+    }
+
+    @Test
+    void addThenGetByIdWithCodecReturnsPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "confidential", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        MemoryDoc result = index.getById(USER_ID, SCOPE_ID, "m1").join();
+
+        assertThat(result).isNotNull();
+        assertThat(result.getText()).isEqualTo("confidential");
+    }
+
+    @Test
+    void addThenListMemoriesWithCodecReturnsPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+        List<MemoryDoc> docs = List.of(
+                new MemoryDoc("test0000000000000000000000", "data_0", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()),
+                new MemoryDoc("test0000000000000000000001", "data_1", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()),
+                new MemoryDoc("test0000000000000000000002", "data_2", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of())
+        );
+
+        index.addMemories(USER_ID, SCOPE_ID, docs).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, "test0000000000000000000000").join().getText()).isEqualTo("data_0");
+        assertThat(index.getById(USER_ID, SCOPE_ID, "test0000000000000000000001").join().getText()).isEqualTo("data_1");
+        assertThat(index.getById(USER_ID, SCOPE_ID, "test0000000000000000000002").join().getText()).isEqualTo("data_2");
+    }
+
+    @Test
+    void codecLeavesNonMemoryFieldsPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "secret", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of("source_id", "src_1")))
+        ).join();
+        Map<String, Object> rawEntry = firstStoredEntry(kvStore);
+
+        assertThat(rawEntry).containsEntry("id", "m1").containsEntry("mem_type", MEM_TYPE).containsEntry("source_id", "src_1");
+        assertThat(rawEntry.get("mem")).isNotEqualTo("secret");
+    }
+
+    @Test
+    void codecKeepsIdTrackingPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "data", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        Object idsRaw = kvStore.get("UMD/" + USER_ID + "/" + SCOPE_ID + "/ids").join();
+
+        assertThat(idsRaw).isNotNull();
+        assertThat(new String((byte[]) idsRaw, StandardCharsets.UTF_8)).isEqualTo("m1");
+    }
+
+    @Test
+    void withoutCodecStoresPlaintextMemory() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "plain data", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        Map<String, Object> rawEntry = firstStoredEntry(kvStore);
+
+        assertThat(rawEntry.get("mem")).isEqualTo("plain data");
+    }
+
+    @Test
+    void searchWithoutCodecStillWorks() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "open data", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        List<BaseMemoryIndex.MemorySearchResult> results = index.search(USER_ID, SCOPE_ID, "open", null, 1).join();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().document().getText()).isEqualTo("open data");
+    }
+
+    @Test
+    void updateMemoriesWithCodecKeepsReadPathPlaintext() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "old text", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        index.updateMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "new text", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, "m1").join().getText()).isEqualTo("new text");
+    }
+
+    @Test
+    void deleteMemoriesWithCodecRemovesEncryptedRecord() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "to delete", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        index.deleteMemories(USER_ID, SCOPE_ID, List.of("m1")).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, "m1").join()).isNull();
+    }
+
+    @Test
+    void deleteMemoriesWithCodecUsesPlaintextMemTypeForTracking() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        registerAesGcm();
+        SimpleMemoryIndex index = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        index.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        index.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "delete me", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        index.deleteMemories(USER_ID, SCOPE_ID, List.of("m1")).join();
+
+        assertThat(index.getById(USER_ID, SCOPE_ID, "m1").join()).isNull();
+    }
+
+    @Test
+    void codecDecodeFailureFallsBackToStoredText() {
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestVectorStore vectorStore = new TestVectorStore();
+        TestEmbedding embedding = new TestEmbedding();
+        SimpleMemoryIndex writer = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        writer.addMemories(
+                USER_ID,
+                SCOPE_ID,
+                List.of(new MemoryDoc("m1", "legacy plain", MEM_TYPE, ZonedDateTime.now(ZoneOffset.UTC), Map.of()))
+        ).join();
+        registerAesGcm();
+        SimpleMemoryIndex reader = new SimpleMemoryIndex(kvStore, vectorStore, embedding);
+        reader.setStorageCodec(new AesStorageCodec(CRYPTO_KEY));
+
+        MemoryDoc result = reader.getById(USER_ID, SCOPE_ID, "m1").join();
+
+        assertThat(result).isNotNull();
+        assertThat(result.getText()).isEqualTo("legacy plain");
     }
 
     @Test

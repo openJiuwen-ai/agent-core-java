@@ -12,6 +12,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code TestMetricBase} in
+ * {@code tests/unit_tests/agent_evolving/evaluator/test_metrics/test_base.py}.
+ */
 class MetricTest {
 
     @Test
@@ -35,6 +39,10 @@ class MetricTest {
         assertTrue(new ConcreteMetric().computeBatch(List.of(), List.of(), Map.of()).isEmpty());
     }
 
+    /**
+     * Mirrors Python's {@code ConcreteMetric} in
+     * {@code tests/unit_tests/agent_evolving/evaluator/test_metrics/test_base.py}.
+     */
     private static final class ConcreteMetric extends Metric {
         @Override
         public String getName() {

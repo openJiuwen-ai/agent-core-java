@@ -21,7 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests for Case and EvaluatedCase data models.
  *
- * <p>Mirrors Python's {@code Case} and {@code EvaluatedCase} in
+ * <p>Mirrors Python's {@code TestCase} and {@code TestEvaluatedCase} in
+ * {@code tests/unit_tests/agent_evolving/dataset/test_case.py}.</p>
+ *
+ * <p>Also exercises Java classes that mirror Python's {@code Case} and {@code EvaluatedCase} in
  * {@code openjiuwen/agent_evolving/dataset/case.py}.</p>
  */
 class CaseTest {

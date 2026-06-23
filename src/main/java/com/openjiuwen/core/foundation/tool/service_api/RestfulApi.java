@@ -254,9 +254,7 @@ public class RestfulApi extends Tool {
         if (!containsHeader(headers, "Content-Type")) {
             builder.header("Content-Type", "application/json");
         }
-        builder.method(method, bodyParams.isEmpty()
-                ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofByteArray(jsonBody));
+        builder.method(method, HttpRequest.BodyPublishers.ofByteArray(jsonBody));
         return new RequestPayload(resolvedUrl, builder);
     }
 
@@ -557,6 +555,7 @@ public class RestfulApi extends Tool {
             case 200 -> "OK";
             case 201 -> "Created";
             case 202 -> "Accepted";
+            case 302 -> "Found";
             case 204 -> "No Content";
             case 400 -> "Bad Request";
             case 401 -> "Unauthorized";

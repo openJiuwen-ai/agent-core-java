@@ -7,6 +7,15 @@ package com.openjiuwen.agent_teams.agent;
 import com.openjiuwen.agent_teams.messager.Messager;
 import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
 import com.openjiuwen.agent_teams.messager.Messagers;
+import com.openjiuwen.agent_teams.models.ModelAllocators;
+import com.openjiuwen.agent_teams.models.ModelPoolEntry;
+import com.openjiuwen.agent_teams.models.ModelPoolSupport;
+import com.openjiuwen.agent_teams.rails.TeamPlanModeRail;
+import com.openjiuwen.agent_teams.rails.TeamPolicyRail;
+import com.openjiuwen.agent_teams.rails.TeamToolApprovalRail;
+import com.openjiuwen.agent_teams.rails.TeamToolRail;
+import com.openjiuwen.agent_teams.runtime.TeamPlan;
+import com.openjiuwen.agent_teams.runtime.TeamRuntimeManager;
 import com.openjiuwen.agent_teams.team_workspace.TeamWorkspaceConfig;
 import com.openjiuwen.agent_teams.team_workspace.TeamWorkspaceManager;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
@@ -20,6 +29,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
@@ -28,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -319,12 +330,40 @@ public class AgentConfigurator {
         }
 
         Object memoryManager = buildMemoryManager(spec, ctx, agentSpec, resolvedLanguage, memberName);
+        String resolvedTeamName = ctx.getTeamSpec() != null && isNonBlank(ctx.getTeamSpec().getTeamName())
+                ? ctx.getTeamSpec().getTeamName()
+                : spec.getTeamName();
+        String teamWorkspaceMount = getWorkspaceManager() == null ? null : ".team/" + resolvedTeamName + "/";
+        String teamWorkspacePath = getWorkspaceManager() == null ? null : getWorkspaceManager().getWorkspacePath();
+        TeamPolicyRail teamPolicyRail = new TeamPolicyRail(new TeamPolicyRail.Config(
+                ctx.getRole(),
+                ctx.getPersona(),
+                memberName,
+                spec.getLifecycle(),
+                spec.getTeammateMode(),
+                resolvedLanguage,
+                resolveTeamMode(spec),
+                agentSpec.getSystemPrompt(),
+                teamWorkspaceMount,
+                teamWorkspacePath,
+                getTeamBackend(),
+                spec.isExposeHumanAgentsToTeammates()
+        ));
+        TeamPlanModeRail teamPlanModeRail = ctx.getRole() == TeamRole.LEADER && TeamPlan.isTeamPlanEnabled(spec)
+                ? new TeamPlanModeRail(resolvedLanguage)
+                : null;
+        TeamToolRail teamToolRail = buildTeamToolRail(spec, ctx, resolvedLanguage, memberName, resolvedTeamName);
+        TeamToolApprovalRail toolApprovalRail = buildToolApprovalRail(agentSpec, ctx, resolvedTeamName, memberName);
         ConfiguredMemberRuntime runtime = new ConfiguredMemberRuntime(
                 agentSpec,
                 ctx,
                 workspaceSpec,
                 agentSpec.getSysOperation(),
-                getFirstIterGate()
+                teamToolRail,
+                getFirstIterGate(),
+                teamPolicyRail,
+                toolApprovalRail,
+                teamPlanModeRail
         );
         setHarness(runtime);
         setMemoryManager(memoryManager);
@@ -332,6 +371,56 @@ public class AgentConfigurator {
             runtime.runAgentCustomizer(spec.getAgentCustomizer());
         }
         return runtime;
+    }
+
+    private TeamToolRail buildTeamToolRail(
+            TeamAgentSpec spec,
+            TeamRuntimeContext ctx,
+            String resolvedLanguage,
+            String memberName,
+            String resolvedTeamName
+    ) {
+        return new TeamToolRail(new TeamToolRail.Config(
+                getTeamBackend(),
+                ctx.getRole() == null ? null : ctx.getRole().value(),
+                spec.getTeammateMode(),
+                spec.getLifecycle(),
+                resolvedLanguage,
+                null,
+                null,
+                Set.of(),
+                getWorkspaceManager(),
+                getWorktreeManager(),
+                false,
+                resolvedTeamName,
+                memberName,
+                null,
+                null,
+                null
+        ));
+    }
+
+    private TeamToolApprovalRail buildToolApprovalRail(
+            DeepAgentSpec agentSpec,
+            TeamRuntimeContext ctx,
+            String resolvedTeamName,
+            String memberName
+    ) {
+        if (ctx.getRole() == TeamRole.HUMAN_AGENT || agentSpec.getApprovalRequiredTools().isEmpty()) {
+            return null;
+        }
+        if (!(getTeamBackend().getMessageManager()
+                instanceof ConfiguredTeamBackend.ConfiguredMessageManager messageManager)) {
+            return null;
+        }
+        String leaderMemberName = ctx.getTeamSpec() == null ? null : ctx.getTeamSpec().getLeaderMemberName();
+        return new TeamToolApprovalRail(new TeamToolApprovalRail.Config(
+                resolvedTeamName,
+                memberName,
+                (content, toMemberName) -> messageManager.sendMessage(content, toMemberName, memberName),
+                leaderMemberName,
+                agentSpec.getApprovalRequiredTools()
+        ));
     }
 
     public Object buildMemoryManager(
@@ -440,7 +529,12 @@ public class AgentConfigurator {
         if (getCtx() == null || getCtx().getTeamSpec() == null) {
             return;
         }
-        getCtx().getTeamSpec().setModelPool(newPool == null ? List.of() : new ArrayList<>(newPool));
+        TeamSpec teamSpec = getCtx().getTeamSpec();
+        List<ModelPoolEntry> currentPool = modelPoolEntries(teamSpec.getModelPool());
+        List<ModelPoolEntry> incomingPool = modelPoolEntries(newPool);
+        List<ModelPoolEntry> inheritedPool = ModelPoolSupport.inheritPoolIds(currentPool, incomingPool);
+        teamSpec.setModelPool(inheritedPool);
+        setModelAllocator(ModelAllocators.buildModelAllocator(getSpec(), teamSpec));
     }
 
     public void attachModelAllocator(
@@ -523,6 +617,74 @@ public class AgentConfigurator {
         if (spawnPayloadBuilder == null) {
             throw new IllegalStateException("configure or setupInfra must run before building spawn payloads");
         }
+    }
+
+    private static List<ModelPoolEntry> modelPoolEntries(List<?> rawPool) {
+        List<ModelPoolEntry> entries = new ArrayList<>();
+        if (rawPool == null) {
+            return entries;
+        }
+        for (Object item : rawPool) {
+            if (item instanceof ModelPoolEntry entry) {
+                entries.add(entry);
+            } else if (item instanceof Map<?, ?> map) {
+                entries.add(modelPoolEntryFromMap(map));
+            } else {
+                throw new IllegalArgumentException(
+                        "model_pool entries must be ModelPoolEntry or map values, got "
+                                + item.getClass().getName());
+            }
+        }
+        return entries;
+    }
+
+    private static ModelPoolEntry modelPoolEntryFromMap(Map<?, ?> map) {
+        Object metadata = valueFromMap(map, "metadata");
+        Map<String, Object> metadataMap = metadata instanceof Map<?, ?> raw ? stringMap(raw) : Map.of();
+        return new ModelPoolEntry(
+                stringValue(valueFromMap(map, "model_name", "modelName")),
+                stringValue(valueFromMap(map, "api_key", "apiKey")),
+                stringValue(valueFromMap(map, "api_base_url", "apiBaseUrl")),
+                stringValue(valueFromMap(map, "api_provider", "apiProvider")),
+                stringValue(valueFromMap(map, "description")),
+                stringValue(valueFromMap(map, "model_id", "modelId")),
+                metadataMap
+        );
+    }
+
+    private static Map<String, Object> stringMap(Map<?, ?> raw) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), copyDynamicValue(entry.getValue()));
+        }
+        return result;
+    }
+
+    private static Object copyDynamicValue(Object value) {
+        if (value instanceof Map<?, ?> mapValue) {
+            return stringMap(mapValue);
+        }
+        if (value instanceof List<?> listValue) {
+            List<Object> copy = new ArrayList<>();
+            for (Object item : listValue) {
+                copy.add(copyDynamicValue(item));
+            }
+            return copy;
+        }
+        return value;
+    }
+
+    private static Object valueFromMap(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            if (map.containsKey(key)) {
+                return map.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private static CompletableFuture<Void> mirrorWorktreeIntoWorkspace(
@@ -1442,7 +1604,11 @@ public class AgentConfigurator {
      * <p>Mirrors Python's {@code create_member_handle} backend access in
      * {@code openjiuwen/agent_teams/agent/member_factory.py}.</p>
      */
-    public static class ConfiguredTeamBackend {
+    public static class ConfiguredTeamBackend
+            implements TeamPolicyRail.TeamBackend,
+            TeamToolRail.TeamBackend,
+            TeamRuntimeManager.TeamBackendRuntime,
+            SpawnManager.TeamBackendView {
         private final String teamName;
         private final String memberName;
         private final boolean leader;
@@ -1461,7 +1627,7 @@ public class AgentConfigurator {
         private final TeamMember.MemberStore memberStore;
         private final List<String> cleanupPaths = new ArrayList<>();
         private final Object taskManager = new Object();
-        private final Object messageManager = new Object();
+        private final ConfiguredMessageManager messageManager = new ConfiguredMessageManager();
 
         public ConfiguredTeamBackend(
                 String teamName,
@@ -1617,6 +1783,152 @@ public class AgentConfigurator {
         public Object getMessageManager() {
             return messageManager;
         }
+
+        @Override
+        public TeamRuntimeManager.TeamMessageManagerRuntime messageManager() {
+            return messageManager;
+        }
+
+        @Override
+        public Collection<String> bridgeAgentNames() {
+            if (!enableBridge) {
+                return List.of();
+            }
+            return predefinedMembers.stream()
+                    .filter(member -> member.getRoleType() == TeamRole.BRIDGE_AGENT)
+                    .map(TeamMemberSpec::getMemberName)
+                    .filter(AgentConfigurator::isNonBlank)
+                    .toList();
+        }
+
+        @Override
+        public CompletionStage<Long> getTeamUpdatedAt() {
+            return CompletableFuture.completedFuture(0L);
+        }
+
+        @Override
+        public CompletionStage<TeamPolicyRail.TeamInfoSnapshot> getTeamInfo() {
+            return CompletableFuture.completedFuture(new TeamPolicyRail.TeamInfoSnapshot(teamName, teamName, ""));
+        }
+
+        @Override
+        public CompletionStage<Long> getMembersMaxUpdatedAt() {
+            return CompletableFuture.completedFuture(0L);
+        }
+
+        @Override
+        public CompletionStage<List<String>> humanAgentNames() {
+            if (!enableHitt) {
+                return CompletableFuture.completedFuture(List.of());
+            }
+            return CompletableFuture.completedFuture(predefinedMembers.stream()
+                    .filter(member -> member.getRoleType() == TeamRole.HUMAN_AGENT)
+                    .map(TeamMemberSpec::getMemberName)
+                    .filter(AgentConfigurator::isNonBlank)
+                    .sorted()
+                    .toList());
+        }
+
+        @Override
+        public CompletionStage<List<TeamPolicyRail.TeamMemberSnapshot>> listMembers() {
+            List<TeamPolicyRail.TeamMemberSnapshot> members = predefinedMembers.stream()
+                    .map(member -> new TeamPolicyRail.TeamMemberSnapshot(
+                            member.getMemberName(),
+                            isNonBlank(member.getDisplayName()) ? member.getDisplayName() : member.getMemberName(),
+                            member.getPersona()
+                    ))
+                    .toList();
+            return CompletableFuture.completedFuture(members);
+        }
+
+        @Override
+        public CompletionStage<Object> getMember(String name) {
+            if (memberStore != null) {
+                return memberStore.getMember(name, teamName).thenApply(snapshot -> memberRow(name, snapshot));
+            }
+            if (Objects.equals(name, memberName) || Objects.equals(name, leaderMemberName)) {
+                return CompletableFuture.completedFuture(new Object());
+            }
+            return CompletableFuture.completedFuture(predefinedMembers.stream()
+                    .filter(member -> Objects.equals(member.getMemberName(), name))
+                    .findFirst()
+                    .map(member -> (Object) member)
+                    .orElse(null));
+        }
+
+        @Override
+        public CompletionStage<Boolean> updateMemberStatus(String memberName, String teamName, String status) {
+            if (memberStore == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return memberStore.updateMemberStatus(memberName, teamName, status);
+        }
+
+        private static Object memberRow(String requestedName, TeamMember.MemberSnapshot snapshot) {
+            if (snapshot == null) {
+                return null;
+            }
+            String rowMemberName = isNonBlank(snapshot.memberName()) ? snapshot.memberName() : requestedName;
+            String rowRole = isNonBlank(snapshot.role()) ? snapshot.role() : TeamRole.TEAMMATE.value();
+            return new SpawnManager.MemberRow(
+                    rowMemberName,
+                    rowRole,
+                    snapshot.desc(),
+                    snapshot.prompt(),
+                    snapshot.modelRefJson()
+            );
+        }
+
+        /**
+         * In-memory message surface used by lightweight configured team backends.
+         *
+         * <p>Mirrors Python's {@code TeamMessageManager} send/broadcast calls in
+         * {@code openjiuwen/agent_teams/tools/message_manager.py}.</p>
+         */
+        public static class ConfiguredMessageManager implements TeamRuntimeManager.TeamMessageManagerRuntime {
+            private final List<SentMessage> sentMessages = new ArrayList<>();
+            private int nextId;
+
+            public List<SentMessage> getSentMessages() {
+                return List.copyOf(sentMessages);
+            }
+
+            @Override
+            public CompletionStage<String> broadcastMessage(String content, String fromMemberName) {
+                return record(content, null, fromMemberName, true);
+            }
+
+            @Override
+            public CompletionStage<String> sendMessage(String content, String toMemberName, String fromMemberName) {
+                return record(content, toMemberName, fromMemberName, false);
+            }
+
+            private CompletionStage<String> record(
+                    String content,
+                    String toMemberName,
+                    String fromMemberName,
+                    boolean broadcast
+            ) {
+                String id = "msg-" + (++nextId);
+                sentMessages.add(new SentMessage(id, content, toMemberName, fromMemberName, broadcast));
+                return CompletableFuture.completedFuture(id);
+            }
+        }
+
+        /**
+         * Recorded outbound team message.
+         *
+         * <p>Mirrors Python message-manager records used by team routing tests in
+         * {@code tests/unit_tests/agent_teams/test_team_agent.py}.</p>
+         */
+        public record SentMessage(
+                String messageId,
+                String content,
+                String toMemberName,
+                String fromMemberName,
+                boolean broadcast
+        ) {
+        }
     }
 
     /**
@@ -1637,14 +1949,30 @@ public class AgentConfigurator {
                 TeamRuntimeContext context,
                 WorkspaceSpec workspace,
                 SysOperationSpec sysOperation,
-                Object firstIterationGate
+                Object teamToolRail,
+                Object firstIterationGate,
+                Object teamPolicyRail,
+                Object toolApprovalRail,
+                Object teamPlanModeRail
         ) {
             this.agentSpec = agentSpec;
             this.context = context;
             this.workspace = workspace;
             this.sysOperation = sysOperation;
+            if (teamToolRail != null) {
+                rails.add(teamToolRail);
+            }
+            if (teamPolicyRail != null) {
+                rails.add(teamPolicyRail);
+            }
             if (firstIterationGate != null) {
                 rails.add(firstIterationGate);
+            }
+            if (toolApprovalRail != null) {
+                rails.add(toolApprovalRail);
+            }
+            if (teamPlanModeRail != null) {
+                rails.add(teamPlanModeRail);
             }
         }
 

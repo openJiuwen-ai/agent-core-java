@@ -6,6 +6,8 @@ package com.openjiuwen.agent_teams.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator;
 
 /**
@@ -15,6 +17,16 @@ import com.openjiuwen.agent_teams.agent.AgentConfigurator;
  * {@code openjiuwen/agent_teams/schema/team.py}.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.EXISTING_PROPERTY,
+        property = "role_type",
+        visible = true,
+        defaultImpl = TeamMemberSpec.class
+)
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = BridgeMemberSpec.class, name = "bridge_agent")
+})
 public class TeamMemberSpec {
 
     @JsonProperty("member_name")

@@ -7,6 +7,7 @@ package com.openjiuwen.unit_tests.auto_harness.stages;
 import com.openjiuwen.auto_harness.contexts.TaskContext;
 import com.openjiuwen.auto_harness.contexts.TaskRuntime;
 import com.openjiuwen.auto_harness.infra.ExtStaticCheckResult;
+import com.openjiuwen.auto_harness.infra.RuntimeExtensionMerger.MergedExtensionError;
 import com.openjiuwen.auto_harness.infra.RuntimeExtensionMerger.MergeRuntimeExtensionsResult;
 import com.openjiuwen.auto_harness.infra.RuntimeExtensionMerger.SkillPathKey;
 import com.openjiuwen.auto_harness.infra.RuntimeExtensionMerger.SourcePathKey;
@@ -29,13 +30,19 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>Mirrors Python's {@code MergeActivationBlock} helpers in
  * {@code openjiuwen/auto_harness/stages/merge.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestMergeEvent}, {@code TestBuildMergeFixPrompt},
+ * {@code TestMergeActivationBlock}, and {@code TestSchemaGate} in
+ * {@code tests/unit_tests/auto_harness/stages/test_merge.py}.</p>
  */
 class TestMergeStage {
 
@@ -97,6 +104,37 @@ class TestMergeStage {
     }
 
     @Test
+    void runningEventMatchesPythonTestMergeEvent() {
+        OutputSchema event = MergeActivationBlock.mergeEvent("running", "merged_extensions", 0, "");
+
+        assertThat(event.getType()).isEqualTo("stage_result");
+        Map<?, ?> payload = (Map<?, ?>) event.getPayload();
+        assertThat(payload.get("extension_stage")).isEqualTo("merge_ext");
+        assertThat(payload.get("extension_name")).isEqualTo("merged_extensions");
+        assertThat(payload.get("status")).isEqualTo("running");
+        assertThat(payload.get("repair_rounds")).isEqualTo(0);
+    }
+
+    @Test
+    void failedEventCarriesErrorAndRepairRounds() {
+        OutputSchema event = MergeActivationBlock.mergeEvent("failed", "merged_extensions", 3, "boom");
+
+        Map<?, ?> payload = (Map<?, ?>) event.getPayload();
+        assertThat(payload.get("status")).isEqualTo("failed");
+        assertThat(payload.get("error")).isEqualTo("boom");
+        assertThat(payload.get("repair_rounds")).isEqualTo(3);
+    }
+
+    @Test
+    void successEventKeepsSuccessStatus() {
+        OutputSchema event = MergeActivationBlock.mergeEvent("success", "", 0, "");
+
+        Map<?, ?> payload = (Map<?, ?>) event.getPayload();
+        assertThat(payload.get("status")).isEqualTo("success");
+        assertThat(payload.get("extension_name")).isEqualTo("merged_extensions");
+    }
+
+    @Test
     void promptContainsRenameSummariesAndHardConstraints() {
         RuntimeExtensionArtifact merged = RuntimeExtensionArtifact.builder()
                 .extensionName("merged_ppt")
@@ -126,6 +164,33 @@ class TestMergeStage {
         assertThat(prompt).contains("openjiuwen.extensions.harness.merged_ppt");
         assertThat(prompt).contains("修复轮次: 2/3");
         assertThat(prompt).contains("module import failed");
+    }
+
+    @Test
+    void promptContainsStaticErrorsAndAttemptFraction() {
+        RuntimeExtensionArtifact merged = RuntimeExtensionArtifact.builder()
+                .extensionName("merged_extensions")
+                .runtimePath(tempDir.resolve("merged_extensions").toString())
+                .configPath(tempDir.resolve("merged_extensions").resolve("harness_config.yaml").toString())
+                .build();
+        MergeRuntimeExtensionsResult mergeResult = new MergeRuntimeExtensionsResult(
+                merged,
+                Map.of(),
+                Map.of(),
+                List.of(Map.of("name", "ext_a"), Map.of("name", "ext_b"))
+        );
+
+        String prompt = MergeActivationBlock.buildMergeFixPrompt(
+                merged,
+                mergeResult,
+                List.of("error A", "error B"),
+                2,
+                3
+        );
+
+        assertThat(prompt).contains("error A");
+        assertThat(prompt).contains("error B");
+        assertThat(prompt).contains("修复轮次: 2/3");
     }
 
     @Test
@@ -195,6 +260,112 @@ class TestMergeStage {
         assertThat(((OutputSchema) events.get(2)).getPayload().toString()).contains("success");
     }
 
+    @Test
+    void oneRoundRepairCreatesAgentOnceThenSucceeds() throws Exception {
+        AutoHarnessConfig config = AutoHarnessConfig.builder()
+                .dataDir(tempDir.resolve("data").toString())
+                .workspace(tempDir.toString())
+                .build();
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config);
+        RuntimeExtensionArtifact source = writeRuntimeExtension("repair_source");
+        RuntimeExtensionArtifact merged = RuntimeExtensionArtifact.builder()
+                .extensionName("merged_extensions")
+                .runtimePath(tempDir.resolve("merged_extensions").toString())
+                .configPath(tempDir.resolve("merged_extensions").resolve("harness_config.yaml").toString())
+                .build();
+        VerifiedExtensionTask task = verifiedTask(orchestrator, "repair_source", source);
+        AtomicInteger staticChecks = new AtomicInteger();
+        AtomicInteger agentStreams = new AtomicInteger();
+
+        MergeActivationBlock block = new MergeActivationBlock(
+                (artifacts, sessionRoot, mergedName) -> new MergeRuntimeExtensionsResult(merged, Map.of(), Map.of(), List.of()),
+                (runtimeExt, sessionIdPrefix) -> staticChecks.incrementAndGet() == 1
+                        ? new ExtStaticCheckResult(List.of("import error"), 0, 0, 0, 0)
+                        : new ExtStaticCheckResult(List.of(), 1, 1, 0, 0),
+                (ignoredConfig, workspace, rails) -> inputs -> {
+                    agentStreams.incrementAndGet();
+                    return List.of().iterator();
+                },
+                (ignoredConfig, prompt) -> "unused"
+        );
+
+        List<Object> events = toList(block.stream(orchestrator, List.of(task)));
+
+        assertThat(staticChecks.get()).isEqualTo(2);
+        assertThat(agentStreams.get()).isEqualTo(1);
+        assertThat(events).anySatisfy(event -> assertThat(event).isInstanceOf(MergeSuccessResult.class));
+    }
+
+    @Test
+    void exhaustedRepairRoundsThrowsAfterThreeAgentTurns() throws Exception {
+        AutoHarnessConfig config = AutoHarnessConfig.builder()
+                .dataDir(tempDir.resolve("data").toString())
+                .workspace(tempDir.toString())
+                .build();
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config);
+        RuntimeExtensionArtifact source = writeRuntimeExtension("broken_source");
+        RuntimeExtensionArtifact merged = RuntimeExtensionArtifact.builder()
+                .extensionName("merged_extensions")
+                .runtimePath(tempDir.resolve("merged_extensions").toString())
+                .configPath(tempDir.resolve("merged_extensions").resolve("harness_config.yaml").toString())
+                .build();
+        VerifiedExtensionTask task = verifiedTask(orchestrator, "broken_source", source);
+        AtomicInteger agentStreams = new AtomicInteger();
+
+        MergeActivationBlock block = new MergeActivationBlock(
+                (artifacts, sessionRoot, mergedName) -> new MergeRuntimeExtensionsResult(merged, Map.of(), Map.of(), List.of()),
+                (runtimeExt, sessionIdPrefix) -> new ExtStaticCheckResult(List.of("always fails"), 0, 0, 0, 0),
+                (ignoredConfig, workspace, rails) -> inputs -> {
+                    agentStreams.incrementAndGet();
+                    return List.of().iterator();
+                },
+                (ignoredConfig, prompt) -> "unused"
+        );
+
+        assertThatThrownBy(() -> block.stream(orchestrator, List.of(task)))
+                .isInstanceOf(MergedExtensionError.class)
+                .hasMessageContaining("static checks failed after 3 repair rounds");
+        assertThat(agentStreams.get()).isEqualTo(3);
+    }
+
+    @Test
+    void mergeHardErrorFailsFast() throws Exception {
+        AutoHarnessConfig config = AutoHarnessConfig.builder()
+                .dataDir(tempDir.resolve("data").toString())
+                .workspace(tempDir.toString())
+                .build();
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config);
+        RuntimeExtensionArtifact source = writeRuntimeExtension("hard_error_source");
+        VerifiedExtensionTask task = verifiedTask(orchestrator, "hard_error_source", source);
+
+        MergeActivationBlock block = new MergeActivationBlock(
+                (artifacts, sessionRoot, mergedName) -> {
+                    throw new MergedExtensionError("bad manifest");
+                },
+                (runtimeExt, sessionIdPrefix) -> new ExtStaticCheckResult(List.of(), 0, 0, 0, 0),
+                (ignoredConfig, workspace, rails) -> inputs -> List.of().iterator(),
+                (ignoredConfig, prompt) -> "unused"
+        );
+
+        assertThatThrownBy(() -> block.stream(orchestrator, List.of(task)))
+                .isInstanceOf(MergedExtensionError.class)
+                .hasMessageContaining("bad manifest");
+    }
+
+    @Test
+    void mergeEventPayloadHasRequiredSchemaFields() {
+        OutputSchema event = MergeActivationBlock.mergeEvent("failed", "merged_extensions", 2, "test");
+        Map<?, ?> payload = (Map<?, ?>) event.getPayload();
+
+        assertThat(payload.containsKey("extension_stage")).isTrue();
+        assertThat(payload.containsKey("extension_name")).isTrue();
+        assertThat(payload.containsKey("status")).isTrue();
+        assertThat(payload.containsKey("repair_rounds")).isTrue();
+        assertThat(payload.containsKey("error")).isTrue();
+        assertThat(payload.get("extension_stage")).isEqualTo("merge_ext");
+        assertThat(payload.get("extension_name")).isEqualTo("merged_extensions");
+    }
+
     private VerifiedExtensionTask verifiedTask(
             AutoHarnessOrchestrator orchestrator,
             String extensionName,
@@ -210,6 +381,16 @@ class TestMergeStage {
         TaskContext ctx = new TaskContext(orchestrator, task, new TaskRuntime());
         ctx.putArtifact("runtime_extension", artifact);
         return new VerifiedExtensionTask(design, task, ctx);
+    }
+
+    private RuntimeExtensionArtifact writeRuntimeExtension(String extensionName) throws Exception {
+        Path root = Files.createDirectories(tempDir.resolve(extensionName));
+        Files.writeString(root.resolve("harness_config.yaml"), "name: " + extensionName + "\n");
+        return RuntimeExtensionArtifact.builder()
+                .extensionName(extensionName)
+                .runtimePath(root.toString())
+                .configPath(root.resolve("harness_config.yaml").toString())
+                .build();
     }
 
     private static List<Object> toList(Iterator<Object> iterator) {

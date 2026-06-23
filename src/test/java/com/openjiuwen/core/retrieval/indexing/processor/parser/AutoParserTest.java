@@ -25,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's {@code AutoParser} in
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/auto_parser.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.retrieval.indexing.processor.parser.test_auto_parser}
+ * in {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_auto_parser.py}.</p>
  */
 class AutoParserTest {
 
@@ -131,6 +134,9 @@ class AutoParserTest {
      *
      * <p>Mirrors Python's {@code AutoParser} collaborators in
      * {@code openjiuwen/core/retrieval/indexing/processor/parser/auto_parser.py}.</p>
+     *
+     * <p>Mirrors Python's {@code AsyncMock} parser collaborators in
+     * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_auto_parser.py}.</p>
      */
     private static final class RecordingParser extends Parser {
         private final Predicate<String> supported;

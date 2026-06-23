@@ -692,11 +692,16 @@ public class TeamRuntimeManager {
      * {@code openjiuwen/agent_teams/runtime/manager.py}.</p>
      */
     public enum MemberStatus {
+        UNSTARTED,
+        STARTING,
         READY,
+        BUSY,
         STOPPED,
         PAUSED,
+        RESTARTING,
         SHUTDOWN,
-        SHUTDOWN_REQUESTED
+        SHUTDOWN_REQUESTED,
+        ERROR
     }
 
     /**

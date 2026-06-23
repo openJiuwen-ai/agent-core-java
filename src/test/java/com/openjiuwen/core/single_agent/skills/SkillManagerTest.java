@@ -41,6 +41,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code SkillManager} in
  * {@code openjiuwen/core/single_agent/skills/skill_manager.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/system_tests/agent/skill/test_skill_real_system.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/unit_tests/agent/skill/test_skill_system_mock.py}.</p>
  */
 class SkillManagerTest {
     private static final String SYS_OPERATION_ID = "sys-op";

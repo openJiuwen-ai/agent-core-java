@@ -5,6 +5,8 @@
 package com.openjiuwen.core.common.logging;
 
 import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
+import com.openjiuwen.core.common.logging.events.BaseLogEvent;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 
 import java.util.Map;
 import java.util.logging.Filter;
@@ -57,6 +59,10 @@ public class LoguruLogger implements LoggerProtocol {
     @Override
     public void critical(String msg, Object... args) {
         delegate.critical(msg, args);
+    }
+
+    public void logEvent(String msg, LogEventType eventType, BaseLogEvent event) {
+        delegate.logEvent(msg, eventType, event);
     }
 
     @Override

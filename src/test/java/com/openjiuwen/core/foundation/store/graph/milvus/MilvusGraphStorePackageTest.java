@@ -19,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's package initializer in
  * {@code openjiuwen/core/foundation/store/graph/milvus/__init__.py}.
+ *
+ * <p>Mirrors Python's {@code TestRegisterMilvusSupport} in
+ * {@code tests/unit_tests/core/foundation/store/graph/milvus/test_milvus_init.py}.</p>
  */
 class MilvusGraphStorePackageTest {
 

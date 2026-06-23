@@ -39,8 +39,16 @@ public final class GraphMemoryUtils {
         return msgToDict(messages, false, Map.of());
     }
 
+    public static List<Map<String, Object>> msgToDict(Object messages) {
+        return msgToDictDynamic(messages, false, Map.of());
+    }
+
     public static List<Map<String, Object>> msgToDict(List<?> messages, boolean preserveMeta) {
         return msgToDict(messages, preserveMeta, Map.of());
+    }
+
+    public static List<Map<String, Object>> msgToDict(Object messages, boolean preserveMeta) {
+        return msgToDictDynamic(messages, preserveMeta, Map.of());
     }
 
     public static List<Map<String, Object>> msgToDict(List<?> messages,
@@ -58,6 +66,21 @@ public final class GraphMemoryUtils {
         return messages.stream()
                 .map(message -> convertMessage(message, preserveMeta, kwargs))
                 .toList();
+    }
+
+    private static List<Map<String, Object>> msgToDictDynamic(Object messages,
+                                                              boolean preserveMeta,
+                                                              Map<String, Object> kwargs) {
+        if (!(messages instanceof List<?> list)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_STORE_VALIDATION_INVALID,
+                    "store_type",
+                    "graph memory",
+                    "error_msg",
+                    "Input is not a list of dict or BaseMessage"
+            );
+        }
+        return msgToDict(list, preserveMeta, kwargs);
     }
 
     public static void updateEntity(Entity entity, String response, Map<String, Object> extractionSchema) {

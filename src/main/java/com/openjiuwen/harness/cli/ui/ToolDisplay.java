@@ -146,7 +146,7 @@ public final class ToolDisplay {
             if (preview.length() > 0) {
                 preview.append('\n');
             }
-            preview.append("     \u2026+").append(lines.length - 5).append(" lines");
+            preview.append("     \u2026 +").append(lines.length - 5).append(" lines");
         }
         return preview.toString();
     }

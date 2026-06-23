@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -114,6 +115,48 @@ class FromConvTest {
     }
 
     @Test
+    void fingerprintConsistencyWithSignalDetector() {
+        List<Map<String, Object>> messages = List.of(
+                message("user", "Run the code"),
+                assistant("I'll run it", List.of(toolCall("tc_1", "bash", "{}"))),
+                tool("tc_1", "bash", "Error: command failed")
+        );
+        ConversationSignalDetector detector = new ConversationSignalDetector();
+
+        List<String> messageFingerprints = detector.detect(messages).stream()
+                .map(ConversationSignalDetector::makeSignalFingerprint)
+                .sorted()
+                .toList();
+        List<String> trajectoryFingerprints = detector.detect(buildTrajectoryFromMessages(messages)).stream()
+                .map(ConversationSignalDetector::makeSignalFingerprint)
+                .sorted()
+                .toList();
+
+        assertEquals(messageFingerprints, trajectoryFingerprints);
+    }
+
+    @Test
+    void existingSkillsFilterDoesNotEmitRuleCorrection() {
+        List<Map<String, Object>> messages = List.of(
+                message("user", "Read SKILL.md"),
+                assistant("Reading...", List.of(toolCall(
+                        "tc_1",
+                        "read_file",
+                        "{\"path\":\"/skills/my_skill/SKILL.md\"}"))),
+                tool("tc_1", "read_file", "file content"),
+                message("user", "That is wrong; use another method.")
+        );
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector(Set.of("my_skill"))
+                .detect(buildTrajectoryFromMessages(messages));
+        List<EvolutionSignal> correctionSignals = signals.stream()
+                .filter(signal -> "user_correction".equals(signal.getSignalType()))
+                .toList();
+
+        assertEquals(0, correctionSignals.size());
+    }
+
+    @Test
     void detectUserIntentUsesLlmJudgment() {
         List<Map<String, Object>> messages = List.of(
                 message("user", "Use the read_file tool"),
@@ -194,6 +237,23 @@ class FromConvTest {
     }
 
     @Test
+    void detectUserIntentNonObjectJsonFallsBackToRule() {
+        RecordingLlmInvoker llm = new RecordingLlmInvoker(Map.of("content", "[\"not-an-object\"]"));
+        ConversationSignalDetector detector = new ConversationSignalDetector(Set.of("my_skill"))
+                .bindLlm(llm, "test-model");
+        List<Map<String, Object>> messages = List.of(
+                assistant("", List.of(Map.of("arguments", "/skills/my_skill/SKILL.md"))),
+                message("user", "That is wrong; check whether the file exists first.")
+        );
+
+        List<EvolutionSignal> signals = detector.detectUserIntent(messages).toCompletableFuture().join();
+
+        assertEquals(1, signals.size());
+        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.getFirst().getSignalType());
+        assertEquals("That is wrong; check whether the file exists first.", signals.getFirst().getExcerpt());
+    }
+
+    @Test
     void detectUserIntentReturnsEmptyWhenLlmFailsAndRuleDoesNotMatch() {
         ConversationSignalDetector detector = new ConversationSignalDetector(Set.of("my_skill"))
                 .bindLlm((model, invokeMessages, timeoutSeconds) ->
@@ -207,6 +267,52 @@ class FromConvTest {
         List<EvolutionSignal> signals = detector.detectUserIntent(messages).toCompletableFuture().join();
 
         assertEquals(List.of(), signals);
+    }
+
+    @Test
+    void detectSkillFromToolCallsIgnoresNonReadToolsWithSkillPath() {
+        ConversationSignalDetector detector = new ConversationSignalDetector(Set.of("my_skill"));
+        List<Map<String, Object>> messages = List.of(
+                assistant("", List.of(Map.of(
+                        "name", "bash",
+                        "arguments", "{\"command\":\"cat /skills/my_skill/SKILL.md\"}"))),
+                message("user", "That is wrong; check whether the file exists first.")
+        );
+
+        List<EvolutionSignal> signals = detector.detectUserIntent(messages).toCompletableFuture().join();
+
+        assertEquals(List.of(), signals);
+    }
+
+    @Test
+    void collaborationDetectionHandlesMessageObjects() {
+        Trajectory trajectory = Trajectory.builder()
+                .executionId("message-object-team-member")
+                .sessionId("session-team")
+                .source("online")
+                .steps(List.of(
+                        TrajectoryStep.builder()
+                                .kind("llm")
+                                .detail(LLMCallDetail.builder()
+                                        .model("test-model")
+                                        .messages(List.of(new MessageObject("system", "system prompt")))
+                                        .build())
+                                .build(),
+                        TrajectoryStep.builder()
+                                .kind("tool")
+                                .detail(ToolCallDetail.builder()
+                                        .toolName("send_message")
+                                        .callArgs(Map.of("to_member_name", "coder"))
+                                        .build())
+                                .build()))
+                .meta(Map.of("member_id", "researcher", "team_id", "team-1"))
+                .build();
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detectTrajectorySignals(
+                trajectory,
+                List.of(message("system", "system prompt")));
+
+        assertEquals(List.of("collaboration_send"), signalTypes(signals));
     }
 
     @Test
@@ -225,6 +331,191 @@ class FromConvTest {
         assertEquals(1, signals.size());
         assertEquals("collaboration_send", signals.getFirst().getSignalType());
         assertEquals("coder", signals.getFirst().getContext().get("to_member"));
+    }
+
+    @Test
+    void collaborationClaimSignal() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "coder",
+                "claim_task",
+                Map.of("task_id", "task-123"),
+                "",
+                Map.of());
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertEquals(1, signals.size());
+        EvolutionSignal signal = signals.getFirst();
+        assertEquals("collaboration_claim", signal.getSignalType());
+        assertEquals("Collaboration", signal.getSection());
+        assertEquals("passive_collaboration", signal.getContext().get("source"));
+        assertEquals("claim_task", signal.getContext().get("tool_name"));
+        assertEquals("coder", signal.getContext().get("member_id"));
+        assertEquals("task-123", signal.getContext().get("task_id"));
+    }
+
+    @Test
+    void collaborationViewSignal() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "researcher",
+                "view_task",
+                Map.of(),
+                "",
+                Map.of());
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertEquals(1, signals.size());
+        EvolutionSignal signal = signals.getFirst();
+        assertEquals("collaboration_view", signal.getSignalType());
+        assertEquals("Collaboration", signal.getSection());
+        assertEquals("passive_collaboration", signal.getContext().get("source"));
+        assertEquals("view_task", signal.getContext().get("tool_name"));
+        assertEquals("researcher", signal.getContext().get("member_id"));
+    }
+
+    @Test
+    void collaborationReceiveSignal() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "coder",
+                "write_file",
+                Map.of("path", "output.py"),
+                "",
+                Map.of("parent_invoke_id", "invoke-researcher-001"));
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertEquals(1, signals.size());
+        EvolutionSignal signal = signals.getFirst();
+        assertEquals("collaboration_receive", signal.getSignalType());
+        assertEquals("Collaboration", signal.getSection());
+        assertEquals("passive_collaboration", signal.getContext().get("source"));
+        assertEquals("write_file", signal.getContext().get("tool_name"));
+        assertEquals("coder", signal.getContext().get("member_id"));
+        assertEquals("invoke-researcher-001", signal.getContext().get("parent_invoke_id"));
+    }
+
+    @Test
+    void collaborationFailureSignal() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "researcher",
+                "send_message",
+                Map.of("to_member_name", "coder"),
+                "Error: member coder failed to respond - timeout",
+                Map.of());
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+        List<EvolutionSignal> failureSignals = signals.stream()
+                .filter(signal -> "collaboration_failure".equals(signal.getSignalType()))
+                .toList();
+
+        assertEquals(1, failureSignals.size());
+        EvolutionSignal signal = failureSignals.getFirst();
+        assertEquals("Collaboration", signal.getSection());
+        assertTrue(signal.getExcerpt().toLowerCase().contains("timeout"));
+        assertEquals("passive_collaboration", signal.getContext().get("source"));
+        assertEquals("send_message", signal.getContext().get("tool_name"));
+    }
+
+    @Test
+    void noCollaborationSignalsForStandaloneAgent() {
+        Trajectory trajectory = Trajectory.builder()
+                .executionId("standalone-exec")
+                .sessionId("session-1")
+                .source("standalone")
+                .steps(List.of(TrajectoryStep.builder()
+                        .kind("tool")
+                        .detail(ToolCallDetail.builder()
+                                .toolName("send_message")
+                                .callArgs(Map.of("to_member_name", "other"))
+                                .build())
+                        .build()))
+                .meta(Map.of())
+                .build();
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertFalse(signals.stream().anyMatch(signal -> signal.getSignalType().startsWith("collaboration_")));
+    }
+
+    @Test
+    void noCollaborationSignalsForNonCollaborativeTools() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "coder",
+                "bash",
+                Map.of("command", "python script.py"),
+                "",
+                Map.of());
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertFalse(signals.stream().anyMatch(signal -> signal.getSignalType().startsWith("collaboration_")));
+    }
+
+    @Test
+    void multipleCollaborationSignalsFromSingleTrajectory() {
+        List<TrajectoryStep> steps = List.of(
+                TrajectoryStep.builder()
+                        .kind("tool")
+                        .detail(ToolCallDetail.builder()
+                                .toolName("view_task")
+                                .callArgs(Map.of())
+                                .build())
+                        .startTimeMs(100L)
+                        .build(),
+                TrajectoryStep.builder()
+                        .kind("tool")
+                        .detail(ToolCallDetail.builder()
+                                .toolName("claim_task")
+                                .callArgs(Map.of("task_id", "t1"))
+                                .build())
+                        .meta(Map.of("parent_invoke_id", "p1"))
+                        .startTimeMs(200L)
+                        .build(),
+                TrajectoryStep.builder()
+                        .kind("tool")
+                        .detail(ToolCallDetail.builder()
+                                .toolName("send_message")
+                                .callArgs(Map.of("to_member_name", "leader"))
+                                .build())
+                        .startTimeMs(300L)
+                        .build());
+        Trajectory trajectory = Trajectory.builder()
+                .executionId("multi-collab")
+                .sessionId("session-team")
+                .source("online")
+                .steps(steps)
+                .meta(Map.of("member_id", "teammate-1", "team_id", "team-1"))
+                .build();
+
+        List<EvolutionSignal> collaborationSignals = new ConversationSignalDetector().detect(trajectory).stream()
+                .filter(signal -> signal.getSignalType().startsWith("collaboration_"))
+                .toList();
+        Set<String> signalTypes = collaborationSignals.stream()
+                .map(EvolutionSignal::getSignalType)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(4, collaborationSignals.size());
+        assertTrue(signalTypes.contains("collaboration_view"));
+        assertTrue(signalTypes.contains("collaboration_claim"));
+        assertTrue(signalTypes.contains("collaboration_receive"));
+        assertTrue(signalTypes.contains("collaboration_send"));
+    }
+
+    @Test
+    void sendMessageToSelfNotCollaboration() {
+        Trajectory trajectory = buildTeamMemberTrajectory(
+                "researcher",
+                "send_message",
+                Map.of("to_member_name", "researcher"),
+                "",
+                Map.of());
+
+        List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
+
+        assertEquals(0, signals.stream()
+                .filter(signal -> "collaboration_send".equals(signal.getSignalType()))
+                .count());
     }
 
     @Test
@@ -346,6 +637,10 @@ class FromConvTest {
         Map<String, Object> result = new LinkedHashMap<>();
         raw.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
+    }
+
+    private static List<String> signalTypes(List<EvolutionSignal> signals) {
+        return signals.stream().map(EvolutionSignal::getSignalType).toList();
     }
 
     private static final class MessageObject {

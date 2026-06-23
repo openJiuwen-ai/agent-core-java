@@ -21,6 +21,23 @@ import java.util.Set;
  */
 public class SkillCreateRail extends EvolutionRail {
 
+    private static final String FOLLOW_UP_PROMPT_CN = """
+            **重要：你必须先向用户确认，不可跳过此步骤。**
+            系统检测到对话中存在可复用模式，可能值得创建新技能。请按以下步骤执行：
+            1. 直接询问或调用 ask_user 工具向用户确认：
+               - 问题："我检测到您可能值得创建一个新技能。是否创建？"
+               - 选项：["创建"，"跳过"，"自定义指令：（请描述需求）"]
+            2. 如果用户选择"创建"或提供了自定义指令，请调用 **skill-creator** 技能，根据用户的要求和当前对话上下文执行技能创建。
+               新技能应保存到技能目录：%s""";
+    private static final String FOLLOW_UP_PROMPT_EN = """
+            **Important: You MUST confirm with the user first. Do not skip this step.**
+            The system detected a reusable pattern that may be worth creating as a new skill. Please follow these steps:
+            1. Directly inquire or invoke the `ask_user` tool to confirm with the user:
+               - Question: "I detected a pattern that may be worth creating as a new skill. Create it?"
+               - Options: ["Create", "Skip", "Custom instruction: (describe your needs)"]
+            2. If user chooses "Create" or provides a custom instruction, invoke the **skill-creator** skill to execute the skill creation.
+               Save the new skill to: %s""";
+
     private final Path skillsDir;
     private final String language;
     private final boolean autoTrigger;
@@ -60,11 +77,12 @@ public class SkillCreateRail extends EvolutionRail {
         if (!autoTrigger || proposalSent || !shouldProposeNewSkill()) {
             return;
         }
+        if (ctx.getAgent() == null) {
+            return;
+        }
         String prompt = buildFollowUpPrompt();
         ctx.put("skill_create_follow_up", prompt);
-        if (ctx.getAgent() != null) {
-            ctx.getAgent().loopController().enqueueFollowUp(prompt);
-        }
+        ctx.getAgent().loopController().enqueueFollowUp(prompt);
         proposalSent = true;
     }
 
@@ -90,6 +108,22 @@ public class SkillCreateRail extends EvolutionRail {
         return skillsDir;
     }
 
+    public boolean isAutoTrigger() {
+        return autoTrigger;
+    }
+
+    public int getToolCallThreshold() {
+        return toolCallThreshold;
+    }
+
+    public int getToolDiversityThreshold() {
+        return toolDiversityThreshold;
+    }
+
+    public EvolutionTriggerPoint getEvolutionTriggerPoint() {
+        return EvolutionTriggerPoint.NONE;
+    }
+
     public boolean isProposalSent() {
         return proposalSent;
     }
@@ -97,10 +131,8 @@ public class SkillCreateRail extends EvolutionRail {
     private String buildFollowUpPrompt() {
         String dir = skillsDir == null ? "" : skillsDir.toString();
         if ("en".equals(language)) {
-            return "A reusable pattern may be worth creating as a new skill. Confirm with the user first, "
-                    + "then invoke skill-creator if approved. Save the new skill to: " + dir;
+            return FOLLOW_UP_PROMPT_EN.formatted(dir);
         }
-        return "A reusable pattern may be worth creating as a new skill. Confirm with the user first, "
-                + "then invoke skill-creator if approved. Save the new skill to: " + dir;
+        return FOLLOW_UP_PROMPT_CN.formatted(dir);
     }
 }

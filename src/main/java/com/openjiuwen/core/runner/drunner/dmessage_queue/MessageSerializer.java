@@ -11,6 +11,7 @@ import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.TraceSchema;
@@ -140,6 +141,12 @@ public final class MessageSerializer {
             result.put("state", serializePayload(workflowOutput.getState(), depth + 1));
             return result;
         }
+        if (payload instanceof InteractionOutput interactionOutput) {
+            Map<String, Object> result = classPayload("InteractionOutput");
+            result.put("id", serializePayload(interactionOutput.getId(), depth + 1));
+            result.put("value", serializePayload(interactionOutput.getValue(), depth + 1));
+            return result;
+        }
         if (payload instanceof DynamicPayload dynamicPayload) {
             Map<String, Object> result = classPayload(dynamicPayload.className());
             dynamicPayload.fields().forEach((key, value) -> result.put(key, serializePayload(value, depth + 1)));
@@ -221,7 +228,8 @@ public final class MessageSerializer {
         TYPE_REGISTRY.put("OutputSchema", MessageSerializer::outputSchemaFromFields);
         TYPE_REGISTRY.put("CustomSchema", CustomSchema::new);
         TYPE_REGISTRY.put("TraceSchema", fields -> new TraceSchema(asString(fields.get("type")), fields.get("payload")));
-        TYPE_REGISTRY.put("InteractionOutput", fields -> new DynamicPayload("InteractionOutput", fields));
+        TYPE_REGISTRY.put("InteractionOutput",
+                fields -> new InteractionOutput(asString(fields.get("id")), fields.get("value")));
         TYPE_REGISTRY.put("WorkflowOutput", MessageSerializer::workflowOutputFromFields);
         TYPE_REGISTRY.put("DmqRequestMessage", MessageSerializer::requestFromFields);
         TYPE_REGISTRY.put("DmqResponseMessage", MessageSerializer::responseFromFields);

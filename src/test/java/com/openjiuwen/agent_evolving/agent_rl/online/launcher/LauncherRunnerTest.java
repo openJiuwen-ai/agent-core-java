@@ -9,21 +9,29 @@ import com.openjiuwen.agent_evolving.agent_rl.config.OnlineRLConfig;
 import com.openjiuwen.agent_evolving.agent_rl.config.VLLMServiceConfig;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <p>Mirrors Python's orchestration loop in
  * {@code openjiuwen/agent_evolving/agent_rl/online/launcher/runner.py}.</p>
+ *
+ * <p>Mirrors Python's launcher runner tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/test_launcher_runner.py}.</p>
  */
 class LauncherRunnerTest {
 
@@ -94,6 +102,90 @@ class LauncherRunnerTest {
         assertTrue(events.contains("stopScheduler"));
     }
 
+    @Test
+    void printLaunchSummaryWorksWithoutGatewayMode() {
+        OnlineRLConfig cfg = validConfig(true);
+        LauncherServices.LaunchRuntime runtime = new LauncherServices.LaunchRuntime(
+                "http://127.0.0.1:18002",
+                "http://127.0.0.1:18003",
+                "http://127.0.0.1:18080",
+                "http://127.0.0.1:18080/v1",
+                tempDir.resolve("lora_repo").toString(),
+                false,
+                false,
+                false,
+                "model-b",
+                List.of()
+        );
+
+        String summary = LauncherServices.buildLaunchSummary(
+                cfg,
+                tempDir.resolve("cfg.yaml"),
+                runtime,
+                true
+        );
+
+        assertTrue(summary.contains("Gateway proxy"));
+        assertTrue(summary.contains("Trajectory mode: feedback_level"));
+        assertFalse(summary.contains("Gateway mode"));
+    }
+
+    @Test
+    void ensureWorkspaceWritesWebUserHeaders() throws Exception {
+        Path configEnv = tempDir.resolve("config/.env");
+        Files.createDirectories(configEnv.getParent());
+        Files.writeString(configEnv, "", StandardCharsets.UTF_8);
+
+        LauncherWorkspace.ensureWorkspace(
+                configEnv,
+                "http://127.0.0.1:18080/v1",
+                "model-a",
+                "/tmp/model",
+                "feedback_level",
+                "http://127.0.0.1:18080",
+                4,
+                Map.of("WEB_USER_ID", "alice")
+        );
+
+        Map<String, String> values = readEnvFile(configEnv);
+        assertEquals("\"alice\"", values.get("WEB_USER_ID"));
+        assertEquals("\"alice\"", values.get("RL_ONLINE_TENANT_ID"));
+        assertEquals("'{\"x-user-id\":\"alice\"}'", values.get("CUSTOM_HEADERS"));
+    }
+
+    @Test
+    void startJiuwenclawPassesWebUserHeaders() {
+        List<LauncherServices.ProcessLaunchSpec> specs = new ArrayList<>();
+
+        LauncherServices.JiuwenClawProcesses processes = LauncherServices.startJiuwenClaw(
+                new LauncherServices.JiuwenClawStartOptions(
+                        tempDir.resolve("jiuwenclaw"),
+                        tempDir.resolve("workspace"),
+                        "http://127.0.0.1:18080",
+                        "/tmp/model",
+                        "feedback_level",
+                        4,
+                        "127.0.0.1",
+                        19000,
+                        "127.0.0.1",
+                        5173
+                ),
+                Map.of("WEB_USER_ID", "bob"),
+                spec -> {
+                    specs.add(spec);
+                    return new FakeProcess("app", new ArrayList<>());
+                }
+        );
+
+        assertTrue(processes.appProcess().isAlive());
+        assertNull(processes.webProcess());
+        assertEquals(1, specs.size());
+        Map<String, String> env = specs.getFirst().environment();
+        assertEquals("bob", env.get("WEB_USER_ID"));
+        assertEquals("bob", env.get("RL_ONLINE_TENANT_ID"));
+        assertEquals("{\"x-user-id\":\"bob\"}", env.get("CUSTOM_HEADERS"));
+    }
+
     private LauncherRunner.LauncherPaths paths() {
         return new LauncherRunner.LauncherPaths(
                 tempDir.resolve("agent-core"),
@@ -158,6 +250,17 @@ class LauncherRunnerTest {
         cfg.getJiuwen().setWebPort(20003);
         cfg.validate();
         return cfg;
+    }
+
+    private static Map<String, String> readEnvFile(Path path) throws Exception {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+            if (line.contains("=")) {
+                String[] parts = line.split("=", 2);
+                values.put(parts[0], parts[1]);
+            }
+        }
+        return values;
     }
 
     private static final class FakeBackend implements LauncherRunner.LauncherBackend {

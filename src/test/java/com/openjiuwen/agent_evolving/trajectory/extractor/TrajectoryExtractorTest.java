@@ -44,6 +44,18 @@ class TrajectoryExtractorTest {
     }
 
     @Test
+    void extractHandlesTracerWithoutAgentSpanManager() {
+        TrajectoryExtractor extractor = new TrajectoryExtractor();
+        TestSession session = new TestSession();
+        session.tracerValue = new TestTracerWithoutAgentManager();
+
+        Trajectory result = extractor.extract(session, "case1");
+
+        assertEquals("case1", result.getCaseId());
+        assertTrue(result.getSteps().isEmpty());
+    }
+
+    @Test
     void extractLlmSpan() {
         TrajectoryExtractor extractor = new TrajectoryExtractor();
         TestSpan span = makeSpan("llm", "inv1");
@@ -67,6 +79,19 @@ class TrajectoryExtractorTest {
 
         assertEquals(1, result.getSteps().size());
         assertEquals("tool", result.getSteps().getFirst().getKind());
+    }
+
+    @Test
+    void extractCapturesSpanError() {
+        TrajectoryExtractor extractor = new TrajectoryExtractor();
+        TestSpan span = makeSpan("llm", "inv1");
+        span.error = "Test error";
+        TestSession session = makeSession(List.of(span));
+
+        Trajectory result = extractor.extract(session, "case1");
+
+        assertEquals(1, result.getSteps().size());
+        assertEquals("Test error", result.getSteps().getFirst().getError());
     }
 
     @Test
@@ -139,6 +164,21 @@ class TrajectoryExtractorTest {
     }
 
     @Test
+    void extractKeepsNullMillisecondsWhenDatetimeMissing() {
+        TrajectoryExtractor extractor = new TrajectoryExtractor();
+        TestSpan span = makeSpan("llm", "inv1");
+        span.start_time = null;
+        span.end_time = null;
+        TestSession session = makeSession(List.of(span));
+
+        Trajectory result = extractor.extract(session, "case1");
+
+        assertEquals(1, result.getSteps().size());
+        assertNull(result.getSteps().getFirst().getStartTimeMs());
+        assertNull(result.getSteps().getFirst().getEndTimeMs());
+    }
+
+    @Test
     void extractConvertsDatetimeToMilliseconds() {
         TrajectoryExtractor extractor = new TrajectoryExtractor();
         OffsetDateTime dateTime = OffsetDateTime.of(2024, 1, 1, 12, 0, 0, 0, ZoneOffset.UTC);
@@ -180,6 +220,11 @@ class TrajectoryExtractorTest {
         public Object tracer() {
             return tracerValue;
         }
+    }
+
+    private static final class TestTracerWithoutAgentManager {
+        @SuppressWarnings("unused")
+        private final Object tracer_agent_span_manager = null;
     }
 
     private static final class TestTracer {

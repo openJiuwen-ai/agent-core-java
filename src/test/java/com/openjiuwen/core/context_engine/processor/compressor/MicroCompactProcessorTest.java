@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Mirrors Python's tests for
  * {@code openjiuwen/core/context_engine/processor/compressor/micro_compact_processor.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestMicroCompactProcessor} in
+ * {@code tests/unit_tests/core/context_engine/test_micro_compact_processor.py}.</p>
  */
 class MicroCompactProcessorTest {
 

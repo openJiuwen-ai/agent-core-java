@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class MemorySearchTool extends MemoryOperationTool {
     public MemorySearchTool(MemoryOperation operation) {
-        super("memory_search", "MemorySearchTool", "Search long-term memory.", operation);
+        super("memory_search", "memory_search", "Search long-term memory.", operation);
     }
 
     @Override

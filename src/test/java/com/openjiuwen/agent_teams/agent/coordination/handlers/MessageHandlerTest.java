@@ -14,12 +14,17 @@ import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamAgentSpec;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamInfra;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRuntimeContext;
+import com.openjiuwen.agent_teams.agent.BridgeInboundCompose;
+import com.openjiuwen.agent_teams.agent.BridgeOutboundWrap;
+import com.openjiuwen.agent_teams.agent.BridgeOutboundWrap.BridgeMailboxInjectMode;
 import com.openjiuwen.agent_teams.agent.TeamAgentBlueprint;
 import com.openjiuwen.agent_teams.agent.coordination.EventDispatcher.DispatcherHost;
 import com.openjiuwen.agent_teams.agent.coordination.EventDispatcher.InnerEventMessage;
 import com.openjiuwen.agent_teams.agent.coordination.EventDispatcher.InnerEventType;
 import com.openjiuwen.agent_teams.agent.coordination.EventDispatcher.PollController;
 import com.openjiuwen.agent_teams.agent.coordination.EventDispatcher.TransportEvent;
+import com.openjiuwen.agent_teams.interaction.BridgeProtocol;
+import com.openjiuwen.agent_teams.interaction.BridgeProtocolAdapter;
 import com.openjiuwen.agent_teams.schema.BroadcastEvent;
 import com.openjiuwen.agent_teams.schema.MemberShutdownEvent;
 import com.openjiuwen.agent_teams.schema.MessageEvent;
@@ -40,6 +45,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's message handler behavior in
  * {@code openjiuwen/agent_teams/agent/coordination/handlers/message.py}.</p>
+ *
+ * <p>Also mirrors Python's bridge inbound deliver tests in
+ * {@code tests/unit_tests/agent_teams/agent/test_bridge_inbound_deliver.py}.</p>
  */
 class MessageHandlerTest {
 
@@ -156,6 +164,74 @@ class MessageHandlerTest {
         assertEquals(List.of("human-a", "human-b"), backend.inboundEvents.stream().map(MessageHandler.HumanAgentInboundEvent::memberName).toList());
     }
 
+    @Test
+    void bridgeDeliverableWithAdapterCarriesRemoteReply() {
+        RecordingBridgeBackend backend = new RecordingBridgeBackend();
+        CapturingBridgeAdapter adapter = new CapturingBridgeAdapter("diff looks clean. lgtm.");
+        backend.adapter = adapter;
+        MessageHandler handler = bridgeHandler(backend);
+        TeamMessage message = bridgeMessage("leader", "review pr 42", false);
+
+        String text = handler.bridgeDeliverableFor("codex", message).toCompletableFuture().join();
+
+        assertEquals("codex", adapter.lastMember);
+        assertTrue(adapter.lastText.contains("review pr 42"));
+        assertTrue(adapter.lastText.contains("["));
+        assertTrue(text.contains("review pr 42"));
+        assertTrue(text.contains("diff looks clean. lgtm."));
+        assertTrue(text.toLowerCase().contains("verbatim"));
+    }
+
+    @Test
+    void bridgeDeliverableWithoutAdapterUsesSentinel() {
+        RecordingBridgeBackend backend = new RecordingBridgeBackend();
+        MessageHandler handler = bridgeHandler(backend);
+
+        String text = handler.bridgeDeliverableFor("codex", bridgeMessage("leader", "status?", false))
+                .toCompletableFuture()
+                .join();
+
+        assertTrue(text.contains("status?"));
+        assertTrue(text.contains(BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL));
+    }
+
+    @Test
+    void bridgeDeliverableSwallowsAdapterException() {
+        RecordingBridgeBackend backend = new RecordingBridgeBackend();
+        backend.adapter = new RaisingBridgeAdapter();
+        MessageHandler handler = bridgeHandler(backend);
+
+        String text = handler.bridgeDeliverableFor("codex", bridgeMessage("leader", "hi", false))
+                .toCompletableFuture()
+                .join();
+
+        assertTrue(text.contains("hi"));
+        assertTrue(text.contains(BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL));
+    }
+
+    @Test
+    void bridgeDeliverableRephraseModeIncludesSenderContext() {
+        RecordingBridgeBackend backend = new RecordingBridgeBackend();
+        backend.mode = BridgeMailboxInjectMode.REPHRASE;
+        CapturingBridgeAdapter adapter = new CapturingBridgeAdapter("ok");
+        backend.adapter = adapter;
+        MessageHandler handler = bridgeHandler(backend);
+
+        handler.bridgeDeliverableFor("codex", bridgeMessage("team_leader", "please review pr 42", false))
+                .toCompletableFuture()
+                .join();
+
+        assertTrue(adapter.lastText.toLowerCase().contains("leader"));
+        assertFalse(adapter.lastText.contains("human_agent"));
+        assertTrue(adapter.lastText.contains("leader persona") || adapter.lastText.contains("L"));
+    }
+
+    private static MessageHandler bridgeHandler(RecordingBridgeBackend backend) {
+        TeamInfra infra = new TeamInfra();
+        infra.setTeamBackend(backend);
+        return newHandler(new RecordingHost(), TeamRole.BRIDGE_AGENT, "codex", infra, new RecordingPoll());
+    }
+
     private static MessageHandler newHandler(
             RecordingHost host,
             TeamRole role,
@@ -185,6 +261,10 @@ class MessageHandlerTest {
 
     private static TeamMessage message(String id, long timestamp, boolean broadcast) {
         return new TeamMessage(id, "team", "sender", "dev", "content-" + id, timestamp, broadcast, false);
+    }
+
+    private static TeamMessage bridgeMessage(String sender, String content, boolean broadcast) {
+        return new TeamMessage("m1", "bt", sender, "codex", content, 123456789L, broadcast, false);
     }
 
     private static MessageEvent messageEvent(String from, String to, String messageId) {
@@ -311,6 +391,85 @@ class MessageHandlerTest {
         @Override
         public CompletionStage<Optional<TeamMessage>> getMessage(String messageId) {
             return CompletableFuture.completedFuture(Optional.ofNullable(byId.get(messageId)));
+        }
+    }
+
+    private static class RecordingBridgeBackend extends ConfiguredTeamBackend implements MessageHandler.BridgeDeliveryBackend {
+        private BridgeProtocolAdapter adapter;
+        private BridgeMailboxInjectMode mode = BridgeMailboxInjectMode.PASSTHROUGH;
+
+        private RecordingBridgeBackend() {
+            super("bt", "team_leader", true, Map.of(), null, "", List.of(), null, null, false, true, List.of(), null, null, "team_leader");
+        }
+
+        @Override
+        public CompletionStage<String> bridgeDeliverableFor(String memberName, TeamMessage message) {
+            String outbound = BridgeOutboundWrap.wrapOutboundToRemote(
+                    message.getFromMemberName(),
+                    "team_leader".equals(message.getFromMemberName()) ? "L" : message.getFromMemberName(),
+                    "team_leader".equals(message.getFromMemberName()) ? TeamRole.LEADER : TeamRole.TEAMMATE,
+                    "team_leader".equals(message.getFromMemberName()) ? "leader persona" : null,
+                    message.getContent(),
+                    Boolean.TRUE.equals(message.getBroadcast()),
+                    null,
+                    mode,
+                    "en"
+            );
+            CompletionStage<String> replyStage = adapter == null
+                    ? CompletableFuture.completedFuture(BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL)
+                    : adapter.relay(memberName, outbound).exceptionally(ignored -> BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL);
+            return replyStage.thenApply(reply -> BridgeInboundCompose.composeBridgeInbound(
+                    message.getFromMemberName(),
+                    message.getContent(),
+                    reply,
+                    "en",
+                    "now"
+            ));
+        }
+    }
+
+    private static class CapturingBridgeAdapter implements BridgeProtocolAdapter {
+        private final String reply;
+        private String lastMember;
+        private String lastText;
+
+        private CapturingBridgeAdapter(String reply) {
+            this.reply = reply;
+        }
+
+        @Override
+        public CompletionStage<Void> connect(
+                String memberName,
+                Map<String, Object> adapterConfig,
+                String bridgePersona,
+                String teamOverview
+        ) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<String> relay(String memberName, String text) {
+            lastMember = memberName;
+            lastText = text;
+            return CompletableFuture.completedFuture(reply);
+        }
+
+        @Override
+        public CompletionStage<Void> close() {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private static final class RaisingBridgeAdapter extends CapturingBridgeAdapter {
+        private RaisingBridgeAdapter() {
+            super("");
+        }
+
+        @Override
+        public CompletionStage<String> relay(String memberName, String text) {
+            CompletableFuture<String> failed = new CompletableFuture<>();
+            failed.completeExceptionally(new RuntimeException("remote down"));
+            return failed;
         }
     }
 

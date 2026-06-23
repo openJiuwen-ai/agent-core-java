@@ -33,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Mirrors Python's {@code BaseEvaluator}, {@code DefaultEvaluator}, {@code _agg_score},
  * and {@code MetricEvaluator} in
  * {@code openjiuwen/agent_evolving/evaluator/evaluator.py}.
+ *
+ * <p>Mirrors Python's test coverage in
+ * {@code tests/unit_tests/agent_evolving/evaluator/test_evaluator.py}.</p>
  */
 class EvaluatorTest {
 

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Mirrors Python's {@code PendingCommitResult} in
@@ -48,6 +49,25 @@ public final class PendingCommitResult {
 
     public List<String> getErrors() {
         return errors;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof PendingCommitResult that)) {
+            return false;
+        }
+        return appliedCount == that.appliedCount
+                && pendingCount == that.pendingCount
+                && rejectedCount == that.rejectedCount
+                && Objects.equals(errors, that.errors);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(appliedCount, pendingCount, rejectedCount, errors);
     }
 
     private static <T> List<T> immutableList(List<T> values) {

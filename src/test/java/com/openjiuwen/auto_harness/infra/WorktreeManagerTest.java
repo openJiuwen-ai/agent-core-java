@@ -32,12 +32,32 @@ class WorktreeManagerTest {
     private Path tempDir;
 
     @Test
-    void slugifyMatchesPythonRules() {
+    void slugifyConvertsSpacesToHyphens() {
         assertThat(WorktreeManager.slugify("fix timeout bug")).isEqualTo("fix-timeout-bug");
+    }
+
+    @Test
+    void slugifyRemovesSpecialCharacters() {
         assertThat(WorktreeManager.slugify("add: feature/new!")).doesNotContain("/", ":", "!");
+    }
+
+    @Test
+    void slugifyKeepsChineseCharacters() {
         assertThat(WorktreeManager.slugify("修复超时问题")).isNotEmpty();
+    }
+
+    @Test
+    void slugifyTruncatesToFortyCharacters() {
         assertThat(WorktreeManager.slugify("a".repeat(100))).hasSizeLessThanOrEqualTo(40);
+    }
+
+    @Test
+    void slugifyEmptyFallsBackToTask() {
         assertThat(WorktreeManager.slugify("")).isEqualTo("task");
+    }
+
+    @Test
+    void slugifyOnlySpecialFallsBackToTask() {
         assertThat(WorktreeManager.slugify("!!!")).isEqualTo("task");
     }
 
@@ -58,6 +78,26 @@ class WorktreeManagerTest {
                 .isGreaterThanOrEqualTo(0);
         assertThat(executor.commands).anySatisfy(args -> assertThat(args).contains("config", "user.name", "test-user"));
         assertThat(executor.commands).anySatisfy(args -> assertThat(args).contains("remote", "add", "myfork"));
+    }
+
+    @Test
+    void prepareDeletesExistingBranchBeforeAdd() throws Exception {
+        Path local = Files.createDirectories(tempDir.resolve("local_repo"));
+        String branchRef = "refs/heads/auto-harness/fix-timeout";
+        RecordingExecutor executor = new RecordingExecutor();
+        executor.enqueue("show-ref", 0, "");
+        executor.enqueue("worktree list", 0, "worktree " + local + "\nHEAD deadbeef\nbranch refs/heads/develop\n");
+        WorktreeManager manager = new WorktreeManager(makeConfig(local.toString()), executor);
+
+        manager.prepare("fix timeout");
+
+        int pruneIdx = executor.indexOfPrefix(List.of("worktree", "prune"));
+        int showRefIdx = executor.indexOfPrefix(List.of("show-ref", "--verify", "--quiet", branchRef));
+        int deleteIdx = executor.indexOfPrefix(List.of("branch", "-D", "auto-harness/fix-timeout"));
+        int addIdx = executor.indexOfPrefix(List.of("worktree", "add"));
+        assertThat(pruneIdx).isLessThan(showRefIdx);
+        assertThat(showRefIdx).isLessThan(deleteIdx);
+        assertThat(deleteIdx).isLessThan(addIdx);
     }
 
     @Test
@@ -98,16 +138,54 @@ class WorktreeManagerTest {
     }
 
     @Test
-    void cleanupRemovesExistingWorktreeAndSkipsMissingPath() throws Exception {
+    void prepareWithoutLocalRepoClonesBeforeAddingWorktree() throws Exception {
+        RecordingExecutor executor = new RecordingExecutor();
+        WorktreeManager manager = new WorktreeManager(makeConfig(""), executor);
+
+        manager.prepare("add feature");
+
+        int cloneIdx = executor.indexOfPrefix(List.of("clone", "-b", "develop"));
+        int addIdx = executor.indexOfPrefix(List.of("worktree", "add", "-b", "auto-harness/add-feature"));
+        assertThat(cloneIdx).isGreaterThanOrEqualTo(0);
+        assertThat(addIdx).isGreaterThan(cloneIdx);
+    }
+
+    @Test
+    void cleanupRemovesExistingWorktree() throws Exception {
         Path worktree = Files.createDirectories(tempDir.resolve("data").resolve("worktrees").resolve("wt1"));
         RecordingExecutor executor = new RecordingExecutor();
         WorktreeManager manager = new WorktreeManager(makeConfig(""), executor);
 
         manager.cleanup(worktree.toString());
-        manager.cleanup(tempDir.resolve("missing").toString());
 
         assertThat(executor.commands).anySatisfy(args -> assertThat(args)
                 .containsExactly("worktree", "remove", "--force", worktree.toString()));
+    }
+
+    @Test
+    void cleanupSkipsMissingPath() throws Exception {
+        RecordingExecutor executor = new RecordingExecutor();
+        WorktreeManager manager = new WorktreeManager(makeConfig(""), executor);
+
+        manager.cleanup(tempDir.resolve("missing").toString());
+
+        assertThat(executor.commands).isEmpty();
+    }
+
+    @Test
+    void prepareAddsForkRemoteWhenMissing() throws Exception {
+        Path local = Files.createDirectories(tempDir.resolve("local_repo"));
+        RecordingExecutor executor = new RecordingExecutor();
+        WorktreeManager manager = new WorktreeManager(makeConfig(local.toString()), executor);
+
+        manager.prepare("test remote");
+
+        assertThat(executor.commands).anySatisfy(args -> assertThat(args).containsExactly(
+                "remote",
+                "add",
+                "myfork",
+                "https://gitcode.com/TestOwner/agent-core.git"
+        ));
     }
 
     @Test

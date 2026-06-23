@@ -30,13 +30,17 @@ public class WorkflowChunk extends OutputSchema {
         if (value instanceof OutputSchema outputSchema) {
             return new WorkflowChunk(outputSchema.getType(), outputSchema.getIndex(), outputSchema.getPayload());
         }
-        if (value instanceof Map<?, ?> map) {
+        if (value instanceof Map<?, ?> map && isOutputSchemaMap(map)) {
             return new WorkflowChunk(
                     stringValue(map.get("type")),
                     intValue(map.get("index")),
                     map.get("payload"));
         }
         return new WorkflowChunk("output", 0, value);
+    }
+
+    private static boolean isOutputSchemaMap(Map<?, ?> map) {
+        return map.containsKey("type") || map.containsKey("payload") || map.containsKey("index");
     }
 
     private static String stringValue(Object value) {

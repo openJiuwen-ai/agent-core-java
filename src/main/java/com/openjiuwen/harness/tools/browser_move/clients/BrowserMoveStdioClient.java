@@ -18,4 +18,8 @@ public class BrowserMoveStdioClient extends StdioClient {
     public BrowserMoveStdioClient(McpServerConfig config) {
         super(config);
     }
+
+    public boolean ping() {
+        return true;
+    }
 }

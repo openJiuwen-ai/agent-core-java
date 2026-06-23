@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,6 +24,12 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code tests/unit_tests/harness/tools/worktree/test_manager.py}.
  */
 class WorktreeManagerTest {
+
+    private static final String PYTHON_WINDOWS_PATH_FAILURE_REASON = "Disabled with Python baseline failure: "
+            + "TestEnter::test_enter_creates_worktree_and_sets_session expected "
+            + "'/mock/workspace/.worktrees/my-slug' but Python returned "
+            + "'D:\\\\mock\\\\workspace\\\\.worktrees\\\\my-slug' on Windows. See "
+            + "javaify-project/tests/python-baseline/pytest-20260605-133148.log lines 12036-12046.";
 
     @TempDir
     Path tempDir;
@@ -35,7 +42,8 @@ class WorktreeManagerTest {
     }
 
     @Test
-    void enterSetsSessionAndPublishesEvent() throws Exception {
+    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
+    void enterCreatesWorktreeAndSetsSession() throws Exception {
         Path repo = initRepo("enter");
         Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
         Cwd.initCwd(repo.toString(), repo.toString(), workspace.toString(), null);
@@ -67,6 +75,52 @@ class WorktreeManagerTest {
     }
 
     @Test
+    void enterRejectsInvalidSlug() {
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), new RecordingBackend(null), null, null);
+
+        assertThatThrownBy(() -> manager.enter("../escape").join())
+                .rootCause()
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid worktree name");
+    }
+
+    @Test
+    void enterRaisesOutsideGitRepository() throws Exception {
+        Path nonRepo = Files.createDirectories(tempDir.resolve("not-repo"));
+        Cwd.initCwd(nonRepo.toString(), nonRepo.toString(), tempDir.resolve("workspace").toString(), null);
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), new RecordingBackend(null), null, null);
+
+        assertThatThrownBy(() -> manager.enter("valid-slug").join())
+                .rootCause()
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("not in a git repository");
+    }
+
+    @Test
+    void enterPublishesEvent() throws Exception {
+        Path repo = initRepo("event");
+        Path workspace = Files.createDirectories(tempDir.resolve("event-workspace"));
+        Cwd.initCwd(repo.toString(), repo.toString(), workspace.toString(), null);
+
+        RecordingBackend backend = new RecordingBackend(
+                new WorktreeCreateResult(
+                        workspace.resolve(".worktrees").resolve("ev-slug").toString(),
+                        "worktree-ev-slug",
+                        "abc123",
+                        null,
+                        true,
+                        false
+                )
+        );
+        RecordingHandler handler = new RecordingHandler();
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), backend, handler, null);
+
+        manager.enter("ev-slug", "m1", "t1").join();
+
+        assertThat(handler.lastEvent).isInstanceOf(WorktreeCreatedEvent.class);
+    }
+
+    @Test
     void exitKeepClearsSessionWithoutRemoval() throws Exception {
         Path repo = initRepo("keep");
         Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
@@ -89,6 +143,60 @@ class WorktreeManagerTest {
 
         assertThat(result).containsEntry("action", "keep");
         assertThat(WorktreeSessionContext.getCurrentSession()).isNull();
+        assertThat(backend.removeCalled).isFalse();
+    }
+
+    @Test
+    void exitRemoveRemovesWorktreeAndClearsSession() throws Exception {
+        Path repo = initRepo("remove");
+        Path workspace = Files.createDirectories(tempDir.resolve("remove-workspace"));
+        Cwd.initCwd(repo.toString(), repo.toString(), workspace.toString(), null);
+
+        RecordingBackend backend = new RecordingBackend(
+                new WorktreeCreateResult(
+                        repo.toString(),
+                        "worktree-rm-slug",
+                        Git.revParse("HEAD", repo.toString()).join(),
+                        null,
+                        true,
+                        false
+                )
+        );
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), backend, null, null);
+        manager.enter("rm-slug", null, null).join();
+
+        var result = manager.exit("remove", false).join();
+
+        assertThat(result).containsEntry("action", "remove");
+        assertThat(WorktreeSessionContext.getCurrentSession()).isNull();
+        assertThat(backend.removeCalled).isTrue();
+    }
+
+    @Test
+    void exitRemoveWithChangesRaises() throws Exception {
+        Path repo = initRepo("dirty");
+        Path workspace = Files.createDirectories(tempDir.resolve("dirty-workspace"));
+        Cwd.initCwd(repo.toString(), repo.toString(), workspace.toString(), null);
+
+        RecordingBackend backend = new RecordingBackend(
+                new WorktreeCreateResult(
+                        repo.toString(),
+                        "worktree-dirty-slug",
+                        Git.revParse("HEAD", repo.toString()).join(),
+                        null,
+                        true,
+                        false
+                )
+        );
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), backend, null, null);
+        manager.enter("dirty-slug", null, null).join();
+        Files.writeString(repo.resolve("dirty.txt"), "changed\n");
+
+        assertThatThrownBy(() -> manager.exit("remove", false).join())
+                .hasCauseInstanceOf(ValidationError.class)
+                .rootCause()
+                .hasMessageContaining("uncommitted files")
+                .hasMessageContaining("discard_changes=True");
         assertThat(backend.removeCalled).isFalse();
     }
 
@@ -119,6 +227,32 @@ class WorktreeManagerTest {
     }
 
     @Test
+    void exitRemoveWithChangesDiscardProceeds() throws Exception {
+        Path repo = initRepo("discard");
+        Path workspace = Files.createDirectories(tempDir.resolve("discard-workspace"));
+        Cwd.initCwd(repo.toString(), repo.toString(), workspace.toString(), null);
+
+        RecordingBackend backend = new RecordingBackend(
+                new WorktreeCreateResult(
+                        repo.toString(),
+                        "worktree-discard-slug",
+                        Git.revParse("HEAD", repo.toString()).join(),
+                        null,
+                        true,
+                        false
+                )
+        );
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), backend, null, null);
+        manager.enter("discard-slug", null, null).join();
+        Files.writeString(repo.resolve("dirty.txt"), "changed\n");
+
+        var result = manager.exit("remove", true).join();
+
+        assertThat(result).containsEntry("action", "remove");
+        assertThat(backend.removeCalled).isTrue();
+    }
+
+    @Test
     void createOwnerWorktreeDoesNotModifySessionState() throws Exception {
         Path repo = initRepo("owner");
         Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
@@ -145,12 +279,38 @@ class WorktreeManagerTest {
     }
 
     @Test
-    void ownerSlugAndResolvePolicyMirrorPythonRules() {
+    void createOwnerWorktreeRejectsInvalidSlug() {
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), new RecordingBackend(null), null, null);
+
+        assertThatThrownBy(() -> manager.createOwnerWorktree("../../bad").join())
+                .rootCause()
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid worktree name");
+    }
+
+    @Test
+    void ownerSlugFormatsLongOwnerId() {
+        assertThat(WorktreeManager.ownerSlug("abcdef123456")).isEqualTo("teammate-abcdef12");
+    }
+
+    @Test
+    void ownerSlugPreservesShortOwnerId() {
+        assertThat(WorktreeManager.ownerSlug("abc")).isEqualTo("teammate-abc");
+    }
+
+    @Test
+    void resolvePolicyAutoResolvesToEphemeral() {
+        WorktreeManager manager = new WorktreeManager(new WorktreeConfig(), new RecordingBackend(null), null, List.of());
+
+        assertThat(manager.resolvePolicy()).isEqualTo(WorktreeLifecyclePolicy.EPHEMERAL);
+    }
+
+    @Test
+    void resolvePolicyRespectsExplicitDurable() {
         WorktreeConfig config = new WorktreeConfig();
         config.setLifecyclePolicy(WorktreeLifecyclePolicy.DURABLE);
         WorktreeManager manager = new WorktreeManager(config, new RecordingBackend(null), null, List.of());
 
-        assertThat(WorktreeManager.ownerSlug("abcdef123456")).isEqualTo("teammate-abcdef12");
         assertThat(manager.resolvePolicy()).isEqualTo(WorktreeLifecyclePolicy.DURABLE);
     }
 
@@ -166,6 +326,20 @@ class WorktreeManagerTest {
         Object result = manager.fireRail("onEnter", "arg1").join();
 
         assertThat(result).isEqualTo("b");
+    }
+
+    @Test
+    void fireRailSkipsRailsWithoutTargetMethod() {
+        WorktreeManager manager = new WorktreeManager(
+                new WorktreeConfig(),
+                new RecordingBackend(null),
+                null,
+                List.of(new Object())
+        );
+
+        Object result = manager.fireRail("onEnter").join();
+
+        assertThat(result).isNull();
     }
 
     private Path initRepo(String name) throws IOException, InterruptedException {

@@ -117,8 +117,9 @@ class CoreBaseSupportTest {
         }
 
         @Override
-        public void update(Map<String, Object> kwargs) {
+        public Object update(Map<String, Object> kwargs) {
             this.value = kwargs.get("x");
+            return this.value;
         }
     }
 

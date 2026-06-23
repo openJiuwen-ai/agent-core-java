@@ -42,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Focused parity checks for T01177.
  *
+ * <p>Mirrors Python's {@code tests/unit_tests/core/component/test_knowledge_retrieval_comp.py}.</p>
+ *
  * <p>Mirrors Python's {@code ComponentKBConfig}, {@code KnowledgeRetrievalInput},
  * {@code KnowledgeRetrievalOutput}, {@code KnowledgeRetrievalExecutable}, and
  * {@code KnowledgeRetrievalComponent} in

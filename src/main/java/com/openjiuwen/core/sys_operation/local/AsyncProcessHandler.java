@@ -37,6 +37,7 @@ public final class AsyncProcessHandler {
     private final int overallTimeoutSeconds;
     private final BlockingQueue<StreamEvent> queue = new LinkedBlockingQueue<>();
     private final AtomicBoolean executed = new AtomicBoolean(false);
+    private final AtomicBoolean suppressReaderErrors = new AtomicBoolean(false);
 
     public AsyncProcessHandler(Process process, int chunkSize, String encoding, int timeout) {
         this.process = Objects.requireNonNull(process, "process");
@@ -100,17 +101,16 @@ public final class AsyncProcessHandler {
 
         CompletableFuture.runAsync(() -> {
             long startedAt = System.nanoTime();
+            String terminalError = null;
             try {
                 while (hasRunningReader(readers)) {
                     if (overallTimeoutSeconds > 0) {
                         long elapsedSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt);
                         if (elapsedSeconds >= overallTimeoutSeconds) {
                             LOGGER.error("Stream execution time out after {} seconds", overallTimeoutSeconds);
+                            suppressReaderErrors.set(true);
                             killProcessTree();
-                            queue.put(new StreamEvent(
-                                    StreamEventType.ERROR,
-                                    "execution timeout after " + overallTimeoutSeconds + " seconds"
-                            ));
+                            terminalError = "execution timeout after " + overallTimeoutSeconds + " seconds";
                             break;
                         }
                     }
@@ -119,11 +119,12 @@ public final class AsyncProcessHandler {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 LOGGER.warning("Stream cancelled by user, killing subprocess tree");
+                suppressReaderErrors.set(true);
                 killProcessTree();
-                offerEvent(new StreamEvent(StreamEventType.ERROR, "Execution cancelled by user"));
+                terminalError = "Execution cancelled by user";
             } catch (Exception exception) {
                 LOGGER.error("Stream execution error: {}", exception.getMessage());
-                offerEvent(new StreamEvent(StreamEventType.ERROR, "stream loop error: " + exception.getMessage()));
+                terminalError = "stream loop error: " + exception.getMessage();
             }
 
             cancelUnfinishedReaders(readers);
@@ -138,6 +139,10 @@ public final class AsyncProcessHandler {
 
             try {
                 process.waitFor();
+                if (terminalError != null) {
+                    offerEvent(new StreamEvent(StreamEventType.ERROR, terminalError));
+                    return;
+                }
                 offerEvent(new StreamEvent(StreamEventType.EXIT, process.exitValue()));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
@@ -206,10 +211,12 @@ public final class AsyncProcessHandler {
             }
         } catch (Exception exception) {
             LOGGER.error("Stream read error: {}", exception.getMessage());
-            offerEvent(new StreamEvent(
-                    StreamEventType.ERROR,
-                    streamTypeName(stream, exception) + " reader error: " + exception.getMessage()
-            ));
+            if (!suppressReaderErrors.get()) {
+                offerEvent(new StreamEvent(
+                        StreamEventType.ERROR,
+                        streamTypeName(stream, exception) + " reader error: " + exception.getMessage()
+                ));
+            }
         }
     }
 
@@ -266,11 +273,26 @@ public final class AsyncProcessHandler {
 
     private void killProcessTree() {
         ProcessHandle handle = process.toHandle();
+        if (isWindows()) {
+            try {
+                new ProcessBuilder("taskkill", "/PID", String.valueOf(handle.pid()), "/T", "/F")
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start()
+                        .waitFor(5, TimeUnit.SECONDS);
+            } catch (Exception exception) {
+                LOGGER.warning("Failed to taskkill process tree: {}", exception.getMessage());
+            }
+        }
         List<ProcessHandle> descendants = new ArrayList<>(handle.descendants().toList());
         for (ProcessHandle descendant : descendants.reversed()) {
             descendant.destroyForcibly();
         }
         handle.destroyForcibly();
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
     private void ensureSingleExecution() {

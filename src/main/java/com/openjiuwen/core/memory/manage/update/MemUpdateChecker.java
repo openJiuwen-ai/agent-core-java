@@ -117,6 +117,7 @@ public class MemUpdateChecker {
     ) {
         JsonOutputParser parser = new JsonOutputParser();
         List<MemCheckItem> checkResults = new ArrayList<>();
+        boolean parsedSuccessfully = false;
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
@@ -124,8 +125,12 @@ public class MemUpdateChecker {
                 Object parsedResult = parser.parse(response.getContentAsString()).join();
                 List<?> parsedItems = normalizeParsedResult(parsedResult);
                 if (parsedItems == null) {
+                    if (attempt >= retries - 1) {
+                        return addAllNewMemories(newMemories);
+                    }
                     continue;
                 }
+                parsedSuccessfully = true;
                 for (Object item : parsedItems) {
                     checkResults.add(OBJECT_MAPPER.convertValue(item, MemCheckItem.class));
                 }
@@ -155,6 +160,9 @@ public class MemUpdateChecker {
                 );
                 return addAllNewMemories(newMemories);
             }
+        }
+        if (!parsedSuccessfully) {
+            return addAllNewMemories(newMemories);
         }
 
         List<MemoryActionItem> actionItems = new ArrayList<>();

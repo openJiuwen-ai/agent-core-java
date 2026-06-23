@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.sys_operation.Cwd;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -19,10 +21,16 @@ public class CodeTool extends AbstractHarnessTool {
     private static final int FALLBACK_MAX_TIMEOUT_SECONDS = 3600;
 
     private final CodeExecutor executor;
+    private final boolean localOperation;
 
     public CodeTool(CodeExecutor executor) {
+        this(executor, true);
+    }
+
+    public CodeTool(CodeExecutor executor, boolean localOperation) {
         super(toolCard("code", "CodeTool", "Execute source code snippets in the configured runtime."));
         this.executor = executor;
+        this.localOperation = localOperation;
     }
 
     @Override
@@ -33,7 +41,11 @@ public class CodeTool extends AbstractHarnessTool {
         if (executor == null) {
             return ToolOutput.failure("code executor is not configured");
         }
-        CodeExecutionResult result = executor.execute(code, language, timeout, kwargs == null ? Map.of() : kwargs);
+        Map<String, Object> executorKwargs = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
+        if (localOperation) {
+            executorKwargs.putIfAbsent("cwd", Cwd.getCwd());
+        }
+        CodeExecutionResult result = executor.execute(code, language, timeout, executorKwargs);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("stdout", result.stdout());
         data.put("stderr", result.stderr());

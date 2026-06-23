@@ -51,6 +51,41 @@ class RoundLevelCompressorTest {
     }
 
     @Test
+    void streamsStateWhenRoundLevelCompressorTriggersOnGet() {
+        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
+        config.setTriggerTotalTokens(1);
+        config.setTargetTotalTokens(1);
+        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
+        compressor.compressionResult = List.of(new UserMessage("compressed"));
+        SessionModelContext context = new SessionModelContext(
+                "ctx",
+                "round-level-compressor-stream-session",
+                new ContextEngineConfig(),
+                List.of(new UserMessage("old request"), new AssistantMessage("old answer")),
+                List.of(compressor),
+                messages -> messages.stream().mapToInt(message -> message.getContentAsString().length()).sum());
+
+        ContextWindow window = context.getContextWindow(List.of(), List.of(), null, null, Map.of())
+                .toCompletableFuture()
+                .join();
+
+        assertThat(window.getContextMessages()).extracting(BaseMessage::getContentAsString)
+                .containsExactly("compressed");
+        List<Map<String, Object>> states = context.compressionHistory();
+        assertThat(states).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(states.get(states.size() - 2))
+                .containsEntry("status", "started")
+                .containsEntry("phase", "get_context_window")
+                .containsEntry("processor", "RoundLevelCompressor");
+        Map<String, Object> completed = states.get(states.size() - 1);
+        assertThat(completed)
+                .containsEntry("status", "completed")
+                .containsEntry("phase", "get_context_window")
+                .containsEntry("processor", "RoundLevelCompressor");
+        assertThat(String.valueOf(completed.get("summary"))).contains("modified 2 messages");
+    }
+
+    @Test
     void buildMemoryMessageReturnsPlainUserMessageWithCompressionLevel() {
         RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
         TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
@@ -179,6 +214,11 @@ class RoundLevelCompressorTest {
 
         private TestableRoundLevelCompressor(RoundLevelCompressorConfig config) {
             super(config, null);
+        }
+
+        @Override
+        public String processorType() {
+            return "RoundLevelCompressor";
         }
 
         @Override

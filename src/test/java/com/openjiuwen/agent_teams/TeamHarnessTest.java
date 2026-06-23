@@ -25,6 +25,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code test_harness.py} for
  * {@code openjiuwen/agent_teams/harness.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_teams.test_harness} in
+ * {@code tests/unit_tests/agent_teams/test_harness.py}.</p>
  */
 class TeamHarnessTest {
 

@@ -33,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code SessionController} in
  * {@code openjiuwen/core/session/session_controller/session_controller.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental test module in
+ * {@code tests/unit_tests/core/session/session_controller/test_session_controller.py}.</p>
  */
 class SessionControllerTest {
 

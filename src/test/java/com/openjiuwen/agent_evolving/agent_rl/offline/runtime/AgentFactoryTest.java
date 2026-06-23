@@ -38,6 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * Mirrors Python's {@code AgentFactory} in
  * {@code openjiuwen/agent_evolving/agent_rl/offline/runtime/agent_factory.py}.
+ *
+ * <p>Mirrors Python's {@code TestBuildAgentFactory} and
+ * {@code TestAgentFactoryCallWithoutProxyUrl} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/runtime/test_agent_factory.py}.</p>
  */
 class AgentFactoryTest {
 

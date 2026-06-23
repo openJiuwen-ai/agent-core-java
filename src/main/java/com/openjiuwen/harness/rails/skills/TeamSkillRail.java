@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.rails.skills;
 
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.harness.rails.evolution.TeamSkillEvolutionRail;
 
 import java.nio.file.Path;
@@ -17,5 +18,17 @@ import java.nio.file.Path;
 public class TeamSkillRail extends TeamSkillEvolutionRail {
     public TeamSkillRail(Path skillsDir) {
         super(skillsDir);
+    }
+
+    public TeamSkillRail(String skillsDir) {
+        this(Path.of(skillsDir));
+    }
+
+    public TeamSkillRail(Path skillsDir, Model llm, String model, boolean autoSave, boolean asyncEvolution) {
+        super(skillsDir, llm, model, autoSave, asyncEvolution);
+    }
+
+    public TeamSkillRail(String skillsDir, Model llm, String model, boolean autoSave, boolean asyncEvolution) {
+        this(Path.of(skillsDir), llm, model, autoSave, asyncEvolution);
     }
 }

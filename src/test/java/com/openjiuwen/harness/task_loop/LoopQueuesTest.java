@@ -11,6 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code test_loop_queues.py} in
+ * {@code tests/unit_tests/harness/test_loop_queues.py}.
+ */
 class LoopQueuesTest {
 
     @Test

@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code HybridRetriever} behavior in
  * {@code openjiuwen/core/retrieval/retriever/hybrid_retriever.py}.
+ *
+ * <p>Scenarios also mirror Python's {@code TestHybridRetriever} in
+ * {@code tests/unit_tests/core/retrieval/retriever/test_hybrid_retriever.py}.</p>
  */
 class HybridRetrieverTest {
 
@@ -44,6 +47,36 @@ class HybridRetrieverTest {
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().getDocId()).isEqualTo("doc-1");
         assertThat(results.getFirst().getChunkId()).isEqualTo("chunk-1");
+    }
+
+    @Test
+    void vectorModeUsesEmbeddingAndVectorSearch() {
+        FakeEmbedding embedding = new FakeEmbedding(List.of(0.4d, 0.5d));
+        FakeVectorStore vectorStore = new FakeVectorStore();
+        vectorStore.vectorResults = List.of(result("vector-1", "Vector result", 0.9d, Map.of()));
+        HybridRetriever retriever = new HybridRetriever(vectorStore, embedding);
+
+        List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "vector", Map.of());
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().getText()).isEqualTo("Vector result");
+        assertThat(embedding.queries).containsExactly("test query");
+        assertThat(vectorStore.vectorCalls).isEqualTo(1);
+        assertThat(vectorStore.sparseCalls).isZero();
+    }
+
+    @Test
+    void sparseModeUsesSparseSearchOnly() {
+        FakeVectorStore vectorStore = new FakeVectorStore();
+        vectorStore.sparseResults = List.of(result("sparse-1", "Sparse result", 0.8d, Map.of()));
+        HybridRetriever retriever = new HybridRetriever(vectorStore);
+
+        List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "sparse", Map.of());
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().getText()).isEqualTo("Sparse result");
+        assertThat(vectorStore.vectorCalls).isZero();
+        assertThat(vectorStore.sparseCalls).isEqualTo(1);
     }
 
     @Test
@@ -96,6 +129,20 @@ class HybridRetrieverTest {
         assertThat(results.getFirst().getId()).isEqualTo("chunk-9");
         assertThat(results.getFirst().getText()).isEqualTo("raw");
         assertThat(results.getFirst().getMetadata()).containsEntry("doc_id", "doc-9");
+    }
+
+    @Test
+    void batchRetrieveRunsEachQuery() {
+        FakeVectorStore vectorStore = new FakeVectorStore();
+        vectorStore.sparseResults = List.of(result("sparse-1", "Sparse result", 0.8d, Map.of()));
+        HybridRetriever retriever = new HybridRetriever(vectorStore);
+
+        List<List<RetrievalResult>> results = retriever.batchRetrieve(List.of("query 1", "query 2"), 5, "sparse", Map.of());
+
+        assertThat(results).hasSize(2);
+        assertThat(results).allSatisfy(queryResults ->
+                assertThat(queryResults).extracting(RetrievalResult::getText).containsExactly("Sparse result"));
+        assertThat(vectorStore.sparseCalls).isEqualTo(2);
     }
 
     private static RetrievalResult result(String chunkId, String text, double score, Map<String, Object> metadata) {

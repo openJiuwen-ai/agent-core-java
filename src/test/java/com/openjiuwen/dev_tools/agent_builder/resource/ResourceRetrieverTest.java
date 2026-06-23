@@ -11,7 +11,12 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +34,13 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>Mirrors Python's {@code ResourceRetriever} in
  * {@code openjiuwen/dev_tools/agent_builder/resource/retriever.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code tests.system_tests.dev_tools.agent_builder.resource.test_resource_integration}
+ * in {@code tests/system_tests/dev_tools/agent_builder/resource/test_resource_integration.py}.</p>
+ *
+ * <p>Also mirrors Python's
+ * {@code tests.unit_tests.dev_tools.agent_builder.resource.test_retriever}
+ * in {@code tests/unit_tests/dev_tools/agent_builder/resource/test_retriever.py}.</p>
  */
 class ResourceRetrieverTest {
 
@@ -46,6 +58,57 @@ class ResourceRetrieverTest {
         List<Map<String, Object>> plugins = ResourceRetriever.loadResources("not-found/plugins.json");
 
         assertTrue(plugins.isEmpty());
+    }
+
+    @Test
+    void loadResourcesReadsCustomPath(@TempDir Path tempDir) throws IOException {
+        Path pluginJson = tempDir.resolve("plugins.json");
+        Files.writeString(pluginJson, "{\"plugins\":[{\"plugin_id\":\"plugin_1\"}]}");
+
+        List<Map<String, Object>> plugins = ResourceRetriever.loadResources(pluginJson.toString());
+
+        assertEquals(1, plugins.size());
+        assertEquals("plugin_1", plugins.get(0).get("plugin_id"));
+    }
+
+    @Test
+    void loadResourcesReturnsEmptyListWhenPluginsKeyMissing(@TempDir Path tempDir) throws IOException {
+        Path pluginJson = tempDir.resolve("plugins.json");
+        Files.writeString(pluginJson, "{}");
+
+        List<Map<String, Object>> plugins = ResourceRetriever.loadResources(pluginJson.toString());
+
+        assertTrue(plugins.isEmpty());
+    }
+
+    @Test
+    void constructorKeepsModelAndEmptyPluginMapsForEmptyResources() {
+        Model model = modelReturning("{\"tool_id_list\": []}", null);
+
+        ResourceRetriever retriever = new ResourceRetriever(model, List.of());
+
+        assertSame(model, retriever.getLlm());
+        assertTrue(retriever.getPluginDict().isEmpty());
+        assertTrue(retriever.getToolPluginIdMap().isEmpty());
+    }
+
+    @Test
+    void constructorPreprocessesProvidedPluginsAndToolMap() {
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("tool_id", "tool_1");
+
+        Map<String, Object> plugin = new LinkedHashMap<>();
+        plugin.put("plugin_id", "plugin_1");
+        plugin.put("plugin_name", "Plugin 1");
+        plugin.put("tools", List.of(tool));
+
+        ResourceRetriever retriever = new ResourceRetriever(
+                modelReturning("{\"tool_id_list\": []}", null),
+                List.of(plugin)
+        );
+
+        assertTrue(retriever.getPluginDict().containsKey("plugin_1"));
+        assertEquals("plugin_1", retriever.getToolPluginIdMap().get("tool_1"));
     }
 
     @Test

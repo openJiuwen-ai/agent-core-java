@@ -121,7 +121,7 @@ class GraphMemoryPostProcessorTest {
     }
 
     @Test
-    void parseRelationUuidsToRemoveKeepsStateWhenSchemaParsingReturnsEmptyMap() {
+    void parseRelationUuidsToRemoveExtendsStateWhenSchemaParsingSucceeds() {
         GraphMemoryStates.GraphMemState state = new GraphMemoryStates.GraphMemState();
         Relation newRelation = relation("new", entity("a", "A"), entity("b", "B"), "new content");
         Relation existing = relation("existing", entity("a", "A"), entity("b", "B"), "old content");
@@ -135,8 +135,8 @@ class GraphMemoryPostProcessorTest {
                 state
         ).join();
 
-        assertThat(newRelation.getContent()).isEqualTo("new content");
-        assertThat(state.getToRemove()).isEmpty();
+        assertThat(newRelation.getContent()).isEqualTo("merged");
+        assertThat(state.getToRemove()).containsExactly("existing");
     }
 
     private static Entity entity(String uuid, String name) {

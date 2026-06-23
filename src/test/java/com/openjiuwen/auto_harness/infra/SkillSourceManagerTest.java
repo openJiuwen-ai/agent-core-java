@@ -18,10 +18,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Focused parity tests for community skill source management.
+ * Supplemental parity tests for community skill source management.
  * <p>
- * Mirrors Python's {@code tests/unit_tests/auto_harness/test_skill_source_manager.py}
- * for {@code openjiuwen/auto_harness/infra/skill_source_manager.py}.
+ * Mirrors Python's {@code tests/unit_tests/auto_harness/test_skill_source_manager.py}.
  */
 class SkillSourceManagerTest {
 
@@ -29,18 +28,43 @@ class SkillSourceManagerTest {
     private Path tempDir;
 
     @Test
-    void repoNameFromUrlMatchesPythonCases() {
-        assertThat(SkillSourceManager.repoNameFromUrl("https://github.com/anthropics/skills.git"))
-                .isEqualTo("anthropics-skills");
+    void testBaoyuUrl() {
         assertThat(SkillSourceManager.repoNameFromUrl("https://github.com/JimLiu/baoyu-skills.git"))
                 .isEqualTo("JimLiu-baoyu-skills");
+    }
+
+    @Test
+    void testGithubUrl() {
+        assertThat(SkillSourceManager.repoNameFromUrl("https://github.com/anthropics/skills.git"))
+                .isEqualTo("anthropics-skills");
+    }
+
+    @Test
+    void testNoGitSuffix() {
         assertThat(SkillSourceManager.repoNameFromUrl("https://github.com/owner/repo"))
                 .isEqualTo("owner-repo");
+    }
+
+    @Test
+    void testSingleSegment() {
         assertThat(SkillSourceManager.repoNameFromUrl("repo")).isEqualTo("repo");
     }
 
     @Test
-    void loadSkillDescriptionReadsYamlFrontmatter() throws Exception {
+    void testMissingFile() {
+        assertThat(SkillSourceManager.loadSkillDescription(tempDir.resolve("missing").resolve("SKILL.md")))
+                .isEmpty();
+    }
+
+    @Test
+    void testNoFrontmatter() throws Exception {
+        Path skillMd = writeRawSkill("raw", "# Just markdown\nNo frontmatter.");
+
+        assertThat(SkillSourceManager.loadSkillDescription(skillMd)).isEmpty();
+    }
+
+    @Test
+    void testWithFrontmatter() throws Exception {
         Path skillMd = writeSkill("anthropics-skills", "pptx", """
                 ---
                 name: pptx
@@ -51,30 +75,25 @@ class SkillSourceManagerTest {
 
         assertThat(SkillSourceManager.loadSkillDescription(skillMd))
                 .isEqualTo("Create PowerPoint presentations");
-        assertThat(SkillSourceManager.loadSkillDescription(tempDir.resolve("missing").resolve("SKILL.md")))
-                .isEmpty();
     }
 
     @Test
-    void patchSkillFrontmatterAddsMissingFieldsAndKeepsCompleteFileUnchanged() throws Exception {
-        Path missingDescription = writeRawSkill("pptx", """
+    void testAddMissingFields() throws Exception {
+        Path skillMd = writeRawSkill("pptx", """
                 ---
                 name: pptx
                 ---
                 # PPTX
                 """);
-        SkillSourceManager.patchSkillFrontmatter(missingDescription, "pptx");
-        assertThat(Files.readString(missingDescription))
+        SkillSourceManager.patchSkillFrontmatter(skillMd, "pptx");
+
+        assertThat(Files.readString(skillMd))
                 .contains("description:")
                 .contains("Community skill: pptx");
+    }
 
-        Path bare = writeRawSkill("bare", "# Bare skill\nContent.");
-        SkillSourceManager.patchSkillFrontmatter(bare, "bare");
-        assertThat(Files.readString(bare))
-                .startsWith("---")
-                .contains("name: bare")
-                .contains("description:");
-
+    @Test
+    void testCompleteFrontmatterNoPatch() throws Exception {
         String complete = """
                 ---
                 name: pdf
@@ -84,11 +103,34 @@ class SkillSourceManagerTest {
                 """;
         Path completePath = writeRawSkill("pdf", complete);
         SkillSourceManager.patchSkillFrontmatter(completePath, "pdf");
+
         assertThat(Files.readString(completePath)).isEqualTo(complete);
     }
 
     @Test
-    void scanSkillsFindsSkillsAndSkipsNonSkillDirs() throws Exception {
+    void testNoFrontmatterAtAll() throws Exception {
+        Path bare = writeRawSkill("bare", "# Bare skill\nContent.");
+        SkillSourceManager.patchSkillFrontmatter(bare, "bare");
+
+        assertThat(Files.readString(bare))
+                .startsWith("---")
+                .contains("name: bare")
+                .contains("description:");
+    }
+
+    @Test
+    void testScanEmptyCache() throws Exception {
+        Files.createDirectories(cacheDir());
+
+        Map<String, SkillSourceManager.SkillMatch> result = SkillSourceManager.scanSkills(config(
+                List.of("https://github.com/nonexistent/repo.git")
+        ));
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void testScanFindsSkills() throws Exception {
         writeSkill("anthropics-skills", "pptx", """
                 ---
                 name: pptx
@@ -108,7 +150,20 @@ class SkillSourceManagerTest {
     }
 
     @Test
-    void copySkillToExtensionCopiesAndPatchesSkill() throws Exception {
+    void testCopySkillNotFound() throws Exception {
+        Path extensionRoot = Files.createDirectories(tempDir.resolve("ext_root2"));
+
+        Optional<Path> result = SkillSourceManager.copySkillToExtension(
+                "nonexistent",
+                extensionRoot,
+                config(List.of())
+        );
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void testCopySkillSuccess() throws Exception {
         writeSkill("anthropics-skills", "pptx", """
                 ---
                 name: pptx
@@ -127,31 +182,36 @@ class SkillSourceManagerTest {
         assertThat(result).isPresent();
         assertThat(result.orElseThrow().getFileName().toString()).isEqualTo("pptx");
         assertThat(extensionRoot.resolve("skills").resolve("pptx").resolve("SKILL.md")).isRegularFile();
-        assertThat(SkillSourceManager.copySkillToExtension("missing", extensionRoot, config(List.of())))
-                .isEmpty();
     }
 
     @Test
-    void communitySkillCacheSkillDirsHandlesSkillsSubdirAndFlatRepos() throws Exception {
-        Files.createDirectories(cacheDir().resolve("anthropics-skills"));
-        Files.createDirectories(cacheDir().resolve("owner-repo").resolve("skills"));
+    void testEmptyWhenNoCache() {
+        AutoHarnessConfig config = config(List.of("https://github.com/nonexistent/repo.git"));
 
-        AutoHarnessConfig config = config(List.of(
-                "https://github.com/anthropics/skills.git",
-                "https://github.com/owner/repo.git"
-        ));
+        assertThat(SkillSourceManager.communitySkillCacheSkillDirs(config)).isEmpty();
+    }
+
+    @Test
+    void testReturnsExistingDirs() throws Exception {
+        Files.createDirectories(cacheDir().resolve("anthropics-skills"));
+
+        AutoHarnessConfig config = config(List.of("https://github.com/anthropics/skills.git"));
 
         assertThat(SkillSourceManager.communitySkillCacheSkillDirs(config))
-                .containsExactly(
-                        cacheDir().resolve("anthropics-skills").toString(),
-                        cacheDir().resolve("owner-repo").resolve("skills").toString()
-                );
+                .hasSize(1)
+                .first()
+                .asString()
+                .contains("anthropics-skills");
     }
 
     @Test
-    void formatCommunitySkillListMatchesPythonEmptyAndNonEmptyText() throws Exception {
-        assertThat(SkillSourceManager.formatCommunitySkillList(config(List.of()))).contains("无");
+    void testFormatEmptyCache() {
+        assertThat(SkillSourceManager.formatCommunitySkillList(config(List.of())))
+                .contains("\u65e0");
+    }
 
+    @Test
+    void testFormatWithSkills() throws Exception {
         writeSkill("anthropics-skills", "pptx", """
                 ---
                 name: pptx
@@ -166,19 +226,94 @@ class SkillSourceManagerTest {
     }
 
     @Test
-    void schemaSkillSourceFieldsMirrorPythonDefaults() {
+    void testCommunitySource() {
         ExtensionDesign design = new ExtensionDesign();
-        assertThat(design.getSkillSource()).isEqualTo("");
+        design.setExtensionName("pptx_gen");
+        design.setSkillSource("community:pptx");
 
+        assertThat(design.getSkillSource()).isEqualTo("community:pptx");
+    }
+
+    @Test
+    void testDefaultRepos() {
+        AutoHarnessConfig config = new AutoHarnessConfig();
+
+        assertThat(config.getCommunitySkillRepos()).hasSize(2);
+        assertThat(config.getCommunitySkillRepos().get(0)).contains("anthropics");
+        assertThat(config.getCommunitySkillRepos().get(1)).contains("baoyu-skills");
+    }
+
+    @Test
+    void testDefaultValues() {
+        ExtensionDesign design = new ExtensionDesign();
+
+        assertThat(design.getSkillSource()).isEqualTo("");
+    }
+
+    @Test
+    void testFromDict() {
         AutoHarnessConfig config = AutoHarnessConfig.loadFromDict(Map.of(
                 "data_dir", "/tmp/ah",
                 "community_skill_repos", List.of("https://github.com/test/skills.git"),
                 "community_skill_cache_dir", "/tmp/skills-cache"
         ));
+
         assertThat(config.getCommunitySkillRepos()).containsExactly("https://github.com/test/skills.git");
         assertThat(config.getCommunitySkillCacheDir()).isEqualTo("/tmp/skills-cache");
         assertThat(config.getResolvedCommunitySkillCacheDir()).isEqualTo("/tmp/skills-cache");
-        assertThat(new AutoHarnessConfig().getCommunitySkillRepos()).hasSize(2);
+    }
+
+    @Test
+    void testValidateMissingDescription() throws Exception {
+        Path skillMd = writeRawSkill("no_desc", """
+                ---
+                name: pptx
+                ---
+                # PPTX Skill
+                """);
+
+        List<String> errors = RuntimeExtensionStaticChecks.validateSkillFrontmatter(skillMd);
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0)).contains("description");
+    }
+
+    @Test
+    void testValidateMissingName() throws Exception {
+        Path skillMd = writeRawSkill("no_name", """
+                ---
+                description: Create PowerPoint presentations
+                ---
+                # PPTX Skill
+                """);
+
+        List<String> errors = RuntimeExtensionStaticChecks.validateSkillFrontmatter(skillMd);
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0)).contains("name");
+    }
+
+    @Test
+    void testValidateNoFrontmatter() throws Exception {
+        Path skillMd = writeRawSkill("bare", "# Just markdown");
+
+        List<String> errors = RuntimeExtensionStaticChecks.validateSkillFrontmatter(skillMd);
+
+        assertThat(errors).isNotEmpty();
+        assertThat(errors.get(0)).contains("frontmatter");
+    }
+
+    @Test
+    void testValidateValidFrontmatter() throws Exception {
+        Path skillMd = writeRawSkill("pptx", """
+                ---
+                name: pptx
+                description: Create PowerPoint presentations
+                ---
+                # PPTX Skill
+                """);
+
+        assertThat(RuntimeExtensionStaticChecks.validateSkillFrontmatter(skillMd)).isEmpty();
     }
 
     private Path writeSkill(String repoName, String skillName, String content) throws Exception {

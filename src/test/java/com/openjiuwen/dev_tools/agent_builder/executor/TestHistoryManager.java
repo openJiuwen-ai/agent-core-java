@@ -20,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * Mirrors Python's {@code test_history_manager.py} in
  * {@code tests/unit_tests/dev_tools/agent_builder/executor/test_history_manager.py}.
+ *
+ * <p>Also mirrors Python's {@code tests.system_tests.dev_tools.agent_builder.executor.test_executor_integration}
+ * in {@code tests/system_tests/dev_tools/agent_builder/executor/test_executor_integration.py}.</p>
  */
 class TestHistoryManager {
 

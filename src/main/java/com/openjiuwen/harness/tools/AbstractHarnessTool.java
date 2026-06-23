@@ -6,6 +6,7 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -31,11 +32,19 @@ public abstract class AbstractHarnessTool extends Tool {
     }
 
     protected static ToolCard toolCard(String id, String name, String description) {
+        String resolvedDescription = description == null ? "" : description;
+        Map<String, Object> inputParams = emptySchema();
+        try {
+            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, "en");
+            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, "en");
+        } catch (RuntimeException ignored) {
+            // Some internal helper tools intentionally have no prompt metadata provider.
+        }
         return ToolCard.builder()
                 .id(id)
                 .name(name)
-                .description(description == null ? "" : description)
-                .inputParams(emptySchema())
+                .description(resolvedDescription)
+                .inputParams(inputParams)
                 .build();
     }
 
@@ -85,6 +94,14 @@ public abstract class AbstractHarnessTool extends Tool {
 
     protected static Map<String, Object> linkedMap() {
         return new LinkedHashMap<>();
+    }
+
+    protected static Map<String, Object> linkedMap(Object... values) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int index = 0; index + 1 < values.length; index += 2) {
+            result.put(String.valueOf(values[index]), values[index + 1]);
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")

@@ -220,18 +220,29 @@ public class ExtendPlanStage extends PlanStage {
                 .append("组件选择规则：按用户目标选择最轻组件组合。")
                 .append("Tool 用于生成文件、调用 API、封装 CLI 或执行明确动作；")
                 .append("Skill 用于承载领域规范、模板原则、生成流程和示例；")
-                .append("Rail 只在需要拦截会话、后台监听、周期触发、审计或动态注入上下文时使用。\n")
+                .append("设计 Skill 时必须参考 skill-creator 原则，规划准确的")
+                .append("name/description、精简可操作的 SKILL.md，并在需要模板、")
+                .append("品牌素材或详细参考资料时规划 assets/ 或 references/；")
+                .append("Rail 只在需要拦截会话、后台监听、周期触发、审计或")
+                .append("动态注入上下文时使用，不要为了完整性强行添加 Rail。\n")
                 .append("办公/PPT/报告/文件生成类扩展通常优先设计为 `[\"tool\", \"skill\"]`，")
                 .append("除非 gap 明确需要生命周期拦截或后台触发。\n\n")
                 .append("真实产物契约：如果扩展承诺生成 PPT、DOCX、PDF、JSON、图片、报告或其他文件，")
                 .append("设计必须明确 Tool 的输入、输出路径、返回字段和成功条件，")
+                .append("成功条件至少包含：目标文件存在、文件后缀/格式正确、size_bytes > 0、")
+                .append("返回 absolute_path/exists/format/size_bytes 等结构化字段。")
+                .append("PPTX/DOCX 必须是合法 zip 包并包含关键内部结构；PPTX 至少包含 ")
+                .append("`ppt/presentation.xml` 和 `ppt/slides/slide*.xml`；")
                 .append("不得设计 JSON/Markdown/纯文本占位来冒充二进制产物。\n\n")
                 .append("设计拆分标准：每个可独立实现和验证的 gap 输出一个 design。")
-                .append("全局硬约束必须输出为独立 constraint design，普通新增能力输出为 capability design。\n\n")
+                .append("全局硬约束必须输出为独立 constraint design，普通新增能力输出为 capability design。")
+                .append("必须保留用户目标中的关键实体和产物类型，例如“PPT”“办公拓展”，")
+                .append("不要泛化成需求收集、需求报告或普通办公扩展。\n\n")
                 .append("差距列表:\n").append(gapSummary).append("\n\n")
                 .append("命名规则：extension_name 必须是能表达用户能力的 snake_case 名称。")
                 .append("若 gap 来自明确竞品，可使用竞品名前缀；若来源是用户需求或领域范式，")
-                .append("应按能力命名，不要使用 user_demand_* 这类泛名。\n\n")
+                .append("应按能力命名，例如 `excel_financial_generator`、`office_ppt_generator`。")
+                .append("不要使用 `user_demand_*` 这类丢失具体产物和场景的泛名。\n\n")
                 .append("首先输出 session 级别的扩展包名称：\n")
                 .append("- package_name: snake_case，表达本轮优化的核心能力\n")
                 .append("- 保留用户目标关键实体\n")
@@ -242,10 +253,11 @@ public class ExtendPlanStage extends PlanStage {
                 .append("designs 数组元素包含:\n")
                 .append("- gap_id\n")
                 .append("- extension_name\n")
-                .append("- kind: capability 或 constraint\n")
+                .append("- kind: capability 或 constraint；默认 capability。")
+                .append("全局硬约束、写入前强制检查、所有文件命名约束必须使用 constraint\n")
                 .append("- depends_on\n")
                 .append("- applies_to\n")
-                .append("- components\n")
+                .append("- components: 组件列表 (按需选择 rail/tool/skill；不要强制包含 rail)\n")
                 .append("- skill_source\n")
                 .append("- file_plan\n")
                 .append("- harness_config_patch\n");
@@ -321,7 +333,7 @@ public class ExtendPlanStage extends PlanStage {
                 nullToEmpty(gap == null ? "" : gap.getSuggestedApproach())
         ).toLowerCase(Locale.ROOT);
         List<String> constraintSignals = List.of(
-                "constraint", "guard", "硬约束", "强制", "必须", "不得", "禁止", "所有文件", "写入前", "文件名", "后缀"
+                "constraint", "guard", "硬约束", "硬性约束", "强制", "必须", "不得", "禁止", "所有文件", "写入前", "文件名", "后缀"
         );
         List<String> enforcementSignals = List.of(
                 "检查", "校验", "拦截", "阻止", "命名", "文件名", "后缀"

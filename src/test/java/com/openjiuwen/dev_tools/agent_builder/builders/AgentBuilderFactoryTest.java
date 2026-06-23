@@ -25,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code AgentBuilderFactory} in
  * {@code openjiuwen/dev_tools/agent_builder/builders/factory.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.dev_tools.agent_builder.builders.test_factory} in
+ * {@code tests/unit_tests/dev_tools/agent_builder/builders/test_factory.py}.</p>
  */
 class AgentBuilderFactoryTest {
 

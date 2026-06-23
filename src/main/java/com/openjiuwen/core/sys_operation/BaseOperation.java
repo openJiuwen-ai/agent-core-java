@@ -174,11 +174,16 @@ public abstract class BaseOperation {
             if (method == null) {
                 continue;
             }
+            Map<String, Object> inputParams = CallableSchemaExtractor.generateSchema(method);
+            List<String> required = pythonRequiredParameters(methodName);
+            if (required != null) {
+                inputParams.put("required", required);
+            }
             toolCards.add(ToolCard.builder()
                     .id(methodName)
                     .name(methodName)
                     .description(CallableSchemaExtractor.extractFunctionDescription(method))
-                    .inputParams(CallableSchemaExtractor.generateSchema(method))
+                    .inputParams(inputParams)
                     .build());
         }
         return toolCards;
@@ -192,6 +197,21 @@ public abstract class BaseOperation {
             }
         }
         return null;
+    }
+
+    private List<String> pythonRequiredParameters(String methodName) {
+        return switch (methodName) {
+            case "read_file", "read_file_stream", "list_files", "list_directories" -> List.of("path");
+            case "write_file" -> List.of("path", "content");
+            case "upload_file" -> List.of("localPath", "targetPath");
+            case "upload_file_stream" -> List.of("localPath", "targetPath");
+            case "download_file" -> List.of("sourcePath", "localPath");
+            case "download_file_stream" -> List.of("sourcePath", "localPath");
+            case "search_files" -> List.of("path", "pattern");
+            case "execute_cmd", "execute_cmd_stream", "execute_cmd_background" -> List.of("command");
+            case "execute_code", "execute_code_stream" -> List.of("code", "language");
+            default -> null;
+        };
     }
 
     static String snakeToCamel(String name) {

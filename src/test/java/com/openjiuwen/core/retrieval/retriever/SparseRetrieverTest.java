@@ -22,6 +22,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code SparseRetriever} behavior in
  * {@code openjiuwen/core/retrieval/retriever/sparse_retriever.py}.
+ *
+ * <p>Mirrors Python's {@code TestSparseRetriever} in
+ * {@code tests/unit_tests/core/retrieval/retriever/test_sparse_retriever.py}.</p>
  */
 class SparseRetrieverTest {
 

@@ -21,8 +21,11 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Unit tests for {@link SharedMemoryManager}.
  *
- * <p>Mirrors Python's {@code test_shared_memory_manager.py} for
+ * <p>Mirrors Python's {@code SharedMemoryManager} in
  * {@code openjiuwen/agent_teams/memory/shared_memory.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_shared_memory_manager.py} in
+ * {@code tests/unit_tests/core/memory/team/test_shared_memory_manager.py}.</p>
  */
 class SharedMemoryManagerTest {
 

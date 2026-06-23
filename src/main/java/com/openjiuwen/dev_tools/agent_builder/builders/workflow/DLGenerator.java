@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -113,7 +112,7 @@ public class DLGenerator {
     private final String examples;
 
     public DLGenerator(Model llm) {
-        this.llm = Objects.requireNonNull(llm, "llm");
+        this.llm = llm;
         SchemaExamples schemaExamples = loadSchemaAndExamples();
         this.componentsInfo = schemaExamples.componentsInfo();
         this.schemaInfo = schemaExamples.schemaInfo();

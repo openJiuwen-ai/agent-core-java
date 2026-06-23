@@ -6,10 +6,12 @@ package com.openjiuwen.core.workflow.component.llm;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context_engine.ContextWindow;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.ComponentExecutable;
@@ -71,6 +73,8 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         Map<String, Object> inputsMap = inputs instanceof Map ? (Map<String, Object>) inputs : Map.of();
         Map<String, Object> currentInputs = prepareDetectionInputs(inputsMap, chatHistory);
         String llmOutput = invokeLLMAndGetResult(currentInputs);
+        writeUserMessageToContext(inputsMap, context);
+        writeAssistantMessageToContext(llmOutput, context);
         return parseDetectionResult(llmOutput);
     }
 
@@ -119,9 +123,15 @@ public class IntentDetectionExecutable extends ComponentExecutable {
     private List<BaseMessage> getChatHistoryFromContext(ModelContext context) {
         List<BaseMessage> chatHistory = new ArrayList<>();
         if (config.isEnableHistory() && context != null) {
-            List<BaseMessage> messages = context.getMessages(null, true);
-            if (messages != null) {
-                chatHistory.addAll(messages);
+            ContextWindow contextWindow = context.getContextWindow(
+                    null,
+                    null,
+                    null,
+                    config.getChatHistoryMaxTurn(),
+                    Map.of()
+            ).toCompletableFuture().join();
+            if (contextWindow != null) {
+                chatHistory.addAll(contextWindow.getMessages());
             }
         }
         return chatHistory;
@@ -191,6 +201,23 @@ public class IntentDetectionExecutable extends ComponentExecutable {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
                     "error_msg", "failed to invoke llm: " + e.getMessage());
         }
+    }
+
+    private void writeUserMessageToContext(Map<String, Object> inputs, ModelContext context) {
+        if (!config.isEnableHistory() || context == null) {
+            return;
+        }
+        String query = IntentDetectionInput.fromMap(inputs).getQuery();
+        if (query != null && !query.isEmpty()) {
+            context.addMessages(List.of(new UserMessage(query))).toCompletableFuture().join();
+        }
+    }
+
+    private void writeAssistantMessageToContext(String content, ModelContext context) {
+        if (!config.isEnableHistory() || context == null || content == null || content.isEmpty()) {
+            return;
+        }
+        context.addMessages(List.of(new AssistantMessage(content))).toCompletableFuture().join();
     }
 
     private Map<String, Object> parseDetectionResult(String llmOutput) {

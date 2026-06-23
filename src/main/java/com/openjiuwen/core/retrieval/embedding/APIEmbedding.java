@@ -49,7 +49,7 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
     protected final EmbeddingConfig config;
     protected final String modelName;
     protected final String apiKey;
-    protected final String apiUrl;
+    protected String apiUrl;
     protected final int timeout;
     protected final int maxRetries;
     protected final int maxBatchSize;

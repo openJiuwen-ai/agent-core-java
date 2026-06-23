@@ -56,6 +56,13 @@ public class PendingChange {
 
     public static PendingChange make(
             String skillName,
+            List<EvolutionRecord> records
+    ) {
+        return make(skillName, records, null, null);
+    }
+
+    public static PendingChange make(
+            String skillName,
             List<EvolutionRecord> records,
             Object trajectory,
             List<Map<String, Object>> messages

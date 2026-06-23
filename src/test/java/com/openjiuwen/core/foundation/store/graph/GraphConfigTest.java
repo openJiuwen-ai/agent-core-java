@@ -75,6 +75,25 @@ class GraphConfigTest {
     }
 
     @Test
+    void extrasRejectsNonDictShape() {
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("graph.db").toString())
+                .extras((Object) "not_a_dict")
+                .build());
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void extrasRejectsNonStringKeys() {
+        Map raw = Map.of(1, "value");
+
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("graph.db").toString())
+                .extras(raw)
+                .build());
+    }
+
+    @Test
     void filePathUriCreatesParentDirectory() {
         Path db = tempDir.resolve("nested").resolve("graph.db");
 
@@ -142,6 +161,62 @@ class GraphConfigTest {
                 .uri(tempDir.resolve("bad-dim.db").toString())
                 .embedDim(31)
                 .build());
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("bad-batch.db").toString())
+                .embedBatchSize(0)
+                .build());
+    }
+
+    @Test
+    void timeoutAcceptsPositiveAndRejectsZero() {
+        GraphConfig config = GraphConfig.builder()
+                .uri(tempDir.resolve("timeout.db").toString())
+                .timeout(1.0d)
+                .build();
+
+        assertEquals(1.0d, config.getTimeout());
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("bad-timeout.db").toString())
+                .timeout(0.0d)
+                .build());
+    }
+
+    @Test
+    void maxConcurrentAcceptsZeroAndRejectsNegative() {
+        GraphConfig config = GraphConfig.builder()
+                .uri(tempDir.resolve("max-concurrent.db").toString())
+                .maxConcurrent(0)
+                .build();
+
+        assertEquals(0, config.getMaxConcurrent());
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("bad-concurrency.db").toString())
+                .maxConcurrent(-1)
+                .build());
+    }
+
+    @Test
+    void embedDimAcceptsLowerBoundAndRejectsBelow() {
+        GraphConfig config = GraphConfig.builder()
+                .uri(tempDir.resolve("embed-dim.db").toString())
+                .embedDim(32)
+                .build();
+
+        assertEquals(32, config.getEmbedDim());
+        assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
+                .uri(tempDir.resolve("bad-dim.db").toString())
+                .embedDim(31)
+                .build());
+    }
+
+    @Test
+    void embedBatchSizeAcceptsOneAndRejectsZero() {
+        GraphConfig config = GraphConfig.builder()
+                .uri(tempDir.resolve("embed-batch.db").toString())
+                .embedBatchSize(1)
+                .build();
+
+        assertEquals(1, config.getEmbedBatchSize());
         assertThrows(IllegalArgumentException.class, () -> GraphConfig.builder()
                 .uri(tempDir.resolve("bad-batch.db").toString())
                 .embedBatchSize(0)

@@ -10,6 +10,7 @@ import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.single_agent.BaseAgent;
+import com.openjiuwen.core.single_agent.schema.AgentCard;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -68,7 +69,8 @@ public class TrajectoryCollector {
         await(registerRail(agent, rail));
 
         AgentSession session = null;
-        session = new AgentSession(resolveSessionIdForAgent(effectiveSessionId, effectiveInputs), null, readCard(agent));
+        String sessionIdForAgent = resolveSessionIdForAgent(effectiveSessionId, effectiveInputs);
+        session = new AgentSession(sessionIdForAgent, null, resolveCardForSession(agent, sessionIdForAgent));
         session.preRun(Map.of("inputs", effectiveInputs));
 
         try {
@@ -225,6 +227,38 @@ public class TrajectoryCollector {
         try {
             field.setAccessible(true);
             return field.get(agent);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Object resolveCardForSession(Object agent, String sessionIdForAgent) {
+        Object card = readCard(agent);
+        if (readCardId(card) != null) {
+            return card;
+        }
+        String fallbackId = firstNonEmpty(sessionIdForAgent, "trajectory_collector_agent");
+        return new AgentCard(fallbackId, fallbackId, "");
+    }
+
+    private static Object readCardId(Object card) {
+        if (card == null) {
+            return null;
+        }
+        if (card instanceof Map<?, ?> map) {
+            return map.get("id");
+        }
+        Object value = invokeNoArg(card, "getId", "id");
+        if (value != null) {
+            return value;
+        }
+        Field field = findField(card, "id");
+        if (field == null) {
+            return null;
+        }
+        try {
+            field.setAccessible(true);
+            return field.get(card);
         } catch (ReflectiveOperationException ignored) {
             return null;
         }

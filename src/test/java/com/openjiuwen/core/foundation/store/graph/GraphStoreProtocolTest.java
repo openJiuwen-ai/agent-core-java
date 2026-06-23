@@ -24,6 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's graph store protocol surface in
  * {@code openjiuwen/core/foundation/store/graph/base_graph_store.py}.
+ *
+ * <p>Mirrors Python's {@code TestGraphStoreProtocol} in
+ * {@code tests/unit_tests/core/foundation/store/graph/test_base_graph_store.py}.</p>
  */
 class GraphStoreProtocolTest {
 
@@ -31,19 +34,23 @@ class GraphStoreProtocolTest {
     void exposesProtocolPropertiesAndDefaults() {
         FakeGraphStore store = new FakeGraphStore();
 
+        assertTrue(store instanceof GraphStore);
         assertEquals("memory", store.getConfig().getBackend());
         assertTrue(store.getSemophore().isPresent());
         assertTrue(store.getEmbedder().isEmpty());
         assertFalse(store.isReturnSimilarityScore());
 
+        store.rebuild();
         store.refresh().join();
         store.addData("entities", List.of(Map.of("id", "e1"))).join();
         store.addEntity(List.of("entity")).join();
         store.addRelation(List.of("relation")).join();
         store.addEpisode(List.of("episode")).join();
+        store.attachEmbedder(null);
+        store.close();
 
-        assertEquals(List.of("refresh:true", "data:entities:true:false", "entity:true:false:false",
-                "relation:true:false:false", "episode:true:false:false"), store.calls);
+        assertEquals(List.of("rebuild", "refresh:true", "data:entities:true:false", "entity:true:false:false",
+                "relation:true:false:false", "episode:true:false:false", "embedder", "close"), store.calls);
     }
 
     @Test

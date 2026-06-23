@@ -5,6 +5,7 @@
 package com.openjiuwen.unit_tests.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.rails.EditSafetyRail;
+import com.openjiuwen.auto_harness.rails.EditSafetyRail.RuffResult;
 import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
 import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,7 +36,8 @@ class EditSafetyRailTest {
 
     @Test
     void tracksEditedFilesAndWarnsPastLimit() {
-        EditSafetyRail rail = new EditSafetyRail(1);
+        EditSafetyRail rail = new EditSafetyRail(1, filePath ->
+                CompletableFuture.completedFuture(new RuffResult(0, "", true)));
         Queue<String> steering = new ArrayDeque<>();
         AgentCallbackContext first = context(toolInputs("edit_file", Map.of("file_path", "tests/a.py")));
         first.bindSteeringQueue(steering);

@@ -18,6 +18,9 @@ import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
+import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
+import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -67,6 +70,8 @@ public class Workflow {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final ExecutorService STREAM_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
+    private static DecoratorFramework callbackFramework;
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;
@@ -92,6 +97,14 @@ public class Workflow {
 
     public Workflow() {
         this(null);
+    }
+
+    public static void setCallbackFramework(DecoratorFramework framework) {
+        callbackFramework = framework;
+    }
+
+    public static void clearCallbackFramework() {
+        callbackFramework = null;
     }
 
     public WorkflowCard getCard() {
@@ -450,21 +463,43 @@ public class Workflow {
     @SuppressWarnings("unchecked")
     public WorkflowOutput invoke(Object inputs, Object session, ModelContext context,
                                  boolean isSub, boolean skipInputsValidate) {
+        DecoratorFramework framework = callbackFramework;
+        WorkflowCallInput request = prepareWorkflowCall(
+                framework,
+                WorkflowEvents.WORKFLOW_INVOKE_INPUT,
+                inputs,
+                session,
+                context,
+                null,
+                isSub,
+                skipInputsValidate);
+        inputs = request.inputs();
+        session = request.session();
+        context = request.context();
+        isSub = request.isSub();
+        skipInputsValidate = request.skipInputsValidate();
+        trigger(framework, WorkflowEvents.WORKFLOW_INVOKE_INPUT, request.args(), request.kwargs());
+
         if (isSub) {
-            return new WorkflowOutput(invokeSubWorkflow(inputs, session, context), WorkflowExecutionState.COMPLETED);
+            WorkflowOutput output = new WorkflowOutput(
+                    invokeSubWorkflow(inputs, session, context),
+                    WorkflowExecutionState.COMPLETED);
+            return finishWorkflowInvoke(framework, output);
         }
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
+        final Object executionInputs = validatedInputs;
+        final ModelContext executionContext = context;
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, List.of(StreamMode.OUTPUT));
         long executeTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
 
         try {
-            return executeWithWorkflowTimeout(() -> {
+            return finishWorkflowInvoke(framework, executeWithWorkflowTimeout(() -> {
                 try {
-                    traceWorkflowStart(workflowSession, validatedInputs);
+                    traceWorkflowStart(workflowSession, executionInputs);
                     Object executionResult;
                     try {
-                        executionResult = executeCompiledGraph(validatedInputs, workflowSession, context, null);
+                        executionResult = executeCompiledGraph(executionInputs, workflowSession, executionContext, null);
                         finishStreamActorsAfterGraph(workflowSession, executionResult);
                     } finally {
                         traceWorkflowDone(workflowSession);
@@ -483,7 +518,7 @@ public class Workflow {
                 } catch (Exception e) {
                     throw wrapWorkflowException(e);
                 }
-            }, executeTimeoutMs);
+            }, executeTimeoutMs));
         } finally {
             closeStreamEmitter(workflowSession);
             resetGraphExecutionState();
@@ -512,11 +547,31 @@ public class Workflow {
 
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context,
                                    List<StreamMode> streamModes, boolean isSub, boolean skipInputsValidate) {
+        DecoratorFramework framework = callbackFramework;
+        WorkflowCallInput request = prepareWorkflowCall(
+                framework,
+                WorkflowEvents.WORKFLOW_STREAM_INPUT,
+                inputs,
+                session,
+                context,
+                streamModes,
+                isSub,
+                skipInputsValidate);
+        inputs = request.inputs();
+        session = request.session();
+        context = request.context();
+        streamModes = request.streamModes();
+        isSub = request.isSub();
+        skipInputsValidate = request.skipInputsValidate();
+        trigger(framework, WorkflowEvents.WORKFLOW_STREAM_INPUT, request.args(), request.kwargs());
+
         if (isSub) {
-            return streamSubWorkflow(inputs, session, context);
+            return finishWorkflowStream(framework, streamSubWorkflow(inputs, session, context));
         }
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
+        final Object executionInputs = validatedInputs;
+        final ModelContext executionContext = context;
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, streamModes);
         long firstFrameTimeoutMs = resolveTimeoutMillis(
                 workflowSession, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT);
@@ -538,8 +593,8 @@ public class Workflow {
 
         CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
             try {
-                traceWorkflowStart(workflowSession, validatedInputs);
-                Object graphResult = executeCompiledGraph(validatedInputs, workflowSession, context, null);
+                traceWorkflowStart(workflowSession, executionInputs);
+                Object graphResult = executeCompiledGraph(executionInputs, workflowSession, executionContext, null);
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
                 finalPayload.set(resolveFinalStreamPayload(workflowSession));
             } catch (Exception e) {
@@ -554,7 +609,7 @@ public class Workflow {
             }
         }, STREAM_EXECUTOR);
 
-        return new Iterator<WorkflowChunk>() {
+        Iterator<WorkflowChunk> iterator = new Iterator<>() {
             private boolean finalChunkEmitted = false;
             private boolean firstFrame = true;
             private boolean done = false;
@@ -723,10 +778,199 @@ public class Workflow {
                 streamQueue.close();
             }
         };
+        return finishWorkflowStream(framework, iterator);
     }
 
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context) {
         return stream(inputs, session, context, List.of(StreamMode.OUTPUT), false, false);
+    }
+
+    private WorkflowCallInput prepareWorkflowCall(
+            DecoratorFramework framework,
+            String event,
+            Object inputs,
+            Object session,
+            ModelContext context,
+            List<StreamMode> streamModes,
+            boolean isSub,
+            boolean skipInputsValidate) {
+        Object[] args = new Object[]{inputs, session, context};
+        Map<String, Object> kwargs = workflowCallKwargs(inputs, session, context, streamModes, isSub,
+                skipInputsValidate, args);
+        if (framework == null) {
+            return new WorkflowCallInput(inputs, session, context, streamModes, isSub, skipInputsValidate, args,
+                    kwargs);
+        }
+
+        Object transformed = framework.triggerTransform(event, args, kwargs);
+        if (transformed instanceof CallbackDecorators.BoundArgs boundArgs) {
+            return workflowCallFromBoundArgs(boundArgs, inputs, session, context, streamModes, isSub,
+                    skipInputsValidate);
+        }
+        if (transformed instanceof Map<?, ?> map) {
+            return workflowCallFromMap(map, inputs, session, context, streamModes, isSub, skipInputsValidate);
+        }
+        return new WorkflowCallInput(inputs, session, context, streamModes, isSub, skipInputsValidate, args,
+                kwargs);
+    }
+
+    private WorkflowOutput finishWorkflowInvoke(DecoratorFramework framework, WorkflowOutput output) {
+        if (framework == null) {
+            return output;
+        }
+        Object transformed = triggerOutputTransform(framework, WorkflowEvents.WORKFLOW_INVOKE_OUTPUT, output);
+        WorkflowOutput effectiveOutput = toWorkflowOutput(transformed, output);
+        trigger(framework, WorkflowEvents.WORKFLOW_INVOKE_OUTPUT, new Object[0], resultKwargs(effectiveOutput));
+        return effectiveOutput;
+    }
+
+    private Iterator<WorkflowChunk> finishWorkflowStream(DecoratorFramework framework, Iterator<WorkflowChunk> source) {
+        if (framework == null) {
+            return source;
+        }
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return source.hasNext();
+            }
+
+            @Override
+            public WorkflowChunk next() {
+                WorkflowChunk current = source.next();
+                Object transformed = triggerOutputTransform(framework, WorkflowEvents.WORKFLOW_STREAM_OUTPUT, current);
+                WorkflowChunk effectiveChunk = toWorkflowChunk(transformed, current);
+                trigger(framework, WorkflowEvents.WORKFLOW_STREAM_OUTPUT, new Object[0], resultKwargs(effectiveChunk));
+                return effectiveChunk;
+            }
+        };
+    }
+
+    private static Object triggerOutputTransform(DecoratorFramework framework, String event, Object result) {
+        Map<String, Object> kwargs = resultKwargs(result);
+        Object transformed = framework.triggerTransform(event, new Object[0], kwargs);
+        if (transformed == null || transformed == CallbackDecorators.TRANSFORM_NOOP) {
+            return result;
+        }
+        return transformed;
+    }
+
+    private static WorkflowOutput toWorkflowOutput(Object transformed, WorkflowOutput fallback) {
+        if (transformed instanceof WorkflowOutput workflowOutput) {
+            return workflowOutput;
+        }
+        return new WorkflowOutput(transformed, fallback == null ? null : fallback.getState());
+    }
+
+    private static WorkflowChunk toWorkflowChunk(Object transformed, WorkflowChunk fallback) {
+        if (transformed instanceof WorkflowChunk workflowChunk) {
+            return workflowChunk;
+        }
+        if (transformed instanceof OutputSchema outputSchema) {
+            return new WorkflowChunk(outputSchema.getType(), outputSchema.getIndex(), outputSchema.getPayload());
+        }
+        return new WorkflowChunk(fallback.getType(), fallback.getIndex(), transformed);
+    }
+
+    private static void trigger(DecoratorFramework framework, String event, Object[] args, Map<String, Object> kwargs) {
+        if (framework != null) {
+            framework.trigger(event, args != null ? args : new Object[0], kwargs != null ? kwargs : Map.of());
+        }
+    }
+
+    private static Map<String, Object> resultKwargs(Object result) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("result", result);
+        return values;
+    }
+
+    private static Map<String, Object> workflowCallKwargs(
+            Object inputs,
+            Object session,
+            ModelContext context,
+            List<StreamMode> streamModes,
+            boolean isSub,
+            boolean skipInputsValidate,
+            Object[] args) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("inputs", inputs);
+        values.put("session", session);
+        values.put("context", context);
+        values.put("stream_modes", streamModes);
+        values.put("is_sub", isSub);
+        values.put("skip_inputs_validate", skipInputsValidate);
+        values.put("_args", args);
+        return values;
+    }
+
+    private static WorkflowCallInput workflowCallFromBoundArgs(
+            CallbackDecorators.BoundArgs boundArgs,
+            Object fallbackInputs,
+            Object fallbackSession,
+            ModelContext fallbackContext,
+            List<StreamMode> fallbackStreamModes,
+            boolean fallbackIsSub,
+            boolean fallbackSkipInputsValidate) {
+        Object[] args = boundArgs.getArgs();
+        Map<String, Object> kwargs = boundArgs.getKwargs();
+        Object inputs = args.length > 0 ? args[0] : kwargs.getOrDefault("inputs", fallbackInputs);
+        Object session = args.length > 1 ? args[1] : kwargs.getOrDefault("session", fallbackSession);
+        ModelContext context = args.length > 2 && args[2] instanceof ModelContext modelContext
+                ? modelContext
+                : valueAsModelContext(kwargs.get("context"), fallbackContext);
+        List<StreamMode> streamModes = valueAsStreamModes(kwargs.get("stream_modes"), fallbackStreamModes);
+        boolean isSub = valueAsBoolean(kwargs.get("is_sub"), fallbackIsSub);
+        boolean skipInputsValidate = valueAsBoolean(kwargs.get("skip_inputs_validate"), fallbackSkipInputsValidate);
+        Object[] resolvedArgs = new Object[]{inputs, session, context};
+        return new WorkflowCallInput(inputs, session, context, streamModes, isSub, skipInputsValidate, resolvedArgs,
+                workflowCallKwargs(inputs, session, context, streamModes, isSub, skipInputsValidate, resolvedArgs));
+    }
+
+    private static WorkflowCallInput workflowCallFromMap(
+            Map<?, ?> map,
+            Object fallbackInputs,
+            Object fallbackSession,
+            ModelContext fallbackContext,
+            List<StreamMode> fallbackStreamModes,
+            boolean fallbackIsSub,
+            boolean fallbackSkipInputsValidate) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        map.forEach((key, value) -> kwargs.put(String.valueOf(key), value));
+        Object inputs = kwargs.getOrDefault("inputs", fallbackInputs);
+        Object session = kwargs.getOrDefault("session", fallbackSession);
+        ModelContext context = valueAsModelContext(kwargs.get("context"), fallbackContext);
+        List<StreamMode> streamModes = valueAsStreamModes(kwargs.get("stream_modes"), fallbackStreamModes);
+        boolean isSub = valueAsBoolean(kwargs.get("is_sub"), fallbackIsSub);
+        boolean skipInputsValidate = valueAsBoolean(kwargs.get("skip_inputs_validate"), fallbackSkipInputsValidate);
+        Object[] args = new Object[]{inputs, session, context};
+        return new WorkflowCallInput(inputs, session, context, streamModes, isSub, skipInputsValidate, args,
+                workflowCallKwargs(inputs, session, context, streamModes, isSub, skipInputsValidate, args));
+    }
+
+    private static ModelContext valueAsModelContext(Object value, ModelContext fallback) {
+        return value instanceof ModelContext modelContext ? modelContext : fallback;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<StreamMode> valueAsStreamModes(Object value, List<StreamMode> fallback) {
+        if (value instanceof List<?> list && list.stream().allMatch(StreamMode.class::isInstance)) {
+            return (List<StreamMode>) list;
+        }
+        return fallback;
+    }
+
+    private static boolean valueAsBoolean(Object value, boolean fallback) {
+        return value instanceof Boolean booleanValue ? booleanValue : fallback;
+    }
+
+    private record WorkflowCallInput(
+            Object inputs,
+            Object session,
+            ModelContext context,
+            List<StreamMode> streamModes,
+            boolean isSub,
+            boolean skipInputsValidate,
+            Object[] args,
+            Map<String, Object> kwargs) {
     }
 
 
@@ -877,6 +1121,9 @@ public class Workflow {
                 Map<String, Object> typedEnv = (Map<String, Object>) envMap;
                 envs = typedEnv;
             }
+            if ((envs == null || envs.isEmpty()) && baseSession.config() != null) {
+                envs = baseSession.config().getEnvs();
+            }
         } else {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR,
                     "reason", "unsupported workflow session type: " + session.getClass().getSimpleName(),
@@ -906,9 +1153,13 @@ public class Workflow {
     private WorkflowRuntimeSession createSubWorkflowSession(Object session) {
         internal.autoCompleteAbilities();
         BaseSession innerSession = extractInnerSession(session);
+        String subParentId = "";
+        String subExecutableId = card.getId();
         String subNodeId = card.getId();
         String subNodeType = card.getId();
         if (innerSession instanceof WorkflowRuntimeSession nodeSession) {
+            subParentId = nodeSession.parentId();
+            subExecutableId = nodeSession.executableId();
             subNodeId = nodeSession.nodeId();
             subNodeType = nodeSession.nodeType();
         }
@@ -918,17 +1169,30 @@ public class Workflow {
                 innerSession instanceof WorkflowRuntimeSession runtime ? runtime.sessionId() : null,
                 InMemoryState.create(),
                 innerSession instanceof WorkflowRuntimeSession runtime ? runtime.callbackManager() : null,
-                subNodeId,
-                card.getId(),
+                subParentId,
+                subExecutableId,
                 subNodeId,
                 subNodeType,
-                innerSession instanceof WorkflowRuntimeSession runtime ? runtime.workflowNestingDepth() + 1 : 1);
-        subSession.setMainWorkflowId(innerSession instanceof WorkflowRuntimeSession runtime
-                ? runtime.workflowId()
-                : card.getId());
+                innerSession instanceof WorkflowRuntimeSession runtime ? runtime.workflowNestingDepth() + 1 : 1,
+                true);
+        if (innerSession instanceof WorkflowRuntimeSession runtime) {
+            subSession.config().setEnvs(runtime.config().getEnvs());
+            subSession.config().addWorkflowConfigs(runtime.config().getWorkflowConfigs());
+            subSession.setMainWorkflowId(resolveMainWorkflowId(runtime));
+        } else {
+            subSession.setMainWorkflowId(card.getId());
+        }
         subSession.setActorManager(buildActorManager(subSession, true));
         subSession.config().addWorkflowConfig(card.getId(), internal.getConfig());
         return subSession;
+    }
+
+    private static String resolveMainWorkflowId(WorkflowRuntimeSession runtime) {
+        String mainWorkflowId = runtime.mainWorkflowId();
+        if (mainWorkflowId == null || mainWorkflowId.isBlank()) {
+            return runtime.workflowId();
+        }
+        return mainWorkflowId;
     }
 
     private ActorManager buildActorManager(WorkflowRuntimeSession session, boolean subGraph) {
@@ -969,8 +1233,9 @@ public class Workflow {
         }
         AsyncStreamQueue subWorkflowStream = subSession.runtimeActorManager().subWorkflowStream();
         int remainingEndFrames = Math.max(1, expectedEndFrames);
+        long receiveTimeoutMs = resolveSubWorkflowDrainTimeoutMillis(subSession);
         while (true) {
-            Object frame = subWorkflowStream.receive(1L);
+            Object frame = subWorkflowStream.receive(receiveTimeoutMs);
             if (frame == null) {
                 break;
             }
@@ -984,6 +1249,14 @@ public class Workflow {
             messages.add(frame);
         }
         return messages;
+    }
+
+    private long resolveSubWorkflowDrainTimeoutMillis(WorkflowRuntimeSession subSession) {
+        long configuredTimeoutMs = resolveTimeoutMillis(subSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
+        if (configuredTimeoutMs <= 0) {
+            return SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS;
+        }
+        return Math.max(1L, Math.min(configuredTimeoutMs, SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS));
     }
 
     private int countEndStreamAbilities() {

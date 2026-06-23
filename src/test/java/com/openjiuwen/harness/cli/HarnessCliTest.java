@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.cli;
 
+import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code openjiuwen.harness.cli.cli} in
  * {@code openjiuwen/harness/cli/cli.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestAutoHarnessCli} in
+ * {@code tests/unit_tests/cli/test_auto_harness_cli.py}.</p>
  */
 class HarnessCliTest {
     @Test
@@ -49,12 +53,14 @@ class HarnessCliTest {
                 "no_push", true,
                 "budget", 12,
                 "goal", "close gap",
-                "competitor", "Claude Code"
+                "competitor", "Claude Code",
+                "pipeline", "extended"
         ));
 
         assertThat(request.getCompetitor()).isEqualTo("Claude Code");
         assertThat(request.isNoPush()).isTrue();
         assertThat(request.getBudget()).isEqualTo(12.0);
+        assertThat(request.getPipeline()).isEqualTo("extended");
 
         AutoHarnessRunRequest invalid = new AutoHarnessRunRequest();
         invalid.setStage("implement");
@@ -93,7 +99,26 @@ class HarnessCliTest {
                 .isEqualTo("improve CLI");
         assertThat(prepared.githubCliPreflightRequired()).isTrue();
         assertThat(prepared.config().getPipelinePreference())
-                .isEqualTo(AutoHarnessSchema.PIPELINE_PREFERENCE_AUTO);
+                .isEqualTo(AutoHarnessPipelineNames.META_EVOLVE_PIPELINE);
+    }
+
+    @Test
+    void pipelineOptionOverridesDefault(@TempDir Path workspace) throws Exception {
+        makeFakeRepo(workspace, "agent-core");
+        CliOptions opts = new CliOptions();
+        opts.setWorkspace(workspace.toString());
+
+        AutoHarnessRunRequest request = new AutoHarnessRunRequest();
+        request.setGoal("compare with Cursor");
+        request.setPipeline("extended");
+
+        AutoHarnessCliSupport.PreparedRun prepared = AutoHarnessCliSupport.prepareRun(
+                opts,
+                request,
+                workspace.resolve("neutral"));
+
+        assertThat(prepared.config().getPipelinePreference())
+                .isEqualTo(AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE);
     }
 
     @Test

@@ -15,6 +15,10 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Mirrors Python's {@code TestConfigManager} in
+ * {@code tests/unit_tests/core/retrieval/utils/test_config_manager.py}.
+ */
 class ConfigManagerTest {
 
     @TempDir
@@ -44,6 +48,33 @@ class ConfigManagerTest {
         assertThat(config.getChunkOverlap()).isEqualTo(32);
         assertThat(config.isUseCaptionForImages()).isTrue();
         assertThat(manager.getConfig(KnowledgeBaseConfig.class)).isSameAs(config);
+    }
+
+    @Test
+    void loadFromFileJsonStoresKnowledgeBaseConfig() throws Exception {
+        ConfigManager manager = new ConfigManager();
+
+        manager.loadFromFile(writeJsonConfig().toString());
+
+        KnowledgeBaseConfig config = manager.getKnowledgeBaseConfig();
+        assertThat(config.getKbId()).isEqualTo("kb-1");
+        assertThat(config.getIndexType()).isEqualTo("vector");
+    }
+
+    @Test
+    void loadFromFileYamlStoresKnowledgeBaseConfig() throws Exception {
+        Path yaml = tempDir.resolve("config.yaml");
+        Files.writeString(yaml, """
+                kb_id: test_kb
+                index_type: vector
+                """);
+        ConfigManager manager = new ConfigManager();
+
+        manager.loadFromFile(yaml.toString());
+
+        KnowledgeBaseConfig config = manager.getKnowledgeBaseConfig();
+        assertThat(config.getKbId()).isEqualTo("test_kb");
+        assertThat(config.getIndexType()).isEqualTo("vector");
     }
 
     @Test
@@ -80,6 +111,29 @@ class ConfigManagerTest {
         assertThatThrownBy(manager::getKnowledgeBaseConfig)
                 .isInstanceOf(BaseError.class)
                 .hasMessageContaining("Knowledge base configuration not loaded");
+    }
+
+    @Test
+    void getConfigReturnsUpdatedConfigByType() {
+        ConfigManager manager = new ConfigManager();
+        KnowledgeBaseConfig config = KnowledgeBaseConfig.builder()
+                .kbId("test_kb")
+                .build();
+
+        manager.updateConfig(config);
+
+        KnowledgeBaseConfig retrievedConfig = manager.getConfig(KnowledgeBaseConfig.class);
+        assertThat(retrievedConfig).isNotNull();
+        assertThat(retrievedConfig.getKbId()).isEqualTo("test_kb");
+    }
+
+    @Test
+    void getConfigReturnsNullWhenConfigTypeIsMissing() {
+        ConfigManager manager = new ConfigManager();
+
+        KnowledgeBaseConfig config = manager.getConfig(KnowledgeBaseConfig.class);
+
+        assertThat(config).isNull();
     }
 
     @Test

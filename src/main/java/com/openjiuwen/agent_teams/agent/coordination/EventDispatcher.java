@@ -594,6 +594,9 @@ public class EventDispatcher {
      * {@code openjiuwen/agent_teams/agent/coordination/dispatcher.py}.</p>
      */
     public static final class TeamCompletionHandler extends BaseCoordinationHandler {
+        private final List<com.openjiuwen.agent_teams.agent.TeamAgent.TeamCompletionCallback> completionCallbacks =
+                new ArrayList<>();
+
         private TeamCompletionHandler(
                 DispatcherHost host,
                 TeamAgentBlueprint blueprint,
@@ -611,6 +614,15 @@ public class EventDispatcher {
             callbacks.put(TeamEvent.TASK_LIST_DRAINED, event -> record("on_task_list_drained", event));
             callbacks.put(TeamEvent.TEAM_COMPLETED, event -> record("on_team_completed", event));
             return callbacks;
+        }
+
+        public void registerCompletionCallback(
+                com.openjiuwen.agent_teams.agent.TeamAgent.TeamCompletionCallback callback) {
+            completionCallbacks.add(Objects.requireNonNull(callback, "callback"));
+        }
+
+        public List<com.openjiuwen.agent_teams.agent.TeamAgent.TeamCompletionCallback> getCompletionCallbacks() {
+            return List.copyOf(completionCallbacks);
         }
     }
 }

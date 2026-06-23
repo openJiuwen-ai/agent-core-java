@@ -44,7 +44,7 @@ public final class MobileGuiRailsFactory {
         List<DeepAgentRail> rails = new ArrayList<>();
         rails.add(new DeviceLifecycleRail(resolved));
         rails.add(new GoalAnchorInjectorRail());
-        rails.add(new MultimodalContextSummarizerRail(resolved.getContextMaxMessageNum()));
+        rails.add(new MultimodalContextSummarizerRail(resolved.getMcsScreenshotsToKeep()));
         rails.add(new MultimodalSkillReadRail(resolved.getSkillBranchMaxImages()));
         if (resolved.getSkillConsultMode() == SkillConsultMode.BRANCH) {
             rails.add(new MultimodalSkillBranchRail(resolved));

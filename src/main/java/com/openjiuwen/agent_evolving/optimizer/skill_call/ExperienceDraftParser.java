@@ -107,16 +107,13 @@ public final class ExperienceDraftParser {
     }
 
     private static Map<String, Object> stringMap(Map<?, ?> rawMap) {
-        return rawMap.entrySet().stream()
-            .filter(entry -> entry.getKey() != null)
-            .collect(
-                java.util.stream.Collectors.toMap(
-                    entry -> String.valueOf(entry.getKey()),
-                    Map.Entry::getValue,
-                    (left, right) -> right,
-                    java.util.LinkedHashMap::new
-                )
-            );
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
     }
 
     private static String stringValue(Object value, String fallback) {

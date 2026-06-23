@@ -43,6 +43,7 @@ public class BaseWorkflow implements HasDrawable {
 
     private static final Pattern COMP_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
     private static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
+    private static final int EXPAND_ALL_DEPTH = -1;
 
     private final Graph graph;
     private final WorkflowConfig workflowConfig;
@@ -243,7 +244,7 @@ public class BaseWorkflow implements HasDrawable {
         }
         if (sessionArg instanceof WorkflowRuntimeSession runtimeSession
                 && runtimeSession.mainWorkflowId() != null
-                && !runtimeSession.mainWorkflowId().equals(runtimeSession.workflowId())) {
+                && !runtimeSession.mainWorkflowId().isBlank()) {
             Object mainConfig = runtimeSession.config().getWorkflowConfig(runtimeSession.mainWorkflowId());
             if (mainConfig instanceof WorkflowConfig) {
                 WorkflowConfig mwc = (WorkflowConfig) mainConfig;
@@ -268,6 +269,9 @@ public class BaseWorkflow implements HasDrawable {
         if (drawable == null) {
             return "";
         }
+        if (expandSubgraph == EXPAND_ALL_DEPTH) {
+            return drawable.toMermaid(title, true, enableAnimation);
+        }
         return drawable.toMermaid(title, expandSubgraph, enableAnimation);
     }
 
@@ -288,6 +292,9 @@ public class BaseWorkflow implements HasDrawable {
         if (drawable == null) {
             return new byte[0];
         }
+        if (expandSubgraph == EXPAND_ALL_DEPTH) {
+            return drawable.toMermaidPng(title, true);
+        }
         return drawable.toMermaidPng(title, expandSubgraph);
     }
 
@@ -307,6 +314,9 @@ public class BaseWorkflow implements HasDrawable {
     public byte[] toMermaidSvg(String title, int expandSubgraph) {
         if (drawable == null) {
             return new byte[0];
+        }
+        if (expandSubgraph == EXPAND_ALL_DEPTH) {
+            return drawable.toMermaidSvg(title, true);
         }
         return drawable.toMermaidSvg(title, expandSubgraph);
     }
@@ -480,7 +490,7 @@ public class BaseWorkflow implements HasDrawable {
                     }
                     for (ComponentAbility ability : config.getAbilities()) {
                         if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
-                            streamGroup.add(producerId + "-" + ability.name());
+                        streamGroup.add(producerId + "-" + ability.getAbilityName());
                         }
                     }
                 }

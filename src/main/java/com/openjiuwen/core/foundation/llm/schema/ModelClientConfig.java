@@ -11,7 +11,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -30,7 +29,6 @@ import java.util.UUID;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelClientConfig {
 
@@ -62,6 +60,21 @@ public class ModelClientConfig {
 
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
+    public ModelClientConfig(String clientId, String clientProvider, String apiKey, String apiBase, double timeout,
+                             int maxRetries, boolean verifySsl, String sslCert,
+                             Map<String, Object> customHeaders, Map<String, Object> extraFields) {
+        this.clientId = clientId;
+        this.clientProvider = clientProvider;
+        this.apiKey = apiKey;
+        this.apiBase = apiBase;
+        this.timeout = validatePositiveTimeout(timeout);
+        this.maxRetries = maxRetries;
+        this.verifySsl = verifySsl;
+        this.sslCert = sslCert;
+        this.customHeaders = customHeaders;
+        this.extraFields = extraFields;
+    }
+
     public static ModelClientConfigBuilder builder() {
         return new ModelClientConfigBuilder();
     }
@@ -80,6 +93,10 @@ public class ModelClientConfig {
 
     public void setClientProvider(ProviderType clientProvider) {
         this.clientProvider = clientProvider == null ? null : clientProvider.getValue();
+    }
+
+    public void setTimeout(double timeout) {
+        this.timeout = validatePositiveTimeout(timeout);
     }
 
     /**
@@ -218,7 +235,7 @@ public class ModelClientConfig {
             config.clientProvider = normalizeClientProvider(clientProvider);
             config.apiKey = apiKey;
             config.apiBase = apiBase;
-            config.timeout = timeout;
+            config.timeout = validatePositiveTimeout(timeout);
             config.maxRetries = maxRetries;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
@@ -226,5 +243,12 @@ public class ModelClientConfig {
             config.extraFields = extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
             return config;
         }
+    }
+
+    private static double validatePositiveTimeout(double timeout) {
+        if (Double.isNaN(timeout) || timeout <= 0.0D) {
+            throw new IllegalArgumentException("timeout must be greater than 0 (greater_than)");
+        }
+        return timeout;
     }
 }

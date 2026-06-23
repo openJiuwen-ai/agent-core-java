@@ -21,11 +21,16 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Mirrors Python's graph retriever behavior in
  * {@code openjiuwen/core/retrieval/retriever/graph_retriever.py}.
+ * <p>
+ * Mirrors Python's {@code test_graph_retriever} in
+ * {@code tests/unit_tests/core/retrieval/retriever/test_graph_retriever.py}.
+ * </p>
  */
 class GraphRetrieverTest {
 
@@ -127,6 +132,35 @@ class GraphRetrieverTest {
     }
 
     @Test
+    void closeInvokesBothProvidedRetrievers() {
+        FakeRetriever chunkRetriever = new FakeRetriever();
+        FakeRetriever tripleRetriever = new FakeRetriever();
+        GraphRetriever retriever = new GraphRetriever(chunkRetriever, tripleRetriever);
+
+        retriever.close();
+
+        assertThat(chunkRetriever.closed).isTrue();
+        assertThat(tripleRetriever.closed).isTrue();
+    }
+
+    @Test
+    void closeInvokesSingleRetriever() {
+        FakeRetriever chunkRetriever = new FakeRetriever();
+        GraphRetriever retriever = new GraphRetriever(chunkRetriever, null);
+
+        retriever.close();
+
+        assertThat(chunkRetriever.closed).isTrue();
+    }
+
+    @Test
+    void closeWithoutProvidedRetrieversIsNoop() {
+        GraphRetriever retriever = new GraphRetriever();
+
+        assertThatCode(retriever::close).doesNotThrowAnyException();
+    }
+
+    @Test
     void graphExpansionWithTriplesRunsBeamSearchFetchesChunksAndFusesResults() {
         FakeRetriever chunkRetriever = new FakeRetriever();
         chunkRetriever.results = List.of(result("chunk-a", "expanded chunk", 0.5d, Map.of("chunk_id", "chunk-a")));
@@ -219,6 +253,57 @@ class GraphRetrieverTest {
         assertThat(retriever.calls.getFirst().topK()).isEqualTo(7);
     }
 
+    @Test
+    void searchCandidatesPassesThroughNonBm25IndexType() {
+        FakeRetriever retriever = new FakeRetriever(new FakeEmbedding());
+        retriever.indexType = "hybrid";
+        TripleBeamSearch search = new TripleBeamSearch(retriever);
+        TripleBeam beam = new TripleBeam(List.of(result(
+                "chunk-1",
+                "a rel b",
+                1.0d,
+                Map.of("triple", "[\"a\", \"rel\", \"b\"]")
+        )), 1.0d);
+
+        search.searchCandidates(beam);
+
+        assertThat(retriever.calls.getFirst().mode()).isEqualTo("hybrid");
+    }
+
+    @Test
+    void searchCandidatesDefaultsToHybridWhenNoIndexTypeOrRetrieveMode() {
+        FakeRetriever retriever = new FakeRetriever(new FakeEmbedding());
+        TripleBeamSearch search = new TripleBeamSearch(retriever, 10, 5, 2, 256, null);
+        TripleBeam beam = new TripleBeam(List.of(result(
+                "chunk-1",
+                "a rel b",
+                1.0d,
+                Map.of("triple", "[\"a\", \"rel\", \"b\"]")
+        )), 1.0d);
+
+        search.searchCandidates(beam);
+
+        assertThat(retriever.calls.getFirst().mode()).isEqualTo("hybrid");
+        assertThat(retriever.calls.getFirst().topK()).isEqualTo(5);
+    }
+
+    @Test
+    void searchCandidatesRetrieverIndexTypeOverridesRetrieveMode() {
+        FakeRetriever retriever = new FakeRetriever(new FakeEmbedding());
+        retriever.indexType = "vector";
+        TripleBeamSearch search = new TripleBeamSearch(retriever, 10, 2, 2, 256, "hybrid");
+        TripleBeam beam = new TripleBeam(List.of(result(
+                "chunk-1",
+                "p rel q",
+                1.0d,
+                Map.of("triple", "[\"p\", \"rel\", \"q\"]")
+        )), 1.0d);
+
+        search.searchCandidates(beam);
+
+        assertThat(retriever.calls.getFirst().mode()).isEqualTo("vector");
+    }
+
     private static RetrievalResult result(String chunkId, String text, double score, Map<String, Object> metadata) {
         return new RetrievalResult(text, score, metadata, null, chunkId);
     }
@@ -230,6 +315,7 @@ class GraphRetrieverTest {
         private List<RetrievalResult> results = List.of();
         private Set<String> supportedModes = new LinkedHashSet<>(List.of("vector", "sparse", "hybrid"));
         private String indexType;
+        private boolean closed;
         private final Embedding embedModel;
         private final List<RetrieveCall> calls = new ArrayList<>();
 
@@ -280,6 +366,11 @@ class GraphRetrieverTest {
         @Override
         public Embedding getEmbedModel() {
             return embedModel;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 

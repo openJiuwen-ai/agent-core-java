@@ -14,6 +14,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.harness.tools.browser_move.test_browser_site_profiles} in
+ * {@code tests/unit_tests/harness/tools/browser_move/test_browser_site_profiles.py}.
+ */
 class BrowserSiteProfilesTest {
 
     @TempDir

@@ -34,6 +34,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code MetaTemplateBuilder} in
  * {@code openjiuwen/dev_tools/prompt_builder/builder/meta_template_builder.py}.
+ *
+ * <p>Mirrors Python's {@code test_meta_template_builder} in
+ * {@code tests/unit_tests/agent_builder/prompt_builder/test_meta_template_builder.py}.</p>
  */
 class MetaTemplateBuilderTest {
 

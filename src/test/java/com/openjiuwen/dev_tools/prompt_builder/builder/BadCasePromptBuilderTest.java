@@ -29,15 +29,20 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Mirrors Python's {@code BadCasePromptBuilder} in
- * {@code openjiuwen/dev_tools/prompt_builder/builder/badcase_prompt_builder.py}.
+ * Mirrors Python's {@code test_bad_case_prompt_builder} in
+ * {@code tests/unit_tests/agent_builder/prompt_builder/test_badcase_prompt_builder.py}.
  */
 class BadCasePromptBuilderTest {
+    private static final Pattern SUMMARY_TAG_PATTERN = Pattern.compile(
+            "<summary>((?:(?!</summary>).)*?)</summary>",
+            Pattern.DOTALL);
 
     @Test
     void parseFeedbackSummaryReturnsLastSummaryOrOriginalContent() {
@@ -107,6 +112,33 @@ class BadCasePromptBuilderTest {
     }
 
     @Test
+    void pythonMissingTestEchoModelReturnsFormattedOptimizeTemplate() {
+        EchoModelClient client = new EchoModelClient();
+        BadCasePromptBuilder builder = builderWith(client);
+        String prompt = "bad_case test prompt";
+
+        Optional<String> response = builder.build(prompt, List.of(pythonEvaluatedCase(), pythonEvaluatedCase())).join();
+
+        String analyzeTemplateContent = PromptZh.PROMPT_BAD_CASE_ANALYZE_TEMPLATE.toMessages()
+                .getFirst()
+                .getContentAsString();
+        String feedback = firstSummaryFrom(analyzeTemplateContent);
+        String expected = PromptZh.PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE.format(Map.of(
+                "original_prompt", prompt,
+                "feedback", feedback
+        )).toMessages().getFirst().getContentAsString();
+
+        assertThat(response).contains(expected);
+        assertThat(client.capturedInvokes()).hasSize(2);
+        assertThat(client.capturedInvokes().get(0).getFirst().getContentAsString())
+                .contains("<original_prompt>")
+                .contains(prompt)
+                .contains("<bad_cases>");
+        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+                .isEqualTo(expected);
+    }
+
+    @Test
     void dynamicBuildReadsArgsAndKwargsLikeBaseInterface() {
         RecordingClient client = new RecordingClient(List.of(
                 new AssistantMessage("<summary>feedback</summary>"),
@@ -156,7 +188,7 @@ class BadCasePromptBuilderTest {
                 .contains("template prompt");
     }
 
-    private static BadCasePromptBuilder builderWith(RecordingClient client) {
+    private static BadCasePromptBuilder builderWith(Model.ModelClient client) {
         Model.registerClientFactory(ProviderType.OPEN_AI.getValue(), (modelClientConfig, modelConfig) -> client);
         return new BadCasePromptBuilder(
                 ModelRequestConfig.builder().modelName("unit-model").build(),
@@ -171,6 +203,24 @@ class BadCasePromptBuilderTest {
         Map<String, Object> answer = new LinkedHashMap<>();
         answer.put("answer", "B");
         return new EvaluatedCase(new Case(inputs, label), answer, 0.0d, "mismatch");
+    }
+
+    private static EvaluatedCase pythonEvaluatedCase() {
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("query", "test input");
+        Map<String, Object> label = new LinkedHashMap<>();
+        label.put("label", "test label");
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("answer", "test answer");
+        return new EvaluatedCase(new Case(inputs, label), answer, 0.0d, "");
+    }
+
+    private static String firstSummaryFrom(String content) {
+        Matcher matcher = SUMMARY_TAG_PATTERN.matcher(content);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
     }
 
     private static List<EvaluatedCase> elevenCases() {
@@ -212,6 +262,29 @@ class BadCasePromptBuilderTest {
         public java.util.Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             capturedInvokes.add(new ArrayList<>(messages));
             return streamChunks.iterator();
+        }
+    }
+
+    private static final class EchoModelClient implements Model.ModelClient {
+        private final List<List<BaseMessage>> capturedInvokes = new ArrayList<>();
+
+        private List<List<BaseMessage>> capturedInvokes() {
+            return capturedInvokes;
+        }
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            capturedInvokes.add(new ArrayList<>(messages));
+            String content = messages.stream()
+                    .map(BaseMessage::getContentAsString)
+                    .reduce("", String::concat);
+            return CompletableFuture.completedFuture(new AssistantMessage(content));
+        }
+
+        @Override
+        public java.util.Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            capturedInvokes.add(new ArrayList<>(messages));
+            return List.<AssistantMessageChunk>of().iterator();
         }
     }
 

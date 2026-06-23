@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 /**
  * Exposes a local agent through MQ and optional A2A server adapters.
@@ -20,6 +21,9 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/runner/drunner/server_adapter/agent_adapter.py}.</p>
  */
 public class AgentAdapter {
+
+    private static final MqServerAdapterFactory DEFAULT_MQ_SERVER_ADAPTER_FACTORY = MqServerAdapter::new;
+    private static volatile MqServerAdapterFactory mqServerAdapterFactory = DEFAULT_MQ_SERVER_ADAPTER_FACTORY;
 
     private final String agentId;
     private final String version;
@@ -44,7 +48,7 @@ public class AgentAdapter {
             throw new IllegalArgumentException("agent_card is required when enable_a2a is True");
         }
         this.topic = agentTopic(agentId, this.version);
-        this.server = new MqServerAdapter(
+        this.server = mqServerAdapterFactory.create(
                 agentId,
                 topic,
                 this::handleInvoke,
@@ -100,6 +104,14 @@ public class AgentAdapter {
 
     public Object getA2aServer() {
         return a2aServer;
+    }
+
+    static void setMqServerAdapterFactoryForTest(MqServerAdapterFactory factory) {
+        mqServerAdapterFactory = factory == null ? DEFAULT_MQ_SERVER_ADAPTER_FACTORY : factory;
+    }
+
+    static void resetMqServerAdapterFactoryForTest() {
+        mqServerAdapterFactory = DEFAULT_MQ_SERVER_ADAPTER_FACTORY;
     }
 
     private Object handleInvoke(Map<String, Object> inputs) {
@@ -190,6 +202,7 @@ public class AgentAdapter {
     private static Object invokeNoArg(Object target, String methodName) {
         try {
             Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
             return method.invoke(target);
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Failed to call " + methodName + " on A2A server", error);
@@ -202,5 +215,13 @@ public class AgentAdapter {
             return ((CompletionStage<Object>) stage).thenApply(ignored -> null);
         }
         return CompletableFuture.completedFuture(null);
+    }
+
+    @FunctionalInterface
+    interface MqServerAdapterFactory {
+        MqServerAdapter create(String adapterId,
+                               String topic,
+                               Function<Map<String, Object>, Object> invokeHandler,
+                               Function<Map<String, Object>, Object> streamHandler);
     }
 }

@@ -43,6 +43,15 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Mirrors Python's {@code test_team_memory_manager.py} and
  * {@code test_team_memory_integration.py} for
  * {@code openjiuwen/agent_teams/memory/manager.py}.</p>
+ *
+ * <p>Mirrors Python's integration lifecycle tests in
+ * {@code tests/unit_tests/core/memory/team/test_team_memory_integration.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.memory.team.test_team_memory_manager} in
+ * {@code tests/unit_tests/core/memory/team/test_team_memory_manager.py}.</p>
+ *
+ * <p>Mirrors Python's temporary read-only coverage in
+ * {@code tests/unit_tests/core/memory/team/test_temporary_readonly.py}.</p>
  */
 class TeamMemoryManagerTest {
 
@@ -254,6 +263,24 @@ class TeamMemoryManagerTest {
     }
 
     @Test
+    void extractAfterRoundLeaderPersistentRunsEveryRound() {
+        TestParams params = createParams();
+        params.lifecycle = "persistent";
+        params.role = "leader";
+        params.enableAutoExtract = true;
+        params.teamMemoryDir = tempDir.resolve("team-memory").toString();
+        params.database = new FakeDatabase();
+        params.taskManager = new FakeTaskManager();
+        params.extractionModel = new FakeModel();
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+
+        await(manager.extractAfterRound());
+        await(manager.extractAfterRound());
+
+        assertThat(params.extractionInvoker.calls).isEqualTo(2);
+    }
+
+    @Test
     void closeCleansUpResources() {
         TestParams params = createParams();
         TeamMemoryManager manager = new TeamMemoryManager(params);
@@ -299,6 +326,24 @@ class TeamMemoryManagerTest {
     }
 
     @Test
+    void closeAfterMultipleOperationsIsIdempotent() {
+        TestParams params = createParams();
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+        await(manager.initToolkit());
+        FakeDeepAgent deepAgent = new FakeDeepAgent();
+        manager.registerTools(deepAgent);
+
+        await(manager.loadAndInject(deepAgent, "test1"));
+        await(manager.loadAndInject(deepAgent, "test2"));
+        await(manager.close());
+        await(manager.close());
+
+        assertThat(manager.getToolkit()).isNull();
+        assertThat(manager.getOwnedToolNames()).isEmpty();
+        assertThat(deepAgent.abilityManager.abilities).isEmpty();
+    }
+
+    @Test
     void readOnlySourceWorkspaceCreatesWorkspace() {
         TestParams params = createParams();
         params.readOnlySourceWorkspace = tempDir.resolve("source").toString();
@@ -308,6 +353,58 @@ class TeamMemoryManagerTest {
         assertThat(manager.getWorkspace()).isNotNull();
         assertThat(manager.getWorkspace().getRootPath()).isEqualTo(params.readOnlySourceWorkspace);
         assertThat(params.toolkitFactory.requests.getFirst().readOnly()).isTrue();
+    }
+
+    @Test
+    void initToolkitReadOnlyToolsExposeReadOnlyOnly() {
+        TestParams params = createParams();
+        params.toolkitFactory = null;
+        params.readOnlySourceWorkspace = tempDir.resolve("source").toString();
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+
+        assertThat(await(manager.initToolkit())).isTrue();
+
+        assertThat(manager.getToolkit()).isInstanceOf(MemberMemoryToolkit.class);
+        MemberMemoryToolkit toolkit = (MemberMemoryToolkit) manager.getToolkit();
+        assertThat(toolkit.isReadOnly()).isTrue();
+        assertThat(toolNames(toolkit.getTools()))
+                .contains("memory_search")
+                .doesNotContain("write_memory", "edit_memory");
+
+        await(manager.close());
+    }
+
+    @Test
+    void loadAndInjectReadOnlyGeneralBuildsReadOnlyMemorySection() {
+        TestParams params = createParams();
+        params.readOnlySourceWorkspace = tempDir.resolve("source").toString();
+        params.promptMode = "proactive";
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+        await(manager.initToolkit());
+        FakeDeepAgent deepAgent = new FakeDeepAgent();
+
+        await(manager.loadAndInject(deepAgent, ""));
+
+        String rendered = deepAgent.promptBuilder.getSection(TeamMemoryManager.SECTION_NAME).render("en");
+        assertThat(rendered).contains("Read-Only Mode");
+        assertThat(rendered).contains("Writing or modifying memory files is not allowed.");
+    }
+
+    @Test
+    void loadAndInjectReadOnlyCodingBuildsReadOnlyCodingMemorySection() {
+        TestParams params = createParams();
+        params.readOnlySourceWorkspace = tempDir.resolve("source").toString();
+        params.scenario = "coding";
+        TeamMemoryManager manager = new TeamMemoryManager(params);
+        await(manager.initToolkit());
+        FakeDeepAgent deepAgent = new FakeDeepAgent();
+
+        await(manager.loadAndInject(deepAgent, ""));
+
+        String rendered = deepAgent.promptBuilder.getSection(TeamMemoryManager.SECTION_NAME).render("en");
+        assertThat(rendered).contains("# coding memory (read-only)");
+        assertThat(rendered).contains("No writing allowed.");
+        assertThat(rendered).contains("coding_memory");
     }
 
     @Test
@@ -350,6 +447,14 @@ class TeamMemoryManagerTest {
 
     private static <T> T await(CompletionStage<T> stage) {
         return stage.toCompletableFuture().join();
+    }
+
+    private static List<String> toolNames(List<ToolView> tools) {
+        List<String> names = new ArrayList<>();
+        for (ToolView tool : tools) {
+            names.add(tool.card().name());
+        }
+        return names;
     }
 
     private static final class TestParams implements Parameters {

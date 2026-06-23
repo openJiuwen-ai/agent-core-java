@@ -17,6 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code managed_browser} in
+ * {@code openjiuwen/harness/tools/browser_move/drivers/managed_browser.py}.
+ *
+ * <p>Mirrors Python's {@code test_managed_browser} in
+ * {@code tests/unit_tests/harness/tools/browser_move/test_managed_browser.py}.</p>
+ */
 class ManagedBrowserDriverTest {
 
     @Test

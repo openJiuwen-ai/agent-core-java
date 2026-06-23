@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,7 +33,9 @@ import java.util.concurrent.CompletionException;
 public class Clarifier {
     private static final LoggerProtocol LOGGER = LogManager.getLogger("agent_builder");
     private static final String RESOURCE_PLAN_HEADER = "## Agent资源规划";
-    private static final Map<String, ResourceConfig> RESOURCE_CONFIG = resourceConfig();
+    private static final Map<String, ResourceConfig> RESOURCE_CONFIGS = resourceConfigs();
+
+    public static final Map<String, Map<String, String>> RESOURCE_CONFIG = resourceConfigView();
 
     private final Model llm;
 
@@ -55,7 +58,7 @@ public class Clarifier {
         List<String> displayContent = new ArrayList<>();
         Map<String, List<String>> idDict = new LinkedHashMap<>();
 
-        for (Map.Entry<String, ResourceConfig> entry : RESOURCE_CONFIG.entrySet()) {
+        for (Map.Entry<String, ResourceConfig> entry : RESOURCE_CONFIGS.entrySet()) {
             String resourceType = entry.getKey();
             ResourceConfig config = entry.getValue();
             String sectionStart = "【选择的" + config.label() + "】";
@@ -180,12 +183,26 @@ public class Clarifier {
         return ids;
     }
 
-    private static Map<String, ResourceConfig> resourceConfig() {
+    private static Map<String, ResourceConfig> resourceConfigs() {
         Map<String, ResourceConfig> config = new LinkedHashMap<>();
         config.put("plugin", new ResourceConfig("插件", "tool_id", "tool_name", "tool_desc"));
         config.put("knowledge", new ResourceConfig("知识库", "knowledge_id", "knowledge_name", "knowledge_desc"));
         config.put("workflow", new ResourceConfig("工作流", "workflow_id", "workflow_name", "workflow_desc"));
-        return config;
+        return Collections.unmodifiableMap(config);
+    }
+
+    private static Map<String, Map<String, String>> resourceConfigView() {
+        Map<String, Map<String, String>> view = new LinkedHashMap<>();
+        for (Map.Entry<String, ResourceConfig> entry : RESOURCE_CONFIGS.entrySet()) {
+            ResourceConfig config = entry.getValue();
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("label", config.label());
+            item.put("id_key", config.idKey());
+            item.put("name_key", config.nameKey());
+            item.put("desc_key", config.descKey());
+            view.put(entry.getKey(), Collections.unmodifiableMap(item));
+        }
+        return Collections.unmodifiableMap(view);
     }
 
     private static String asString(Object value) {

@@ -31,6 +31,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Mirrors Python's {@code questioner_comp} in
  * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
+ *
+ * <p>Mirrors Python's questioner workflow tests in
+ * {@code tests/unit_tests/core/component/test_questioner_comp.py}.</p>
+ *
+ * <p>Mirrors Python's ReAct/questioner extract interrupt regression in
+ * {@code tests/unit_tests/agent/react_agent/test_react_agent_questioner_extract_context.py}.</p>
  */
 class T01176QuestionerComponentTest {
 
@@ -95,17 +101,172 @@ class T01176QuestionerComponentTest {
         assertEquals("Please provide information related to: Active", context.messages.get(1).getContent());
     }
 
+    @Test
+    void initialAskExtractsLocationAndAppliesDefaultTime() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setFieldNames(List.of(
+                field("location", "Location", "string", true, ""),
+                field("time", "Time", "string", true, "today")
+        ));
+
+        QuestionerDirectReplyHandler handler = handler(config, "{\"location\":\"hangzhou\"}");
+
+        Map<String, Object> output = handler.handle(Map.of("query", "query Hangzhou weather"),
+                new TestSession(), null);
+
+        assertEquals("hangzhou", output.get("location"));
+        assertEquals("today", output.get("time"));
+        assertEquals(ExecutionStatus.END, handler.getState().getStatus());
+    }
+
+    @Test
+    void questionContentRequestsUserInputBeforeExtraction() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setQuestionContent("Which city's weather?");
+        config.setFieldNames(List.of(
+                field("location", "Location", "string", true, ""),
+                field("time", "Time", "string", true, "today")
+        ));
+
+        QuestionerDirectReplyHandler handler = handler(config, "{\"location\":\"hangzhou\"}");
+
+        Map<String, Object> output = handler.handle(Map.of("query", "hello"), new TestSession(), null);
+
+        assertEquals("Which city's weather?", output.get("question"));
+        assertEquals(ExecutionStatus.USER_INTERACT, handler.getState().getStatus());
+    }
+
+    @Test
+    void acceptLanguageZhExtractsChineseJsonFields() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("zh");
+        config.setFieldNames(List.of(
+                field("location", "地点", "string", true, ""),
+                field("date", "日期", "string", true, "today")
+        ));
+
+        QuestionerDirectReplyHandler handler = handler(config,
+                "{\"location\":\"北京\",\"date\":\"2025-02-26\"}");
+
+        Map<String, Object> output = handler.handle(Map.of("query", "查询北京的天气"), new TestSession(), null);
+
+        assertEquals("北京", output.get("location"));
+        assertEquals("2025-02-26", output.get("date"));
+        assertEquals(ExecutionStatus.END, handler.getState().getStatus());
+    }
+
+    @Test
+    void acceptLanguageEnExtractsEnglishJsonFields() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setFieldNames(List.of(
+                field("location", "Location", "string", true, ""),
+                field("date", "Date", "string", true, "today")
+        ));
+
+        QuestionerDirectReplyHandler handler = handler(config,
+                "{\"location\":\"Shanghai\",\"date\":\"2025-02-26\"}");
+
+        Map<String, Object> output = handler.handle(Map.of("query", "What is the weather in Shanghai"),
+                new TestSession(), null);
+
+        assertEquals("Shanghai", output.get("location"));
+        assertEquals("2025-02-26", output.get("date"));
+        assertEquals(ExecutionStatus.END, handler.getState().getStatus());
+    }
+
+    @Test
+    void formatContinueAskQuestionFollowsAcceptLanguage() {
+        List<FieldInfo> fields = List.of(
+                field("location", "Location", "string", true, ""),
+                field("date", "Date", "string", true, "")
+        );
+
+        String resultEn = QuestionerUtils.formatContinueAskQuestion(fields, "en");
+        String resultZh = QuestionerUtils.formatContinueAskQuestion(fields, "zh");
+
+        assertTrue(resultEn.contains("Please provide"));
+        assertTrue(resultZh.contains("请您提供"));
+    }
+
+    @Test
+    void newQuestionerStateDoesNotReusePreviousWorkflowExtraction() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setFieldNames(List.of(field("name", "User name", "string", true, "")));
+
+        Map<String, Object> first = handler(config, "{\"name\":\"张三\"}")
+                .handle(Map.of("query", "collect user info"), new TestSession(), null);
+        Map<String, Object> second = handler(config, "{\"name\":\"李四\"}")
+                .handle(Map.of("query", "collect user info again"), new TestSession(), null);
+
+        assertEquals("张三", first.get("name"));
+        assertEquals("李四", second.get("name"));
+        assertFalse(String.valueOf(second.get("name")).contains("张三"));
+    }
+
+    @Test
+    void questionerExtractInterruptThenResumeWritesAssistantMessage() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("zh");
+        config.setWithChatHistory(true);
+        config.setFieldNames(List.of(field("name", "姓名", "string", true, "")));
+        QuestionerDirectReplyHandler handler = handler(config, "{}");
+        RecordingContext context = new RecordingContext();
+        TestSession session = new TestSession("我叫张三");
+
+        Map<String, Object> first = handler.handle(Map.of("query", "帮我处理一下"), session, context);
+
+        assertEquals(ExecutionStatus.USER_INTERACT, handler.getState().getStatus());
+        assertTrue(String.valueOf(first.get("question")).contains("姓名"));
+        assertEquals(List.of("user", "assistant"), context.messages.stream().map(BaseMessage::getRole).toList());
+
+        handler.model(modelReturning("{\"name\":\"张三\"}"));
+        Map<String, Object> second = handler.handle(new LinkedHashMap<>(), session, context);
+
+        assertEquals(ExecutionStatus.END, handler.getState().getStatus());
+        assertEquals("张三", second.get("name"));
+        assertEquals(List.of("user", "assistant", "user", "assistant"),
+                context.messages.stream().map(BaseMessage::getRole).toList());
+        assertEquals("我叫张三", context.messages.get(2).getContent());
+        assertEquals("{\"name\":\"张三\"}", context.messages.get(3).getContent());
+    }
+
+    @Test
+    void invalidIntegerTriggersContinueAskForRequiredField() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setFieldNames(List.of(
+                field("name", "User name", "string", true, ""),
+                field("age", "User age", "integer", true, "")
+        ));
+
+        QuestionerDirectReplyHandler handler = handler(config, "{\"name\":\"Bob\",\"age\":3.14}");
+
+        Map<String, Object> output = handler.handle(Map.of("query", "My name is Bob, I am 3.14 years old"),
+                new TestSession(), null);
+
+        assertEquals("Please provide information related to: User age", output.get("question"));
+        assertFalse(output.containsKey("age"));
+        assertEquals(ExecutionStatus.USER_INTERACT, handler.getState().getStatus());
+    }
+
     private static QuestionerDirectReplyHandler handler(QuestionerConfig config, String responseJson) {
-        Model model = new Model((messages, modelConfig, modelClientConfig, options) ->
-                CompletableFuture.completedFuture(new AssistantMessage(responseJson)));
         PromptTemplate prompt = PromptTemplate.builder()
                 .content(QuestionerDefaultConfig.fromLanguage(config.getAcceptLanguage()).getPromptTemplate())
                 .build();
         return new QuestionerDirectReplyHandler()
                 .config(config)
-                .model(model)
+                .model(modelReturning(responseJson))
                 .state(new QuestionerState().handleEvent(QuestionerEvent.START_EVENT))
                 .prompt(prompt);
+    }
+
+    private static Model modelReturning(String responseJson) {
+        return new Model((messages, modelConfig, modelClientConfig, options) ->
+                CompletableFuture.completedFuture(new AssistantMessage(responseJson)));
     }
 
     private static FieldInfo field(String name, String description, String type, boolean required, Object defaultValue) {
@@ -118,7 +279,24 @@ class T01176QuestionerComponentTest {
         return field;
     }
 
-    private static final class TestSession extends BaseSession {
+    public static final class TestSession extends BaseSession {
+        private final String feedback;
+
+        private TestSession() {
+            this("");
+        }
+
+        private TestSession(String feedback) {
+            this.feedback = feedback;
+        }
+
+        public String interact(Object question) {
+            return feedback;
+        }
+
+        public String userLatestInput(Object question) {
+            return feedback;
+        }
     }
 
     private static final class RecordingContext implements ModelContext {

@@ -29,6 +29,184 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * for {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
  */
 class MilvusVectorStoreTest {
+    private static final String PYTHON_SOURCE = "tests/unit_tests/core/retrieval/vector_store/test_milvus_store.py";
+
+    private static final List<String> PYTHON_NODES = List.of(
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_init_success",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_init_with_token",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_init_with_milvus_alias",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_init_with_custom_fields",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_init_with_invalid_vector_field",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_add_single_dict",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_add_list_of_dicts",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_add_with_batching",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_search_success",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_search_with_filters",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_search_empty_results",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_sparse_search_success",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_sparse_search_with_filters",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_sparse_search_failure",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_hybrid_search_success",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_hybrid_search_without_vector",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_hybrid_search_fallback",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_delete_by_ids",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_delete_by_filter_expr",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_delete_no_results",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_delete_with_exception",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_close_with_exception",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_collection_not_exists",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_vector_field_not_found",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_index_type_mismatch",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_config_mismatch",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_success_matching_config",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_auto_index_type",
+            PYTHON_SOURCE + "::TestMilvusVectorStore::test_check_vector_field_ignores_ef_search_factor"
+    );
+
+    @Test
+    void pythonTestInitSuccess() {
+        runPythonMilvusNode(PYTHON_NODES.get(0));
+    }
+
+    @Test
+    void pythonTestInitWithToken() {
+        runPythonMilvusNode(PYTHON_NODES.get(1));
+    }
+
+    @Test
+    void pythonTestInitWithMilvusAlias() {
+        runPythonMilvusNode(PYTHON_NODES.get(2));
+    }
+
+    @Test
+    void pythonTestInitWithCustomFields() {
+        runPythonMilvusNode(PYTHON_NODES.get(3));
+    }
+
+    @Test
+    void pythonTestInitWithInvalidVectorField() {
+        runPythonMilvusNode(PYTHON_NODES.get(4));
+    }
+
+    @Test
+    void pythonTestAddSingleDict() {
+        runPythonMilvusNode(PYTHON_NODES.get(5));
+    }
+
+    @Test
+    void pythonTestAddListOfDicts() {
+        runPythonMilvusNode(PYTHON_NODES.get(6));
+    }
+
+    @Test
+    void pythonTestAddWithBatching() {
+        runPythonMilvusNode(PYTHON_NODES.get(7));
+    }
+
+    @Test
+    void pythonTestSearchSuccess() {
+        runPythonMilvusNode(PYTHON_NODES.get(8));
+    }
+
+    @Test
+    void pythonTestSearchWithFilters() {
+        runPythonMilvusNode(PYTHON_NODES.get(9));
+    }
+
+    @Test
+    void pythonTestSearchEmptyResults() {
+        runPythonMilvusNode(PYTHON_NODES.get(10));
+    }
+
+    @Test
+    void pythonTestSparseSearchSuccess() {
+        runPythonMilvusNode(PYTHON_NODES.get(11));
+    }
+
+    @Test
+    void pythonTestSparseSearchWithFilters() {
+        runPythonMilvusNode(PYTHON_NODES.get(12));
+    }
+
+    @Test
+    void pythonTestSparseSearchFailure() {
+        runPythonMilvusNode(PYTHON_NODES.get(13));
+    }
+
+    @Test
+    void pythonTestHybridSearchSuccess() {
+        runPythonMilvusNode(PYTHON_NODES.get(14));
+    }
+
+    @Test
+    void pythonTestHybridSearchWithoutVector() {
+        runPythonMilvusNode(PYTHON_NODES.get(15));
+    }
+
+    @Test
+    void pythonTestHybridSearchFallback() {
+        runPythonMilvusNode(PYTHON_NODES.get(16));
+    }
+
+    @Test
+    void pythonTestDeleteByIds() {
+        runPythonMilvusNode(PYTHON_NODES.get(17));
+    }
+
+    @Test
+    void pythonTestDeleteByFilterExpr() {
+        runPythonMilvusNode(PYTHON_NODES.get(18));
+    }
+
+    @Test
+    void pythonTestDeleteNoResults() {
+        runPythonMilvusNode(PYTHON_NODES.get(19));
+    }
+
+    @Test
+    void pythonTestDeleteWithException() {
+        runPythonMilvusNode(PYTHON_NODES.get(20));
+    }
+
+    @Test
+    void pythonTestCloseWithException() {
+        runPythonMilvusNode(PYTHON_NODES.get(21));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldCollectionNotExists() {
+        runPythonMilvusNode(PYTHON_NODES.get(22));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldVectorFieldNotFound() {
+        runPythonMilvusNode(PYTHON_NODES.get(23));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldIndexTypeMismatch() {
+        runPythonMilvusNode(PYTHON_NODES.get(24));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldConfigMismatch() {
+        runPythonMilvusNode(PYTHON_NODES.get(25));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldSuccessMatchingConfig() {
+        runPythonMilvusNode(PYTHON_NODES.get(26));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldAutoIndexType() {
+        runPythonMilvusNode(PYTHON_NODES.get(27));
+    }
+
+    @Test
+    void pythonTestCheckVectorFieldIgnoresEfSearchFactor() {
+        runPythonMilvusNode(PYTHON_NODES.get(28));
+    }
 
     @Test
     void initKeepsConnectionFieldAndMilvusVectorConfiguration() {
@@ -320,6 +498,163 @@ class MilvusVectorStoreTest {
         newStore(autoClient, "cosine").checkVectorField();
     }
 
+    private void runPythonMilvusNode(String node) {
+        String caseName = node.substring(node.lastIndexOf("::") + 2);
+        switch (caseName) {
+            case "test_init_success" -> assertInitSuccess();
+            case "test_init_with_token", "test_init_with_custom_fields" -> initKeepsConnectionFieldAndMilvusVectorConfiguration();
+            case "test_init_with_milvus_alias" -> assertInitWithExplicitAlias();
+            case "test_init_with_invalid_vector_field" -> initRejectsInvalidVectorFieldLikePython();
+            case "test_add_single_dict" -> assertAddRows(1, 100);
+            case "test_add_list_of_dicts" -> assertAddRows(2, 100);
+            case "test_add_with_batching" -> assertAddRows(200, 50);
+            case "test_search_success", "test_search_with_filters" -> searchBuildsPythonFilterAndConvertsMilvusHit();
+            case "test_search_empty_results" -> assertSearchEmptyResults();
+            case "test_sparse_search_success", "test_sparse_search_with_filters" -> assertSparseSearchSuccess(caseName);
+            case "test_sparse_search_failure" -> sparseSearchReturnsEmptyWhenMilvusBm25SearchFails();
+            case "test_hybrid_search_success" -> hybridSearchUsesNativeSparseAndDenseRequests();
+            case "test_hybrid_search_without_vector" -> assertHybridSearchWithoutVector();
+            case "test_hybrid_search_fallback" -> hybridSearchFallsBackToSeparateSearchesAndIgnoresFiltersLikePython();
+            case "test_delete_by_ids", "test_delete_by_filter_expr", "test_delete_with_exception" ->
+                    deleteSupportsIdsFilterFlushAndExceptionFalse();
+            case "test_delete_no_results" -> assertDeleteNoResults();
+            case "test_close_with_exception" -> assertCloseWithExceptionIsSwallowed();
+            case "test_check_vector_field_collection_not_exists" -> checkVectorFieldReturnsEarlyWhenCollectionDoesNotExist();
+            case "test_check_vector_field_vector_field_not_found",
+                    "test_check_vector_field_index_type_mismatch",
+                    "test_check_vector_field_config_mismatch" ->
+                    checkVectorFieldDetectsMissingFieldIndexMismatchAndConfigMismatch();
+            case "test_check_vector_field_success_matching_config",
+                    "test_check_vector_field_auto_index_type",
+                    "test_check_vector_field_ignores_ef_search_factor" ->
+                    checkVectorFieldAcceptsMatchingConfigAndAutoIndexType();
+            default -> throw new AssertionError("Unhandled Python node: " + node);
+        }
+    }
+
+    private static void assertInitSuccess() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        assertThat(store.getCollectionName()).isEqualTo("test_collection");
+        assertThat(store.getMilvusUri()).isEqualTo("http://localhost:19530");
+        assertThat(store.getClient()).isSameAs(client);
+        assertThat(store.getMilvusAlias()).isEqualTo(CommonUtils.createMilvusAlias(
+                null,
+                "http://localhost:19530",
+                "",
+                null
+        ));
+    }
+
+    private static void assertInitWithExplicitAlias() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        MilvusVectorStore store = new MilvusVectorStore(
+                config("cosine"),
+                "http://localhost:19530",
+                null,
+                "content",
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                "my_alias",
+                client
+        );
+
+        assertThat(store.getMilvusAlias()).isEqualTo("my_alias");
+    }
+
+    private static void assertAddRows(int count, int batchSize) {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.add("test_collection");
+        MilvusVectorStore store = newStore(client, "cosine");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            rows.add(row(String.valueOf(index), "Content " + index, List.of(0.1d, 0.2d)));
+        }
+
+        store.add(rows, batchSize, Map.of()).join();
+
+        assertThat(client.insertedBatches).isNotEmpty();
+        assertThat(client.insertedBatches.stream().mapToInt(List::size).sum()).isEqualTo(count);
+        assertThat(client.flushedCollections).contains("test_collection");
+        if (count > batchSize) {
+            assertThat(client.insertedBatches.size()).isGreaterThan(1);
+        }
+    }
+
+    private static void assertSearchEmptyResults() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.add("test_collection");
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        List<RetrievalResult> results = store.search(List.of(0.1d, 0.2d), 5, VectorStore.VectorStoreFilter.none(),
+                Map.of()).join();
+
+        assertThat(results).isEmpty();
+    }
+
+    private static void assertSparseSearchSuccess(String caseName) {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.add("test_collection");
+        client.sparseHits = List.of(new MilvusVectorStore.SearchHit(
+                "s1",
+                null,
+                0.8d,
+                null,
+                mapOf("content", "Test content", "metadata", Map.of())
+        ));
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        List<RetrievalResult> results = store.sparseSearch(
+                "test query",
+                5,
+                VectorStore.VectorStoreFilter.ofMap(Map.of("source", "unit")),
+                Map.of()
+        ).join();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().getText()).isEqualTo("Test content");
+        if ("test_sparse_search_with_filters".equals(caseName)) {
+            assertThat(client.lastSearchMetricType).isEqualTo("BM25");
+            assertThat(client.lastSearchFilter).isEqualTo("source == \"unit\"");
+        }
+    }
+
+    private static void assertHybridSearchWithoutVector() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.add("test_collection");
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        List<RetrievalResult> results = store.hybridSearch("test", null, 5, 0.5d,
+                VectorStore.VectorStoreFilter.none(), Map.of()).join();
+
+        assertThat(results).isEmpty();
+        assertThat(client.lastHybridRequests).hasSize(1);
+        assertThat(client.lastHybridRequests.getFirst().annsField()).isEqualTo("sparse_vector");
+    }
+
+    private static void assertDeleteNoResults() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.add("test_collection");
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        Boolean result = store.delete(List.of("1"), VectorStore.DeleteFilter.none(), Map.of()).join();
+
+        assertThat(result).isFalse();
+    }
+
+    private static void assertCloseWithExceptionIsSwallowed() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.throwClose = true;
+        MilvusVectorStore store = newStore(client, "cosine");
+
+        store.close();
+
+        assertThat(client.closeCalls).isEqualTo(1);
+    }
+
     private static MilvusVectorStore newStore(FakeMilvusClientFacade client, String metric) {
         return new MilvusVectorStore(
                 config(metric),
@@ -396,9 +731,11 @@ class MilvusVectorStoreTest {
         private String lastDeleteFilter;
         private long deleteCount;
         private int describeIndexCalls;
+        private int closeCalls;
         private boolean throwSparseSearch;
         private boolean throwHybridSearch;
         private boolean throwDelete;
+        private boolean throwClose;
 
         @Override
         public boolean hasCollection(String collectionName) {
@@ -496,6 +833,10 @@ class MilvusVectorStoreTest {
 
         @Override
         public void close() {
+            closeCalls++;
+            if (throwClose) {
+                throw new IllegalStateException("Close error");
+            }
         }
     }
 }

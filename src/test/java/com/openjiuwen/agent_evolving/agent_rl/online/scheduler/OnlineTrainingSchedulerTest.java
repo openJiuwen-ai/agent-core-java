@@ -15,6 +15,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+/**
+ * Mirrors Python's {@code OnlineTrainingScheduler} in
+ * {@code openjiuwen/agent_evolving/agent_rl/online/scheduler/online_training_scheduler.py}.
+ *
+ * <p>Mirrors Python's online training scheduler unit tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/test_online_training_scheduler.py}.</p>
+ */
 class OnlineTrainingSchedulerTest {
 
     @Test

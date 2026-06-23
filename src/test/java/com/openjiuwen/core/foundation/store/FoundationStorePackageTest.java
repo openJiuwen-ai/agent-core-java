@@ -7,6 +7,8 @@ package com.openjiuwen.core.foundation.store;
 import com.openjiuwen.core.foundation.store.db.DefaultDbStore;
 import com.openjiuwen.core.foundation.store.kv.DbBasedKVStore;
 import com.openjiuwen.core.foundation.store.vector.ChromaVectorStore;
+import com.openjiuwen.core.foundation.store.vector.GaussVectorStore;
+import com.openjiuwen.core.foundation.store.vector.MilvusVectorStore;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code openjiuwen.core.foundation.store} module in
  * {@code openjiuwen/core/foundation/store/__init__.py}.</p>
+ *
+ * <p>Mirrors Python's vector-store plugin framework tests in
+ * {@code tests/unit_tests/core/foundation/store/test_vector_store_plugin.py}.</p>
  */
 class FoundationStorePackageTest {
 
@@ -120,11 +125,109 @@ class FoundationStorePackageTest {
     }
 
     @Test
+    void chromaBackendDispatchesToChromaVectorStore() {
+        BaseVectorStore store = FoundationStorePackage.createVectorStore(
+                "chroma",
+                Map.of("persist_directory", "/tmp/x")
+        );
+
+        assertInstanceOf(ChromaVectorStore.class, store);
+    }
+
+    @Test
+    void milvusBackendDispatchesToMilvusVectorStore() {
+        BaseVectorStore store = FoundationStorePackage.createVectorStore(
+                "milvus",
+                Map.of("uri", "http://localhost:19530")
+        );
+
+        MilvusVectorStore milvus = assertInstanceOf(MilvusVectorStore.class, store);
+        assertEquals("http://localhost:19530", milvus.getMilvusUri());
+    }
+
+    @Test
+    void gaussVectorBackendDispatchesToGaussVectorStore() {
+        BaseVectorStore store = FoundationStorePackage.createVectorStore(
+                "gaussvector",
+                Map.of("host", "h", "port", 5432)
+        );
+
+        assertInstanceOf(GaussVectorStore.class, store);
+    }
+
+    @Test
+    void entryPointProviderIsDiscovered() {
+        FoundationStorePackage.setVectorStoreProvidersForTest(List.of(provider(
+                "test_ep_fake",
+                kwargs -> new DummyVectorStore(kwargs)
+        )));
+
+        BaseVectorStore store = FoundationStorePackage.createVectorStore("test_ep_fake", Map.of("foo", "bar"));
+
+        DummyVectorStore fake = assertInstanceOf(DummyVectorStore.class, store);
+        assertEquals(Map.of("foo", "bar"), fake.initKwargs);
+    }
+
+    @Test
+    void entryPointProviderLoadErrorIsSwallowed() {
+        FoundationStorePackage.setVectorStoreProvidersForTest(List.of(provider(
+                "broken",
+                kwargs -> {
+                    throw new IllegalStateException("fake import failure");
+                }
+        )));
+
+        BaseVectorStore store = FoundationStorePackage.createVectorStore("broken", Map.of());
+
+        assertNull(store);
+    }
+
+    @Test
+    void builtinWinsOverEntryPointProviderNameCollision() {
+        FoundationStorePackage.setVectorStoreProvidersForTest(List.of(provider(
+                "chroma",
+                kwargs -> new DummyVectorStore(kwargs)
+        )));
+
+        BaseVectorStore store = FoundationStorePackage.createVectorStore("chroma", Map.of());
+
+        assertInstanceOf(ChromaVectorStore.class, store);
+    }
+
+    @Test
     void missingStoreReturnsNull() {
         assertNull(FoundationStorePackage.createVectorStore("missing", Map.of()));
     }
 
+    private static FoundationStorePackage.VectorStoreProvider provider(
+            String name,
+            FoundationStorePackage.VectorStoreFactory factory
+    ) {
+        return new FoundationStorePackage.VectorStoreProvider() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public BaseVectorStore create(Map<String, Object> kwargs) {
+                return factory.create(kwargs);
+            }
+        };
+    }
+
     private static final class DummyVectorStore extends BaseVectorStore {
+
+        private final Map<String, Object> initKwargs;
+
+        private DummyVectorStore() {
+            this(Map.of());
+        }
+
+        private DummyVectorStore(Map<String, Object> initKwargs) {
+            this.initKwargs = initKwargs == null ? Map.of() : Map.copyOf(initKwargs);
+        }
+
         @Override
         public CompletableFuture<Void> createCollection(String collectionName, Object schema,
                 Map<String, Object> kwargs) {

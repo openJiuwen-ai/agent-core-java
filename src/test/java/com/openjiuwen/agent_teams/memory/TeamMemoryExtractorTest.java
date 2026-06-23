@@ -29,6 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Mirrors Python's {@code test_extractor.py} for
  * {@code openjiuwen/agent_teams/memory/extractor.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental coverage in
+ * {@code tests/unit_tests/core/memory/team/test_extractor.py}.</p>
  */
 class TeamMemoryExtractorTest {
 

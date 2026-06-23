@@ -7,6 +7,7 @@ package com.openjiuwen.harness.cli.ui;
 import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,8 +24,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code openjiuwen.harness.cli.ui.repl} in
  * {@code openjiuwen/harness/cli/ui/repl.py}.
+ *
+ * <p>Mirrors Python's {@code TestAutoHarnessRepl} in
+ * {@code tests/unit_tests/cli/test_auto_harness_repl.py}.</p>
  */
 class CliReplTest {
+
+    private static final String AUTO_HARNESS_GOAL = "\u5206\u6790\u5dee\u8ddd claude-code";
 
     @TempDir
     private Path tempDir;
@@ -166,6 +172,61 @@ class CliReplTest {
 
         assertThat(prepared.config().getOptimizationGoal()).isEqualTo("analyze gap");
         assertThat(prepared.pipelinePreference()).isEqualTo(AutoHarnessSchema.PIPELINE_PREFERENCE_AUTO);
+    }
+
+    @Test
+    @Disabled("Python baseline failed for test_subcmd_run_goal_keeps_full_flow with UnicodeEncodeError: "
+            + "'gbk' codec can't encode character '\\u2699' in position 6; "
+            + "evidence javaify-project/tests/python-baseline/latest-summary.json")
+    void subcmdRunGoalKeepsFullFlowDisabledByPythonBaseline(@TempDir Path workspace) throws IOException {
+        Path repo = makeFakeRepo(workspace, "agent-core");
+
+        CliRepl.PreparedRun prepared = new CliRepl().subcmdRun(
+                List.of("--goal", AUTO_HARNESS_GOAL),
+                workspace.toString(),
+                workspace
+        );
+
+        assertThat(prepared.config().getOptimizationGoal()).isEqualTo(AUTO_HARNESS_GOAL);
+        assertThat(prepared.config().getLocalRepo())
+                .isEqualTo(repo.toAbsolutePath().normalize().toString());
+        assertThat(prepared.config().getWorkspace())
+                .isEqualTo(repo.toAbsolutePath().normalize().toString());
+        assertThat(prepared.pipelinePreference()).isEqualTo(AutoHarnessPipelineNames.META_EVOLVE_PIPELINE);
+        assertThat(prepared.tasks()).isNull();
+    }
+
+    @Test
+    void naturalLanguageDispatchRunsFullFlow(@TempDir Path workspace) throws IOException {
+        makeFakeRepo(workspace, "agent-core");
+
+        CliRepl.PreparedRun prepared = new CliRepl().cmdAutoHarness(
+                "/auto-harness " + AUTO_HARNESS_GOAL,
+                workspace.toString(),
+                workspace
+        );
+
+        assertThat(prepared.config().getOptimizationGoal()).isEqualTo(AUTO_HARNESS_GOAL);
+        assertThat(prepared.pipelinePreference()).isEqualTo(AutoHarnessPipelineNames.META_EVOLVE_PIPELINE);
+        assertThat(prepared.tasks()).isNull();
+    }
+
+    @Test
+    @Disabled("Python baseline failed for test_subcmd_run_pipeline_option with UnicodeEncodeError: "
+            + "'gbk' codec can't encode character '\\u2699' in position 6; "
+            + "evidence javaify-project/tests/python-baseline/latest-summary.json")
+    void subcmdRunPipelineOptionDisabledByPythonBaseline(@TempDir Path workspace) throws IOException {
+        makeFakeRepo(workspace, "agent-core");
+
+        CliRepl.PreparedRun prepared = new CliRepl().subcmdRun(
+                List.of("--goal", AUTO_HARNESS_GOAL, "--pipeline", "extended"),
+                workspace.toString(),
+                workspace
+        );
+
+        assertThat(prepared.config().getOptimizationGoal()).isEqualTo(AUTO_HARNESS_GOAL);
+        assertThat(prepared.pipelinePreference()).isEqualTo(AutoHarnessPipelineNames.EXTENDED_EVOLVE_PIPELINE);
+        assertThat(prepared.tasks()).isNull();
     }
 
     private static Path makeFakeRepo(Path parent, String name) throws IOException {

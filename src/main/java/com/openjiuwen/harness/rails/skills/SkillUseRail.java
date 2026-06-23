@@ -129,6 +129,23 @@ public class SkillUseRail extends DeepAgentRail {
         return new ArrayList<>(skills);
     }
 
+    public List<String> getSkillDirs() {
+        return skillDirs.stream().map(Path::toString).toList();
+    }
+
+    public void prependSkillDirs(List<String> dirs) {
+        List<Path> normalized = normalizeSkillDirs(dirs == null ? "" : String.join(",", dirs));
+        skillDirs.removeAll(normalized);
+        skillDirs.addAll(0, normalized);
+        clearSkills();
+    }
+
+    public void removeSkillDirs(List<String> dirs) {
+        List<Path> normalized = normalizeSkillDirs(dirs == null ? "" : String.join(",", dirs));
+        skillDirs.removeAll(normalized);
+        clearSkills();
+    }
+
     public void reloadSkills() {
         if (!enableCache) {
             skillCache.clear();

@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class CodingMemoryEditTool extends MemoryOperationTool {
     public CodingMemoryEditTool(MemoryOperation operation) {
-        super("coding_memory_edit", "CodingMemoryEditTool", "Edit coding memory file content.", operation);
+        super("coding_memory_edit", "coding_memory_edit", "Edit coding memory file content.", operation);
     }
 
     @Override

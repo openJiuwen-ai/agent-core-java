@@ -14,6 +14,9 @@ import com.openjiuwen.core.common.logging.Loggers;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -291,7 +294,20 @@ public class EvolutionStore implements
     @Override
     public CompletionStage<String> readFileText(Path path) {
         try {
-            if (path == null || !Files.exists(path)) {
+            if (path == null) {
+                return CompletableFuture.completedFuture("");
+            }
+            if (sysOperation != null) {
+                Object result = await(invokeReadFile(path));
+                int code = intValue(property(result, "code"), 0);
+                if (code == 0) {
+                    Object content = property(property(result, "data"), "content");
+                    return CompletableFuture.completedFuture(content == null ? "" : String.valueOf(content));
+                }
+                LOGGER.warning("[EvolutionStore] failed to read {}: {}", path, stringValue(property(result, "message")));
+                return CompletableFuture.completedFuture("");
+            }
+            if (!Files.exists(path)) {
                 return CompletableFuture.completedFuture("");
             }
             return CompletableFuture.completedFuture(Files.readString(path, StandardCharsets.UTF_8));
@@ -304,6 +320,15 @@ public class EvolutionStore implements
     @Override
     public CompletionStage<Void> writeFileText(Path path, String content) {
         try {
+            if (sysOperation != null) {
+                Object result = await(invokeWriteFile(path, content == null ? "" : content));
+                int code = intValue(property(result, "code"), 0);
+                if (code != 0) {
+                    String message = stringValue(property(result, "message"));
+                    return CompletableFuture.failedFuture(storeError("failed to write " + path + ": " + message, null));
+                }
+                return CompletableFuture.completedFuture(null);
+            }
             if (path.getParent() != null) {
                 Files.createDirectories(path.getParent());
             }
@@ -555,6 +580,157 @@ public class EvolutionStore implements
                 cause,
                 Map.of("error_msg", message)
         );
+    }
+
+    private Object invokeReadFile(Path path) {
+        Object fs = invokeNoArg(sysOperation, "fs");
+        try {
+            return invokeFirst(
+                    fs,
+                    new String[]{"readFile", "read_file"},
+                    new Class<?>[]{String.class, String.class, Integer.class, Integer.class, Object.class, String.class, int.class, Map.class},
+                    path.toString(),
+                    "text",
+                    null,
+                    null,
+                    null,
+                    "utf-8",
+                    0,
+                    Map.of());
+        } catch (RuntimeException ignored) {
+            return invokeFirst(fs, new String[]{"readFile", "read_file"}, new Class<?>[]{String.class}, path.toString());
+        }
+    }
+
+    private Object invokeWriteFile(Path path, String content) {
+        Object fs = invokeNoArg(sysOperation, "fs");
+        try {
+            return invokeFirst(
+                    fs,
+                    new String[]{"writeFile", "write_file"},
+                    new Class<?>[]{
+                            String.class,
+                            String.class,
+                            String.class,
+                            boolean.class,
+                            boolean.class,
+                            boolean.class,
+                            boolean.class,
+                            String.class,
+                            String.class,
+                            Map.class
+                    },
+                    path.toString(),
+                    content,
+                    "text",
+                    false,
+                    false,
+                    false,
+                    true,
+                    "644",
+                    "utf-8",
+                    Map.of());
+        } catch (RuntimeException ignored) {
+            return invokeFirst(fs, new String[]{"writeFile", "write_file"}, new Class<?>[]{String.class, String.class}, path.toString(), content);
+        }
+    }
+
+    private static Object invokeNoArg(Object target, String methodName) {
+        return invokeFirst(target, new String[]{methodName}, new Class<?>[0]);
+    }
+
+    private static Object invokeFirst(Object target, String[] methodNames, Class<?>[] parameterTypes, Object... args) {
+        if (target == null) {
+            throw new IllegalArgumentException("target is null");
+        }
+        for (String methodName : methodNames) {
+            try {
+                Method method = target.getClass().getMethod(methodName, parameterTypes);
+                method.setAccessible(true);
+                return method.invoke(target, args);
+            } catch (NoSuchMethodException ignored) {
+                // Try the next method spelling/signature.
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new IllegalArgumentException(rootMessage(exception), exception);
+            }
+        }
+        throw new IllegalArgumentException("method not found: " + String.join("/", methodNames));
+    }
+
+    private static Object await(Object value) {
+        if (value instanceof CompletionStage<?> stage) {
+            return stage.toCompletableFuture().join();
+        }
+        return value;
+    }
+
+    private static Object property(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            Object value = map.get(name);
+            if (value == null && name.contains("_")) {
+                value = map.get(toCamelCase(name));
+            }
+            return value;
+        }
+        String suffix = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        for (String methodName : new String[]{"get" + suffix, "is" + suffix, name}) {
+            try {
+                Method method = target.getClass().getMethod(methodName);
+                method.setAccessible(true);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException ignored) {
+                // Try field fallback.
+            }
+        }
+        try {
+            Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return value == null ? fallback : Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage();
+    }
+
+    private static String toCamelCase(String name) {
+        StringBuilder builder = new StringBuilder();
+        boolean upper = false;
+        for (char ch : name.toCharArray()) {
+            if (ch == '_') {
+                upper = true;
+            } else if (upper) {
+                builder.append(Character.toUpperCase(ch));
+                upper = false;
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.toString();
     }
 
     public static String newSkillId() {

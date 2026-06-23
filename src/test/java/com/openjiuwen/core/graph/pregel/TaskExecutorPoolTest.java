@@ -29,6 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code TaskExecutorPool} and {@code NodeTask} in
  * {@code openjiuwen/core/graph/pregel/task.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestTaskExecutorPool} in
+ * {@code tests/unit_tests/core/graph/test_task.py}.</p>
  */
 class TaskExecutorPoolTest {
 
@@ -136,6 +139,56 @@ class TaskExecutorPoolTest {
                 pool.getFailed().get("slow-node").getException().get(0));
     }
 
+    @Test
+    void poolRuntimeExceptionCancelsSlowSiblingAndKeepsFastSuccess() {
+        PregelConfig config = new PregelConfig("test_conv_1", "root", 5);
+        config.setParentNs(config.getNs());
+        TaskExecutorPool pool = new TaskExecutorPool(config);
+        pool.submit(routingNode("A", "Target_A", 1_000L, null), 1);
+        pool.submit(new PregelNode("B", invocation -> {
+            sleep(100L);
+            assertInnerNamespace(invocation, "root:B:1");
+            throw new IllegalStateException("Simulated Runtime Error in B");
+        }, List.of(sourceNode -> List.of(new TriggerMessage(sourceNode, "Target_B")))), 1);
+        pool.submit(routingNode("C", "Target_C", 0L, null), 1);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, pool::waitAll);
+
+        assertEquals("Simulated Runtime Error in B", error.getMessage());
+        assertEquals(PregelConstants.TASK_STATUS_ERROR, pool.getFailed().get("B").getStatus());
+        assertInstanceOf(IllegalStateException.class, pool.getFailed().get("B").getException().get(0));
+        assertEquals(PregelConstants.TASK_STATUS_ERROR, pool.getFailed().get("A").getStatus());
+        assertInstanceOf(CancellationException.class, pool.getFailed().get("A").getException().get(0));
+        assertTrue(!pool.getFailed().containsKey("C"));
+        assertEquals(1, pool.getSucceedMessages().size());
+        assertEquals("C", pool.getSucceedMessages().get(0).getSender());
+        assertEquals("Target_C", pool.getSucceedMessages().get(0).getTarget());
+    }
+
+    @Test
+    void poolInterruptRaisesAndKeepsCompletedSiblingMessages() {
+        PregelConfig config = new PregelConfig("test_conv_2", "root", 5);
+        config.setParentNs(config.getNs());
+        TaskExecutorPool pool = new TaskExecutorPool(config);
+        pool.submit(routingNode("A", "Target_A", 0L, null), 1);
+        pool.submit(new PregelNode("B", invocation -> {
+            sleep(100L);
+            assertInnerNamespace(invocation, "root:B:1");
+            return new GraphInterrupt(new Interrupt("B_Interrupt"));
+        }, List.of(sourceNode -> List.of(new TriggerMessage(sourceNode, "Target_B")))), 1);
+        pool.submit(routingNode("C", "Target_C", 0L, null), 1);
+
+        GraphInterrupt interrupt = assertThrows(GraphInterrupt.class, pool::waitAll);
+
+        assertInstanceOf(Interrupt.class, interrupt.getValue());
+        assertEquals(PregelConstants.TASK_STATUS_INTERRUPT, pool.getFailed().get("B").getStatus());
+        assertInstanceOf(GraphInterrupt.class, pool.getFailed().get("B").getException().get(0));
+        assertTrue(!pool.getFailed().containsKey("A"));
+        assertTrue(!pool.getFailed().containsKey("C"));
+        assertEquals(Set.of("A", "C"),
+                pool.getSucceedMessages().stream().map(Message::getSender).collect(java.util.stream.Collectors.toSet()));
+    }
+
     private static final class RecordingDecoratorFramework implements DecoratorFramework {
         private final List<Map<String, Object>> events = new ArrayList<>();
 
@@ -179,6 +232,32 @@ class TaskExecutorPoolTest {
 
         private List<Map<String, Object>> events() {
             return events;
+        }
+    }
+
+    private static PregelNode routingNode(String name, String target, long sleepMillis, Object result) {
+        return new PregelNode(name, invocation -> {
+            sleep(sleepMillis);
+            assertInnerNamespace(invocation, "root:" + name + ":1");
+            return result;
+        }, List.of(sourceNode -> List.of(new TriggerMessage(sourceNode, target))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertInnerNamespace(Object invocation, String expectedNs) {
+        Map<String, Object> values = (Map<String, Object>) invocation;
+        PregelConfig inner = (PregelConfig) values.get("config");
+        assertEquals(expectedNs, inner.getNs());
+    }
+
+    private static void sleep(long millis) {
+        if (millis <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
         }
     }
 }

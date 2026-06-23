@@ -989,7 +989,10 @@ public class ActionController implements BaseController {
         if (x == null || y == null) {
             return null;
         }
-        return Map.of("x", x, "y", y);
+        Map<String, Integer> offset = new LinkedHashMap<>();
+        offset.put("x", x);
+        offset.put("y", y);
+        return offset;
     }
 
     private static String toJson(Map<String, Object> payload) {

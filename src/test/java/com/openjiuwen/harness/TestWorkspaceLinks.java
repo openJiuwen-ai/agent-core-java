@@ -6,6 +6,8 @@ package com.openjiuwen.harness;
 import com.openjiuwen.harness.workspace.Workspace;
 import com.openjiuwen.harness.workspace.WorkspaceNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -16,8 +18,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Mirrors Python's {@code test_workspace_links} in
- * {@code tests.unit_tests.harness.test_workspace_links}.
+ * Mirrors Python's {@code tests.unit_tests.harness.test_workspace_links} in
+ * {@code tests/unit_tests/harness/test_workspace_links.py}.
  */
 class TestWorkspaceLinks {
 
@@ -43,6 +45,7 @@ class TestWorkspaceLinks {
 
         assertTrue(Files.exists(link));
         assertTrue(workspace.isDirectoryLink(link));
+        assertEquals(target.toRealPath(), link.toRealPath());
         assertEquals("team-a", link.getFileName().toString());
     }
 
@@ -61,13 +64,16 @@ class TestWorkspaceLinks {
     @Test
     void testLinkTeamMultipleTeams() throws Exception {
         Workspace workspace = workspace();
-        Path a = Files.createDirectory(tmpDir.resolve("team-one"));
-        Path b = Files.createDirectory(tmpDir.resolve("team-two"));
+        Path teamOne = Files.createDirectory(tmpDir.resolve("team_1"));
+        Path teamTwo = Files.createDirectory(tmpDir.resolve("team_2"));
+        Path teamThree = Files.createDirectory(tmpDir.resolve("team_3"));
 
-        workspace.linkTeam("b", b.toString());
-        workspace.linkTeam("a", a.toString());
+        workspace.linkTeam("team_1", teamOne.toString());
+        workspace.linkTeam("team_2", teamTwo.toString());
+        workspace.linkTeam("team_3", teamThree.toString());
 
-        assertEquals(List.of("a", "b"), workspace.listTeamLinks().stream().map(Map.Entry::getKey).toList());
+        assertEquals(List.of("team_1", "team_2", "team_3"),
+                workspace.listTeamLinks().stream().map(Map.Entry::getKey).toList());
     }
 
     @Test
@@ -96,6 +102,7 @@ class TestWorkspaceLinks {
 
         assertTrue(Files.exists(link));
         assertTrue(workspace.isDirectoryLink(link));
+        assertEquals(target.toRealPath(), link.toRealPath());
         assertEquals("feature-a", link.getFileName().toString());
     }
 
@@ -140,10 +147,12 @@ class TestWorkspaceLinks {
     @Test
     void testListTeamLinksSorted() throws Exception {
         Workspace workspace = workspace();
-        workspace.linkTeam("z-team", Files.createDirectory(tmpDir.resolve("z")).toString());
-        workspace.linkTeam("a-team", Files.createDirectory(tmpDir.resolve("a")).toString());
+        workspace.linkTeam("beta", Files.createDirectory(tmpDir.resolve("beta")).toString());
+        workspace.linkTeam("alpha", Files.createDirectory(tmpDir.resolve("alpha")).toString());
+        workspace.linkTeam("gamma", Files.createDirectory(tmpDir.resolve("gamma")).toString());
 
-        assertEquals(List.of("a-team", "z-team"), workspace.listTeamLinks().stream().map(Map.Entry::getKey).toList());
+        assertEquals(List.of("alpha", "beta", "gamma"),
+                workspace.listTeamLinks().stream().map(Map.Entry::getKey).toList());
     }
 
     @Test
@@ -153,19 +162,32 @@ class TestWorkspaceLinks {
 
         workspace.linkWorktree("resolved", target.toString());
 
-        assertEquals("resolved", workspace.listWorktreeLinks().getFirst().getKey());
+        List<Map.Entry<String, String>> links = workspace.listWorktreeLinks();
+        assertEquals("resolved", links.getFirst().getKey());
+        assertEquals(target.toRealPath().toString(), links.getFirst().getValue());
     }
 
     @Test
+    @EnabledOnOs(OS.WINDOWS)
     void testListTeamLinksIncludesWindowsDirectoryLinks() throws Exception {
-        Workspace workspace = workspace();
-        Path target = Files.createDirectory(tmpDir.resolve("team-listed"));
-        workspace.linkTeam("listed", target.toString());
+        Workspace workspace = new Workspace(tmpDir.resolve("workspace").toString(), "en") {
+            @Override
+            public boolean isDirectoryLink(Path entry) {
+                return "team_junction".equals(entry.getFileName().toString());
+            }
+        };
+        Path target = Files.createDirectory(tmpDir.resolve("team-target"));
+        Path linkDirectory = Path.of(workspace.getRootPath(), ".team");
+        Files.createDirectories(linkDirectory);
+        Path junctionPath = linkDirectory.resolve("team_junction");
+        workspace.createDirectoryLink(target.toString(), junctionPath);
+        Files.createDirectory(linkDirectory.resolve("team_regular"));
 
-        assertTrue(workspace.listTeamLinks().stream().anyMatch(entry -> entry.getKey().equals("listed")));
+        assertEquals(List.of(Map.entry("team_junction", target.toRealPath().toString())), workspace.listTeamLinks());
     }
 
     @Test
+    @EnabledOnOs(OS.WINDOWS)
     void testCreateDirectoryLinkFallsBackToJunctionOnWindows1314() throws Exception {
         Workspace workspace = workspace();
         Path target = Files.createDirectory(tmpDir.resolve("junction-target"));

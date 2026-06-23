@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,6 +124,20 @@ class VLLMEmbeddingTest {
 
     @Test
     void embedMultimodalInvalidInput() {
+        StubVllmEmbedding model = new StubVllmEmbedding(config());
+
+        CompletionException exception = assertThrows(
+                CompletionException.class,
+                () -> model.embedMultimodal("not a document", new LinkedHashMap<>()).join()
+        );
+        Throwable cause = exception.getCause();
+
+        assertInstanceOf(BaseError.class, cause);
+        assertTrue(cause.getMessage().contains("input provided for multimodal embedding is not a MultimodalDocument"));
+    }
+
+    @Test
+    void embedMultimodalSyncInvalidInput() {
         StubVllmEmbedding model = new StubVllmEmbedding(config());
 
         BaseError error = assertThrows(

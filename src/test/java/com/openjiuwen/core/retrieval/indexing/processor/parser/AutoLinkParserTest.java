@@ -52,7 +52,7 @@ class AutoLinkParserTest {
     }
 
     @Test
-    void supportsEmptyOrNullFalse() {
+    void supportsEmptyOrNoneFalse() {
         AutoLinkParser parser = new AutoLinkParser();
 
         assertFalse(parser.supports(""));

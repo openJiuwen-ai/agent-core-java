@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -41,9 +42,414 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code OpenJiuwenMemoryProvider} in
  * {@code openjiuwen/core/memory/external/openjiuwen_memory_provider.py}.</p>
+ *
+ * <p>Mirrors Python's {@code tests.unit_tests.core.memory.external.test_openjiuwen_memory_provider} in
+ * {@code tests/unit_tests/core/memory/external/test_openjiuwen_memory_provider.py}.</p>
  */
 class OpenJiuwenMemoryProviderTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    void nameReturnsOpenjiuwen() {
+        assertEquals("openjiuwen", provider(new RecordingLongTermMemory()).getName());
+    }
+
+    @Test
+    void isAvailableWithAllStores() {
+        assertTrue(provider(new RecordingLongTermMemory()).isAvailable());
+    }
+
+    @Test
+    void isAvailableWithEmbeddingConfig() {
+        OpenJiuwenMemoryProvider provider = new OpenJiuwenMemoryProvider(Map.of(
+                "embedding", Map.of("model_name", "text-embedding-ada-002")));
+
+        assertTrue(provider.isAvailable());
+    }
+
+    @Test
+    void isAvailableWithNoStoresNoConfig() {
+        assertFalse(new OpenJiuwenMemoryProvider().isAvailable());
+    }
+
+    @Test
+    void isAvailableWithEmptyConfig() {
+        assertFalse(new OpenJiuwenMemoryProvider(Map.of()).isAvailable());
+    }
+
+    @Test
+    void isAvailableWithPartialStores() {
+        OpenJiuwenMemoryProvider provider = new OpenJiuwenMemoryProvider(
+                Map.of(),
+                new InMemoryKVStore(),
+                new NoopVectorStore(),
+                null,
+                null,
+                null,
+                null,
+                new AgentMemoryConfig(),
+                new RecordingLongTermMemory());
+
+        assertFalse(provider.isAvailable());
+    }
+
+    @Test
+    void notInitializedByDefault() {
+        assertFalse(provider(new RecordingLongTermMemory()).isInitialized());
+    }
+
+    @Test
+    void initializedAfterInitialize() {
+        OpenJiuwenMemoryProvider provider = provider(new RecordingLongTermMemory());
+
+        provider.initialize(Map.of("user_id", "u1", "scope_id", "s1")).join();
+
+        assertTrue(provider.isInitialized());
+    }
+
+    @Test
+    void shutdownResetsInitializedAfterInitialize() {
+        OpenJiuwenMemoryProvider provider = initializedProvider(new RecordingLongTermMemory());
+
+        provider.shutdown().join();
+
+        assertFalse(provider.isInitialized());
+    }
+
+    @Test
+    void initializeWithPreProvidedStores() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = provider(memory);
+
+        provider.initialize(Map.of("user_id", "u1", "scope_id", "s1", "session_id", "sess1")).join();
+
+        assertEquals("u1", provider.userIdValue());
+        assertEquals("s1", provider.scopeIdValue());
+        assertEquals("sess1", provider.sessionIdValue());
+        assertEquals(1, memory.registerStoreCalls);
+    }
+
+    @Test
+    void initializeSkipsRegisterIfLtmAlreadyHasKv() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.reportedKvStore = new InMemoryKVStore();
+        OpenJiuwenMemoryProvider provider = provider(memory);
+
+        provider.initialize(Map.of()).join();
+
+        assertEquals(0, memory.registerStoreCalls);
+    }
+
+    @Test
+    void initializeSetsScopeConfigWhenNonDefault() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        MemoryScopeConfig scopeConfig = new MemoryScopeConfig();
+        OpenJiuwenMemoryProvider provider = provider(memory, scopeConfig);
+
+        provider.initialize(Map.of("scope_id", "my_scope")).join();
+
+        assertEquals(1, memory.setScopeConfigCalls);
+        assertEquals("my_scope", memory.scopeId);
+        assertSame(scopeConfig, memory.scopeConfig);
+    }
+
+    @Test
+    void initializeSkipsScopeConfigForDefaultScope() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = provider(memory, new MemoryScopeConfig());
+
+        provider.initialize(Map.of("scope_id", "__default__")).join();
+
+        assertTrue(provider.isInitialized());
+    }
+
+    @Test
+    void initializeCreatesStoresFromConfig() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        StoreCreatingProvider provider = new StoreCreatingProvider(memory);
+
+        provider.initialize(Map.of()).join();
+
+        assertEquals(1, provider.kvStoreCreates);
+        assertEquals(1, provider.vectorStoreCreates);
+        assertEquals(1, provider.dbStoreCreates);
+        assertEquals(1, provider.embeddingCreates);
+        assertTrue(provider.isInitialized());
+    }
+
+    @Test
+    void initializeFailsIfStoreCreationReturnsNone() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = new FailingStoreProvider(memory);
+
+        provider.initialize(Map.of()).join();
+
+        assertFalse(provider.isInitialized());
+        assertEquals(0, memory.registerStoreCalls);
+    }
+
+    @Test
+    void systemPromptBlockReturnsNonEmptyString() {
+        String prompt = provider(new RecordingLongTermMemory()).systemPromptBlock();
+
+        assertTrue(prompt.length() > 0);
+        assertTrue(prompt.contains("ltm_search"));
+    }
+
+    @Test
+    void getToolSchemasReturnsTwoSchemas() {
+        List<Map<String, Object>> schemas = provider(new RecordingLongTermMemory()).getToolSchemas();
+
+        assertEquals(2, schemas.size());
+        assertEquals(List.of("ltm_search", "ltm_search_summary"),
+                schemas.stream().map(schema -> String.valueOf(schema.get("name"))).toList());
+    }
+
+    @Test
+    void ltmSearchSchemaStructure() {
+        Map<String, Object> schema = OpenJiuwenMemoryProvider.LTM_SEARCH_SCHEMA;
+
+        assertEquals("ltm_search", schema.get("name"));
+        assertTrue(properties(schema).containsKey("query"));
+        assertEquals(List.of("query"), required(schema));
+    }
+
+    @Test
+    void ltmSearchSummarySchemaStructure() {
+        Map<String, Object> schema = OpenJiuwenMemoryProvider.LTM_SEARCH_SUMMARY_SCHEMA;
+
+        assertEquals("ltm_search_summary", schema.get("name"));
+        assertTrue(properties(schema).containsKey("query"));
+        assertEquals(List.of("query"), required(schema));
+    }
+
+    @Test
+    void handleToolCallNotInitializedReturnsError() throws Exception {
+        OpenJiuwenMemoryProvider provider = new OpenJiuwenMemoryProvider();
+
+        Map<?, ?> parsed = json(provider.handleToolCall("ltm_search", Map.of("query", "test")).join());
+
+        assertTrue(parsed.containsKey("error"));
+    }
+
+    @Test
+    void handleToolCallUnknownToolReturnsError() throws Exception {
+        OpenJiuwenMemoryProvider provider = initializedProvider(new RecordingLongTermMemory());
+
+        Map<?, ?> parsed = json(provider.handleToolCall("unknown_tool", Map.of()).join());
+
+        assertTrue(parsed.containsKey("error"));
+        assertTrue(String.valueOf(parsed.get("error")).contains("unknown_tool"));
+    }
+
+    @Test
+    void handleToolCallLtmSearchReturnsResults() throws Exception {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.userResults = List.of(mem("m1", "likes Python", MemoryType.USER_PROFILE, 0.92d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        Map<?, ?> parsed = json(provider.handleToolCall("ltm_search", Map.of("query", "likes what")).join());
+        Map<?, ?> first = ((List<Map<?, ?>>) parsed.get("results")).get(0);
+
+        assertEquals(1, ((Number) parsed.get("count")).intValue());
+        assertEquals("m1", first.get("id"));
+        assertEquals("likes Python", first.get("content"));
+        assertEquals("user_profile", first.get("type"));
+        assertEquals(0.92d, ((Number) first.get("score")).doubleValue());
+    }
+
+    @Test
+    void handleToolCallLtmSearchSummaryReturnsResults() throws Exception {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.summaryResults = List.of(mem("s1", "discussed Rust vs Java", MemoryType.SUMMARY, 0.78d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        Map<?, ?> parsed = json(provider.handleToolCall("ltm_search_summary", Map.of("query", "Rust")).join());
+        Map<?, ?> first = ((List<Map<?, ?>>) parsed.get("results")).get(0);
+
+        assertEquals(1, ((Number) parsed.get("count")).intValue());
+        assertEquals("discussed Rust vs Java", first.get("content"));
+    }
+
+    @Test
+    void handleToolCallLtmSearchEmptyResults() throws Exception {
+        OpenJiuwenMemoryProvider provider = initializedProvider(new RecordingLongTermMemory());
+
+        Map<?, ?> parsed = json(provider.handleToolCall("ltm_search", Map.of("query", "nothing")).join());
+
+        assertEquals(0, ((Number) parsed.get("count")).intValue());
+        assertEquals(List.of(), parsed.get("results"));
+    }
+
+    @Test
+    void handleToolCallExceptionReturnsError() throws Exception {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.userSearchError = new RuntimeException("db down");
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        Map<?, ?> parsed = json(provider.handleToolCall("ltm_search", Map.of("query", "test")).join());
+
+        assertTrue(parsed.containsKey("error"));
+        assertTrue(String.valueOf(parsed.get("error")).contains("db down"));
+    }
+
+    @Test
+    void prefetchNotInitializedReturnsEmpty() {
+        assertEquals("", new OpenJiuwenMemoryProvider().prefetch("test query").join());
+    }
+
+    @Test
+    void prefetchWithMemResults() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.userResults = List.of(mem("m1", "likes Rust", MemoryType.EPISODIC_MEMORY, 0.88d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        String result = provider.prefetch("Rust", Map.of("user_id", "u1", "scope_id", "s1")).join();
+
+        assertTrue(result.contains("## Related Memories"));
+        assertTrue(result.contains("likes Rust"));
+        assertTrue(result.contains("episodic_memory"));
+        assertEquals("Rust", memory.searchUserMemQuery);
+        assertEquals(5, memory.searchUserMemNum);
+        assertEquals("u1", memory.searchUserMemUserId);
+        assertEquals("s1", memory.searchUserMemScopeId);
+        assertEquals(0.3d, memory.searchUserMemThreshold);
+    }
+
+    @Test
+    void prefetchWithSummaryResults() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.summaryResults = List.of(mem("s1", "discussed ownership", MemoryType.SUMMARY, 0.75d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        String result = provider.prefetch("ownership").join();
+
+        assertTrue(result.contains("## Related History Summaries"));
+        assertTrue(result.contains("discussed ownership"));
+    }
+
+    @Test
+    void prefetchWithBothResults() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.userResults = List.of(mem("m1", "likes Rust", MemoryType.USER_PROFILE, 0.9d));
+        memory.summaryResults = List.of(mem("s1", "Rust summary", MemoryType.SUMMARY, 0.7d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        String result = provider.prefetch("Rust").join();
+
+        assertTrue(result.contains("## Related Memories"));
+        assertTrue(result.contains("## Related History Summaries"));
+    }
+
+    @Test
+    void prefetchNoResultsReturnsEmpty() {
+        OpenJiuwenMemoryProvider provider = initializedProvider(new RecordingLongTermMemory());
+
+        assertEquals("", provider.prefetch("nothing").join());
+    }
+
+    @Test
+    void prefetchSearchExceptionReturnsPartial() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.userSearchError = new RuntimeException("search error");
+        memory.summaryResults = List.of(mem("s1", "fallback summary", MemoryType.SUMMARY, 0.6d));
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        String result = provider.prefetch("test").join();
+
+        assertTrue(result.contains("fallback summary"));
+        assertFalse(result.contains("## Related Memories"));
+    }
+
+    @Test
+    void prefetchUsesDefaultUserScope() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = provider(memory);
+        provider.initialize(Map.of()).join();
+
+        provider.prefetch("test").join();
+
+        assertEquals("__default__", memory.searchUserMemUserId);
+        assertEquals("__default__", memory.searchUserMemScopeId);
+    }
+
+    @Test
+    void syncTurnNotInitializedDoesNothing() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = provider(memory);
+
+        provider.syncTurn("hello", "hi").join();
+
+        assertEquals(List.of(), memory.addedMessages);
+    }
+
+    @Test
+    void syncTurnWithBothMessages() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        provider.syncTurn("hello", "hi there",
+                Map.of("user_id", "u1", "scope_id", "s1", "session_id", "sess1")).join();
+
+        assertEquals(2, memory.addedMessages.size());
+        assertEquals("u1", memory.addUserId);
+        assertEquals("s1", memory.addScopeId);
+        assertEquals("sess1", memory.addSessionId);
+    }
+
+    @Test
+    void syncTurnWithOnlyUserMessage() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        provider.syncTurn("hello", "").join();
+
+        assertEquals(1, memory.addedMessages.size());
+        assertEquals("user", memory.addedMessages.get(0).getRole());
+    }
+
+    @Test
+    void syncTurnWithOnlyAssistantMessage() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        provider.syncTurn("", "hi there").join();
+
+        assertEquals(1, memory.addedMessages.size());
+        assertEquals("assistant", memory.addedMessages.get(0).getRole());
+    }
+
+    @Test
+    void syncTurnWithEmptyMessagesDoesNothing() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        provider.syncTurn("", "").join();
+
+        assertEquals(List.of(), memory.addedMessages);
+    }
+
+    @Test
+    void syncTurnExceptionIsSwallowed() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        memory.addError = new RuntimeException("write failed");
+        OpenJiuwenMemoryProvider provider = initializedProvider(memory);
+
+        assertDoesNotThrow(() -> provider.syncTurn("hello", "hi").join());
+    }
+
+    @Test
+    void syncTurnUsesDefaultIds() {
+        RecordingLongTermMemory memory = new RecordingLongTermMemory();
+        OpenJiuwenMemoryProvider provider = provider(memory);
+        provider.initialize(Map.of()).join();
+
+        provider.syncTurn("hello", "hi").join();
+
+        assertEquals("__default__", memory.addUserId);
+        assertEquals("__default__", memory.addScopeId);
+        assertEquals("__default__", memory.addSessionId);
+    }
 
     @Test
     void nameAvailabilitySchemasAndPromptMirrorPythonSurface() {
@@ -247,6 +653,85 @@ class OpenJiuwenMemoryProviderTest {
                 memory);
     }
 
+    /**
+     * Mirrors Python's patched store factory behavior in
+     * {@code tests/unit_tests/core/memory/external/test_openjiuwen_memory_provider.py}.
+     */
+    private static final class StoreCreatingProvider extends OpenJiuwenMemoryProvider {
+        private int kvStoreCreates;
+        private int vectorStoreCreates;
+        private int dbStoreCreates;
+        private int embeddingCreates;
+
+        private StoreCreatingProvider(RecordingLongTermMemory memory) {
+            super(Map.of(
+                    "embedding", Map.of("model_name", "text-embedding-ada-002", "base_url", "http://localhost",
+                            "api_key", "key")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    new AgentMemoryConfig(),
+                    memory);
+        }
+
+        @Override
+        protected BaseKVStore createKvStore() {
+            kvStoreCreates++;
+            return new InMemoryKVStore();
+        }
+
+        @Override
+        protected BaseVectorStore createVectorStore() {
+            vectorStoreCreates++;
+            return new NoopVectorStore();
+        }
+
+        @Override
+        protected BaseDbStore<?> createDbStore() {
+            dbStoreCreates++;
+            return new DefaultDbStore<>(new Object());
+        }
+
+        @Override
+        protected Embedding createEmbedding() {
+            embeddingCreates++;
+            return new NoopEmbedding();
+        }
+    }
+
+    /**
+     * Mirrors Python's patched store creation failure in
+     * {@code tests/unit_tests/core/memory/external/test_openjiuwen_memory_provider.py}.
+     */
+    private static final class FailingStoreProvider extends OpenJiuwenMemoryProvider {
+        private FailingStoreProvider(RecordingLongTermMemory memory) {
+            super(Map.of(), null, null, null, null, null, null, new AgentMemoryConfig(), memory);
+        }
+
+        @Override
+        protected BaseKVStore createKvStore() {
+            return null;
+        }
+
+        @Override
+        protected BaseVectorStore createVectorStore() {
+            return new NoopVectorStore();
+        }
+
+        @Override
+        protected BaseDbStore<?> createDbStore() {
+            return new DefaultDbStore<>(new Object());
+        }
+
+        @Override
+        protected Embedding createEmbedding() {
+            return new NoopEmbedding();
+        }
+    }
+
     private static MemResult mem(String memId, String content, MemoryType type, double score) {
         return new MemResult(new MemInfo(memId, content, type, null), score);
     }
@@ -274,8 +759,12 @@ class OpenJiuwenMemoryProviderTest {
         private List<MemResult> userResults = List.of();
         private List<MemResult> summaryResults = List.of();
         private RuntimeException searchError;
+        private RuntimeException userSearchError;
+        private RuntimeException summarySearchError;
         private RuntimeException addError;
         private boolean registerStoreCalled;
+        private int registerStoreCalls;
+        private int setScopeConfigCalls;
         private String scopeId;
         private MemoryScopeConfig scopeConfig;
         private String searchUserMemQuery;
@@ -285,6 +774,9 @@ class OpenJiuwenMemoryProviderTest {
         private String searchUserMemScopeId;
         private String searchSummaryQuery;
         private int searchSummaryNum;
+        private String searchSummaryUserId;
+        private String searchSummaryScopeId;
+        private double searchSummaryThreshold;
         private List<BaseMessage> addedMessages = List.of();
         private String addUserId;
         private String addScopeId;
@@ -302,12 +794,14 @@ class OpenJiuwenMemoryProviderTest {
                 BaseDbStore<?> dbStore,
                 Embedding embeddingModel) {
             registerStoreCalled = true;
+            registerStoreCalls++;
             reportedKvStore = kvStore;
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
         public CompletableFuture<Boolean> setScopeConfig(String scopeId, MemoryScopeConfig memoryScopeConfig) {
+            setScopeConfigCalls++;
             this.scopeId = scopeId;
             this.scopeConfig = memoryScopeConfig;
             return CompletableFuture.completedFuture(true);
@@ -320,8 +814,9 @@ class OpenJiuwenMemoryProviderTest {
                 String userId,
                 String scopeId,
                 double threshold) {
-            if (searchError != null) {
-                return CompletableFuture.failedFuture(searchError);
+            RuntimeException actualError = userSearchError == null ? searchError : userSearchError;
+            if (actualError != null) {
+                return CompletableFuture.failedFuture(actualError);
             }
             searchUserMemQuery = query;
             searchUserMemNum = num;
@@ -338,11 +833,15 @@ class OpenJiuwenMemoryProviderTest {
                 String userId,
                 String scopeId,
                 double threshold) {
-            if (searchError != null) {
-                return CompletableFuture.failedFuture(searchError);
+            RuntimeException actualError = summarySearchError == null ? searchError : summarySearchError;
+            if (actualError != null) {
+                return CompletableFuture.failedFuture(actualError);
             }
             searchSummaryQuery = query;
             searchSummaryNum = num;
+            searchSummaryUserId = userId;
+            searchSummaryScopeId = scopeId;
+            searchSummaryThreshold = threshold;
             return CompletableFuture.completedFuture(summaryResults);
         }
 

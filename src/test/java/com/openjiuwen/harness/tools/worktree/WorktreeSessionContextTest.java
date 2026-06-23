@@ -13,6 +13,10 @@ import org.junit.jupiter.api.AfterEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * <p>Mirrors Python's {@code tests.unit_tests.harness.tools.worktree.test_session} in
+ * {@code tests/unit_tests/harness/tools/worktree/test_session.py}.</p>
+ */
 class WorktreeSessionContextTest {
 
     @AfterEach

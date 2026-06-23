@@ -15,14 +15,47 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's prompt assembly helpers in
- * {@code openjiuwen/core/memory/graph/extraction/extraction_prompts.py}.
+ * Mirrors Python's {@code test_extraction_prompts} in
+ * {@code tests/unit_tests/core/memory/graph/extraction/test_extraction_prompts.py}.
  */
 class ExtractionPromptsTest {
+
+    @Test
+    void formatNewEntitiesEmptyEntitiesReturnsEmptyString() {
+        String result = ExtractionPrompts.formatNewEntities(List.of(), null, 1, "en");
+
+        assertEquals("", result);
+    }
+
+    @Test
+    void formatNewEntitiesWithoutEntityTypesListsNamesWithIndex() {
+        List<ExtractionModels.EntityDeclaration> entities = List.of(
+                new ExtractionModels.EntityDeclaration("Alice", 0),
+                new ExtractionModels.EntityDeclaration("Bob", 0)
+        );
+
+        String result = ExtractionPrompts.formatNewEntities(entities, null, 1, "en");
+
+        assertTrue(result.contains("1. Alice"));
+        assertTrue(result.contains("2. Bob"));
+    }
+
+    @Test
+    void formatNewEntitiesStartIndexAffectsNumbering() {
+        String result = ExtractionPrompts.formatNewEntities(
+                List.of(new ExtractionModels.EntityDeclaration("X", 0)),
+                null,
+                5,
+                "en"
+        );
+
+        assertEquals("5. X", result);
+    }
 
     @Test
     void extractEntityDeclarationBuildsConversationPromptAndEntityTypeList() {
@@ -47,6 +80,24 @@ class ExtractionPromptsTest {
         assertNotNull(request.promptTemplate());
         assertEquals("entity_extraction_conversation_en", request.promptTemplate().getName());
         assertEquals("json_schema", request.responseFormat().get("type"));
+        assertTrue(request.responseFormat().containsKey("json_schema"));
+    }
+
+    @Test
+    void extractEntityDeclarationDefaultsSingleEntityDefinition() {
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.extractEntityDeclaration(
+                EpisodeType.CONVERSATION,
+                "Hi",
+                "",
+                "",
+                null,
+                "en",
+                null,
+                2
+        );
+
+        assertTrue(request.kwargs().containsKey("entity_types"));
+        assertTrue(String.valueOf(request.kwargs().get("entity_types")).contains("Entity"));
     }
 
     @Test
@@ -71,6 +122,109 @@ class ExtractionPromptsTest {
         assertEquals(8, request.kwargs().get("summary_target"));
         assertTrue(String.valueOf(request.kwargs().get("entity_attribute")).contains("\"role\""));
         assertEquals("entity_extraction_summary_create_en", request.promptTemplate().getName());
+    }
+
+    @Test
+    void extractRelationDeclarationReturnsEntitiesTimezoneAndRelationTypes() {
+        List<ExtractionModels.EntityDeclaration> entities = List.of(
+                new ExtractionModels.EntityDeclaration("E1", 0)
+        );
+
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.extractRelationDeclaration(
+                null,
+                entities,
+                0L,
+                "UTC",
+                "Hi",
+                "",
+                null,
+                "",
+                "en",
+                2
+        );
+
+        assertTrue(request.kwargs().containsKey("tz_info"));
+        assertTrue(request.kwargs().containsKey("entities"));
+        assertTrue(request.kwargs().containsKey("relation_types"));
+        assertTrue(request.kwargs().containsKey("reference_time"));
+        assertTrue(request.kwargs().containsKey("id_range"));
+        assertEquals("json_schema", request.responseFormat().get("type"));
+    }
+
+    @Test
+    void extractTimezoneReturnsContextAndResponseFormat() {
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.extractTimezone("content", "", "", "en", 2);
+
+        assertTrue(request.kwargs().containsKey("context"));
+        assertNotNull(request.promptTemplate());
+        assertEquals("json_schema", request.responseFormat().get("type"));
+    }
+
+    @Test
+    void mergeExistingEntitiesReturnsEntitiesToMerge() {
+        Entity target = new Entity();
+        target.setName("T");
+        target.setContent("");
+        target.setObjType("human");
+        Entity source = new Entity();
+        source.setName("S1");
+        source.setContent("");
+        source.setObjType("human");
+
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.mergeExistingEntities(
+                target,
+                List.of(source),
+                "en",
+                null,
+                2
+        );
+
+        assertEquals("T", request.kwargs().get("entity_name"));
+        assertTrue(request.kwargs().containsKey("entities_to_merge"));
+    }
+
+    @Test
+    void filterRelationsForMergeReturnsExistingRelations() {
+        Entity target = new Entity();
+        target.setName("T");
+        target.setContent("");
+        target.setObjType("human");
+        Relation relation = new Relation();
+        relation.setContent("r1");
+        relation.setName("Relation");
+
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.filterRelationsForMerge(
+                target,
+                List.of(relation),
+                "en",
+                null,
+                2
+        );
+
+        assertEquals("T", request.kwargs().get("entity_name"));
+        assertTrue(request.kwargs().containsKey("existing_relations"));
+    }
+
+    @Test
+    void dedupeEntityListReturnsEntitiesAndCandidates() {
+        List<ExtractionModels.EntityDeclaration> candidates = List.of(
+                new ExtractionModels.EntityDeclaration("C1", 0)
+        );
+
+        ExtractionPrompts.PromptRequest request = ExtractionPrompts.dedupeEntityList(
+                "content",
+                candidates,
+                List.of(),
+                null,
+                "",
+                "",
+                "en",
+                2
+        );
+
+        assertTrue(request.kwargs().containsKey("entities"));
+        assertTrue(request.kwargs().containsKey("candidate_entities"));
+        assertTrue(String.valueOf(request.kwargs().get("candidate_entities")).contains("C1"));
     }
 
     @Test
@@ -114,7 +268,7 @@ class ExtractionPromptsTest {
         );
 
         assertTrue(String.valueOf(request.kwargs().get("new_relation")).startsWith("Alice knows Bob"));
-        assertTrue(!String.valueOf(request.kwargs().get("new_relation")).startsWith("0. "));
+        assertFalse(String.valueOf(request.kwargs().get("new_relation")).startsWith("0. "));
         assertTrue(String.valueOf(request.kwargs().get("existing_relations")).startsWith("1. Alice met Bob"));
         assertEquals("entity_extraction_dedupe_relation_en", request.promptTemplate().getName());
     }

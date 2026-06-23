@@ -10,12 +10,20 @@ import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
 import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.ToolDecorator;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.multi_agent.BaseTeam;
 import com.openjiuwen.core.multi_agent.TeamConfig;
 import com.openjiuwen.core.multi_agent.schema.TeamCard;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.single_agent.BaseAgent;
@@ -27,6 +35,7 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +57,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code TestRunner} in
  * {@code tests/unit_tests/core/runner/test_runner.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_team_runner_session} in
+ * {@code tests/unit_tests/multi_agent/team/test_team_runner_session.py}.</p>
  */
 class RunnerTest {
 
@@ -107,6 +119,28 @@ class RunnerTest {
         assertEquals(Map.of("query", "query workflow"), output.getResult());
         assertNotNull(workflow.lastSession);
         Runner.getResourceMgr().removeWorkflow("runner-test-workflow");
+    }
+
+    @Test
+    void runToolInvokesDecoratedLocalFunction() throws Exception {
+        ToolCard addCard = ToolCard.builder()
+                .id("add")
+                .name("add")
+                .description("加法")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "a", Map.of("description", "加数", "type", "number"),
+                                "b", Map.of("description", "被加数", "type", "number")),
+                        "required", List.of("a", "b")))
+                .build();
+        LocalFunction addFunction = ToolDecorator.tool(inputs ->
+                        ((Number) inputs.get("a")).intValue() + ((Number) inputs.get("b")).intValue(),
+                ToolDecorator.Options.builder().card(addCard).build());
+
+        Object result = addFunction.invoke(Map.of("a", 1, "b", 2));
+
+        assertEquals(3, result);
     }
 
     @Test
@@ -210,6 +244,75 @@ class RunnerTest {
 
         assertEquals("base:base-session:{payload=base}", result);
         assertEquals(1, team.invokeCalls);
+    }
+
+    @Test
+    void runAgentTeamRecoversTeamAndChildState() {
+        Checkpointer original = CheckpointerFactory.getCheckpointer();
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        String teamId = "team_runner_session_team";
+        String sessionId = "team_runner_session_state";
+        try {
+            StatefulTeam team = new StatefulTeam(teamId);
+
+            Map<?, ?> result1 = assertInstanceOf(Map.class, Runner.runAgentTeam(
+                    team,
+                    Map.of("payload", "first"),
+                    true,
+                    false,
+                    sessionId,
+                    null,
+                    null
+            ).toCompletableFuture().join());
+            Map<?, ?> result2 = assertInstanceOf(Map.class, Runner.runAgentTeam(
+                    team,
+                    Map.of("payload", "second"),
+                    true,
+                    false,
+                    sessionId,
+                    null,
+                    null
+            ).toCompletableFuture().join());
+
+            assertEquals(1, result1.get("team_count"));
+            assertEquals(1, result1.get("worker_count"));
+            assertEquals(2, result2.get("team_count"));
+            assertEquals(2, result2.get("worker_count"));
+        } finally {
+            checkpointer.release(sessionId);
+            CheckpointerFactory.setDefaultCheckpointer(original);
+        }
+    }
+
+    @Test
+    void teamSessionForwardsChildStreamOutputWithSourceTags() {
+        AgentTeamSession teamSession = AgentTeamSession.createAgentTeamSession(
+                "stream_team_session",
+                null,
+                "stream_team"
+        );
+        teamSession.preRun(Map.of("inputs", Map.of("query", "hello")));
+
+        AgentSession childSession = teamSession.createAgentSession(
+                new AgentCard("worker_a", "worker", "worker"),
+                "worker_a"
+        );
+        childSession.preRun(Map.of("inputs", Map.of("payload", "child")));
+        childSession.writeStream(Map.of("kind", "agent"));
+        childSession.postRun();
+
+        teamSession.writeStream(Map.of("kind", "team"));
+        teamSession.postRun();
+
+        List<Object> chunks = drain(teamSession.streamIterator());
+
+        assertTrue(chunks.stream().map(RunnerTest::payloadMap).anyMatch(payload ->
+                "worker_a".equals(payload.get("source_agent_id"))
+                        && "stream_team".equals(payload.get("source_team_id"))));
+        assertTrue(chunks.stream().map(RunnerTest::payloadMap).anyMatch(payload ->
+                "team".equals(payload.get("kind"))
+                        && "stream_team".equals(payload.get("source_team_id"))));
     }
 
     /**
@@ -339,6 +442,43 @@ class RunnerTest {
         }
     }
 
+    /**
+     * Mirrors Python's counting BaseTeam/worker pair in
+     * {@code tests/unit_tests/multi_agent/team/test_team_runner_session.py}.
+     */
+    private static final class StatefulTeam extends BaseTeam {
+        private final AgentCard workerCard;
+
+        private StatefulTeam(String teamId) {
+            super(new TeamCard(teamId, teamId, "test team"), new TeamConfig());
+            this.workerCard = new AgentCard(teamId + "_worker", "worker", "worker");
+        }
+
+        @Override
+        public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
+            int teamCount = intState(session.getState("team_count")) + 1;
+            session.updateState(Map.of("team_count", teamCount));
+
+            AgentTeamSession teamSession = unwrapTeamSession(session);
+            AgentSession workerSession = teamSession.createAgentSession(workerCard, workerCard.getId());
+            workerSession.preRun(Map.of("inputs", message));
+            int workerCount = intState(workerSession.getState("worker_count")) + 1;
+            workerSession.updateState(Map.of("worker_count", workerCount));
+            workerSession.writeStream(Map.of("kind", "agent", "count", workerCount));
+            workerSession.postRun();
+
+            return CompletableFuture.completedFuture(Map.of(
+                    "team_count", teamCount,
+                    "worker_count", workerCount
+            ));
+        }
+
+        @Override
+        public Stream<Object> stream(Object message, AgentSessionApi session) {
+            return Stream.of(invoke(message, session).toCompletableFuture().join());
+        }
+    }
+
     private static OutputSchema teamChunk(String payload) {
         return new OutputSchema("message", 0, payload);
     }
@@ -349,5 +489,27 @@ class RunnerTest {
             values.add(iterator.next());
         }
         return values;
+    }
+
+    private static int intState(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private static AgentTeamSession unwrapTeamSession(AgentSessionApi session) {
+        if (session instanceof AgentTeamSession teamSession) {
+            return teamSession;
+        }
+        try {
+            Field field = session.getClass().getDeclaredField("session");
+            field.setAccessible(true);
+            return (AgentTeamSession) field.get(session);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static Map<?, ?> payloadMap(Object chunk) {
+        OutputSchema output = assertInstanceOf(OutputSchema.class, chunk);
+        return assertInstanceOf(Map.class, output.getPayload());
     }
 }

@@ -152,7 +152,7 @@ class TaskSchedulerTest {
         boolean secondCancel = scheduler.cancelTask("task-1");
 
         assertThat(firstCancel).isTrue();
-        assertThat(secondCancel).isTrue();
+        assertThat(secondCancel).isFalse();
         assertThat(taskManager.getTask(TaskFilter.byTaskId("task-1")).get(0).getStatus())
                 .isEqualTo(TaskStatus.CANCELED);
     }

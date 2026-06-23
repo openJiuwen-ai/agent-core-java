@@ -35,6 +35,10 @@ public final class BrowserRuntimeTools {
         return tools;
     }
 
+    private static String optionalString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
     /**
      * Cancel an in-progress browser task.
      *
@@ -52,8 +56,9 @@ public final class BrowserRuntimeTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            runtime.ensureRuntimeReady();
             return ToolOutput.success(runtime.cancelRun(requiredString(inputs, "session_id"),
-                    stringValue(inputs.get("request_id"))));
+                    optionalString(inputs.get("request_id"))));
         }
     }
 
@@ -74,8 +79,9 @@ public final class BrowserRuntimeTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            runtime.ensureRuntimeReady();
             return ToolOutput.success(runtime.clearCancel(requiredString(inputs, "session_id"),
-                    stringValue(inputs.get("request_id"))));
+                    optionalString(inputs.get("request_id"))));
         }
     }
 
@@ -145,9 +151,9 @@ public final class BrowserRuntimeTools {
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> data = runtime.probeInteractives(
-                    intValue(inputs.get("max_items"), 50),
+                    Math.max(1, Math.min(intValue(inputs.get("max_items"), 50), 100)),
                     boolValue(inputs.get("viewport_only"), true),
-                    stringValue(inputs.get("query"))
+                    stringValue(inputs.get("query")).trim()
             );
             return ToolOutput.of(Boolean.TRUE.equals(data.get("ok")), data, stringValue(data.get("error")));
         }
@@ -171,7 +177,7 @@ public final class BrowserRuntimeTools {
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> data = runtime.probeCards(
-                    intValue(inputs.get("max_cards"), 20),
+                    Math.max(1, Math.min(intValue(inputs.get("max_cards"), 20), 50)),
                     boolValue(inputs.get("viewport_only"), true),
                     boolValue(inputs.get("include_buttons"), true),
                     stringValue(inputs.get("query"))

@@ -8,6 +8,7 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TextSplitterTest {
 
     @Test
+    void textSplitterIsAbstract() {
+        assertTrue(Modifier.isAbstract(TextSplitter.class.getModifiers()));
+    }
+
+    @Test
     void charSplitterInitializesWithDefaultsAndCustomValues() {
         CharSplitter defaults = new CharSplitter();
         CharSplitter custom = new CharSplitter(512, 50);
@@ -35,10 +41,47 @@ class TextSplitterTest {
     }
 
     @Test
+    void charSplitterInitializesWithDefaults() {
+        CharSplitter splitter = new CharSplitter();
+
+        assertEquals(200, splitter.getChunkSize());
+        assertEquals(40, splitter.getChunkOverlap());
+    }
+
+    @Test
+    void charSplitterInitializesWithCustomValues() {
+        CharSplitter splitter = new CharSplitter(512, 50);
+
+        assertEquals(512, splitter.getChunkSize());
+        assertEquals(50, splitter.getChunkOverlap());
+    }
+
+    @Test
     void charSplitterAdjustsInvalidSizesAndOverlap() {
         assertTrue(new CharSplitter(100, 150).getChunkOverlap() < 100);
         assertTrue(new CharSplitter(100, -10).getChunkOverlap() >= 0);
         assertTrue(new CharSplitter(0, null).getChunkSize() >= 1);
+    }
+
+    @Test
+    void charSplitterAdjustsOverlapLargerThanChunkSize() {
+        CharSplitter splitter = new CharSplitter(100, 150);
+
+        assertTrue(splitter.getChunkOverlap() < splitter.getChunkSize());
+    }
+
+    @Test
+    void charSplitterClampsNegativeOverlap() {
+        CharSplitter splitter = new CharSplitter(100, -10);
+
+        assertTrue(splitter.getChunkOverlap() >= 0);
+    }
+
+    @Test
+    void charSplitterUsesMinimumChunkSize() {
+        CharSplitter splitter = new CharSplitter(0, null);
+
+        assertTrue(splitter.getChunkSize() >= 1);
     }
 
     @Test
@@ -61,6 +104,28 @@ class TextSplitterTest {
     }
 
     @Test
+    void charSplitterSplitsShortText() {
+        CharSplitter splitter = new CharSplitter(100, 10);
+        List<TextChunk> chunks = splitter.split(new Document("doc_1", "Short text"));
+
+        assertEquals(1, chunks.size());
+        assertEquals("Short text", chunks.getFirst().getText());
+        assertEquals("doc_1", chunks.getFirst().getDocId());
+    }
+
+    @Test
+    void charSplitterSplitsLongText() {
+        CharSplitter splitter = new CharSplitter(10, 2);
+        List<TextChunk> chunks = splitter.split(new Document(
+                "doc_1",
+                "This is a longer text that needs to be split into multiple chunks"
+        ));
+
+        assertTrue(chunks.size() > 1);
+        assertTrue(chunks.stream().allMatch(chunk -> "doc_1".equals(chunk.getDocId())));
+    }
+
+    @Test
     void charSplitterKeepsOverlapAndMetadata() {
         CharSplitter splitter = new CharSplitter(10, 3);
         List<TextChunk> chunks = splitter.split(new Document(
@@ -72,6 +137,19 @@ class TextSplitterTest {
         assertTrue(chunks.size() > 1);
         assertEquals(chunks.get(0).getText().substring(chunks.get(0).getText().length() - 3),
                 chunks.get(1).getText().substring(0, 3));
+        assertTrue(chunks.stream().allMatch(chunk -> "test".equals(chunk.getMetadata().get("source"))));
+    }
+
+    @Test
+    void charSplitterPreservesMetadata() {
+        CharSplitter splitter = new CharSplitter(10, 2);
+        List<TextChunk> chunks = splitter.split(new Document(
+                "doc_1",
+                "This is a test",
+                Map.of("source", "test", "author", "test_author")
+        ));
+
+        assertFalse(chunks.isEmpty());
         assertTrue(chunks.stream().allMatch(chunk -> "test".equals(chunk.getMetadata().get("source"))));
     }
 

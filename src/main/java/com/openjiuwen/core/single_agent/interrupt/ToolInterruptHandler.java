@@ -76,7 +76,9 @@ public class ToolInterruptHandler {
 
     public void clear(AgentSessionApi session) {
         if (session != null) {
-            session.updateState(Map.of(key, null));
+            Map<String, Object> update = new LinkedHashMap<>();
+            update.put(key, null);
+            session.updateState(update);
         }
     }
 

@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for the team-member MCP server surface.
  *
- * <p>Mirrors Python's {@code test_mcp_server.py} for
- * {@code openjiuwen/agent_teams/mcp/server.py}.</p>
+ * <p>Mirrors Python's MCP server tests in
+ * {@code tests/unit_tests/agent_teams/external/test_mcp_server.py}.</p>
  */
 class TeamMcpServerTest {
 

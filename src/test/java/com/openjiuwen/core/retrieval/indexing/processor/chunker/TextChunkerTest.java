@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Mirrors Python's {@code TextChunker} behavior in
  * {@code openjiuwen/core/retrieval/indexing/processor/chunker/chunking.py}.
+ * Mirrors Python's {@code TestTextChunker} tests in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_chunking.py}.
  */
 class TextChunkerTest {
 

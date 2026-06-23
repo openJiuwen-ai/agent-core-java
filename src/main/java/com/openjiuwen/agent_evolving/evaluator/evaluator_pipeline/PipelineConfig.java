@@ -99,43 +99,70 @@ public class PipelineConfig {
         if (data.containsKey("benchmark")) {
             config.setBenchmark(stringValue(data.get("benchmark"), config.getBenchmark()));
         }
-        if (data.containsKey("evolutionMode")) {
-            config.setEvolutionMode(booleanValue(data.get("evolutionMode"), config.isEvolutionMode()));
+        if (containsAny(data, "evolutionMode", "evolution_mode")) {
+            config.setEvolutionMode(booleanValue(firstValue(data, "evolutionMode", "evolution_mode"),
+                    config.isEvolutionMode()));
         }
-        if (data.containsKey("maxIterations")) {
-            config.setMaxIterations(intValue(data.get("maxIterations"), config.getMaxIterations()));
+        if (containsAny(data, "maxIterations", "max_iterations")) {
+            config.setMaxIterations(intValue(firstValue(data, "maxIterations", "max_iterations"),
+                    config.getMaxIterations()));
         }
-        if (data.containsKey("convergenceCheck")) {
-            config.setConvergenceCheck(booleanValue(data.get("convergenceCheck"), config.isConvergenceCheck()));
+        if (containsAny(data, "convergenceCheck", "convergence_check")) {
+            config.setConvergenceCheck(booleanValue(firstValue(data, "convergenceCheck", "convergence_check"),
+                    config.isConvergenceCheck()));
         }
-        if (data.containsKey("convergenceThreshold")) {
-            config.setConvergenceThreshold(intValue(data.get("convergenceThreshold"), config.getConvergenceThreshold()));
+        if (containsAny(data, "convergenceThreshold", "convergence_threshold")) {
+            config.setConvergenceThreshold(intValue(firstValue(data, "convergenceThreshold", "convergence_threshold"),
+                    config.getConvergenceThreshold()));
         }
-        if (data.containsKey("stagnationPatience")) {
-            config.setStagnationPatience(intValue(data.get("stagnationPatience"), config.getStagnationPatience()));
+        if (containsAny(data, "stagnationPatience", "stagnation_patience")) {
+            config.setStagnationPatience(intValue(firstValue(data, "stagnationPatience", "stagnation_patience"),
+                    config.getStagnationPatience()));
         }
-        if (data.containsKey("resultsDir")) {
-            config.setResultsDir(Path.of(stringValue(data.get("resultsDir"), config.getResultsDir().toString())));
+        if (containsAny(data, "resultsDir", "results_dir")) {
+            config.setResultsDir(Path.of(stringValue(firstValue(data, "resultsDir", "results_dir"),
+                    config.getResultsDir().toString())));
         }
-        if (data.containsKey("saveTrajectory")) {
-            config.setSaveTrajectory(booleanValue(data.get("saveTrajectory"), config.isSaveTrajectory()));
+        if (containsAny(data, "saveTrajectory", "save_trajectory")) {
+            config.setSaveTrajectory(booleanValue(firstValue(data, "saveTrajectory", "save_trajectory"),
+                    config.isSaveTrajectory()));
         }
-        if (data.containsKey("saveSkillHistory")) {
-            config.setSaveSkillHistory(booleanValue(data.get("saveSkillHistory"), config.isSaveSkillHistory()));
+        if (containsAny(data, "saveSkillHistory", "save_skill_history")) {
+            config.setSaveSkillHistory(booleanValue(firstValue(data, "saveSkillHistory", "save_skill_history"),
+                    config.isSaveSkillHistory()));
         }
-        if (data.get("agentConfig") instanceof Map<?, ?> map) {
+        if (firstValue(data, "agentConfig", "agent_config") instanceof Map<?, ?> map) {
             config.setAgentConfig(toStringKeyMap(map));
         }
-        if (data.get("benchConfig") instanceof Map<?, ?> map) {
+        if (firstValue(data, "benchConfig", "bench_config") instanceof Map<?, ?> map) {
             config.setBenchConfig(toStringKeyMap(map));
         }
-        if (data.get("taskIds") instanceof List<?> list) {
+        if (firstValue(data, "taskIds", "task_ids") instanceof List<?> list) {
             config.setTaskIds(list.stream().map(String::valueOf).toList());
         }
-        if (data.containsKey("tasksFilter")) {
-            config.setTasksFilter(stringValue(data.get("tasksFilter"), config.getTasksFilter()));
+        if (containsAny(data, "tasksFilter", "tasks_filter")) {
+            config.setTasksFilter(stringValue(firstValue(data, "tasksFilter", "tasks_filter"),
+                    config.getTasksFilter()));
         }
         return config;
+    }
+
+    private static boolean containsAny(Map<String, Object> data, String... keys) {
+        for (String key : keys) {
+            if (data.containsKey(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Object firstValue(Map<String, Object> data, String... keys) {
+        for (String key : keys) {
+            if (data.containsKey(key)) {
+                return data.get(key);
+            }
+        }
+        return null;
     }
 
     private static void resolveEnvVars(Map<String, Object> cfg) {

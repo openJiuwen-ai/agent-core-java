@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,8 +16,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Mirrors Python's shared form-handler coverage in
  * {@code openjiuwen/core/foundation/tool/form_handler/form_handler_manager.py}.
+ *
+ * <p>Mirrors Python's unit tests in
+ * {@code tests/unit_tests/core/foundation/tool/test_handler_manager.py}.</p>
  */
 class FormHandlerManagerTest {
+
+    @Test
+    void abstractHandleContractIsNotImplementedByBaseInterface() throws NoSuchMethodException {
+        assertThat(Modifier.isAbstract(FormHandler.class.getDeclaredMethod(
+                "handle",
+                ToolFormData.class,
+                Map.class,
+                Map.class
+        ).getModifiers())).isTrue();
+    }
 
     @Test
     void formHandlerContractCanBeImplemented() {

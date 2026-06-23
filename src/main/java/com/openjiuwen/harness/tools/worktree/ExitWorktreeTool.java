@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.tools.worktree;
 
+import com.openjiuwen.core.sys_operation.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -22,6 +23,14 @@ public class ExitWorktreeTool extends AbstractHarnessTool {
 
     public ExitWorktreeTool(WorktreeManager manager) {
         super(toolCard("exit_worktree", "worktree.exit", "Exit the current worktree session."));
+        this.manager = manager;
+    }
+
+    public ExitWorktreeTool(WorktreeManager manager, String language, String agentId) {
+        super(toolCard(
+                scopedToolId("exit_worktree", agentId),
+                "exit_worktree",
+                "Exit the current worktree session."));
         this.manager = manager;
     }
 
@@ -47,6 +56,11 @@ public class ExitWorktreeTool extends AbstractHarnessTool {
                 }
             }
             Map<String, String> result = manager.exit(action, discardChanges).join();
+            String originalCwd = result.get("original_cwd");
+            if (originalCwd != null && !originalCwd.isBlank()) {
+                Cwd.setCwd(originalCwd);
+                Cwd.setOriginalCwd(originalCwd);
+            }
             Map<String, Object> data = new LinkedHashMap<>(result);
             data.put("worktree_name", session.getWorktreeName());
             data.put("message", message(action, session, result));
@@ -72,5 +86,9 @@ public class ExitWorktreeTool extends AbstractHarnessTool {
         }
         return "Removed worktree '" + session.getWorktreeName() + "' (branch " + branch
                 + "). Returned to " + originalCwd;
+    }
+
+    private static String scopedToolId(String baseId, String agentId) {
+        return agentId == null || agentId.isBlank() ? baseId : baseId + "-" + agentId;
     }
 }

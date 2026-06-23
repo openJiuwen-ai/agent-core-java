@@ -22,6 +22,10 @@ public class SharingPolicy {
     public SharingPolicy() {
     }
 
+    public SharingPolicy(Permission permission) {
+        this(permission, null);
+    }
+
     public SharingPolicy(Permission permission, Set<String> fieldScopes) {
         this.permission = permission == null ? Permission.READ : permission;
         this.fieldScopes = fieldScopes == null ? null : new LinkedHashSet<>(fieldScopes);

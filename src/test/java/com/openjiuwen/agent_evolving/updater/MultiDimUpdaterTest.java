@@ -23,6 +23,7 @@ import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code MultiDimUpdater} in
  * {@code openjiuwen/agent_evolving/updater/multi_dim.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestMultiDimUpdater} in
+ * {@code tests/unit_tests/agent_evolving/updater/test_multi_dim.py}.</p>
  */
 class MultiDimUpdaterTest {
 
@@ -63,6 +67,18 @@ class MultiDimUpdaterTest {
 
         assertSame(RecordingMultiDimUpdater.RESULT, result);
         assertEquals(List.of(signal), updater.signals);
+    }
+
+    @Test
+    void updateAdaptsEvaluatedCasesToProcessWithNullSkillName() throws Exception {
+        RecordingMultiDimUpdater updater = new RecordingMultiDimUpdater(Map.of());
+        List<Object> evaluatedCases = List.of(evaluatedCase(0.0d, "reason"));
+
+        Object result = updater.update(List.of(), evaluatedCases, Map.of()).toCompletableFuture().get();
+
+        assertSame(RecordingMultiDimUpdater.RESULT, result);
+        assertEquals(1, updater.signals.size());
+        assertNull(updater.signals.get(0).getSkillName());
     }
 
     @Test

@@ -21,6 +21,7 @@ import com.openjiuwen.core.memory.graph.extraction.EntityTypeDefinition;
 import com.openjiuwen.core.memory.graph.extraction.ExtractionModels;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,7 +54,9 @@ public final class GraphMemoryStates {
                 if (Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
-                field.setAccessible(true);
+                if (!field.trySetAccessible()) {
+                    continue;
+                }
                 try {
                     Object value = field.get(dataObject);
                     clearValue(value);
@@ -254,7 +257,31 @@ public final class GraphMemoryStates {
             map.clear();
         } else if (value instanceof Collection<?> collection) {
             collection.clear();
+        } else {
+            Method clearMethod = findClearMethod(value);
+            if (clearMethod != null) {
+                try {
+                    clearMethod.invoke(value);
+                } catch (ReflectiveOperationException exception) {
+                    throw new IllegalStateException("Unable to clear graph memory state value", exception);
+                }
+            }
         }
+    }
+
+    private static Method findClearMethod(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            Method method = value.getClass().getMethod("clear");
+            if (method.getParameterCount() == 0 && method.trySetAccessible()) {
+                return method;
+            }
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+        return null;
     }
 
     private static void applyEmbedding(BaseGraphObject.EmbeddingTask task, List<Double> embedding) {
@@ -525,10 +552,10 @@ public final class GraphMemoryStates {
      * {@code openjiuwen/core/memory/graph/graph_memory/states.py}.</p>
      */
     public static final class GraphMemPrompting implements ClearableState {
-        private Map<String, Object> schemaEntityExtraction = new ExtractionModels.EntitySummary().responseFormat();
-        private Map<String, Object> schemaEntityDedupe = new ExtractionModels.EntityDuplication().responseFormat();
-        private Map<String, Object> schemaRelationMerge = new ExtractionModels.MergeRelations().responseFormat();
-        private Map<String, Object> schemaRelationFilter = new ExtractionModels.RelevantFacts().responseFormat();
+        private Map<String, Object> schemaEntityExtraction = new ExtractionModels.EntitySummary().responseFormat("cn");
+        private Map<String, Object> schemaEntityDedupe = new ExtractionModels.EntityDuplication().responseFormat("cn");
+        private Map<String, Object> schemaRelationMerge = new ExtractionModels.MergeRelations().responseFormat("cn");
+        private Map<String, Object> schemaRelationFilter = new ExtractionModels.RelevantFacts().responseFormat("cn");
         private String language = "cn";
         private String entityExtractionLanguage = "cn";
         private String relationExtractionLanguage = "cn";

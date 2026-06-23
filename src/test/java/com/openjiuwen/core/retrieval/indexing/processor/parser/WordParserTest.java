@@ -41,7 +41,8 @@ import static org.mockito.Mockito.when;
  * <p>Mirrors Python's {@code WordParser} in
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.</p>
  *
- * <p>Scenarios also mirror Python's {@code test_word_parser.py}.</p>
+ * <p>Scenarios also mirror Python's {@code TestWordParser} in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_word_parser.py}.</p>
  */
 class WordParserTest {
 

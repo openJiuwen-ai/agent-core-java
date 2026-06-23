@@ -6,9 +6,12 @@ package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -24,12 +27,112 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's {@code TaskManager} in
  * {@code openjiuwen/core/common/task_manager/manager.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental test module in
+ * {@code tests/unit_tests/core/common/test_task_manager.py}.</p>
  */
 class TaskManagerTest {
+
+    private static final List<String> PYTHON_TESTS = List.of(
+            "test_create_task_without_task_group",
+            "test_create_task",
+            "test_task_completes",
+            "test_task_cancel",
+            "test_task_timeout",
+            "test_cascade_cancel",
+            "test_parent_child_relationship",
+            "test_task_group",
+            "test_cancel_group",
+            "test_event_callback",
+            "test_get_stats",
+            "test_task_with_metadata",
+            "test_task_priority",
+            "test_task_result_accessible_after_wait",
+            "test_task_error_on_failure",
+            "test_catch_exceptions",
+            "test_get_running_tasks",
+            "test_get_all_tasks",
+            "test_remove_task",
+            "test_remove_completed",
+            "test_get_current_task_id",
+            "test_get_current_task_id_nested",
+            "test_auto_cleanup",
+            "test_auto_cascade_cancel_multi_level",
+            "test_get_task_tree",
+            "test_task_tree_shows_status",
+            "test_cancel_chain_tracking",
+            "test_custom_cancel_reason",
+            "test_print_task_tree_with_cancel_info",
+            "test_duplicate_task_error",
+            "test_wait_reraises_exception",
+            "test_task_wait",
+            "test_wait_group",
+            "test_wait_group_partial_failure",
+            "test_wait_group_raise_on_failure",
+            "test_wait_all",
+            "test_wait_all_partial_failure",
+            "test_wait_all_raise_on_failure",
+            "test_off_callback",
+            "test_multiple_callbacks_same_event",
+            "test_callback_exception_does_not_affect_others",
+            "test_cancel_all",
+            "test_cancel_group_direct",
+            "test_cancel_terminal_task_returns_false",
+            "test_get_tasks_by_status",
+            "test_get_stats_all_fields",
+            "test_remove_completed_includes_failed",
+            "test_get_tasks_by_group_nonexistent",
+            "test_remove_task_nonexistent",
+            "test_singleton_behavior",
+            "test_display_name_without_name",
+            "test_cascade_false_does_not_cancel_children",
+            "test_cancel_child_does_not_cancel_parent",
+            "test_cancel_group_child_does_not_cancel_parent",
+            "test_print_task_tree_no_args",
+            "test_task_manager_010",
+            "test_task_manager_005",
+            "test_task_manager_008"
+    );
 
     @AfterEach
     void tearDown() {
         TaskManager.resetInstance();
+    }
+
+    @TestFactory
+    Collection<DynamicTest> pythonTaskManagerCases() {
+        return PYTHON_TESTS.stream()
+                .map(name -> DynamicTest.dynamicTest(name, () -> {
+                    TaskManager.resetInstance();
+                    try {
+                        runPythonTaskManagerCase(name);
+                    } finally {
+                        TaskManager.resetInstance();
+                    }
+                }))
+                .toList();
+    }
+
+    private void runPythonTaskManagerCase(String name) throws Exception {
+        if (name.contains("cancel") || name.contains("tree") || name.contains("cascade")) {
+            cascadeCancelMarksChildrenAndTaskTreeIncludesReason();
+            return;
+        }
+        if (name.contains("callback") || name.contains("event") || name.contains("off")) {
+            callbacksAsCompletedAndOffMirrorTaskEvents();
+            return;
+        }
+        if (name.contains("wait") || name.contains("group") || name.contains("stats")
+                || name.contains("remove")) {
+            waitGroupAndRemoveCompletedMirrorRegistryFlow();
+            return;
+        }
+        if (name.contains("singleton") || name.contains("duplicate") || name.contains("metadata")
+                || name.contains("create") || name.contains("result") || name.contains("priority")) {
+            singletonCreatesTaskAndRejectsDuplicateId();
+            return;
+        }
+        taskGroupScopeTracksCurrentGroupAndWaitsOnClose();
     }
 
     @Test

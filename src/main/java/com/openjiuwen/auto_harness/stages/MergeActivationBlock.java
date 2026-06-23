@@ -406,7 +406,7 @@ public class MergeActivationBlock {
             return List.of().iterator();
         }
         String sessionId = nullToEmpty(sessionIdPrefix) + "-" + shortUuid();
-        AgentSession session = new AgentSession(sessionId, null, null, null, false, null);
+        AgentSession session = new AgentSession(sessionId, null, Map.of("id", sessionId), null, false, null);
         session.preRun(Map.of("inputs", Map.of("query", nullToEmpty(prompt))));
         List<Object> chunks = new ArrayList<>();
         try {

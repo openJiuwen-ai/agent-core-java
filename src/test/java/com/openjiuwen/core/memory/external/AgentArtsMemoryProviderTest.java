@@ -86,7 +86,7 @@ class AgentArtsMemoryProviderTest {
     }
 
     @Test
-    void initializeCreatesSessionAndKeepsStaticConfig() {
+    void initializeCreatesUuidSessionAndKeepsStaticConfig() {
         FakeAgentArtsClient fake = new FakeAgentArtsClient();
         AgentArtsMemoryProvider provider = new AgentArtsMemoryProvider(
                 "https://configured.example.com",
@@ -117,6 +117,8 @@ class AgentArtsMemoryProviderTest {
         assertEquals("runtime-user", fake.lastSessionCall.get("actor_id"));
         assertEquals("runtime-assistant", fake.lastSessionCall.get("assistant_id"));
         assertFalse(fake.lastSessionCall.containsKey("id"));
+        assertThrows(NoSuchFieldException.class,
+                () -> AgentArtsMemoryProvider.class.getDeclaredField("agentArtsSessionId"));
     }
 
     @Test

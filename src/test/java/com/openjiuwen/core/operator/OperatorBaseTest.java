@@ -16,6 +16,10 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Mirrors Python's {@code TestTunableSpec} and {@code TestOperator} in
+ * {@code tests/unit_tests/core/operator/test_base.py}.
+ */
 class OperatorBaseTest {
 
     @Test

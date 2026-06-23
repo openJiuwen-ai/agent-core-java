@@ -19,10 +19,38 @@ import java.util.Map;
 public class LspTool extends AbstractHarnessTool {
 
     private final LspGateway gateway;
+    private final Object operation;
+    private final String language;
+    private final String workspace;
+    private final String agentId;
 
     public LspTool(LspGateway gateway) {
+        this(gateway, null, "cn", null, null);
+    }
+
+    public LspTool(LspGateway gateway, Object operation, String language, String workspace, String agentId) {
         super(toolCard("lsp_tool", "LspTool", "Dispatch a language-server operation."));
         this.gateway = gateway;
+        this.operation = operation;
+        this.language = language == null || language.isBlank() ? "cn" : language;
+        this.workspace = workspace;
+        this.agentId = agentId;
+    }
+
+    public Object getOperation() {
+        return operation;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getWorkspace() {
+        return workspace;
+    }
+
+    public String getAgentId() {
+        return agentId;
     }
 
     @Override

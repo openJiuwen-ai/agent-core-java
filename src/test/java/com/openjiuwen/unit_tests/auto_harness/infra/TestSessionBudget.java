@@ -15,7 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_session_budget}.
+ * Mirrors Python's {@code SessionBudgetController} in
+ * {@code openjiuwen/auto_harness/infra/session_budget.py}.
+ *
+ * <p>Mirrors Python's {@code TestSessionBudgetController} in
+ * {@code tests/unit_tests/auto_harness/infra/test_session_budget.py}.</p>
  */
 @DisplayName("Session Budget Tests")
 class TestSessionBudget {

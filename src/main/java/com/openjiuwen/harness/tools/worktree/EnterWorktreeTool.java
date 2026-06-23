@@ -4,11 +4,14 @@
 
 package com.openjiuwen.harness.tools.worktree;
 
+import com.openjiuwen.core.sys_operation.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
 import java.security.SecureRandom;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -30,6 +33,14 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
         this.manager = manager;
     }
 
+    public EnterWorktreeTool(WorktreeManager manager, String language, String agentId) {
+        super(toolCard(
+                scopedToolId("enter_worktree", agentId),
+                "enter_worktree",
+                "Create or enter an isolated git worktree."));
+        this.manager = manager;
+    }
+
     @Override
     protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
         WorktreeSession existing = WorktreeSessionContext.getCurrentSession();
@@ -39,9 +50,11 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
         }
 
         String slug;
+        boolean existed;
         try {
             slug = resolveSlug(inputs);
             SlugUtils.validateSlug(slug);
+            existed = slugExists(slug);
         } catch (RuntimeException exception) {
             return ToolOutput.failure(exception.getMessage());
         }
@@ -50,12 +63,21 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
         String tag = resolveOwner(kwargs, "tag", "team_name");
         try {
             WorktreeSession session = manager.enter(slug, ownerId, tag).join();
-            return ToolOutput.success(Map.of(
-                    "worktree_path", session.getWorktreePath(),
-                    "worktree_branch", session.getWorktreeBranch(),
-                    "message", "Created worktree at " + session.getWorktreePath()
-                            + " on branch " + session.getWorktreeBranch() + ". CWD switched to worktree."
-            ));
+            Cwd.setCwd(session.getWorktreePath());
+            Cwd.setOriginalCwd(session.getWorktreePath());
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("worktree_path", session.getWorktreePath());
+            data.put("worktree_branch", session.getWorktreeBranch());
+            if (existed || session.isExisted()) {
+                data.put("message", "Entered existing worktree at " + session.getWorktreePath()
+                        + " on branch " + session.getWorktreeBranch() + ". CWD switched to worktree.");
+                data.put("existed", true);
+            } else {
+                data.put("message", "Created worktree at " + session.getWorktreePath()
+                        + " on branch " + session.getWorktreeBranch() + ". CWD switched to worktree.");
+            }
+            return ToolOutput.success(data);
         } catch (RuntimeException exception) {
             return ToolOutput.failure("Failed to create worktree: " + rootMessage(exception));
         }
@@ -82,7 +104,7 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
     static String generateRandomSlug() {
         return ADJECTIVES.get(RANDOM.nextInt(ADJECTIVES.size())) + "-"
                 + NOUNS.get(RANDOM.nextInt(NOUNS.size())) + "-"
-                + Integer.toHexString(RANDOM.nextInt(0x10000));
+                + String.format(Locale.ROOT, "%04x", RANDOM.nextInt(0x10000));
     }
 
     private static String resolveOwner(Map<String, Object> kwargs, String primary, String legacy) {
@@ -90,10 +112,19 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
             return null;
         }
         Object value = kwargs.get(primary);
-        if (value == null) {
+        if (value == null || String.valueOf(value).isEmpty()) {
             value = kwargs.get(legacy);
         }
         return value == null ? null : String.valueOf(value);
+    }
+
+    private boolean slugExists(String slug) {
+        try {
+            String targetPath = WorktreeManager.resolveTargetPath(slug);
+            return Boolean.TRUE.equals(manager.getBackend().exists(targetPath).join());
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     static String rootMessage(Throwable throwable) {
@@ -102,5 +133,9 @@ public class EnterWorktreeTool extends AbstractHarnessTool {
             current = current.getCause();
         }
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
+    private static String scopedToolId(String baseId, String agentId) {
+        return agentId == null || agentId.isBlank() ? baseId : baseId + "-" + agentId;
     }
 }

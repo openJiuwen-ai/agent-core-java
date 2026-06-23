@@ -240,12 +240,17 @@ public class ChromaIndexer extends Indexer {
             Embedding embedModel,
             Map<String, Object> kwargs
     ) {
-        return deleteIndex(docId, config.getIndexName(), kwargs)
-                .thenCompose(ignored -> buildIndex(chunks, config, embedModel, kwargs))
-                .exceptionally(throwable -> {
-                    LOGGER.error("Failed to update index: {}", unwrap(throwable).getMessage());
-                    return Boolean.FALSE;
-                });
+        try {
+            return deleteIndex(docId, config.getIndexName(), kwargs)
+                    .thenCompose(ignored -> buildIndex(chunks, config, embedModel, kwargs))
+                    .exceptionally(throwable -> {
+                        LOGGER.error("Failed to update index: {}", unwrap(throwable).getMessage());
+                        return Boolean.FALSE;
+                    });
+        } catch (Exception exception) {
+            LOGGER.error("Failed to update index: {}", exception.getMessage());
+            return CompletableFuture.completedFuture(Boolean.FALSE);
+        }
     }
 
     @Override

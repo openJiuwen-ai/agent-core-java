@@ -21,6 +21,7 @@ public class AutoHarnessRunRequest {
     private Double budget;
     private String goal;
     private String competitor;
+    private String pipeline;
 
     public static AutoHarnessRunRequest fromMap(Map<String, Object> kwargs) {
         Map<String, Object> safe = kwargs == null ? Map.of() : kwargs;
@@ -33,6 +34,7 @@ public class AutoHarnessRunRequest {
         request.setBudget(doubleValue(firstPresent(safe, "budget")));
         request.setGoal(stringValue(firstPresent(safe, "goal")));
         request.setCompetitor(stringValue(firstPresent(safe, "competitor")));
+        request.setPipeline(stringValue(firstPresent(safe, "pipeline")));
         return request;
     }
 
@@ -136,5 +138,13 @@ public class AutoHarnessRunRequest {
 
     public void setCompetitor(String competitor) {
         this.competitor = competitor;
+    }
+
+    public String getPipeline() {
+        return pipeline;
+    }
+
+    public void setPipeline(String pipeline) {
+        this.pipeline = pipeline;
     }
 }

@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class ReadMemoryTool extends MemoryOperationTool {
     public ReadMemoryTool(MemoryOperation operation) {
-        super("read_memory", "ReadMemoryTool", "Read memory file content.", operation);
+        super("read_memory", "read_memory", "Read memory file content.", operation);
     }
 
     @Override

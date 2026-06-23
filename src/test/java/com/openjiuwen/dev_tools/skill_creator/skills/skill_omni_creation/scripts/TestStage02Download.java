@@ -41,9 +41,40 @@ class TestStage02Download {
     }
 
     @Test
+    void fetchOneReturnsNoneOnNetworkException() {
+        Stage02Download.setFetcher(url -> {
+            throw new RuntimeException("timeout");
+        });
+        Stage02Download.FetchResult result = Stage02Download.fetchOne("https://example.com/img.png");
+        assertNull(result.data());
+        assertNull(result.mime());
+    }
+
+    @Test
     void fetchOneRejectsTooSmallImage() throws Exception {
         Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(makePng(10, 10), "image/png"));
         assertNull(Stage02Download.fetchOne("https://example.com/tiny.png").data());
+    }
+
+    @Test
+    void fetchOneRejectsDataOverMaxBytes() {
+        byte[] data = new byte[SkillOmniCommon.MAX_IMAGE_BYTES + 1];
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(data, "image/png"));
+        assertNull(Stage02Download.fetchOne("https://example.com/huge.png").data());
+    }
+
+    @Test
+    void fetchOneStripsMimeParameters() throws Exception {
+        byte[] png = makePng(200, 200);
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(png, "image/png; charset=utf-8"));
+        assertEquals("image/png", Stage02Download.fetchOne("https://example.com/img.png").mime());
+    }
+
+    @Test
+    void fetchOneReturnsOriginalUrl() throws Exception {
+        String target = "https://example.com/specific.png";
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(makePng(200, 200), "image/png"));
+        assertEquals(target, Stage02Download.fetchOne(target).url());
     }
 
     @Test
@@ -76,16 +107,64 @@ class TestStage02Download {
     }
 
     @Test
+    void downloadImageBlocksKeepsDistinctImagesByContent() throws Exception {
+        byte[] first = makePng(200, 200);
+        byte[] second = makePng(300, 300);
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(
+                url.endsWith("img1.png") ? first : second,
+                "image/png"
+        ));
+        Stage02Download.DownloadResult result = Stage02Download.downloadImageBlocks(List.of(
+                imageBlock("https://example.com/img1.png"),
+                imageBlock("https://example.com/img2.png")
+        ));
+        assertEquals(2, result.blocks().stream().filter(b -> "image".equals(b.get("type"))).count());
+        assertEquals(2, result.fetched().size());
+    }
+
+    @Test
     void downloadImageBlocksPreservesNonImageBlocks() throws Exception {
         byte[] png = makePng(200, 200);
         Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(png, "image/png"));
         Stage02Download.DownloadResult result = Stage02Download.downloadImageBlocks(List.of(
-                Map.of("type", "text", "text", "Keep me", "source", "main"),
-                Map.of("type", "heading", "level", 2, "text", "Also keep", "source", "main"),
+                textBlock("Keep me"),
+                headingBlock("Also keep"),
                 imageBlock("https://example.com/img.png")
         ));
         assertTrue(result.blocks().stream().anyMatch(b -> "text".equals(b.get("type"))));
         assertTrue(result.blocks().stream().anyMatch(b -> "heading".equals(b.get("type"))));
+    }
+
+    @Test
+    void downloadImageBlocksPreservesDomOrderOfSurvivingBlocks() throws Exception {
+        byte[] png = makePng(200, 200);
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(png, "image/png"));
+        Stage02Download.DownloadResult result = Stage02Download.downloadImageBlocks(List.of(
+                headingBlock("H"),
+                imageBlock("https://example.com/img.png"),
+                textBlock("TTTTTTTTTTTTTTTTTTTT")
+        ));
+        assertEquals(List.of("heading", "image", "text"), result.blocks().stream()
+                .map(block -> block.get("type"))
+                .toList());
+    }
+
+    @Test
+    void downloadImageBlocksReturnsEmptyFetchedWhenAllFail() {
+        Stage02Download.setFetcher(url -> new Stage02Download.FetchResponse(null, "image/png"));
+        Stage02Download.DownloadResult result = Stage02Download.downloadImageBlocks(List.of(
+                imageBlock("https://example.com/a.png"),
+                imageBlock("https://example.com/b.png")
+        ));
+        assertTrue(result.fetched().isEmpty());
+        assertTrue(result.blocks().isEmpty());
+    }
+
+    @Test
+    void downloadImageBlocksHandlesEmptyBlocksList() {
+        Stage02Download.DownloadResult result = Stage02Download.downloadImageBlocks(List.of());
+        assertTrue(result.blocks().isEmpty());
+        assertTrue(result.fetched().isEmpty());
     }
 
     private static Map<String, Object> imageBlock(String url) {
@@ -95,6 +174,23 @@ class TestStage02Download {
         block.put("alt", "");
         block.put("source", "main");
         block.put("path", null);
+        return block;
+    }
+
+    private static Map<String, Object> textBlock(String text) {
+        java.util.LinkedHashMap<String, Object> block = new java.util.LinkedHashMap<>();
+        block.put("type", "text");
+        block.put("text", text);
+        block.put("source", "main");
+        return block;
+    }
+
+    private static Map<String, Object> headingBlock(String text) {
+        java.util.LinkedHashMap<String, Object> block = new java.util.LinkedHashMap<>();
+        block.put("type", "heading");
+        block.put("level", 2);
+        block.put("text", text);
+        block.put("source", "main");
         return block;
     }
 

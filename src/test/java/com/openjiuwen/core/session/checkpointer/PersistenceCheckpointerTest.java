@@ -37,6 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code PersistenceCheckpointer} and helper storages in
  * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_persistence_storage} in
+ * {@code tests/unit_tests/core/session/checkpointer/test_persistence_storage.py}.</p>
  */
 class PersistenceCheckpointerTest {
 
@@ -69,6 +72,64 @@ class PersistenceCheckpointerTest {
 
         assertEquals(1, restoredState.get("turn"));
         assertEquals(List.of("resume-input"), restoredState.get(Constant.INTERACTIVE_INPUT));
+    }
+
+    @Test
+    void agentStorageSaveRecoverExistsAndClear() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection firstState = new AgentStateCollection();
+        TestSession first = TestSession.agent("session-agent", "agent-1", firstState);
+        firstState.update(Map.of("name", "alice"));
+        firstState.updateGlobal(Map.of("shared", "value"));
+
+        checkpointer.postAgentExecute(first);
+
+        assertTrue(checkpointer.sessionExists("session-agent"));
+        AgentStateCollection recoveredState = new AgentStateCollection();
+        TestSession recovered = TestSession.agent("session-agent", "agent-1", recoveredState);
+        checkpointer.preAgentExecute(recovered, null);
+
+        assertEquals("alice", recoveredState.get("name"));
+        assertEquals("value", recoveredState.getGlobal("shared"));
+
+        checkpointer.release("session-agent", "agent-1");
+        assertFalse(checkpointer.sessionExists("session-agent"));
+    }
+
+    @Test
+    void agentTeamStorageSaveRecoverExistsAndClear() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection firstState = new AgentStateCollection();
+        TestSession first = TestSession.agentTeam("session-team", "team-1", firstState);
+        firstState.update(Map.of("agent_local", "should_not_be_restored"));
+        firstState.updateGlobal(Map.of("team", "alpha"));
+
+        checkpointer.postAgentTeamExecute(first);
+
+        assertTrue(checkpointer.sessionExists("session-team"));
+        AgentStateCollection recoveredState = new AgentStateCollection();
+        TestSession recovered = TestSession.agentTeam("session-team", "team-1", recoveredState);
+        checkpointer.preAgentTeamExecute(recovered, null);
+
+        assertEquals("alpha", recoveredState.getGlobal("team"));
+        assertEquals(null, recoveredState.get("agent_local"));
+
+        checkpointer.release("session-team");
+        assertFalse(checkpointer.sessionExists("session-team"));
+    }
+
+    @Test
+    void recoveringMissingAgentStorageDoesNotMutateEmptyState() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = TestSession.agent("session-agent", "agent-1", state);
+
+        checkpointer.preAgentExecute(session, null);
+
+        assertEquals(Map.of(
+                State.GLOBAL_STATE_KEY, Map.of(),
+                State.AGENT_STATE_KEY, Map.of()
+        ), state.getState());
     }
 
     @Test
@@ -191,20 +252,26 @@ class PersistenceCheckpointerTest {
         private final String sessionId;
         private final String workflowId;
         private final String agentId;
+        private final String teamId;
         private final SessionStateAccess state;
         private final Config config;
 
-        private TestSession(String sessionId, String workflowId, String agentId,
+        private TestSession(String sessionId, String workflowId, String agentId, String teamId,
                             SessionStateAccess state, Config config) {
             this.sessionId = sessionId;
             this.workflowId = workflowId;
             this.agentId = agentId;
+            this.teamId = teamId;
             this.state = state;
             this.config = config == null ? new Config() : config;
         }
 
         static TestSession agent(String sessionId, String agentId, AgentStateCollection state) {
-            return new TestSession(sessionId, sessionId, agentId, state, null);
+            return new TestSession(sessionId, sessionId, agentId, sessionId, state, null);
+        }
+
+        static TestSession agentTeam(String sessionId, String teamId, AgentStateCollection state) {
+            return new TestSession(sessionId, sessionId, sessionId, teamId, state, null);
         }
 
         static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state) {
@@ -212,7 +279,7 @@ class PersistenceCheckpointerTest {
         }
 
         static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state, Config config) {
-            return new TestSession(sessionId, workflowId, sessionId, state, config);
+            return new TestSession(sessionId, workflowId, sessionId, sessionId, state, config);
         }
 
         @Override
@@ -238,6 +305,11 @@ class PersistenceCheckpointerTest {
         @Override
         public String agentId() {
             return agentId;
+        }
+
+        @Override
+        public String teamId() {
+            return teamId;
         }
     }
 }

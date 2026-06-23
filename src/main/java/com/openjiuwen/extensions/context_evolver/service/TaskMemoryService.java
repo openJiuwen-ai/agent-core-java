@@ -59,13 +59,16 @@ public class TaskMemoryService {
 
     private final ServiceContext serviceContext;
     private final MemoryVectorStore vectorStore;
-    private final String retrievalAlgorithm;
-    private final String summaryAlgorithm;
+    private String retrievalAlgorithm;
+    private String summaryAlgorithm;
     private final String persistType;
     private final String persistPath;
+    private final String milvusHost;
+    private final int milvusPort;
+    private final String milvusCollection;
     private final MemoryPersistenceHelper persistenceHelper;
-    private final BaseOp retrieveFlow;
-    private final BaseOp summaryFlow;
+    private BaseOp retrieveFlow;
+    private BaseOp summaryFlow;
 
     public TaskMemoryService() {
         this(null, null, null, null, null, null);
@@ -102,6 +105,23 @@ public class TaskMemoryService {
             String persistType,
             String persistPath
     ) {
+        this(llmModel, embeddingModel, apiKey, retrievalAlgo, summaryAlgo, configPath,
+            persistType, persistPath, null, 19530, null);
+    }
+
+    public TaskMemoryService(
+            String llmModel,
+            String embeddingModel,
+            String apiKey,
+            String retrievalAlgo,
+            String summaryAlgo,
+            String configPath,
+            String persistType,
+            String persistPath,
+            String milvusHost,
+            int milvusPort,
+            String milvusCollection
+    ) {
         if (configPath != null && !configPath.isBlank()) {
             Config.restore(new LinkedHashMap<>());
             Config.load(configPath, null);
@@ -134,18 +154,25 @@ public class TaskMemoryService {
             summaryAlgo != null ? summaryAlgo : configString("SUMMARY_ALGO", "ACE")
         );
         this.persistType = normalizePersistType(
-            persistType != null ? persistType : configString("PERSIST_TYPE", null)
+            persistType != null ? persistType : configString("PERSIST_TYPE", "json")
         );
         this.persistPath = persistPath != null && !persistPath.isBlank()
             ? persistPath
             : configString("PERSIST_PATH", "./memories/{algo_name}/{user_id}.json");
+        this.milvusHost = milvusHost != null && !milvusHost.isBlank()
+            ? milvusHost
+            : configString("MILVUS_HOST", "localhost");
+        this.milvusPort = milvusPort > 0 ? milvusPort : configInt("MILVUS_PORT", 19530);
+        this.milvusCollection = milvusCollection != null && !milvusCollection.isBlank()
+            ? milvusCollection
+            : configString("MILVUS_COLLECTION", "vector_nodes");
         this.persistenceHelper = this.persistType != null
             ? new MemoryPersistenceHelper(
                 this.persistType,
                 this.persistPath,
-                configString("MILVUS_HOST", "localhost"),
-                configInt("MILVUS_PORT", 19530),
-                configString("MILVUS_COLLECTION", "vector_nodes")
+                this.milvusHost,
+                this.milvusPort,
+                this.milvusCollection
             )
             : null;
 
@@ -160,7 +187,7 @@ public class TaskMemoryService {
         );
     }
 
-    private String normalizeAlgoName(String algo) {
+    public static String normalizeAlgoName(String algo) {
         if (algo == null) {
             return "ACE";
         }
@@ -177,13 +204,12 @@ public class TaskMemoryService {
         if ("DIVCON".equals(upper)) {
             return "DivCon";
         }
-        if ("OUR".equals(upper)) {
-            return "Our";
-        }
         if ("ACE".equals(upper)) {
             return "ACE";
         }
-        return "Our";
+        throw new IllegalArgumentException(
+            "Invalid algorithm '" + algo + "'. Must be one of: ACE, ReasoningBank, ReMe, RefCon, DivCon."
+        );
     }
 
     private String normalizePersistType(String type) {
@@ -199,7 +225,7 @@ public class TaskMemoryService {
                 new com.openjiuwen.extensions.context_evolver.retrieve.task.reasoning_bank.RecallMemoryOp(
                     configInt("TOPK_QUERY", 1)
                 );
-            case "ReMe", "RefCon", "DivCon", "Our" -> new SequentialOp(
+            case "ReMe", "RefCon", "DivCon" -> new SequentialOp(
                 new com.openjiuwen.extensions.context_evolver.retrieve.task.reme.RecallMemoryOp(
                     configInt("TOPK_RETRIEVAL", 10)
                 ),
@@ -232,7 +258,7 @@ public class TaskMemoryService {
             );
         }
         if ("ReMe".equals(summaryAlgorithm) || "RefCon".equals(summaryAlgorithm)
-                || "DivCon".equals(summaryAlgorithm) || "Our".equals(summaryAlgorithm)) {
+                || "DivCon".equals(summaryAlgorithm)) {
             return new SequentialOp(
                 new ReMeSummarizeMemoryOp(
                     configBoolean("EXTRACT_BEST_TRAJ", true),
@@ -263,12 +289,45 @@ public class TaskMemoryService {
         return persistPath;
     }
 
+    public String getMilvusHost() {
+        return milvusHost;
+    }
+
+    public int getMilvusPort() {
+        return milvusPort;
+    }
+
+    public String getMilvusCollection() {
+        return milvusCollection;
+    }
+
+    public void reconfigure(String algorithm) {
+        String normalized = normalizeAlgoName(algorithm);
+        retrievalAlgorithm = normalized;
+        summaryAlgorithm = normalized;
+        retrieveFlow = createRetrieveFlow();
+        summaryFlow = createSummaryFlow();
+        log.info(
+            "TaskMemoryService reconfigured: retrieval={}, summary={}",
+            retrievalAlgorithm,
+            summaryAlgorithm
+        );
+    }
+
     public MemoryPersistenceHelper getPersistenceHelper() {
         return persistenceHelper;
     }
 
     public MemoryVectorStore getVectorStore() {
         return vectorStore;
+    }
+
+    public BaseOp getRetrieveFlow() {
+        return retrieveFlow;
+    }
+
+    public BaseOp getSummaryFlow() {
+        return summaryFlow;
     }
 
     public void loadMemories(String userId) {

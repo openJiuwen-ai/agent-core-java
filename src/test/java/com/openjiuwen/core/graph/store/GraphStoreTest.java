@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Mirrors Python's graph-store base behavior in
  * {@code openjiuwen/core/graph/store/base.py}.
+ *
+ * <p>Mirrors Python's {@code test_memory_checkpoint_saver_basic} in
+ * {@code tests/unit_tests/core/graph/test_graph_store.py}.</p>
  */
 class GraphStoreTest {
 
@@ -63,6 +66,100 @@ class GraphStoreTest {
         assertThat(delegate.lastSaveNs).isEqualTo("graph-a");
         assertThat(delegate.lastDeleteSessionId).isEqualTo("session-a");
         assertThat(delegate.lastDeleteNs).isNull();
+    }
+
+    @Test
+    void inMemoryStoreSavesLoadsAndDeletesCheckpoint() {
+        InMemoryStore saver = new InMemoryStore();
+        String conversationId = "conv_123";
+        String ns = "default";
+        GraphStoreState checkpoint = GraphStoreState.create(
+                ns,
+                1,
+                Map.of("ch1", 42),
+                List.of(new Message("", "", "pending msg")),
+                Map.of("node1", new PendingNode("n1", "running")),
+                null
+        );
+
+        saver.save(conversationId, ns, checkpoint).toCompletableFuture().join();
+
+        Optional<GraphStoreState> loaded = saver.get(conversationId, ns).toCompletableFuture().join();
+        assertThat(loaded).isPresent();
+        GraphStoreState loadedState = loaded.orElseThrow();
+        assertThat(loadedState.getStep()).isEqualTo(1);
+        assertThat(loadedState.getChannelValues()).containsEntry("ch1", 42);
+        assertThat(loadedState.getPendingBuffer().get(0).getPayload()).isEqualTo("pending msg");
+        assertThat(loadedState.getPendingNode().get("node1").getStatus()).isEqualTo("running");
+        assertThat(loadedState.getPendingNode().get("node1").getNodeName()).isEqualTo("n1");
+
+        saver.delete(conversationId, null).toCompletableFuture().join();
+
+        assertThat(saver.get(conversationId, ns).toCompletableFuture().join()).isEmpty();
+    }
+
+    @Test
+    void graphStoreWrapperSavesThroughInMemoryStore() {
+        InMemoryStore saver = new InMemoryStore();
+        GraphStore graphStore = new GraphStore(saver);
+        String conversationId = "conv_321";
+        String ns = "default_ns";
+        GraphStoreState checkpoint = GraphStoreState.create(
+                ns,
+                2,
+                Map.of("ch1", 25),
+                List.of(new Message("", "", "pending msg2")),
+                Map.of("node1", new PendingNode("n2", "running2")),
+                null
+        );
+
+        graphStore.save(conversationId, ns, checkpoint).toCompletableFuture().join();
+
+        Optional<GraphStoreState> loaded = saver.get(conversationId, ns).toCompletableFuture().join();
+        assertThat(loaded).isPresent();
+        GraphStoreState loadedState = loaded.orElseThrow();
+        assertThat(loadedState.getStep()).isEqualTo(2);
+        assertThat(loadedState.getChannelValues()).containsEntry("ch1", 25);
+        assertThat(loadedState.getPendingBuffer().get(0).getPayload()).isEqualTo("pending msg2");
+        assertThat(loadedState.getPendingNode().get("node1").getStatus()).isEqualTo("running2");
+        assertThat(loadedState.getPendingNode().get("node1").getNodeName()).isEqualTo("n2");
+
+        saver.delete(conversationId, ns).toCompletableFuture().join();
+
+        assertThat(saver.get(conversationId, ns).toCompletableFuture().join()).isEmpty();
+    }
+
+    @Test
+    void inMemoryStoreDeletesNamespaceAndChildrenByPrefix() {
+        InMemoryStore saver = new InMemoryStore();
+        String conversationId = "conv_123";
+        GraphStoreState checkpoint1 = GraphStoreState.create(
+                "apple",
+                1,
+                Map.of("ch1", 12),
+                List.of(new Message("", "", "pending msg")),
+                Map.of("node1", new PendingNode("n1", "running1")),
+                null
+        );
+        GraphStoreState checkpoint2 = GraphStoreState.create(
+                "apple:orange",
+                2,
+                Map.of("ch2", 123),
+                List.of(new Message("", "", "pending msg")),
+                Map.of("node1", new PendingNode("n2", "running2")),
+                null
+        );
+
+        saver.save(conversationId, "apple", checkpoint1).toCompletableFuture().join();
+        saver.save(conversationId, "apple:orange", checkpoint2).toCompletableFuture().join();
+
+        assertThat(saver.get(conversationId, "apple").toCompletableFuture().join()).isPresent();
+        assertThat(saver.get(conversationId, "apple:orange").toCompletableFuture().join()).isPresent();
+
+        saver.delete(conversationId, "apple").toCompletableFuture().join();
+
+        assertThat(saver.get(conversationId, "apple").toCompletableFuture().join()).isEmpty();
+        assertThat(saver.get(conversationId, "apple:orange").toCompletableFuture().join()).isEmpty();
     }
 
     @Test

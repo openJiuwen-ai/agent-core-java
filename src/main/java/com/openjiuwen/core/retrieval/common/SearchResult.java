@@ -19,12 +19,28 @@ public class SearchResult {
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public SearchResult() {
+        throw new IllegalArgumentException("id, text, and score are required");
+    }
+
+    public SearchResult(String id) {
+        this(id, null, null, null);
+    }
+
+    public SearchResult(String id, String text) {
+        this(id, text, null, null);
     }
 
     public SearchResult(String id, String text, double score, Map<String, Object> metadata) {
+        this(id, text, Double.valueOf(score), metadata);
+    }
+
+    public SearchResult(String id, String text, Double score, Map<String, Object> metadata) {
+        if (id == null || text == null || score == null) {
+            throw new IllegalArgumentException("id, text, and score are required");
+        }
         this.id = id;
         this.text = text;
-        this.score = score;
+        this.score = score.doubleValue();
         setMetadata(metadata);
     }
 

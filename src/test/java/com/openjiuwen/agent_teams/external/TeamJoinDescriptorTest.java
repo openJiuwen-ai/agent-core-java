@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Mirrors Python's {@code test_descriptor.py} for
  * {@code openjiuwen/agent_teams/external/descriptor.py}.</p>
+ *
+ * <p>Also mirrors Python's descriptor tests in
+ * {@code tests/unit_tests/agent_teams/external/test_descriptor.py}.</p>
  */
 class TeamJoinDescriptorTest {
 

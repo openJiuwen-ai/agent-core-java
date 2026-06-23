@@ -20,6 +20,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Mirrors Python's {@code openjiuwen.harness.rails.evolution.approval_events} in
  * {@code openjiuwen/harness/rails/evolution/approval_events.py}.
+ *
+ * <p>Also mirrors Python's unit tests in
+ * {@code tests/unit_tests/harness/rails/evolution/test_evolution_approval_events.py}.</p>
  */
 class ApprovalEventsTest {
 
@@ -140,6 +143,174 @@ class ApprovalEventsTest {
         assertTrue(String.valueOf(question.get("question")).contains("- **Section**: Workflow"));
     }
 
+    @Test
+    void buildProgressEventMatchesReasoningPayload() {
+        OutputSchema event = ApprovalEvents.buildProgressEvent("[Team Skill Evolution]", "analysis started");
+
+        assertEquals("llm_reasoning", event.getType());
+        assertEquals(Map.of("content", "[Team Skill Evolution] analysis started\n"), payload(event));
+    }
+
+    @Test
+    void buildEvolutionProgressEventIncludesNormalizedMeta() {
+        OutputSchema event = ApprovalEvents.buildEvolutionProgressEvent(
+                "regular",
+                "approval_required",
+                "awaiting approval",
+                "skill-a",
+                "req-1",
+                "[Skill Evolution]"
+        );
+
+        assertEquals("llm_reasoning", event.getType());
+        assertEquals("[Skill Evolution] awaiting approval\n", payload(event).get("content"));
+        assertEquals(Map.of(
+                "event_kind", "progress",
+                "rail_kind", "regular",
+                "stage", "approval_required",
+                "skill_name", "skill-a",
+                "request_id", "req-1"
+        ), payload(event).get("evolution_meta"));
+    }
+
+    @Test
+    void buildSkillApprovalEventMatchesExistingContract() {
+        List<EvolutionRecord> pending = List.of(
+                record("rec-a", EvolutionTarget.BODY, "Troubleshooting", "first experience"),
+                record("rec-b", EvolutionTarget.BODY, "Troubleshooting", "second experience")
+        );
+
+        OutputSchema event = ApprovalEvents.buildSkillApprovalEvent(
+                "skill-a",
+                "skill_evolve_1234",
+                pending,
+                "cn",
+                false,
+                "regular"
+        );
+
+        assertEquals("chat.ask_user_question", event.getType());
+        assertEquals("skill_evolve_1234", payload(event).get("request_id"));
+        assertEquals(Map.of(
+                "event_kind", "approval",
+                "rail_kind", "regular",
+                "skill_name", "skill-a",
+                "request_id", "skill_evolve_1234"
+        ), payload(event).get("evolution_meta"));
+        assertEquals("技能演进审批", firstQuestion(payload(event)).get("header"));
+        assertEquals(2, questions(payload(event)).size());
+        assertEquals("rec-a", questions(payload(event)).get(0).get("record_id"));
+        assertEquals("rec-b", questions(payload(event)).get(1).get("record_id"));
+        assertTrue(String.valueOf(firstQuestion(payload(event)).get("question")).contains("Skill 'skill-a'"));
+    }
+
+    @Test
+    void buildSimplifyApprovalEventMatchesExistingContract() {
+        OutputSchema event = ApprovalEvents.buildSimplifyApprovalEvent(
+                "skill-a",
+                "evolve_simplify_1234",
+                List.of(
+                        Map.of("action", "DELETE", "record_id", "ev_1", "reason", "old"),
+                        Map.of("action", "KEEP", "record_id", "ev_2", "reason", "good")
+                ),
+                "cn",
+                "regular"
+        );
+
+        assertEquals("chat.ask_user_question", event.getType());
+        assertEquals("evolve_simplify_1234", payload(event).get("request_id"));
+        assertEquals(Map.of(
+                "event_kind", "approval",
+                "rail_kind", "regular",
+                "skill_name", "skill-a",
+                "request_id", "evolve_simplify_1234"
+        ), payload(event).get("evolution_meta"));
+        assertEquals("Skill 精简审批", firstQuestion(payload(event)).get("header"));
+        assertTrue(String.valueOf(firstQuestion(payload(event)).get("question")).contains("共 2 项操作"));
+    }
+
+    @Test
+    void buildSkillApprovalEventSharedHeaderSupportsEnglishLanguage() {
+        OutputSchema event = ApprovalEvents.buildSkillApprovalEvent(
+                "skill-a",
+                "skill_evolve_shared_en",
+                List.of(record("rec-shared", EvolutionTarget.BODY, "Troubleshooting", "shared experience")),
+                "en",
+                true,
+                "regular"
+        );
+
+        assertEquals("Shared Experience Approval", firstQuestion(payload(event)).get("header"));
+    }
+
+    @Test
+    void buildSkillApprovalEventSupportsEnglishLanguage() {
+        OutputSchema event = ApprovalEvents.buildSkillApprovalEvent(
+                "skill-a",
+                "skill_evolve_en",
+                List.of(record("rec-en", EvolutionTarget.BODY, "Troubleshooting", "english experience")),
+                "en",
+                false,
+                "regular"
+        );
+
+        Map<String, Object> question = firstQuestion(payload(event));
+        assertEquals("Skill Evolution Approval", question.get("header"));
+        assertTrue(String.valueOf(question.get("question"))
+                .contains("Skill 'skill-a' generated a new experience"));
+        assertEquals("Accept", options(question).get(0).get("label"));
+        assertEquals("Reject", options(question).get(1).get("label"));
+    }
+
+    @Test
+    void buildSimplifyApprovalEventSupportsEnglishLanguage() {
+        OutputSchema event = ApprovalEvents.buildSimplifyApprovalEvent(
+                "skill-a",
+                "evolve_simplify_en",
+                List.of(Map.of("action", "DELETE", "record_id", "ev_1", "reason", "old")),
+                "en",
+                "regular"
+        );
+
+        Map<String, Object> question = firstQuestion(payload(event));
+        assertEquals("Skill Simplify Approval", question.get("header"));
+        assertTrue(String.valueOf(question.get("question"))
+                .contains("Simplify evolution experiences for Skill 'skill-a'"));
+        assertTrue(String.valueOf(question.get("question")).contains("1 action(s)"));
+        assertEquals("Execute", options(question).get(0).get("label"));
+        assertEquals("Cancel", options(question).get(1).get("label"));
+    }
+
+    @Test
+    void buildTeamSkillApprovalEventFromRecordsMatchesRecordPayloads() {
+        OutputSchema event = ApprovalEvents.buildTeamSkillApprovalEventFromRecords(
+                "team-skill-a",
+                "skill_evolve_team_records",
+                List.of(
+                        record("team-rec-1", EvolutionTarget.BODY, "Troubleshooting", "## Workflow\n- improve handoff"),
+                        record("team-rec-2", EvolutionTarget.BODY, "Troubleshooting", "## Troubleshooting\n- add retry note")
+                ),
+                "en",
+                "team"
+        );
+
+        assertEquals("chat.ask_user_question", event.getType());
+        assertEquals("skill_evolve_team_records", payload(event).get("request_id"));
+        assertEquals(Map.of(
+                "event_kind", "approval",
+                "rail_kind", "team",
+                "skill_name", "team-skill-a",
+                "request_id", "skill_evolve_team_records"
+        ), payload(event).get("evolution_meta"));
+        assertEquals(2, questions(payload(event)).size());
+        assertTrue(String.valueOf(questions(payload(event)).get(0).get("question"))
+                .contains("Team Skill 'team-skill-a' evolution"));
+        assertTrue(String.valueOf(questions(payload(event)).get(0).get("question"))
+                .contains("improve handoff"));
+        assertTrue(String.valueOf(questions(payload(event)).get(1).get("question"))
+                .contains("add retry note"));
+    }
+
     private static EvolutionRecord record(String id, EvolutionTarget target, String section, String content) {
         return EvolutionRecord.builder()
                 .id(id)
@@ -167,5 +338,15 @@ class ApprovalEventsTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstQuestion(Map<String, Object> payload) {
         return ((List<Map<String, Object>>) payload.get("questions")).get(0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> questions(Map<String, Object> payload) {
+        return (List<Map<String, Object>>) payload.get("questions");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> options(Map<String, Object> question) {
+        return (List<Map<String, Object>>) question.get("options");
     }
 }

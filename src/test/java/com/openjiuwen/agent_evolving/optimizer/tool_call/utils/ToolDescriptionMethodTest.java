@@ -23,6 +23,9 @@ import java.util.function.Function;
  *
  * <p>Mirrors Python's {@code ToolDescriptionMethod} in
  * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/description_example_method.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_description_example_method} module in
+ * {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_description_example_method.py}.</p>
  */
 class ToolDescriptionMethodTest {
 
@@ -127,6 +130,7 @@ class ToolDescriptionMethodTest {
         Object[] first = (Object[]) examples.get(0);
         assertEquals("use weather", first[0]);
         assertEquals("done", first[3]);
+        assertEquals(1, method.getExamples(tool()).size());
     }
 
     @Test

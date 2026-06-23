@@ -11,6 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.harness.tools.mobile_gui.test_config} in
+ * {@code tests/unit_tests/harness/tools/mobile_gui/test_config.py}.
+ */
 class MobileGuiRuntimeSettingsTest {
 
     @Test
@@ -77,5 +81,58 @@ class MobileGuiRuntimeSettingsTest {
 
         assertEquals(SkillConsultMode.INLINE, inline.getSkillConsultMode());
         assertEquals(SkillConsultMode.BRANCH, branch.getSkillConsultMode());
+    }
+
+    @Test
+    void normalizesSkillConsultModeAliasesAndUnknowns() {
+        assertEquals(SkillConsultMode.INLINE, SkillConsultMode.fromRaw("inline"));
+        assertEquals(SkillConsultMode.INLINE, SkillConsultMode.fromRaw("INLINE"));
+        assertEquals(SkillConsultMode.BRANCH, SkillConsultMode.fromRaw("BRANCH"));
+        assertEquals(SkillConsultMode.BRANCH, SkillConsultMode.fromRaw("branch"));
+        assertEquals(SkillConsultMode.BRANCH, SkillConsultMode.fromRaw("unknown"));
+        assertEquals(SkillConsultMode.BRANCH, SkillConsultMode.fromRaw(""));
+    }
+
+    @Test
+    void skillConsultModeUsesPrimaryEnvWhenSet() {
+        MobileGuiRuntimeSettings settings = MobileGuiRuntimeSettings.fromEnvironment(Map.of(
+                "MULTIMODAL_SKILL_CONSULT_MODE", "inline",
+                "MOBILE_SKILL_CONSULT_MODE", "branch"
+        ));
+
+        assertEquals(SkillConsultMode.INLINE, settings.getSkillConsultMode());
+    }
+
+    @Test
+    void skillConsultModeFallsBackToLegacyEnv() {
+        MobileGuiRuntimeSettings settings = MobileGuiRuntimeSettings.fromEnvironment(Map.of(
+                "MOBILE_SKILL_CONSULT_MODE", "branch"
+        ));
+
+        assertEquals(SkillConsultMode.BRANCH, settings.getSkillConsultMode());
+    }
+
+    @Test
+    void skillBranchLimitsLoadFromMultimodalEnv() {
+        MobileGuiRuntimeSettings settings = MobileGuiRuntimeSettings.fromEnvironment(Map.of(
+                "MULTIMODAL_SKILL_BRANCH_MAX_IMAGES", "7",
+                "MULTIMODAL_SKILL_BRANCH_MAX_CONSULTS_PER_SKILL", "3",
+                "MULTIMODAL_SKILL_BRANCH_PREVIOUS_STEPS_TURNS", "5"
+        ));
+
+        assertEquals(7, settings.getSkillBranchMaxImages());
+        assertEquals(3, settings.getSkillBranchMaxConsultsPerSkill());
+        assertEquals(5, settings.getSkillBranchPreviousStepsTurns());
+    }
+
+    @Test
+    void directMobileGuiEnvOverridesAreApplied() {
+        MobileGuiRuntimeSettings settings = MobileGuiRuntimeSettings.fromEnvironment(Map.of(
+                "VLM_GROUNDING_MAX_WIDTH", "512",
+                "MCS_SCREENSHOTS_TO_KEEP", "5"
+        ));
+
+        assertEquals(512, settings.getVlmGroundingMaxWidth());
+        assertEquals(5, settings.getMcsScreenshotsToKeep());
     }
 }
