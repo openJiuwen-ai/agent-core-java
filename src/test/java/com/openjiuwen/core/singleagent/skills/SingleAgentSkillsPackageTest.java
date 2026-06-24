@@ -25,6 +25,8 @@ class SingleAgentSkillsPackageTest {
         assertThat(SingleAgentSkillsPackage.EXPORTED_SYMBOLS).containsExactlyElementsOf(List.of(
                 "SkillUtil",
                 "SkillManager",
+                "SkillToolBinding",
+                "SkillToolRegistry",
                 "GitHubTree",
                 "RemoteSkillUtil"
         ));
@@ -33,6 +35,8 @@ class SingleAgentSkillsPackageTest {
     @Test
     void exportsHelperChecksSymbolPresence() {
         assertThat(SingleAgentSkillsPackage.exports("SkillUtil")).isTrue();
+        assertThat(SingleAgentSkillsPackage.exports("SkillToolBinding")).isTrue();
+        assertThat(SingleAgentSkillsPackage.exports("SkillToolRegistry")).isTrue();
         assertThat(SingleAgentSkillsPackage.exports("RemoteSkillUtil")).isTrue();
         assertThat(SingleAgentSkillsPackage.exports("missing")).isFalse();
     }
@@ -41,6 +45,10 @@ class SingleAgentSkillsPackageTest {
     void javaReferenceMapsExportedSymbols() {
         assertThat(SingleAgentSkillsPackage.javaReference("SkillUtil")).contains(SkillUtil.class.getName());
         assertThat(SingleAgentSkillsPackage.javaReference("SkillManager")).contains(SkillManager.class.getName());
+        assertThat(SingleAgentSkillsPackage.javaReference("SkillToolBinding"))
+                .contains(SkillToolBinding.class.getName());
+        assertThat(SingleAgentSkillsPackage.javaReference("SkillToolRegistry"))
+                .contains(SkillToolRegistry.class.getName());
         assertThat(SingleAgentSkillsPackage.javaReference("GitHubTree")).contains(GitHubTree.class.getName());
         assertThat(SingleAgentSkillsPackage.javaReference("RemoteSkillUtil"))
                 .contains(RemoteSkillUtil.class.getName());

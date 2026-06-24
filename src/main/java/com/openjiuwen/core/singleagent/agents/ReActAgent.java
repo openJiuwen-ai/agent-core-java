@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -41,6 +42,8 @@ import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
 import java.lang.reflect.Method;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -48,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -329,9 +333,14 @@ public class ReActAgent extends BaseAgent {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return List.of();
         }
+        listEffectiveToolInfo(session);
         List<AbilityManager.ExecutionResult> results = new ArrayList<>();
         for (ToolCall toolCall : toolCalls) {
-            for (AbilityManager.ExecutionResult result : getAbilityManager().execute(toolCall)) {
+            Optional<Tool> skillTool = findActiveSkillTool(toolCall.getName(), session);
+            List<AbilityManager.ExecutionResult> executionResults = skillTool
+                    .map(tool -> getAbilityManager().executeResolvedTool(tool, toolCall))
+                    .orElseGet(() -> getAbilityManager().execute(toolCall));
+            for (AbilityManager.ExecutionResult result : executionResults) {
                 results.add(result);
                 if (result.toolMessage() != null) {
                     context.addMessages(result.toolMessage()).toCompletableFuture().join();
@@ -345,6 +354,98 @@ public class ReActAgent extends BaseAgent {
             context.addMessages(multimodalMessage).toCompletableFuture().join();
         }
         return results;
+    }
+
+    private void activateSkillsLoadedByToolCalls(List<ToolCall> toolCalls,
+                                                 List<AbilityManager.ExecutionResult> results,
+                                                 AgentSessionApi session) {
+        if (toolCalls == null || toolCalls.isEmpty() || session == null) {
+            return;
+        }
+        for (int index = 0; index < toolCalls.size(); index++) {
+            ToolCall toolCall = toolCalls.get(index);
+            if (toolCall == null || !isReadFileTool(toolCall.getName())) {
+                continue;
+            }
+            AbilityManager.ExecutionResult result = results != null && index < results.size() ? results.get(index) : null;
+            if (!isSuccessfulReadResultForRequestedPath(toolCall, result)) {
+                continue;
+            }
+            extractPathArgument(toolCall)
+                    .flatMap(this::findSkillNameByDocumentPath)
+                    .ifPresent(skillName -> activateSkill(skillName, session));
+        }
+    }
+
+    private boolean isSuccessfulReadResultForRequestedPath(ToolCall toolCall, AbilityManager.ExecutionResult result) {
+        Optional<String> requestedPath = extractPathArgument(toolCall);
+        if (requestedPath.isEmpty() || result == null || result.result() == null) {
+            return false;
+        }
+        Object value = result.result();
+        Object success = readAttribute(value, "success");
+        if (Boolean.FALSE.equals(success)) {
+            return false;
+        }
+        Object code = readAttribute(value, "code");
+        if (code instanceof Number number && number.intValue() != 0) {
+            return false;
+        }
+        Object data = readAttribute(value, "data");
+        Object content = readAttribute(data, "content");
+        Object resultPath = readAttribute(data, "path");
+        if (content == null) {
+            content = readAttribute(value, "content");
+            if (resultPath == null) {
+                resultPath = readAttribute(value, "path");
+            }
+        }
+        if (content == null) {
+            return false;
+        }
+        return resultPath != null && isSameNormalizedPath(requestedPath.get(), String.valueOf(resultPath));
+    }
+
+    private boolean isSameNormalizedPath(String left, String right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        Optional<Path> normalizedLeft = normalizePath(left);
+        Optional<Path> normalizedRight = normalizePath(right);
+        return normalizedLeft.isPresent() && normalizedLeft.equals(normalizedRight);
+    }
+
+    private Optional<Path> normalizePath(Object value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Path.of(String.valueOf(value)).toAbsolutePath().normalize());
+        } catch (InvalidPathException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private boolean isReadFileTool(String toolName) {
+        return "readFile".equals(toolName)
+                || "read_file".equals(toolName)
+                || (toolName != null && (toolName.endsWith(".readFile") || toolName.endsWith(".read_file")));
+    }
+
+    private Optional<String> extractPathArgument(ToolCall toolCall) {
+        if (toolCall == null || toolCall.getArguments() == null || toolCall.getArguments().isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Object parsedArguments = AbilityManager.parseToolArguments(toolCall.getArguments());
+            if (parsedArguments instanceof Map<?, ?> map
+                    && map.get("path") instanceof String path
+                    && !path.isBlank()) {
+                return Optional.of(path);
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
+        return Optional.empty();
     }
 
     public List<AbilityManager.ExecutionResult> _execute_tool_call(AgentCallbackContext ctx, List<ToolCall> toolCalls,
@@ -795,7 +896,6 @@ public class ReActAgent extends BaseAgent {
             addPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
             updateSkillPromptBuilderSection(renderedSystemPrompt);
 
-            List<ToolInfo> tools = getAbilityManager().listToolInfo();
             int startIteration = 0;
             if (interruptionState != null) {
                 if (interruptionState instanceof ToolInterruptionState) {
@@ -821,6 +921,7 @@ public class ReActAgent extends BaseAgent {
                                 .toCompletableFuture()
                                 .join();
                     }
+                    List<ToolInfo> tools = listEffectiveToolInfo(session);
                     Object modelResult = callModel(ctx, context, tools);
                     ForceFinishRequest finish = ctx.consumeForceFinish();
                     if (finish != null) {
@@ -846,6 +947,7 @@ public class ReActAgent extends BaseAgent {
                         break;
                     }
                     List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
+                    activateSkillsLoadedByToolCalls(toolCalls, results, session);
                     finish = ctx.consumeForceFinish();
                     if (finish != null) {
                         contextEngine.saveContexts(session);

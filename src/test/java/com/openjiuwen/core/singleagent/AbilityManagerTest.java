@@ -5,9 +5,11 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.Test;
@@ -161,6 +163,75 @@ class AbilityManagerTest {
     }
 
     @Test
+    void executeResolvedToolInvokesConcreteToolInstance() {
+        AbilityManager manager = new AbilityManager();
+        EchoTool tool = new EchoTool();
+        ToolCall call = ToolCall.builder()
+                .id("call-1")
+                .name("echoTool")
+                .arguments("{\"text\":\"hello\"}")
+                .build();
+
+        List<AbilityManager.ExecutionResult> results = manager.executeResolvedTool(tool, call);
+
+        assertEquals(1, results.size());
+        assertEquals("hello", tool.invokedText);
+        assertEquals(Map.of("echo", "hello"), results.getFirst().result());
+        assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
+        assertEquals("echoTool", results.getFirst().toolMessage().getName());
+        assertEquals("{echo=hello}", results.getFirst().toolMessage().getContent());
+    }
+
+    @Test
+    void executeInvokesRunnerToolResolvedFromRegisteredToolCard() {
+        AbilityManager manager = new AbilityManager();
+        EchoTool tool = new EchoTool();
+        Runner.resourceMgr().removeTool(tool.getCard().getId());
+        Runner.resourceMgr().addTool(tool);
+        try {
+            manager.add(tool.getCard());
+            ToolCall call = ToolCall.builder()
+                    .id("call-1")
+                    .name("echoTool")
+                    .arguments("{\"text\":\"hello\"}")
+                    .build();
+
+            List<AbilityManager.ExecutionResult> results = manager.execute(call);
+
+            assertEquals(1, results.size());
+            assertEquals("hello", tool.invokedText);
+            assertEquals(Map.of("echo", "hello"), results.getFirst().result());
+            assertEquals("{echo=hello}", results.getFirst().toolMessage().getContent());
+        } finally {
+            Runner.resourceMgr().removeTool(tool.getCard().getId());
+        }
+    }
+
+    @Test
+    void executeResolvedToolReturnsToolMessageForInvocationError() {
+        AbilityManager manager = new AbilityManager();
+        Tool explodingTool = new Tool(ToolCard.builder()
+                .id("explode")
+                .name("explode")
+                .description("explode")
+                .inputParams(Map.of("type", "object"))
+                .build()) {
+            @Override
+            public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        ToolCall call = ToolCall.builder().id("call-1").name("explode").arguments("{}").build();
+
+        List<AbilityManager.ExecutionResult> results = manager.executeResolvedTool(explodingTool, call);
+
+        assertEquals(1, results.size());
+        assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
+        assertTrue(String.valueOf(results.getFirst().toolMessage().getContent())
+                .contains("Ability execution error: boom"));
+    }
+
+    @Test
     void buildToolMessageContentMirrorsPythonDataAndErrorRules() {
         Map<String, Object> contentData = new LinkedHashMap<>();
         contentData.put("content", null);
@@ -171,6 +242,25 @@ class AbilityManagerTest {
 
     private static ToolCard tool(String id, String name) {
         return new ToolCard(id, name, name + " description", Map.of("type", "object"));
+    }
+
+    private static final class EchoTool extends Tool {
+        private String invokedText;
+
+        private EchoTool() {
+            super(ToolCard.builder()
+                    .id("echoTool")
+                    .name("echoTool")
+                    .description("echo")
+                    .inputParams(Map.of("type", "object"))
+                    .build());
+        }
+
+        @Override
+        public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            invokedText = String.valueOf(inputs.get("text"));
+            return Map.of("echo", invokedText);
+        }
     }
 
     private static final class TestableAbilityManager extends AbilityManager {

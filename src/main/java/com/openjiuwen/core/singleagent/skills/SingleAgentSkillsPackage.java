@@ -21,6 +21,8 @@ public final class SingleAgentSkillsPackage {
     public static final List<String> EXPORTED_SYMBOLS = List.of(
             "SkillUtil",
             "SkillManager",
+            "SkillToolBinding",
+            "SkillToolRegistry",
             "GitHubTree",
             "RemoteSkillUtil"
     );
@@ -28,6 +30,8 @@ public final class SingleAgentSkillsPackage {
     private static final Map<String, String> JAVA_REFERENCES = Map.of(
             "SkillUtil", SkillUtil.class.getName(),
             "SkillManager", SkillManager.class.getName(),
+            "SkillToolBinding", SkillToolBinding.class.getName(),
+            "SkillToolRegistry", SkillToolRegistry.class.getName(),
             "GitHubTree", GitHubTree.class.getName(),
             "RemoteSkillUtil", RemoteSkillUtil.class.getName()
     );

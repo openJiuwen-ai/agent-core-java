@@ -54,9 +54,19 @@ public class SkillUtil {
         return registerSkills(List.of(skillPath), agent, sessionId);
     }
 
+    public boolean registerSkills(String skillPath, Object agent, String sessionId, boolean useMetadataName)
+            throws IOException {
+        return registerSkills(List.of(skillPath), agent, sessionId, useMetadataName);
+    }
+
     public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
+        return registerSkills(skillPaths, agent, sessionId, false);
+    }
+
+    public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId, boolean useMetadataName)
+            throws IOException {
         List<Path> paths = skillPaths == null ? List.of() : skillPaths.stream().map(Path::of).toList();
-        skillManager.register(paths, false);
+        skillManager.register(paths, false, useMetadataName);
         return true;
     }
 

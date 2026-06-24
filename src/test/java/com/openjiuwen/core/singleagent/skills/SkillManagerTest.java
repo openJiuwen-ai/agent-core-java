@@ -111,6 +111,65 @@ class SkillManagerTest {
     }
 
     @Test
+    void registerCanUseFrontMatterNameWhenRequested() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "MetadataSkill"));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR), false, true);
+
+        assertThat(manager.has("MetadataSkill")).isTrue();
+        assertThat(manager.has("single_skill")).isFalse();
+        assertThat(manager.get("MetadataSkill").getDescription()).isEqualTo("SINGLE desc");
+    }
+
+    @Test
+    void metadataNameModeKeepsOriginalStringValue() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "\" MetadataSkill \""));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR), false, true);
+
+        assertThat(manager.has(" MetadataSkill ")).isTrue();
+        assertThat(manager.has("MetadataSkill")).isFalse();
+    }
+
+    @Test
+    void metadataNameModeRejectsNonStringNameField() {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), """
+                ---
+                name: 123
+                description: SINGLE desc
+                ---
+                body
+                """);
+        SkillManager manager = manager();
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_DIR), false, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name field");
+    }
+
+    @Test
+    void registerStillUsesFolderNameByDefaultWhenFrontMatterNameExists() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "MetadataSkill"));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR));
+
+        assertThat(manager.has("single_skill")).isTrue();
+        assertThat(manager.has("MetadataSkill")).isFalse();
+    }
+
+    @Test
+    void metadataNameModeRequiresNameField() {
+        SkillManager manager = manager();
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_DIR), false, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name field");
+    }
+
+    @Test
     void duplicateRegistrationRequiresOverwrite() throws Exception {
         SkillManager manager = manager();
         manager.register(Path.of(SINGLE_SKILL_MD));
@@ -190,6 +249,10 @@ class SkillManagerTest {
     }
 
     private static String makeSkillMd(String description) {
+        return makeSkillMd(description, null);
+    }
+
+    private static String makeSkillMd(String description, String name) {
         if (description == null) {
             return """
                     ---
@@ -198,7 +261,8 @@ class SkillManagerTest {
                     body
                     """;
         }
-        return "---\ndescription: " + description + "\n---\nbody\n";
+        String nameLine = name == null ? "" : "name: " + name + "\n";
+        return "---\n" + nameLine + "description: " + description + "\n---\nbody\n";
     }
 
     private static final class RecordingFsOperation extends BaseFsOperation {

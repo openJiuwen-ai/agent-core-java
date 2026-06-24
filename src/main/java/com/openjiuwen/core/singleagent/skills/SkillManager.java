@@ -64,20 +64,28 @@ public class SkillManager {
     }
 
     public List<Skill> register(Path skillPath, boolean overwrite) throws IOException {
+        return register(skillPath, overwrite, false);
+    }
+
+    public List<Skill> register(Path skillPath, boolean overwrite, boolean useMetadataName) throws IOException {
         if (skillPath == null) {
             return List.of();
         }
-        return register(List.of(skillPath), overwrite);
+        return register(List.of(skillPath), overwrite, useMetadataName);
     }
 
     public List<Skill> register(List<Path> skillPaths, boolean overwrite) throws IOException {
+        return register(skillPaths, overwrite, false);
+    }
+
+    public List<Skill> register(List<Path> skillPaths, boolean overwrite, boolean useMetadataName) throws IOException {
         List<Skill> registered = new ArrayList<>();
         if (skillPaths == null) {
             return registered;
         }
         BaseFsOperation fs = getFsOperation();
         for (Path path : skillPaths) {
-            registered.addAll(registerRoot(fs, path, overwrite));
+            registered.addAll(registerRoot(fs, path, overwrite, useMetadataName));
         }
         return registered;
     }
@@ -126,7 +134,8 @@ public class SkillManager {
         return description;
     }
 
-    private List<Skill> registerRoot(BaseFsOperation fs, Path root, boolean overwrite) throws IOException {
+    private List<Skill> registerRoot(BaseFsOperation fs, Path root, boolean overwrite, boolean useMetadataName)
+            throws IOException {
         List<Skill> registered = new ArrayList<>();
         if (root == null) {
             return registered;
@@ -141,7 +150,7 @@ public class SkillManager {
                 null
         ));
         if (dirsResult.getCode() != 0) {
-            Optional<Skill> direct = createSkillFromPath(fs, root);
+            Optional<Skill> direct = createSkillFromPath(fs, root, useMetadataName);
             if (direct.isPresent()) {
                 addToRegistry(direct.get(), overwrite);
                 registered.add(direct.get());
@@ -151,7 +160,7 @@ public class SkillManager {
 
         Optional<Path> directSkillMd = findSkillMd(fs, root.toString());
         if (directSkillMd.isPresent()) {
-            Optional<Skill> skill = createSkillFromPath(fs, directSkillMd.get());
+            Optional<Skill> skill = createSkillFromPath(fs, directSkillMd.get(), useMetadataName);
             if (skill.isPresent()) {
                 addToRegistry(skill.get(), overwrite);
                 registered.add(skill.get());
@@ -173,7 +182,7 @@ public class SkillManager {
             if (childSkillMd.isEmpty()) {
                 continue;
             }
-            Optional<Skill> skill = createSkillFromPath(fs, childSkillMd.get());
+            Optional<Skill> skill = createSkillFromPath(fs, childSkillMd.get(), useMetadataName);
             if (skill.isPresent()) {
                 addToRegistry(skill.get(), overwrite);
                 registered.add(skill.get());
@@ -182,17 +191,23 @@ public class SkillManager {
         return registered;
     }
 
-    private Optional<Skill> createSkillFromPath(BaseFsOperation fs, Path path) throws IOException {
-        String descriptionText = loadDescription(fs, path);
-        if (descriptionText == null) {
+    private Optional<Skill> createSkillFromPath(BaseFsOperation fs, Path path, boolean useMetadataName)
+            throws IOException {
+        SkillDocument skillDocument = loadSkillDocument(fs, path, useMetadataName);
+        if (skillDocument.description() == null) {
             return Optional.empty();
         }
         Path skillDirectory = path.getParent();
-        String skillName = skillDirectory == null ? "" : skillDirectory.getFileName().toString();
-        return Optional.of(new Skill(skillName, descriptionText, skillDirectory));
+        String folderName = skillDirectory == null ? "" : skillDirectory.getFileName().toString();
+        String skillName = useMetadataName ? skillDocument.metadataName() : folderName;
+        return Optional.of(new Skill(skillName, skillDocument.description(), skillDirectory));
     }
 
     private String loadDescription(BaseFsOperation fs, Path path) throws IOException {
+        return loadSkillDocument(fs, path, false).description();
+    }
+
+    private SkillDocument loadSkillDocument(BaseFsOperation fs, Path path, boolean useMetadataName) throws IOException {
         description = "";
         ReadFileResult result = join(fs.readFile(
                 path.toString(),
@@ -218,8 +233,13 @@ public class SkillManager {
         if (yamlData == null || !yamlData.containsKey("description")) {
             throw new IllegalArgumentException("Skill.md file does not contain a description field");
         }
+        Object rawMetadataName = yamlData.get("name");
+        if (useMetadataName && (!(rawMetadataName instanceof String metadataName) || metadataName.isBlank())) {
+            throw new IllegalArgumentException("Skill.md file does not contain a valid string name field");
+        }
         description = String.valueOf(yamlData.get("description"));
-        return description;
+        String metadataName = rawMetadataName instanceof String value && !value.isBlank() ? value : null;
+        return new SkillDocument(description, metadataName);
     }
 
     @SuppressWarnings("unchecked")
@@ -313,5 +333,8 @@ public class SkillManager {
             }
             throw new IOException(cause);
         }
+    }
+
+    private record SkillDocument(String description, String metadataName) {
     }
 }

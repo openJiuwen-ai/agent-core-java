@@ -72,6 +72,19 @@ class SkillUtilTest {
     }
 
     @Test
+    void registerSkillsCanUseMetadataName() throws Exception {
+        fs.content.put(RecordingFsOperation.normalize(SINGLE_SKILL_MD),
+                "---\nname: MetadataSkill\ndescription: SINGLE desc\n---\nbody\n");
+        SkillUtil util = skillUtil();
+
+        boolean registered = util.registerSkills(List.of(SINGLE_SKILL_MD), null, null, true);
+
+        assertThat(registered).isTrue();
+        assertThat(util.getSkillManager().has("MetadataSkill")).isTrue();
+        assertThat(util.getSkillManager().has("single_skill")).isFalse();
+    }
+
+    @Test
     void getSkillPromptIncludesRegisteredSkillInformation() throws Exception {
         SkillUtil util = skillUtil();
         util.registerSkills(SINGLE_SKILL_MD, null, null);

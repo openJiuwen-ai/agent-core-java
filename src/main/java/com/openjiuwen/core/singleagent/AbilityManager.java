@@ -9,9 +9,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
@@ -203,9 +205,39 @@ public class AbilityManager {
             return List.of(new ExecutionResult(null, errorMessage));
         }
         Object ability = get(toolCall.getName()).orElse(null);
+        if (ability instanceof ToolCard toolCard) {
+            Tool resolvedTool = Runner.resourceMgr().getTool(toolCard.getId());
+            if (resolvedTool != null) {
+                return executeResolvedTool(resolvedTool, toolCall);
+            }
+        }
         Object result = ability == null ? parsedArguments : ability;
         ToolMessage message = new ToolMessage(buildToolMessageContent(result), toolCall.getId(), toolCall.getName());
         return List.of(new ExecutionResult(result, message));
+    }
+
+    public List<ExecutionResult> executeResolvedTool(Tool tool, ToolCall toolCall) {
+        if (tool == null || toolCall == null) {
+            return List.of();
+        }
+        Object parsedArguments;
+        try {
+            parsedArguments = parseToolArguments(toolCall.getArguments());
+        } catch (IllegalArgumentException exception) {
+            ToolMessage errorMessage = new ToolMessage(exception.getMessage(), toolCall.getId(), toolCall.getName());
+            return List.of(new ExecutionResult(null, errorMessage));
+        }
+        Map<String, Object> inputs = parsedArguments instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of();
+        try {
+            Object result = tool.invoke(inputs, Map.of());
+            ToolMessage message = new ToolMessage(buildToolMessageContent(result), toolCall.getId(),
+                    toolCall.getName());
+            return List.of(new ExecutionResult(result, message));
+        } catch (Exception exception) {
+            String messageText = "Ability execution error: " + exception.getMessage();
+            ToolMessage message = new ToolMessage(messageText, toolCall.getId(), toolCall.getName());
+            return List.of(new ExecutionResult(null, message));
+        }
     }
 
     public static String buildToolMessageContent(Object result) {

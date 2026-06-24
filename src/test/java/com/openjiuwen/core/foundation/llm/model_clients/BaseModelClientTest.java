@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -70,7 +71,7 @@ class BaseModelClientTest {
     }
 
     @Test
-    void validateConfigRequiresSslCertWhenVerifySslIsTrue() {
+    void validateConfigAllowsDefaultTrustStoreWhenVerifySslIsTrue() {
         ModelClientConfig config = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)
                 .apiKey("sk-test")
@@ -78,9 +79,7 @@ class BaseModelClientTest {
                 .verifySsl(true)
                 .build();
 
-        BaseError error = assertThrows(BaseError.class, () -> new TestModelClient(requestConfig(), config));
-
-        assertTrue(error.getMessage().contains("ssl_cert is required when verify_ssl is True"));
+        assertDoesNotThrow(() -> new TestModelClient(requestConfig(), config));
     }
 
     @Test

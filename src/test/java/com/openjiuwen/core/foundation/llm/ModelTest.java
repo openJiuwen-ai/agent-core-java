@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -36,6 +37,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,6 +89,21 @@ class ModelTest {
         assertEquals("https://example.test", invoker.clientConfigs.getFirst().getApiBase());
         assertEquals("abc", invoker.clientConfigs.getFirst().getCustomHeaders().get("x-trace"));
         assertInstanceOf(UserMessage.class, invoker.messages.getFirst().getFirst());
+    }
+
+    @Test
+    void constructorCreatesBuiltinOpenAiClientWithoutManualRegistration() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("test-key")
+                .apiBase("https://example.test/v1")
+                .verifySsl(false)
+                .build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
+
+        Model model = new Model(clientConfig, requestConfig);
+
+        assertNotNull(model);
     }
 
     @Test
