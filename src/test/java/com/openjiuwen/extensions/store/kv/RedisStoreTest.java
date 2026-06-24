@@ -3,6 +3,7 @@ package com.openjiuwen.extensions.store.kv;
 import com.openjiuwen.spi.store.KVStorePipeline;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -95,6 +96,16 @@ class RedisStoreTest {
         assertDoesNotThrow(() -> failingStore.refreshTtl(List.of("volatile"), 5));
     }
 
+    @Test
+    void getPreservesBinaryValuesLikeJedisByteApi() {
+        RedisStore store = new RedisStore(new JedisLikeBinaryClient());
+        byte[] serialized = new byte[] {(byte) 0xAC, (byte) 0xED, 0, 5, 0x7B};
+
+        store.set("blob-key", serialized);
+
+        assertArrayEquals(serialized, (byte[]) store.get("blob-key"));
+    }
+
     static class FakeRedisClient {
         private final Map<String, Object> values = new ConcurrentHashMap<>();
         private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();
@@ -103,6 +114,10 @@ class RedisStoreTest {
             cleanup(key);
             values.put(key, value);
             expiryAt.remove(key);
+        }
+
+        public void set(byte[] key, byte[] value) {
+            set(new String(key, StandardCharsets.UTF_8), value);
         }
 
         public boolean set(String key, Object value, boolean nx, Integer expiry) {
@@ -122,6 +137,11 @@ class RedisStoreTest {
         public Object get(String key) {
             cleanup(key);
             return values.get(key);
+        }
+
+        public byte[] get(byte[] key) {
+            Object value = get(new String(key, StandardCharsets.UTF_8));
+            return value instanceof byte[] bytes ? bytes : null;
         }
 
         public long exists(String key) {
@@ -222,6 +242,31 @@ class RedisStoreTest {
         @Override
         public FakeRedisPipeline expire(String key, int ttlSeconds) {
             throw new IllegalStateException("boom");
+        }
+    }
+
+    /**
+     * Mimics Jedis: binary values are stored via {@code set(byte[], byte[])} and only
+     * {@code get(byte[])} returns raw bytes; {@code get(String)} would UTF-8-decode.
+     */
+    static class JedisLikeBinaryClient {
+        private final Map<String, byte[]> values = new ConcurrentHashMap<>();
+
+        public String set(byte[] key, byte[] value) {
+            values.put(new String(key, java.nio.charset.StandardCharsets.UTF_8), value);
+            return "OK";
+        }
+
+        public byte[] get(byte[] key) {
+            return values.get(new String(key, java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        public String get(String key) {
+            byte[] value = values.get(key);
+            if (value == null) {
+                return null;
+            }
+            return new String(value, java.nio.charset.StandardCharsets.UTF_8);
         }
     }
 }
