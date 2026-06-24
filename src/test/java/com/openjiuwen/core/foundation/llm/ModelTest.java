@@ -152,6 +152,23 @@ class ModelTest {
     }
 
     @Test
+    void streamCallbackIteratorIsCloseableAndClosesDelegate() throws Exception {
+        RecordingModelClient client = new RecordingModelClient();
+        CloseableChunkIterator closeableIterator = new CloseableChunkIterator(List.of(
+                AssistantMessageChunk.builder().content("a").build()
+        ));
+        client.streamIterator = closeableIterator;
+        Model.setCallbackFramework(new RecordingFramework());
+        Model model = new Model(client);
+
+        Iterator<AssistantMessageChunk> iterator = model.stream(List.of(new UserMessage("hello")));
+
+        assertInstanceOf(AutoCloseable.class, iterator);
+        ((AutoCloseable) iterator).close();
+        assertTrue(closeableIterator.closed);
+    }
+
+    @Test
     void releaseAndKvCacheHelpersMirrorUnderlyingClientCapability() {
         RecordingModelClient client = new RecordingModelClient();
         client.kvCacheReleaseSupported = true;
@@ -241,6 +258,7 @@ class ModelTest {
     private static final class RecordingModelClient implements Model.ModelClient {
         private final List<ModelInvokeOptions> invokeOptions = new ArrayList<>();
         private List<AssistantMessageChunk> streamChunks = List.of();
+        private Iterator<AssistantMessageChunk> streamIterator;
         private boolean kvCacheReleaseSupported;
         private String releaseSessionId;
         private Integer releaseMessagesReleasedIndex;
@@ -256,6 +274,9 @@ class ModelTest {
 
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            if (streamIterator != null) {
+                return streamIterator;
+            }
             return streamChunks.iterator();
         }
 
@@ -292,6 +313,30 @@ class ModelTest {
                                                                       Model.VideoGenerationOptions options) {
             lastVideoOptions = options;
             return CompletableFuture.completedFuture(VideoGenerationResponse.builder().videoUrl("video").build());
+        }
+    }
+
+    private static final class CloseableChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final Iterator<AssistantMessageChunk> delegate;
+        private boolean closed;
+
+        private CloseableChunkIterator(List<AssistantMessageChunk> chunks) {
+            this.delegate = chunks.iterator();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            return delegate.next();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 

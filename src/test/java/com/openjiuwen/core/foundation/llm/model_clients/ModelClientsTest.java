@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -66,6 +67,57 @@ class ModelClientsTest {
         } finally {
             ModelClients.unregisterBuiltinProvider(ProviderType.INTELLI_ROUTER.getValue());
         }
+    }
+
+    @Test
+    void openAiProviderCreatesRawOpenAiClient() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider("OpenAI")
+                .apiKey("test-key")
+                .apiBase("http://localhost:1/v1")
+                .build();
+        ModelRequestConfig modelConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
+
+        Object client = ModelClients.createModelClient(clientConfig, modelConfig);
+
+        assertThat(client).isInstanceOf(OpenAIModelClient.class);
+    }
+
+    @Test
+    void openAiRawProviderIsRejectedByBuilderAndJsonParsing() {
+        assertThatThrownBy(() -> ModelClientConfig.builder()
+                .clientProvider("OpenAIRaw")
+                .apiKey("test-key")
+                .apiBase("http://localhost:1/v1")
+                .build())
+                .hasMessageContaining("unavailable model provider: OpenAIRaw");
+
+        assertThatThrownBy(() -> new ObjectMapper().readValue(
+                "{\"client_provider\":\"OpenAIRaw\",\"api_key\":\"test-key\",\"api_base\":\"http://localhost:1/v1\"}",
+                ModelClientConfig.class))
+                .hasMessageContaining("unavailable model provider: OpenAIRaw");
+    }
+
+    @Test
+    void openRouterStillUsesRawClient() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider("OpenRouter")
+                .apiKey("test-key")
+                .apiBase("http://localhost:1/v1")
+                .build();
+        ModelRequestConfig modelConfig = ModelRequestConfig.builder().modelName("openrouter-test").build();
+
+        Object client = ModelClients.createModelClient(clientConfig, modelConfig);
+
+        assertThat(client).isInstanceOf(OpenAIModelClient.class);
+    }
+
+    @Test
+    void openAiRawRejectsUnsupportedAliases() {
+        assertThatThrownBy(() -> ModelClientConfig.builder().clientProvider("openai-raw").build())
+                .hasMessageContaining("unavailable model provider: openai-raw");
+        assertThatThrownBy(() -> ModelClientConfig.builder().clientProvider("OpenAICompatible").build())
+                .hasMessageContaining("unavailable model provider: OpenAICompatible");
     }
 
     @Test

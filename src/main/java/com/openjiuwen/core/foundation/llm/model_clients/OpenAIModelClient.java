@@ -26,7 +26,10 @@ import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -41,11 +44,12 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * OpenAI API client supporting GPT models and OpenAI-compatible services.
+ * Raw HTTP/SSE OpenAI-compatible API client.
  *
  * <p>Mirrors Python's {@code OpenAIModelClient} in
  * {@code openjiuwen/core/foundation/llm/model_clients/openai_model_client.py}.</p>
@@ -251,9 +255,7 @@ public class OpenAIModelClient extends BaseModelClient {
         recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
-            List<AssistantMessageChunk> chunks = streamChunks(params, outputParser, timeout);
-            recordTracerData(tracerRecordData, "llm_response", mergeChunks(chunks));
-            return chunks.iterator();
+            return tracingIterator(streamChunks(params, outputParser, timeout), tracerRecordData);
         } catch (Exception exception) {
             String detail = errorDetail(exception);
             Loggers.LLM.error("OpenAI API async stream error. {}", detail);
@@ -332,6 +334,12 @@ public class OpenAIModelClient extends BaseModelClient {
     }
 
     protected AssistantMessageChunk parseStreamChunk(Map<String, Object> chunk) {
+        return parseStreamChunk(chunk, null);
+    }
+
+    private AssistantMessageChunk parseStreamChunk(
+            Map<String, Object> chunk,
+            Map<Integer, ToolCallState> toolCallStates) {
         UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), false);
         List<Integer> promptTokenIds = integerList(chunk.get("prompt_token_ids"));
         List<Map<String, Object>> choices = asListOfObjectMaps(chunk.get("choices"));
@@ -350,7 +358,7 @@ public class OpenAIModelClient extends BaseModelClient {
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> delta = asObjectMap(choice.get("delta"));
-        List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"), false);
+        List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"), false, toolCallStates);
         List<Integer> completionTokenIds = firstNonNull(
                 integerList(choice.get("token_ids")),
                 integerList(delta.get("token_ids"))
@@ -379,55 +387,28 @@ public class OpenAIModelClient extends BaseModelClient {
         return parseJsonObject(response.body());
     }
 
-    private List<AssistantMessageChunk> streamChunks(
+    private Iterator<AssistantMessageChunk> streamChunks(
             Map<String, Object> params,
             BaseOutputParser outputParser,
             Float timeout) throws Exception {
-        HttpResponse<String> response = httpClient.send(
+        HttpResponse<InputStream> response = httpClient.send(
                 buildRequest(params, timeout),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                HttpResponse.BodyHandlers.ofInputStream()
         );
-        ensureSuccess(response.statusCode(), response.body());
-
-        List<AssistantMessageChunk> chunks = new ArrayList<>();
-        StringBuilder accumulatedContent = new StringBuilder();
-        for (String rawLine : response.body().lines().toList()) {
-            AssistantMessageChunk chunk = parseStreamLine(rawLine);
-            if (chunk == null) {
-                continue;
-            }
-            if (outputParser != null) {
-                Object parserContent = parseStreamingContent(chunk.getContent(), outputParser, accumulatedContent);
-                chunk = AssistantMessageChunk.builder()
-                        .content(chunk.getContent())
-                        .reasoningContent(chunk.getReasoningContent())
-                        .toolCalls(chunk.getToolCalls())
-                        .usageMetadata(chunk.getUsageMetadata())
-                        .finishReason(chunk.getFinishReason())
-                        .parserContent(parserContent)
-                        .promptTokenIds(chunk.getPromptTokenIds())
-                        .completionTokenIds(chunk.getCompletionTokenIds())
-                        .logprobs(chunk.getLogprobs())
-                        .build();
-            }
-            chunks.add(chunk);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body = readBody(response.body());
+            ensureSuccess(response.statusCode(), body);
         }
-        return chunks;
+        return new SseChunkIterator(response.body(), outputParser);
     }
 
-    private AssistantMessageChunk parseStreamLine(String rawLine) throws JsonProcessingException {
-        if (rawLine == null) {
-            return null;
+    private Iterator<AssistantMessageChunk> tracingIterator(
+            Iterator<AssistantMessageChunk> chunks,
+            Object tracerRecordData) {
+        if (tracerRecordData == null) {
+            return chunks;
         }
-        String line = rawLine.strip();
-        if (line.isEmpty() || !line.startsWith("data:")) {
-            return null;
-        }
-        String data = line.substring("data:".length()).strip();
-        if ("[DONE]".equals(data)) {
-            return null;
-        }
-        return parseStreamChunk(parseJsonObject(data));
+        return new TracingChunkIterator(chunks, tracerRecordData);
     }
 
     private HttpRequest buildRequest(Map<String, Object> params, Float timeout) throws JsonProcessingException {
@@ -563,6 +544,13 @@ public class OpenAIModelClient extends BaseModelClient {
     }
 
     private List<ToolCall> parseToolCalls(Object rawToolCalls, boolean defaultIndex) {
+        return parseToolCalls(rawToolCalls, defaultIndex, null);
+    }
+
+    private List<ToolCall> parseToolCalls(
+            Object rawToolCalls,
+            boolean defaultIndex,
+            Map<Integer, ToolCallState> toolCallStates) {
         if (!(rawToolCalls instanceof List<?> rawList)) {
             return List.of();
         }
@@ -575,17 +563,292 @@ public class OpenAIModelClient extends BaseModelClient {
             Map<String, Object> toolCallMap = toObjectMap(rawMap);
             Map<String, Object> function = asObjectMap(toolCallMap.get("function"));
             Object indexValue = toolCallMap.get("index");
+            Integer resolvedIndex = indexValue instanceof Number number
+                    ? number.intValue()
+                    : defaultIndex ? index : null;
+            if (toolCallStates != null) {
+                toolCalls.add(parseStreamingToolCall(toolCallStates, toolCallMap, function, resolvedIndex, index));
+                continue;
+            }
             toolCalls.add(ToolCall.builder()
                     .id(stringOrEmpty(toolCallMap.get("id")))
-                    .type("function")
+                    .type(nonEmptyString(toolCallMap.get("type"), "function"))
                     .name(stringOrEmpty(function.get("name")))
                     .arguments(stringOrEmpty(function.get("arguments")))
-                    .index(indexValue instanceof Number number
-                            ? number.intValue()
-                            : defaultIndex ? index : null)
+                    .index(resolvedIndex)
                     .build());
         }
         return toolCalls;
+    }
+
+    private ToolCall parseStreamingToolCall(
+            Map<Integer, ToolCallState> toolCallStates,
+            Map<String, Object> toolCallMap,
+            Map<String, Object> function,
+            Integer resolvedIndex,
+            int fallbackIndex) {
+        int stateIndex = resolvedIndex != null ? resolvedIndex : fallbackIndex;
+        ToolCallState state = toolCallStates.get(stateIndex);
+        if (state == null) {
+            state = new ToolCallState();
+            toolCallStates.put(stateIndex, state);
+        }
+        String id = nonEmptyString(toolCallMap.get("id"), null);
+        if (id != null) {
+            state.id = id;
+        }
+        String type = nonEmptyString(toolCallMap.get("type"), null);
+        if (type != null) {
+            state.type = type;
+        }
+        String name = nonEmptyString(function.get("name"), null);
+        if (name != null) {
+            state.name = name;
+        }
+        state.index = resolvedIndex != null ? resolvedIndex : stateIndex;
+        String argumentsDelta = asString(function.get("arguments"));
+        if (argumentsDelta == null) {
+            argumentsDelta = "";
+        }
+        state.arguments.append(argumentsDelta);
+        return ToolCall.builder()
+                .id(state.id)
+                .type(nonEmptyString(state.type, "function"))
+                .name(nonEmptyString(state.name, ""))
+                .arguments(argumentsDelta)
+                .index(resolvedIndex)
+                .build();
+    }
+
+    private final class SseChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final BufferedReader reader;
+        private final BaseOutputParser outputParser;
+        private final StringBuilder accumulatedContent = new StringBuilder();
+        private final Map<Integer, ToolCallState> toolCallStates = new LinkedHashMap<>();
+        private AssistantMessageChunk nextChunk;
+        private String pendingToolCallFinishReason = "null";
+        private boolean closed;
+
+        private SseChunkIterator(InputStream inputStream, BaseOutputParser outputParser) {
+            this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+            this.outputParser = outputParser;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (nextChunk != null) {
+                return true;
+            }
+            if (closed) {
+                return false;
+            }
+            nextChunk = readNextChunk();
+            return nextChunk != null;
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            AssistantMessageChunk current = nextChunk;
+            nextChunk = null;
+            return current;
+        }
+
+        private AssistantMessageChunk readNextChunk() {
+            try {
+                String rawLine;
+                while ((rawLine = reader.readLine()) != null) {
+                    String line = rawLine.strip();
+                    if (line.isEmpty() || !line.startsWith("data:")) {
+                        continue;
+                    }
+                    String data = line.substring("data:".length()).strip();
+                    if ("[DONE]".equals(data)) {
+                        close();
+                        return finalToolCallChunk();
+                    }
+                    AssistantMessageChunk chunk = parseStreamChunk(parseJsonObject(data), toolCallStates);
+                    if (chunk == null) {
+                        continue;
+                    }
+                    AssistantMessageChunk adaptedChunk = adaptToolCallChunk(chunk);
+                    if (adaptedChunk == null) {
+                        continue;
+                    }
+                    return applyStreamingParser(adaptedChunk);
+                }
+                close();
+                return finalToolCallChunk();
+            } catch (Exception exception) {
+                close();
+                String detail = errorDetail(exception);
+                Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
+                throw ErrorHelper.buildError(
+                        StatusCode.MODEL_CALL_FAILED,
+                        null,
+                        null,
+                        exception,
+                        Map.of("error_msg", "openAI API async stream error: " + detail)
+                );
+            }
+        }
+
+        private AssistantMessageChunk adaptToolCallChunk(AssistantMessageChunk chunk) {
+            if (chunk.getToolCalls() == null || chunk.getToolCalls().isEmpty()) {
+                return chunk;
+            }
+            if (!"null".equals(chunk.getFinishReason())) {
+                pendingToolCallFinishReason = chunk.getFinishReason();
+            }
+            if (!hasNonToolOutput(chunk)) {
+                return null;
+            }
+            return AssistantMessageChunk.builder()
+                    .content(chunk.getContent())
+                    .reasoningContent(chunk.getReasoningContent())
+                    .usageMetadata(chunk.getUsageMetadata())
+                    .finishReason("null")
+                    .promptTokenIds(chunk.getPromptTokenIds())
+                    .completionTokenIds(chunk.getCompletionTokenIds())
+                    .logprobs(chunk.getLogprobs())
+                    .build();
+        }
+
+        private boolean hasNonToolOutput(AssistantMessageChunk chunk) {
+            return pythonTruthy(chunk.getContent())
+                    || pythonTruthy(chunk.getReasoningContent())
+                    || chunk.getUsageMetadata() != null
+                    || chunk.getPromptTokenIds() != null
+                    || chunk.getCompletionTokenIds() != null
+                    || chunk.getLogprobs() != null;
+        }
+
+        private AssistantMessageChunk finalToolCallChunk() {
+            if (toolCallStates.isEmpty()) {
+                return null;
+            }
+            List<ToolCall> toolCalls = new ArrayList<>();
+            for (ToolCallState state : toolCallStates.values()) {
+                toolCalls.add(ToolCall.builder()
+                        .id(state.id)
+                        .type(nonEmptyString(state.type, "function"))
+                        .name(nonEmptyString(state.name, ""))
+                        .arguments(state.arguments.toString())
+                        .index(state.index)
+                        .build());
+            }
+            toolCallStates.clear();
+            return AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(toolCalls)
+                    .finishReason(pendingToolCallFinishReason)
+                    .build();
+        }
+
+        private AssistantMessageChunk applyStreamingParser(AssistantMessageChunk chunk) {
+            if (outputParser == null) {
+                return chunk;
+            }
+            Object parserContent = parseStreamingContent(chunk.getContent(), outputParser, accumulatedContent);
+            return AssistantMessageChunk.builder()
+                    .content(chunk.getContent())
+                    .reasoningContent(chunk.getReasoningContent())
+                    .toolCalls(chunk.getToolCalls())
+                    .usageMetadata(chunk.getUsageMetadata())
+                    .finishReason(chunk.getFinishReason())
+                    .parserContent(parserContent)
+                    .promptTokenIds(chunk.getPromptTokenIds())
+                    .completionTokenIds(chunk.getCompletionTokenIds())
+                    .logprobs(chunk.getLogprobs())
+                    .build();
+        }
+
+        @Override
+        public void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            try {
+                reader.close();
+            } catch (IOException exception) {
+                Loggers.LLM.debug("Failed to close OpenAI stream reader. {}", exception.getMessage());
+            }
+        }
+    }
+
+    private final class TracingChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final Iterator<AssistantMessageChunk> delegate;
+        private final Object tracerRecordData;
+        private final List<AssistantMessageChunk> consumedChunks = new ArrayList<>();
+        private int lastRecordedChunkCount;
+        private boolean finalRecorded;
+
+        private TracingChunkIterator(Iterator<AssistantMessageChunk> delegate, Object tracerRecordData) {
+            this.delegate = delegate;
+            this.tracerRecordData = tracerRecordData;
+        }
+
+        @Override
+        public boolean hasNext() {
+            boolean hasNext = delegate.hasNext();
+            if (!hasNext) {
+                recordFinalOnce();
+            }
+            return hasNext;
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            try {
+                AssistantMessageChunk chunk = delegate.next();
+                consumedChunks.add(chunk);
+                return chunk;
+            } catch (NoSuchElementException exception) {
+                recordFinalOnce();
+                throw exception;
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            try {
+                if (delegate instanceof AutoCloseable closeable) {
+                    closeable.close();
+                }
+            } finally {
+                recordFinalOnce();
+            }
+        }
+
+        private void recordFinalOnce() {
+            if (finalRecorded) {
+                return;
+            }
+            finalRecorded = true;
+            if (consumedChunks.isEmpty() || consumedChunks.size() == lastRecordedChunkCount) {
+                return;
+            }
+            recordResponse();
+        }
+
+        private void recordResponse() {
+            if (consumedChunks.isEmpty()) {
+                return;
+            }
+            lastRecordedChunkCount = consumedChunks.size();
+            recordTracerData(tracerRecordData, "llm_response", mergeChunks(consumedChunks));
+        }
+    }
+
+    private static final class ToolCallState {
+        private String id;
+        private String type = "function";
+        private String name = "";
+        private Integer index;
+        private final StringBuilder arguments = new StringBuilder();
     }
 
     private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
@@ -631,6 +894,15 @@ public class OpenAIModelClient extends BaseModelClient {
             return;
         }
         throw new IOException("HTTP " + statusCode + ": " + (body == null ? "" : body));
+    }
+
+    private static String readBody(InputStream inputStream) throws IOException {
+        if (inputStream == null) {
+            return "";
+        }
+        try (inputStream) {
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
@@ -730,6 +1002,14 @@ public class OpenAIModelClient extends BaseModelClient {
 
     private static String stringOrEmpty(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String nonEmptyString(Object value, String defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        String text = String.valueOf(value);
+        return text.isEmpty() ? defaultValue : text;
     }
 
     private static String stringify(Object value) {

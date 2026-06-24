@@ -730,7 +730,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
      * <p>Mirrors Python's stream {@code emit_after(..., item_key="result")} wrapper in
      * {@code openjiuwen/core/foundation/llm/model.py}.</p>
      */
-    private static final class CallbackIterator implements Iterator<AssistantMessageChunk> {
+    private static final class CallbackIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final Iterator<AssistantMessageChunk> delegate;
         private final DecoratorFramework framework;
         private final InvocationRequest request;
@@ -771,6 +771,13 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             afterKwargs.put("model_client_config", modelClientConfig);
             framework.trigger(LLMCallEvents.LLM_STREAM_OUTPUT, new Object[]{request.messages()}, afterKwargs);
             return effectiveChunk;
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (delegate instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
         }
     }
 }

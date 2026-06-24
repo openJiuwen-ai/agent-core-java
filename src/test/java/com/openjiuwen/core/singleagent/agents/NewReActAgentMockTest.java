@@ -6,7 +6,11 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -14,7 +18,9 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -27,6 +33,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -311,6 +324,105 @@ class NewReActAgentMockTest {
         OutputSchema output = (OutputSchema) session.stream.getFirst();
         assertThat(output.getType()).isEqualTo("answer");
         assertThat(stringObjectMap((Map<?, ?>) output.getPayload())).containsEntry("output", "streamed");
+    }
+
+    @Test
+    void streamReturnsIteratorBeforeModelStreamCompletes() throws Exception {
+        CountDownLatch allowSecondChunk = new CountDownLatch(1);
+        ReActAgent agent = new ReActAgent(agentCard("stream_agent", "stream_agent", "Stream agent"));
+        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk)));
+        AgentSession session = new AgentSession("stream-session", null, agent.getCard());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<Iterator<Object>> streamFuture = executor.submit(() -> agent.stream(
+                    Map.of("conversation_id", "stream-session", "query", "hello"),
+                    session,
+                    List.of()
+            ));
+
+            Iterator<Object> iterator = streamFuture.get(1, TimeUnit.SECONDS);
+            assertThat(iterator.hasNext()).isTrue();
+            OutputSchema firstOutput = (OutputSchema) iterator.next();
+
+            assertThat(firstOutput.getType()).isEqualTo("llm_output");
+            assertThat(stringObjectMap((Map<?, ?>) firstOutput.getPayload()))
+                    .containsEntry("content", "hel");
+            assertThat(allowSecondChunk.getCount()).isEqualTo(1);
+        } finally {
+            allowSecondChunk.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void streamUsesLifecycleSessionContractWithoutReflection() throws Exception {
+        CountDownLatch allowSecondChunk = new CountDownLatch(1);
+        RecordingLifecycleSession session = new RecordingLifecycleSession("lifecycle-session");
+        ReActAgent agent = new ReActAgent(agentCard("lifecycle_agent", "lifecycle_agent", "Lifecycle agent"));
+        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk)));
+
+        Iterator<Object> iterator = agent.stream(
+                Map.of("conversation_id", "lifecycle-session", "query", "hello"),
+                session,
+                List.of()
+        );
+        assertThat(iterator.hasNext()).isTrue();
+        allowSecondChunk.countDown();
+
+        while (iterator.hasNext()) {
+            iterator.next();
+        }
+
+        assertThat(session.preRunCalled).isTrue();
+        assertThat(session.closeStreamCalled).isTrue();
+        assertThat(session.commitCalled).isTrue();
+    }
+
+    @Test
+    void streamProducerRunsOnVirtualThread() throws Exception {
+        CountDownLatch allowSecondChunk = new CountDownLatch(1);
+        CompletableFuture<Boolean> virtualThreadSeen = new CompletableFuture<>();
+        ReActAgent agent = new ReActAgent(agentCard("virtual_stream_agent", "virtual_stream_agent",
+                "Virtual stream agent"));
+        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk, virtualThreadSeen)));
+        AgentSession session = new AgentSession("virtual-stream-session", null, agent.getCard());
+
+        Iterator<Object> iterator = agent.stream(
+                Map.of("conversation_id", "virtual-stream-session", "query", "hello"),
+                session,
+                List.of()
+        );
+        assertThat(iterator.hasNext()).isTrue();
+
+        allowSecondChunk.countDown();
+        while (iterator.hasNext()) {
+            iterator.next();
+        }
+
+        assertThat(virtualThreadSeen.get(1, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void streamClosesModelIteratorAfterConsumption() throws Exception {
+        CountDownLatch allowSecondChunk = new CountDownLatch(0);
+        CompletableFuture<Boolean> iteratorClosed = new CompletableFuture<>();
+        ReActAgent agent = new ReActAgent(agentCard("close_stream_agent", "close_stream_agent",
+                "Close stream agent"));
+        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk, new CompletableFuture<>(),
+                iteratorClosed)));
+        AgentSession session = new AgentSession("close-stream-session", null, agent.getCard());
+
+        Iterator<Object> iterator = agent.stream(
+                Map.of("conversation_id", "close-stream-session", "query", "hello"),
+                session,
+                List.of()
+        );
+        while (iterator.hasNext()) {
+            iterator.next();
+        }
+
+        assertThat(iteratorClosed.get(1, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test
@@ -623,6 +735,160 @@ class NewReActAgentMockTest {
 
         private int getCallCount() {
             return callCount;
+        }
+    }
+
+    private static final class BlockingStreamModelClient implements Model.ModelClient {
+        private final CountDownLatch allowSecondChunk;
+        private final CompletableFuture<Boolean> virtualThreadSeen;
+        private final CompletableFuture<Boolean> iteratorClosed;
+
+        private BlockingStreamModelClient(CountDownLatch allowSecondChunk) {
+            this(allowSecondChunk, new CompletableFuture<>());
+        }
+
+        private BlockingStreamModelClient(CountDownLatch allowSecondChunk,
+                                          CompletableFuture<Boolean> virtualThreadSeen) {
+            this(allowSecondChunk, virtualThreadSeen, new CompletableFuture<>());
+        }
+
+        private BlockingStreamModelClient(CountDownLatch allowSecondChunk,
+                                          CompletableFuture<Boolean> virtualThreadSeen,
+                                          CompletableFuture<Boolean> iteratorClosed) {
+            this.allowSecondChunk = allowSecondChunk;
+            this.virtualThreadSeen = virtualThreadSeen;
+            this.iteratorClosed = iteratorClosed;
+        }
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return CompletableFuture.completedFuture(new AssistantMessage("fallback"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return new CloseAwareIterator();
+        }
+
+        private final class CloseAwareIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+            private int index;
+
+            @Override
+            public boolean hasNext() {
+                return index < 2;
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                virtualThreadSeen.complete(Thread.currentThread().isVirtual());
+                if (index++ == 0) {
+                    return AssistantMessageChunk.builder()
+                            .content("hel")
+                            .finishReason("null")
+                            .build();
+                }
+                try {
+                    allowSecondChunk.await();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return AssistantMessageChunk.builder()
+                        .content("lo")
+                        .finishReason("stop")
+                        .build();
+            }
+
+            @Override
+            public void close() {
+                iteratorClosed.complete(true);
+            }
+        }
+    }
+
+    private static final class RecordingLifecycleSession implements AgentSessionApi, AgentSessionLifecycle {
+        private static final Object END = new Object();
+
+        private final String sessionId;
+        private final java.util.concurrent.BlockingQueue<Object> stream = new java.util.concurrent.LinkedBlockingQueue<>();
+        private final Map<String, Object> state = new LinkedHashMap<>();
+        private volatile boolean preRunCalled;
+        private volatile boolean closeStreamCalled;
+        private volatile boolean commitCalled;
+
+        private RecordingLifecycleSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+            state.putAll(data);
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            stream.add(data);
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            return new Iterator<>() {
+                private Object next;
+
+                @Override
+                public boolean hasNext() {
+                    if (next == END) {
+                        return false;
+                    }
+                    if (next != null) {
+                        return true;
+                    }
+                    try {
+                        next = stream.poll(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(exception);
+                    }
+                    return next != null && next != END;
+                }
+
+                @Override
+                public Object next() {
+                    if (!hasNext()) {
+                        throw new java.util.NoSuchElementException();
+                    }
+                    Object current = next;
+                    next = null;
+                    return current;
+                }
+            };
+        }
+
+        @Override
+        public AgentSessionLifecycle preRun(Map<String, Object> kwargs) {
+            preRunCalled = true;
+            return this;
+        }
+
+        @Override
+        public void closeStream() {
+            closeStreamCalled = true;
+            stream.add(END);
+        }
+
+        @Override
+        public void commit() {
+            commitCalled = true;
         }
     }
 

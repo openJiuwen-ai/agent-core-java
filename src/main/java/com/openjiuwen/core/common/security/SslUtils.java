@@ -42,31 +42,8 @@ public final class SslUtils {
     public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
             SSLContext context = SSLContext.getInstance("TLSv1.2");
-            context.init(null, null, null);
-
-            if (sslCertPath != null && !sslCertPath.isBlank()) {
-                Path certPath = Path.of(sslCertPath);
-                if (Files.isRegularFile(certPath, LinkOption.NOFOLLOW_LINKS)) {
-                    Path realCertPath = certPath.toRealPath();
-                    String safeCertDir = envReader.apply("SAFE_CERT_DIR");
-                    if (safeCertDir == null || safeCertDir.isBlank()) {
-                        throw ErrorHelper.buildError(
-                                StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                                "error_msg",
-                                "SAFE_CERT_DIR is not set"
-                        );
-                    }
-                    Path safePrefix = Path.of(safeCertDir).toRealPath();
-                    if (!realCertPath.startsWith(safePrefix)) {
-                        throw ErrorHelper.buildError(
-                                StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                                "error_msg",
-                                "certificate path is outside the allowed directory"
-                        );
-                    }
-                    secureLoadCert(context, realCertPath);
-                }
-            }
+            X509TrustManager trustManager = createStrictTrustManager(sslCertPath);
+            context.init(null, trustManager != null ? new TrustManager[]{trustManager} : null, null);
             return context;
         } catch (BaseError error) {
             throw error;
@@ -75,6 +52,44 @@ public final class SslUtils {
                     StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
                     "error_msg",
                     "failed to create SSL context"
+            );
+        }
+    }
+
+    public static X509TrustManager createStrictTrustManager(String sslCertPath) {
+        try {
+            if (sslCertPath == null || sslCertPath.isBlank()) {
+                return null;
+            }
+            Path certPath = Path.of(sslCertPath);
+            if (!Files.isRegularFile(certPath, LinkOption.NOFOLLOW_LINKS)) {
+                return null;
+            }
+            Path realCertPath = certPath.toRealPath();
+            String safeCertDir = envReader.apply("SAFE_CERT_DIR");
+            if (safeCertDir == null || safeCertDir.isBlank()) {
+                throw ErrorHelper.buildError(
+                        StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "error_msg",
+                        "SAFE_CERT_DIR is not set"
+                );
+            }
+            Path safePrefix = Path.of(safeCertDir).toRealPath();
+            if (!realCertPath.startsWith(safePrefix)) {
+                throw ErrorHelper.buildError(
+                        StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "error_msg",
+                        "certificate path is outside the allowed directory"
+                );
+            }
+            return secureLoadTrustManager(realCertPath);
+        } catch (BaseError error) {
+            throw error;
+        } catch (Exception error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "error_msg",
+                    "failed to create SSL trust manager"
             );
         }
     }
@@ -175,7 +190,7 @@ public final class SslUtils {
         envReader = System::getenv;
     }
 
-    private static void secureLoadCert(SSLContext context, Path certPath) throws Exception {
+    private static X509TrustManager secureLoadTrustManager(Path certPath) throws Exception {
         long size = Files.size(certPath);
         if (size == 0 || size > MAX_CERT_SIZE) {
             throw ErrorHelper.buildError(
@@ -207,6 +222,15 @@ public final class SslUtils {
                 TrustManagerFactory.getDefaultAlgorithm()
         );
         trustManagerFactory.init(keyStore);
-        context.init(null, trustManagerFactory.getTrustManagers(), null);
+        for (TrustManager trustManager : trustManagerFactory.getTrustManagers()) {
+            if (trustManager instanceof X509TrustManager x509TrustManager) {
+                return x509TrustManager;
+            }
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                "error_msg",
+                "x509 trust manager is unavailable"
+        );
     }
 }

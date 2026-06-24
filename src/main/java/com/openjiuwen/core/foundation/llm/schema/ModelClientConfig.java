@@ -126,10 +126,14 @@ public class ModelClientConfig {
         if (supportedTypes.contains(normalized)) {
             return normalized;
         }
+        throw unavailableProvider(normalized);
+    }
+
+    private static RuntimeException unavailableProvider(String normalized) {
         throw ErrorHelper.buildError(
                 StatusCode.MODEL_PROVIDER_INVALID,
                 "error_msg",
-                "unavailable model provider: " + normalized + ",and available providers are: " + supportedTypes
+                "unavailable model provider: " + normalized + ",and available providers are: " + supportedTypes()
         );
     }
 

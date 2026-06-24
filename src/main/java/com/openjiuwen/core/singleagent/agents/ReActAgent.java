@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.agents;
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.context_engine.ContextWindow;
 import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -19,6 +20,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -824,7 +826,9 @@ public class ReActAgent extends BaseAgent {
                     null,
                     getCard()
             );
-            preRun(activeSession, inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
+            if (activeSession instanceof AgentSessionLifecycle lifecycle) {
+                lifecycle.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
+            }
             needCleanup = true;
         }
         try {
@@ -991,7 +995,9 @@ public class ReActAgent extends BaseAgent {
         } finally {
             if (needCleanup) {
                 contextEngine.saveContexts(session);
-                closeStreamAndCommit(session);
+                if (session instanceof AgentSessionLifecycle lifecycle) {
+                    closeStreamAndCommit(lifecycle);
+                }
             }
         }
     }
@@ -1065,12 +1071,20 @@ public class ReActAgent extends BaseAgent {
             );
             needCleanup = true;
         }
-        agentSession = hasMethods(activeSession, "preRun", "closeStream", "commit");
-        if (agentSession) {
-            preRun(activeSession, inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
+        AgentSessionLifecycle lifecycleSession = activeSession instanceof AgentSessionLifecycle lifecycle ? lifecycle : null;
+        agentSession = lifecycleSession != null;
+        if (lifecycleSession != null) {
+            lifecycleSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
         }
         AgentSessionApi finalSession = activeSession;
+        AgentSessionLifecycle finalLifecycleSession = lifecycleSession;
         boolean finalNeedCleanup = needCleanup;
+        if (finalLifecycleSession != null) {
+            Thread.ofVirtual()
+                    .name("react-agent-stream-" + getCard().getId())
+                    .start(() -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup));
+            return finalSession.streamIterator();
+        }
         try {
             Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
             if (result instanceof List<?> list) {
@@ -1089,11 +1103,35 @@ public class ReActAgent extends BaseAgent {
             if (finalNeedCleanup) {
                 contextEngine.saveContexts(finalSession);
             }
-            if (agentSession) {
-                closeStreamAndCommit(finalSession);
+            if (finalLifecycleSession != null) {
+                closeStreamAndCommit(finalLifecycleSession);
             }
         }
         return finalSession.streamIterator();
+    }
+
+    private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession,
+                                    AgentSessionLifecycle lifecycleSession, boolean finalNeedCleanup) {
+        try {
+            Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
+            if (result instanceof List<?> list) {
+                for (Object schema : list) {
+                    finalSession.writeStream(schema);
+                }
+            } else if (result instanceof Map<?, ?> map) {
+                writeInvokeResultToStreamInternal(stringObjectMap(map), finalSession);
+            }
+        } catch (RuntimeException exception) {
+            writeInvokeResultToStreamInternal(
+                    new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
+                    finalSession
+            );
+        } finally {
+            if (finalNeedCleanup) {
+                contextEngine.saveContexts(finalSession);
+            }
+            closeStreamAndCommit(lifecycleSession);
+        }
     }
 
     public void clearSession(String sessionId) {
@@ -1201,23 +1239,27 @@ public class ReActAgent extends BaseAgent {
         Long firstTokenTime = null;
         Long lastTokenTime = null;
         int chunkCount = 0;
-        while (iterator.hasNext()) {
-            AssistantMessageChunk chunk = iterator.next();
-            accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
-            if (firstTokenTime == null) {
-                firstTokenTime = System.nanoTime();
+        try {
+            while (iterator.hasNext()) {
+                AssistantMessageChunk chunk = iterator.next();
+                accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
+                if (firstTokenTime == null) {
+                    firstTokenTime = System.nanoTime();
+                }
+                lastTokenTime = System.nanoTime();
+                chunkCount++;
+                AgentSessionApi session = ctx.getSession();
+                if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
+                    session.writeStream(new OutputSchema("llm_reasoning", chunkIndex++,
+                            new LinkedHashMap<>(Map.of("content", chunk.getReasoningContent(), "result_type", "answer"))));
+                }
+                if (session != null && chunk.getContent() != null && !String.valueOf(chunk.getContent()).isEmpty()) {
+                    session.writeStream(new OutputSchema("llm_output", chunkIndex++,
+                            new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
+                }
             }
-            lastTokenTime = System.nanoTime();
-            chunkCount++;
-            AgentSessionApi session = ctx.getSession();
-            if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
-                session.writeStream(new OutputSchema("llm_reasoning", chunkIndex++,
-                        new LinkedHashMap<>(Map.of("content", chunk.getReasoningContent(), "result_type", "answer"))));
-            }
-            if (session != null && chunk.getContent() != null && !String.valueOf(chunk.getContent()).isEmpty()) {
-                session.writeStream(new OutputSchema("llm_output", chunkIndex++,
-                        new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
-            }
+        } finally {
+            closeIterator(iterator);
         }
         AssistantMessage aiMessage;
         if (accumulatedChunk == null) {
@@ -1259,15 +1301,19 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    private static void preRun(AgentSessionApi session, Map<String, Object> kwargs) {
-        invokeMethod(session, "preRun", Map.class, kwargs);
-        invokeMethod(session, "pre_run", Map.class, kwargs);
+    private static void closeStreamAndCommit(AgentSessionLifecycle session) {
+        session.closeStream();
+        session.commit();
     }
 
-    private static void closeStreamAndCommit(AgentSessionApi session) {
-        invokeMethod(session, "closeStream");
-        invokeMethod(session, "close_stream");
-        invokeMethod(session, "commit");
+    private static void closeIterator(Iterator<?> iterator) {
+        if (iterator instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                Loggers.AGENT.debug("Failed to close stream iterator. {}", exception.getMessage());
+            }
+        }
     }
 
     private static void invokeStaticRunnerRelease(String sessionId) {
@@ -1278,40 +1324,6 @@ public class ReActAgent extends BaseAgent {
         } catch (ReflectiveOperationException ignored) {
             // Runner may not be available in focused tests.
         }
-    }
-
-    private static void invokeMethod(Object target, String methodName) {
-        if (target == null) {
-            return;
-        }
-        try {
-            target.getClass().getMethod(methodName).invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-        }
-    }
-
-    private static void invokeMethod(Object target, String methodName, Class<?> paramType, Object value) {
-        if (target == null) {
-            return;
-        }
-        try {
-            target.getClass().getMethod(methodName, paramType).invoke(target, value);
-        } catch (ReflectiveOperationException ignored) {
-        }
-    }
-
-    private static boolean hasMethods(Object target, String... methodNames) {
-        if (target == null) {
-            return false;
-        }
-        for (String methodName : methodNames) {
-            try {
-                target.getClass().getMethod(methodName);
-            } catch (NoSuchMethodException exception) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static void putExtra(AgentCallbackContext ctx, String key, Object value) {
