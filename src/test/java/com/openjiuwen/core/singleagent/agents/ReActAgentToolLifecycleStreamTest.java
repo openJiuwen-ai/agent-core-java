@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -206,6 +207,82 @@ class ReActAgentToolLifecycleStreamTest {
 
         assertThat(result).isInstanceOf(Map.class);
         assertThat(result.toString()).doesNotContain("tool_call").doesNotContain("tool_result");
+    }
+
+    @Test
+    void streamEmitsErrorToolResultWhenArgumentsJsonIsInvalid() {
+        CountingTool tool = new CountingTool(unique("lookup-tool"), "lookupEnv", Map.of("result", "prod"));
+        ReActAgent agent = streamingAgent(List.of(
+                toolChunk("call-bad-json", "lookupEnv", "not-json"),
+                answerChunk("done")
+        ));
+        registerGlobalTool(agent, tool);
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(
+                Map.of("query", "broken args"),
+                new MemorySession("bad-json-session"),
+                List.of()
+        ));
+
+        Map<String, Object> resultPayload = payload(singleOutput(outputs, "tool_result"));
+        assertThat(resultPayload)
+                .containsEntry("tool_call_id", "call-bad-json")
+                .containsEntry("tool_name", "lookupEnv")
+                .containsEntry("status", "error");
+        assertThat(String.valueOf(resultPayload.get("error"))).startsWith("Invalid tool arguments JSON:");
+        assertThat(tool.invokeCount).isEqualTo(0);
+    }
+
+    @Test
+    void streamEmitsErrorToolResultWhenToolReturnsSuccessFalse() {
+        CountingTool tool = new CountingTool(unique("failing-tool"), "failingTool",
+                Map.of("success", false, "error", "lookup failed"));
+        ReActAgent agent = streamingAgent(List.of(
+                toolChunk("call-failing", "failingTool", "{\"key\":\"env\"}"),
+                answerChunk("done")
+        ));
+        registerGlobalTool(agent, tool);
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(
+                Map.of("query", "run failing"),
+                new MemorySession("success-false-session"),
+                List.of()
+        ));
+
+        assertThat(payload(singleOutput(outputs, "tool_result")))
+                .containsEntry("tool_call_id", "call-failing")
+                .containsEntry("tool_name", "failingTool")
+                .containsEntry("status", "error")
+                .containsEntry("error", "lookup failed");
+        assertThat(tool.invokeCount).isEqualTo(1);
+    }
+
+    @Test
+    void streamEmitsLlmUsageWithSharedMonotonicIndex() {
+        ReActAgent agent = streamingAgent(List.of(
+                AssistantMessageChunk.builder()
+                        .content("hello")
+                        .finishReason("stop")
+                        .usageMetadata(UsageMetadata.builder()
+                                .inputTokens(10)
+                                .outputTokens(5)
+                                .totalTokens(15)
+                                .build())
+                        .build()
+        ));
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(
+                Map.of("query", "hi"),
+                new MemorySession("usage-session"),
+                List.of()
+        ));
+
+        OutputSchema usage = singleOutput(outputs, "llm_usage");
+        assertThat(usage.getIndex()).isGreaterThan(0);
+        assertThat(outputs).extracting(OutputSchema::getIndex).doesNotHaveDuplicates();
+        for (int i = 1; i < outputs.size(); i++) {
+            assertThat(outputs.get(i).getIndex()).isGreaterThan(outputs.get(i - 1).getIndex());
+        }
     }
 
     private static ReActAgent streamingAgent(List<AssistantMessageChunk> chunks) {
