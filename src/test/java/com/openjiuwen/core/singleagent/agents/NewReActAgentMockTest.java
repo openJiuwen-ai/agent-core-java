@@ -426,6 +426,24 @@ class NewReActAgentMockTest {
     }
 
     @Test
+    void streamErrorAfterPartialChunkUsesNextSharedIndex() {
+        ReActAgent agent = new ReActAgent(agentCard("stream_error_agent", "stream_error_agent",
+                "Stream error agent"));
+        agent.setLlm(new Model(new ThrowingAfterFirstChunkModelClient()));
+        MemorySession session = new MemorySession();
+
+        Iterator<Object> iterator = agent.stream(Map.of("conversation_id", "stream-error-session", "query", "hello"),
+                session, List.of());
+        List<OutputSchema> outputs = collectOutputSchemas(iterator);
+
+        assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "answer");
+        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 1);
+        assertThat(stringObjectMap((Map<?, ?>) outputs.get(1).getPayload()))
+                .containsEntry("result_type", "error")
+                .containsEntry("output", "stream exploded");
+    }
+
+    @Test
     void getToolInfoReturnsAgentAsTool() {
         AgentCard card = agentCard("agent_tool", "agent_tool", "Agent as a tool");
 
@@ -717,6 +735,17 @@ class NewReActAgentMockTest {
         return result;
     }
 
+    private static List<OutputSchema> collectOutputSchemas(Iterator<Object> iterator) {
+        List<OutputSchema> outputs = new ArrayList<>();
+        while (iterator.hasNext()) {
+            Object item = iterator.next();
+            if (item instanceof OutputSchema outputSchema) {
+                outputs.add(outputSchema);
+            }
+        }
+        return outputs;
+    }
+
     private static final class ScriptedReActAgent extends ReActAgent {
         private final List<Object> responses;
         private int callCount;
@@ -803,6 +832,36 @@ class NewReActAgentMockTest {
             public void close() {
                 iteratorClosed.complete(true);
             }
+        }
+    }
+
+    private static final class ThrowingAfterFirstChunkModelClient implements Model.ModelClient {
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return CompletableFuture.completedFuture(new AssistantMessage("fallback"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return new Iterator<>() {
+                private int index;
+
+                @Override
+                public boolean hasNext() {
+                    return index < 2;
+                }
+
+                @Override
+                public AssistantMessageChunk next() {
+                    if (index++ == 0) {
+                        return AssistantMessageChunk.builder()
+                                .content("hel")
+                                .finishReason("null")
+                                .build();
+                    }
+                    throw new IllegalStateException("stream exploded");
+                }
+            };
         }
     }
 

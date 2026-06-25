@@ -20,8 +20,12 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.SysOperationCard;
@@ -279,6 +283,24 @@ class ReActAgentToolLifecycleStreamTest {
     }
 
     @Test
+    void streamDoesNotEmitToolResultForPendingToolInterrupt() {
+        ReActAgent agent = new InterruptingToolAgent(
+                ToolCall.builder().id("call-interrupt").name("confirmTool").arguments("{}").build()
+        );
+        MemorySession session = new MemorySession("interrupt-session");
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(
+                Map.of("query", "needs approval"),
+                session,
+                List.of()
+        ));
+
+        assertThat(outputsOfType(outputs, "tool_call")).hasSize(1);
+        assertThat(outputsOfType(outputs, "tool_result")).isEmpty();
+        assertThat(outputsOfType(outputs, InterruptConstants.INTERACTION)).hasSize(1);
+    }
+
+    @Test
     void streamEmitsLlmUsageWithSharedMonotonicIndex() {
         ReActAgent agent = streamingAgent(List.of(
                 AssistantMessageChunk.builder()
@@ -489,6 +511,33 @@ class ReActAgentToolLifecycleStreamTest {
 
         private List<String> getCapturedAssistantToolCallIds() {
             return capturedAssistantToolCallIds;
+        }
+    }
+
+    private static final class InterruptingToolAgent extends ReActAgent {
+        private final ToolCall toolCall;
+
+        private InterruptingToolAgent(ToolCall toolCall) {
+            super(agentCard("interrupting-tool-agent"));
+            this.toolCall = toolCall;
+        }
+
+        @Override
+        public Object callModel(AgentCallbackContext ctx, ModelContext context, List<ToolInfo> tools) {
+            return AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build();
+        }
+
+        @Override
+        public List<AbilityManager.ExecutionResult> executeToolCall(AgentCallbackContext ctx,
+                                                                    List<ToolCall> toolCalls,
+                                                                    AgentSessionApi session,
+                                                                    ModelContext context) {
+            InterruptRequest request = new InterruptRequest("Please approve?", Map.of("type", "object"),
+                    "confirmTool");
+            return List.of(new AbilityManager.ExecutionResult(
+                    new ToolInterruptException(request, toolCall),
+                    new ToolMessage("[INTERRUPTED - Waiting for user input]", toolCall.getId(), toolCall.getName())
+            ));
         }
     }
 

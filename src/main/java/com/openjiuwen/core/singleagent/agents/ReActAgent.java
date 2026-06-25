@@ -29,6 +29,7 @@ import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.ResumeContext;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -1011,6 +1012,13 @@ public class ReActAgent extends BaseAgent {
                 }
             }
             return result;
+        } catch (RuntimeException exception) {
+            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+                Map<String, Object> errorResult = buildErrorResult(exception);
+                writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
+                return errorResult;
+            }
+            throw exception;
         } finally {
             if (needCleanup) {
                 contextEngine.saveContexts(session);
@@ -1080,12 +1088,23 @@ public class ReActAgent extends BaseAgent {
             AbilityManager.ExecutionResult result = results != null && index < results.size()
                     ? results.get(index)
                     : null;
+            if (isPendingInterruptResult(result)) {
+                continue;
+            }
             session.writeStream(ToolLifecycleOutputFactory.buildToolResultOutput(
                     toolCalls.get(index),
                     result,
                     nextStreamIndex(ctx)
             ));
         }
+    }
+
+    private static boolean isPendingInterruptResult(AbilityManager.ExecutionResult result) {
+        if (result == null) {
+            return false;
+        }
+        Object value = result.result();
+        return value instanceof ToolInterruptException || ToolInterruptHandler.isSubAgentInterrupt(value);
     }
 
     public void writeInvokeResultToStream(Map<String, Object> result, AgentSessionApi session) {
@@ -1544,6 +1563,21 @@ public class ReActAgent extends BaseAgent {
         Map<String, Object> result = new LinkedHashMap<>();
         map.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
+    }
+
+    private static Map<String, Object> buildErrorResult(RuntimeException exception) {
+        return new LinkedHashMap<>(Map.of(
+                "output", exceptionMessage(exception),
+                "result_type", "error"
+        ));
+    }
+
+    private static String exceptionMessage(RuntimeException exception) {
+        if (exception == null) {
+            return "";
+        }
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 
     private static Object readAttribute(Object target, String name) {
