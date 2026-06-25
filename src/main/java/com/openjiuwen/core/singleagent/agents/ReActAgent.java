@@ -74,6 +74,8 @@ public class ReActAgent extends BaseAgent {
     public static final int IDENTITY_SECTION_PRIORITY = 10;
     public static final int SKILLS_SECTION_PRIORITY = 90;
 
+    private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
     private Model llm;
@@ -856,7 +858,11 @@ public class ReActAgent extends BaseAgent {
         AgentCallbackContext ctx = new AgentCallbackContext(this);
         ctx.setInputs(invokeInputs);
         ctx.setSession(session);
-        ctx.getExtra().put("_streaming", Boolean.TRUE.equals(kwargs.get("_streaming")));
+        boolean streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
+        ctx.getExtra().put("_streaming", streaming);
+        if (streaming) {
+            ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
+        }
         if (inputs instanceof Map<?, ?> map) {
             putExtra(ctx, "user_id", map.get("user_id"));
             putExtra(ctx, "run_kind", map.get("run_kind"));
@@ -937,8 +943,9 @@ public class ReActAgent extends BaseAgent {
                         invokeInputs.setResult(modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
                         break;
                     }
-                    context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
                     List<ToolCall> toolCalls = aiMessage.getToolCalls();
+                    ensureToolCallIds(toolCalls);
+                    context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
                     if (toolCalls == null || toolCalls.isEmpty()) {
                         if (ctx.hasPendingSteering()) {
                             continue;
@@ -950,8 +957,10 @@ public class ReActAgent extends BaseAgent {
                         )));
                         break;
                     }
+                    writeToolCallOutputs(ctx, session, toolCalls);
                     List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
                     activateSkillsLoadedByToolCalls(toolCalls, results, session);
+                    writeToolResultOutputs(ctx, session, toolCalls, results);
                     finish = ctx.consumeForceFinish();
                     if (finish != null) {
                         contextEngine.saveContexts(session);
@@ -991,7 +1000,11 @@ public class ReActAgent extends BaseAgent {
                 }
             }
             getAgentCallbackManager().execute(AgentCallbackEvent.AFTER_INVOKE, ctx).toCompletableFuture().join();
-            return ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
+            Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
+            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
+                return new StreamingInvokeResult(stringObjectMap(map), streamIndexRef(ctx));
+            }
+            return result;
         } finally {
             if (needCleanup) {
                 contextEngine.saveContexts(session);
@@ -999,6 +1012,76 @@ public class ReActAgent extends BaseAgent {
                     closeStreamAndCommit(lifecycle);
                 }
             }
+        }
+    }
+
+    private record StreamingInvokeResult(Map<String, Object> result, int[] streamIndexRef) {
+    }
+
+    private int[] streamIndexRef(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return new int[] {0};
+        }
+        Object existing = ctx.getExtra().get(STREAM_INDEX_REF_KEY);
+        if (existing instanceof int[] ref) {
+            return ref;
+        }
+        int[] ref = new int[] {0};
+        ctx.getExtra().put(STREAM_INDEX_REF_KEY, ref);
+        return ref;
+    }
+
+    private int nextStreamIndex(AgentCallbackContext ctx) {
+        int[] ref = streamIndexRef(ctx);
+        return ref[0]++;
+    }
+
+    private void ensureToolCallIds(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return;
+        }
+        for (ToolCall toolCall : toolCalls) {
+            ToolLifecycleOutputFactory.ensureToolCallId(toolCall);
+        }
+    }
+
+    private void writeToolCallOutputs(
+            AgentCallbackContext ctx,
+            AgentSessionApi session,
+            List<ToolCall> toolCalls
+    ) {
+        if (session == null || toolCalls == null || toolCalls.isEmpty()) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        for (ToolCall toolCall : toolCalls) {
+            session.writeStream(ToolLifecycleOutputFactory.buildToolCallOutput(toolCall, nextStreamIndex(ctx)));
+        }
+    }
+
+    private void writeToolResultOutputs(
+            AgentCallbackContext ctx,
+            AgentSessionApi session,
+            List<ToolCall> toolCalls,
+            List<AbilityManager.ExecutionResult> results
+    ) {
+        if (session == null || toolCalls == null || toolCalls.isEmpty()) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        for (int index = 0; index < toolCalls.size(); index++) {
+            AbilityManager.ExecutionResult result = results != null && index < results.size()
+                    ? results.get(index)
+                    : null;
+            session.writeStream(ToolLifecycleOutputFactory.buildToolResultOutput(
+                    toolCalls.get(index),
+                    result,
+                    nextStreamIndex(ctx)
+            ));
         }
     }
 
@@ -1011,6 +1094,14 @@ public class ReActAgent extends BaseAgent {
     }
 
     public void writeInvokeResultToStreamInternal(Map<String, Object> result, AgentSessionApi session) {
+        writeInvokeResultToStreamInternal(result, session, null);
+    }
+
+    private void writeInvokeResultToStreamInternal(
+            Map<String, Object> result,
+            AgentSessionApi session,
+            int[] streamIndexRef
+    ) {
         if (result == null || session == null) {
             return;
         }
@@ -1042,9 +1133,10 @@ public class ReActAgent extends BaseAgent {
             }
             return;
         }
+        int index = streamIndexRef != null ? streamIndexRef[0]++ : 0;
         session.writeStream(new OutputSchema(
                 "answer",
-                0,
+                index,
                 new LinkedHashMap<>(Map.of(
                         "output", Objects.toString(result.get("output"), ""),
                         "result_type", Objects.toString(resultType, "")
@@ -1087,7 +1179,10 @@ public class ReActAgent extends BaseAgent {
         }
         try {
             Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            if (result instanceof List<?> list) {
+            if (result instanceof StreamingInvokeResult streamingResult) {
+                writeInvokeResultToStreamInternal(streamingResult.result(), finalSession,
+                        streamingResult.streamIndexRef());
+            } else if (result instanceof List<?> list) {
                 for (Object schema : list) {
                     finalSession.writeStream(schema);
                 }
@@ -1114,7 +1209,10 @@ public class ReActAgent extends BaseAgent {
                                     AgentSessionLifecycle lifecycleSession, boolean finalNeedCleanup) {
         try {
             Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            if (result instanceof List<?> list) {
+            if (result instanceof StreamingInvokeResult streamingResult) {
+                writeInvokeResultToStreamInternal(streamingResult.result(), finalSession,
+                        streamingResult.streamIndexRef());
+            } else if (result instanceof List<?> list) {
                 for (Object schema : list) {
                     finalSession.writeStream(schema);
                 }
@@ -1234,7 +1332,6 @@ public class ReActAgent extends BaseAgent {
                                                  ModelInvokeOptions options, ModelCallInputs modelInputs) {
         Iterator<AssistantMessageChunk> iterator = model.stream(messages, options);
         AssistantMessageChunk accumulatedChunk = null;
-        int chunkIndex = 0;
         long callStartTime = System.nanoTime();
         Long firstTokenTime = null;
         Long lastTokenTime = null;
@@ -1250,11 +1347,11 @@ public class ReActAgent extends BaseAgent {
                 chunkCount++;
                 AgentSessionApi session = ctx.getSession();
                 if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
-                    session.writeStream(new OutputSchema("llm_reasoning", chunkIndex++,
+                    session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),
                             new LinkedHashMap<>(Map.of("content", chunk.getReasoningContent(), "result_type", "answer"))));
                 }
                 if (session != null && chunk.getContent() != null && !String.valueOf(chunk.getContent()).isEmpty()) {
-                    session.writeStream(new OutputSchema("llm_output", chunkIndex++,
+                    session.writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx),
                             new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
                 }
             }
@@ -1287,7 +1384,7 @@ public class ReActAgent extends BaseAgent {
             if (firstTokenTime != null && lastTokenTime != null && chunkCount > 1) {
                 payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime) / (double) (chunkCount - 1)));
             }
-            ctx.getSession().writeStream(new OutputSchema("llm_usage", 0, payload));
+            ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }
         return aiMessage;
     }
