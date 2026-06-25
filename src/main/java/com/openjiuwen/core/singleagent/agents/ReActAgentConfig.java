@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 import java.util.ArrayList;
@@ -156,6 +157,11 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
                                                  boolean verifySsl) {
+        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, null);
+    }
+
+    public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
+                                                 boolean verifySsl, ModelHttpVersion httpVersion) {
         this.modelProvider = normalizeString(provider);
         this.apiKey = normalizeString(apiKey);
         this.apiBase = normalizeString(apiBase);
@@ -166,6 +172,7 @@ public class ReActAgentConfig {
                 .apiBase(apiBase)
                 .verifySsl(verifySsl)
                 .customHeaders(customHeaders)
+                .httpVersion(httpVersion)
                 .build();
         if (modelConfigObj == null) {
             modelConfigObj = ModelRequestConfig.builder().modelName(this.modelName).build();
@@ -178,6 +185,11 @@ public class ReActAgentConfig {
     public ReActAgentConfig configure_model_client(String provider, String apiKey, String apiBase, String modelName,
                                                    boolean verifySsl) {
         return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl);
+    }
+
+    public ReActAgentConfig configure_model_client(String provider, String apiKey, String apiBase, String modelName,
+                                                   boolean verifySsl, ModelHttpVersion httpVersion) {
+        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, httpVersion);
     }
 
     public ReActAgentConfig configureCustomHeaders(Map<String, Object> customHeaders) {

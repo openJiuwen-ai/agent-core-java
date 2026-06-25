@@ -431,6 +431,7 @@ public class LegacyReActAgent extends BaseAgent {
                 .verifySsl(false)
                 .sslCert(null)
                 .customHeaders(modelInfo.getCustomHeaders())
+                .httpVersion(modelInfo.getHttpVersion())
                 .build();
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()
                 .modelName(modelInfo.getModelName())

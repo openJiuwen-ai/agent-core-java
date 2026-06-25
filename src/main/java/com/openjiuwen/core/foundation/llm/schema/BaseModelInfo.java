@@ -57,6 +57,9 @@ public class BaseModelInfo {
     @JsonProperty("custom_headers")
     private Map<String, Object> customHeaders;
 
+    @JsonProperty("http_version")
+    private ModelHttpVersion httpVersion;
+
     @Builder.Default
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
@@ -82,6 +85,7 @@ public class BaseModelInfo {
                 || "streaming".equals(key)
                 || "stream".equals(key)
                 || "timeout".equals(key)
+                || "http_version".equals(key)
                 || "custom_headers".equals(key);
     }
 }

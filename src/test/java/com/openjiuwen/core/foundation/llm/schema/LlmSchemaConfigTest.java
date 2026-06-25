@@ -162,6 +162,40 @@ class LlmSchemaConfigTest {
         assertEquals(Map.of("X-Custom", "custom"), config.getCustomHeaders());
     }
 
+    @Test
+    void modelClientConfigPreservesHttpVersion() {
+        ModelClientConfig configured = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("sk-test")
+                .apiBase("http://localhost")
+                .httpVersion(ModelHttpVersion.HTTP_1_1)
+                .build();
+        ModelClientConfig unset = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("sk-test")
+                .apiBase("http://localhost")
+                .build();
+
+        assertEquals(ModelHttpVersion.HTTP_1_1, configured.getHttpVersion());
+        assertEquals(null, unset.getHttpVersion());
+    }
+
+    @Test
+    void jacksonReadsHttpVersionAliases() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        ModelClientConfig clientConfig = mapper.readValue("""
+                {"client_provider":"OpenAI","api_key":"sk-test","api_base":"http://localhost","http_version":"HTTP/1.1"}
+                """, ModelClientConfig.class);
+        BaseModelInfo modelInfo = mapper.readValue("""
+                {"model_name":"gpt-test","http_version":"2"}
+                """, BaseModelInfo.class);
+
+        assertEquals(ModelHttpVersion.HTTP_1_1, clientConfig.getHttpVersion());
+        assertEquals(ModelHttpVersion.HTTP_2, modelInfo.getHttpVersion());
+        assertEquals(false, modelInfo.getExtraFields().containsKey("http_version"));
+    }
+
     private static void unregisterIfPresent(ClientRegistry registry, String provider) {
         if (registry.listClients().contains("llm_" + provider)) {
             registry.unregister(provider, "llm");
