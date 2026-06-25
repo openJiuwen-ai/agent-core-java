@@ -11,23 +11,23 @@ import java.util.Arrays;
 import java.util.HexFormat;
 
 /**
+ * 哈希工具类 - 用于从API凭证生成确定性的SHA-256密钥。
+ *
+ * @since 2026-01-01
  * Hash utility — generates deterministic SHA-256 keys from API credentials.
  */
 public final class HashUtil {
-
     private HashUtil() {
     }
 
     /**
-     * Generate a deterministic SHA-256 hex key from API key, base URL, and model provider.
+     * Generate a deterministic SHA-256 hex key from arbitrary input strings.
+     * Inputs are sorted before hashing to ensure order-independent results.
      *
-     * @param apiKey        the API key
-     * @param apiBase       the API base URL
-     * @param modelProvider the model provider name (default "openai")
+     * @param parts the input strings to hash
      * @return hex-encoded SHA-256 hash
      */
-    public static String generateKey(String apiKey, String apiBase, String modelProvider) {
-        String[] parts = {apiKey, apiBase, modelProvider};
+    public static String generateKey(String... parts) {
         Arrays.sort(parts);
         String combined = String.join("", parts);
         try {
@@ -35,12 +35,7 @@ public final class HashUtil {
             byte[] hash = md.digest(combined.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
+            throw new IllegalStateException("SHA-256 algorithm is not available in this environment", e);
         }
-    }
-
-    /** Overload with default modelProvider = "openai". */
-    public static String generateKey(String apiKey, String apiBase) {
-        return generateKey(apiKey, apiBase, "openai");
     }
 }

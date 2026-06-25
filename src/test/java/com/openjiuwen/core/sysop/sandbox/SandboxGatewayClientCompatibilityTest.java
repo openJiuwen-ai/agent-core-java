@@ -38,7 +38,7 @@ class SandboxGatewayClientCompatibilityTest {
         Files.writeString(tempDir.resolve("hello.txt"), "hi");
         SandboxGatewayClient client = new SandboxGatewayClient(config(), "client-1");
 
-        Object read = client.invoke("fs", "readFile", SandboxOperationSupport.params(new Object[] {
+        Object read = client.invoke("fs", "readFile", SandboxOperationSupport.paramsOf(
                 "path", "hello.txt",
                 "mode", "text",
                 "head", null,
@@ -47,21 +47,21 @@ class SandboxGatewayClientCompatibilityTest {
                 "encoding", "utf-8",
                 "chunkSize", 0,
                 "options", null
-        }));
-        Object pwd = client.invoke("shell", "executeCmd", SandboxOperationSupport.params(new Object[] {
+        ));
+        Object pwd = client.invoke("shell", "executeCmd", SandboxOperationSupport.paramsOf(
                 "command", "pwd",
-                "cwd", ".",
+                "cwd", "/",
                 "timeout", 300,
                 "environment", null,
                 "options", null
-        }));
-        Object code = client.invoke("code", "executeCode", SandboxOperationSupport.params(new Object[] {
-                "code", "import os\nprint(os.getcwd())",
+        ));
+        Object code = client.invoke("code", "executeCode", SandboxOperationSupport.paramsOf(
+                "code", "import os; print(os.getcwd())",
                 "language", "python",
                 "timeout", 300,
                 "environment", null,
                 "options", null
-        }));
+        ));
 
         assertThat(read).isInstanceOf(com.openjiuwen.core.sysop.result.ReadFileResult.class);
         assertThat(((com.openjiuwen.core.sysop.result.ReadFileResult) read).getCode()).isEqualTo(StatusCode.SUCCESS.getCode());

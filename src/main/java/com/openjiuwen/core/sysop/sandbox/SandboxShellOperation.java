@@ -43,13 +43,13 @@ public class SandboxShellOperation extends BaseShellOperation {
     public ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
                                        Map<String, String> environment, Map<String, Object> options) {
         try {
-            return invoke("executeCmd", ExecuteCmdResult.class, SandboxOperationSupport.params(new Object[] {
+            return invoke("executeCmd", ExecuteCmdResult.class, SandboxOperationSupport.paramsOf(
                     "command", command,
                     "cwd", cwd,
                     "timeout", timeout,
                     "environment", environment,
                     "options", options
-            }));
+            ));
         } catch (IllegalArgumentException ex) {
             return SandboxOperationSupport.buildShellError("execute_cmd", ex.getMessage(), command, cwd);
         }
@@ -67,13 +67,13 @@ public class SandboxShellOperation extends BaseShellOperation {
             Iterator<ExecuteCmdStreamResult> iterator = invoke(
                     "executeCmdStream",
                     Iterator.class,
-                    SandboxOperationSupport.params(new Object[] {
+                    SandboxOperationSupport.paramsOf(
                     "command", command,
                     "cwd", cwd,
                     "timeout", timeout,
                     "environment", environment,
                     "options", options
-            }));
+            ));
             return iterator;
         } catch (IllegalArgumentException ex) {
             return List.of(SandboxOperationSupport.buildShellStreamError(
@@ -97,13 +97,13 @@ public class SandboxShellOperation extends BaseShellOperation {
             return invoke(
                     "executeCmdBackground",
                     ExecuteCmdBackgroundResult.class,
-                    SandboxOperationSupport.params(new Object[] {
+                    SandboxOperationSupport.paramsOf(
                     "command", command,
                     "cwd", cwd,
                     "environment", environment,
                     "grace", grace,
                     "options", options
-            }));
+            ));
         } catch (IllegalArgumentException ex) {
             return BaseShellOperationErrorBridge.backgroundError(
                     "execute_cmd_background",

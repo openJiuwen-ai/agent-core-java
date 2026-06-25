@@ -340,7 +340,7 @@ public class SkillUseRail extends DeepAgentRail {
         }
         for (int i = 0; i < a.size(); i++) {
             if (!a.get(i).getKey().equals(b.get(i).getKey())
-                    || a.get(i).getValue() != b.get(i).getValue()) {
+                    || !a.get(i).getValue().equals(b.get(i).getValue())) {
                 return false;
             }
         }

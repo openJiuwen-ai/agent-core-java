@@ -28,7 +28,6 @@ import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.rails.DeepAgentRail;
-import com.openjiuwen.harness.rails.SkillUseRail;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
 import com.openjiuwen.harness.rails.TaskIterationRail;
 import com.openjiuwen.harness.schema.AgentMode;
@@ -388,45 +387,6 @@ public class DeepAgent {
 
     private void registerDeepRail(Object rail) {
         registeredRails.add(rail);
-    }
-
-    /**
-     * Dynamically add skill directories to an existing SkillUseRail.
-     */
-    public void addSkillDirectories(List<String> newDirs) {
-        SkillUseRail existingRail = findSkillUseRail();
-        if (existingRail != null) {
-            existingRail.setEnableCache(false);
-            existingRail.reloadSkills();
-            existingRail.setEnableCache(true);
-        }
-    }
-
-    /**
-     * Dynamically remove skill directories from an existing SkillUseRail.
-     */
-    public void removeSkillDirectories(List<String> dirsToRemove) {
-        SkillUseRail existingRail = findSkillUseRail();
-        if (existingRail != null) {
-            List<String> remaining = new ArrayList<>(existingRail.configuredSkillDirectories());
-            remaining.removeAll(dirsToRemove);
-            if (remaining.isEmpty()) {
-                existingRail.clearSkills();
-            } else {
-                existingRail.setEnableCache(false);
-                existingRail.reloadSkills();
-                existingRail.setEnableCache(true);
-            }
-        }
-    }
-
-    SkillUseRail findSkillUseRail() {
-        for (Object rail : registeredRails) {
-            if (rail instanceof SkillUseRail) {
-                return (SkillUseRail) rail;
-            }
-        }
-        return null;
     }
 
     /**

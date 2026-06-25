@@ -1,5 +1,5 @@
 ---
-description: Modified A skill
+description: Modified Skill A
 ---
 # Skill A (Modified)
 

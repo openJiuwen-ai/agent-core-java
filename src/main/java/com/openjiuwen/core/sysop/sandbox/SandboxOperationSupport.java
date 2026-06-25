@@ -23,161 +23,316 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-final class SandboxOperationSupport {
-  private SandboxOperationSupport() {}
+/**
+ * Utility class providing sandbox operation support methods for configuration,
+ * isolation key resolution, shell/code error building, and parameter extraction.
+ *
+ * @since 2026-01-01
+ * @version 1.0
+ */
+public final class SandboxOperationSupport {
+    private static final String SESSION_ID_PLACEHOLDER = "{session_id}";
 
-  static LocalWorkConfig toLocalWorkConfig(SandboxGatewayConfig config) {
-    Map<String, Object> params =
-        config != null && config.getParams() != null ? config.getParams() : Map.of();
-    String rootPath =
-        stringParam(
-            params,
-            "root_path",
-            stringParam(params, "work_dir", Path.of(".").toAbsolutePath().normalize().toString()));
-    List<String> allowlist = listParam(params, "shell_allowlist");
-    LocalWorkConfig.LocalWorkConfigBuilder builder = LocalWorkConfig.builder().workDir(rootPath);
-    builder.restrictToSandbox(true);
-    builder.sandboxRoot(List.of(Path.of(rootPath).toAbsolutePath().normalize().toString()));
-    if (allowlist != null) {
-      builder.shellAllowlist(allowlist);
+    private SandboxOperationSupport() {}
+
+    /**
+     * Converts a SandboxGatewayConfig into a LocalWorkConfig for local sandbox operations.
+     *
+     * @param config the sandbox gateway configuration
+     * @return a LocalWorkConfig instance derived from the gateway config
+     */
+    public static LocalWorkConfig toLocalWorkConfig(SandboxGatewayConfig config) {
+        Map<String, Object> params =
+                config != null && config.getParams() != null ? config.getParams() : Map.of();
+        String rootPath =
+                stringParam(
+                        params,
+                        "root_path",
+                        stringParam(params, "work_dir",
+                                Path.of(".").toAbsolutePath().normalize().toString()));
+        List<String> allowlist = listParam(params, "shell_allowlist");
+        LocalWorkConfig.LocalWorkConfigBuilder builder =
+                LocalWorkConfig.builder().workDir(rootPath);
+        builder.restrictToSandbox(true);
+        builder.sandboxRoot(
+                List.of(Path.of(rootPath).toAbsolutePath().normalize().toString()));
+        if (allowlist != null) {
+            builder.shellAllowlist(allowlist);
+        }
+        return builder.build();
     }
-    return builder.build();
-  }
 
-  static Path sandboxRoot(SandboxGatewayConfig config) {
-    return Path.of(toLocalWorkConfig(config).getWorkDir()).toAbsolutePath().normalize();
-  }
-
-  static String resolveIsolationKey(SandboxGatewayConfig config) {
-    if (config != null && config.getIsolation() != null) {
-      if (config.getIsolation().getCustomId() != null
-          && !config.getIsolation().getCustomId().isBlank()) {
-        return config.getIsolation().getCustomId();
-      }
-      if (config.getIsolation().getPrefix() != null
-          && !config.getIsolation().getPrefix().isBlank()) {
-        return config.getIsolation().getPrefix() + ":" + sandboxRoot(config);
-      }
+    /**
+     * Returns the sandbox root path derived from the given config.
+     *
+     * @param config the sandbox gateway configuration
+     * @return the normalized absolute sandbox root path
+     */
+    public static Path sandboxRoot(SandboxGatewayConfig config) {
+        return Path.of(toLocalWorkConfig(config).getWorkDir())
+                .toAbsolutePath().normalize();
     }
-    return "sandbox:" + sandboxRoot(config);
-  }
 
-  static Map<String, Object> params(Object[] kvPairs) {
-    Map<String, Object> params = new LinkedHashMap<>();
-    for (int i = 0; i + 1 < kvPairs.length; i += 2) {
-      params.put(String.valueOf(kvPairs[i]), kvPairs[i + 1]);
+    /**
+     * Resolves the isolation key from config, substituting session placeholders if present.
+     *
+     * @param config the sandbox gateway configuration
+     * @return the resolved isolation key
+     */
+    public static String resolveIsolationKey(SandboxGatewayConfig config) {
+        String key = computeIsolationKey(config);
+        return resolveIsolationKeyTemplate(key);
     }
-    return params;
-  }
 
-  static String normalizeShellCwd(SandboxGatewayConfig config, String cwd) {
-    Path root = sandboxRoot(config);
-    Path target;
-    if (cwd == null || cwd.isBlank()) {
-      target = root;
-    } else {
-      Path raw = Path.of(cwd);
-      target =
-          raw.isAbsolute()
-              ? raw.toAbsolutePath().normalize()
-              : root.resolve(raw).toAbsolutePath().normalize();
+    /**
+     * Resolves session ID placeholders in an isolation key template.
+     *
+     * @param template the isolation key template possibly containing {session_id}
+     * @return the resolved isolation key with session ID substituted
+     */
+    public static String resolveIsolationKeyTemplate(String template) {
+        if (template.contains(SESSION_ID_PLACEHOLDER)) {
+            com.openjiuwen.core.session.Session session =
+                    com.openjiuwen.core.session.SessionContextHolder.getCurrentSession();
+            String sessionId = session != null ? session.getSessionId() : null;
+            String resolved = sessionId != null ? sessionId : "default_session";
+            return template.replace(SESSION_ID_PLACEHOLDER, resolved);
+        }
+        return template;
     }
-    if (!target.startsWith(root)) {
-      throw new IllegalArgumentException(
-          "Access denied: cwd " + target + " traverses outside " + root);
-    }
-    if (target.equals(root)) {
-      return ".";
-    }
-    return root.relativize(target).toString();
-  }
 
-  static String wrapCodeWithSandboxCwd(String code, String language, SandboxGatewayConfig config) {
-    Path root = sandboxRoot(config);
-    String escaped = root.toString().replace("\\", "\\\\").replace("\"", "\\\"");
-    if ("python".equals(language)) {
-      return "import os\nos.chdir(\"" + escaped + "\")\n" + code;
+    /**
+     * Computes the isolation key from the sandbox gateway configuration.
+     *
+     * @param config the sandbox gateway configuration
+     * @return the computed isolation key
+     */
+    public static String computeIsolationKey(SandboxGatewayConfig config) {
+        if (config != null && config.getIsolation() != null) {
+            if (config.getIsolation().getCustomId() != null
+                    && !config.getIsolation().getCustomId().isBlank()) {
+                return config.getIsolation().getCustomId();
+            }
+            if (config.getIsolation().getPrefix() != null
+                    && !config.getIsolation().getPrefix().isBlank()) {
+                return config.getIsolation().getPrefix() + ":" + sandboxRoot(config);
+            }
+        }
+        return "sandbox:" + sandboxRoot(config);
     }
-    if ("javascript".equals(language)) {
-      return "process.chdir(\"" + escaped + "\");\n" + code;
+
+    /**
+     * Creates a parameter map from alternating key-value pairs provided as a list.
+     *
+     * @param kvPairs alternating key and value objects as a list
+     * @return a map built from the key-value pairs
+     */
+    public static Map<String, Object> params(List<Object> kvPairs) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kvPairs.size(); i += 2) {
+            params.put(String.valueOf(kvPairs.get(i)), kvPairs.get(i + 1));
+        }
+        return params;
     }
-    return code;
-  }
 
-  static ExecuteCmdResult buildShellError(
-      String execution, String errorMsg, String command, String cwd) {
-    return BaseResult.buildOperationErrorResult(
-        StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
-        execution,
-        errorMsg,
-        ExecuteCmdResult::new,
-        ExecuteCmdData.builder().command(command).cwd(cwd == null ? "." : cwd).build());
-  }
-
-  static ExecuteCodeResult buildCodeError(
-      String execution, String errorMsg, String code, String language) {
-    return BaseResult.buildOperationErrorResult(
-        StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
-        execution,
-        errorMsg,
-        ExecuteCodeResult::new,
-        ExecuteCodeData.builder().codeContent(code).language(language).build());
-  }
-
-  static ExecuteCmdStreamResult buildShellStreamError(
-      String execution, String errorMsg, String command, String cwd) {
-    return BaseResult.buildOperationErrorResult(
-        StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
-        execution,
-        errorMsg,
-        ExecuteCmdStreamResult::new,
-        ExecuteCmdChunkData.builder()
-            .chunkIndex(0)
-            .exitCode(-1)
-            .type("stderr")
-            .metadata(Map.of("command", command, "cwd", cwd == null ? "." : cwd))
-            .build());
-  }
-
-  static ExecuteCodeStreamResult buildCodeStreamError(
-      String execution, String errorMsg, String code, String language) {
-    return BaseResult.buildOperationErrorResult(
-        StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
-        execution,
-        errorMsg,
-        ExecuteCodeStreamResult::new,
-        ExecuteCodeChunkData.builder()
-            .chunkIndex(0)
-            .exitCode(-1)
-            .type("stderr")
-            .metadata(Map.of("code", code, "language", language))
-            .build());
-  }
-
-  private static String stringParam(Map<String, Object> params, String key, String defaultValue) {
-    Object value = params.get(key);
-    return value == null || String.valueOf(value).isBlank() ? defaultValue : String.valueOf(value);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static List<String> listParam(Map<String, Object> params, String key) {
-    Object value = params.get(key);
-    if (value == null) {
-      return List.of();
+    /**
+     * Convenience method to create a parameter map from alternating key-value pairs.
+     *
+     * @param kvPairs alternating key and value objects (varargs)
+     * @return a map built from the key-value pairs
+     */
+    public static Map<String, Object> paramsOf(Object... kvPairs) {
+        return params(new ArrayList<>(Arrays.asList(kvPairs)));
     }
-    if (value instanceof List<?> list) {
-      List<String> result = new ArrayList<>();
-      for (Object item : list) {
-        result.add(String.valueOf(item));
-      }
-      return result;
+
+    /**
+     * Normalizes a shell working directory relative to the sandbox root, ensuring it does not traverse outside.
+     *
+     * @param config the sandbox gateway configuration
+     * @param cwd the working directory path to normalize
+     * @return the normalized relative path from sandbox root
+     * @throws IllegalArgumentException if cwd traverses outside sandbox root
+     */
+    public static String normalizeShellCwd(SandboxGatewayConfig config, String cwd) {
+        Path root = sandboxRoot(config);
+        Path target;
+        if (cwd == null || cwd.isBlank()) {
+            target = root;
+        } else {
+            Path raw = Path.of(cwd);
+            target =
+                    raw.isAbsolute()
+                            ? raw.toAbsolutePath().normalize()
+                            : root.resolve(raw).toAbsolutePath().normalize();
+        }
+        if (!target.startsWith(root)) {
+            throw new IllegalArgumentException(
+                    "Access denied: cwd " + target + " traverses outside " + root);
+        }
+        if (target.equals(root)) {
+            return ".";
+        }
+        return root.relativize(target).toString();
     }
-    if (value instanceof String text) {
-      return Arrays.stream(text.split(","))
-          .map(String::trim)
-          .filter(part -> !part.isBlank())
-          .toList();
+
+    /**
+     * Wraps code with a sandbox working directory change directive for the given language.
+     *
+     * @param code the source code to wrap
+     * @param language the programming language (python or javascript)
+     * @param config the sandbox gateway configuration
+     * @return the wrapped code with directory change prepended, or original code if language is unsupported
+     */
+    public static String wrapCodeWithSandboxCwd(
+            String code, String language, SandboxGatewayConfig config) {
+        Path root = sandboxRoot(config);
+        String escaped = root.toString().replace("\\", "\\\\").replace("\"", "\\\"");
+        if ("python".equals(language)) {
+            return "import os\nos.chdir(\"" + escaped + "\")\n" + code;
+        }
+        if ("javascript".equals(language)) {
+            return "process.chdir(\"" + escaped + "\");\n" + code;
+        }
+        return code;
     }
-    return List.of();
-  }
+
+    /**
+     * Builds an error result for shell command execution failures.
+     *
+     * @param execution the execution identifier
+     * @param errorMsg the error message
+     * @param command the command that failed
+     * @param cwd the working directory of the command
+     * @return an ExecuteCmdResult representing the shell error
+     */
+    public static ExecuteCmdResult buildShellError(
+            String execution, String errorMsg, String command, String cwd) {
+        return BaseResult.buildOperationErrorResult(
+                StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
+                execution,
+                errorMsg,
+                ExecuteCmdResult::new,
+                ExecuteCmdData.builder()
+                        .command(command)
+                        .cwd(cwd == null ? "." : cwd)
+                        .build());
+    }
+
+    /**
+     * Builds an error result for code execution failures.
+     *
+     * @param execution the execution identifier
+     * @param errorMsg the error message
+     * @param code the code that failed
+     * @param language the programming language of the code
+     * @return an ExecuteCodeResult representing the code error
+     */
+    public static ExecuteCodeResult buildCodeError(
+            String execution, String errorMsg, String code, String language) {
+        return BaseResult.buildOperationErrorResult(
+                StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
+                execution,
+                errorMsg,
+                ExecuteCodeResult::new,
+                ExecuteCodeData.builder()
+                        .codeContent(code)
+                        .language(language)
+                        .build());
+    }
+
+    /**
+     * Builds a stream error result for shell command execution failures.
+     *
+     * @param execution the execution identifier
+     * @param errorMsg the error message
+     * @param command the command that failed
+     * @param cwd the working directory of the command
+     * @return an ExecuteCmdStreamResult representing the shell stream error
+     */
+    public static ExecuteCmdStreamResult buildShellStreamError(
+            String execution, String errorMsg, String command, String cwd) {
+        return BaseResult.buildOperationErrorResult(
+                StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
+                execution,
+                errorMsg,
+                ExecuteCmdStreamResult::new,
+                ExecuteCmdChunkData.builder()
+                        .chunkIndex(0)
+                        .exitCode(-1)
+                        .type("stderr")
+                        .metadata(Map.of(
+                                "command", command,
+                                "cwd", cwd == null ? "." : cwd))
+                        .build());
+    }
+
+    /**
+     * Builds a stream error result for code execution failures.
+     *
+     * @param execution the execution identifier
+     * @param errorMsg the error message
+     * @param code the code that failed
+     * @param language the programming language of the code
+     * @return an ExecuteCodeStreamResult representing the code stream error
+     */
+    public static ExecuteCodeStreamResult buildCodeStreamError(
+            String execution, String errorMsg, String code, String language) {
+        return BaseResult.buildOperationErrorResult(
+                StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
+                execution,
+                errorMsg,
+                ExecuteCodeStreamResult::new,
+                ExecuteCodeChunkData.builder()
+                        .chunkIndex(0)
+                        .exitCode(-1)
+                        .type("stderr")
+                        .metadata(Map.of(
+                                "code", code,
+                                "language", language))
+                        .build());
+    }
+
+    /**
+     * Extracts a string parameter from a map with a default value fallback.
+     *
+     * @param params the parameter map
+     * @param key the parameter key
+     * @param defaultValue the default value if the key is missing or blank
+     * @return the string value or the default value
+     */
+    public static String stringParam(
+            Map<String, Object> params, String key, String defaultValue) {
+        Object value = params.get(key);
+        return value == null || String.valueOf(value).isBlank()
+                ? defaultValue : String.valueOf(value);
+    }
+
+    /**
+     * Extracts a list of strings from a parameter map, supporting both List and comma-separated String values.
+     *
+     * @param params the parameter map
+     * @param key the parameter key
+     * @return a list of strings, or an empty list if the key is missing
+     */
+    @SuppressWarnings("unchecked")
+    public static List<String> listParam(Map<String, Object> params, String key) {
+        Object value = params.get(key);
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            List<String> result = new ArrayList<>();
+            for (Object item : list) {
+                result.add(String.valueOf(item));
+            }
+            return result;
+        }
+        if (value instanceof String text) {
+            return Arrays.stream(text.split(","))
+                    .map(String::trim)
+                    .filter(part -> !part.isBlank())
+                    .toList();
+        }
+        return List.of();
+    }
 }

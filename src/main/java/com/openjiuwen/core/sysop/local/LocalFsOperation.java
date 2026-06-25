@@ -6,7 +6,6 @@ package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.sysop.BaseFsOperation;
 import com.openjiuwen.core.sysop.FsConstants;
@@ -21,7 +20,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -150,8 +148,8 @@ public class LocalFsOperation extends BaseFsOperation {
      * Auto-generated for codecheck compliance.
      */
     public WriteFileResult writeFile(String path, Object content, String mode,
-                                     boolean prependNewline, boolean appendNewline,
-                                     boolean createIfNotExist, String permissions,
+                                     boolean isPrependNewline, boolean isAppendNewline,
+                                     boolean isCreateIfMissing, String permissions,
                                      String encoding, Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to write file");
@@ -162,7 +160,7 @@ public class LocalFsOperation extends BaseFsOperation {
                 return buildFsErrorResult("Target path is a directory: " + filePath,
                         WriteFileResult::new, null);
             }
-            if (!createIfNotExist && !Files.exists(filePath)) {
+            if (!isCreateIfMissing && !Files.exists(filePath)) {
                 return buildFsErrorResult("File does not exist: " + filePath,
                         WriteFileResult::new, null);
             }
@@ -180,10 +178,10 @@ public class LocalFsOperation extends BaseFsOperation {
             } else {
                 // Text mode
                 String txt = extractTextContent(content);
-                if (prependNewline) {
+                if (isPrependNewline) {
                     txt = "\n" + txt;
                 }
-                if (appendNewline) {
+                if (isAppendNewline) {
                     txt = txt + "\n";
                 }
                 dataBytes = txt.getBytes(resolveCharset(encoding));
@@ -219,25 +217,25 @@ public class LocalFsOperation extends BaseFsOperation {
      * Auto-generated for codecheck compliance.
      */
     public UploadFileResult uploadFile(String localPath, String targetPath,
-                                       boolean overwrite, boolean createParentDirs,
-                                       boolean preservePermissions, int chunkSize,
+                                       boolean isOverwrite, boolean isCreateParentDirs,
+                                       boolean isPreservePermissions, int chunkSize,
                                        Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to upload file");
 
         try {
             Path src = Path.of(localPath).toAbsolutePath().normalize();
-            Path dst = resolvePath(targetPath, createParentDirs);
+            Path dst = resolvePath(targetPath, isCreateParentDirs);
 
             if (!Files.isRegularFile(src)) {
                 return buildFsErrorResult("Source not found: " + src, UploadFileResult::new, null);
             }
-            if (Files.exists(dst) && !overwrite) {
+            if (Files.exists(dst) && !isOverwrite) {
                 return buildFsErrorResult("Target isExists: " + dst, UploadFileResult::new, null);
             }
 
             long size = transferFile(src, dst, chunkSize);
-            if (preservePermissions) {
+            if (isPreservePermissions) {
                 copyPermissions(src, dst);
             }
 
@@ -266,8 +264,8 @@ public class LocalFsOperation extends BaseFsOperation {
      * Auto-generated for codecheck compliance.
      */
     public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath,
-                                                              boolean overwrite, boolean createParentDirs,
-                                                              boolean preservePermissions, int chunkSize,
+                                                              boolean isOverwrite, boolean isCreateParentDirs,
+                                                              boolean isPreservePermissions, int chunkSize,
                                                               Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to upload file streaming");
@@ -275,14 +273,14 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path src = Path.of(localPath).toAbsolutePath().normalize();
-            Path dst = resolvePath(targetPath, createParentDirs);
+            Path dst = resolvePath(targetPath, isCreateParentDirs);
 
             if (!Files.isRegularFile(src)) {
                 results.add(buildFsErrorResult("Source not found: " + src,
                         UploadFileStreamResult::new, null));
                 return results.iterator();
             }
-            if (Files.exists(dst) && !overwrite) {
+            if (Files.exists(dst) && !isOverwrite) {
                 results.add(buildFsErrorResult("Target isExists: " + dst,
                         UploadFileStreamResult::new, null));
                 return results.iterator();
@@ -319,7 +317,7 @@ public class LocalFsOperation extends BaseFsOperation {
                 }
             }
 
-            if (preservePermissions) {
+            if (isPreservePermissions) {
                 copyPermissions(src, dst);
             }
             return results.iterator();
@@ -339,8 +337,8 @@ public class LocalFsOperation extends BaseFsOperation {
      * Auto-generated for codecheck compliance.
      */
     public DownloadFileResult downloadFile(String sourcePath, String localPath,
-                                           boolean overwrite, boolean createParentDirs,
-                                           boolean preservePermissions, int chunkSize,
+                                           boolean isOverwrite, boolean isCreateParentDirs,
+                                           boolean isPreservePermissions, int chunkSize,
                                            Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to download file");
@@ -352,15 +350,15 @@ public class LocalFsOperation extends BaseFsOperation {
             if (!Files.isRegularFile(src)) {
                 return buildFsErrorResult("Source not found: " + src, DownloadFileResult::new, null);
             }
-            if (Files.exists(dst) && !overwrite) {
+            if (Files.exists(dst) && !isOverwrite) {
                 return buildFsErrorResult("Destination isExists: " + dst, DownloadFileResult::new, null);
             }
-            if (createParentDirs && dst.getParent() != null) {
+            if (isCreateParentDirs && dst.getParent() != null) {
                 Files.createDirectories(dst.getParent());
             }
 
             long size = transferFile(src, dst, chunkSize);
-            if (preservePermissions) {
+            if (isPreservePermissions) {
                 copyPermissions(src, dst);
             }
 
@@ -389,8 +387,8 @@ public class LocalFsOperation extends BaseFsOperation {
      * Auto-generated for codecheck compliance.
      */
     public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
-                                                                  boolean overwrite, boolean createParentDirs,
-                                                                  boolean preservePermissions, int chunkSize,
+                                                                  boolean isOverwrite, boolean isCreateParentDirs,
+                                                                  boolean isPreservePermissions, int chunkSize,
                                                                   Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to download file streaming");
@@ -405,12 +403,12 @@ public class LocalFsOperation extends BaseFsOperation {
                         DownloadFileStreamResult::new, null));
                 return results.iterator();
             }
-            if (Files.exists(dst) && !overwrite) {
+            if (Files.exists(dst) && !isOverwrite) {
                 results.add(buildFsErrorResult("Destination isExists: " + dst,
                         DownloadFileStreamResult::new, null));
                 return results.iterator();
             }
-            if (createParentDirs && dst.getParent() != null) {
+            if (isCreateParentDirs && dst.getParent() != null) {
                 Files.createDirectories(dst.getParent());
             }
 
@@ -450,11 +448,10 @@ public class LocalFsOperation extends BaseFsOperation {
                 }
             }
 
-            if (preservePermissions) {
+            if (isPreservePermissions) {
                 copyPermissions(src, dst);
             }
             return results.iterator();
-
         } catch (Exception e) {
             Loggers.SYS_OPERATION.error("Failed to download file streaming", e);
             results.add(buildFsErrorResult("download_file_stream: " + e.getMessage(),
@@ -469,8 +466,8 @@ public class LocalFsOperation extends BaseFsOperation {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public ListFilesResult listFiles(String path, boolean recursive, Integer maxDepth,
-                                     String sortBy, boolean sortDescending,
+    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth,
+                                     String sortBy, boolean isSortDescending,
                                      List<String> fileTypes, Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to list files");
@@ -483,7 +480,7 @@ public class LocalFsOperation extends BaseFsOperation {
             }
 
             List<FileSystemItem> items = listItemsInternal(basePath, true, false,
-                    recursive, maxDepth, sortBy, sortDescending, fileTypes);
+                    isRecursive, maxDepth, sortBy, isSortDescending, fileTypes);
 
             ListFilesResult result = ListFilesResult.builder()
                     .code(StatusCode.SUCCESS.getCode())
@@ -492,7 +489,7 @@ public class LocalFsOperation extends BaseFsOperation {
                             .totalCount(items.size())
                             .listItems(items)
                             .rootPath(basePath.toString())
-                            .recursive(recursive)
+                            .recursive(isRecursive)
                             .maxDepth(maxDepth)
                             .build())
                     .build();
@@ -511,8 +508,8 @@ public class LocalFsOperation extends BaseFsOperation {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public ListDirsResult listDirectories(String path, boolean recursive, Integer maxDepth,
-                                          String sortBy, boolean sortDescending,
+    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth,
+                                          String sortBy, boolean isSortDescending,
                                           Map<String, Object> options) {
         long startTime = System.currentTimeMillis();
         Loggers.SYS_OPERATION.info("Start to list directories");
@@ -525,7 +522,7 @@ public class LocalFsOperation extends BaseFsOperation {
             }
 
             List<FileSystemItem> items = listItemsInternal(basePath, false, true,
-                    recursive, maxDepth, sortBy, sortDescending, null);
+                    isRecursive, maxDepth, sortBy, isSortDescending, null);
 
             ListDirsResult result = ListDirsResult.builder()
                     .code(StatusCode.SUCCESS.getCode())
@@ -534,7 +531,7 @@ public class LocalFsOperation extends BaseFsOperation {
                             .totalCount(items.size())
                             .listItems(items)
                             .rootPath(basePath.toString())
-                            .recursive(recursive)
+                            .recursive(isRecursive)
                             .maxDepth(maxDepth)
                             .build())
                     .build();
@@ -1000,20 +997,25 @@ public class LocalFsOperation extends BaseFsOperation {
 
     // --- List / Search helpers ---
 
-    private List<FileSystemItem> listItemsInternal(Path basePath, boolean includeFiles,
-                                                   boolean includeDirs, boolean recursive,
-                                                   Integer maxDepth, String sortBy,
-                                                   boolean sortDescending, List<String> fileTypes) throws IOException {
+    private List<FileSystemItem> listItemsInternal(
+            Path basePath,
+            boolean isIncludeFiles,
+            boolean isIncludeDirs,
+            boolean isRecursive,
+            Integer maxDepth,
+            String sortBy,
+            boolean isSortDescending,
+            List<String> fileTypes) throws IOException {
         List<FileSystemItem> items = new ArrayList<>();
 
-        if (!recursive) {
+        if (!isRecursive) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(basePath)) {
                 for (Path p : stream) {
                     boolean isDir = Files.isDirectory(p);
-                    if (!includeFiles && !isDir) {
+                    if (!isIncludeFiles && !isDir) {
                         continue;
                     }
-                    if (!includeDirs && isDir) {
+                    if (!isIncludeDirs && isDir) {
                         continue;
                     }
                     if (fileTypes != null && !isDir) {
@@ -1041,7 +1043,7 @@ public class LocalFsOperation extends BaseFsOperation {
                             if (dir.equals(basePath)) {
                                 return FileVisitResult.CONTINUE;
                             }
-                            if (includeDirs) {
+                            if (isIncludeDirs) {
                                 FileSystemItem item = createFsItem(dir);
                                 if (item != null) {
                                     items.add(item);
@@ -1055,7 +1057,7 @@ public class LocalFsOperation extends BaseFsOperation {
                          * Auto-generated for codecheck compliance.
                          */
                         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                            if (!includeFiles) {
+                            if (!isIncludeFiles) {
                                 return FileVisitResult.CONTINUE;
                             }
                             if (fileTypes != null) {
@@ -1073,7 +1075,7 @@ public class LocalFsOperation extends BaseFsOperation {
                     });
         }
 
-        sortItems(items, sortBy, sortDescending);
+        sortItems(items, sortBy, isSortDescending);
         return items;
     }
 

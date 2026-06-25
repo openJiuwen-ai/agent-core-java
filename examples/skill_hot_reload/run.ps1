@@ -1,4 +1,4 @@
-﻿# SkillHotReload 示例编译运行脚本
+# SkillHotReload 示例编译运行脚本
 # 所有产物放在当前示例目录或子目录下
 # run.bat 是此脚本的入口包装（解决 cmd.exe 8191 字符限制）
 
@@ -19,7 +19,7 @@ $ARG_DIR = Join-Path $EXAMPLE_DIR "args"
 Write-Host "[1/4] Compiling agent-core-java project..." -ForegroundColor Cyan
 Push-Location $PROJECT_ROOT
 try {
-    mvn compile -DskipTests 2>&1 | Out-Null
+    mvn clean compile -DskipTests 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Maven compile failed. Run 'mvn compile -DskipTests' manually." -ForegroundColor Red
         exit 1
@@ -47,14 +47,15 @@ New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
 New-Item -ItemType Directory -Path $ARG_DIR -Force | Out-Null
 
 # 3. 编译示例（用 @argfile 避免命令行过长）
-Write-Host "[3/4] Compiling SkillHotReloadExample..." -ForegroundColor Cyan
-$EXAMPLE_SRC = Join-Path $EXAMPLE_DIR "SkillHotReloadExample.java"
+Write-Host "[3/4] Compiling DeepAgentSkillHotReloadExample..." -ForegroundColor Cyan
+$EXAMPLE_SRC = Join-Path $EXAMPLE_DIR "DeepAgentSkillHotReloadExample.java"
 $UTILS_SRC = Join-Path $PROJECT_ROOT "examples\utils\SharedExampleApiConfigLoader.java"
 $COMPILE_ARG = Join-Path $ARG_DIR "compile.args"
 
 @(
     "-source 17",
     "-target 17",
+    "-encoding UTF-8",
     "-cp",
     $CP_COMPILE,
     "-d",
@@ -73,14 +74,14 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "  Compilation successful." -ForegroundColor Green
 
 # 4. 运行示例（用 @argfile 避免命令行过长）
-Write-Host "[4/4] Running SkillHotReloadExample..." -ForegroundColor Cyan
+Write-Host "[4/4] Running DeepAgentSkillHotReloadExample..." -ForegroundColor Cyan
 $CP_RUNTIME = @($BUILD_DIR) + @($CLASSES_DIR) + $DEP_JARS -join ";"
 $RUN_ARG = Join-Path $ARG_DIR "run.args"
 
 @(
     "-cp",
     $CP_RUNTIME,
-    "examples.skill_hot_reload.SkillHotReloadExample"
+    "examples.skill_hot_reload.DeepAgentSkillHotReloadExample"
 ) | Set-Content $RUN_ARG
 
 $API_CONFIG = Join-Path $EXAMPLE_DIR "..\apiconfig.json"
