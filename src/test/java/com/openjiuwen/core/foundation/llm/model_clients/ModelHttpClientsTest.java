@@ -80,15 +80,19 @@ class ModelHttpClientsTest {
 
     @Test
     void defaultPortProxyModeAppliesDefaultPortWhenProxyOmitsPort() {
-        ProxySelector proxySelector = ModelHttpClients.proxySelector(
+        ProxySelector httpProxySelector = ModelHttpClients.proxySelector(
                 "http://proxy.example.test",
                 ModelHttpClients.ProxyPortMode.DEFAULT_PORT_WHEN_MISSING);
 
-        assertThat(proxySelector).isNotNull();
-        List<Proxy> proxies = proxySelector.select(URI.create("https://api.example.test/v1"));
-        InetSocketAddress address = (InetSocketAddress) proxies.get(0).address();
-        assertThat(address.getHostString()).isEqualTo("proxy.example.test");
-        assertThat(address.getPort()).isEqualTo(80);
+        assertThat(httpProxySelector).isNotNull();
+        assertProxyAddress(httpProxySelector, "proxy.example.test", 80);
+
+        ProxySelector httpsProxySelector = ModelHttpClients.proxySelector(
+                "https://secure-proxy.example.test",
+                ModelHttpClients.ProxyPortMode.DEFAULT_PORT_WHEN_MISSING);
+
+        assertThat(httpsProxySelector).isNotNull();
+        assertProxyAddress(httpsProxySelector, "secure-proxy.example.test", 443);
     }
 
     private static ModelClientConfig clientConfig(ModelHttpVersion httpVersion) {
@@ -98,5 +102,12 @@ class ModelHttpClientsTest {
                 .httpVersion(httpVersion)
                 .timeout(9.0D)
                 .build();
+    }
+
+    private static void assertProxyAddress(ProxySelector proxySelector, String host, int port) {
+        List<Proxy> proxies = proxySelector.select(URI.create("https://api.example.test/v1"));
+        InetSocketAddress address = (InetSocketAddress) proxies.get(0).address();
+        assertThat(address.getHostString()).isEqualTo(host);
+        assertThat(address.getPort()).isEqualTo(port);
     }
 }
