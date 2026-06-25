@@ -909,7 +909,7 @@ public class OpenAIModelClient extends BaseModelClient {
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
                 .connectTimeout(timeoutDuration(null))
                 .withSsl()
-                .withProxy()
+                .withExplicitPortProxy()
                 .build();
     }
 

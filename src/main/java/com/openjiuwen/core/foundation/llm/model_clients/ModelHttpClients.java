@@ -50,15 +50,21 @@ final class ModelHttpClients {
     }
 
     ModelHttpClients withProxy() {
+        return withProxy(ProxyPortMode.DEFAULT_PORT_WHEN_MISSING);
+    }
+
+    ModelHttpClients withExplicitPortProxy() {
+        return withProxy(ProxyPortMode.EXPLICIT_PORT_ONLY);
+    }
+
+    private ModelHttpClients withProxy(ProxyPortMode portMode) {
         String proxyUrl = UrlUtils.getGlobalProxyUrl(targetUrl);
         if (proxyUrl == null || proxyUrl.isBlank()) {
             return this;
         }
-        URI proxyUri = URI.create(proxyUrl);
-        String host = proxyUri.getHost();
-        int port = proxyUri.getPort();
-        if (host != null && !host.isBlank()) {
-            builder.proxy(ProxySelector.of(new InetSocketAddress(host, port > 0 ? port : defaultProxyPort(proxyUri))));
+        ProxySelector proxySelector = proxySelector(proxyUrl, portMode);
+        if (proxySelector != null) {
+            builder.proxy(proxySelector);
         }
         return this;
     }
@@ -75,6 +81,23 @@ final class ModelHttpClients {
         builder.version(clientConfig.getHttpVersion().toJdkVersion());
     }
 
+    static ProxySelector proxySelector(String proxyUrl, ProxyPortMode portMode) {
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            return null;
+        }
+        URI proxyUri = URI.create(proxyUrl);
+        String host = proxyUri.getHost();
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        int port = proxyUri.getPort();
+        if (port <= 0 && portMode == ProxyPortMode.EXPLICIT_PORT_ONLY) {
+            return null;
+        }
+        int resolvedPort = port > 0 ? port : defaultProxyPort(proxyUri);
+        return ProxySelector.of(new InetSocketAddress(host, resolvedPort));
+    }
+
     private static int defaultProxyPort(URI proxyUri) {
         String scheme = proxyUri.getScheme();
         if ("https".equalsIgnoreCase(scheme)) {
@@ -87,5 +110,10 @@ final class ModelHttpClients {
         double seconds = clientConfig == null ? 60.0D : clientConfig.getTimeout();
         long millis = Math.max(1L, Math.round(seconds * 1000.0D));
         return Duration.ofMillis(millis);
+    }
+
+    enum ProxyPortMode {
+        EXPLICIT_PORT_ONLY,
+        DEFAULT_PORT_WHEN_MISSING
     }
 }
