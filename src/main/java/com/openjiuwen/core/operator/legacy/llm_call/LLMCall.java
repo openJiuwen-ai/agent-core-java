@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.operator.legacy.llm_call;
 
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -12,6 +13,9 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.session.Session;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -101,6 +105,38 @@ public class LLMCall {
      */
     public OperatorStream<AssistantMessageChunk> stream(Map<String, Object> inputs, Session session) throws Exception {
         return stream(inputs, session, null, null);
+    }
+
+    /**
+     * Reactive version of {@link #invoke(Map, Session, List, Object)}.
+     *
+     * @param inputs operator inputs
+     * @param session session context
+     * @param history chat history
+     * @param tools available tools
+     * @return Mono emitting the assistant message
+     */
+    public Mono<AssistantMessage> invokeAsync(Map<String, Object> inputs,
+                                              Session session,
+                                              List<BaseMessage> history,
+                                              Object tools) {
+        return ReactiveAdapters.fromCallable(() -> invoke(inputs, session, history, tools));
+    }
+
+    /**
+     * Reactive version of {@link #stream(Map, Session, List, Object)}.
+     *
+     * @param inputs operator inputs
+     * @param session session context
+     * @param history chat history
+     * @param tools available tools
+     * @return Flux emitting assistant message chunks
+     */
+    public Flux<AssistantMessageChunk> streamAsync(Map<String, Object> inputs,
+                                                   Session session,
+                                                   List<BaseMessage> history,
+                                                   Object tools) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, history, tools));
     }
 
     /**

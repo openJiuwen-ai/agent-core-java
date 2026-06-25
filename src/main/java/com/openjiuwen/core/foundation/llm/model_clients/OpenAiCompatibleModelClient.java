@@ -411,7 +411,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return value instanceof Number number ? number.intValue() : 0;
     }
 
-    private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk> {
+    private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
 
         private final BufferedReader reader;
         private final String resolvedModel;
@@ -420,6 +420,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
         private AssistantMessageChunk nextChunk;
         private boolean finished;
+        private volatile boolean isClosed;
 
         private StreamingChunkIterator(InputStream inputStream,
                                        String resolvedModel,
@@ -430,9 +431,6 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
 
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public boolean hasNext() {
             if (nextChunk != null) {
                 return true;
@@ -450,9 +448,6 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
 
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public AssistantMessageChunk next() {
             if (!hasNext()) {
                 throw new NoSuchElementException();
@@ -486,6 +481,17 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             } catch (IOException e) {
                 throw new RuntimeException("Failed to read streaming response", e);
             }
+        }
+
+        // 关闭底层 reader，解除阻塞在 readLine() 的线程（readLine 不响应 interrupt）。
+        @Override
+        public void close() {
+            if (isClosed) {
+                return;
+            }
+            isClosed = true;
+            finished = true;
+            closeQuietly();
         }
 
         private void closeQuietly() {

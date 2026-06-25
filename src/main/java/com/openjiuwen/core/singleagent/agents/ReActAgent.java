@@ -33,6 +33,7 @@ import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.AbilityManager.ToolExecutionEntry;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolCallInterruptRequest;
+import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
@@ -804,7 +805,8 @@ public class ReActAgent extends BaseAgent {
         streamThread.setDaemon(true);
         streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
         streamThread.start();
-        return agentSession.streamIterator();
+        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
+        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
     }
 
     /**

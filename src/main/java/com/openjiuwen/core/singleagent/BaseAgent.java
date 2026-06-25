@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackFirer;
@@ -13,6 +14,9 @@ import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.Iterator;
 import java.util.List;
@@ -215,4 +219,27 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      * @return iterator of stream output
      */
     public abstract Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes);
+
+    /**
+     * Reactive version of {@link #invoke(Object, Session)}.
+     *
+     * @param inputs agent inputs
+     * @param session session context, nullable
+     * @return Mono emitting the invocation result
+     */
+    public Mono<Object> invokeAsync(Object inputs, Session session) {
+        return ReactiveAdapters.fromCallable(() -> invoke(inputs, session));
+    }
+
+    /**
+     * Reactive version of {@link #stream(Object, Session, List)}.
+     *
+     * @param inputs agent inputs
+     * @param session session context, nullable
+     * @param streamModes stream output modes
+     * @return Flux emitting stream chunks
+     */
+    public Flux<Object> streamAsync(Object inputs, Session session, List<StreamMode> streamModes) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, streamModes));
+    }
 }
