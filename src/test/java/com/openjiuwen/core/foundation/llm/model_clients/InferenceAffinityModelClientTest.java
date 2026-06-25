@@ -8,12 +8,14 @@ import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -223,6 +225,21 @@ class InferenceAffinityModelClientTest {
         client.nextStatus = 500;
         client.nextJson = "error";
         assertThat(client.release("session-1", List.of(assistantMessage), 1, null, null, null)).isFalse();
+    }
+
+    @Test
+    void appliesConfiguredHttpVersionToHttpClient() {
+        InferenceAffinityModelClient client = new InferenceAffinityModelClient(
+                requestConfig(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.INFERENCE_AFFINITY)
+                        .apiKey("sk-test")
+                        .apiBase("http://localhost:8000")
+                        .verifySsl(false)
+                        .httpVersion(ModelHttpVersion.HTTP_1_1)
+                        .build());
+
+        assertThat(client.httpClientForTesting().version()).isEqualTo(HttpClient.Version.HTTP_1_1);
     }
 
     private static List<AssistantMessageChunk> iteratorToList(Iterator<AssistantMessageChunk> iterator) {

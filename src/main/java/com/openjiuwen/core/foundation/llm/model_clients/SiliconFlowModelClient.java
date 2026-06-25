@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -28,8 +27,6 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.net.InetSocketAddress;
-import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -436,26 +433,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         StandardCharsets.UTF_8));
     }
 
-    private HttpClient createHttpClient(String apiUrl) {
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(timeoutDuration(null));
-        SslUtils.configureHttpClientSsl(
-                builder,
-                apiUrl,
-                modelClientConfig.isVerifySsl(),
-                modelClientConfig.getSslCert()
-        );
-        String proxyUrl = UrlUtils.getGlobalProxyUrl(apiUrl);
-        if (proxyUrl != null && !proxyUrl.isBlank()) {
-            URI proxyUri = URI.create(proxyUrl);
-            if (proxyUri.getHost() != null) {
-                builder.proxy(ProxySelector.of(new InetSocketAddress(
-                        proxyUri.getHost(),
-                        proxyUri.getPort() > 0 ? proxyUri.getPort() : defaultProxyPort(proxyUri.getScheme())
-                )));
-            }
-        }
-        return builder.build();
+    HttpClient createHttpClient(String apiUrl) {
+        return ModelHttpClients.builder(modelClientConfig, apiUrl)
+                .connectTimeout(timeoutDuration(null))
+                .withSsl()
+                .withProxy()
+                .build();
     }
 
     private Duration timeoutDuration(Float overrideTimeout) {
@@ -657,10 +640,6 @@ public class SiliconFlowModelClient extends BaseModelClient {
             return 0;
         }
         return Integer.parseInt(String.valueOf(value));
-    }
-
-    private static int defaultProxyPort(String scheme) {
-        return "https".equalsIgnoreCase(scheme) ? 443 : 80;
     }
 
     private static boolean isPythonTruthy(Object value) {

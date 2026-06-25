@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -493,6 +495,21 @@ class OpenAIModelClientTest {
                 ModelRequestConfig.builder().modelName("gpt-test").build());
 
         assertInstanceOf(OpenAIModelClient.class, created);
+    }
+
+    @Test
+    void appliesConfiguredHttpVersionToHttpClient() {
+        OpenAIModelClient client = new OpenAIModelClient(
+                ModelRequestConfig.builder().modelName("gpt-test").build(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.OPEN_AI)
+                        .apiKey("sk-test")
+                        .apiBase("https://compatible.example.test/v1")
+                        .verifySsl(false)
+                        .httpVersion(ModelHttpVersion.HTTP_1_1)
+                        .build());
+
+        assertThat(client.httpClientForTesting().version()).isEqualTo(HttpClient.Version.HTTP_1_1);
     }
 
     private static OpenAIModelClient client(String apiBase) {

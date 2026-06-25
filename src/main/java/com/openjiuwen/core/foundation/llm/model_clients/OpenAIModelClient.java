@@ -10,8 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.security.SslUtils;
-import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -30,8 +28,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
-import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -905,22 +901,16 @@ public class OpenAIModelClient extends BaseModelClient {
         }
     }
 
+    HttpClient httpClientForTesting() {
+        return httpClient;
+    }
+
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(timeoutDuration(null));
-        SslUtils.configureHttpClientSsl(
-                builder,
-                clientConfig.getApiBase(),
-                clientConfig.isVerifySsl(),
-                clientConfig.getSslCert());
-        String proxyUrl = UrlUtils.getGlobalProxyUrl(clientConfig.getApiBase());
-        if (proxyUrl != null && !proxyUrl.isBlank()) {
-            URI proxyUri = URI.create(proxyUrl);
-            if (proxyUri.getHost() != null && proxyUri.getPort() > 0) {
-                builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort())));
-            }
-        }
-        return builder.build();
+        return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
+                .connectTimeout(timeoutDuration(null))
+                .withSsl()
+                .withProxy()
+                .build();
     }
 
     private Duration timeoutDuration(Float timeout) {
