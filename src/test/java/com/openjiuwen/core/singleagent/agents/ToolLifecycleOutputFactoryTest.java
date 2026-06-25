@@ -99,6 +99,69 @@ class ToolLifecycleOutputFactoryTest {
                 .containsEntry("error", "not allowed");
     }
 
+    @Test
+    void buildToolResultOutputPrefersResultErrorFieldOverToolMessage() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-prio")
+                .name("lookupEnv")
+                .arguments("{\"key\":\"env\"}")
+                .build();
+        AbilityManager.ExecutionResult result = new AbilityManager.ExecutionResult(
+                Map.of("success", false, "error", "from-field"),
+                new ToolMessage("from-message", "call-prio", "lookupEnv")
+        );
+
+        OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 7);
+
+        assertThat(payload(output))
+                .containsEntry("tool_call_id", "call-prio")
+                .containsEntry("tool_name", "lookupEnv")
+                .containsEntry("status", "error")
+                .containsEntry("error", "from-field");
+    }
+
+    @Test
+    void buildToolResultOutputFallsBackToToolMessageWhenNoErrorField() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-fallback")
+                .name("lookupEnv")
+                .arguments("{\"key\":\"env\"}")
+                .build();
+        AbilityManager.ExecutionResult result = new AbilityManager.ExecutionResult(
+                Map.of("success", false),
+                new ToolMessage("from-message", "call-fallback", "lookupEnv")
+        );
+
+        OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 8);
+
+        assertThat(payload(output))
+                .containsEntry("tool_call_id", "call-fallback")
+                .containsEntry("tool_name", "lookupEnv")
+                .containsEntry("status", "error")
+                .containsEntry("error", "from-message");
+    }
+
+    @Test
+    void buildToolResultOutputEmitsCompletedWithEmptyResultForNullResultValue() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-null")
+                .name("lookupEnv")
+                .arguments("{\"key\":\"env\"}")
+                .build();
+        AbilityManager.ExecutionResult result = new AbilityManager.ExecutionResult(
+                null,
+                new ToolMessage("", "call-null", "lookupEnv")
+        );
+
+        OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 9);
+
+        assertThat(payload(output))
+                .containsEntry("tool_call_id", "call-null")
+                .containsEntry("tool_name", "lookupEnv")
+                .containsEntry("status", "completed")
+                .containsEntry("result", "");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> payload(OutputSchema output) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);

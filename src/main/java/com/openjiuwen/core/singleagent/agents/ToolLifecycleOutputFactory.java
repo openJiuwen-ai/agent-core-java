@@ -50,7 +50,7 @@ final class ToolLifecycleOutputFactory {
             payload.put("error", resolveErrorValue(result));
         } else {
             payload.put("status", "completed");
-            payload.put("result", stringify(result != null ? result.result() : null));
+            payload.put("result", result != null && result.result() != null ? stringify(result.result()) : "");
         }
         return new OutputSchema("tool_result", index, payload);
     }
