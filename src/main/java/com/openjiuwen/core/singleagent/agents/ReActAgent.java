@@ -1085,6 +1085,19 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    private void writeStreamingResult(Object result, AgentSessionApi session) {
+        if (result instanceof StreamingInvokeResult streamingResult) {
+            writeInvokeResultToStreamInternal(streamingResult.result(), session,
+                    streamingResult.streamIndexRef());
+        } else if (result instanceof List<?> list) {
+            for (Object schema : list) {
+                session.writeStream(schema);
+            }
+        } else if (result instanceof Map<?, ?> map) {
+            writeInvokeResultToStreamInternal(stringObjectMap(map), session);
+        }
+    }
+
     public void writeInvokeResultToStream(Map<String, Object> result, AgentSessionApi session) {
         writeInvokeResultToStreamInternal(result, session);
     }
@@ -1179,16 +1192,7 @@ public class ReActAgent extends BaseAgent {
         }
         try {
             Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            if (result instanceof StreamingInvokeResult streamingResult) {
-                writeInvokeResultToStreamInternal(streamingResult.result(), finalSession,
-                        streamingResult.streamIndexRef());
-            } else if (result instanceof List<?> list) {
-                for (Object schema : list) {
-                    finalSession.writeStream(schema);
-                }
-            } else if (result instanceof Map<?, ?> map) {
-                writeInvokeResultToStreamInternal(stringObjectMap(map), finalSession);
-            }
+            writeStreamingResult(result, finalSession);
         } catch (RuntimeException exception) {
             writeInvokeResultToStreamInternal(
                     new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
@@ -1209,16 +1213,7 @@ public class ReActAgent extends BaseAgent {
                                     AgentSessionLifecycle lifecycleSession, boolean finalNeedCleanup) {
         try {
             Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            if (result instanceof StreamingInvokeResult streamingResult) {
-                writeInvokeResultToStreamInternal(streamingResult.result(), finalSession,
-                        streamingResult.streamIndexRef());
-            } else if (result instanceof List<?> list) {
-                for (Object schema : list) {
-                    finalSession.writeStream(schema);
-                }
-            } else if (result instanceof Map<?, ?> map) {
-                writeInvokeResultToStreamInternal(stringObjectMap(map), finalSession);
-            }
+            writeStreamingResult(result, finalSession);
         } catch (RuntimeException exception) {
             writeInvokeResultToStreamInternal(
                     new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),

@@ -210,6 +210,27 @@ class ReActAgentToolLifecycleStreamTest {
     }
 
     @Test
+    void invokeBackfillsMissingToolCallIdForNonStreamingPath() {
+        CountingTool tool = new CountingTool(unique("lookup-tool"), "lookupEnv", Map.of("result", "prod"));
+        RecordingReActAgent agent = new RecordingReActAgent(
+                ToolCall.builder().name("lookupEnv").arguments("{\"key\":\"env\"}").build()
+        );
+        registerGlobalTool(agent, tool);
+
+        Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-id-session"))
+                .toCompletableFuture()
+                .join();
+
+        assertThat(result).isInstanceOf(Map.class);
+        assertThat(agent.getCapturedToolMessageIds()).hasSize(1);
+        assertThat(agent.getCapturedAssistantToolCallIds()).hasSize(1);
+        String toolMessageId = agent.getCapturedToolMessageIds().getFirst();
+        String assistantToolCallId = agent.getCapturedAssistantToolCallIds().getFirst();
+        assertThat(toolMessageId).isNotBlank();
+        assertThat(toolMessageId).isEqualTo(assistantToolCallId);
+    }
+
+    @Test
     void streamEmitsErrorToolResultWhenArgumentsJsonIsInvalid() {
         CountingTool tool = new CountingTool(unique("lookup-tool"), "lookupEnv", Map.of("result", "prod"));
         ReActAgent agent = streamingAgent(List.of(
@@ -433,6 +454,7 @@ class ReActAgentToolLifecycleStreamTest {
     private static final class RecordingReActAgent extends ReActAgent {
         private final ToolCall toolCall;
         private final List<String> capturedToolMessageIds = new ArrayList<>();
+        private final List<String> capturedAssistantToolCallIds = new ArrayList<>();
         private int callCount;
 
         private RecordingReActAgent(ToolCall toolCall) {
@@ -447,6 +469,13 @@ class ReActAgentToolLifecycleStreamTest {
                 if (message instanceof ToolMessage toolMessage && toolMessage.getToolCallId() != null) {
                     capturedToolMessageIds.add(toolMessage.getToolCallId());
                 }
+                if (message instanceof AssistantMessage assistantMessage && assistantMessage.getToolCalls() != null) {
+                    for (ToolCall call : assistantMessage.getToolCalls()) {
+                        if (call.getId() != null) {
+                            capturedAssistantToolCallIds.add(call.getId());
+                        }
+                    }
+                }
             }
             if (callCount == 1) {
                 return AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build();
@@ -456,6 +485,10 @@ class ReActAgentToolLifecycleStreamTest {
 
         private List<String> getCapturedToolMessageIds() {
             return capturedToolMessageIds;
+        }
+
+        private List<String> getCapturedAssistantToolCallIds() {
+            return capturedAssistantToolCallIds;
         }
     }
 
