@@ -11,6 +11,8 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.sys_operation.result.ReadFileData;
+import com.openjiuwen.core.sys_operation.result.ReadFileResult;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.Test;
 
@@ -179,7 +181,7 @@ class AbilityManagerTest {
         assertEquals(Map.of("echo", "hello"), results.getFirst().result());
         assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
         assertEquals("echoTool", results.getFirst().toolMessage().getName());
-        assertEquals("{echo=hello}", results.getFirst().toolMessage().getContent());
+        assertEquals("{\"echo\":\"hello\"}", results.getFirst().toolMessage().getContent());
     }
 
     @Test
@@ -201,7 +203,7 @@ class AbilityManagerTest {
             assertEquals(1, results.size());
             assertEquals("hello", tool.invokedText);
             assertEquals(Map.of("echo", "hello"), results.getFirst().result());
-            assertEquals("{echo=hello}", results.getFirst().toolMessage().getContent());
+            assertEquals("{\"echo\":\"hello\"}", results.getFirst().toolMessage().getContent());
         } finally {
             Runner.resourceMgr().removeTool(tool.getCard().getId());
         }
@@ -237,7 +239,32 @@ class AbilityManagerTest {
         contentData.put("content", null);
         assertEquals("", AbilityManager.buildToolMessageContent(Map.of("data", contentData)));
         assertEquals("boom", AbilityManager.buildToolMessageContent(Map.of("success", false, "error", "boom")));
-        assertEquals("{value=42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
+        assertEquals("{\"value\":42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
+    }
+
+    @Test
+    void buildToolMessageContentSerializesPojoAndMapAsJson() {
+        ReadFileResult readFileResult = new ReadFileResult();
+        readFileResult.setCode(200);
+        readFileResult.setMessage("ok");
+        ReadFileData fileData = ReadFileData.builder()
+                .path("/tmp/x")
+                .content("hello")
+                .mode("r")
+                .build();
+        readFileResult.setData(fileData);
+
+        String pojoContent = AbilityManager.buildToolMessageContent(readFileResult);
+        assertTrue(pojoContent.contains("\"content\""), "POJO 结果应序列化为 JSON：" + pojoContent);
+        assertTrue(pojoContent.contains("hello"), "POJO 结果应包含真实内容：" + pojoContent);
+        assertFalse(pojoContent.contains("ReadFileResult@"), "不应输出类名@hashcode：" + pojoContent);
+
+        String mapContent = AbilityManager.buildToolMessageContent(Map.of("skill", "x", "echo", "y"));
+        assertTrue(mapContent.contains("\"skill\""), "Map 结果应序列化为 JSON：" + mapContent);
+        assertTrue(mapContent.contains("\"echo\""), "Map 结果应序列化为 JSON：" + mapContent);
+        assertFalse(mapContent.contains("skill=x"), "不应输出 Map.toString：" + mapContent);
+
+        assertEquals("plain text", AbilityManager.buildToolMessageContent("plain text"));
     }
 
     private static ToolCard tool(String id, String name) {

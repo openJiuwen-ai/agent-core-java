@@ -84,7 +84,7 @@ class ReActAgentToolLifecycleStreamTest {
                 .containsEntry("tool_call_id", "call-global")
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{result=prod}");
+                .containsEntry("result", "{\"result\":\"prod\"}");
         assertThat(tool.invokeCount).isEqualTo(1);
     }
 
@@ -181,7 +181,7 @@ class ReActAgentToolLifecycleStreamTest {
                 .containsEntry("tool_call_id", "call-skill")
                 .containsEntry("tool_name", "echoTool")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{echo=hello}");
+                .containsEntry("result", "{\"echo\":\"hello\"}");
         assertThat(skillTool.invokeCount).isEqualTo(1);
     }
 

@@ -252,7 +252,21 @@ public class AbilityManager {
         if (Boolean.FALSE.equals(success) && error != null && !String.valueOf(error).isEmpty()) {
             return String.valueOf(error);
         }
-        return String.valueOf(result);
+        return toJsonString(result);
+    }
+
+    private static String toJsonString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof CharSequence || value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            return String.valueOf(value);
+        }
     }
 
     public static List<ToolCall> normalizeToolCalls(Object toolCall) {

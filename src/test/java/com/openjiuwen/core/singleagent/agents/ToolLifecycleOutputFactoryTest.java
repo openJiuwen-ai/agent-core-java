@@ -8,6 +8,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.sys_operation.result.ReadFileData;
+import com.openjiuwen.core.sys_operation.result.ReadFileResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -54,7 +56,35 @@ class ToolLifecycleOutputFactoryTest {
                 .containsEntry("tool_call_id", "call-1")
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{result=prod}");
+                .containsEntry("result", "{\"result\":\"prod\"}");
+    }
+
+    @Test
+    void buildToolResultOutputSerializesPojoAsJson() {
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-pojo")
+                .name("read_file")
+                .arguments("{\"path\":\"/tmp/x\"}")
+                .build();
+        ReadFileResult fileResult = new ReadFileResult();
+        fileResult.setCode(200);
+        fileResult.setMessage("ok");
+        fileResult.setData(ReadFileData.builder()
+                .path("/tmp/x")
+                .content("hello world")
+                .mode("r")
+                .build());
+        AbilityManager.ExecutionResult result = new AbilityManager.ExecutionResult(
+                fileResult,
+                new ToolMessage("fixture", "call-pojo", "read_file")
+        );
+
+        OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 1);
+
+        String rendered = (String) payload(output).get("result");
+        assertThat(rendered).contains("\"content\"");
+        assertThat(rendered).contains("hello world");
+        assertThat(rendered).doesNotContain("ReadFileResult@");
     }
 
     @Test
