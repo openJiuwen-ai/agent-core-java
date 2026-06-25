@@ -1,11 +1,16 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.foundation.llm.schema;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpClient;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ModelHttpVersionTest {
     @Test
@@ -36,5 +41,12 @@ class ModelHttpVersionTest {
         assertThatThrownBy(() -> ModelHttpVersion.fromValue(" "))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unsupported http_version");
+    }
+
+    @Test
+    void serializesJsonValue() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertThat(mapper.writeValueAsString(ModelHttpVersion.HTTP_1_1)).isEqualTo("\"HTTP_1_1\"");
     }
 }

@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -123,6 +124,27 @@ class LegacyReActAgentTest {
         assertInstanceOf(Map.class, result);
         assertEquals("No query provided", ((Map<?, ?>) result).get("output"));
         assertEquals("error", ((Map<?, ?>) result).get("result_type"));
+    }
+
+    @Test
+    void buildModelPropagatesHttpVersionFromModelInfo() {
+        ModelConfig model = ModelConfig.builder()
+                .modelProvider("openai")
+                .modelInfo(BaseModelInfo.builder()
+                        .apiKey("key")
+                        .apiBase("base")
+                        .modelName("demo-model")
+                        .httpVersion(ModelHttpVersion.HTTP_1_1)
+                        .build())
+                .build();
+        LegacyReActAgentConfig config = new LegacyReActAgentConfig();
+        config.setId("agent-http-version");
+        config.setDescription("description");
+        config.setModel(model);
+
+        LegacyReActAgent agent = new LegacyReActAgent(config);
+
+        assertEquals(ModelHttpVersion.HTTP_1_1, agent.getLlm().getModelClientConfig().getHttpVersion());
     }
 
     static LegacyReActAgentConfig baseConfig(String agentId) {

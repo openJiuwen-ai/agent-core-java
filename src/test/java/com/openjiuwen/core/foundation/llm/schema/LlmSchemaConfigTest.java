@@ -196,6 +196,36 @@ class LlmSchemaConfigTest {
         assertEquals(false, modelInfo.getExtraFields().containsKey("http_version"));
     }
 
+    @Test
+    void baseModelInfoKeepsOldAllArgsConstructorSignature() {
+        Map<String, Object> customHeaders = new LinkedHashMap<>();
+        customHeaders.put("X-Trace", "trace-1");
+        Map<String, Object> extraFields = new LinkedHashMap<>();
+        extraFields.put("extra", "value");
+
+        BaseModelInfo modelInfo = new BaseModelInfo(
+                "sk-test",
+                "http://localhost",
+                "gpt-test",
+                0.2d,
+                0.8d,
+                true,
+                30,
+                customHeaders,
+                extraFields);
+
+        assertEquals("sk-test", modelInfo.getApiKey());
+        assertEquals("http://localhost", modelInfo.getApiBase());
+        assertEquals("gpt-test", modelInfo.getModelName());
+        assertEquals(0.2d, modelInfo.getTemperature());
+        assertEquals(0.8d, modelInfo.getTopP());
+        assertEquals(true, modelInfo.isStreaming());
+        assertEquals(30, modelInfo.getTimeout());
+        assertEquals(customHeaders, modelInfo.getCustomHeaders());
+        assertEquals(null, modelInfo.getHttpVersion());
+        assertEquals(extraFields, modelInfo.getExtraFields());
+    }
+
     private static void unregisterIfPresent(ClientRegistry registry, String provider) {
         if (registry.listClients().contains("llm_" + provider)) {
             registry.unregister(provider, "llm");

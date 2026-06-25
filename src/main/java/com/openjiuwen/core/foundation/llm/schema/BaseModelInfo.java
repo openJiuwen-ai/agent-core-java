@@ -63,6 +63,12 @@ public class BaseModelInfo {
     @Builder.Default
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
+    public BaseModelInfo(String apiKey, String apiBase, String modelName, double temperature, double topP,
+                         boolean streaming, int timeout, Map<String, Object> customHeaders,
+                         Map<String, Object> extraFields) {
+        this(apiKey, apiBase, modelName, temperature, topP, streaming, timeout, customHeaders, null, extraFields);
+    }
+
     @JsonAnySetter
     public void putExtraField(String key, Object value) {
         if (!isDeclaredField(key)) {

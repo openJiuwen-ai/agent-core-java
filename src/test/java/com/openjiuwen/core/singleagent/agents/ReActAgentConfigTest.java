@@ -1,6 +1,8 @@
-package com.openjiuwen.core.singleagent.agents;
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
-import static org.assertj.core.api.Assertions.assertThat;
+package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -8,6 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class ReActAgentConfigTest {
     @Test
