@@ -1001,8 +1001,14 @@ public class ReActAgent extends BaseAgent {
             }
             getAgentCallbackManager().execute(AgentCallbackEvent.AFTER_INVOKE, ctx).toCompletableFuture().join();
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
-            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
-                return new StreamingInvokeResult(stringObjectMap(map), streamIndexRef(ctx));
+            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+                if (result instanceof Map<?, ?> map) {
+                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                } else if (result instanceof List<?> list) {
+                    for (Object schema : list) {
+                        session.writeStream(schema);
+                    }
+                }
             }
             return result;
         } finally {
@@ -1013,9 +1019,6 @@ public class ReActAgent extends BaseAgent {
                 }
             }
         }
-    }
-
-    private record StreamingInvokeResult(Map<String, Object> result, int[] streamIndexRef) {
     }
 
     private int[] streamIndexRef(AgentCallbackContext ctx) {
@@ -1082,19 +1085,6 @@ public class ReActAgent extends BaseAgent {
                     result,
                     nextStreamIndex(ctx)
             ));
-        }
-    }
-
-    private void writeStreamingResult(Object result, AgentSessionApi session) {
-        if (result instanceof StreamingInvokeResult streamingResult) {
-            writeInvokeResultToStreamInternal(streamingResult.result(), session,
-                    streamingResult.streamIndexRef());
-        } else if (result instanceof List<?> list) {
-            for (Object schema : list) {
-                session.writeStream(schema);
-            }
-        } else if (result instanceof Map<?, ?> map) {
-            writeInvokeResultToStreamInternal(stringObjectMap(map), session);
         }
     }
 
@@ -1191,8 +1181,7 @@ public class ReActAgent extends BaseAgent {
             return finalSession.streamIterator();
         }
         try {
-            Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            writeStreamingResult(result, finalSession);
+            invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
         } catch (RuntimeException exception) {
             writeInvokeResultToStreamInternal(
                     new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
@@ -1212,8 +1201,7 @@ public class ReActAgent extends BaseAgent {
     private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession,
                                     AgentSessionLifecycle lifecycleSession, boolean finalNeedCleanup) {
         try {
-            Object result = invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-            writeStreamingResult(result, finalSession);
+            invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
         } catch (RuntimeException exception) {
             writeInvokeResultToStreamInternal(
                     new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
