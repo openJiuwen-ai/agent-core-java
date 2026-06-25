@@ -1,0 +1,67 @@
+# Dependencies: 投资分析团队依赖配置
+
+skills:
+  - name: gs_stock_financial_query
+    source: local
+    required: false
+    purpose: "查询A股、港股财务数据，包括利润表、资产负债表、现金流量表等财务报表数据"
+    roles:
+      - fundamental-analyst
+
+  - name: gs_stock_market_query
+    source: local
+    required: false
+    purpose: "查询股市行情，包括实时行情、历史行情、资金流向、涨跌幅排名等"
+    roles:
+      - technical-analyst
+
+  - name: gs_economy_query
+    source: local
+    required: false
+    purpose: "查询全球宏观经济数据，包括GDP、CPI、PPI、利率、汇率等宏观经济指标"
+    roles:
+      - macro-analyst
+
+  - name: content-strategy
+    source: local
+    required: false
+    purpose: "舆情分析和内容策略支持"
+    roles:
+      - digital-media-analyst
+
+tools:
+  - name: python3
+    source: local
+    required: true
+    purpose: "数据处理和量化分析"
+    roles:
+      - fundamental-analyst
+      - technical-analyst
+      - digital-media-analyst
+      - macro-analyst
+
+  - name: curl
+    source: local
+    required: false
+    purpose: "获取数据API"
+    roles:
+      - fundamental-analyst
+      - technical-analyst
+      - digital-media-analyst
+      - macro-analyst
+
+  - name: jq
+    source: local
+    required: false
+    purpose: "处理JSON格式数据"
+    roles:
+      - fundamental-analyst
+      - technical-analyst
+      - digital-media-analyst
+      - macro-analyst
+
+# 全局依赖说明
+global_dependencies:
+  description: "投资分析团队主要依赖Python工具进行量化分析，每位分析师独立输出结构化报告"
+  fallback_mode: "如果依赖技能缺失，团队可以运行在纯推理模式（inline-persona-only）"
+  community_enrichment: "建议搜索社区技能库，寻找专业的金融分析、投资决策和风险管理技能"

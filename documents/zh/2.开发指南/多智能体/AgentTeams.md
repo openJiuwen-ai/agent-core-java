@@ -286,7 +286,6 @@ snapshot 用 `team.snapshot()` 拿到，内部包含 spec、context、leader_inb
 - 团队工作空间的 `skills/` 节点
 - 当前工作目录（`System.getProperty("user.dir")`）
 - `~/.openjiuwen/workspace/skills`
-- `~/.claude/skills`
 
 `HarnessFactory` 在 `hasConfiguredSkills(source) || source.isEnableSkillDiscovery()` 成立时会自动追加 `SkillUseRail`（`com.openjiuwen.harness.rails.SkillUseRail`），它负责：
 
@@ -365,6 +364,43 @@ Java 当前 `agentteams` 包已经具备完整的 leader-teammate 装配、spawn
 ## 示例入口
 
 - [示例：AgentTeam E2E Example](../../../../examples/agent_teams/AgentTeamE2eExample.java)
+
+> 运行前置：
+>
+> 1. `examples/` 目录当前不在 Maven 编译路径内（`pom.xml` 未把它注册为 source root），直接运行会找不到类。请先把整个 `examples/` 目录复制（或移动）到 `src/main/java/` 下，使 `examples.agent_teams.AgentTeamE2eExample` 与 `examples.utils.SharedExampleApiConfigLoader` 进入主源集，再通过 IDE 的 main 入口或 `mvn exec:java -Dexec.mainClass=examples.agent_teams.AgentTeamE2eExample` 启动。
+> 2. 运行前需把 `src/main/resources/apiconfig.json` 里的字段填成真实值（`API_BASE`、`API_KEY`、`MODEL_PROVIDER`、`MODEL_NAME` 等）。`SharedExampleApiConfigLoader` 默认从 classpath 读取这份文件，若仍是占位值（`your-api-key` 之类），demo 会在启动时抛 `IllegalStateException: Missing required key in apiconfig.json`。也可通过 `-Dopenjiuwen.example.config=<path>` 或 `OPENJIUWEN_API_CONFIG` 环境变量指向自定义配置文件覆盖默认查找路径。
+> 3. 示例自带的 team skill 副本位于 `examples/agent_teams/skills/`（如 `investment-analysis-team`）。运行前需把它挪到团队工作空间或全局 skill 扫描目录下，框架才会发现并加载。可选位置（见上文"Team Skill"小节）：
+     >    - 团队工作空间的 `skills/` 节点：`~/.openjiuwen/.agent_teams/my_project_team_java/team-workspace/skills/`
+>    - 全局：`~/.openjiuwen/workspace/skills/`
+
+### 示例 team skill：investment-analysis-team
+
+`examples/agent_teams/skills/investment-analysis-team/` 是一个 **Debate pattern (B+A+C)** 模式的多角色投资分析团队技能——并行分解（4 分析师并行）+ 对抗视角（乐观/悲观研究员直接点对点辩论）+ 专业化流水线（质量门控 + 风控决策）。
+
+team skill 的标准目录结构由 5 个部分组成，每个文件各司其职：
+
+| 文件 | 本质职责 |
+| --- | --- |
+| `SKILL.md` | **团队元数据**——团队叫什么、要干什么、成员有哪些角色 |
+| `roles/` | **角色定义**——每个 Teammate 各自负责什么、输入/输出/工具装配 |
+| `workflow.md` | **协作流程**——谁先谁后、依赖关系、通信与同步机制 |
+| `bind.md` | **边界约束**——遇到问题怎么处理、关键决策审批边界 |
+| `dependencies.yaml` | **外部工具依赖**——各角色装配的 Skill、缺失时自动从 Hub 检索 |
+
+就该 skill 而言，各文件的详细内容与读取时机如下：
+
+| 文件 | 作用 | 何时被读取 |
+| --- | --- | --- |
+| `SKILL.md` | 技能元数据与角色总览。front matter 声明 `name`、`version`、`kind: team-skill` 与 7 个角色（`fundamental-analyst` / `technical-analyst` / `digital-media-analyst` / `macro-analyst` / `optimistic-researcher` / `pessimistic-researcher` / `portfolio-risk-controller`）的 purpose / skills / tools；正文给出工作流程摘要、角色职责表、文件清单 | leader 在 ReAct 循环里发现该 skill 后读取，作为整体编排依据 |
+| `workflow.md` | 完整执行剧本。Mermaid 图 + Step 0~7 的详细协议（pre-flight 依赖检查 → 任务分发 → 四分析师并行 → 研究员 Round 1 整合 → Round 2 直接辩论 → 完成辩论校验 → 投资组合与风控 → Final 报告生成），含每个 step 的 executor / input / output / quality gate，以及 Final Report 的原文引用模板 | 首次分发前读取，是 leader 的完整 playbook |
+| `bind.md` | 资源约束与失败处理。`Resource Constraints`（`max_parallel_teammates=4`、`total_wall_clock_budget=30min`、`total_token_budget=100,000`、`per_role_token_limit=15,000`、`debate_rounds_limit=2`、各角色不对称 token / 时间上限）、`Behavioral Constraints`（leader 不生成内容、分析师彼此不可见、研究员 Round 1 不可见 / Round 2 直接可见、辩论固定 2 轮不提前终止）、`Failure Handling`（teammate 失败重试 2 次、输入过载降级、质量门控失败回流、辩论失败兜底、完全失败错误报告格式） | 触发资源约束 / 失败处理 / 降级模式时读取；`TeamRail` 会把 `Resource Constraints` 注入 leader prompt |
+| `dependencies.yaml` | 外部依赖声明。`skills` 段列 `gs_stock_financial_query` / `gs_stock_market_query` / `gs_economy_query` / `content-strategy`（均 `required: false`，缺失时进入纯推理模式）；`tools` 段列 `python3`（`required: true`）/ `curl` / `jq` | **启动时**由 leader 的 pre-flight（workflow Step 0）读取，验证依赖并决定 go/no-go |
+| `roles/*.md` | 每个角色的身份、成功标准、Output Schema、`## Inline Persona for Teammate` 段。文件名即角色 id（`fundamental-analyst.md` / `technical-analyst.md` / `digital-media-analyst.md` / `macro-analyst.md` / `optimistic-researcher.md` / `pessimistic-researcher.md` / `portfolio-risk-controller.md`） | leader 在 `spawn_member` 前读取对应角色文件，提取 `## Inline Persona for Teammate` 段直接粘进 dispatch prompt——**框架不会自动加载**，必须由 leader 显式读取 |
+
+两条关键机制：
+
+- **直接点对点辩论**：Round 2 中 `optimistic-researcher` 与 `pessimistic-researcher` 通过 `send_message` 直接交换观点，无需 leader 转达。`bind.md` 把这条列为"强制要求"，优先级 `直接点对点交换 > 共享黑板 > Leader 转发`。框架通过 `member_results_delivery` 事件把上游输出投递给下游 assignee（见上文"team skill 的多阶段数据流"）支撑这条链路。
+- **辩论固定 2 轮**：`bind.md` 同时声明 `debate_rounds_limit=2` 与 `min_debate_rounds=2`，leader 在 Step 5 完成"是否满 2 轮"的校验，未满则强制继续，不允许提前终止。
 
 ### Demo 详细功能实现
 
@@ -474,7 +510,7 @@ consumeStream(stream);
 - leader 按 `roles/*.md` 的角色定义 spawn 多个 teammate：
 
   | 角色 | 职责 | 输出文件（`file_io(action="write")`） |
-  | --- | --- | --- |
+    | --- | --- | --- |
   | `fundamental-analyst` | AAPL 财务报表、盈利能力、竞争优势 | `.team/reports/T1_fundamental_analysis.md` |
   | `technical-analyst` | AAPL 价格走势、技术指标、关键价位 | `.team/reports/T2_technical_analysis.md` |
   | `digital-media-analyst` | AAPL 社交媒体舆情、热点、异常信号 | `.team/reports/T3_digital_media_analysis.md` |

@@ -290,7 +290,7 @@ public abstract class BaseModelClient {
             toolsJson = String.valueOf(toolsDict);
             messagesJson = String.valueOf(messagesDict);
         }
-        com.openjiuwen.core.common.logging.Loggers.LLM.debug(
+        com.openjiuwen.core.common.logging.Loggers.LLM.info(
                 "Before request chat model, LLM request params ready. " +
                 "model_name={}, model_provider={}, messages={}, tools={}, " +
                 "temperature={}, top_p={}, max_tokens={}, is_stream={}",

@@ -366,6 +366,11 @@ public class SkillManager {
 
     /**
      * Load description from YAML front matter in Skill.md file.
+     *
+     * <p>Supports inline scalar ({@code description: foo}), quoted inline scalar
+     * ({@code description: "foo"}), and block scalars
+     * ({@code description: |}, {@code description: |-}, {@code description: >},
+     * {@code description: >-}).</p>
      */
     private String loadDescription(Path path) {
         try {
@@ -375,22 +380,161 @@ public class SkillManager {
             if (content.startsWith("\uFEFF")) {
                 content = content.substring(1);
             }
-            if (content.startsWith("---")) {
-                String[] parts = content.split("---", 3);
-                if (parts.length >= 2) {
-                    String yamlBlock = parts[1];
-                    for (String line : yamlBlock.split("\n")) {
-                        line = line.trim();
-                        if (line.startsWith("description:")) {
-                            return line.substring("description:".length()).trim();
-                        }
-                    }
+            if (!content.startsWith("---")) {
+                return null;
+            }
+            String[] parts = content.split("---", 3);
+            if (parts.length < 2) {
+                return null;
+            }
+            String[] lines = parts[1].split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                String trimmed = lines[i].trim();
+                if (!trimmed.startsWith("description:")) {
+                    continue;
                 }
+                String value = trimmed.substring("description:".length()).trim();
+                if (value.isEmpty()) {
+                    // value continues on following indented lines (rare in practice)
+                    return joinContinuation(lines, i + 1);
+                }
+                if (value.startsWith("|") || value.startsWith(">")) {
+                    return parseBlockScalar(value, lines, i + 1);
+                }
+                return unquoteInline(value);
             }
         } catch (Exception e) {
             // File might not exist or not be readable
         }
         return null;
+    }
+
+    /**
+     * Parse a YAML block scalar ({@code |}, {@code |-}, {@code >}, {@code >-}).
+     *
+     * @param indicator the block scalar indicator token at the description line
+     * @param lines     all lines of the YAML front matter block
+     * @param startIdx  index of the first line after the description line
+     * @return the assembled block scalar content
+     */
+    private String parseBlockScalar(String indicator, String[] lines, int startIdx) {
+        boolean fold = indicator.startsWith(">");
+        boolean keepTrailingNewlines = !indicator.contains("-");
+        // Gather indented continuation lines
+        List<String> blockLines = new ArrayList<>();
+        int minIndent = -1;
+        for (int j = startIdx; j < lines.length; j++) {
+            String raw = lines[j];
+            // A blank line ends (or is part of) the block; trailing blank lines are
+            // dropped later. A non-blank, non-indented line terminates the block.
+            if (raw.trim().isEmpty()) {
+                blockLines.add("");
+                continue;
+            }
+            int indent = leadingSpaces(raw);
+            if (indent == 0) {
+                break;
+            }
+            if (minIndent < 0 || indent < minIndent) {
+                minIndent = indent;
+            }
+            blockLines.add(raw.substring(minIndent));
+        }
+        // Strip trailing blank lines unless chomping keeps them
+        while (!blockLines.isEmpty() && blockLines.get(blockLines.size() - 1).isEmpty()) {
+            if (keepTrailingNewlines) {
+                break;
+            }
+            blockLines.remove(blockLines.size() - 1);
+        }
+        if (fold) {
+            return foldBlock(blockLines, keepTrailingNewlines);
+        }
+        StringBuilder out = new StringBuilder();
+        for (int k = 0; k < blockLines.size(); k++) {
+            if (k > 0) {
+                out.append('\n');
+            }
+            out.append(blockLines.get(k));
+        }
+        if (keepTrailingNewlines && !blockLines.isEmpty()) {
+            out.append('\n');
+        }
+        return out.toString().trim();
+    }
+
+    /**
+     * Fold lines for the {@code >} indicator: blank lines become a single
+     * newline, consecutive non-blank lines join with a space.
+     */
+    private String foldBlock(List<String> blockLines, boolean keepTrailingNewlines) {
+        StringBuilder out = new StringBuilder();
+        boolean prevBlank = false;
+        for (int k = 0; k < blockLines.size(); k++) {
+            String line = blockLines.get(k);
+            if (line.isEmpty()) {
+                if (out.length() > 0) {
+                    out.append('\n');
+                }
+                prevBlank = true;
+                continue;
+            }
+            if (out.length() > 0 && !prevBlank) {
+                out.append(' ');
+            }
+            out.append(line);
+            prevBlank = false;
+        }
+        if (keepTrailingNewlines && out.length() > 0) {
+            out.append('\n');
+        }
+        return out.toString().trim();
+    }
+
+    /**
+     * Join continuation lines for the rare case where {@code description:}
+     * is followed by indented content on subsequent lines without a block
+     * indicator.
+     */
+    private String joinContinuation(String[] lines, int startIdx) {
+        StringBuilder out = new StringBuilder();
+        for (int j = startIdx; j < lines.length; j++) {
+            String raw = lines[j];
+            if (raw.trim().isEmpty()) {
+                continue;
+            }
+            int indent = leadingSpaces(raw);
+            if (indent == 0) {
+                break;
+            }
+            if (out.length() > 0) {
+                out.append(' ');
+            }
+            out.append(raw.trim());
+        }
+        return out.length() == 0 ? null : out.toString();
+    }
+
+    private static int leadingSpaces(String line) {
+        int n = 0;
+        while (n < line.length() && line.charAt(n) == ' ') {
+            n++;
+        }
+        return n;
+    }
+
+    /**
+     * Strip surrounding quotes from an inline scalar value.
+     */
+    private static String unquoteInline(String value) {
+        if (value.length() >= 2) {
+            char first = value.charAt(0);
+            char last = value.charAt(value.length() - 1);
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                return value.substring(1, value.length() - 1);
+            }
+        }
+        return value;
     }
 
     /**
