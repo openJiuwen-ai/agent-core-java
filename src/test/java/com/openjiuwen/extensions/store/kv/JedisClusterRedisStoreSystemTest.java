@@ -8,6 +8,7 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 import redis.clients.jedis.CommandArguments;
 import redis.clients.jedis.ConnectionPool;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Tag("system-test")
+@Testcontainers(disabledWithoutDocker = true)
 class JedisClusterRedisStoreSystemTest {
 
     private static final Duration READY_TIMEOUT = Duration.ofSeconds(90);
