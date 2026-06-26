@@ -242,8 +242,10 @@ public enum StatusCode {
     // =============================================================================================================
 
     AGENT_GROUP_ADD_RUNTIME_ERROR(132000, "agent group_add runtime error, reason: {error_msg}"),
+    AGENT_TEAM_ADD_RUNTIME_ERROR(132000, "agent team_add runtime error, reason: {error_msg}"),
     AGENT_GROUP_CREATE_RUNTIME_ERROR(132001, "agent group_create runtime error, reason: {error_msg}"),
     AGENT_GROUP_EXECUTION_ERROR(132002, "agent group execution error, reason: {error_msg}"),
+    AGENT_TEAM_AGENT_NOT_FOUND(132003, "agent team agent not found error, reason: {error_msg}"),
     AGENT_TEAM_EXECUTION_ERROR(132003, "agent team execution error, reason: {error_msg}"),
     AGENT_TEAM_CREATE_RUNTIME_ERROR(132004, "agent team create runtime error, reason: {error_msg}"),
     AGENT_TEAM_CONFIG_INVALID(132004, "agent team config invalid, reason: {reason}"),
@@ -302,6 +304,8 @@ public enum StatusCode {
 
     RETRIEVAL_VECTOR_STORE_PATH_NOT_FOUND(155400, "retrieval vector_store_path not found, reason: {error_msg}"),
     RETRIEVAL_VECTOR_STORE_QUERY_INVALID(155400, "retrieval vector_store_query not valid, reason: {error_msg}"),
+    RETRIEVAL_VECTOR_STORE_PROVIDER_INVALID(155402,
+            "retrieval vector_store_provider is not supported, reason: {error_msg}"),
 
     RETRIEVAL_KB_PARSER_NOT_FOUND(155500, "retrieval kb_parser not found, reason: {error_msg}"),
     RETRIEVAL_KB_CHUNKER_NOT_FOUND(155501, "retrieval kb_chunker not found, reason: {error_msg}"),
@@ -337,6 +341,29 @@ public enum StatusCode {
     MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR(158009, "memory migration failed, reason: {error_msg}"),
     MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010, "failed to register operation for entity {entity_key} with schema_version {schema_version}, reason: {error_msg}"),
     MEMORY_INIT_ERROR(158011, "memory initialization failed, reason: {error_msg}"),
+    MEMORY_GRAPH_LANGUAGE_INVALID(158200, "graph memory language invalid: {error_msg}"),
+    MEMORY_GRAPH_EMBEDDING_CALL_FAILED(158201, "graph memory embedding call failed, reason: {error_msg}"),
+    MEMORY_GRAPH_EMBED_MODEL_NOT_FOUND(158202, "graph memory embedder not configured: {error_msg}"),
+    MEMORY_GRAPH_INVOKE_LLM_FAILED(158203, "graph memory LLM invoke failed, reason: {error_msg}"),
+    MEMORY_GRAPH_PROMPT_FILES_MISSING(158204, "graph memory prompt files not found in directory {prompt_dir}"),
+
+    // =============================================================================================================
+    // DevTools / AgentBuilder 140000 - 140099
+    // =============================================================================================================
+
+    AGENT_BUILDER_RESOURCE_PARSE_ERROR(140000,
+            "agent builder resource parse error, resource_type=''{resource_type}'', error=''{reason}''"),
+    AGENT_BUILDER_LLM_SERVICE_ERROR(140001, "agent builder llm service error, error=''{reason}''"),
+    AGENT_BUILDER_GENERATOR_PARSE_ERROR(140030, "agent builder generator parse error, error=''{reason}''"),
+    AGENT_BUILDER_RESOURCE_RETRIEVE_ERROR(140031,
+            "agent builder resource retrieve failed, error=''{reason}''"),
+    AGENT_BUILDER_AGENT_TYPE_NOT_SUPPORTED(140032,
+            "agent builder agent_type is not supported, agent_type=''{agent_type}'', "
+                    + "supported_types=''{supported_types}''"),
+    AGENT_BUILDER_TRANSFORMER_ERROR(140060, "agent builder transformer error, error=''{reason}''"),
+    WORKFLOW_DL_GENERATION_ERROR(140061, "workflow dl generation error, reason: {error_msg}"),
+    WORKFLOW_INTENTION_DETECT_ERROR(140062, "workflow intention detect error, reason: {error_msg}"),
+    LLM_AGENT_STATE_ERROR(140063, "llm agent state error, reason: {error_msg}"),
 
     // =============================================================================================================
     // Optimization Toolchain 170000 - 179999
@@ -348,6 +375,21 @@ public enum StatusCode {
     TOOLCHAIN_OPTIMIZER_PARAM_ERROR(170003, "toolchain optimizer parameter error, reason: {error_msg}"),
     TOOLCHAIN_EVALUATOR_EXECUTION_ERROR(170004, "toolchain evaluator execution error, reason: {error_msg}"),
     TOOLCHAIN_TRAINER_EXECUTION_ERROR(170005, "toolchain trainer execution error, reason: {error_msg}"),
+    AGENT_RL_PROXY_SERVER_START_FAILED(172001,
+            "agent_rl proxy server failed to start, host='{host}', port='{port}'"),
+    AGENT_RL_PROXY_NOT_INITIALIZED(172002, "agent_rl proxy is not initialized, reason: {error_msg}"),
+    AGENT_RL_DEPENDENCY_INIT_FAILED(172030,
+            "agent_rl required dependency initialization failed, reason: {error_msg}"),
+    AGENT_RL_STRATEGY_NOT_SUPPORTED(172050,
+            "agent_rl training strategy is not supported, strategy='{strategy}'"),
+    AGENT_RL_TRAINER_NOT_INITIALIZED(172051,
+            "agent_rl trainer not initialized, reason: {error_msg}"),
+    AGENT_RL_PROCESSOR_NOT_FOUND(172020,
+            "agent_rl {processor_type} processor not found, name='{name}', available='{available}'"),
+    AGENT_RL_VALIDATION_DATASET_INVALID(172060,
+            "agent_rl validation dataset is invalid, reason: {error_msg}"),
+    AGENT_RL_REWARD_NAME_INVALID(172070, "agent_rl reward name is invalid, reason: {error_msg}"),
+    AGENT_RL_REWARD_NOT_FOUND(172071, "agent_rl reward function not found, name='{name}'"),
 
     TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR(173000, "toolchain meta_template execution error, reason: {error_msg}"),
     TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR(173001, "toolchain feedback_template execution error, reason: {error_msg}"),
@@ -366,6 +408,8 @@ public enum StatusCode {
     TOOLCHAIN_EVOLVING_TOOL_CALL_OUTPUT_PARSE_ERROR(174034, "toolchain optimizer tool_call output parse error, reason: {error_msg}"),
     TOOLCHAIN_EVOLVING_TOOL_CALL_LOGGING_EXECUTION_ERROR(174035, "toolchain optimizer tool_call logging execution error, reason: {error_msg}"),
     TOOLCHAIN_EVOLVING_TOOL_CALL_RESULT_PERSIST_EXECUTION_ERROR(174036, "toolchain optimizer tool_call result persist execution error, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_SKILL_DEFINITION_NOT_FOUND(174037, "toolchain evolving skill definition not found, reason: {error_msg}"),
+    TOOLCHAIN_EVOLVING_SKILL_STORE_EXECUTION_ERROR(174038, "toolchain evolving skill store execution error, reason: {error_msg}"),
 
     // =============================================================================================================
     // Foundation 180000 – 189999
@@ -408,6 +452,7 @@ public enum StatusCode {
     TOOL_MCP_EXECUTION_ERROR(182301, "execute {method} failed, error=''{reason}'', card={card}"),
 
     TOOL_OPENAPI_CLIENT_EXECUTION_ERROR(182400, "openapi client execute error, error=''{reason}''"),
+    TOOL_WORKTREE_EXIT_INVALID(182510, "worktree exit is invalid, reason=''{reason}''"),
 
     // Logger 183000 - 183999
     COMMON_LOG_PATH_INVALID(183000, "common log_path is invalid, reason: {error_msg}"),
@@ -420,6 +465,13 @@ public enum StatusCode {
     STORE_VECTOR_SCHEMA_INVALID(186000, "store vector_schema is invalid, reason: {error_msg}"),
     STORE_VECTOR_DOC_INVALID(186001, "store vector_doc is invalid, reason: {error_msg}"),
     STORE_VECTOR_COLLECTION_NOT_FOUND(186002, "store vector_collection not found, collection_name={collection_name}"),
+    STORE_GRAPH_PARAM_INVALID(186003, "store graph_param invalid, reason: {error_msg}"),
+    STORE_GRAPH_BACKEND_NAME_INVALID(186004, "store graph_backend name invalid, reason: {error_msg}"),
+    STORE_GRAPH_BACKEND_ALREADY_EXISTS(186005, "store graph_backend exists, name={name}, existing={existing}"),
+    STORE_GRAPH_PROTOCOL_NOT_IMPLEMENTED(186006, "store graph_protocol not implemented, reason: {error_msg}"),
+    STORE_GRAPH_BACKEND_NOT_FOUND(186007, "store graph_backend not found, please register it first, name={name}"),
+    STORE_GRAPH_FACTORY_NOT_INSTANTIABLE(186008, "store graph_factory must not be instantiated, class={class_name}"),
+    STORE_GRAPH_COLLECTION_NOT_SUPPORTED(186009, "store graph_collection not supported, collection={collection}"),
 
     // Common Utility 188000 - 188999
     COMMON_SSL_CONTEXT_INIT_FAILED(188000, "common ssl_context initialization failed, reason: {error_msg}"),

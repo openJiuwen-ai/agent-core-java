@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors focused pure-format rendering coverage from Python's external format tests.
+ * Mirrors Python's external format tests in
+ * {@code tests/unit_tests/agent_teams/external/test_format.py}.
  */
 class ExternalFormatTest {
 

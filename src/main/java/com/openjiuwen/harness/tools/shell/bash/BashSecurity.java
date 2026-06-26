@@ -19,6 +19,7 @@ public final class BashSecurity {
 
     private static final List<PatternLabel> INJECTION_PATTERNS = createInjectionPatterns();
     private static final List<PatternLabel> DESTRUCTIVE_PATTERNS = createDestructivePatterns();
+    private static final List<PatternLabel> SAFETY_BLOCK_PATTERNS = createSafetyBlockPatterns();
 
     private BashSecurity() {
     }
@@ -45,6 +46,18 @@ public final class BashSecurity {
             }
         }
         return null;
+    }
+
+    public static SecurityCheck checkSafety(String command) {
+        if (command == null || command.isEmpty()) {
+            return new SecurityCheck(false);
+        }
+        for (PatternLabel entry : SAFETY_BLOCK_PATTERNS) {
+            if (entry.pattern.matcher(command).find()) {
+                return new SecurityCheck(true, "Command blocked by safety policy: " + entry.label);
+            }
+        }
+        return new SecurityCheck(false);
     }
 
     private static List<PatternLabel> createInjectionPatterns() {
@@ -117,6 +130,21 @@ public final class BashSecurity {
         patterns.add(new PatternLabel(
                 Pattern.compile("\\bsudo\\b"),
                 "sudo may require a password in non-interactive mode; configure NOPASSWD or run as root"
+        ));
+        return List.copyOf(patterns);
+    }
+
+    private static List<PatternLabel> createSafetyBlockPatterns() {
+        List<PatternLabel> patterns = new ArrayList<>();
+        patterns.add(new PatternLabel(Pattern.compile("\\brm\\s+-[a-zA-Z]*r[a-zA-Z]*f\\b"), "rm -rf"));
+        patterns.add(new PatternLabel(Pattern.compile("\\bshutdown\\b", Pattern.CASE_INSENSITIVE), "shutdown"));
+        patterns.add(new PatternLabel(Pattern.compile("\\breboot\\b", Pattern.CASE_INSENSITIVE), "reboot"));
+        patterns.add(new PatternLabel(Pattern.compile("\\bdiskpart\\b", Pattern.CASE_INSENSITIVE), "diskpart"));
+        patterns.add(new PatternLabel(Pattern.compile("\\bmkfs(?:\\.[a-z0-9]+)?\\b", Pattern.CASE_INSENSITIVE), "mkfs"));
+        patterns.add(new PatternLabel(Pattern.compile("\\breg\\s+delete\\b", Pattern.CASE_INSENSITIVE), "reg delete"));
+        patterns.add(new PatternLabel(
+                Pattern.compile("(^|\\s)Remove-Item(?=\\s)(?=.*(^|\\s)-Recurse(\\s|$))(?=.*(^|\\s)-Force(\\s|$))", Pattern.CASE_INSENSITIVE),
+                "Remove-Item -Recurse -Force"
         ));
         return List.copyOf(patterns);
     }

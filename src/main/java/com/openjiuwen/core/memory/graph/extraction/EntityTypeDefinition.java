@@ -15,6 +15,11 @@ import java.util.Map;
  */
 public final class EntityTypeDefinition {
 
+    public static final Map<String, String> ENTITY_DEFINITION_DESCRIPTION = new LinkedHashMap<>();
+    public static final Map<String, String> RELATION_DEFINITION_DESCRIPTION = new LinkedHashMap<>();
+    public static final Map<String, String> HUMAN_ENTITY_DESCRIPTION = new LinkedHashMap<>();
+    public static final Map<String, String> AI_ENTITY_DESCRIPTION = new LinkedHashMap<>();
+
     private EntityTypeDefinition() {
     }
 
@@ -59,7 +64,7 @@ public final class EntityTypeDefinition {
     public static class EntityDef {
 
         private String name = "Entity";
-        private Map<String, String> description = new LinkedHashMap<>();
+        private Map<String, String> description = ENTITY_DEFINITION_DESCRIPTION;
         private MultilingualBaseModel attributes = new EntityDefAttr();
 
         public String getName() {
@@ -96,7 +101,7 @@ public final class EntityTypeDefinition {
     public static class RelationDef {
 
         private String name = "Relation";
-        private Map<String, String> description = new LinkedHashMap<>();
+        private Map<String, String> description = RELATION_DEFINITION_DESCRIPTION;
         private Class<? extends EntityDef> lhs;
         private Class<? extends EntityDef> rhs;
 

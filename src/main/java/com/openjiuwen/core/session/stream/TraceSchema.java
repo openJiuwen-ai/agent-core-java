@@ -8,7 +8,7 @@ package com.openjiuwen.core.session.stream;
  * Mirrors Python's {@code TraceSchema} in
  * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class TraceSchema {
+public class TraceSchema implements StreamSchema {
 
     private String type;
     private Object payload;

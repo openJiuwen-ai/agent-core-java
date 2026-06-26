@@ -61,6 +61,8 @@ public class WorktreeSession {
     @JsonProperty("used_sparse_paths")
     private boolean usedSparsePaths = false;
 
+    private boolean existed = false;
+
     public WorktreeSession(String originalCwd, String worktreePath, String worktreeName) {
         this.originalCwd = originalCwd;
         this.worktreePath = worktreePath;

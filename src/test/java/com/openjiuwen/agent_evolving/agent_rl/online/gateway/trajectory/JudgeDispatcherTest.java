@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -99,8 +100,8 @@ class JudgeDispatcherTest {
         }
 
         @Override
-        public Map<String, Object> score(String responseText, String instructionText, String followupUserFeedback,
-                                         String sessionId, int turnNum) {
+        public CompletableFuture<Map<String, Object>> score(String responseText, String instructionText, String followupUserFeedback,
+                                                            String sessionId, int turnNum) {
             calls.add(Map.of(
                     "response_text", responseText,
                     "instruction_text", instructionText,
@@ -108,7 +109,7 @@ class JudgeDispatcherTest {
                     "session_id", sessionId,
                     "turn_num", turnNum
             ));
-            return result;
+            return CompletableFuture.completedFuture(result);
         }
     }
 

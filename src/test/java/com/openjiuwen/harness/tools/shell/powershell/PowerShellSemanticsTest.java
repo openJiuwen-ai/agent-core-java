@@ -7,12 +7,17 @@ package com.openjiuwen.harness.tools.shell.powershell;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.harness.tools.test_powershell.test_semantics} in
+ * {@code tests/unit_tests/harness/tools/test_powershell/test_semantics.py}.
+ */
 class PowerShellSemanticsTest {
 
     @Test
@@ -76,5 +81,97 @@ class PowerShellSemanticsTest {
                 "PowerShell returned exit code 1 after producing output; treating output as partial result",
                 meaning.message()
         );
+    }
+
+    @Test
+    void zeroExitCodeIsSuccess() {
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode("Write-Output ok", 0, "", "");
+
+        assertFalse(meaning.isError());
+        assertNull(meaning.message());
+    }
+
+    @Test
+    void readOnlyPipelineWithStdoutAndEmptyStderrIsPartialSuccess() {
+        String command = "Get-ChildItem -Path C:\\ -Recurse -File -ErrorAction SilentlyContinue "
+                + "| Where-Object { $_.Length -gt 100MB } "
+                + "| Sort-Object Length -Descending "
+                + "| Select-Object -First 30 FullName "
+                + "| Format-Table -AutoSize";
+
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode(
+                command,
+                1,
+                "C:\\Windows\\Panther\\setupact.log",
+                ""
+        );
+
+        assertFalse(meaning.isError());
+        assertEquals(
+                "PowerShell returned exit code 1 after producing output; treating output as partial result",
+                meaning.message()
+        );
+    }
+
+    @Test
+    void readOnlyPipelineWithCalculatedPropertyIsPartialSuccess() {
+        String command = "Get-ChildItem -Path C:\\ -Recurse -File -ErrorAction SilentlyContinue "
+                + "| Sort-Object Length -Descending "
+                + "| Select-Object -First 20 @{Name='Size(MB)';Expression={[math]::Round($_.Length/1MB,2)}}, FullName "
+                + "| Format-Table -AutoSize";
+
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode(
+                command,
+                1,
+                "C:\\Users\\admin\\java_error_in_pycharm.hprof",
+                ""
+        );
+
+        assertFalse(meaning.isError());
+        assertEquals(
+                "PowerShell returned exit code 1 after producing output; treating output as partial result",
+                meaning.message()
+        );
+    }
+
+    @Test
+    void readOnlyPipelineIgnoresOperatorsInsideStringsAndScriptBlocksForPartialSuccess() {
+        String command = "Get-ChildItem -Path C:\\ -Recurse -File -ErrorAction SilentlyContinue "
+                + "| Where-Object { $_.Name -like 'a;b|c' } "
+                + "| Select-Object FullName";
+
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode(command, 1, "C:\\tmp\\a;b|c.txt", "");
+
+        assertFalse(meaning.isError());
+        assertEquals(
+                "PowerShell returned exit code 1 after producing output; treating output as partial result",
+                meaning.message()
+        );
+    }
+
+    @Test
+    void getChildItemWithEmptyStdoutIsError() {
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode("Get-ChildItem -Path C:\\ -Recurse", 1, "", "");
+
+        assertTrue(meaning.isError());
+    }
+
+    @Test
+    void getChildItemWithStderrIsError() {
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode(
+                "Get-ChildItem -Path C:\\ -Recurse",
+                1,
+                "C:\\Windows\\Panther\\setupact.log",
+                "Access is denied"
+        );
+
+        assertTrue(meaning.isError());
+    }
+
+    @Test
+    void unknownCommandExitOneIsError() {
+        ExitCodeMeaning meaning = PowerShellSemantics.interpretExitCode("python script.py", 1, "partial", "");
+
+        assertTrue(meaning.isError());
     }
 }

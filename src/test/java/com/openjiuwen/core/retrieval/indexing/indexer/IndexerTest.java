@@ -14,14 +14,21 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * <p>Mirrors Python's {@code TestIndexer} in
+ * {@code tests/unit_tests/core/retrieval/indexing/indexer/test_base.py}.</p>
+ */
 class IndexerTest {
 
     @Test
     void buildIndexReturnsConcreteFutureResult() {
         ConcreteIndexer indexer = new ConcreteIndexer();
         boolean result = indexer.buildIndex(
-                List.of(new TextChunk("chunk-1", "body", "doc-1")),
-                new IndexConfig("test-index", "hybrid", false),
+                List.of(
+                        new TextChunk("1", "chunk 1", "doc_1"),
+                        new TextChunk("2", "chunk 2", "doc_1")
+                ),
+                new IndexConfig("test_index", "vector", false),
                 null,
                 Map.of()
         ).join();
@@ -33,9 +40,9 @@ class IndexerTest {
     void updateIndexReturnsConcreteFutureResult() {
         ConcreteIndexer indexer = new ConcreteIndexer();
         boolean result = indexer.updateIndex(
-                List.of(new TextChunk("chunk-1", "body", "doc-1")),
-                "doc-1",
-                new IndexConfig("test-index", "hybrid", false),
+                List.of(new TextChunk("1", "updated chunk", "doc_1")),
+                "doc_1",
+                new IndexConfig("test_index", "vector", false),
                 null,
                 Map.of()
         ).join();
@@ -47,22 +54,22 @@ class IndexerTest {
     void deleteIndexReturnsConcreteFutureResult() {
         ConcreteIndexer indexer = new ConcreteIndexer();
 
-        assertThat(indexer.deleteIndex("doc-1", "test-index", Map.of()).join()).isTrue();
+        assertThat(indexer.deleteIndex("doc_1", "test_index", Map.of()).join()).isTrue();
     }
 
     @Test
     void indexExistsReturnsConcreteFutureResult() {
         ConcreteIndexer indexer = new ConcreteIndexer();
 
-        assertThat(indexer.indexExists("test-index").join()).isTrue();
+        assertThat(indexer.indexExists("test_index").join()).isTrue();
     }
 
     @Test
     void getIndexInfoReturnsConcreteFutureResult() {
         ConcreteIndexer indexer = new ConcreteIndexer();
 
-        assertThat(indexer.getIndexInfo("test-index").join())
-                .containsEntry("index_name", "test-index");
+        assertThat(indexer.getIndexInfo("test_index").join())
+                .containsEntry("count", 10);
     }
 
     private static final class ConcreteIndexer extends Indexer {
@@ -100,7 +107,7 @@ class IndexerTest {
 
         @Override
         public CompletableFuture<Map<String, Object>> getIndexInfo(String indexName) {
-            return CompletableFuture.completedFuture(Map.of("index_name", indexName));
+            return CompletableFuture.completedFuture(Map.of("count", 10));
         }
     }
 }

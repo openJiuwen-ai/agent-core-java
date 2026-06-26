@@ -16,6 +16,10 @@ import java.util.function.ToIntFunction;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Mirrors Python's {@code TestChunker} tests in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_base.py}.
+ */
 class ChunkerTest {
 
     @Test

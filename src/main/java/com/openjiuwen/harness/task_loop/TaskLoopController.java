@@ -1,0 +1,93 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.harness.task_loop;
+
+import com.openjiuwen.core.controller.Controller;
+import com.openjiuwen.core.session.AgentSessionApi;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+/**
+ * Controller facade for DeepAgent outer task-loop rounds.
+ *
+ * <p>Mirrors Python's {@code TaskLoopController} in
+ * {@code openjiuwen/harness/task_loop/task_loop_controller.py}.</p>
+ */
+public class TaskLoopController extends Controller {
+
+    private final LoopQueues interactionQueues = new LoopQueues();
+    private final Queue<String> followUps = new ConcurrentLinkedQueue<>();
+    private CompletableFuture<Map<String, Object>> roundCompletion = new CompletableFuture<>();
+
+    public LoopQueues getInteractionQueues() {
+        return interactionQueues;
+    }
+
+    public CompletableFuture<Map<String, Object>> submitRound(
+            AgentSessionApi session,
+            String query,
+            boolean isFollowUp,
+            String runKind,
+            Map<String, Object> runContext
+    ) {
+        roundCompletion = new CompletableFuture<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session == null ? null : session.getSessionId());
+        payload.put("query", query);
+        payload.put("is_follow_up", isFollowUp);
+        payload.put("run_kind", runKind);
+        payload.put("run_context", runContext == null ? Map.of() : new LinkedHashMap<>(runContext));
+        interactionQueues.input().add(payload);
+        return roundCompletion;
+    }
+
+    public Map<String, Object> waitRoundCompletion(Duration timeout) {
+        try {
+            if (timeout == null) {
+                return roundCompletion.get();
+            }
+            return roundCompletion.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            return Map.of("status", "timeout");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return Map.of("status", "interrupted");
+        } catch (Exception exception) {
+            return Map.of("status", "failed", "error", exception.getMessage());
+        }
+    }
+
+    public void completeRound(Map<String, Object> result) {
+        roundCompletion.complete(result == null ? Map.of("status", "completed") : new LinkedHashMap<>(result));
+    }
+
+    public List<String> drainFollowUp() {
+        List<String> messages = new ArrayList<>();
+        String next;
+        while ((next = followUps.poll()) != null) {
+            messages.add(next);
+        }
+        return messages;
+    }
+
+    public void enqueueFollowUp(String message) {
+        if (message != null && !message.isBlank()) {
+            followUps.add(message);
+        }
+    }
+
+    public boolean hasFollowUp() {
+        return !followUps.isEmpty();
+    }
+}

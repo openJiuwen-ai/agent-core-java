@@ -13,8 +13,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Mirrors Python's tests.unit_tests.agent_evolving.trajectory.test_types.
- * Tests for trajectory types.
+ * <p>Mirrors Python's {@code tests.unit_tests.agent_evolving.trajectory.test_types} in
+ * {@code tests/unit_tests/agent_evolving/trajectory/test_types.py}.</p>
+ * <p>Also exercises Python's {@code openjiuwen.agent_evolving.trajectory.types} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.</p>
  */
 class TrajectoryTypesTest {
 

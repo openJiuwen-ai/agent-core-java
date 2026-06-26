@@ -45,6 +45,16 @@ class ErrorInfrastructureTest {
     }
 
     @Test
+    void buildErrorMapsToolNotFoundToStatusMappingType() {
+        BaseError expected = StatusMapping.resolveException(StatusCode.AGENT_TOOL_NOT_FOUND);
+
+        BaseError error = ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND);
+
+        assertInstanceOf(expected.getClass(), error);
+        assertEquals(StatusCode.AGENT_TOOL_NOT_FOUND.getCode(), error.getCode());
+    }
+
+    @Test
     void formatTemplateUsesMissingMarkers() {
         String rendered = BaseError.formatTemplate(StatusCode.WORKFLOW_EXECUTION_ERROR.getErrmsg(), Map.of());
         assertTrue(rendered.contains("<missing:"));

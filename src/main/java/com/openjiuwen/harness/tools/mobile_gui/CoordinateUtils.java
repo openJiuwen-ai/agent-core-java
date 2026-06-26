@@ -146,6 +146,10 @@ public final class CoordinateUtils {
         return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
     }
 
+    /**
+     * Mirrors Python's coordinate tuple return values in
+     * {@code openjiuwen/harness/tools/mobile_gui/coordinate_utils.py}.
+     */
     public record CoordinatePair(Object x, Object y) {
     }
 
@@ -156,12 +160,24 @@ public final class CoordinateUtils {
     public record VlmScreenMetadata(int width, int height, int scaleX, int scaleY) {
     }
 
+    /**
+     * Mirrors Python's {@code get_vlm_screen_metadata} tuple result in
+     * {@code openjiuwen/harness/tools/mobile_gui/coordinate_utils.py}.
+     */
     public record MetadataResult(VlmScreenMetadata metadata, String error) {
     }
 
+    /**
+     * Mirrors Python's pixel coordinate tuple in
+     * {@code openjiuwen/harness/tools/mobile_gui/coordinate_utils.py}.
+     */
     public record PixelPoint(int x, int y) {
     }
 
+    /**
+     * Mirrors Python's {@code normalized_to_pixel} tuple result in
+     * {@code openjiuwen/harness/tools/mobile_gui/coordinate_utils.py}.
+     */
     public record PixelResult(PixelPoint point, String error) {
     }
 }

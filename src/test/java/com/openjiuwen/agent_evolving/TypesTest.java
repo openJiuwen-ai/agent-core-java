@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agent_evolving;
 
+import com.openjiuwen.agent_evolving.experience.PendingChange;
 import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
 import com.openjiuwen.agent_evolving.trajectory.Updates;
 import org.junit.jupiter.api.DisplayName;
@@ -153,5 +154,15 @@ class TypesTest {
         assertEquals(List.of("record-1"), result.getRecords());
         assertEquals(Protocols.SKILL_EXPERIENCE_ENTRY, result.getChangeType());
         assertEquals(Protocols.LOCAL_APPLY_COMPLETED, result.getLifecycleStage());
+    }
+
+    @Test
+    @DisplayName("PendingChange.make uses unified skill experience entry naming")
+    void testPendingChangeMakeUsesUnifiedSkillExperienceEntryName() {
+        PendingChange pending = PendingChange.make("skill-a", List.of());
+
+        assertEquals("skill_experience_skill-a", pending.getOperatorId());
+        assertEquals("skill-a", pending.getSkillName());
+        assertEquals(Protocols.SKILL_EXPERIENCE_ENTRY, pending.getChangeType());
     }
 }

@@ -11,11 +11,20 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Missing-test parity coverage for bridge protocol sentinels, errors, and adapter shape.
+ *
+ * <p>Mirrors Python's {@code test_bridge_protocol} in
+ * {@code tests/unit_tests/agent_teams/interaction/test_bridge_protocol.py}.</p>
+ */
 class BridgeProtocolTest {
 
     @Test
     void remoteUnavailableSentinelIsStableString() {
-        assertThat(BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL).isNotBlank();
+        Object sentinel = BridgeProtocol.REMOTE_UNAVAILABLE_SENTINEL;
+
+        assertThat(sentinel).isInstanceOf(String.class);
+        assertThat((String) sentinel).isNotBlank();
     }
 
     @Test

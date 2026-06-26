@@ -95,6 +95,9 @@ class ExtractionModelsTest {
                     2);
 
             assertEquals("knows", fact.getName());
+            assertEquals("works with", fact.getFact());
+            assertEquals("2020-01-01", fact.getValidSince());
+            assertEquals("2025-01-01", fact.getValidUntil());
             assertEquals(1, fact.getSourceId());
             assertEquals(2, fact.getTargetId());
         }
@@ -214,6 +217,26 @@ class ExtractionModelsTest {
 
             assertTrue(model.isNeedMerging());
             assertEquals(List.of(1, 2), model.getDuplicateIds());
+        }
+
+        @Test
+        @Tag("level0")
+        @DisplayName("merge relations preserves all fields")
+        void mergeRelationsPreservesAllFields() {
+            ExtractionModels.MergeRelations model = new ExtractionModels.MergeRelations(
+                    true,
+                    "Same event",
+                    "Merged.",
+                    List.of(1, 2),
+                    "2020-01-01",
+                    "2025-01-01");
+
+            assertTrue(model.isNeedMerging());
+            assertEquals("Same event", model.getShortReasoning());
+            assertEquals("Merged.", model.getCombinedContent());
+            assertEquals(List.of(1, 2), model.getDuplicateIds());
+            assertEquals("2020-01-01", model.getValidSince());
+            assertEquals("2025-01-01", model.getValidUntil());
         }
     }
 }

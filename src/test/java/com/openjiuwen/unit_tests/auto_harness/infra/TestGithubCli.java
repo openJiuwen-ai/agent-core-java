@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for GitHub CLI preflight helpers.
  *
- * <p>Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_github_cli}.</p>
+ * <p>Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_github_cli} in
+ * {@code tests/unit_tests/auto_harness/infra/test_github_cli.py}.</p>
  */
 @DisplayName("GitHub CLI Tests")
 class TestGithubCli {

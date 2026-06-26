@@ -8,13 +8,20 @@ import com.openjiuwen.harness.lsp.CustomServerConfig;
 import com.openjiuwen.harness.lsp.InitializeOptions;
 import com.openjiuwen.harness.lsp.core.ScopedLspServerConfig;
 import com.openjiuwen.harness.lsp.core.SpawnHandle;
+import com.openjiuwen.harness.lsp.servers.servers.GoBuiltinServer;
+import com.openjiuwen.harness.lsp.servers.servers.JavaBuiltinServer;
+import com.openjiuwen.harness.lsp.servers.servers.PythonBuiltinServer;
+import com.openjiuwen.harness.lsp.servers.servers.RustBuiltinServer;
+import com.openjiuwen.harness.lsp.servers.servers.TypeScriptBuiltinServer;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -61,6 +68,7 @@ public final class BuiltinServerRegistry {
             InitializeOptions options,
             String cwd
     ) {
+        ensureBuiltinServersLoaded();
         InitializeOptions effectiveOptions = options == null ? new InitializeOptions() : options;
         List<ScopedLspServerConfig> configs = new ArrayList<>();
 
@@ -115,6 +123,62 @@ public final class BuiltinServerRegistry {
         }
 
         return configs;
+    }
+
+    static synchronized void ensureBuiltinServersLoaded() {
+        if (!BUILTIN_SERVERS.isEmpty()) {
+            return;
+        }
+        registerBuiltin(GoBuiltinServer.server());
+        registerBuiltin(JavaBuiltinServer.server());
+        registerBuiltin(PythonBuiltinServer.server());
+        registerBuiltin(RustBuiltinServer.server());
+        registerBuiltin(TypeScriptBuiltinServer.server());
+    }
+
+    static void registerBuiltin(ServerDefinition definition) {
+        if (definition == null || definition.getId() == null || definition.getId().isBlank()) {
+            return;
+        }
+        BUILTIN_SERVERS.put(definition.getId(), definition);
+    }
+
+    public static boolean isCommandAvailable(String command) {
+        return resolveCommand(command).isPresent();
+    }
+
+    public static Optional<String> resolveCommand(String command) {
+        if (command == null || command.isBlank()) {
+            return Optional.empty();
+        }
+
+        Path directPath;
+        try {
+            directPath = Path.of(command);
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
+        if (directPath.getParent() != null && Files.isRegularFile(directPath)) {
+            return Optional.of(directPath.toString());
+        }
+
+        String pathValue = System.getenv("PATH");
+        if (pathValue == null || pathValue.isBlank()) {
+            return Optional.empty();
+        }
+        List<String> extensions = resolveExecutableExtensions(command);
+        for (String entry : pathValue.split(java.io.File.pathSeparator)) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            for (String extension : extensions) {
+                Path candidate = Path.of(entry, command + extension);
+                if (Files.isRegularFile(candidate)) {
+                    return Optional.of(candidate.toString());
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private static ScopedLspServerConfig buildConfig(
@@ -212,5 +276,24 @@ public final class BuiltinServerRegistry {
             }
         }
         return false;
+    }
+
+    private static List<String> resolveExecutableExtensions(String command) {
+        if (command.contains(".")) {
+            return List.of("");
+        }
+        String pathExt = System.getenv("PATHEXT");
+        if (pathExt == null || pathExt.isBlank()) {
+            return List.of("", ".exe", ".cmd", ".bat", ".com");
+        }
+        List<String> extensions = new ArrayList<>();
+        extensions.add("");
+        for (String value : pathExt.split(";")) {
+            if (value != null && !value.isBlank()) {
+                extensions.add(value.toLowerCase());
+                extensions.add(value.toUpperCase());
+            }
+        }
+        return extensions;
     }
 }

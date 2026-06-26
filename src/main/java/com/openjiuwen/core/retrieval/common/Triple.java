@@ -21,10 +21,14 @@ public class Triple {
     public Triple() {
     }
 
+    public Triple(String subject, String predicate, String object) {
+        this(subject, predicate, object, null);
+    }
+
     public Triple(String subject, String predicate, String object, Map<String, Object> metadata) {
-        this.subject = subject;
-        this.predicate = predicate;
-        this.object = object;
+        this.subject = requireText(subject, "subject");
+        this.predicate = requireText(predicate, "predicate");
+        this.object = requireText(object, "object");
         setMetadata(metadata);
     }
 
@@ -58,5 +62,12 @@ public class Triple {
 
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
+        return value;
     }
 }

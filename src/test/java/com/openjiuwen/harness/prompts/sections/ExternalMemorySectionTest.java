@@ -40,7 +40,7 @@ class ExternalMemorySectionTest {
     }
 
     @Test
-    void testBuildWithNullPromptBlock() {
+    void testBuildWithNonePromptBlock() {
         assertNull(ExternalMemorySection.buildExternalMemorySection(null, "en"));
     }
 }

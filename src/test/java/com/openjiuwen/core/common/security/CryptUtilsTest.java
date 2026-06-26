@@ -30,6 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Mirrors Python's {@code crypt_utils.py} in
  * {@code openjiuwen/core/common/security/crypt_utils.py}.</p>
+ * <p>Mirrors Python's crypt utils unit tests in
+ * {@code tests/unit_tests/core/common/utils/test_crypt_utils.py}.</p>
  */
 class CryptUtilsTest {
 

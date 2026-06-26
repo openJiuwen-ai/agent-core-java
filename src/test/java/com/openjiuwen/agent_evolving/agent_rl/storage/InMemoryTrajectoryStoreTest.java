@@ -13,6 +13,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * <p>Mirrors Python's {@code test_inmemory_trajectory_store_status_flow} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/test_storage.py}.</p>
+ */
 class InMemoryTrajectoryStoreTest {
 
     @Test

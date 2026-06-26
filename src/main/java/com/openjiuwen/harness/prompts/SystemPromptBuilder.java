@@ -32,6 +32,10 @@ public class SystemPromptBuilder extends com.openjiuwen.core.single_agent.prompt
         this(DEFAULT_LANGUAGE, PromptMode.FULL);
     }
 
+    public SystemPromptBuilder(String language) {
+        this(language, PromptMode.FULL);
+    }
+
     public SystemPromptBuilder(String language, PromptMode mode) {
         super(language);
         this.mode = mode == null ? PromptMode.FULL : mode;

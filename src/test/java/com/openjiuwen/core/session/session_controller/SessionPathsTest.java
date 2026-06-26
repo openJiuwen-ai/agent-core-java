@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * <p>Mirrors Python's {@code TestSessionPaths} in
+ * {@code tests/unit_tests/core/session/session_controller/test_utils.py}.</p>
+ */
 class SessionPathsTest {
 
     @Test

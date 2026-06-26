@@ -16,6 +16,10 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+/**
+ * <p>Mirrors Python's {@code RedisTrajectoryStore} tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/test_storage.py}.</p>
+ */
 class RedisTrajectoryStoreTest {
 
     @Test

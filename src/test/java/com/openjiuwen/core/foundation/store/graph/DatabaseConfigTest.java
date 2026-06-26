@@ -15,6 +15,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's graph database configuration tests in
+ * {@code tests/unit_tests/core/foundation/store/graph/test_database_config.py}.
+ *
+ * <p>Also exercises Java types that mirror Python's configuration models in
+ * {@code openjiuwen/core/foundation/store/graph/database_config.py}.</p>
+ */
 class DatabaseConfigTest {
 
     @Test

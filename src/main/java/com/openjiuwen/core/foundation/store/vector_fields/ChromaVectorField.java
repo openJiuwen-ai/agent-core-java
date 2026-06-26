@@ -33,8 +33,13 @@ public class ChromaVectorField extends VectorField {
     }
 
     public void setMaxNeighbors(int maxNeighbors) {
-        if (maxNeighbors < 2 || maxNeighbors > 2048) {
-            throw new IllegalArgumentException("maxNeighbors must be in range [2, 2048]");
+        if (maxNeighbors < 2) {
+            throw new IllegalArgumentException(
+                    "greater_than_equal max_neighbors maxNeighbors must be in range [2, 2048]");
+        }
+        if (maxNeighbors > 2048) {
+            throw new IllegalArgumentException(
+                    "less_than_equal max_neighbors maxNeighbors must be in range [2, 2048]");
         }
         this.maxNeighbors = maxNeighbors;
     }
@@ -45,7 +50,7 @@ public class ChromaVectorField extends VectorField {
 
     public void setEfConstruction(int efConstruction) {
         if (efConstruction < 1) {
-            throw new IllegalArgumentException("efConstruction must be >= 1");
+            throw new IllegalArgumentException("greater_than_equal ef_construction efConstruction must be >= 1");
         }
         this.efConstruction = efConstruction;
     }
@@ -56,7 +61,7 @@ public class ChromaVectorField extends VectorField {
 
     public void setEfSearch(double efSearch) {
         if (efSearch < 1) {
-            throw new IllegalArgumentException("efSearch must be >= 1");
+            throw new IllegalArgumentException("greater_than_equal ef_search efSearch must be >= 1");
         }
         this.efSearch = efSearch;
     }
@@ -90,14 +95,16 @@ public class ChromaVectorField extends VectorField {
         Object resizeFactor = searchDict.getOrDefault("resize_factor", 1.2d);
         if (!(resizeFactor instanceof Number)) {
             throw new IllegalArgumentException(
-                    "ChromaVectorField.extra_search received invalid resize_factor, neither int nor float"
+                    "invalid_resize_factor ChromaVectorField.extra_search received invalid resize_factor, "
+                            + "neither int nor float"
             );
         }
         for (String intAttr : new String[]{"num_threads", "batch_size", "sync_threshold"}) {
             Object value = searchDict.getOrDefault(intAttr, 1);
             if (!(value instanceof Integer)) {
                 throw new IllegalArgumentException(
-                        "ChromaVectorField.extra_search received invalid " + intAttr + ", not an integer"
+                        "invalid_" + intAttr + " ChromaVectorField.extra_search received invalid "
+                                + intAttr + ", not an integer"
                 );
             }
         }

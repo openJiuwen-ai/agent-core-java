@@ -4,6 +4,9 @@
 
 package com.openjiuwen.agent_evolving.checkpointing;
 
+import com.openjiuwen.agent_evolving.Protocols;
+import com.openjiuwen.agent_evolving.experience.EvolutionContext;
+import com.openjiuwen.agent_evolving.experience.PendingChange;
 import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
 import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
 import org.junit.jupiter.api.Test;
@@ -11,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,7 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests for checkpointing types.
  *
- * <p>Mirrors Python's {@code tests/unit_tests/agent_evolving/checkpointing/test_types.py}.
+ * <p>Mirrors Python's {@code tests/unit_tests/agent_evolving/checkpointing/test_types.py}.</p>
+ * <p>Mirrors Python's {@code test_valid_sections_contains_required_sections} in
+ * {@code tests/unit_tests/agent_evolving/checkpointing/test_evolution_types.py}.</p>
  */
 class TypesTest {
 
@@ -134,6 +140,23 @@ class TypesTest {
     }
 
     @Test
+    void testValidSectionsContainsRequiredSections() {
+        Set<String> expected = Set.of(
+                "Instructions",
+                "Examples",
+                "Troubleshooting",
+                "Scripts",
+                "Collaboration",
+                "Roles",
+                "Constraints",
+                "Workflow"
+        );
+
+        assertTrue(Protocols.VALID_SECTIONS.containsAll(expected));
+        assertEquals(expected.size(), Protocols.VALID_SECTIONS.size());
+    }
+
+    @Test
     void testRejectsInvalidAction() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -152,6 +175,13 @@ class TypesTest {
                 .build();
         assertEquals("duplicate", patch.getSkipReason());
         assertEquals(EvolutionTarget.BODY, patch.getTarget());
+    }
+
+    @Test
+    void testCompatImportsPointToNewTypeOwners() {
+        assertEquals("com.openjiuwen.agent_evolving.checkpointing", EvolveCheckpoint.class.getPackageName());
+        assertEquals("com.openjiuwen.agent_evolving.experience", PendingChange.class.getPackageName());
+        assertEquals("com.openjiuwen.agent_evolving.experience", EvolutionContext.class.getPackageName());
     }
 
     @Test

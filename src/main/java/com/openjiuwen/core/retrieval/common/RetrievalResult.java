@@ -20,11 +20,23 @@ public class RetrievalResult {
     private String chunkId;
 
     public RetrievalResult() {
+        throw new IllegalArgumentException("text and score are required");
+    }
+
+    public RetrievalResult(String text) {
+        this(text, null, null, null, null);
     }
 
     public RetrievalResult(String text, double score, Map<String, Object> metadata, String docId, String chunkId) {
+        this(text, Double.valueOf(score), metadata, docId, chunkId);
+    }
+
+    public RetrievalResult(String text, Double score, Map<String, Object> metadata, String docId, String chunkId) {
+        if (text == null || score == null) {
+            throw new IllegalArgumentException("text and score are required");
+        }
         this.text = text;
-        this.score = score;
+        this.score = score.doubleValue();
         setMetadata(metadata);
         this.docId = docId;
         this.chunkId = chunkId;

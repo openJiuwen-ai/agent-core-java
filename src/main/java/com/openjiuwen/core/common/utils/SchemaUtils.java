@@ -134,6 +134,9 @@ public final class SchemaUtils {
                 }
 
                 Object value = data.get(fieldName);
+                if (value == null && !required.contains(fieldName)) {
+                    continue;
+                }
                 Map<String, Object> fieldSchema = (Map<String, Object>) entry.getValue();
                 validateField(fieldName, value, fieldSchema);
             }
@@ -168,7 +171,180 @@ public final class SchemaUtils {
         }
     }
 
+    /**
+     * Convert a JSON Schema dictionary to a lightweight dynamic schema model.
+     *
+     * <p>Mirrors Python's {@code SchemaUtils.get_schema_class} in
+     * {@code openjiuwen/core/common/utils/schema_utils.py} for JSON object
+     * schemas used by the translated tests.</p>
+     *
+     * @param schema JSON Schema dictionary
+     * @return a dynamic schema model class, or null when schema is null
+     */
+    public static DynamicSchemaModelClass getSchemaClass(Map<String, Object> schema) {
+        if (schema == null) {
+            return null;
+        }
+        return new DynamicSchemaModelClass(schema);
+    }
+
+    /**
+     * Format data using a dynamic schema model, filling defaults and preserving
+     * original alias names in the returned map.
+     *
+     * @param data input values
+     * @param schema dynamic schema model class
+     * @return formatted map using schema aliases
+     */
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       DynamicSchemaModelClass schema) {
+        if (schema == null) {
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, null,
+                    Map.of("reason", "schema is null", "data", String.valueOf(data)));
+        }
+        try {
+            return schema.newInstance(data).modelDump(true);
+        } catch (ValidationError e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, e,
+                    Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
+        }
+    }
+
     // ==================== Internal helpers ====================
+
+    /**
+     * Lightweight Java counterpart for a Python Pydantic model class generated
+     * from a JSON Schema dictionary.
+     */
+    public static final class DynamicSchemaModelClass {
+        private final Map<String, Object> schema;
+        private final Map<String, FieldSpec> fields;
+        private final boolean allowExtra;
+
+        private DynamicSchemaModelClass(Map<String, Object> schema) {
+            this.schema = deepCopyMap(schema);
+            this.fields = buildFieldSpecs(this.schema);
+            this.allowExtra = Boolean.TRUE.equals(this.schema.get("additionalProperties"));
+        }
+
+        public DynamicSchemaModel newInstance(Map<String, Object> data) {
+            Map<String, Object> input = data == null ? Collections.emptyMap() : data;
+            Map<String, Object> values = new LinkedHashMap<>();
+
+            for (FieldSpec field : fields.values()) {
+                Object value;
+                if (input.containsKey(field.alias())) {
+                    value = input.get(field.alias());
+                } else if (input.containsKey(field.name())) {
+                    value = input.get(field.name());
+                } else if (field.schema().containsKey("default")) {
+                    value = copyDefaultValue(field.schema().get("default"));
+                } else if (field.required()) {
+                    throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                            null, null, null,
+                            Map.of("reason", "Missing required field: " + field.alias(), "data", input.toString()));
+                } else {
+                    value = null;
+                }
+
+                if (value != null) {
+                    validateField(field.alias(), value, field.schema());
+                }
+                values.put(field.name(), value);
+            }
+
+            if (!allowExtra) {
+                for (String key : input.keySet()) {
+                    if (!isKnownField(key)) {
+                        throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                                null, null, null,
+                                Map.of("reason", "Extra field not permitted: " + key, "data", input.toString()));
+                    }
+                }
+            }
+
+            return new DynamicSchemaModel(fields, values);
+        }
+
+        public Map<String, Object> getOriginalSchema() {
+            return deepCopyMap(schema);
+        }
+
+        private boolean isKnownField(String key) {
+            for (FieldSpec field : fields.values()) {
+                if (field.name().equals(key) || field.alias().equals(key)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static Map<String, FieldSpec> buildFieldSpecs(Map<String, Object> schema) {
+            Map<String, Object> properties = getMapOrEmpty(schema, "properties");
+            List<String> required = getListOrEmpty(schema, "required");
+            Map<String, FieldSpec> specs = new LinkedHashMap<>();
+
+            for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                String alias = entry.getKey();
+                String name = sanitizeFieldName(alias, properties);
+                Map<String, Object> fieldSchema = entry.getValue() instanceof Map
+                        ? new LinkedHashMap<>((Map<String, Object>) entry.getValue())
+                        : new LinkedHashMap<>();
+                specs.put(name, new FieldSpec(name, alias, required.contains(alias), fieldSchema));
+            }
+
+            return specs;
+        }
+
+        private static String sanitizeFieldName(String fieldName, Map<String, Object> properties) {
+            if (!fieldName.startsWith("_")) {
+                return fieldName;
+            }
+            String sanitized = fieldName.replaceFirst("^_+", "");
+            if (sanitized.isEmpty() || properties.containsKey(sanitized)) {
+                return "field" + fieldName;
+            }
+            return sanitized;
+        }
+    }
+
+    /**
+     * Lightweight Java counterpart for a Python Pydantic model instance.
+     */
+    public static final class DynamicSchemaModel {
+        private final Map<String, FieldSpec> fields;
+        private final Map<String, Object> values;
+
+        private DynamicSchemaModel(Map<String, FieldSpec> fields, Map<String, Object> values) {
+            this.fields = new LinkedHashMap<>(fields);
+            this.values = new LinkedHashMap<>(values);
+        }
+
+        public Object get(String fieldName) {
+            return values.get(fieldName);
+        }
+
+        public Map<String, Object> modelDump() {
+            return modelDump(false);
+        }
+
+        public Map<String, Object> modelDump(boolean byAlias) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<String, FieldSpec> entry : fields.entrySet()) {
+                String outputName = byAlias ? entry.getValue().alias() : entry.getValue().name();
+                result.put(outputName, copyDefaultValue(values.get(entry.getKey())));
+            }
+            return result;
+        }
+    }
+
+    private record FieldSpec(String name, String alias, boolean required, Map<String, Object> schema) {
+    }
 
     /**
      * Apply default values from schema to data for missing fields.
@@ -186,17 +362,37 @@ public final class SchemaUtils {
             if (!result.containsKey(fieldName) && fieldSchema.containsKey("default")) {
                 Object defaultValue = fieldSchema.get("default");
                 // Deep copy mutable defaults
-                if (defaultValue instanceof Map) {
-                    result.put(fieldName, new LinkedHashMap<>((Map<?, ?>) defaultValue));
-                } else if (defaultValue instanceof List) {
-                    result.put(fieldName, new ArrayList<>((List<?>) defaultValue));
-                } else {
-                    result.put(fieldName, defaultValue);
-                }
+                result.put(fieldName, copyDefaultValue(defaultValue));
             }
         }
 
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object copyDefaultValue(Object defaultValue) {
+        if (defaultValue instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) defaultValue);
+        } else if (defaultValue instanceof List) {
+            return new ArrayList<>((List<?>) defaultValue);
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map) {
+                copy.put(entry.getKey(), deepCopyMap((Map<String, Object>) value));
+            } else if (value instanceof List) {
+                copy.put(entry.getKey(), new ArrayList<>((List<?>) value));
+            } else {
+                copy.put(entry.getKey(), value);
+            }
+        }
+        return copy;
     }
 
     /**

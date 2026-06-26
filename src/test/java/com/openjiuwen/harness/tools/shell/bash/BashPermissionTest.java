@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Mirrors Python's {@code tests/unit_tests/harness/tools/test_bash/test_permission.py}.
+ */
 class BashPermissionTest {
 
     @Test

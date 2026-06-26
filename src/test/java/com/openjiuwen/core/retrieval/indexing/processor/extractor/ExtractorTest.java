@@ -16,6 +16,13 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Mirrors Python's {@code Extractor} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/extractor/base.py}.
+ *
+ * <p>Mirrors Python's supplemental coverage in
+ * {@code tests/unit_tests/core/retrieval/indexing/processor/extractor/test_base.py}.</p>
+ */
 class ExtractorTest {
 
     @Test

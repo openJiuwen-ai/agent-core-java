@@ -20,11 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for FixLoopController.
  *
- * <p>Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_fix_loop}.</p>
+ * <p>Mirrors Python's {@code tests.unit_tests.auto_harness.infra.test_fix_loop} in
+ * {@code tests/unit_tests/auto_harness/infra/test_fix_loop.py}.</p>
  */
 @DisplayName("Fix Loop Controller Tests")
 class TestFixLoop {
 
+    /**
+     * Mirrors Python's {@code TestFixLoopResult} in
+     * {@code tests/unit_tests/auto_harness/infra/test_fix_loop.py}.
+     */
     @Nested
     @DisplayName("FixLoopResult Tests")
     class TestFixLoopResultClass {
@@ -41,6 +46,10 @@ class TestFixLoop {
         }
     }
 
+    /**
+     * Mirrors Python's {@code TestFixLoopPhase1} in
+     * {@code tests/unit_tests/auto_harness/infra/test_fix_loop.py}.
+     */
     @Nested
     @DisplayName("FixLoop Phase 1 Tests")
     class TestFixLoopPhase1 {
@@ -111,6 +120,10 @@ class TestFixLoop {
         }
     }
 
+    /**
+     * Mirrors Python's {@code TestFixLoopPhase2} in
+     * {@code tests/unit_tests/auto_harness/infra/test_fix_loop.py}.
+     */
     @Nested
     @DisplayName("FixLoop Phase 2 Tests")
     class TestFixLoopPhase2 {

@@ -13,18 +13,32 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Supplemental parity tests for VLM coordinate helper behavior.
+ *
+ * <p>Mirrors Python's coordinate utility tests in
+ * {@code tests/unit_tests/harness/tools/mobile_gui/test_coordinate_utils.py}.</p>
+ */
 class CoordinateUtilsTest {
 
     @Test
-    void unwrapXyCoordsHandlesListAndScalarPairs() {
+    void unwrapXyCoordsHandlesListInX() {
         assertEquals(
                 new CoordinateUtils.CoordinatePair(100, 200),
                 CoordinateUtils.unwrapXyCoords(List.of(100, 200), null)
         );
+    }
+
+    @Test
+    void unwrapXyCoordsHandlesListInY() {
         assertEquals(
                 new CoordinateUtils.CoordinatePair(50, 60),
                 CoordinateUtils.unwrapXyCoords(null, List.of(50, 60))
         );
+    }
+
+    @Test
+    void unwrapXyCoordsHandlesScalarPair() {
         assertEquals(
                 new CoordinateUtils.CoordinatePair(10, 20),
                 CoordinateUtils.unwrapXyCoords(10, 20)

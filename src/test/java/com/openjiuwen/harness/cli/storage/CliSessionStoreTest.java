@@ -21,6 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * <p>Mirrors Python's {@code tests/cli/unit/test_session_store.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_session_persistence} in
+ * {@code tests/cli/e2e/test_session_persist.py}.</p>
+ */
 class CliSessionStoreTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -64,6 +70,34 @@ class CliSessionStoreTest {
     }
 
     @Test
+    void e2eSessionPersistenceCreatesJsonFile() throws IOException {
+        Path storeDir = tempDir.resolve("sessions");
+        CliSessionStore store = new CliSessionStore(storeDir);
+        store.newSession("e2e-test-001", "Pro/zai-org/GLM-5");
+        store.addMessage("user", "hello");
+        store.addMessage("assistant", "hi there");
+
+        List<Path> jsonFiles;
+        try (var files = Files.list(storeDir)) {
+            jsonFiles = files.filter(path -> path.getFileName().toString().endsWith(".json")).toList();
+        }
+        assertTrue(jsonFiles.size() >= 1);
+
+        Map<String, Object> data = OBJECT_MAPPER.readValue(
+                Files.readString(jsonFiles.get(0)),
+                new TypeReference<Map<String, Object>>() {
+                }
+        );
+        assertEquals("e2e-test-001", data.get("session_id"));
+        assertTrue(data.containsKey("messages"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) data.get("messages");
+        assertTrue(messages.size() >= 2);
+        assertEquals("user", messages.get(0).get("role"));
+        assertEquals("assistant", messages.get(1).get("role"));
+    }
+
+    @Test
     void listSessionsReturnsPersistedSummaries() {
         CliSessionStore store = new CliSessionStore(tempDir);
         store.newSession("s1", "gpt-4o");
@@ -89,7 +123,24 @@ class CliSessionStoreTest {
     }
 
     @Test
-    void savedSessionContainsIsoTimestampsAndMetadata() throws IOException {
+    void messageHasIsoTimestamp() throws IOException {
+        CliSessionStore store = new CliSessionStore(tempDir);
+        store.newSession("test-ts", "gpt-4o");
+        store.addMessage("user", "test");
+
+        Map<String, Object> data = OBJECT_MAPPER.readValue(
+                Files.readString(tempDir.resolve("test-ts.json")),
+                new TypeReference<Map<String, Object>>() {
+                }
+        );
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) data.get("messages");
+
+        OffsetDateTime.parse((String) messages.get(0).get("timestamp"));
+    }
+
+    @Test
+    void sessionJsonContainsMetadata() throws IOException {
         CliSessionStore store = new CliSessionStore(tempDir);
         store.newSession("meta-test", "gpt-4o");
         store.addMessage("user", "x");
@@ -102,8 +153,5 @@ class CliSessionStoreTest {
         assertEquals("meta-test", data.get("session_id"));
         assertEquals("gpt-4o", data.get("model"));
         OffsetDateTime.parse((String) data.get("created_at"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> messages = (List<Map<String, Object>>) data.get("messages");
-        OffsetDateTime.parse((String) messages.get(0).get("timestamp"));
     }
 }

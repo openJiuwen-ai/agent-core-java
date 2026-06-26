@@ -14,6 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Mirrors Python's {@code test_callable_fortest} in
+ * {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_callable_fortest.py}.
+ */
 class CallableForTestTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

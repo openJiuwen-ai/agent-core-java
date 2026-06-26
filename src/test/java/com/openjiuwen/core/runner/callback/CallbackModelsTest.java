@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for callback framework data models.
  *
  * <p>Mirrors Python's {@code test_models.py} in
- * {@code tests/unit_tests/core/runner/callback}.</p>
+ * {@code tests/unit_tests/core/runner/callback/test_models.py}.</p>
  */
 @DisplayName("Callback Models Tests")
 class CallbackModelsTest {
@@ -51,6 +51,28 @@ class CallbackModelsTest {
         metrics.update(0.3, true);
         assertEquals(1, metrics.getCallCount());
         assertEquals(1, metrics.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("CallbackMetrics update multiple calls")
+    void testCallbackMetricsUpdateMultipleCalls() {
+        CallbackMetrics metrics = new CallbackMetrics();
+        metrics.update(0.1, false);
+        metrics.update(0.3, false);
+        metrics.update(0.2, false);
+
+        assertEquals(3, metrics.getCallCount());
+        assertEquals(0.6, metrics.getTotalTime(), 0.01);
+        assertEquals(0.1, metrics.getMinTime(), 0.01);
+        assertEquals(0.3, metrics.getMaxTime(), 0.01);
+    }
+
+    @Test
+    @DisplayName("CallbackMetrics avg_time no calls")
+    void testCallbackMetricsAvgTimeNoCalls() {
+        CallbackMetrics metrics = new CallbackMetrics();
+
+        assertEquals(0.0, metrics.getAvgTime(), 0.0);
     }
 
     @Test
@@ -151,6 +173,50 @@ class CallbackModelsTest {
     }
 
     @Test
+    @DisplayName("ChainContext getLastResult returns null when empty")
+    void testChainContextGetLastResultEmpty() {
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+
+        assertNull(context.getLastResult());
+    }
+
+    @Test
+    @DisplayName("ChainContext getAllResults returns copy")
+    void testChainContextGetAllResultsReturnsCopy() {
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+        context.getResults().add("a");
+        context.getResults().add("b");
+
+        var results = context.getAllResults();
+        results.add("c");
+
+        assertEquals(2, context.getResults().size());
+        assertEquals(3, results.size());
+    }
+
+    @Test
+    @DisplayName("ChainContext metadata operations")
+    void testChainContextMetadataOperations() {
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+
+        context.setMetadata("key1", "value1");
+
+        assertEquals("value1", context.getMetadata("key1", null));
+        assertNull(context.getMetadata("nonexistent", null));
+        assertEquals("default", context.getMetadata("nonexistent", "default"));
+    }
+
+    @Test
+    @DisplayName("ChainContext elapsed time increases")
+    void testChainContextElapsedTime() throws InterruptedException {
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+
+        Thread.sleep(50L);
+
+        assertTrue(context.getElapsedTime() >= 0.05d);
+    }
+
+    @Test
     @DisplayName("ChainResult continue")
     void testChainResultContinue() {
         ChainResult result = ChainResult.builder()
@@ -176,6 +242,19 @@ class CallbackModelsTest {
         assertEquals(ChainAction.ROLLBACK, result.getAction());
         assertSame(context, result.getContext());
         assertSame(error, result.getError());
+    }
+
+    @Test
+    @DisplayName("ChainResult break")
+    void testChainResultBreak() {
+        Map<String, Object> resultData = Map.of("data", "value");
+        ChainResult result = ChainResult.builder()
+                .action(ChainAction.BREAK)
+                .result(resultData)
+                .build();
+
+        assertEquals(ChainAction.BREAK, result.getAction());
+        assertEquals(resultData, result.getResult());
     }
 
     @Test

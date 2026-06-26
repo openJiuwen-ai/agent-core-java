@@ -52,6 +52,15 @@ class TaskPlanTest {
     }
 
     @Test
+    @DisplayName("TodoItem can keep selected model id")
+    void todoItemWithSelectedModelId() {
+        TodoItem item = new TodoItem("smart_task", "smart task", "", "", null, null, null, null, "smart");
+
+        assertEquals("smart", item.getSelectedModelId());
+        assertEquals(TodoStatus.PENDING, item.getStatus());
+    }
+
+    @Test
     @DisplayName("addTask and getTask round-trip")
     void taskPlanAddAndGet() {
         TaskPlan plan = new TaskPlan("test goal");
@@ -81,6 +90,22 @@ class TaskPlanTest {
         next = plan.getNextTask();
         assertNotNull(next);
         assertEquals("t2", next.getId());
+    }
+
+    @Test
+    @DisplayName("getNextTask skips completed and cancelled tasks")
+    void getNextTaskSkipsCompletedAndCancelled() {
+        TodoItem first = new TodoItem("t1", "first");
+        first.setStatus(TodoStatus.COMPLETED);
+        TodoItem second = new TodoItem("t2", "second");
+        second.setStatus(TodoStatus.CANCELLED);
+        TodoItem third = new TodoItem("t3", "third");
+
+        TaskPlan plan = new TaskPlan("goal", Arrays.asList(first, second, third));
+
+        TodoItem next = plan.getNextTask();
+        assertNotNull(next);
+        assertEquals("t3", next.getId());
     }
 
     @Test
@@ -136,8 +161,42 @@ class TaskPlanTest {
     }
 
     @Test
+    @DisplayName("fromMap with null or empty returns empty plan")
+    void fromMapEmptyReturnsEmptyPlan() {
+        assertEquals("", TaskPlan.fromMap(null).getGoal());
+        assertTrue(TaskPlan.fromMap(null).getTasks().isEmpty());
+        assertEquals("", TaskPlan.fromMap(Map.of()).getGoal());
+        assertTrue(TaskPlan.fromMap(Map.of()).getTasks().isEmpty());
+    }
+
+    @Test
+    @DisplayName("TodoItem toMap preserves Python field names")
+    void todoItemToMapPreservesPythonFieldNames() {
+        TodoItem item = new TodoItem(
+                "test-id",
+                "test",
+                "Testing",
+                "desc",
+                TodoStatus.IN_PROGRESS,
+                List.of(),
+                null,
+                null,
+                "smart"
+        );
+
+        Map<String, Object> data = item.toMap();
+
+        assertEquals("test-id", data.get("id"));
+        assertEquals("test", data.get("content"));
+        assertEquals("Testing", data.get("activeForm"));
+        assertEquals("desc", data.get("description"));
+        assertEquals("in_progress", data.get("status"));
+        assertEquals("smart", data.get("selected_model_id"));
+    }
+
+    @Test
     @DisplayName("fromMap keeps meta_data null when omitted")
-    void fromMapPreservesNullMetaData() {
+    void todoItemFromMapPreservesPythonFieldNames() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", "task-id");
         data.put("content", "test");
@@ -150,7 +209,11 @@ class TaskPlanTest {
         TodoItem item = TodoItem.fromMap(data);
 
         assertEquals("task-id", item.getId());
+        assertEquals("test", item.getContent());
+        assertEquals("Testing", item.getActiveForm());
+        assertEquals("desc", item.getDescription());
         assertEquals(TodoStatus.IN_PROGRESS, item.getStatus());
+        assertEquals(List.of("other-id"), item.getDependsOn());
         assertEquals("smart", item.getSelectedModelId());
         assertNull(item.getMetaData());
     }

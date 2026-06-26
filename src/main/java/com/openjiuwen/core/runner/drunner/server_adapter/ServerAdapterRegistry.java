@@ -19,7 +19,7 @@ public final class ServerAdapterRegistry {
 
     private static final Map<String, ServerAdapterFactory> CUSTOM_SERVER_ADAPTERS = new ConcurrentHashMap<>();
     private static final Map<String, String> OFFICIAL_SERVER_ADAPTER_BOOTSTRAP = Map.of(
-            "A2A", "com.openjiuwen.extensions.a2a.A2ABootstrap"
+            "A2A", "com.openjiuwen.extensions.a2a.A2APackage"
     );
 
     private ServerAdapterRegistry() {
@@ -46,7 +46,8 @@ public final class ServerAdapterRegistry {
             return;
         }
         try {
-            Class.forName(className);
+            Class<?> bootstrapClass = Class.forName(className);
+            bootstrapClass.getMethod("registerAll").invoke(null);
         } catch (Exception ignored) {
             // Optional plugin bootstrap is best-effort.
         }

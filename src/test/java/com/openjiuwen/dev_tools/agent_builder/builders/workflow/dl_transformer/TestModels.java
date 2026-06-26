@@ -14,8 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test DL transformer models functionality.
  * <p>
- * Mirrors Python's {@code test_models.py} in
- * {@code tests/unit_tests/dev_tools/agent_builder/builders/workflow/dl_transformer/test_models.py}.
+ * Mirrors Python's {@code models} in
+ * {@code openjiuwen/dev_tools/agent_builder/builders/workflow/dl_transformer/models.py}.
+ *
+ * <p>Also mirrors Python's {@code test_models_integration} in
+ * {@code tests/system_tests/dev_tools/agent_builder/builders/workflow/dl_transformer/test_models_integration.py}.</p>
  */
 class TestModels {
 

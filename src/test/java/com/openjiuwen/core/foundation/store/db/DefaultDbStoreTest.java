@@ -9,6 +9,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.openjiuwen.core.foundation.store.BaseDbStore;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code TestDefaultDbStore} in
+ * {@code tests/unit_tests/core/foundation/store/test_default_db_store.py}.
+ */
 class DefaultDbStoreTest {
 
     @Test

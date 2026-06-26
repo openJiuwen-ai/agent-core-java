@@ -17,6 +17,10 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Mirrors Python's {@code tests.unit_tests.core.foundation.store.test_in_memory_kv_store} in
+ * {@code tests/unit_tests/core/foundation/store/test_in_memory_kv_store.py}.
+ */
 class InMemoryKVStoreTest {
 
     @Nested

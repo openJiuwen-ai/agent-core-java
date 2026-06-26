@@ -7,6 +7,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 
+/**
+ * Mirrors Python's {@code test_init_exports_and_default_configs} default config checks in
+ * {@code tests/unit_tests/agent_evolving/optimizer/tool_call/test_init_and_default_configs.py}.
+ */
 class DefaultConfigsTest {
 
     @Test

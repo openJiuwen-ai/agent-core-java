@@ -74,6 +74,25 @@ public final class DeepAgentState {
         return new ArrayList<>(pendingFollowUps);
     }
 
+    public void addPendingFollowUps(List<String> followUps) {
+        if (followUps == null) {
+            return;
+        }
+        for (String followUp : followUps) {
+            if (followUp != null && !followUp.isBlank()) {
+                pendingFollowUps.add(followUp);
+            }
+        }
+    }
+
+    public boolean hasPendingFollowUps() {
+        return !pendingFollowUps.isEmpty();
+    }
+
+    public String pollPendingFollowUp() {
+        return pendingFollowUps.isEmpty() ? null : pendingFollowUps.remove(0);
+    }
+
     public PlanModeState getPlanMode() {
         return planMode;
     }

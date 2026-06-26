@@ -17,10 +17,14 @@ public final class LoopQueues {
 
     private final Queue<String> steering;
     private final Queue<String> followUp;
+    private final Queue<Object> input;
+    private final Queue<Object> output;
 
     public LoopQueues() {
         this.steering = new ConcurrentLinkedQueue<>();
         this.followUp = new ConcurrentLinkedQueue<>();
+        this.input = new ConcurrentLinkedQueue<>();
+        this.output = new ConcurrentLinkedQueue<>();
     }
 
     public Queue<String> steering() {
@@ -29,6 +33,14 @@ public final class LoopQueues {
 
     public Queue<String> followUp() {
         return followUp;
+    }
+
+    public Queue<Object> input() {
+        return input;
+    }
+
+    public Queue<Object> output() {
+        return output;
     }
 
     public void pushSteer(String msg) {

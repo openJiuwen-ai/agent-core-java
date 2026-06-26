@@ -10,6 +10,10 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code test_paths} module in
+ * {@code tests/unit_tests/agent_teams/test_paths.py}.
+ */
 class AgentTeamPathsTest {
 
     private final String originalUserHome = System.getProperty("user.home");

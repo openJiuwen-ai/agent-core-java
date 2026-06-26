@@ -5,22 +5,44 @@
 package com.openjiuwen.harness.lsp.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
+import com.openjiuwen.harness.lsp.servers.BuiltinServerRegistry;
+import com.openjiuwen.harness.lsp.servers.ServerDefinition;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Mirrors Python's registry-focused LSP diagnostic behaviors in
+ * Mirrors Python's LSP diagnostic manager and registry tests in
  * {@code tests/unit_tests/harness/tools/test_lsp_diagnostics.py}.
  */
 class LspDiagnosticRegistryTest {
+
+    private static final String TEST_SERVER_ID = "java-test-lsp";
+
+    @TempDir
+    private Path tempDir;
+
+    private final Map<String, ServerDefinition> previousServerDefinitions = new LinkedHashMap<>();
+    private final Set<String> registeredTestServers = new LinkedHashSet<>();
 
     @BeforeEach
     void setUp() {
@@ -30,6 +52,8 @@ class LspDiagnosticRegistryTest {
     @AfterEach
     void tearDown() {
         LspDiagnosticRegistry.reset();
+        LspServerManager.shutdown();
+        restoreServerDefinitions();
     }
 
     @Test
@@ -122,6 +146,341 @@ class LspDiagnosticRegistryTest {
         assertEquals("err|1|5:7|null", LspDiagnosticRegistry.diagKey(file.getDiagnostics().get(0)));
     }
 
+    @Test
+    void ensureDiagnosticHandlerRegistersPublishDiagnosticsHandler() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance server = fakeServer("pyright");
+
+        manager.ensureDiagnosticHandler(server);
+
+        assertEquals(1, server.handlerRegistrationCount);
+        assertTrue(server.handlers.containsKey("textDocument/publishDiagnostics"));
+    }
+
+    @Test
+    void ensureDiagnosticHandlerStoresHandlerInstanceAfterRegistration() throws Exception {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance server = fakeServer("pyright");
+
+        manager.ensureDiagnosticHandler(server);
+
+        assertTrue(diagnosticHandlerInstances(manager).contains(server));
+    }
+
+    @Test
+    void ensureDiagnosticHandlerIsIdempotentForSameServer() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance server = fakeServer("pyright");
+
+        manager.ensureDiagnosticHandler(server);
+        manager.ensureDiagnosticHandler(server);
+
+        assertEquals(1, server.handlerRegistrationCount);
+    }
+
+    @Test
+    void ensureDiagnosticHandlerRegistersDifferentServerInstancesSeparately() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance pyright = fakeServer("pyright");
+        FakeLspServerInstance ruff = fakeServer("ruff");
+
+        manager.ensureDiagnosticHandler(pyright);
+        manager.ensureDiagnosticHandler(ruff);
+
+        assertEquals(1, pyright.handlerRegistrationCount);
+        assertEquals(1, ruff.handlerRegistrationCount);
+    }
+
+    @Test
+    void ensureDiagnosticHandlerUsesServerIdAsServerName() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance server = fakeServer("my-lsp");
+        manager.ensureDiagnosticHandler(server);
+
+        server.publishDiagnostics("file:///workspace/a.py", List.of(diagnostic("err", 1, 0, 0)));
+
+        List<LspDiagnosticFile> result = LspDiagnosticRegistry.getInstance().getAndClear(10, 30);
+        assertEquals("my-lsp", result.get(0).getServerName());
+    }
+
+    @Test
+    void openFileRegistersDiagnosticHandler() throws Exception {
+        Path file = writeFile("a.py", "# content");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.openFile(file.toString(), "python");
+
+        assertTrue(diagnosticHandlerInstances(manager).contains(server));
+    }
+
+    @Test
+    void openFileSendsDidOpenNotification() throws Exception {
+        Path file = writeFile("a.py", "x = 1");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.openFile(file.toString(), "python");
+
+        assertEquals(1, server.notifications.size());
+        assertEquals("textDocument/didOpen", server.notifications.get(0).method());
+    }
+
+    @Test
+    void openFileSetsVersionZero() throws Exception {
+        Path file = writeFile("a.py", "");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.openFile(file.toString(), "python");
+
+        Map<?, ?> textDocument = textDocument(server.notifications.get(0));
+        assertEquals(0, textDocument.get("version"));
+    }
+
+    @Test
+    void openFileNoServerReturnsGracefully() throws Exception {
+        LspServerManager manager = managerWithoutServers();
+
+        assertDoesNotThrow(() -> manager.openFile(tempDir.resolve("unknown.xyz").toString(), "text"));
+    }
+
+    @Test
+    void openFileRegistersHandlerOnceOnMultipleCalls() throws Exception {
+        Path first = writeFile("a.py", "");
+        Path second = writeFile("b.py", "");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.openFile(first.toString(), "python");
+        manager.openFile(second.toString(), "python");
+
+        assertEquals(1, server.handlerRegistrationCount);
+    }
+
+    @Test
+    void changeFileRegistersDiagnosticHandler() throws Exception {
+        Path file = writeFile("a.py", "new content");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+
+        assertTrue(diagnosticHandlerInstances(manager).contains(server));
+    }
+
+    @Test
+    void changeFileSendsDidChangeNotification() throws Exception {
+        Path file = writeFile("a.py", "updated");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+
+        assertEquals(1, server.notifications.size());
+        assertEquals("textDocument/didChange", server.notifications.get(0).method());
+    }
+
+    @Test
+    void changeFileIncrementsVersionFromZero() throws Exception {
+        Path file = writeFile("a.py", "v1");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+
+        Map<?, ?> textDocument = textDocument(server.notifications.get(0));
+        assertEquals(1, textDocument.get("version"));
+    }
+
+    @Test
+    void changeFileVersionIncrementsOnEachCall() throws Exception {
+        Path file = writeFile("a.py", "text");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+        manager.changeFile(file.toString(), "python", null);
+
+        int firstVersion = (Integer) textDocument(server.notifications.get(0)).get("version");
+        int secondVersion = (Integer) textDocument(server.notifications.get(1)).get("version");
+        assertEquals(firstVersion + 1, secondVersion);
+    }
+
+    @Test
+    void changeFileUsesExplicitContent() throws Exception {
+        Path file = writeFile("a.py", "from disk");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", "explicit text");
+
+        assertEquals("explicit text", contentChanges(server.notifications.get(0)).get(0).get("text"));
+    }
+
+    @Test
+    void changeFileReadsDiskWhenContentIsNull() throws Exception {
+        Path file = writeFile("a.py", "from disk");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+
+        assertEquals("from disk", contentChanges(server.notifications.get(0)).get(0).get("text"));
+    }
+
+    @Test
+    void changeFileSendsFullContentChangeWithoutRange() throws Exception {
+        Path file = writeFile("a.py", "full");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(file.toString(), "python", null);
+
+        List<Map<?, ?>> changes = contentChanges(server.notifications.get(0));
+        assertEquals(1, changes.size());
+        assertTrue(changes.get(0).containsKey("text"));
+        assertFalse(changes.get(0).containsKey("range"));
+    }
+
+    @Test
+    void changeFileNoServerReturnsGracefully() throws Exception {
+        LspServerManager manager = managerWithoutServers();
+
+        assertDoesNotThrow(() -> manager.changeFile(tempDir.resolve("unknown.xyz").toString(), "text", null));
+    }
+
+    @Test
+    void changeFileRegistersHandlerOnceForSameServer() throws Exception {
+        Path first = writeFile("a.py", "");
+        Path second = writeFile("b.py", "");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+
+        manager.changeFile(first.toString(), "python", null);
+        manager.changeFile(second.toString(), "python", null);
+
+        assertEquals(1, server.handlerRegistrationCount);
+    }
+
+    @Test
+    void getPendingDiagnosticsReturnsEmptyWhenNothingPending() {
+        assertTrue(LspServerManager.getPendingDiagnostics(10, 30).isEmpty());
+    }
+
+    @Test
+    void getPendingDiagnosticsReturnsDiagnosticsFromRegistry() {
+        LspDiagnosticRegistry.getInstance().register(
+                "pyright",
+                "file:///workspace/a.py",
+                List.of(diagnostic("err", 1, 0, 0))
+        );
+
+        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+
+        assertEquals(1, result.size());
+        assertEquals("file:///workspace/a.py", result.get(0).getUri());
+    }
+
+    @Test
+    void getPendingDiagnosticsClearsRegistryAfterRetrieval() {
+        LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
+        registry.register("pyright", "file:///workspace/a.py", List.of(diagnostic("err", 1, 0, 0)));
+
+        LspServerManager.getPendingDiagnostics(10, 30);
+
+        assertEquals(0, registry.getPendingCount());
+    }
+
+    @Test
+    void getPendingDiagnosticsRespectsMaxPerFile() {
+        LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
+        registry.register("pyright", "file:///workspace/a.py", diagnostics("e", 10));
+
+        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(3, 100);
+
+        assertEquals(3, result.get(0).getDiagnostics().size());
+    }
+
+    @Test
+    void getPendingDiagnosticsRespectsMaxTotal() {
+        LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
+        for (int index = 0; index < 5; index++) {
+            registry.register("pyright", "file:///workspace/f" + index + ".py", diagnostics("e" + index + "-", 5));
+        }
+
+        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(5, 8);
+
+        int total = result.stream().mapToInt(file -> file.getDiagnostics().size()).sum();
+        assertTrue(total <= 8);
+    }
+
+    @Test
+    void openFileHandlerRoutesNotificationsToRegistry() throws Exception {
+        Path file = writeFile("main.py", "print('open')");
+        FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        manager.openFile(file.toString(), "python");
+
+        server.publishDiagnostics(FileUriUtils.pathToFileUri(file.toString()),
+                List.of(diagnostic("Name 'x' undefined", 1, 5, 0)));
+
+        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+        assertEquals(1, result.size());
+        assertEquals(FileUriUtils.pathToFileUri(file.toString()), result.get(0).getUri());
+        assertEquals(1, result.get(0).getDiagnostics().get(0).getSeverity());
+    }
+
+    @Test
+    void changeFileDiagnosticsRouteToRegistry() throws Exception {
+        Path file = writeFile("b.py", "print('change')");
+        FakeLspServerInstance server = fakeServer("ruff");
+        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        manager.changeFile(file.toString(), "python", "print('changed')");
+
+        server.publishDiagnostics(FileUriUtils.pathToFileUri(file.toString()),
+                List.of(diagnostic("line too long", 2, 0, 0)));
+
+        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+        assertEquals(1, result.size());
+        assertEquals("ruff", result.get(0).getServerName());
+        assertEquals("line too long", result.get(0).getDiagnostics().get(0).getMessage());
+    }
+
+    @Test
+    void multipleServersContributeDiagnosticsToRegistry() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance pyright = fakeServer("pyright");
+        FakeLspServerInstance ruff = fakeServer("ruff");
+        manager.ensureDiagnosticHandler(pyright);
+        manager.ensureDiagnosticHandler(ruff);
+
+        pyright.publishDiagnostics("file:///workspace/a.py", List.of(diagnostic("type error", 1, 0, 0)));
+        ruff.publishDiagnostics("file:///workspace/b.py", List.of(diagnostic("style issue", 2, 5, 0)));
+
+        List<String> uris = LspServerManager.getPendingDiagnostics(10, 30).stream()
+                .map(LspDiagnosticFile::getUri)
+                .toList();
+        assertTrue(uris.contains("file:///workspace/a.py"));
+        assertTrue(uris.contains("file:///workspace/b.py"));
+    }
+
+    @Test
+    void crossRoundDedupSuppressesRepeatedDiagnosticsAfterOpenAndChange() {
+        LspServerManager manager = new LspServerManager();
+        FakeLspServerInstance server = fakeServer("pyright");
+        manager.ensureDiagnosticHandler(server);
+        Map<String, Object> duplicate = diagnostic("same err", 1, 0, 0);
+
+        server.publishDiagnostics("file:///workspace/a.py", List.of(duplicate));
+        List<LspDiagnosticFile> first = LspServerManager.getPendingDiagnostics(10, 30);
+        server.publishDiagnostics("file:///workspace/a.py", List.of(duplicate));
+        List<LspDiagnosticFile> second = LspServerManager.getPendingDiagnostics(10, 30);
+
+        assertEquals(1, first.size());
+        assertTrue(second.isEmpty());
+    }
+
     private static Map<String, Object> diagnostic(String message, int severity, int line, int character) {
         return diagnostic(message, severity, line, character, null, null);
     }
@@ -154,5 +513,179 @@ class LspDiagnosticRegistryTest {
             diagnostic.put("code", code);
         }
         return diagnostic;
+    }
+
+    private static List<Map<String, Object>> diagnostics(String prefix, int count) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            result.add(diagnostic(prefix + index, 2, index, 0));
+        }
+        return result;
+    }
+
+    private Path writeFile(String name, String content) throws Exception {
+        Path file = tempDir.resolve(name);
+        Files.writeString(file, content);
+        return file;
+    }
+
+    private FakeLspServerInstance fakeServer(String serverId) {
+        return new FakeLspServerInstance(config(serverId, tempDir));
+    }
+
+    private LspServerManager managerWithFakeServer(Path root, FakeLspServerInstance server) throws Exception {
+        String normalizedRoot = root.toAbsolutePath().normalize().toString();
+        ScopedLspServerConfig config = server.getConfig();
+        LspServerManager manager = new LspServerManager();
+        setField(manager, "workspaceRoot", normalizedRoot);
+
+        Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
+        configs.put(config.getServerId(), List.of(config));
+        setField(manager, "configs", configs);
+
+        Map<String, List<String>> extensionMap = new LinkedHashMap<>();
+        extensionMap.put(".py", List.of(config.getServerId()));
+        setField(manager, "extensionMap", extensionMap);
+
+        Map<ServerInstanceKey, LspServerInstance> instances = new LinkedHashMap<>();
+        instances.put(new ServerInstanceKey(config.getServerId(), normalizedRoot), server);
+        setField(manager, "instances", instances);
+
+        registerServerDefinition(config.getServerId(), normalizedRoot);
+        return manager;
+    }
+
+    private LspServerManager managerWithoutServers() throws Exception {
+        LspServerManager manager = new LspServerManager();
+        setField(manager, "workspaceRoot", tempDir.toAbsolutePath().normalize().toString());
+        setField(manager, "configs", new LinkedHashMap<String, List<ScopedLspServerConfig>>());
+        setField(manager, "extensionMap", Map.of(".py", List.of("missing-test-server")));
+        return manager;
+    }
+
+    private void registerServerDefinition(String serverId, String root) {
+        registeredTestServers.add(serverId);
+        previousServerDefinitions.putIfAbsent(serverId, BuiltinServerRegistry.BUILTIN_SERVERS.get(serverId));
+        BuiltinServerRegistry.BUILTIN_SERVERS.put(
+                serverId,
+                new ServerDefinition(
+                        serverId,
+                        List.of(".py"),
+                        "python",
+                        100,
+                        false,
+                        ignored -> root,
+                        ignored -> null
+                )
+        );
+    }
+
+    private void restoreServerDefinitions() {
+        for (String serverId : registeredTestServers) {
+            ServerDefinition previous = previousServerDefinitions.get(serverId);
+            if (previous == null) {
+                BuiltinServerRegistry.BUILTIN_SERVERS.remove(serverId);
+            } else {
+                BuiltinServerRegistry.BUILTIN_SERVERS.put(serverId, previous);
+            }
+        }
+        registeredTestServers.clear();
+        previousServerDefinitions.clear();
+    }
+
+    private static ScopedLspServerConfig config(String serverId, Path root) {
+        ScopedLspServerConfig config = new ScopedLspServerConfig();
+        config.setServerId(serverId);
+        config.setCommand("java-test-lsp");
+        config.setWorkspaceFolder(root.toAbsolutePath().normalize().toString());
+        config.setExtensionToLanguage(Map.of(".py", "python"));
+        return config;
+    }
+
+    private static void setField(Object target, String name, Object value) throws Exception {
+        Field field = LspServerManager.class.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<LspServerInstance> diagnosticHandlerInstances(LspServerManager manager) throws Exception {
+        Field field = LspServerManager.class.getDeclaredField("diagnosticHandlerInstances");
+        field.setAccessible(true);
+        return (Set<LspServerInstance>) field.get(manager);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<?, ?> textDocument(Notification notification) {
+        return (Map<?, ?>) ((Map<?, ?>) notification.params()).get("textDocument");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<?, ?>> contentChanges(Notification notification) {
+        return (List<Map<?, ?>>) ((Map<?, ?>) notification.params()).get("contentChanges");
+    }
+
+    private static final class FakeLspServerInstance extends LspServerInstance {
+        private final List<Notification> notifications = new ArrayList<>();
+        private final Map<String, List<Consumer<Object>>> handlers = new LinkedHashMap<>();
+        private int handlerRegistrationCount;
+        private boolean running = true;
+
+        private FakeLspServerInstance(ScopedLspServerConfig config) {
+            super(config, ignored -> {
+            });
+        }
+
+        @Override
+        public Map<String, Object> start() {
+            running = true;
+            return Map.of();
+        }
+
+        @Override
+        public void stop() {
+            running = false;
+        }
+
+        @Override
+        public boolean isRunning() {
+            return running;
+        }
+
+        @Override
+        public boolean isHealthy() {
+            return running;
+        }
+
+        @Override
+        public LspServerState getState() {
+            return running ? LspServerState.RUNNING : LspServerState.STOPPED;
+        }
+
+        @Override
+        public void addNotificationHandler(String method, Consumer<Object> handler) {
+            handlers.computeIfAbsent(method, ignored -> new ArrayList<>()).add(handler);
+            handlerRegistrationCount++;
+        }
+
+        @Override
+        public void sendNotification(String method, Object params) {
+            notifications.add(new Notification(method, params));
+        }
+
+        @Override
+        public Object sendRequest(String method, Object params) {
+            return Map.of("method", method, "params", params);
+        }
+
+        private void publishDiagnostics(String uri, List<?> diagnostics) {
+            List<Consumer<Object>> diagnosticHandlers = handlers.get("textDocument/publishDiagnostics");
+            assertNotNull(diagnosticHandlers);
+            assertFalse(diagnosticHandlers.isEmpty());
+            diagnosticHandlers.get(0).accept(Map.of("uri", uri, "diagnostics", diagnostics));
+        }
+    }
+
+    private record Notification(String method, Object params) {
     }
 }

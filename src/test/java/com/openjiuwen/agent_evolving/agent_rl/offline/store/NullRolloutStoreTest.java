@@ -13,7 +13,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Mirrors the focused no-op store checks from Python's null-store tests.
+ * Mirrors Python's {@code NullRolloutStore} in
+ * {@code openjiuwen/agent_evolving/agent_rl/offline/store/null_store.py}.
+ *
+ * <p>Mirrors Python's null-store unit tests in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/offline/store/test_null_store.py}.</p>
  */
 class NullRolloutStoreTest {
 

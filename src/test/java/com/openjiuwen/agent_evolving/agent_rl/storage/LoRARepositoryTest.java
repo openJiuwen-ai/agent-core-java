@@ -12,14 +12,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * <p>Mirrors Python's {@code TestLoRARepository} in
+ * {@code tests/unit_tests/agent_evolving/agent_rl/online/test_storage.py}.</p>
+ */
 class LoRARepositoryTest {
 
     @TempDir
     Path tempDir;
 
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_evolving.agent_rl.online.test_storage.TestLoRARepository::"
+                    + "test_publish_and_get_latest: WinError 1314 when updating latest symlink. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
     @Test
     void publishAndGetLatestCopiesArtifactAndMetadata() throws Exception {
         LoRARepository repo = new LoRARepository(tempDir.resolve("repo").toString());
@@ -42,6 +53,12 @@ class LoRARepositoryTest {
         assertEquals("/models/base", latest.baseModel());
     }
 
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_evolving.agent_rl.online.test_storage.TestLoRARepository::"
+                    + "test_latest_points_to_newest: WinError 1314 when updating latest symlink. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
     @Test
     void latestPointsToNewestVersion() throws Exception {
         LoRARepository repo = new LoRARepository(tempDir.resolve("repo").toString());
@@ -62,6 +79,12 @@ class LoRARepositoryTest {
         assertTrue(repo.getLatest("missing").isEmpty());
     }
 
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_evolving.agent_rl.online.test_storage.TestLoRARepository::"
+                    + "test_publish_accepts_scheduler_metadata_keys: WinError 1314 when updating latest symlink. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
     @Test
     void publishAcceptsSchedulerMetadataKeys() throws Exception {
         LoRARepository repo = new LoRARepository(tempDir.resolve("repo").toString());
@@ -77,6 +100,12 @@ class LoRARepositoryTest {
         assertEquals(0.75, version.rewardAvg(), 1e-9);
     }
 
+    @Disabled(
+            "Disabled because Python baseline failed for "
+                    + "tests.unit_tests.agent_evolving.agent_rl.online.test_storage.TestLoRARepository::"
+                    + "test_publish_ignores_non_numeric_version_dirs: WinError 1314 when updating latest symlink. "
+                    + "Evidence: javaify-project/tests/python-baseline/latest-summary.json"
+    )
     @Test
     void publishIgnoresNonNumericVersionDirs() throws Exception {
         LoRARepository repo = new LoRARepository(tempDir.resolve("repo").toString());

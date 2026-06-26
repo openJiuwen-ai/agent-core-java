@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for SchemaUtils.
- * Ported from Python: tests/unit_tests/core/common/utils/test_schema_utils.py
+ * <p>Mirrors Python's {@code tests/unit_tests/core/common/utils/test_schema_utils.py}.</p>
  */
 class SchemaUtilsTest {
 
@@ -88,6 +88,28 @@ class SchemaUtilsTest {
         assertEquals("jane@example.com", result.get("email"));
         assertEquals(true, result.get("is_active"));  // Default value
         assertEquals(List.of("new_user"), result.get("tags"));  // Default value
+    }
+
+    // ==========================================================================
+    // test_format_with_pydantic_model (Python: test_format_with_pydantic_model)
+    // ==========================================================================
+    @Test
+    @DisplayName("Format partial data with dynamic schema model fills defaults")
+    void testFormatWithPydanticModel() {
+        SchemaUtils.DynamicSchemaModelClass model = SchemaUtils.getSchemaClass(createUserSchema());
+
+        Map<String, Object> partialData = new LinkedHashMap<>();
+        partialData.put("name", "Jane Doe");
+        partialData.put("age", 25);
+
+        Map<String, Object> result = SchemaUtils.formatWithSchema(partialData, model);
+
+        assertEquals("Jane Doe", result.get("name"));
+        assertEquals(25, result.get("age"));
+        assertEquals("user@example.com", result.get("email"));
+        assertEquals(true, result.get("is_active"));
+        assertEquals(List.of("new_user"), result.get("tags"));
+        assertEquals(Map.of(), result.get("metadata"));
     }
 
     // ==========================================================================
@@ -222,6 +244,68 @@ class SchemaUtilsTest {
     @DisplayName("getSchemaDict with null returns null")
     void testGetSchemaDictNull() {
         assertNull(SchemaUtils.getSchemaDict(null));
+    }
+
+    // ==========================================================================
+    // test_create_model_from_simple_schema (Python: test_create_model_from_simple_schema)
+    // ==========================================================================
+    @Test
+    @DisplayName("getSchemaClass creates dynamic model from JSON schema")
+    void testCreateModelFromSimpleSchema() {
+        SchemaUtils.DynamicSchemaModelClass model = SchemaUtils.getSchemaClass(createUserSchema());
+
+        SchemaUtils.DynamicSchemaModel instance = model.newInstance(Map.of(
+                "name", "Test User",
+                "age", 30,
+                "email", "test@example.com"));
+
+        assertEquals("Test User", instance.get("name"));
+        assertEquals(30, instance.get("age"));
+        assertEquals("test@example.com", instance.get("email"));
+        assertEquals(true, instance.get("is_active"));
+    }
+
+    // ==========================================================================
+    // test_underscore_field_alias_handling (Python: test_underscore_field_alias_handling)
+    // ==========================================================================
+    @Test
+    @DisplayName("Dynamic schema model preserves aliases for leading underscore fields")
+    void testUnderscoreFieldAliasHandling() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("_id", Map.of("type", "integer", "description", "Internal ID"));
+        properties.put("_private", Map.of("type", "string", "default", "secret"));
+        properties.put("name", Map.of("type", "string"));
+        properties.put("__dunder", Map.of("type", "string", "default", "dunder_value"));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("title", "UnderscoreTest");
+        schema.put("properties", properties);
+        schema.put("required", List.of("_id", "name"));
+
+        SchemaUtils.DynamicSchemaModelClass model = SchemaUtils.getSchemaClass(schema);
+        SchemaUtils.DynamicSchemaModel instance = model.newInstance(Map.of(
+                "_id", 123,
+                "name", "Test",
+                "_private", "my_secret",
+                "__dunder", "test"));
+
+        assertEquals(123, instance.get("id"));
+        assertEquals("Test", instance.get("name"));
+        assertEquals("my_secret", instance.get("private"));
+        assertEquals("test", instance.get("dunder"));
+
+        Map<String, Object> serialized = instance.modelDump(true);
+        assertTrue(serialized.containsKey("_id"));
+        assertEquals(123, serialized.get("_id"));
+        assertTrue(serialized.containsKey("_private"));
+        assertEquals("my_secret", serialized.get("_private"));
+        assertTrue(serialized.containsKey("__dunder"));
+        assertEquals("test", serialized.get("__dunder"));
+
+        SchemaUtils.DynamicSchemaModel instanceWithDefaults = model.newInstance(Map.of("_id", 456, "name", "Test2"));
+        assertEquals("secret", instanceWithDefaults.get("private"));
+        assertEquals("dunder_value", instanceWithDefaults.get("dunder"));
     }
 
     // ==========================================================================

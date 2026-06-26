@@ -3,7 +3,6 @@
  */
 
 package com.openjiuwen.agent_evolving.agent_rl.online.judge;
-
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpTransport;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.HttpUpstreamGatewayClient;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.JavaNetGatewayHttpTransport;
@@ -23,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
  * Mirrors Python's {@code JudgeScorer} in
  * {@code openjiuwen/agent_evolving/agent_rl/online/judge/judge_scorer.py}.
  */
-public class JudgeScorer {
+public class JudgeScorer implements com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.JudgeScorer {
 
     private final String judgeUrl;
     private final String judgeModel;
@@ -79,6 +78,7 @@ public class JudgeScorer {
         }
     }
 
+    @Override
     public CompletableFuture<Map<String, Object>> score(String responseText,
                                                         String instructionText,
                                                         String followupUserFeedback,
