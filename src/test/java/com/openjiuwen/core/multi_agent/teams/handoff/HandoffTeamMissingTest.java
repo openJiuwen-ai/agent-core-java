@@ -9,8 +9,8 @@ import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.BaseAgent;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;

@@ -5,10 +5,10 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
-import com.openjiuwen.core.single_agent.schema.Artifact;
-import com.openjiuwen.core.single_agent.schema.Part;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.Artifact;
+import com.openjiuwen.core.singleagent.schema.Part;
 import com.openjiuwen.extensions.a2a.A2AAgentExecutor.InMemoryEventQueue;
 import com.openjiuwen.extensions.a2a.A2AServer.Mount;
 import com.openjiuwen.extensions.a2a.A2AServer.Route;

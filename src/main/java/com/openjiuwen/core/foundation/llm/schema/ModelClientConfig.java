@@ -58,6 +58,9 @@ public class ModelClientConfig {
     @JsonProperty("custom_headers")
     private Map<String, Object> customHeaders = new LinkedHashMap<>();
 
+    @JsonProperty("http_version")
+    private ModelHttpVersion httpVersion;
+
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
     public ModelClientConfig(String clientId, String clientProvider, String apiKey, String apiBase, double timeout,
@@ -126,10 +129,14 @@ public class ModelClientConfig {
         if (supportedTypes.contains(normalized)) {
             return normalized;
         }
+        throw unavailableProvider(normalized);
+    }
+
+    private static RuntimeException unavailableProvider(String normalized) {
         throw ErrorHelper.buildError(
                 StatusCode.MODEL_PROVIDER_INVALID,
                 "error_msg",
-                "unavailable model provider: " + normalized + ",and available providers are: " + supportedTypes
+                "unavailable model provider: " + normalized + ",and available providers are: " + supportedTypes()
         );
     }
 
@@ -169,6 +176,7 @@ public class ModelClientConfig {
         private boolean verifySsl = true;
         private String sslCert;
         private Map<String, Object> customHeaders = new LinkedHashMap<>();
+        private ModelHttpVersion httpVersion;
         private Map<String, Object> extraFields = new LinkedHashMap<>();
 
         private ModelClientConfigBuilder() {
@@ -224,6 +232,11 @@ public class ModelClientConfig {
             return this;
         }
 
+        public ModelClientConfigBuilder httpVersion(ModelHttpVersion httpVersion) {
+            this.httpVersion = httpVersion;
+            return this;
+        }
+
         public ModelClientConfigBuilder extraFields(Map<String, Object> extraFields) {
             this.extraFields = extraFields;
             return this;
@@ -240,6 +253,7 @@ public class ModelClientConfig {
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
             config.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
+            config.httpVersion = httpVersion;
             config.extraFields = extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
             return config;
         }

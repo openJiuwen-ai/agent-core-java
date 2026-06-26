@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.openjiuwen.core.memory.lite.CodingMemoryToolContext;
 import com.openjiuwen.core.memory.lite.CodingMemoryToolOps;
 import com.openjiuwen.harness.DeepAgent;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.memory.CodingMemoryRail;
 import com.openjiuwen.harness.workspace.Workspace;

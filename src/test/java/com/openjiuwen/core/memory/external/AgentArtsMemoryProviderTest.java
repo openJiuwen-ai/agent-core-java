@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.external;
 
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -157,6 +158,7 @@ class AgentArtsMemoryProviderTest {
     }
 
     @Test
+    @Disabled("Legacy Python packaging layout check; Java SDK CI does not checkout ../agent-core-0.1.14")
     void agentartsExtraIsDeclaredInPyproject() throws Exception {
         Path pyprojectPath = Path.of("..", "agent-core-0.1.14", "pyproject.toml").normalize();
         String pyproject = Files.readString(pyprojectPath, StandardCharsets.UTF_8);

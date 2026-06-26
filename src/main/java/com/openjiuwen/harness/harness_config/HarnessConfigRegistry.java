@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.harness_config;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 

@@ -18,8 +18,8 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.legacy.LegacyBaseAgent;
-import com.openjiuwen.core.single_agent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
+import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

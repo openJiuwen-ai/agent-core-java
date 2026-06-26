@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.rails.security;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.prompts.sections.SafetySection;

@@ -7,7 +7,7 @@ package com.openjiuwen.core.session.tracer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.LinkedHashMap;
 import java.util.List;

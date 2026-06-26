@@ -5,8 +5,8 @@
 package com.openjiuwen.unit_tests.agent.react_agent;
 
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.harness.tools.ToolOutput;
 import org.junit.jupiter.api.Test;
 

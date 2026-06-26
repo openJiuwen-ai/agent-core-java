@@ -150,12 +150,6 @@ public abstract class BaseModelClient {
                     "rror_msg",
                     "model client config api_base is required for " + clientName + ".");
         }
-        if (modelClientConfig.isVerifySsl() && modelClientConfig.getSslCert() == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg",
-                    "model client config ssl_cert is required when verify_ssl is True.");
-        }
     }
 
     /**

@@ -15,8 +15,8 @@ import com.openjiuwen.agent_teams.schema.TeamCreatedEvent;
 import com.openjiuwen.agent_teams.schema.events.EventMessage;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.TaskIterationInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 

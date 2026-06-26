@@ -13,9 +13,9 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 
 import java.lang.reflect.Method;
 import java.time.ZonedDateTime;

@@ -19,7 +19,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;

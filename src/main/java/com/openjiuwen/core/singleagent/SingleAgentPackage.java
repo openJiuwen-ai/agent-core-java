@@ -1,0 +1,45 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.singleagent;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Package-level exports for the current single-agent API.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.single_agent} module in
+ * {@code openjiuwen/core/single_agent/__init__.py}.</p>
+ */
+public final class SingleAgentPackage {
+    public static final String PYTHON_MODULE = "openjiuwen/core/single_agent/__init__.py";
+
+    private static final Map<String, String> EXPORTS = new LinkedHashMap<>();
+
+    static {
+        EXPORTS.put("AgentCard", "com.openjiuwen.core.singleagent.schema.AgentCard");
+        EXPORTS.put("ReActAgent", "com.openjiuwen.core.singleagent.agents.ReActAgent");
+        EXPORTS.put("ReActAgentConfig", "com.openjiuwen.core.singleagent.agents.ReActAgentConfig");
+        EXPORTS.put("ReActAgentEvolve", "com.openjiuwen.core.singleagent.agents.ReActAgentEvolve");
+        EXPORTS.put("Session", "com.openjiuwen.core.session.AgentSession");
+        EXPORTS.put("create_agent_session", "com.openjiuwen.core.session.AgentSession.createAgentSession");
+        EXPORTS.put("BaseAgent", "com.openjiuwen.core.singleagent.BaseAgent");
+        EXPORTS.put("AbilityManager", "com.openjiuwen.core.singleagent.AbilityManager");
+        EXPORTS.put("LegacyBaseAgent", "com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent");
+        EXPORTS.put("AddAbilityResult", "com.openjiuwen.core.singleagent.AddAbilityResult");
+    }
+
+    private SingleAgentPackage() {
+    }
+
+    public static List<String> exports() {
+        return List.copyOf(EXPORTS.keySet());
+    }
+
+    public static String resolveExport(String name) {
+        return EXPORTS.get(name);
+    }
+}

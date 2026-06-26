@@ -17,6 +17,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.model_clients.ModelClients;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
@@ -392,6 +394,13 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         if (invoker != null) {
             return new InvokerBackedModelClient(invoker, modelConfig, clientConfig);
         }
+        Object builtinClient = ModelClients.builtinModelClient(provider, clientConfig, modelConfig);
+        if (builtinClient instanceof ModelClient modelClient) {
+            return modelClient;
+        }
+        if (builtinClient instanceof BaseModelClient baseModelClient) {
+            return new BaseModelClientAdapter(baseModelClient);
+        }
         throw ErrorHelper.buildError(
                 StatusCode.MODEL_PROVIDER_INVALID,
                 "error_msg",
@@ -430,6 +439,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
     private static List<String> availableProviders() {
         List<String> providers = new ArrayList<>(CLIENT_FACTORIES.keySet());
         providers.addAll(INVOKERS.keySet());
+        providers.addAll(ModelClients.builtinProviderNames());
         return providers;
     }
 
@@ -605,12 +615,122 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
     }
 
     /**
+     * Adapter for 0.1.14 built-in {@link BaseModelClient} implementations.
+     */
+    private static final class BaseModelClientAdapter implements ModelClient {
+        private final BaseModelClient delegate;
+
+        private BaseModelClientAdapter(BaseModelClient delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            try {
+                return CompletableFuture.completedFuture(delegate.invoke(
+                        messages,
+                        options.getTools(),
+                        options.getTemperature(),
+                        options.getTopP(),
+                        options.getModel(),
+                        options.getMaxTokens(),
+                        options.getStop(),
+                        options.getOutputParser(),
+                        options.getTimeout(),
+                        options.getExtraFields()
+                ));
+            } catch (Exception exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            try {
+                return delegate.stream(
+                        messages,
+                        options.getTools(),
+                        options.getTemperature(),
+                        options.getTopP(),
+                        options.getModel(),
+                        options.getMaxTokens(),
+                        options.getStop(),
+                        options.getOutputParser(),
+                        options.getTimeout(),
+                        options.getExtraFields()
+                );
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        }
+
+        @Override
+        public CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages,
+                                                                      ImageGenerationOptions options) {
+            try {
+                return CompletableFuture.completedFuture(delegate.generateImage(
+                        messages,
+                        options.model(),
+                        options.size(),
+                        options.negativePrompt(),
+                        options.n(),
+                        options.promptExtend(),
+                        options.watermark(),
+                        options.seed(),
+                        options.extraFields()
+                ));
+            } catch (Exception exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        }
+
+        @Override
+        public CompletionStage<AudioGenerationResponse> generateSpeech(List<UserMessage> messages,
+                                                                       SpeechGenerationOptions options) {
+            try {
+                return CompletableFuture.completedFuture(delegate.generateSpeech(
+                        messages,
+                        options.model(),
+                        options.voice(),
+                        options.languageType(),
+                        options.extraFields()
+                ));
+            } catch (Exception exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        }
+
+        @Override
+        public CompletionStage<VideoGenerationResponse> generateVideo(List<UserMessage> messages,
+                                                                      VideoGenerationOptions options) {
+            try {
+                return CompletableFuture.completedFuture(delegate.generateVideo(
+                        messages,
+                        options.imgUrl(),
+                        options.audioUrl(),
+                        options.model(),
+                        options.size(),
+                        options.resolution(),
+                        options.duration(),
+                        options.promptExtend(),
+                        options.watermark(),
+                        options.negativePrompt(),
+                        options.seed(),
+                        options.extraFields()
+                ));
+            } catch (Exception exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        }
+    }
+
+    /**
      * Iterator wrapper that emits callback events for each streamed chunk.
      *
      * <p>Mirrors Python's stream {@code emit_after(..., item_key="result")} wrapper in
      * {@code openjiuwen/core/foundation/llm/model.py}.</p>
      */
-    private static final class CallbackIterator implements Iterator<AssistantMessageChunk> {
+    private static final class CallbackIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final Iterator<AssistantMessageChunk> delegate;
         private final DecoratorFramework framework;
         private final InvocationRequest request;
@@ -651,6 +771,13 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             afterKwargs.put("model_client_config", modelClientConfig);
             framework.trigger(LLMCallEvents.LLM_STREAM_OUTPUT, new Object[]{request.messages()}, afterKwargs);
             return effectiveChunk;
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (delegate instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
         }
     }
 }

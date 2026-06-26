@@ -5,7 +5,7 @@
 package com.openjiuwen.agent_teams.memory;
 
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.CodingMemorySection;
 import com.openjiuwen.harness.prompts.sections.MemorySection;
 import com.openjiuwen.harness.workspace.Workspace;

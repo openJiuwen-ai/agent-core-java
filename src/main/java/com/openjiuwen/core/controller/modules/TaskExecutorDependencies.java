@@ -6,7 +6,7 @@ package com.openjiuwen.core.controller.modules;
 
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 
 /**
  * Task executor dependencies.

@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.multi_agent.schema.TeamCard;
 import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.List;
 import java.util.Iterator;

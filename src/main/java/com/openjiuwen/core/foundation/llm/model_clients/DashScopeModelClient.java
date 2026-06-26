@@ -585,6 +585,12 @@ public class DashScopeModelClient extends BaseModelClient {
         }
     }
 
+    static HttpClient createDashScopeHttpClient(ModelClientConfig clientConfig, Duration connectTimeout) {
+        return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
+                .connectTimeout(connectTimeout)
+                .build();
+    }
+
     private static Object firstNonNull(Object first, Object second) {
         return first != null ? first : second;
     }
@@ -731,9 +737,7 @@ public class DashScopeModelClient extends BaseModelClient {
                     }
                 });
             }
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(timeoutSeconds))
-                    .build();
+            HttpClient client = createDashScopeHttpClient(clientConfig, Duration.ofSeconds(timeoutSeconds));
             HttpResponse<String> response = client.send(
                     requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

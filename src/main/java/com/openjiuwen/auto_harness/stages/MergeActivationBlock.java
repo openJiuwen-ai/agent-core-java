@@ -23,7 +23,7 @@ import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 

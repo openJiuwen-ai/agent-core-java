@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.a2a;
 
-import com.openjiuwen.core.single_agent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.extensions.a2a.A2ATransformer.SendMessageRequest;
 
 import java.util.ArrayList;

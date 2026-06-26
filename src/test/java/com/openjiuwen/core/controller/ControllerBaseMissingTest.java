@@ -13,7 +13,6 @@ import com.openjiuwen.core.controller.modules.TaskExecutor;
 import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
-import com.openjiuwen.core.controller.modules.TaskManagerState;
 import com.openjiuwen.core.controller.modules.TaskScheduler;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
@@ -26,7 +25,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

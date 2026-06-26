@@ -15,7 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.cli.prompts.CliPromptBuilder;
 import com.openjiuwen.harness.cli.rails.TokenTrackingRail;

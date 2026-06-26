@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
 import com.openjiuwen.harness.schema.CompletionPromiseEvaluator;

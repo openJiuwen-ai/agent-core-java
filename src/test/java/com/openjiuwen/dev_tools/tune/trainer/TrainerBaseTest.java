@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.trainer;
 
+import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -79,7 +80,7 @@ class TrainerBaseTest {
             private int calls;
 
             @Override
-            public void onTrainEpochBegin(com.openjiuwen.core.single_agent.legacy.LegacyBaseAgent agent,
+            public void onTrainEpochBegin(LegacyBaseAgent agent,
                                           Progress progress) {
                 calls += 1;
             }

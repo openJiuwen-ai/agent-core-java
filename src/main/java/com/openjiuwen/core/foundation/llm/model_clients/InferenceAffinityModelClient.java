@@ -513,8 +513,12 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                 .POST(HttpRequest.BodyPublishers.ofString(OBJECT_MAPPER.writeValueAsString(payload)));
     }
 
+    HttpClient httpClientForTesting() {
+        return httpClient;
+    }
+
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
-        return HttpClient.newBuilder()
+        return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
                 .connectTimeout(timeoutDuration(null))
                 .build();
     }

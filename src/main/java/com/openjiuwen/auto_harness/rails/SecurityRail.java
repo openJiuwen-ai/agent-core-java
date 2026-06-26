@@ -6,10 +6,10 @@ package com.openjiuwen.auto_harness.rails;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -4,8 +4,8 @@
 
 package com.openjiuwen.dev_tools.skill_evaluator;
 
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;

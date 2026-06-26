@@ -6,8 +6,8 @@ package com.openjiuwen.harness.cli.unit;
 
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
 import org.junit.jupiter.api.Test;
 

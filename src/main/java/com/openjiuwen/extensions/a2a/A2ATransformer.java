@@ -5,9 +5,9 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
-import com.openjiuwen.core.single_agent.schema.Artifact;
-import com.openjiuwen.core.single_agent.schema.Part;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.Artifact;
+import com.openjiuwen.core.singleagent.schema.Part;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

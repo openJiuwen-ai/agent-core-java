@@ -99,6 +99,68 @@ class ModelClientTracerMissingTest {
     }
 
     @Test
+    void openAiStreamTracerKeepsUsageChunkAfterStopWhenFullyConsumed() throws Exception {
+        String streamBody = String.join("\n",
+                "data: " + json(streamPayload("Hello", "stop")),
+                "data: " + json(Map.of(
+                        "usage", Map.of("prompt_tokens", 2, "completion_tokens", 3, "total_tokens", 5),
+                        "choices", List.of())),
+                "data: [DONE]");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(streamBody)) {
+            OpenAIModelClient client = openAiClient(server.baseUrl());
+            RecordingTracer tracer = new RecordingTracer();
+
+            List<AssistantMessageChunk> chunks = iteratorToList(client.stream(
+                    List.of(new UserMessage("Hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("tracer_record_data", tracer)
+            ));
+
+            assertThat(chunks).hasSize(2);
+            AssistantMessageChunk finalMessage = lastTracedResponse(tracer);
+            assertThat(finalMessage.getContent()).isEqualTo("Hello");
+            assertThat(finalMessage.getUsageMetadata()).isNotNull();
+            assertThat(finalMessage.getUsageMetadata().getTotalTokens()).isEqualTo(5);
+        }
+    }
+
+    @Test
+    void openAiStreamTracerCloseBeforeConsumptionDoesNotRecordNullResponse() throws Exception {
+        try (MockOpenAiServer server = new MockOpenAiServer("")) {
+            OpenAIModelClient client = openAiClient(server.baseUrl());
+            RecordingTracer tracer = new RecordingTracer();
+
+            Iterator<AssistantMessageChunk> iterator = client.stream(
+                    List.of(new UserMessage("Hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("tracer_record_data", tracer)
+            );
+
+            ((AutoCloseable) iterator).close();
+
+            assertThat(tracer.records).hasSize(1);
+            assertThat(tracer.records.getFirst()).containsKey("llm_params");
+            assertThat(tracer.records)
+                    .noneSatisfy(record -> assertThat(record).containsEntry("llm_response", null));
+        }
+    }
+
+    @Test
     void siliconFlowInvokeCallsTracerRecordDataWithResult() throws Exception {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
         client.nextJson = json(responsePayload("Test response"));
@@ -278,6 +340,14 @@ class ModelClientTracerMissingTest {
             result.add(iterator.next());
         }
         return result;
+    }
+
+    private static AssistantMessageChunk lastTracedResponse(RecordingTracer tracer) {
+        return tracer.records.stream()
+                .filter(record -> record.containsKey("llm_response"))
+                .map(record -> (AssistantMessageChunk) record.get("llm_response"))
+                .reduce((first, second) -> second)
+                .orElseThrow();
     }
 
     private static final class RecordingSiliconFlowClient extends SiliconFlowModelClient {

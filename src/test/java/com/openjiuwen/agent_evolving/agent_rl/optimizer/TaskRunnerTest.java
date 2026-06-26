@@ -5,6 +5,7 @@
 package com.openjiuwen.agent_evolving.agent_rl.optimizer;
 
 import com.openjiuwen.agent_evolving.agent_rl.rl_trainer.VerlConverter;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,6 +27,7 @@ class TaskRunnerTest {
     Path tempDir;
 
     @Test
+    @Disabled("Legacy Python packaging layout check; Java SDK CI does not checkout ../agent-core-0.1.14")
     void runtimeEnvPrependsAgentCoreAndFiltersPackageSubdir() {
         Map<String, Object> runtimeEnv = TaskRunner.getPpoRayRuntimeEnv();
 

@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -36,6 +37,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +92,21 @@ class ModelTest {
     }
 
     @Test
+    void constructorCreatesBuiltinOpenAiClientWithoutManualRegistration() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("test-key")
+                .apiBase("https://example.test/v1")
+                .verifySsl(false)
+                .build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
+
+        Model model = new Model(clientConfig, requestConfig);
+
+        assertNotNull(model);
+    }
+
+    @Test
     void callbackFrameworkSeesInvokeInputOutputAndCanTransformResult() {
         RecordingModelClient client = new RecordingModelClient();
         RecordingFramework framework = new RecordingFramework();
@@ -132,6 +149,23 @@ class ModelTest {
 
         assertEquals(List.of("a", "b"), chunks);
         assertEquals(2, framework.events.stream().filter(LLMCallEvents.LLM_STREAM_OUTPUT::equals).count());
+    }
+
+    @Test
+    void streamCallbackIteratorIsCloseableAndClosesDelegate() throws Exception {
+        RecordingModelClient client = new RecordingModelClient();
+        CloseableChunkIterator closeableIterator = new CloseableChunkIterator(List.of(
+                AssistantMessageChunk.builder().content("a").build()
+        ));
+        client.streamIterator = closeableIterator;
+        Model.setCallbackFramework(new RecordingFramework());
+        Model model = new Model(client);
+
+        Iterator<AssistantMessageChunk> iterator = model.stream(List.of(new UserMessage("hello")));
+
+        assertInstanceOf(AutoCloseable.class, iterator);
+        ((AutoCloseable) iterator).close();
+        assertTrue(closeableIterator.closed);
     }
 
     @Test
@@ -224,6 +258,7 @@ class ModelTest {
     private static final class RecordingModelClient implements Model.ModelClient {
         private final List<ModelInvokeOptions> invokeOptions = new ArrayList<>();
         private List<AssistantMessageChunk> streamChunks = List.of();
+        private Iterator<AssistantMessageChunk> streamIterator;
         private boolean kvCacheReleaseSupported;
         private String releaseSessionId;
         private Integer releaseMessagesReleasedIndex;
@@ -239,6 +274,9 @@ class ModelTest {
 
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            if (streamIterator != null) {
+                return streamIterator;
+            }
             return streamChunks.iterator();
         }
 
@@ -275,6 +313,30 @@ class ModelTest {
                                                                       Model.VideoGenerationOptions options) {
             lastVideoOptions = options;
             return CompletableFuture.completedFuture(VideoGenerationResponse.builder().videoUrl("video").build());
+        }
+    }
+
+    private static final class CloseableChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final Iterator<AssistantMessageChunk> delegate;
+        private boolean closed;
+
+        private CloseableChunkIterator(List<AssistantMessageChunk> chunks) {
+            this.delegate = chunks.iterator();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            return delegate.next();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 

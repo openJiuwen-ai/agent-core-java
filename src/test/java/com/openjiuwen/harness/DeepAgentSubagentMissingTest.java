@@ -7,10 +7,10 @@ package com.openjiuwen.harness;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.single_agent.rail.HeartbeatReason;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
-import com.openjiuwen.core.single_agent.rail.RunContext;
-import com.openjiuwen.core.single_agent.rail.RunKind;
+import com.openjiuwen.core.singleagent.rail.HeartbeatReason;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.RunContext;
+import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.HeartbeatRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;

@@ -8,9 +8,9 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

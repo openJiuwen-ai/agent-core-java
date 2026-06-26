@@ -6,7 +6,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 import com.openjiuwen.core.multi_agent.BaseTeam;
 import com.openjiuwen.core.multi_agent.schema.TeamCard;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.multi_agent.schema;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.List;
 import java.util.Map;

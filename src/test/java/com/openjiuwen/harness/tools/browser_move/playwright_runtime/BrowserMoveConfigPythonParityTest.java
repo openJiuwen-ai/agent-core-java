@@ -6,7 +6,7 @@ package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.single_agent.AbilityManager;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.harness.tools.browser_move.clients.BrowserMoveStreamableHttpClient;
 import com.openjiuwen.harness.tools.browser_move.utils.BrowserMoveEnv;
 import com.openjiuwen.harness.tools.browser_move.utils.ParsingUtils;

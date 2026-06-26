@@ -23,7 +23,7 @@ import java.util.UUID;
  * <p>Mirrors Python's {@code Session} in
  * {@code openjiuwen/core/session/agent.py}.</p>
  */
-public class AgentSession implements AgentSessionApi {
+public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
 
     private final String sessionId;
     private final Object card;
@@ -62,6 +62,7 @@ public class AgentSession implements AgentSessionApi {
         return new AgentSession(sessionId, envs, card);
     }
 
+    @Override
     public String getSessionId() {
         return sessionId;
     }
@@ -90,6 +91,7 @@ public class AgentSession implements AgentSessionApi {
         return readCardProperty("getDescription", "");
     }
 
+    @Override
     public void updateState(Map<String, Object> data) {
         inner.state().updateGlobal(data);
     }
@@ -107,6 +109,7 @@ public class AgentSession implements AgentSessionApi {
         return inner.state().dump();
     }
 
+    @Override
     public void writeStream(Object data) {
         OutputSchema streamData = normalizeOutput(tagStreamPayload(data));
         triggerWriteStream(streamData);
@@ -119,10 +122,12 @@ public class AgentSession implements AgentSessionApi {
         inner.streamWriterManager().getCustomWriter().write(streamData);
     }
 
+    @Override
     public Iterator<Object> streamIterator() {
         return inner.streamWriterManager().streamIterator();
     }
 
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
         if (CallbackUtils.getCallbackFramework() instanceof AsyncCallbackFramework framework) {
@@ -130,6 +135,7 @@ public class AgentSession implements AgentSessionApi {
         }
     }
 
+    @Override
     public AgentSession preRun(Map<String, Object> kwargs) {
         if (preRunDone) {
             return this;
@@ -159,6 +165,7 @@ public class AgentSession implements AgentSessionApi {
         return this;
     }
 
+    @Override
     public void commit() {
         if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
             checkpointer.postAgentExecute(inner);

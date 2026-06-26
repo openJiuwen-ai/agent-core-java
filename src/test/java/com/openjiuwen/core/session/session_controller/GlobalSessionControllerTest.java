@@ -9,7 +9,7 @@ import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.SessionEvents;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

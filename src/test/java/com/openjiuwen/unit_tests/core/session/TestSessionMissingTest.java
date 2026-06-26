@@ -10,7 +10,7 @@ import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.utils.SessionUtils;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

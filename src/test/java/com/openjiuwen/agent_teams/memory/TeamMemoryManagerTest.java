@@ -24,7 +24,7 @@ import com.openjiuwen.agent_teams.memory.TeamMemoryManager.ToolCard;
 import com.openjiuwen.agent_teams.memory.TeamMemoryManager.ToolView;
 import com.openjiuwen.agent_teams.memory.TeamMemoryManager.ToolkitFactory;
 import com.openjiuwen.agent_teams.memory.TeamMemoryManager.ToolkitRequest;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.workspace.Workspace;
 import java.nio.file.Path;
 import java.util.ArrayList;

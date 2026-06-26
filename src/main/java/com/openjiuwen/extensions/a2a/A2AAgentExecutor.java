@@ -5,8 +5,9 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
-import com.openjiuwen.core.single_agent.schema.Artifact;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.Artifact;
+import com.openjiuwen.core.singleagent.schema.Part;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aArtifact;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aMessage;
 import com.openjiuwen.extensions.a2a.A2ATransformer.A2aPart;
@@ -201,9 +202,9 @@ public class A2AAgentExecutor {
         return message;
     }
 
-    private static List<A2aPart> toA2aParts(List<com.openjiuwen.core.single_agent.schema.Part> parts) {
+    private static List<A2aPart> toA2aParts(List<Part> parts) {
         List<A2aPart> result = new ArrayList<>();
-        for (com.openjiuwen.core.single_agent.schema.Part part : parts) {
+        for (Part part : parts) {
             result.add(A2ATransformer.toA2aPart(part));
         }
         return result;

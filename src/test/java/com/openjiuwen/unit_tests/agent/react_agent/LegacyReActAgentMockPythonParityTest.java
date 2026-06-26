@@ -14,9 +14,9 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
-import com.openjiuwen.core.single_agent.legacy.react_agent.LegacyReActAgent;
-import com.openjiuwen.core.single_agent.legacy.react_agent.LegacyReActAgentFactory;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.react_agent.LegacyReActAgent;
+import com.openjiuwen.core.singleagent.legacy.react_agent.LegacyReActAgentFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.agent_teams.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

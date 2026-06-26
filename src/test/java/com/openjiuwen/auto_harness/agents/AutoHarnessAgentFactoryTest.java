@@ -6,8 +6,8 @@ package com.openjiuwen.auto_harness.agents;
 
 import com.openjiuwen.auto_harness.rails.AutoHarnessContextRail;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.SysOperation;
 import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;

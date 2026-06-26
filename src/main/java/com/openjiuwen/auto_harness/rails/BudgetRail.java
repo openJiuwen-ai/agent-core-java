@@ -5,9 +5,9 @@
 package com.openjiuwen.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.infra.SessionBudgetController;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 
 import java.lang.reflect.Method;
 import java.util.Map;

@@ -8,7 +8,7 @@ import com.openjiuwen.auto_harness.infra.RuntimeExtensionLoader;
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;

@@ -5,10 +5,10 @@
 package com.openjiuwen.harness.rails.context_engineer;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.rail.RunKind;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.rail.RunKind;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.rails.CallbackContext;

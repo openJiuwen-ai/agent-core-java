@@ -6,8 +6,8 @@ package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.lsp.HarnessLspPackage;
 import com.openjiuwen.harness.lsp.InitializeOptions;

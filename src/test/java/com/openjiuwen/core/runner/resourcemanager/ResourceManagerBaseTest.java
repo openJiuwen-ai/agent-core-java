@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
 

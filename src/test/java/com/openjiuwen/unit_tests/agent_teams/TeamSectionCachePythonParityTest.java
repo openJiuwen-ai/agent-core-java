@@ -7,7 +7,7 @@ package com.openjiuwen.unit_tests.agent_teams;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agent_teams.prompts.MtimeSectionCache;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;

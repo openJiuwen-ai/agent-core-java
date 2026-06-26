@@ -5,7 +5,7 @@
 package com.openjiuwen.core.session.session_controller;
 
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashSet;

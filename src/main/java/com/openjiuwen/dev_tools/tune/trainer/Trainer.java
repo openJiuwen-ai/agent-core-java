@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
-import com.openjiuwen.core.single_agent.legacy.LegacyBaseAgent;
+import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
 import com.openjiuwen.dev_tools.tune.Case;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import com.openjiuwen.dev_tools.tune.TuneConstant;

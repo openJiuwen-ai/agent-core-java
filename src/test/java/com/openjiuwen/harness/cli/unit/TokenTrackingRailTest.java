@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.cli.unit;
 
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.harness.cli.rails.TokenTrackingRail;
 import org.junit.jupiter.api.Test;
 

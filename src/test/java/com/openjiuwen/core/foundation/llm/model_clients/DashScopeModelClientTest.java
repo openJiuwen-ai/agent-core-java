@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -17,7 +18,9 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -232,6 +235,22 @@ class DashScopeModelClientTest {
 
         assertThat(DashScopeModelClient.CLIENT_NAME).isEqualTo("DashScope");
         assertThat(client.getClientName()).isEqualTo("DashScope client");
+    }
+
+    @Test
+    void dashScopeTransportHttpClientAppliesConfiguredHttpVersion() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .verifySsl(false)
+                .httpVersion(ModelHttpVersion.HTTP_1_1)
+                .build();
+
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig, Duration.ofSeconds(4));
+
+        assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
+        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(4));
     }
 
     private static DashScopeModelClient client(CapturingTransport transport) {

@@ -5,8 +5,8 @@
 package com.openjiuwen.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.orchestrator.AutoHarnessOrchestrator;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
