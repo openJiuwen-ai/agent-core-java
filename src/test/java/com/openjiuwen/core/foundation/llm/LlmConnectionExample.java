@@ -3,6 +3,7 @@
  */
 package com.openjiuwen.core.foundation.llm;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
@@ -12,106 +13,102 @@ import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 
 /**
  * 大模型连接测试示例。
  *
- * <h2>使用方法</h2>
+ * <h2>使用方法（任选其一，优先级从高到低）</h2>
  * <ol>
- *   <li>在下方 {@code ====== 请填写以下参数 ======} 区域填入你的参数</li>
- *   <li>直接运行本类的 main 方法</li>
+ *   <li>命令行参数：{@code --api-key=... --api-base=... --model=... --provider=OpenAI}</li>
+ *   <li>环境变量：{@code API_KEY}、{@code API_BASE}、{@code MODEL_NAME}、{@code MODEL_PROVIDER}</li>
+ *   <li>JVM 系统属性：{@code -DAPI_KEY=... -DAPI_BASE=...} 等</li>
+ *   <li>配置文件：{@code apiconfig.json}（可通过 {@code -Dagent.config.path=} 或 {@code AGENT_API_CONFIG} 指定路径）</li>
  * </ol>
  *
- * <p>支持所有兼容 OpenAI Chat Completions API 的服务，包括：
- * <ul>
- *   <li>OpenAI (https://api.openai.com/v1)</li>
- *   <li>SiliconFlow (https://api.siliconflow.cn/v1)</li>
- *   <li>DashScope 兼容模式 (https://dashscope.aliyuncs.com/compatible-mode/v1)</li>
- *   <li>DeepSeek (https://api.deepseek.com/v1)</li>
- *   <li>任何其他 OpenAI 兼容的 API 服务</li>
- * </ul>
+ * <h3>示例</h3>
+ * <pre>{@code
+ * # 环境变量
+ * set API_KEY=sk-xxx
+ * set API_BASE=https://api.siliconflow.cn/v1
+ * set MODEL_NAME=Pro/zai-org/GLM-4.7
+ * set MODEL_PROVIDER=OpenAI
+ * mvn -q exec:java -Dexec.mainClass=com.openjiuwen.core.foundation.llm.LlmConnectionExample
+ *
+ * # JVM 参数
+ * java -DAPI_KEY=sk-xxx -DAPI_BASE=https://api.siliconflow.cn/v1 \
+ *      -DMODEL_NAME=gpt-4o-mini -DMODEL_PROVIDER=OpenAI \
+ *      -cp ... com.openjiuwen.core.foundation.llm.LlmConnectionExample
+ *
+ * # 命令行参数
+ * java -cp ... com.openjiuwen.core.foundation.llm.LlmConnectionExample \
+ *      --api-key=sk-xxx --api-base=https://api.siliconflow.cn/v1 --model=gpt-4o-mini
+ * }</pre>
+ *
+ * <p>支持所有兼容 OpenAI Chat Completions API 的服务，包括 OpenAI、SiliconFlow、DashScope 兼容模式、DeepSeek 等。
  */
 public class LlmConnectionExample {
 
-    // ====================================================================
-    // ====== 请填写以下参数 ======
-    // ====================================================================
-
-    /** API密钥 */
-    private static final String API_KEY = "sk-plrywdjqxgkhqeudbrznqeukhlksazrhlziiszdgcowkxhds";
-
-    /** API地址（不需要带 /chat/completions 后缀） */
-    private static final String API_BASE = "https://api.siliconflow.cn/v1";
-
-    /** 模型名称（如 gpt-4o-mini、deepseek-chat、qwen-plus 等） */
-    private static final String MODEL_NAME = "Pro/zai-org/GLM-4.7";
-
-    /** 提供商名称（OpenAI、SiliconFlow、DashScope，或自定义字符串均可） */
-    private static final String PROVIDER = "OpenAI";
-
-    // ====================================================================
-    // ====== 可选参数（一般无需修改） ======
-    // ====================================================================
-
-    /** 温度 (0.0 ~ 2.0)，越高越随机 */
-    private static final double TEMPERATURE = 0.7;
-
-    /** 超时时间（秒） */
-    private static final double TIMEOUT = 30.0;
-
-    // ====================================================================
+    private static final String PLACEHOLDER_KEY = "your-api-key-here";
+    private static final double DEFAULT_TEMPERATURE = 0.7;
+    private static final double DEFAULT_TIMEOUT = 30.0;
+    private static final String DEFAULT_PROVIDER = "OpenAI";
 
     public static void main(String[] args) {
+        LlmExampleConfig config = LlmExampleConfig.resolve(args);
+
         System.out.println("============================================");
         System.out.println("    大模型连接测试");
         System.out.println("============================================");
         System.out.println();
 
-        // 参数校验
-        if (API_KEY.equals("your-api-key-here") || API_KEY.isEmpty()) {
-            System.err.println("❌ 请先填写 API_KEY！");
-            System.err.println("   打开 LlmConnectionExample.java，修改 API_KEY 常量。");
+        if (config.apiKey() == null || config.apiKey().isBlank()
+                || PLACEHOLDER_KEY.equals(config.apiKey())) {
+            printMissingConfigHelp();
             return;
         }
 
         // 1. 构建配置
         ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientProvider(PROVIDER)
-                .apiKey(API_KEY)
-                .apiBase(API_BASE)
-                .timeout(TIMEOUT)
-                .verifySsl(false)  // 测试时关闭 SSL 验证
+                .clientProvider(config.provider())
+                .apiKey(config.apiKey())
+                .apiBase(config.apiBase())
+                .timeout(config.timeout())
+                .verifySsl(false)
                 .build();
 
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                .modelName(MODEL_NAME)
-                .temperature(TEMPERATURE)
+                .modelName(config.modelName())
+                .temperature(config.temperature())
                 .build();
 
         System.out.println("📋 配置信息:");
-        System.out.println("   Provider:  " + PROVIDER);
-        System.out.println("   API Base:  " + API_BASE);
-        System.out.println("   Model:     " + MODEL_NAME);
-        System.out.println("   Temp:      " + TEMPERATURE);
+        System.out.println("   Provider:  " + config.provider());
+        System.out.println("   API Base:  " + config.apiBase());
+        System.out.println("   Model:     " + config.modelName());
+        System.out.println("   Temp:      " + config.temperature());
         System.out.println();
 
         // 2. 注册一个简易的 OpenAI 兼容客户端工厂
-        Model.registerFactory(new SimpleOpenAiFactory());
+        Model.registerFactory(new SimpleOpenAiFactory(config.provider()));
 
         // 3. 创建 Model 并调用
         try {
@@ -170,13 +167,11 @@ public class LlmConnectionExample {
             Iterator<AssistantMessageChunk> chunks = model.stream(
                     streamMessages, null, null, null, null, null, null, null, null, null);
 
-            StringBuilder fullContent = new StringBuilder();
             while (chunks.hasNext()) {
                 AssistantMessageChunk chunk = chunks.next();
                 String text = chunk.getContentAsString();
                 if (text != null && !text.isEmpty()) {
                     System.out.print(text);
-                    fullContent.append(text);
                 }
             }
             elapsed = System.currentTimeMillis() - start;
@@ -202,18 +197,209 @@ public class LlmConnectionExample {
         }
     }
 
-    // ====================================================================
-    // 内部实现：简易 OpenAI 兼容客户端（无需修改）
-    // ====================================================================
+    private static void printMissingConfigHelp() {
+        System.err.println("❌ 未配置 API_KEY！请通过以下任一方式传入（勿在源码中写死密钥）：");
+        System.err.println();
+        System.err.println("  环境变量:");
+        System.err.println("    API_KEY / API_BASE / MODEL_NAME / MODEL_PROVIDER");
+        System.err.println();
+        System.err.println("  JVM 参数:");
+        System.err.println("    -DAPI_KEY=sk-xxx -DAPI_BASE=https://... -DMODEL_NAME=... -DMODEL_PROVIDER=OpenAI");
+        System.err.println();
+        System.err.println("  命令行参数:");
+        System.err.println("    --api-key=sk-xxx --api-base=https://... --model=... [--provider=OpenAI]");
+        System.err.println();
+        System.err.println("  配置文件 apiconfig.json（复制 examples/apiconfig_example.json）:");
+        System.err.println("    -Dagent.config.path=D:\\path\\to\\apiconfig.json");
+        System.err.println("    或环境变量 AGENT_API_CONFIG");
+    }
 
     /**
      * 简易 OpenAI 兼容客户端工厂。
      * 注册为名为 PROVIDER 的工厂，匹配 clientConfig.clientProvider。
      */
+    record LlmExampleConfig(
+            String apiKey,
+            String apiBase,
+            String modelName,
+            String provider,
+            double temperature,
+            double timeout,
+            String source
+    ) {
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+
+        static LlmExampleConfig resolve(String[] args) {
+            Map<String, String> cli = parseCliArgs(args);
+            Map<String, String> file = loadConfigFile();
+
+            String apiKey = firstNonBlank(
+                    cli.get("api-key"), cli.get("api_key"),
+                    env("API_KEY"), prop("API_KEY"), file.get("API_KEY"));
+            String apiBase = firstNonBlank(
+                    cli.get("api-base"), cli.get("api_base"),
+                    env("API_BASE"), prop("API_BASE"), file.get("API_BASE"),
+                    "https://api.siliconflow.cn/v1");
+            String modelName = firstNonBlank(
+                    cli.get("model"), cli.get("model-name"), cli.get("model_name"),
+                    env("MODEL_NAME"), prop("MODEL_NAME"), file.get("MODEL_NAME"),
+                    "gpt-4o-mini");
+            String provider = firstNonBlank(
+                    cli.get("provider"),
+                    env("MODEL_PROVIDER"), prop("MODEL_PROVIDER"),
+                    file.get("MODEL_PROVIDER"), DEFAULT_PROVIDER);
+            double temperature = parseDouble(firstNonBlank(
+                    cli.get("temperature"),
+                    env("LLM_TEMPERATURE"), prop("LLM_TEMPERATURE"),
+                    file.get("LLM_TEMPERATURE")), DEFAULT_TEMPERATURE);
+            double timeout = parseDouble(firstNonBlank(
+                    cli.get("timeout"),
+                    env("LLM_TIMEOUT"), prop("LLM_TIMEOUT"),
+                    file.get("LLM_TIMEOUT")), DEFAULT_TIMEOUT);
+
+            String source = detectSource(cli, file, apiKey);
+            return new LlmExampleConfig(apiKey, apiBase, modelName, provider, temperature, timeout, source);
+        }
+
+        private static String detectSource(Map<String, String> cli, Map<String, String> file, String apiKey) {
+            if (apiKey == null || apiKey.isBlank()) {
+                return "未配置";
+            }
+            if (isSet(cli.get("api-key")) || isSet(cli.get("api_key"))) {
+                return "命令行参数";
+            }
+            if (isSet(env("API_KEY"))) {
+                return "环境变量";
+            }
+            if (isSet(prop("API_KEY"))) {
+                return "JVM 系统属性";
+            }
+            if (isSet(file.get("API_KEY"))) {
+                return "apiconfig.json";
+            }
+            return "默认值/混合";
+        }
+
+        private static Map<String, String> parseCliArgs(String[] args) {
+            Map<String, String> result = new LinkedHashMap<>();
+            if (args == null) {
+                return result;
+            }
+            List<String> positional = new ArrayList<>();
+            for (String arg : args) {
+                if (arg == null || arg.isBlank()) {
+                    continue;
+                }
+                if (arg.startsWith("--") && arg.contains("=")) {
+                    int eq = arg.indexOf('=');
+                    String key = arg.substring(2, eq).trim().toLowerCase();
+                    String value = arg.substring(eq + 1).trim();
+                    if (!key.isEmpty() && !value.isEmpty()) {
+                        result.put(key, value);
+                    }
+                } else if (!arg.startsWith("--")) {
+                    positional.add(arg);
+                }
+            }
+            if (!result.containsKey("api-key") && positional.size() >= 1) {
+                result.put("api-key", positional.get(0));
+            }
+            if (!result.containsKey("api-base") && positional.size() >= 2) {
+                result.put("api-base", positional.get(1));
+            }
+            if (!result.containsKey("model") && positional.size() >= 3) {
+                result.put("model", positional.get(2));
+            }
+            if (!result.containsKey("provider") && positional.size() >= 4) {
+                result.put("provider", positional.get(3));
+            }
+            return result;
+        }
+
+        private static Map<String, String> loadConfigFile() {
+            for (Path candidate : configPathCandidates()) {
+                Path normalized = candidate.toAbsolutePath().normalize();
+                if (!Files.isRegularFile(normalized)) {
+                    continue;
+                }
+                try (InputStream in = Files.newInputStream(normalized)) {
+                    Map<String, String> loaded = MAPPER.readValue(in, new TypeReference<>() {});
+                    System.out.println("[LlmConnectionExample] 使用配置文件: " + normalized);
+                    return loaded;
+                } catch (IOException e) {
+                    throw new IllegalStateException("Failed to read config: " + normalized, e);
+                }
+            }
+            try (InputStream in = LlmConnectionExample.class.getClassLoader()
+                    .getResourceAsStream("apiconfig.json")) {
+                if (in != null) {
+                    System.out.println("[LlmConnectionExample] 使用 classpath:apiconfig.json");
+                    return MAPPER.readValue(in, new TypeReference<>() {});
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to read classpath apiconfig.json", e);
+            }
+            return Map.of();
+        }
+
+        private static List<Path> configPathCandidates() {
+            List<Path> candidates = new ArrayList<>();
+            String fromProp = System.getProperty("agent.config.path");
+            if (fromProp != null && !fromProp.isBlank()) {
+                candidates.add(Path.of(fromProp));
+            }
+            String fromEnv = System.getenv("AGENT_API_CONFIG");
+            if (fromEnv != null && !fromEnv.isBlank()) {
+                candidates.add(Path.of(fromEnv));
+            }
+            candidates.add(Path.of("apiconfig.json"));
+            candidates.add(Path.of("examples/apiconfig.json"));
+            return candidates;
+        }
+
+        private static String env(String key) {
+            return System.getenv(key);
+        }
+
+        private static String prop(String key) {
+            return System.getProperty(key);
+        }
+
+        private static boolean isSet(String value) {
+            return value != null && !value.isBlank();
+        }
+
+        private static String firstNonBlank(String... values) {
+            for (String value : values) {
+                if (value != null && !value.isBlank()) {
+                    return value.trim();
+                }
+            }
+            return null;
+        }
+
+        private static double parseDouble(String raw, double defaultValue) {
+            if (raw == null || raw.isBlank()) {
+                return defaultValue;
+            }
+            try {
+                return Double.parseDouble(raw.trim());
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
+        }
+    }
+
     private static class SimpleOpenAiFactory implements Model.ModelClientFactory {
+        private final String providerName;
+
+        SimpleOpenAiFactory(String providerName) {
+            this.providerName = providerName;
+        }
+
         @Override
         public String providerName() {
-            return PROVIDER;
+            return providerName;
         }
 
         @Override
