@@ -657,7 +657,7 @@ class ModelCallGuardPythonParityTest {
     }
 
     private static void modelBeforePopsUnderscoreKey() {
-        String secret = "sk-A7nhsRpv_vcK55IGQe6hSQ";
+        String secret = "sk-fakekey_test0000000000";
         MockModelContext context = new MockModelContext(List.of(user("My key is " + secret)));
         AgentCallbackContext ctx = modelCtx(context, null);
 
@@ -669,7 +669,7 @@ class ModelCallGuardPythonParityTest {
     }
 
     private static void modelAfterRejectsUnderscoreKeyInResponse() {
-        String secret = "sk-proj_abc123def456ghi789";
+        String secret = "sk-proj_fakekey000000000";
         AgentCallbackContext ctx = modelCtx(new MockModelContext(List.of(user("What is my key?"))),
                 assistant("Your key is " + secret));
 
@@ -679,7 +679,7 @@ class ModelCallGuardPythonParityTest {
     }
 
     private static void toolBeforeInterruptUnderscoreKeyInArgs() {
-        String secret = "sk-A7nhsRpv_vcK55IGQe6hSQ";
+        String secret = "sk-fakekey_test0000000000";
         SecurityDecision decision = new ApikeyguardinterruptRail().runSecurityCheck(localSecurityContext(
                 toolCtx("glob", "{\"pattern\": \"*" + secret + "*\"}", null),
                 AgentCallbackEvent.BEFORE_TOOL_CALL, null, Map.of()));
@@ -688,7 +688,7 @@ class ModelCallGuardPythonParityTest {
     }
 
     private static void toolAfterInterruptUnderscoreKeyInResult() {
-        String secret = "sk-A7nhsRpv_vcK55IGQe6hSQ";
+        String secret = "sk-fakekey_test0000000000";
         SecurityDecision decision = new ApikeyguardinterruptRail().runSecurityCheck(localSecurityContext(
                 toolCtx("read_file", null, "Found key: " + secret),
                 AgentCallbackEvent.AFTER_TOOL_CALL, null, Map.of()));
@@ -697,7 +697,7 @@ class ModelCallGuardPythonParityTest {
     }
 
     private static void sanitizeUnderscoreKey() {
-        String secret = "sk-proj_abc123def456ghi789";
+        String secret = "sk-proj_fakekey000000000";
         MockModelContext context = new MockModelContext(List.of(user("My key is " + secret)));
         AgentCallbackContext ctx = modelCtx(context, null);
 
@@ -709,7 +709,7 @@ class ModelCallGuardPythonParityTest {
 
     private static void toolRejectBeforeRejectSkipsToolContinues() {
         ToolrejectexampleRail rail = new ToolrejectexampleRail();
-        AgentCallbackContext ctx = toolCtx("glob", "{\"pattern\": \"*sk-A7nhsRpv_vcK55IGQe6hSQ*\"}", null);
+        AgentCallbackContext ctx = toolCtx("glob", "{\"pattern\": \"*sk-fakekey_test0000000000*\"}", null);
         LocalSecurityContext securityCtx = localSecurityContext(ctx, AgentCallbackEvent.BEFORE_TOOL_CALL, null, Map.of());
 
         rail.applySecurityDecision(securityCtx, rail.runSecurityCheck(securityCtx));
@@ -721,7 +721,7 @@ class ModelCallGuardPythonParityTest {
 
     private static void toolRejectAfterRejectForceFinish() {
         ToolrejectexampleRail rail = new ToolrejectexampleRail();
-        AgentCallbackContext ctx = toolCtx("read_file", null, "API_KEY=sk-A7nhsRpv_vcK55IGQe6hSQ");
+        AgentCallbackContext ctx = toolCtx("read_file", null, "API_KEY=sk-fakekey_test0000000000");
         LocalSecurityContext securityCtx = localSecurityContext(ctx, AgentCallbackEvent.AFTER_TOOL_CALL, null, Map.of());
 
         rail.applySecurityDecision(securityCtx, rail.runSecurityCheck(securityCtx));
@@ -908,7 +908,7 @@ class ModelCallGuardPythonParityTest {
 
     private static void apiKeyGuardUnderscoreKeyDetected() {
         SecurityDecision decision = new ApikeyguardalertRail()
-                .runSecurityCheck(localSecurityContext(toolCtx("grep", null, "Found key: sk-A7nhsRpv_vcK55IGQe6hSQ"),
+                .runSecurityCheck(localSecurityContext(toolCtx("grep", null, "Found key: sk-fakekey_test0000000000"),
                         AgentCallbackEvent.AFTER_TOOL_CALL, null, Map.of()));
 
         assertThat(decision).isInstanceOf(SecurityAlert.class);

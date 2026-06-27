@@ -64,12 +64,12 @@ pip install openai==2.15.0
 ```
 
 ### 安装元戎与ray_adapter
-下载 [元戎 OpenYuanrong 0.7.0][yuanrong-wheel] 与 [ray_adapter 0.7.1][ray-adapter-wheel] 的 wheel 包，在conda环境中离线安装：
+下载 元戎 OpenYuanrong 0.7.0 与 ray_adapter 0.7.1 的 wheel 包，在conda环境中离线安装：
 ```bash
 pip install openyuanrong-0.7.0-cp311-cp311-manylinux_2_34_aarch64.whl
 pip install ray_adapter-0.7.1-py3-none-any.whl
 ```
-下载[verl的元戎patch包][patch-url]，放在rl_pkgs目录下，将其转化为utf8格式：
+下载verl的元戎patch包，放在rl_pkgs目录下，将其转化为utf8格式：
 ```bash
 iconv -f UTF-16 -t UTF-8 yr_v7.patch > yr_v7.patch.utf8
 ```
@@ -78,9 +78,6 @@ iconv -f UTF-16 -t UTF-8 yr_v7.patch > yr_v7.patch.utf8
 cd verl
 patch -p1 < ../yr_v7.patch.utf8
 ```
-[yuanrong-wheel]: https://openyuanrong.obs.cn-southwest-2.myhuaweicloud.com/tmp/202603311854/openyuanrong-0.7.1-cp311-cp311-manylinux_2_34_aarch64.whl 
-[ray-adapter-wheel]: https://openyuanrong.obs.cn-southwest-2.myhuaweicloud.com/ray_adapter/ray_adapter-0.7.1-py3-none-any.whl
-[patch-url]: https://openyuanrong.obs.cn-southwest-2.myhuaweicloud.com/tmp/verl-070-use-yuanrong-as-distributed-backend.patch
 ## 整体流程
 
 强化学习训练主要包含以下步骤：
